@@ -10,7 +10,6 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-sentry"],
-        reply_timeout_ms: 90_000,
         test_credential_token: "eval-sentry-token",
       },
       events: [mention("/sentry-credential-smoke")],
@@ -33,7 +32,6 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-sentry"],
-        reply_timeout_ms: 90_000,
         test_credential_token: "eval-sentry-token",
       },
       events: [mention("List the Sentry organizations I can access.")],

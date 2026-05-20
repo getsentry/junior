@@ -167,11 +167,19 @@ function formatSkillEntry(skill: SkillMetadata): string[] {
   return lines;
 }
 
-function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
+function formatAvailableSkillsForPrompt(
+  skills: SkillMetadata[],
+  invocation: SkillInvocation | null,
+): string {
   const autoSelectable = skills.filter(
     (s) => s.disableModelInvocation !== true,
   );
-  const explicitOnly = skills.filter((s) => s.disableModelInvocation === true);
+  const invokedExplicitOnly = invocation
+    ? skills.filter(
+        (s) =>
+          s.disableModelInvocation === true && s.name === invocation.skillName,
+      )
+    : [];
 
   const sections: string[] = [];
 
@@ -191,12 +199,12 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
   sections.push(available.join("\n"));
 
   // User-callable skills: model must not auto-select these.
-  if (explicitOnly.length > 0) {
+  if (invokedExplicitOnly.length > 0) {
     const userCallable = [
       "<user-callable-skills>",
-      "Do not load based on context match or semantic relevance. Only load when the user's current message explicitly references the skill by name.",
+      "The user's current message explicitly references this skill by name. Load it when relevant to the request.",
     ];
-    for (const skill of explicitOnly) {
+    for (const skill of invokedExplicitOnly) {
       userCallable.push(...formatSkillEntry(skill));
     }
     userCallable.push("</user-callable-skills>");
@@ -592,10 +600,13 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
+  invocation: SkillInvocation | null;
   toolGuidance?: ToolPromptContext[];
 }): string {
   const blocks: string[] = [];
-  blocks.push(formatAvailableSkillsForPrompt(params.availableSkills));
+  blocks.push(
+    formatAvailableSkillsForPrompt(params.availableSkills, params.invocation),
+  );
   blocks.push(formatLoadedSkillsForPrompt(params.activeSkills));
 
   const activeCatalogs = formatActiveMcpCatalogsForPrompt(
@@ -679,6 +690,7 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      invocation: params.invocation,
       toolGuidance: params.toolGuidance ?? [],
     }),
     buildContextSection({

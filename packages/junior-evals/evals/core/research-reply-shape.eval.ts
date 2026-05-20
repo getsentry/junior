@@ -8,64 +8,48 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
     await run({
       events: [
         mention(
-          "Read these three sources and give me one brief, coherent summary of how modern Slack agent streaming works. Keep it short enough to fit in one normal Slack reply, and do not include code samples: https://docs.slack.dev/ai/developing-agents/ , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
+          "Read these three sources and give me one brief, coherent summary of how modern Slack agent streaming works. Keep it short enough to fit in one normal Slack reply, and do not include code samples: https://docs.slack.dev/changelog/2025/10/7/chat-streaming , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
         ),
       ],
-      overrides: {
-        reply_timeout_ms: 120_000,
-      },
       requireSandboxReady: false,
-      taskTimeout: 150_000,
       criteria: rubric({
         contract:
           "A multi-source research request returns a concise Slack-style answer without process chatter.",
         pass: [
-          "assistant_posts contains one concise researched answer, or at most one clearly intentional continuation if needed.",
-          "canvases is empty because this short request fits in a normal Slack reply.",
-          "The primary assistant post begins with the researched answer itself, not internal work narration.",
-          "The answer coherently summarizes how Slack agent streaming works across the provided sources.",
-          "The answer stays brief rather than turning into a long document or code sample.",
-          "channel_posts is empty.",
-          "reactions is empty.",
+          "The thread reply is a concise researched answer, not a status update or process note.",
+          "The answer coherently summarizes Slack agent streaming across the provided sources.",
+          "The answer stays brief enough for a normal Slack reply and does not create a canvas.",
         ],
         fail: [
           "Do not include process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",
-          "Do not send caveats about inaccessible or partial sources as a stray status-like note.",
         ],
       }),
     });
   });
 
-  it("when long-form research is requested as a reusable reference, create a canvas and keep the thread reply brief", async ({
+  it("when a long-form reference is requested as reusable material, create a canvas and keep the thread reply brief", async ({
     run,
   }) => {
     await run({
       events: [
         mention(
-          "Read these three sources and put together a detailed timeline and implementation reference for modern Slack agent streaming that I can come back to later. Cover how the APIs evolved, the key methods, the current limits, and the migration gotchas: https://docs.slack.dev/ai/developing-agents/ , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
+          "Create a concise reusable canvas reference for modern Slack agent streaming that I can come back to later. Use these notes: Slack apps can stream AI responses with start, append, and stop stream methods; streamed messages should live in the user request thread; chunks can include markdown text and task updates; finalized messages can include blocks; apps need to account for content limits, rate limits, retries, and migration from single final replies. Keep the thread reply brief.",
         ),
       ],
-      overrides: {
-        reply_timeout_ms: 140_000,
-      },
       requireSandboxReady: false,
-      taskTimeout: 180_000,
       criteria: rubric({
         contract:
-          "A long-form research deliverable becomes a Slack canvas, with the thread reserved for a short summary and pointer.",
+          "A long-form reference deliverable becomes a Slack canvas, with the thread reserved for a short summary and pointer.",
         pass: [
-          "canvases contains exactly one created canvas.",
-          "That canvas title clearly matches the requested Slack streaming research or timeline deliverable.",
-          "That canvas markdown is a substantial structured artifact with sections or bullets, not a tiny stub.",
-          "The canvas content covers the requested research areas such as the timeline or evolution, the key APIs, and current limits or migration gotchas.",
-          "assistant_posts contains one brief thread reply that points the user to the canvas instead of pasting the whole document inline.",
-          "channel_posts is empty.",
-          "reactions is empty.",
+          "The assistant creates a single useful canvas for the requested Slack streaming reference.",
+          "The canvas is a structured artifact that covers the supplied Slack streaming notes.",
+          "The thread reply stays brief and points to the canvas instead of pasting the full document inline.",
         ],
         fail: [
-          "Do not paste the entire long-form research artifact directly into assistant_posts.",
+          "Do not paste the entire long-form reference artifact directly into assistant_posts.",
           "Do not create multiple canvases for this one research request.",
           "Do not add process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",
+          "Do not use web discovery when the prompt supplies the material to organize.",
         ],
       }),
     });

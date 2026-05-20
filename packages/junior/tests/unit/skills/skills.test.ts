@@ -24,6 +24,12 @@ async function writeSkillFile(
 const stubSkills: SkillMetadata[] = [
   { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
   { name: "sum", description: "Summarize", skillPath: "/tmp/sum" },
+  {
+    name: "weather-lookup",
+    description: "Weather lookup",
+    skillPath: "/tmp/weather-lookup",
+    disableModelInvocation: true,
+  },
 ];
 const ORIGINAL_EXTRA_PLUGIN_ROOTS = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS;
 
@@ -83,6 +89,33 @@ describe("skills", () => {
   it("does not parse invocation without slash command", () => {
     expect(
       parseSkillInvocation("please summarize this candidate", stubSkills),
+    ).toBeNull();
+  });
+
+  it("parses explicit user-callable skill names", () => {
+    expect(
+      parseSkillInvocation(
+        "Use the weather-lookup skill for San Francisco.",
+        stubSkills,
+      ),
+    ).toEqual({
+      skillName: "weather-lookup",
+      args: "Use the weather-lookup skill for San Francisco.",
+    });
+  });
+
+  it("does not parse disabled skills from incidental name mentions", () => {
+    expect(
+      parseSkillInvocation(
+        "Do not use weather-lookup for this request.",
+        stubSkills,
+      ),
+    ).toBeNull();
+    expect(
+      parseSkillInvocation(
+        "Why did weather-lookup run automatically?",
+        stubSkills,
+      ),
     ).toBeNull();
   });
 

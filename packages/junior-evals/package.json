@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "preevals": "node ../junior/scripts/check-slack-test-boundary.mjs",
-    "evals": "JUNIOR_STATE_ADAPTER=memory pnpm exec vitest run -c vitest.evals.config.ts"
+    "evals": "JUNIOR_STATE_ADAPTER=memory VITEST_EVALS_REPLAY_MODE=auto pnpm exec vitest run -c vitest.evals.config.ts",
+    "evals:record": "JUNIOR_STATE_ADAPTER=memory VITEST_EVALS_REPLAY_MODE=record pnpm exec vitest run -c vitest.evals.config.ts"
   },
   "devDependencies": {
     "@sentry/junior": "workspace:*",

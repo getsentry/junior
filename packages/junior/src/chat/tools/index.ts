@@ -98,7 +98,7 @@ export function createTools(
     findFiles: createFindFilesTool(),
     listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
-    webSearch: createWebSearchTool(),
+    webSearch: createWebSearchTool(hooks.toolOverrides?.webSearch),
     webFetch: createWebFetchTool(hooks),
     imageGenerate: createImageGenerateTool(
       hooks,

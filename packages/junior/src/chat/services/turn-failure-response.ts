@@ -1,5 +1,6 @@
 import type { LogContext } from "@/chat/logging";
 import { buildTurnFailureResponse } from "@/chat/logging";
+import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import type { AssistantReply } from "@/chat/services/turn-result";
 
@@ -129,9 +130,16 @@ export function finalizeFailedTurnReply(args: {
     capture.eventName,
   );
 
+  const providerPartialText =
+    args.reply.diagnostics.outcome === "provider_error"
+      ? args.reply.text.trim()
+      : "";
+
   return {
     ...args.reply,
-    text: buildTurnFailureResponse(eventId),
+    text: providerPartialText
+      ? `${providerPartialText}${getInterruptionMarker()}`
+      : buildTurnFailureResponse(eventId),
     deliveryMode: "thread",
     deliveryPlan: {
       mode: "thread",

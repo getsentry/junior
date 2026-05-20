@@ -1,10 +1,10 @@
 import type { FileUpload, PostableMessage } from "chat";
+import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
 const CONTINUED_MARKER = "\n\n[Continued below]";
-const INTERRUPTED_MARKER = "\n\n[Response interrupted before completion]";
 
 function countSlackLines(text: string): number {
   if (!text) {
@@ -267,12 +267,12 @@ export function splitSlackReplyText(
   let remaining = normalized;
   while (remaining) {
     const fitsFinalChunk = options?.interrupted
-      ? fitsInlineBudget(appendSlackSuffix(remaining, INTERRUPTED_MARKER))
+      ? fitsInlineBudget(appendSlackSuffix(remaining, getInterruptionMarker()))
       : fitsInlineBudget(remaining);
     if (fitsFinalChunk) {
       chunks.push(
         options?.interrupted
-          ? appendSlackSuffix(remaining, INTERRUPTED_MARKER)
+          ? appendSlackSuffix(remaining, getInterruptionMarker())
           : remaining,
       );
       break;
@@ -300,7 +300,7 @@ export function getSlackContinuationMarker(): string {
 
 /** Return the marker added when a visible reply ended mid-execution. */
 export function getSlackInterruptionMarker(): string {
-  return INTERRUPTED_MARKER;
+  return getInterruptionMarker();
 }
 
 /**

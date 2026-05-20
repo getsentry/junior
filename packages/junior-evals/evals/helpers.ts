@@ -147,6 +147,7 @@ export interface SlackEvalInput {
 }
 
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
+const MAX_EVAL_TIMEOUT_MS = 30_000;
 const GATEWAY_AUTH_FAILURE_PATTERNS = [
   "OIDC token has expired",
   "Missing AI gateway credentials",
@@ -231,6 +232,23 @@ function assertStatusCleared(input: SlackEvalInput, result: EvalResult): void {
           "Every turn must clear the assistant status indicator before completing.",
       );
     }
+  }
+}
+
+function assertTimeoutBudget(input: SlackEvalInput): void {
+  const replyTimeout = input.overrides?.reply_timeout_ms;
+  if (replyTimeout !== undefined && replyTimeout > MAX_EVAL_TIMEOUT_MS) {
+    throw new Error(
+      `Eval reply_timeout_ms ${replyTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
+    );
+  }
+  if (
+    input.taskTimeout !== undefined &&
+    input.taskTimeout > MAX_EVAL_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `Eval taskTimeout ${input.taskTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
+    );
   }
 }
 
@@ -330,6 +348,7 @@ export const slackHarness: Harness<SlackEvalInput> = {
       logRecords.push(record);
     });
     try {
+      assertTimeoutBudget(input);
       const taskPromise = runEvalScenario(
         {
           events: input.events,

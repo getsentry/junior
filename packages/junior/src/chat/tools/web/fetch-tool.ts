@@ -38,6 +38,7 @@ function extractHttpStatusFromMessage(message: string): number | null {
 }
 
 export function createWebFetchTool(hooks: ToolHooks) {
+  const override = hooks.toolOverrides?.webFetch;
   return tool({
     description:
       "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
@@ -61,6 +62,10 @@ export function createWebFetchTool(hooks: ToolHooks) {
       ),
     }),
     execute: async ({ url, max_chars }) => {
+      if (override?.execute) {
+        return override.execute({ url, max_chars });
+      }
+
       try {
         const safeUrl = await assertPublicUrl(url);
         const response = await withTimeout(

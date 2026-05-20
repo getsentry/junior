@@ -301,10 +301,10 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("replaces provider-error replies with the canonical event-id response", async () => {
-    const longReply =
-      `${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n` +
-      "This should continue into a second post.";
+  it("marks provider-error replies with partial text as interrupted", async () => {
+    const partialStart = "The budget review is complete.";
+    const partialEnd = "This should continue into a second post.";
+    const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -328,12 +328,11 @@ describe("Slack behavior: finalized thread replies", () => {
     );
 
     expect(thread.postKinds.every((kind) => kind === "value")).toBe(true);
-    expect(thread.posts).toHaveLength(1);
-    const postedText = toPostedText(thread.posts[0]);
-    expect(postedText).toContain(
-      "I ran into an internal error while processing that. Reference: `event_id=",
-    );
-    expect(postedText).not.toContain(longReply);
-    expect(postedText).not.toContain(getSlackInterruptionMarker().trim());
+    expect(thread.posts.length).toBeGreaterThan(1);
+    const postedText = thread.posts.map(toPostedText).join("\n");
+    expect(postedText).toContain(partialStart);
+    expect(postedText).toContain(partialEnd);
+    expect(postedText).toContain(getSlackInterruptionMarker().trim());
+    expect(postedText).not.toContain("event_id=");
   });
 });

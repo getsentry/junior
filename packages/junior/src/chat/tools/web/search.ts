@@ -4,6 +4,7 @@ import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
+import type { WebSearchToolDeps } from "@/chat/tools/types";
 
 const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;
@@ -72,7 +73,7 @@ function isAuthFailure(message: string): boolean {
   );
 }
 
-export function createWebSearchTool() {
+export function createWebSearchTool(override?: WebSearchToolDeps) {
   return tool({
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
@@ -96,6 +97,10 @@ export function createWebSearchTool() {
       ),
     }),
     execute: async ({ query, max_results }) => {
+      if (override?.execute) {
+        return override.execute({ query, max_results });
+      }
+
       const maxResults = max_results ?? 3;
       // Pinned. General-purpose models (AI_MODEL / AI_FAST_MODEL) aren't
       // reliable at forced provider-tool calls on AI Gateway; keep the

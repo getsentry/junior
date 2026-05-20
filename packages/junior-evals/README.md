@@ -15,6 +15,7 @@ Testing taxonomy and layer contracts are defined in:
 - `specs/testing/index.md`
 - `specs/testing/evals-spec.md`
 - `specs/testing/integration-spec.md`
+- `policies/evals.md`
 
 Quick mapping:
 
@@ -69,10 +70,15 @@ Harness override knobs (in `EvalOverrides`):
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: override returned reply text per call.
-- `reply_timeout_ms`: raise the per-reply harness timeout for a specific slow scenario without changing the suite-wide default.
+- `reply_timeout_ms`: lower or set the per-reply harness timeout for a specific scenario. It cannot exceed 30 seconds.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
+
+Tool replay:
+
+- `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. `pnpm evals` uses `auto` replay mode; use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.
+- Keep committed recordings minimal and source-specific. Regenerate them from the evals that need replay, then review for stale exploratory fetches and secret-like values before committing.
 
 ## Running
 
@@ -140,6 +146,8 @@ Do not do these in eval files:
 
 ## Eval Quality Rubric
 
+Follow `policies/evals.md` for the repo-wide defaults on invariant-based criteria and over-prescription.
+
 Good conversational evals should:
 
 - Start from realistic user events/messages (mentions, follow-ups, thread lifecycle events).
@@ -147,9 +155,11 @@ Good conversational evals should:
 - Use concrete real-world scenarios (incident updates, planning follow-ups, capability setup requests), not abstract mechanics like "posted two replies."
 - Use judge criteria written in product language, not implementation language.
 - Use rubric sections that are easy for maintainers to scan in a failure: one `contract`, a short `pass` list, and focused `allow` / `fail` lists only when needed.
+- Keep rubric bullets at the behavior level. Prefer "uses the stored repo as the target" over requiring exact wording or incidental reply ordering.
+- Put incidental variation in `allow`, not `pass`. Omit `fail` bullets unless they describe a real regression or unsafe side effect.
 - Use fake/nonexistent external targets unless the eval explicitly opts into live provider access.
-- Cover realistic failure behavior (clear user-visible errors) without depending on internal tool wiring.
-- Keep eval output payload user-facing (assistant posts + Slack-visible metadata), excluding low-level tool-call traces.
+- Cover realistic failure behavior with clear user-visible errors.
+- Use tool-call traces when they prove behavior at a real boundary, such as source grounding, mutation safety, provider routing, or auth sequencing.
 
 Avoid:
 

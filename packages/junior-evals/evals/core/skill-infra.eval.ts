@@ -112,7 +112,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
           "/eval-mcp Ask the handbook what it says about US holidays, then summarize the result.",
         ),
       ],
-      taskTimeout: 120_000,
       criteria: rubric({
         contract:
           "An MCP-backed skill can complete a natural lookup by using the provider result instead of surfacing tool validation errors.",

@@ -68,6 +68,34 @@ import {
 } from "@/chat/services/turn-failure-response";
 import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
+import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
+
+function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
+  return new Set(
+    [
+      artifacts.lastCanvasUrl,
+      ...(artifacts.recentCanvases?.map((canvas) => canvas.url) ?? []),
+    ].filter((url): url is string => typeof url === "string" && url !== ""),
+  );
+}
+
+function getCurrentTurnCanvasUrl(args: {
+  before: Partial<ThreadArtifactsState>;
+  after: Partial<ThreadArtifactsState>;
+}): string | undefined {
+  const previousUrls = collectCanvasUrls(args.before);
+  const latestUrls = collectCanvasUrls(args.after);
+  for (const url of latestUrls) {
+    if (!previousUrls.has(url)) {
+      return url;
+    }
+  }
+  return undefined;
+}
+
+function buildCanvasRecoveryReply(canvasUrl: string) {
+  return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
+}
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -284,6 +312,40 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
         }
+        const configReply = await maybeApplyProviderDefaultConfigRequest({
+          channelConfiguration: preparedState.channelConfiguration,
+          requesterId: message.author.userId,
+          text: userText,
+        });
+        if (configReply) {
+          await beforeFirstResponsePost();
+          await thread.post(buildSlackOutputMessage(configReply.text));
+          markConversationMessage(
+            preparedState.conversation,
+            preparedState.userMessageId,
+            {
+              replied: true,
+              skippedReason: undefined,
+            },
+          );
+          upsertConversationMessage(preparedState.conversation, {
+            id: generateConversationId("assistant"),
+            role: "assistant",
+            text: normalizeConversationText(configReply.text),
+            createdAtMs: Date.now(),
+            author: {
+              userName: botConfig.userName,
+              isBot: true,
+            },
+            meta: {
+              replied: true,
+            },
+          });
+          await persistThreadState(thread, {
+            conversation: preparedState.conversation,
+          });
+          return;
+        }
         startActiveTurn({
           conversation: preparedState.conversation,
           nextTurnId: turnId,
@@ -374,6 +436,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         });
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
+        let latestArtifacts = preparedState.artifacts;
 
         try {
           const toolChannelId =
@@ -418,6 +481,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             },
             onArtifactStateUpdated: async (artifacts) => {
+              latestArtifacts = artifacts;
               await persistThreadState(thread, { artifacts });
             },
             onAuthPending: async (pendingAuth) => {
@@ -687,6 +751,60 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           shouldPersistFailureState = true;
+          const createdCanvasUrl = getCurrentTurnCanvasUrl({
+            before: preparedState.artifacts,
+            after: latestArtifacts,
+          });
+          if (createdCanvasUrl) {
+            logException(
+              error,
+              "agent_turn_failed_after_canvas_created",
+              turnTraceContext,
+              {
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                "app.slack.canvas.has_url": true,
+              },
+              "Agent turn failed after creating a Slack canvas",
+            );
+            const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
+            await postThreadReply(
+              buildSlackOutputMessage(recoveryText),
+              "thread_reply",
+            );
+            markConversationMessage(
+              preparedState.conversation,
+              preparedState.userMessageId,
+              {
+                replied: true,
+                skippedReason: undefined,
+              },
+            );
+            upsertConversationMessage(preparedState.conversation, {
+              id: generateConversationId("assistant"),
+              role: "assistant",
+              text: normalizeConversationText(recoveryText),
+              createdAtMs: Date.now(),
+              author: {
+                userName: botConfig.userName,
+                isBot: true,
+              },
+              meta: {
+                replied: true,
+              },
+            });
+            markTurnCompleted({
+              conversation: preparedState.conversation,
+              nowMs: Date.now(),
+              updateConversationStats,
+            });
+            await persistThreadState(thread, {
+              artifacts: latestArtifacts,
+              conversation: preparedState.conversation,
+            });
+            persistedAtLeastOnce = true;
+            shouldPersistFailureState = false;
+            return;
+          }
           throw error;
         } finally {
           if (!persistedAtLeastOnce && shouldPersistFailureState) {

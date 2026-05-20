@@ -20,6 +20,23 @@ const htmlToMarkdownConverter = new NodeHtmlMarkdown({
   maxConsecutiveNewlines: 2,
 });
 
+export interface WebFetchResponseContent {
+  content: string;
+  title?: string;
+  truncated: boolean;
+  extractedChars: number;
+}
+
+export interface WebFetchResponse {
+  url: string;
+  content: string;
+  title?: string;
+  content_type: string;
+  source_bytes: number;
+  extracted_chars: number;
+  truncated: boolean;
+}
+
 function normalizeWhitespace(text: string): string {
   return text
     .replace(/\r\n/g, "\n")
@@ -27,31 +44,124 @@ function normalizeWhitespace(text: string): string {
     .trim();
 }
 
-function truncateAtWordBoundary(text: string, maxChars: number): string {
+function truncateAtWordBoundary(
+  text: string,
+  maxChars: number,
+): { content: string; truncated: boolean } {
   if (text.length <= maxChars) {
-    return text;
+    return { content: text, truncated: false };
   }
   const shortened = text.slice(0, maxChars);
   const lastSpace = shortened.lastIndexOf(" ");
   if (lastSpace > maxChars * 0.8) {
-    return `${shortened.slice(0, lastSpace).trimEnd()}...`;
+    return {
+      content: `${shortened.slice(0, lastSpace).trimEnd()}...`,
+      truncated: true,
+    };
   }
-  return `${shortened.trimEnd()}...`;
+  return { content: `${shortened.trimEnd()}...`, truncated: true };
 }
 
-/** Extract readable content from a fetched response body, converting HTML to markdown. */
-export function extractContent(
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function extractTitle(html: string): string | undefined {
+  const match = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  const title = match ? normalizeWhitespace(decodeHtmlEntities(match[1])) : "";
+  return title.length > 0 ? title : undefined;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getBalancedElementHtml(args: {
+  html: string;
+  startIndex: number;
+  tagName: string;
+}): string | undefined {
+  const tagPattern = new RegExp(
+    `</?${escapeRegex(args.tagName)}\\b[^>]*>`,
+    "gi",
+  );
+  tagPattern.lastIndex = args.startIndex;
+  let depth = 0;
+  for (const match of args.html.matchAll(tagPattern)) {
+    const tag = match[0];
+    if (tag.startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) {
+        return args.html.slice(args.startIndex, match.index + tag.length);
+      }
+      continue;
+    }
+    if (!tag.endsWith("/>")) {
+      depth += 1;
+    }
+  }
+  return undefined;
+}
+
+function findElementHtml(
+  html: string,
+  predicate: (tagName: string, tag: string) => boolean,
+): string | undefined {
+  const openingTagPattern = /<([a-z][\w:-]*)\b[^>]*>/gi;
+  for (const match of html.matchAll(openingTagPattern)) {
+    const tagName = match[1];
+    if (!tagName || !predicate(tagName.toLowerCase(), match[0])) {
+      continue;
+    }
+    const balanced = getBalancedElementHtml({
+      html,
+      startIndex: match.index,
+      tagName,
+    });
+    if (balanced) {
+      return balanced;
+    }
+  }
+  return undefined;
+}
+
+function extractMainHtml(html: string): string {
+  return (
+    findElementHtml(html, (tagName) => tagName === "main") ??
+    findElementHtml(html, (tagName) => tagName === "article") ??
+    findElementHtml(html, (_tagName, tag) =>
+      /\brole\s*=\s*(["'])main\1/i.test(tag),
+    ) ??
+    html
+  );
+}
+
+/** Extract readable content and metadata from a fetched response body. */
+export function extractContentDetails(
   body: string,
   contentType: string,
   maxChars: number,
-): string {
+): WebFetchResponseContent {
   const loweredContentType = contentType.toLowerCase();
   const normalizedBody = body.trim();
 
   if (loweredContentType.includes("html")) {
     try {
-      const markdown = htmlToMarkdownConverter.translate(normalizedBody);
-      return truncateAtWordBoundary(normalizeWhitespace(markdown), maxChars);
+      const sourceHtml = extractMainHtml(normalizedBody);
+      const markdown = htmlToMarkdownConverter.translate(sourceHtml);
+      const normalizedMarkdown = normalizeWhitespace(markdown);
+      const truncated = truncateAtWordBoundary(normalizedMarkdown, maxChars);
+      return {
+        content: truncated.content,
+        title: extractTitle(normalizedBody),
+        truncated: truncated.truncated,
+        extractedChars: normalizedMarkdown.length,
+      };
     } catch {
       // Fall back to plain text extraction below.
     }
@@ -60,16 +170,40 @@ export function extractContent(
   if (loweredContentType.includes("json")) {
     try {
       const parsed = JSON.parse(normalizedBody);
-      return truncateAtWordBoundary(JSON.stringify(parsed, null, 2), maxChars);
+      const formatted = JSON.stringify(parsed, null, 2);
+      const truncated = truncateAtWordBoundary(formatted, maxChars);
+      return {
+        content: truncated.content,
+        truncated: truncated.truncated,
+        extractedChars: formatted.length,
+      };
     } catch {
-      return truncateAtWordBoundary(
-        normalizeWhitespace(normalizedBody),
-        maxChars,
-      );
+      const normalizedText = normalizeWhitespace(normalizedBody);
+      const truncated = truncateAtWordBoundary(normalizedText, maxChars);
+      return {
+        content: truncated.content,
+        truncated: truncated.truncated,
+        extractedChars: normalizedText.length,
+      };
     }
   }
 
-  return truncateAtWordBoundary(normalizeWhitespace(normalizedBody), maxChars);
+  const normalizedText = normalizeWhitespace(normalizedBody);
+  const truncated = truncateAtWordBoundary(normalizedText, maxChars);
+  return {
+    content: truncated.content,
+    truncated: truncated.truncated,
+    extractedChars: normalizedText.length,
+  };
+}
+
+/** Extract readable content from a fetched response body, converting HTML to markdown. */
+export function extractContent(
+  body: string,
+  contentType: string,
+  maxChars: number,
+): string {
+  return extractContentDetails(body, contentType, maxChars).content;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +215,7 @@ export async function extractWebFetchResponse(
   url: URL,
   response: Response,
   maxChars = DEFAULT_MAX_CHARS,
-): Promise<{ url: string; content: string }> {
+): Promise<WebFetchResponse> {
   const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
 
   if (!response.ok) {
@@ -104,6 +238,14 @@ export async function extractWebFetchResponse(
     FETCH_TIMEOUT_MS,
     "read",
   );
-  const text = extractContent(body, contentType, safeMaxChars);
-  return { url: url.toString(), content: text };
+  const extracted = extractContentDetails(body, contentType, safeMaxChars);
+  return {
+    url: url.toString(),
+    content: extracted.content,
+    ...(extracted.title ? { title: extracted.title } : {}),
+    content_type: contentType || "unknown",
+    source_bytes: Buffer.byteLength(body, "utf8"),
+    extracted_chars: extracted.extractedChars,
+    truncated: extracted.truncated,
+  };
 }

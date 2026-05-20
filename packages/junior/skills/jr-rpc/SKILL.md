@@ -1,6 +1,6 @@
 ---
 name: jr-rpc
-description: Manage low-level config flows via jr-rpc bash commands. Use only when the user explicitly asks to read or update provider defaults/config. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
+description: Manage low-level config flows via jr-rpc bash commands, including setting a default GitHub repo. Use only when the user explicitly asks to read or update provider defaults/config. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
 allowed-tools: bash
 ---
 
@@ -12,11 +12,18 @@ Manage low-level config flows for the current agent turn.
 
 `jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
 
-- Choose config keys from the runtime `<providers>` catalog.
+Command syntax:
 
-Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
+- `jr-rpc config get <key>`
+- `jr-rpc config set <key> <value> [--json]`
+- `jr-rpc config unset <key>`
+- `jr-rpc config list [--prefix <value>]`
 
-Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for config-key selection rules.
+Rules:
+
+- Choose config keys from the runtime `<providers>` catalog: `<provider>.<config_key>`.
+- For "default repo" requests, use the provider target key, for example `github.repo`.
+- Run the exact standalone command. Do not probe, install, or repair `jr-rpc`; the runtime handles it only when invoked directly.
 
 ## Guardrails
 

@@ -61,6 +61,7 @@ Co-Authored-By: (agent model name) <email>
 
 - `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
 - `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
+- `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)
 
 ## Investigation-First Development

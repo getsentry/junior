@@ -826,9 +826,9 @@ describe("bot handlers (integration)", () => {
       typeof thread.posts[0] === "string"
         ? thread.posts[0]
         : ((thread.posts[0] as { markdown?: string }).markdown ?? "");
-    expect(postText).toContain("I ran into an internal error");
-    expect(postText).toContain("event_id=");
-    expect(postText).not.toContain(getSlackInterruptionMarker().trim());
+    expect(postText).toContain("Partial output...");
+    expect(postText).toContain(getSlackInterruptionMarker().trim());
+    expect(postText).not.toContain("event_id=");
   });
 
   it("emits assistant status updates in shared channel threads", async () => {

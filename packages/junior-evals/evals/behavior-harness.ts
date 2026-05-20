@@ -1,6 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
+import { executeWithReplay } from "vitest-evals/replay";
+import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
@@ -22,6 +24,13 @@ import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
+import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
+import { createWebSearchTool } from "@/chat/tools/web/search";
+import type {
+  ToolHooks,
+  WebFetchToolDeps,
+  WebSearchToolDeps,
+} from "@/chat/tools/types";
 import {
   FakeSlackAdapter,
   createTestThread,
@@ -208,6 +217,100 @@ interface QueueDelivery {
 
 interface RuntimeObservations {
   toolInvocations: EvalToolInvocation[];
+}
+
+function createReplayWebFetchDeps(
+  baseOverrides: ToolHooks["toolOverrides"],
+): WebFetchToolDeps {
+  const liveTool = createWebFetchTool({ toolOverrides: {} });
+
+  return {
+    execute: async (input) => {
+      const args: Record<string, JsonValue> = { url: input.url };
+      if (input.max_chars !== undefined) {
+        args.max_chars = input.max_chars;
+      }
+
+      const { result } = await executeWithReplay({
+        toolName: "webFetch",
+        args,
+        context: null,
+        execute: async (replayArgs) => {
+          const url = replayArgs.url;
+          const maxChars = replayArgs.max_chars;
+          if (typeof url !== "string") {
+            throw new Error("webFetch replay args missing url");
+          }
+          const input = {
+            url,
+            ...(typeof maxChars === "number" ? { max_chars: maxChars } : {}),
+          };
+          const output = baseOverrides?.webFetch?.execute
+            ? await baseOverrides.webFetch.execute(input)
+            : await liveTool.execute!(input, {
+                experimental_context: undefined,
+              });
+          return output as JsonValue;
+        },
+        replay: {
+          version: "web-fetch-v1",
+          key: (replayArgs) => ({
+            url: replayArgs.url,
+            max_chars: replayArgs.max_chars ?? null,
+          }),
+        },
+      });
+      return result;
+    },
+  };
+}
+
+function createReplayWebSearchDeps(
+  baseOverrides: ToolHooks["toolOverrides"],
+): WebSearchToolDeps {
+  const liveTool = createWebSearchTool({
+    execute: baseOverrides?.webSearch?.execute,
+  });
+
+  return {
+    execute: async (input) => {
+      const args: Record<string, JsonValue> = { query: input.query };
+      if (input.max_results !== undefined) {
+        args.max_results = input.max_results;
+      }
+
+      const { result } = await executeWithReplay({
+        toolName: "webSearch",
+        args,
+        context: null,
+        execute: async (replayArgs) => {
+          const query = replayArgs.query;
+          const maxResults = replayArgs.max_results;
+          if (typeof query !== "string") {
+            throw new Error("webSearch replay args missing query");
+          }
+          const output = await liveTool.execute!(
+            {
+              query,
+              ...(typeof maxResults === "number"
+                ? { max_results: maxResults }
+                : {}),
+            },
+            { experimental_context: undefined },
+          );
+          return output as JsonValue;
+        },
+        replay: {
+          version: "web-search-v1",
+          key: (replayArgs) => ({
+            query: replayArgs.query,
+            max_results: replayArgs.max_results ?? null,
+          }),
+        },
+      });
+      return result;
+    },
+  };
 }
 
 function toEvalToolInvocation(input: {
@@ -897,7 +1000,7 @@ function buildRuntimeServices(
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
-      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
+      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "30000", 10);
   let replyCallCount = 0;
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
@@ -999,6 +1102,17 @@ function buildRuntimeServices(
           "AI_GATEWAY_API_KEY",
           "VERCEL_OIDC_TOKEN",
         ]);
+        const baseToolOverrides: ToolHooks["toolOverrides"] = {
+          ...(context?.toolOverrides ?? {}),
+        };
+        const toolOverrides = {
+          ...baseToolOverrides,
+          webFetch: createReplayWebFetchDeps(baseToolOverrides),
+          webSearch: createReplayWebSearchDeps(baseToolOverrides),
+          ...(mockImageGeneration
+            ? { imageGenerate: createMockImageGenerateDeps() }
+            : {}),
+        };
         if (scenario.overrides?.unset_gateway_api_key) {
           delete process.env.AI_GATEWAY_API_KEY;
           delete process.env.VERCEL_OIDC_TOKEN;
@@ -1016,14 +1130,7 @@ function buildRuntimeServices(
               ...(env.configuredSkillDirs.length > 0
                 ? { skillDirs: env.configuredSkillDirs }
                 : {}),
-              ...(mockImageGeneration
-                ? {
-                    toolOverrides: {
-                      ...(context?.toolOverrides ?? {}),
-                      imageGenerate: createMockImageGenerateDeps(),
-                    },
-                  }
-                : {}),
+              toolOverrides,
             }),
             new Promise<never>((_, reject) =>
               setTimeout(

@@ -38,7 +38,11 @@ import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
-import type { ImageGenerateToolDeps } from "@/chat/tools/types";
+import type {
+  ImageGenerateToolDeps,
+  WebFetchToolDeps,
+  WebSearchToolDeps,
+} from "@/chat/tools/types";
 import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -134,6 +138,8 @@ export interface ReplyRequestContext {
   ) => void | Promise<void>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
+    webFetch?: WebFetchToolDeps;
+    webSearch?: WebSearchToolDeps;
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onAuthPending?: (
@@ -718,8 +724,13 @@ export async function generateAssistantReply(
     const toolChannelId =
       context.toolChannelId ?? context.correlation?.channelId;
     const channelCapabilities = resolveChannelCapabilities(toolChannelId);
+    const loadableSkills = availableSkills.filter(
+      (skill) =>
+        skill.disableModelInvocation !== true ||
+        skill.name === invokedSkill?.name,
+    );
     const tools = createTools(
-      availableSkills,
+      loadableSkills,
       {
         getGeneratedFile: (filename) =>
           generatedFiles.find((file) => file.filename === filename),

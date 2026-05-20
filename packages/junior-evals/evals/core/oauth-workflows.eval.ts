@@ -29,7 +29,6 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           { thread: mcpAuthResumeThread, is_mention: true },
         ),
       ],
-      taskTimeout: 120_000,
       criteria: rubric({
         contract:
           "After MCP authorization completes, the same thread gets a resumed answer that keeps prior context.",
@@ -80,7 +79,6 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           { thread: oauthResumeThread, is_mention: true },
         ),
       ],
-      taskTimeout: 120_000,
       criteria: rubric({
         contract:
           "After generic OAuth authorization completes, the same thread gets a resumed answer that keeps prior context.",
@@ -123,7 +121,6 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           { thread: oauthReconnectThread, is_mention: true },
         ),
       ],
-      taskTimeout: 120_000,
       criteria: rubric({
         contract:
           "An explicit reconnect request can drive a fresh authorization cycle to completion in the same thread.",

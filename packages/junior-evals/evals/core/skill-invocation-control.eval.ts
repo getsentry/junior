@@ -14,11 +14,10 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
         contract:
           "A skill with disable-model-invocation must not be loaded by the model based on topic relevance alone.",
         pass: [
-          "The assistant does not invoke `loadSkill` with `skill_name` set to `weather-lookup`.",
-          "The assistant posts a reply that does not contain the weather-lookup simulated data (72°F, partly cloudy, 8 mph NW).",
+          "The assistant does not invoke the weather-lookup skill and does not return that skill's simulated report (72°F, partly cloudy, 8 mph NW).",
         ],
         allow: [
-          "The assistant may say it cannot check real weather or offer general knowledge.",
+          "The assistant may answer from other available sources, say it cannot check real weather, or offer general knowledge.",
           "The assistant may mention that a weather skill exists but explain it was not invoked.",
         ],
         fail: [
@@ -43,8 +42,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
         contract:
           "A skill with disable-model-invocation is loaded when the user explicitly references it by name in their message.",
         pass: [
-          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `weather-lookup`.",
-          "The assistant posts a reply containing a weather report for San Francisco.",
+          "The assistant posts a reply containing a weather report for San Francisco from the weather-lookup skill.",
           "The reply includes the simulated data: 72°F or 22°C.",
         ],
         fail: [
@@ -68,8 +66,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
         contract:
           "A normal available skill (without disable-model-invocation) is auto-selected when the request matches its description.",
         pass: [
-          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `source-handbook`.",
-          "The assistant posts a reply based on the source handbook content.",
+          "The assistant uses the source-handbook skill and posts an answer based on its content.",
         ],
         fail: [
           "Do not answer from memory without loading the source-handbook skill.",

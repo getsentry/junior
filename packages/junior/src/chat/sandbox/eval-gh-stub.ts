@@ -122,6 +122,62 @@ function outputText(value) {
   fs.writeFileSync(process.stdout.fd, value);
 }
 
+const repoFiles = {
+  "packages/junior/src/chat/sandbox/egress-policy.ts": \`import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
+import { getPluginProviders } from "@/chat/plugins/registry";
+
+/** Build the policy that forwards provider requests back to Junior for credentials. */
+export function buildSandboxEgressNetworkPolicy() {
+  // Plugin credential domains are forwarded through the host so the sandbox can
+  // activate requester-bound credentials for the current turn.
+}
+
+/** Resolve non-secret command environment values for registered sandbox providers. */
+export async function resolveSandboxCommandEnvironment() {
+  const env = {};
+  for (const plugin of getPluginProviders()) {
+    Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
+    const credentials = plugin.manifest.credentials;
+    if (credentials) {
+      env[credentials.authTokenEnv] = resolveAuthTokenPlaceholder(credentials);
+    }
+  }
+  return env;
+}
+\`,
+  "packages/junior/src/chat/plugins/registry.ts": \`import { createGitHubAppBroker } from "@/chat/plugins/auth/github-app-broker";
+
+export function createPluginBroker(provider, deps) {
+  const plugin = ensurePluginsLoaded().pluginsByName.get(provider);
+  const { credentials, name } = plugin.manifest;
+  if (credentials.type === "github-app") {
+    return createGitHubAppBroker(plugin.manifest, credentials);
+  }
+}
+\`,
+  "packages/junior-github/plugin.yaml": \`name: github
+description: GitHub issue, pull request, and repository workflows via GitHub App
+
+credentials:
+  type: github-app
+  domains:
+    - api.github.com
+    - github.com
+  auth-token-env: GITHUB_TOKEN
+  auth-token-placeholder: ghp_host_managed_credential
+\`,
+};
+
+function writeRepoFixture(targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const [relativePath, content] of Object.entries(repoFiles)) {
+    const filePath = path.join(targetDir, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content);
+  }
+}
+
 function fallbackToRealGh() {
   for (const binary of fallbackBinaries) {
     if (!fs.existsSync(binary)) {
@@ -169,9 +225,33 @@ if (args[0] === "repo" && args[1] === "view") {
   process.exit(0);
 }
 
+if (args[0] === "repo" && args[1] === "clone") {
+  const positionals = getPositionals();
+  const repo = positionals[2] || repoValue();
+  const targetDir = positionals[3] || repo.split("/").pop() || "repo";
+  writeRepoFixture(path.resolve(process.cwd(), targetDir));
+  outputText("Cloning into '" + targetDir + "'...\\n");
+  process.exit(0);
+}
+
 if (args[0] === "api") {
   const positionals = getPositionals();
   const route = positionals[1] || "";
+  if (route.includes("/git/trees/")) {
+    const paths = Object.keys(repoFiles);
+    const jq = getFlag("--jq");
+    if (jq && jq.includes(".tree[].path")) {
+      outputText(paths.join("\\n") + "\\n");
+    } else {
+      outputJson({
+        tree: paths.map((filePath) => ({
+          path: filePath,
+          type: "blob",
+        })),
+      });
+    }
+    process.exit(0);
+  }
   if (route.includes("/comments")) {
     outputJson([]);
     process.exit(0);

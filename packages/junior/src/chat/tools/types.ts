@@ -11,6 +11,20 @@ export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
 }
 
+export interface WebFetchToolDeps {
+  execute?: (input: {
+    url: string;
+    max_chars?: number;
+  }) => Promise<unknown> | unknown;
+}
+
+export interface WebSearchToolDeps {
+  execute?: (input: {
+    query: string;
+    max_results?: number;
+  }) => Promise<unknown> | unknown;
+}
+
 export interface ToolHooks {
   getGeneratedFile?: (filename: string) => FileUpload | undefined;
   onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
@@ -23,6 +37,8 @@ export interface ToolHooks {
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
+    webFetch?: WebFetchToolDeps;
+    webSearch?: WebSearchToolDeps;
   };
 }
 

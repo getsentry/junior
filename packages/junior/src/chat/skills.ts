@@ -436,21 +436,44 @@ export function parseSkillInvocation(
   availableSkills: SkillMetadata[],
 ): SkillInvocation | null {
   const trimmed = messageText.trim();
-  const match = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(
-    trimmed,
-  );
-  if (!match) {
-    return null;
+  const escapePattern = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const slashMatch =
+    /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed);
+  if (slashMatch) {
+    const skillName = slashMatch[1].toLowerCase();
+    if (!availableSkills.some((skill) => skill.name === skillName)) {
+      return null;
+    }
+
+    return {
+      skillName,
+      args: (slashMatch[2] ?? "").trim(),
+    };
   }
 
-  const skillName = match[1].toLowerCase();
-  if (!availableSkills.some((skill) => skill.name === skillName)) {
+  const namedSkill = availableSkills.find((skill) => {
+    if (skill.disableModelInvocation !== true) {
+      return false;
+    }
+    const skillPattern = escapePattern(skill.name);
+    const explicitUse = new RegExp(
+      `\\b(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
+      "i",
+    );
+    const negatedUse = new RegExp(
+      `\\b(?:do\\s+not|don't|dont|never)\\s+(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
+      "i",
+    );
+    return explicitUse.test(trimmed) && !negatedUse.test(trimmed);
+  });
+  if (!namedSkill) {
     return null;
   }
 
   return {
-    skillName,
-    args: (match[2] ?? "").trim(),
+    skillName: namedSkill.name,
+    args: trimmed,
   };
 }
 

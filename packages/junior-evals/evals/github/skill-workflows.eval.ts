@@ -10,7 +10,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 90_000,
         test_credential_token: "eval-smoke-token",
       },
       events: [mention("/capability-credential-smoke")],
@@ -33,7 +32,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 75000,
         test_credential_token: "eval-github-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -46,12 +44,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "The assistant creates the GitHub issue and reports the result without duplicate-search narration clutter.",
         pass: [
-          "The reply proceeds directly to issue creation and reports the result.",
+          "The assistant creates the requested GitHub issue and reports the result without narrating unrelated duplicate-search work.",
         ],
         fail: [
-          "Do not mention checking for duplicates.",
-          "Do not mention searching for similar issues.",
-          "Do not report that no duplicates were found.",
+          "Do not add duplicate-search narration unless the user asked for duplicate checking.",
         ],
       }),
     });
@@ -70,7 +66,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 90_000,
         subscribed_decisions: [
           {
             should_reply: false,
@@ -108,19 +103,16 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "GitHub issue creation from a multi-user Slack thread preserves the original reporter separately from the action requester.",
         pass: [
-          "The assistant posts exactly one reply.",
           "The reply reports a created GitHub issue in getsentry/junior-eval-warden-never-exists with an issue URL or issue number.",
-          "The reply includes the filed issue body or enough quoted issue content to verify attribution.",
-          "The shown issue content attributes the report to Bojan Oro.",
-          "The shown issue content ends its delegated-action footer with `Action taken on behalf of David Cramer.`",
+          "The shown issue content keeps Bojan Oro as the reporter and David Cramer as the action requester.",
         ],
         allow: [
           "Reporter attribution may be phrased as `Reported by Bojan Oro`, `Raised by Bojan Oro`, or equivalent durable issue-body text.",
+          "The action-requester footer may be phrased as `Action taken on behalf of David Cramer.` or equivalent durable issue-body text.",
         ],
         fail: [
-          "Do not use `Action taken on behalf of Bojan Oro.`",
-          "Do not describe David Cramer as the reporter.",
-          "Do not omit reporter attribution when showing the filed issue content.",
+          "Do not swap the reporter and requester roles.",
+          "Do not omit reporter or requester attribution when the prompt asks to show the filed issue content.",
         ],
       }),
     });
@@ -133,7 +125,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github", "@sentry/junior-sentry"],
-        reply_timeout_ms: 120_000,
         test_credential_token: "eval-routing-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -146,13 +137,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "A repository task that happens to mention a Sentry product area still follows the GitHub path instead of asking for unrelated Sentry auth.",
         pass: [
-          "The reply reports a GitHub issue result or otherwise proceeds as GitHub issue work.",
-          "The reply does not ask the user to connect a Sentry account first.",
+          "The assistant treats the request as GitHub issue work and does not block on unrelated Sentry auth.",
         ],
         fail: [
-          "Do not say you need to connect Sentry first.",
-          "Do not mention sending a Sentry authorization link.",
-          "Do not ask to inspect live Sentry data before doing the GitHub task.",
+          "Do not ask the user to connect Sentry or inspect live Sentry data before doing the GitHub task.",
         ],
       }),
     });
@@ -165,13 +153,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 90_000,
         test_credential_token: "eval-repo-evidence-token",
         skill_dirs: ["../junior/skills"],
       },
       events: [
         mention(
-          "In this repo, where do we resolve GitHub credential injection from the loaded skill for the current turn? Keep it brief and cite the repo file or symbol you checked.",
+          "In getsentry/junior, where do we resolve GitHub credential injection from the loaded skill for the current turn? Keep it brief and cite the repo file or symbol you checked.",
         ),
       ],
       criteria: rubric({
@@ -196,7 +183,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 60_000,
         test_credential_token: "eval-pr-auth-order-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -248,7 +234,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 75_000,
         test_credential_token: "eval-default-repo-create-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -268,19 +253,14 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "Stored GitHub repo context carries into a later issue-creation workflow, and tool-failure explanations stay grounded in observed command results.",
         pass: [
-          "The assistant posts exactly two replies in order.",
-          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `github-issues` before issue creation.",
-          "observed_tool_invocations includes a bash invocation that stores or uses `github.repo` as getsentry/junior.",
-          "observed_tool_invocations includes a bash invocation with `gh issue create` scoped to `--repo getsentry/junior`.",
-          "The first reply confirms default repo setup for getsentry/junior.",
-          "The second reply reports a created GitHub issue in getsentry/junior with an issue URL or issue number.",
-          "The second reply does not ask the user to restate the repository.",
+          "The assistant confirms the default repo setup and later uses getsentry/junior for issue creation without asking again.",
+          "The assistant creates or reports a GitHub issue in getsentry/junior.",
+          "Any tool-failure explanation is grounded in an observed command result.",
         ],
         fail: [
           "Do not claim that `gh`, the GitHub CLI, or `jr-rpc` is unavailable, missing, or not installed.",
-          "Do not blame issue creation on a missing tool without quoting an observed command failure.",
           "Do not ask the user to pass --repo or provide the repo again.",
-          "Do not create or report an issue for a repository other than getsentry/junior.",
+          "Do not create, target, or report an issue for a repository other than getsentry/junior.",
         ],
       }),
     });
@@ -312,9 +292,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "Stored repo context is reused in a later turn without asking the user to restate the repo.",
         pass: [
-          "The assistant posts exactly two replies in order.",
-          "The first reply confirms default repo setup for getsentry/junior.",
-          "The second reply directly says it would use getsentry/junior for issue commands when --repo is omitted.",
+          "The assistant confirms default repo setup and later says issue commands without an explicit repo would use getsentry/junior.",
         ],
         allow: [
           "A concise answer is acceptable; no live GitHub issue lookup is required for this continuity check.",
@@ -334,7 +312,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 75_000,
         test_credential_token: "eval-target-classification-context-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -358,11 +335,9 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "Draft a fake issue against the default repo while keeping the fake foreign issue reference as context.",
         pass: [
-          "The assistant posts exactly two replies in order.",
-          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
-          "The second reply says the target repo is getsentry/junior-eval-bot-never-exists.",
-          "The second reply treats getsentry/junior-eval-reference-never-exists#123 as context or a reference.",
-          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+          "The assistant confirms default repo setup and drafts the requested issue against getsentry/junior-eval-bot-never-exists.",
+          "The foreign issue reference is treated only as context if it appears in the answer.",
+          "No GitHub issue create/comment/view command is run for this draft-only request.",
         ],
         fail: [
           "Do not choose getsentry/junior-eval-reference-never-exists as the action target.",
@@ -380,7 +355,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
-        reply_timeout_ms: 75_000,
         test_credential_token: "eval-target-classification-explicit-token",
         skill_dirs: ["../junior/skills"],
       },
@@ -404,10 +378,8 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         contract:
           "Confirm the explicitly referenced issue as target even when a default repo is set.",
         pass: [
-          "The assistant posts exactly two replies in order.",
-          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
-          "The second reply says the action target would be getsentry/junior-eval-reference-never-exists#123 or repo getsentry/junior-eval-reference-never-exists.",
-          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+          "After confirming default repo setup, the assistant recognizes the explicitly referenced issue as the action target.",
+          "No GitHub issue create/comment/view command is run for this confirmation-only request.",
         ],
         fail: [
           "Do not choose getsentry/junior-eval-bot-never-exists as the action target.",

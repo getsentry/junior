@@ -163,7 +163,7 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[4]?.params.text).toContain("line 80");
   });
 
-  it("replaces resumed provider-error replies with the canonical event-id response", async () => {
+  it("marks resumed provider-error partial replies as interrupted", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
 
@@ -188,13 +188,11 @@ describe("oauth resume slack integration", () => {
       channel: "C123",
       thread_ts: "1700000000.003",
     });
+    expect(postCalls[1]?.params.text).toContain("Partial output");
     expect(postCalls[1]?.params.text).toContain(
-      "I ran into an internal error while processing that. Reference: `event_id=",
-    );
-    expect(postCalls[1]?.params.text).not.toContain("Partial output");
-    expect(postCalls[1]?.params.text).not.toContain(
       getSlackInterruptionMarker().trim(),
     );
+    expect(postCalls[1]?.params.text).not.toContain("event_id=");
   });
 
   it("replaces resumed execution-failure replies before Slack planning", async () => {
