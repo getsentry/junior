@@ -177,6 +177,49 @@ describe("scheduler executor", () => {
     });
   });
 
+  it("does not claim another due run while the same task is running", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_overlap_${Date.now()}` });
+    await store.saveTask(task);
+    const [firstRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
+      limit: 10,
+    });
+    await store.markRunStarted({
+      runId: firstRun.id,
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+    });
+    const editedNextRunAtMs = Date.parse("2026-03-09T16:00:00.000Z");
+    await store.saveTask({
+      ...task,
+      nextRunAtMs: editedNextRunAtMs,
+      updatedAtMs: Date.parse("2026-03-02T17:00:02.000Z"),
+      version: task.version + 1,
+    });
+
+    await expect(
+      store.claimDueRuns({
+        nowMs: Date.parse("2026-03-09T16:00:01.000Z"),
+        limit: 10,
+      }),
+    ).resolves.toHaveLength(0);
+
+    await store.markRunCompleted({
+      runId: firstRun.id,
+      completedAtMs: Date.parse("2026-03-02T17:00:03.000Z"),
+    });
+
+    const [nextRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-09T16:00:01.000Z"),
+      limit: 10,
+    });
+    expect(nextRun).toMatchObject({
+      taskId: task.id,
+      scheduledForMs: editedNextRunAtMs,
+      status: "pending",
+    });
+  });
+
   it("does not resurrect a task deleted while a run is executing", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_deleted_${Date.now()}` });

@@ -47,6 +47,10 @@ function claimKey(taskId: string, scheduledForMs: number): string {
   return `${SCHEDULER_KEY_PREFIX}:claim:${taskId}:${scheduledForMs}`;
 }
 
+function activeRunKey(taskId: string): string {
+  return `${SCHEDULER_KEY_PREFIX}:active:${taskId}`;
+}
+
 function globalTaskIndexKey(): string {
   return `${SCHEDULER_KEY_PREFIX}:tasks`;
 }
@@ -125,6 +129,19 @@ async function getIndex(state: StateAdapter, key: string): Promise<string[]> {
   return unique(
     values.filter((value): value is string => typeof value === "string"),
   );
+}
+
+async function clearActiveRun(
+  state: StateAdapter,
+  taskId: string,
+  runId: string,
+): Promise<void> {
+  await withLock(state, indexLockKey(activeRunKey(taskId)), async () => {
+    const current = await state.get<{ runId?: unknown }>(activeRunKey(taskId));
+    if (current?.runId === runId) {
+      await state.delete(activeRunKey(taskId));
+    }
+  });
 }
 
 function isDueTask(
@@ -238,12 +255,23 @@ class StateAdapterSchedulerStore implements SchedulerStore {
       }
 
       const scheduledForMs = task.nextRunAtMs;
+      const runId = buildRunId(task.id, scheduledForMs);
+      const activeClaimed = await this.state.setIfNotExists(
+        activeRunKey(task.id),
+        { claimedAtMs: args.nowMs, runId, scheduledForMs },
+        CLAIM_TTL_MS,
+      );
+      if (!activeClaimed) {
+        continue;
+      }
+
       const claimed = await this.state.setIfNotExists(
         claimKey(task.id, scheduledForMs),
         { claimedAtMs: args.nowMs },
         CLAIM_TTL_MS,
       );
       if (!claimed) {
+        await clearActiveRun(this.state, task.id, runId);
         continue;
       }
 
@@ -280,12 +308,16 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     resultMessageTs?: string;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) => ({
+    const next = await this.updateRun(args.runId, (run) => ({
       ...run,
       completedAtMs: args.completedAtMs,
       resultMessageTs: args.resultMessageTs,
       status: "completed",
     }));
+    if (next) {
+      await clearActiveRun(this.state, next.taskId, next.id);
+    }
+    return next;
   }
 
   async markRunFailed(args: {
@@ -293,12 +325,16 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     errorMessage: string;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) => ({
+    const next = await this.updateRun(args.runId, (run) => ({
       ...run,
       completedAtMs: args.completedAtMs,
       errorMessage: args.errorMessage,
       status: "failed",
     }));
+    if (next) {
+      await clearActiveRun(this.state, next.taskId, next.id);
+    }
+    return next;
   }
 
   async markRunBlocked(args: {
@@ -306,12 +342,16 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     errorMessage: string;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) => ({
+    const next = await this.updateRun(args.runId, (run) => ({
       ...run,
       completedAtMs: args.completedAtMs,
       errorMessage: args.errorMessage,
       status: "blocked",
     }));
+    if (next) {
+      await clearActiveRun(this.state, next.taskId, next.id);
+    }
+    return next;
   }
 
   private async updateRun(
