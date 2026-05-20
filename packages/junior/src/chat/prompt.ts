@@ -176,7 +176,14 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
   const sections: string[] = [];
 
   // Available skills: model may load these when they match the request.
-  const available = ["<available-skills>"];
+  const available = [
+    "<available-skills>",
+    ...(autoSelectable.length > 0
+      ? [
+          "Before answering, scan this list. For matching operational or conceptual provider/repository workflow questions, load the most specific skill; do not answer from memory first. Never load multiple skills up front. If none fits, do not load a skill.",
+        ]
+      : []),
+  ];
   for (const skill of autoSelectable) {
     available.push(...formatSkillEntry(skill));
   }
@@ -204,7 +211,10 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
     return "<loaded-skills>\n</loaded-skills>";
   }
 
-  const lines = ["<loaded-skills>"];
+  const lines = [
+    "<loaded-skills>",
+    "Follow these loaded skill instructions before answering. Resolve relative references under each skill's location.",
+  ];
   for (const skill of skills) {
     const skillDir = workspaceSkillDir(skill.name);
     lines.push(
@@ -228,7 +238,7 @@ function formatProviderCatalogForPrompt(): string | null {
   }
 
   const lines = [
-    "Config keys and default targets per provider; use after a skill is loaded.",
+    "Config keys and default targets per provider; use after a skill is loaded. Run authenticated provider commands directly after resolving target defaults; let the runtime handle auth pauses/resumes.",
   ];
   for (const provider of providers) {
     lines.push(`- provider: ${escapeXml(provider.name)}`);
@@ -260,7 +270,7 @@ function formatActiveMcpCatalogsForPrompt(
   }
 
   const lines = [
-    "Active MCP provider catalogs are available through `searchMcpTools`. Call it with provider to list descriptors or with query to narrow results, then pass the exact returned `tool_name` to `callMcpTool`.",
+    "Active MCP provider catalogs are available through `searchMcpTools`. Call it with provider to list descriptors or with query to narrow results, then pass the exact returned `tool_name` to `callMcpTool`. Put provider fields inside `arguments`.",
   ];
   for (const catalog of catalogs) {
     lines.push("  <catalog>");
@@ -407,12 +417,8 @@ const TOOL_CALL_STYLE_RULES = [
 ];
 
 const SKILL_POLICY_RULES = [
-  "- Before answering, scan `<available-skills>`. For matching operational or conceptual provider/repository workflow questions, load the most specific skill; do not answer from memory first. If none fits, do not load a skill.",
+  "- Only load skills listed in `<available-skills>`, `<user-callable-skills>`, or the skill named by `<explicit-skill-trigger>`. Never guess or invent a skill name.",
   "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
-  "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable.",
-  "- For active MCP catalogs, use `searchMcpTools` to inspect descriptors before `callMcpTool`; pass exact returned `tool_name` values and put provider fields inside `arguments`.",
-  "- Run authenticated provider commands directly after resolving target defaults; let the runtime handle auth pauses/resumes.",
-  "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults; do not chain them with `cd`, `&&`, pipes, or provider commands.",
 ];
 
 const EXECUTION_CONTRACT_RULES = [
@@ -559,7 +565,7 @@ function buildContextSection(params: {
   if (configLines) {
     blocks.push(
       renderTag("configuration", [
-        "Ambient provider defaults; explicit targets win.",
+        "Ambient provider defaults; explicit targets win. Run `jr-rpc config get|set|unset|list` as standalone bash commands; do not chain with `cd`, `&&`, pipes, or provider commands.",
         ...configLines,
       ]),
     );
@@ -573,9 +579,12 @@ function buildContextSection(params: {
   }
 
   if (params.invocation) {
-    blocks.push([
-      `<explicit-skill-trigger>/${escapeXml(params.invocation.skillName)}</explicit-skill-trigger>`,
-    ]);
+    blocks.push(
+      renderTag("explicit-skill-trigger", [
+        "The user's current message explicitly invoked this skill. Treat it as selected and load it unless the tool says it is unavailable. This trigger may refer to a skill from either `<available-skills>` or `<user-callable-skills>`.",
+        `/${escapeXml(params.invocation.skillName)}`,
+      ]),
+    );
   }
 
   const body = blocks.map((block) => block.join("\n")).join("\n\n");
