@@ -182,9 +182,105 @@ describe("resumeAuthorizedRequest", () => {
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
     expect(postMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        blocks: [
+          {
+            type: "markdown",
+            text: buildTurnContinuationResponse(),
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "*ID:* slack:C-test:1700000000.0002",
+              },
+            ],
+          },
+        ],
         channel: "C-test",
         thread_ts: "1700000000.0002",
         text: buildTurnContinuationResponse(),
+      }),
+    );
+  });
+
+  it("uses cumulative checkpoint diagnostics for timeout resume footers", async () => {
+    const { upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [],
+      resumeReason: "timeout",
+      cumulativeDurationMs: 1_000,
+      cumulativeUsage: {
+        inputTokens: 2,
+        outputTokens: 3,
+      },
+    });
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      channelId: "C-test",
+      threadTs: "1700000000.0005",
+      lockKey: "slack:C-test:1700000000.0005",
+      replyContext: {
+        requester: { userId: "U-test" },
+        correlation: {
+          conversationId: "conversation-1",
+          turnId: "turn-1",
+        },
+      },
+      generateReply: async () =>
+        ({
+          text: "done",
+          diagnostics: {
+            assistantMessageCount: 1,
+            durationMs: 500,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usage: {
+              outputTokens: 7,
+            },
+            usedPrimaryText: true,
+          },
+        }) as any,
+    });
+
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0005",
+        text: "done",
+        blocks: [
+          {
+            type: "markdown",
+            text: "done",
+          },
+          {
+            type: "context",
+            elements: expect.arrayContaining([
+              {
+                type: "mrkdwn",
+                text: "*ID:* conversation-1",
+              },
+              {
+                type: "mrkdwn",
+                text: "*Tokens:* 12",
+              },
+              {
+                type: "mrkdwn",
+                text: "*Time:* 1.5s",
+              },
+            ]),
+          },
+        ],
       }),
     );
   });
