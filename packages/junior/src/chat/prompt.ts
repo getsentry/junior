@@ -180,7 +180,7 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
     "<available-skills>",
     ...(autoSelectable.length > 0
       ? [
-          "Before answering, scan this list. For matching operational or conceptual provider/repository workflow questions, load the most specific skill; do not answer from memory first. Never load multiple skills up front. If none fits, do not load a skill.",
+          "Scan before answering. Load the most specific matching skill; do not answer from memory when a skill fits. If none fits, do not load a skill.",
         ]
       : []),
   ];
@@ -211,10 +211,7 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
     return "<loaded-skills>\n</loaded-skills>";
   }
 
-  const lines = [
-    "<loaded-skills>",
-    "Follow these loaded skill instructions before answering. Resolve relative references under each skill's location.",
-  ];
+  const lines = ["<loaded-skills>"];
   for (const skill of skills) {
     const skillDir = workspaceSkillDir(skill.name);
     lines.push(
@@ -417,8 +414,8 @@ const TOOL_CALL_STYLE_RULES = [
 ];
 
 const SKILL_POLICY_RULES = [
-  "- Only load skills listed in `<available-skills>`, `<user-callable-skills>`, or the skill named by `<explicit-skill-trigger>`. Never guess or invent a skill name.",
-  "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
+  "- Only load skills listed in `<available-skills>`, `<user-callable-skills>`, or named by `<explicit-skill-trigger>`. Never guess or invent a skill name.",
+  "- Load one skill at a time. After `loadSkill`, follow the instructions in `<loaded-skills>`.",
 ];
 
 const EXECUTION_CONTRACT_RULES = [
@@ -581,7 +578,7 @@ function buildContextSection(params: {
   if (params.invocation) {
     blocks.push(
       renderTag("explicit-skill-trigger", [
-        "The user's current message explicitly invoked this skill. Treat it as selected and load it unless the tool says it is unavailable. This trigger may refer to a skill from either `<available-skills>` or `<user-callable-skills>`.",
+        "Treat this skill as selected. Load it unless the tool says it is unavailable.",
         `/${escapeXml(params.invocation.skillName)}`,
       ]),
     );
