@@ -1,5 +1,6 @@
 import { botConfig } from "@/chat/config";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
 import type { ScheduledTaskRunner } from "@/chat/scheduler/executor";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import { logException } from "@/chat/logging";
@@ -283,6 +284,18 @@ export function createSlackScheduledTaskRunner(
           resultMessageTs,
         };
       } catch (error) {
+        if (
+          isRetryableTurnError(error, "mcp_auth_resume") ||
+          isRetryableTurnError(error, "plugin_auth_resume")
+        ) {
+          return {
+            status: "blocked",
+            errorMessage:
+              authPendingErrorMessage ??
+              (error instanceof Error ? error.message : String(error)),
+          };
+        }
+
         logException(
           error,
           "scheduled_task_run_failed",

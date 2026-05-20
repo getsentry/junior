@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackScheduledTaskRunner } from "@/chat/scheduler/slack-runner";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { RetryableTurnError } from "@/chat/runtime/turn";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import type { AssistantReply } from "@/chat/respond";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
@@ -151,5 +153,56 @@ describe("scheduled Slack runner", () => {
         }),
       }),
     ]);
+  });
+
+  it("blocks scheduled runs when authorization pauses the turn", async () => {
+    const task = createTask();
+    const run = createRun(task);
+    const runner = createSlackScheduledTaskRunner({
+      generateAssistantReply: async (_prompt, context) => {
+        if (!context?.onAuthPending) {
+          throw new Error("expected auth pending callback");
+        }
+
+        await context.onAuthPending({
+          kind: "mcp",
+          provider: "github",
+          requesterId: "U123",
+          sessionId: `scheduled:${run.id}`,
+          linkSentAtMs: Date.parse("2026-03-02T17:00:01.000Z"),
+        });
+        throw new RetryableTurnError(
+          "mcp_auth_resume",
+          "MCP authorization required",
+        );
+      },
+    });
+
+    const result = await runner.run({
+      task,
+      run,
+      prompt: "<scheduled-task-run />",
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+    });
+
+    expect(result).toEqual({
+      status: "blocked",
+      errorMessage: "Scheduled task requires github authorization.",
+    });
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    await expect(
+      getPersistedThreadState("slack:C123:1700000000.000000"),
+    ).resolves.toMatchObject({
+      conversation: {
+        processing: {
+          pendingAuth: {
+            kind: "mcp",
+            provider: "github",
+            requesterId: "U123",
+            sessionId: `scheduled:${run.id}`,
+          },
+        },
+      },
+    });
   });
 });
