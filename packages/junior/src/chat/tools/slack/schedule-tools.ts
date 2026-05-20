@@ -253,6 +253,22 @@ function buildRecurrence(args: {
   }
 }
 
+function shouldRebuildRecurrence(input: {
+  next_run_at_iso?: string;
+  recurrence_frequency?: unknown;
+  recurrence_interval?: number;
+  recurrence_weekdays?: number[];
+  timezone?: string;
+}): boolean {
+  return (
+    input.next_run_at_iso !== undefined ||
+    input.recurrence_frequency !== undefined ||
+    input.recurrence_interval !== undefined ||
+    input.recurrence_weekdays !== undefined ||
+    input.timezone !== undefined
+  );
+}
+
 /** Create a tool that stores a scheduled task for the active Slack context. */
 export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
   return tool({
@@ -489,12 +505,14 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
         };
       }
       const timezone = input.timezone ?? lookup.task.schedule.timezone;
-      const recurrence = buildRecurrence({
-        existing: lookup.task.schedule.recurrence,
-        input,
-        nextRunAtMs,
-        timezone,
-      });
+      const recurrence = shouldRebuildRecurrence(input)
+        ? buildRecurrence({
+            existing: lookup.task.schedule.recurrence,
+            input,
+            nextRunAtMs,
+            timezone,
+          })
+        : { ok: true as const, recurrence: lookup.task.schedule.recurrence };
       if (!recurrence.ok) {
         return recurrence;
       }

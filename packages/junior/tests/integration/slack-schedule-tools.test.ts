@@ -45,7 +45,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
   return await tool.execute(input, {} as any);
 }
 
-async function createTask(context = createContext()) {
+async function createTask(
+  context = createContext(),
+  overrides: Record<string, unknown> = {},
+) {
   const tool = createSlackScheduleCreateTaskTool(context);
   return await executeTool(tool, {
     title: "Weekly issue digest",
@@ -57,6 +60,7 @@ async function createTask(context = createContext()) {
     next_run_at_iso: "2026-05-25T16:00:00.000Z",
     recurrence_frequency: "weekly",
     recurrence_weekdays: [1],
+    ...overrides,
   });
 }
 
@@ -228,8 +232,53 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("removes deleted tasks from scheduler indexes", async () => {
+  it("preserves a recurring task calendar anchor on content-only edits", async () => {
     const context = createContext({ threadTs: "1700000004.000000" });
+    const created = (await createTask(context, {
+      recurrence_interval: 2,
+    })) as {
+      task: { id: string };
+    };
+    const store = createStateSchedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task?.schedule.recurrence).toMatchObject({
+      interval: 2,
+      startDate: "2026-05-25",
+    });
+    await store.saveTask({
+      ...task!,
+      nextRunAtMs: Date.parse("2026-06-08T16:00:00.000Z"),
+      updatedAtMs: Date.parse("2026-05-26T16:00:00.000Z"),
+      version: task!.version + 1,
+    });
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(context),
+      {
+        task_id: created.task.id,
+        title: "Renamed issue digest",
+      },
+    );
+
+    expect(updated).toMatchObject({
+      ok: true,
+      task: {
+        title: "Renamed issue digest",
+      },
+    });
+    await expect(store.getTask(created.task.id)).resolves.toMatchObject({
+      nextRunAtMs: Date.parse("2026-06-08T16:00:00.000Z"),
+      schedule: {
+        recurrence: {
+          interval: 2,
+          startDate: "2026-05-25",
+        },
+      },
+    });
+  });
+
+  it("removes deleted tasks from scheduler indexes", async () => {
+    const context = createContext({ threadTs: "1700000005.000000" });
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -249,7 +298,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("claims due runs idempotently", async () => {
-    const context = createContext({ threadTs: "1700000005.000000" });
+    const context = createContext({ threadTs: "1700000006.000000" });
     const created = (await createTask(context)) as {
       task: { id: string };
     };
