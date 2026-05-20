@@ -1,15 +1,5 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
-const workspaceTeamIdStorage = new AsyncLocalStorage<string>();
-
-/** Run a callback with the workspace team ID available for membership checks. */
-export function runWithWorkspaceTeamId<T>(
-  teamId: string | undefined,
-  fn: () => T,
-): T {
-  if (!teamId) return fn();
-  return workspaceTeamIdStorage.run(teamId, fn);
-}
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
+export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 /**
  * Return true when a Slack event's author is from an external workspace.
@@ -23,7 +13,7 @@ export function isExternalSlackUser(
 ): boolean {
   if (!raw) return false;
 
-  const workspaceTeamId = workspaceTeamIdStorage.getStore();
+  const workspaceTeamId = getWorkspaceTeamId();
   if (!workspaceTeamId) return false;
 
   const userTeam =

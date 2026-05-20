@@ -2,6 +2,7 @@ import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
 import { toOptionalString } from "@/chat/coerce";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import {
   parseSlackThreadId,
   resolveSlackChannelIdFromThreadId,
@@ -139,6 +140,7 @@ export function getTeamId(message: Message): string | undefined {
   return (
     toOptionalString(rawRecord.team_id) ??
     toOptionalString(rawRecord.team) ??
+    getWorkspaceTeamId() ??
     toOptionalString(rawRecord.user_team)
   );
 }
