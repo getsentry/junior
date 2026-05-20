@@ -28,6 +28,7 @@ export interface ParsedSkillFile {
   compatibility?: string;
   license?: string;
   allowedTools?: string[];
+  disableModelInvocation?: boolean;
 }
 
 function hasAngleBrackets(value: string): boolean {
@@ -126,6 +127,12 @@ const skillFrontmatterSchema = z
           'Frontmatter field "allowed-tools" must be a string when present',
       })
       .optional(),
+    "disable-model-invocation": z
+      .boolean({
+        error:
+          'Frontmatter field "disable-model-invocation" must be a boolean when present',
+      })
+      .optional(),
   })
   .passthrough();
 
@@ -188,6 +195,8 @@ export function parseSkillFile(
   }
 
   const allowedTools = parseTokenList(result.data["allowed-tools"]);
+  const disableModelInvocation =
+    result.data["disable-model-invocation"] === true;
 
   return {
     ok: true,
@@ -203,6 +212,7 @@ export function parseSkillFile(
         ? { license: result.data.license }
         : {}),
       ...(allowedTools ? { allowedTools } : {}),
+      ...(disableModelInvocation ? { disableModelInvocation } : {}),
     },
   };
 }
@@ -219,6 +229,7 @@ export interface SkillMetadata {
   skillPath: string;
   pluginProvider?: string;
   allowedTools?: string[];
+  disableModelInvocation?: boolean;
 }
 
 export interface Skill extends SkillMetadata {
@@ -336,7 +347,8 @@ async function readSkillDirectory(
       return null;
     }
 
-    const { name, description, allowedTools } = parsed.skill;
+    const { name, description, allowedTools, disableModelInvocation } =
+      parsed.skill;
     const plugin = getPluginForSkillPath(skillDir);
 
     return {
@@ -345,6 +357,7 @@ async function readSkillDirectory(
       skillPath: skillDir,
       ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
       ...(allowedTools ? { allowedTools } : {}),
+      ...(disableModelInvocation ? { disableModelInvocation } : {}),
     };
   } catch (error) {
     logWarn(
@@ -477,6 +490,9 @@ export async function loadSkillsByName(
       ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
       ...(parsed.skill.allowedTools
         ? { allowedTools: parsed.skill.allowedTools }
+        : {}),
+      ...(parsed.skill.disableModelInvocation
+        ? { disableModelInvocation: parsed.skill.disableModelInvocation }
         : {}),
     };
 

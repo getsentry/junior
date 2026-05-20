@@ -99,4 +99,72 @@ describe("skill frontmatter validation", () => {
     const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
+
+  it("parses disable-model-invocation: true", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "disable-model-invocation: true",
+      "---",
+      "",
+      "# Body",
+    ].join("\n");
+
+    const result = parseSkillFile(raw, "brief");
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.skill.disableModelInvocation : undefined).toBe(
+      true,
+    );
+  });
+
+  it("omits disableModelInvocation when field is absent", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "---",
+      "",
+      "# Body",
+    ].join("\n");
+
+    const result = parseSkillFile(raw, "brief");
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok ? result.skill.disableModelInvocation : "not-ok",
+    ).toBeUndefined();
+  });
+
+  it("omits disableModelInvocation when field is false", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "disable-model-invocation: false",
+      "---",
+      "",
+      "# Body",
+    ].join("\n");
+
+    const result = parseSkillFile(raw, "brief");
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok ? result.skill.disableModelInvocation : "not-ok",
+    ).toBeUndefined();
+  });
+
+  it("rejects disable-model-invocation with non-boolean value", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      'disable-model-invocation: "yes"',
+      "---",
+      "",
+      "# Body",
+    ].join("\n");
+
+    const result = parseSkillFile(raw, "brief");
+    expect(result.ok).toBe(false);
+  });
 });
