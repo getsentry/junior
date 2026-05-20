@@ -177,6 +177,54 @@ describe("scheduler executor", () => {
     });
   });
 
+  it("allows a resumed blocked task to retry the same due instant", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_blocked_retry_${Date.now()}` });
+    await store.saveTask(task);
+    const [run] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
+      limit: 10,
+    });
+
+    await executeScheduledRun({
+      store,
+      run,
+      nowMs: Date.parse("2026-03-02T17:00:01.500Z"),
+      runner: {
+        run: async () => ({
+          status: "blocked",
+          errorMessage: "Missing GitHub credentials.",
+        }),
+      },
+    });
+
+    const blocked = await store.getTask(task.id);
+    expect(blocked).toMatchObject({
+      status: "blocked",
+      nextRunAtMs: undefined,
+    });
+    await store.saveTask({
+      ...blocked!,
+      nextRunAtMs: run.scheduledForMs,
+      status: "active",
+      statusReason: undefined,
+      updatedAtMs: Date.parse("2026-03-02T17:00:02.000Z"),
+      version: blocked!.version + 1,
+    });
+
+    const [retryRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:03.000Z"),
+      limit: 10,
+    });
+
+    expect(retryRun).toMatchObject({
+      id: run.id,
+      taskId: task.id,
+      scheduledForMs: run.scheduledForMs,
+      status: "pending",
+    });
+  });
+
   it("does not claim another due run while the same task is running", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_overlap_${Date.now()}` });

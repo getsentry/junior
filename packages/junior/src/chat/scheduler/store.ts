@@ -187,6 +187,14 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     await this.state.connect();
     const current =
       (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
+    if (
+      current?.status === "blocked" &&
+      task.status === "active" &&
+      typeof task.nextRunAtMs === "number" &&
+      Number.isFinite(task.nextRunAtMs)
+    ) {
+      await this.state.delete(claimKey(task.id, task.nextRunAtMs));
+    }
     await this.state.set(taskKey(task.id), task, SCHEDULER_RECORD_TTL_MS);
 
     if (task.status === "deleted") {
