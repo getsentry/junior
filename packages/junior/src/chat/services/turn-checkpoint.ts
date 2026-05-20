@@ -6,6 +6,7 @@ import {
 import { logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import { trimTrailingAssistantMessages } from "@/chat/respond-helpers";
+import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
 export interface TurnCheckpointContext {
   conversationId?: string;
@@ -17,6 +18,19 @@ export interface TurnCheckpointState {
   resumedFromCheckpoint: boolean;
   currentSliceId: number;
   existingCheckpoint?: AgentTurnSessionCheckpoint;
+}
+
+function addDurationMs(
+  prior: number | undefined,
+  current: number | undefined,
+): number | undefined {
+  const total = [prior, current].reduce<number | undefined>((sum, value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return sum;
+    }
+    return (sum ?? 0) + Math.max(0, Math.floor(value));
+  }, undefined);
+  return total;
 }
 
 /** Load turn checkpoint state for a conversation/session pair. */
@@ -46,13 +60,27 @@ export async function loadTurnCheckpoint(
 /** Persist a completed turn checkpoint. */
 export async function persistCompletedCheckpoint(args: {
   conversationId: string;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
   loadedSkillNames: string[];
 }): Promise<void> {
+  const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.sessionId,
+  );
   await upsertAgentTurnSessionCheckpoint({
     conversationId: args.conversationId,
+    cumulativeDurationMs: addDurationMs(
+      latestCheckpoint?.cumulativeDurationMs,
+      args.currentDurationMs,
+    ),
+    cumulativeUsage: addAgentTurnUsage(
+      latestCheckpoint?.cumulativeUsage,
+      args.currentUsage,
+    ),
     sessionId: args.sessionId,
     sliceId: args.sliceId,
     state: "completed",
@@ -69,6 +97,8 @@ export async function persistAuthPauseCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
@@ -94,6 +124,14 @@ export async function persistAuthPauseCheckpoint(args: {
     );
     await upsertAgentTurnSessionCheckpoint({
       conversationId: args.conversationId,
+      cumulativeDurationMs: addDurationMs(
+        latestCheckpoint?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latestCheckpoint?.cumulativeUsage,
+        args.currentUsage,
+      ),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -135,6 +173,8 @@ export async function persistTimeoutCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
@@ -161,6 +201,14 @@ export async function persistTimeoutCheckpoint(args: {
     );
     return await upsertAgentTurnSessionCheckpoint({
       conversationId: args.conversationId,
+      cumulativeDurationMs: addDurationMs(
+        latestCheckpoint?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latestCheckpoint?.cumulativeUsage,
+        args.currentUsage,
+      ),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",

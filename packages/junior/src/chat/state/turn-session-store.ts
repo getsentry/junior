@@ -1,5 +1,6 @@
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -17,6 +18,8 @@ export type AgentTurnResumeReason = "timeout" | "auth";
 export interface AgentTurnSessionCheckpoint {
   checkpointVersion: number;
   conversationId: string;
+  cumulativeDurationMs?: number;
+  cumulativeUsage?: AgentTurnUsage;
   errorMessage?: string;
   loadedSkillNames?: string[];
   piMessages: PiMessage[];
@@ -33,6 +36,34 @@ function agentTurnSessionKey(
   sessionId: string,
 ): string {
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
+}
+
+function toFiniteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : undefined;
+}
+
+function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const usage: AgentTurnUsage = {};
+  for (const field of [
+    "inputTokens",
+    "outputTokens",
+    "cachedInputTokens",
+    "cacheCreationTokens",
+    "totalTokens",
+  ] as const) {
+    const count = toFiniteNonNegativeNumber(value[field]);
+    if (count !== undefined) {
+      usage[field] = count;
+    }
+  }
+
+  return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 function parseAgentTurnSessionCheckpoint(
@@ -64,6 +95,10 @@ function parseAgentTurnSessionCheckpoint(
     const sliceId = parsed.sliceId;
     const checkpointVersion = parsed.checkpointVersion;
     const updatedAtMs = parsed.updatedAtMs;
+    const cumulativeDurationMs = toFiniteNonNegativeNumber(
+      parsed.cumulativeDurationMs,
+    );
+    const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
     if (
       typeof conversationId !== "string" ||
       typeof sessionId !== "string" ||
@@ -81,6 +116,8 @@ function parseAgentTurnSessionCheckpoint(
       sliceId,
       state: status,
       updatedAtMs,
+      ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
+      ...(cumulativeUsage ? { cumulativeUsage } : {}),
       piMessages: Array.isArray(parsed.piMessages)
         ? (parsed.piMessages as PiMessage[])
         : [],
@@ -120,6 +157,8 @@ export async function getAgentTurnSessionCheckpoint(
 
 export async function upsertAgentTurnSessionCheckpoint(args: {
   conversationId: string;
+  cumulativeDurationMs?: number;
+  cumulativeUsage?: AgentTurnUsage;
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
@@ -145,6 +184,16 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     state: args.state,
     updatedAtMs: Date.now(),
     piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
+    ...(typeof args.cumulativeDurationMs === "number" &&
+    Number.isFinite(args.cumulativeDurationMs)
+      ? {
+          cumulativeDurationMs: Math.max(
+            0,
+            Math.floor(args.cumulativeDurationMs),
+          ),
+        }
+      : {}),
+    ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
@@ -192,6 +241,8 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     sliceId: existing.sliceId,
     state: "superseded",
     piMessages: existing.piMessages,
+    cumulativeDurationMs: existing.cumulativeDurationMs,
+    cumulativeUsage: existing.cumulativeUsage,
     loadedSkillNames: existing.loadedSkillNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,

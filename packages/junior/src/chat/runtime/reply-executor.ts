@@ -49,7 +49,10 @@ import {
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
+import {
+  buildSlackReplyBlocks,
+  buildSlackReplyFooter,
+} from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -61,7 +64,7 @@ import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
-import { deleteSlackMessage } from "@/chat/slack/outbound";
+import { deleteSlackMessage, postSlackMessage } from "@/chat/slack/outbound";
 import {
   finalizeFailedTurnReply,
   getAgentTurnDiagnosticsAttributes,
@@ -232,9 +235,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const postTurnContinuationNotice = async (): Promise<void> => {
           try {
             await beforeFirstResponsePost();
-            await thread.post(
-              buildSlackOutputMessage(buildTurnContinuationResponse()),
-            );
+            const text = buildTurnContinuationResponse();
+            const footer = buildSlackReplyFooter({ conversationId });
+            const shouldUseSlackFooter =
+              Boolean(footer) &&
+              Boolean(channelId && threadTs) &&
+              (thread.adapter as { name?: string } | undefined)?.name ===
+                "slack";
+            if (shouldUseSlackFooter && channelId && threadTs) {
+              const blocks = buildSlackReplyBlocks(text, footer);
+              await postSlackMessage({
+                channelId,
+                threadTs,
+                text,
+                ...(blocks ? { blocks } : {}),
+              });
+              return;
+            }
+
+            await thread.post(buildSlackOutputMessage(text));
           } catch (error) {
             logException(
               error,

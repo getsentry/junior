@@ -97,4 +97,55 @@ describe("persistAuthPauseCheckpoint", () => {
       piMessages: [priorMessages[0]],
     });
   });
+
+  it("carries cumulative diagnostics across pause checkpoints", async () => {
+    const { persistTimeoutCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+    const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: [],
+      resumeReason: "timeout",
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: {
+        inputTokens: 10,
+        outputTokens: 3,
+      },
+    });
+
+    await persistTimeoutCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      currentSliceId: 1,
+      currentDurationMs: 2_250,
+      currentUsage: {
+        outputTokens: 7,
+        cachedInputTokens: 2,
+      },
+      messages: [],
+      loadedSkillNames: [],
+      errorMessage: "timed out again",
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-1",
+      "turn-1",
+    );
+    expect(checkpoint).toMatchObject({
+      cumulativeDurationMs: 3_750,
+      cumulativeUsage: {
+        inputTokens: 10,
+        outputTokens: 10,
+        cachedInputTokens: 2,
+      },
+    });
+  });
 });
