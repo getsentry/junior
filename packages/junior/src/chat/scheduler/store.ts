@@ -97,6 +97,29 @@ async function addToIndex(
   });
 }
 
+async function removeFromIndex(
+  state: StateAdapter,
+  key: string,
+  taskId: string,
+): Promise<void> {
+  await withLock(state, indexLockKey(key), async () => {
+    const current = unique(
+      ((await state.get<string[]>(key)) ?? []).filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+    const next = current.filter((value) => value !== taskId);
+    if (next.length === current.length) {
+      return;
+    }
+    if (next.length === 0) {
+      await state.delete(key);
+      return;
+    }
+    await state.set(key, next, SCHEDULER_RECORD_TTL_MS);
+  });
+}
+
 async function getIndex(state: StateAdapter, key: string): Promise<string[]> {
   const values = (await state.get<string[]>(key)) ?? [];
   return unique(
@@ -145,13 +168,40 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
   async saveTask(task: ScheduledTask): Promise<void> {
     await this.state.connect();
+    const current =
+      (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
     await this.state.set(taskKey(task.id), task, SCHEDULER_RECORD_TTL_MS);
+
+    if (task.status === "deleted") {
+      await removeFromIndex(this.state, globalTaskIndexKey(), task.id);
+      await removeFromIndex(
+        this.state,
+        teamTaskIndexKey(task.destination.teamId),
+        task.id,
+      );
+      if (current && current.destination.teamId !== task.destination.teamId) {
+        await removeFromIndex(
+          this.state,
+          teamTaskIndexKey(current.destination.teamId),
+          task.id,
+        );
+      }
+      return;
+    }
+
     await addToIndex(this.state, globalTaskIndexKey(), task.id);
     await addToIndex(
       this.state,
       teamTaskIndexKey(task.destination.teamId),
       task.id,
     );
+    if (current && current.destination.teamId !== task.destination.teamId) {
+      await removeFromIndex(
+        this.state,
+        teamTaskIndexKey(current.destination.teamId),
+        task.id,
+      );
+    }
   }
 
   async getTask(taskId: string): Promise<ScheduledTask | undefined> {

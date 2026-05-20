@@ -106,6 +106,10 @@ async function getWritableTask(args: {
   if (!destination.ok) {
     return destination;
   }
+  const requester = requireRequester(args.context);
+  if (!requester.ok) {
+    return requester;
+  }
 
   const task = await createStateSchedulerStore().getTask(args.taskId);
   if (!task || task.status === "deleted") {
@@ -120,6 +124,13 @@ async function getWritableTask(args: {
       ok: false,
       error:
         "Scheduled task can only be managed from the Slack destination where it was created.",
+    };
+  }
+  if (task.createdBy.slackUserId !== requester.requester.slackUserId) {
+    return {
+      ok: false,
+      error:
+        "Scheduled task can only be managed by the Slack user who created it.",
     };
   }
 

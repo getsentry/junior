@@ -9,8 +9,7 @@ const DEFAULT_SCHEDULER_TICK_LIMIT = 10;
 function getSchedulerSecret(): string | undefined {
   return (
     process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim() ||
-    process.env.JUNIOR_INTERNAL_RESUME_SECRET?.trim()
+    process.env.CRON_SECRET?.trim()
   );
 }
 

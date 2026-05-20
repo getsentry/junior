@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createStateSchedulerStore } from "@/chat/scheduler/store";
 import {
   createSlackScheduleCreateTaskTool,
@@ -179,8 +179,77 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("claims due runs idempotently", async () => {
+  it("rejects edits and deletes from another requester in the same Slack destination", async () => {
     const context = createContext({ threadTs: "1700000003.000000" });
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+    const otherRequester = createContext({
+      threadTs: context.threadTs,
+      requester: {
+        userId: "U999",
+        userName: "alice",
+        fullName: "Alice Reviewer",
+      },
+    });
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(otherRequester),
+      {
+        task_id: created.task.id,
+        title: "Hijacked digest",
+      },
+    );
+    const deleted = await executeTool(
+      createSlackScheduleDeleteTaskTool(otherRequester),
+      {
+        task_id: created.task.id,
+      },
+    );
+
+    expect(updated).toMatchObject({
+      ok: false,
+      error:
+        "Scheduled task can only be managed by the Slack user who created it.",
+    });
+    expect(deleted).toMatchObject({
+      ok: false,
+      error:
+        "Scheduled task can only be managed by the Slack user who created it.",
+    });
+    await expect(
+      createStateSchedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({
+      status: "active",
+      task: {
+        title: "Weekly issue digest",
+      },
+      version: 1,
+    });
+  });
+
+  it("removes deleted tasks from scheduler indexes", async () => {
+    const context = createContext({ threadTs: "1700000004.000000" });
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+
+    await executeTool(createSlackScheduleDeleteTaskTool(context), {
+      task_id: created.task.id,
+    });
+
+    const state = getStateAdapter();
+    await state.connect();
+    await expect(state.get<string[]>("junior:scheduler:tasks")).resolves.toBe(
+      null,
+    );
+    await expect(
+      state.get<string[]>(`junior:scheduler:team:${TEST_TEAM_ID}:tasks`),
+    ).resolves.toBe(null);
+  });
+
+  it("claims due runs idempotently", async () => {
+    const context = createContext({ threadTs: "1700000005.000000" });
     const created = (await createTask(context)) as {
       task: { id: string };
     };
