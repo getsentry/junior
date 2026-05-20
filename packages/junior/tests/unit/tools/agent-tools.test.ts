@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import type { Skill } from "@/chat/skills";
@@ -308,6 +309,53 @@ describe("createAgentTools", () => {
       command: "gh issue view 123",
       details: expect.any(Object),
     });
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
+  });
+
+  it("rethrows disabled authorization errors without reporting a tool failure", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const pluginAuthOrchestration = {
+      handleCommandFailure: vi.fn(async () => {
+        throw new AuthorizationFlowDisabledError("plugin", "github");
+      }),
+    } as any;
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: false,
+          command: "gh issue view 123",
+          cwd: "/vercel/sandbox",
+          exit_code: 1,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "bad credentials",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      pluginAuthOrchestration,
+      undefined,
+    );
+
+    await expect(
+      bashTool!.execute("tool-2", { command: "gh issue view 123" }),
+    ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
     expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 });

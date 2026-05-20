@@ -1,5 +1,6 @@
 export type AuthorizationPauseKind = "mcp" | "plugin";
 export type AuthorizationPauseDisposition = "link_already_sent" | "link_sent";
+export type AuthorizationFlowMode = "interactive" | "disabled";
 
 /**
  * Runtime-owned signal that the current turn must park until the user
@@ -25,6 +26,21 @@ export class AuthorizationPauseError extends Error {
         ? "McpAuthorizationPauseError"
         : "PluginAuthorizationPauseError";
     this.disposition = disposition;
+    this.kind = kind;
+    this.provider = provider;
+  }
+}
+
+/** Error indicating this turn cannot start an external authorization flow. */
+export class AuthorizationFlowDisabledError extends Error {
+  readonly kind: AuthorizationPauseKind;
+  readonly provider: string;
+
+  constructor(kind: AuthorizationPauseKind, provider: string) {
+    super(
+      `Authorization is required for ${provider}, but this turn cannot start an authorization flow.`,
+    );
+    this.name = "AuthorizationFlowDisabledError";
     this.kind = kind;
     this.provider = provider;
   }

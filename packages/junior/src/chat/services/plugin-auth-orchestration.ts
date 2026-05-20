@@ -3,7 +3,11 @@ import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
-import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import {
+  AuthorizationFlowDisabledError,
+  AuthorizationPauseError,
+  type AuthorizationFlowMode,
+} from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import {
   getPluginDefinition,
@@ -43,6 +47,7 @@ export interface PluginAuthOrchestrationDeps {
   onPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
+  authorizationFlowMode?: AuthorizationFlowMode;
   userTokenStore?: UserTokenStore;
 }
 
@@ -218,6 +223,9 @@ export function createPluginAuthOrchestration(
     }
     if (!deps.requesterId || !getPluginOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
+    }
+    if (deps.authorizationFlowMode === "disabled") {
+      throw new AuthorizationFlowDisabledError("plugin", provider);
     }
 
     const providerLabel = formatProviderLabel(provider);

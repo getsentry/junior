@@ -1,10 +1,10 @@
 import { botConfig } from "@/chat/config";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { ScheduledTaskRunner } from "@/chat/scheduler/executor";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import { logException } from "@/chat/logging";
-import { applyPendingAuthUpdate } from "@/chat/services/pending-auth";
 import {
   buildConversationContext,
   generateConversationId,
@@ -44,6 +44,12 @@ function getConversationId(task: ScheduledTask): string {
 
 function buildScheduledConversationText(task: ScheduledTask): string {
   return `[scheduled task] ${task.task.title}: ${task.task.objective}`;
+}
+
+function buildScheduledAuthError(
+  error: AuthorizationFlowDisabledError,
+): string {
+  return `Scheduled task requires ${error.provider} authorization. Connect ${error.provider} in an interactive Slack message, then resume the task.`;
 }
 
 function upsertScheduledUserMessage(args: {
@@ -127,7 +133,6 @@ export function createSlackScheduledTaskRunner(
         typeof persisted.app_sandbox_dependency_profile_hash === "string"
           ? persisted.app_sandbox_dependency_profile_hash
           : undefined;
-      let authPendingErrorMessage: string | undefined;
 
       try {
         let reply = await generateAssistantReply(prompt, {
@@ -139,7 +144,7 @@ export function createSlackScheduledTaskRunner(
           conversationContext,
           artifactState: currentArtifacts,
           piMessages: conversation.piMessages,
-          pendingAuth: conversation.processing.pendingAuth,
+          authorizationFlowMode: "disabled",
           configuration,
           channelConfiguration,
           correlation: {
@@ -170,21 +175,6 @@ export function createSlackScheduledTaskRunner(
           },
           onArtifactStateUpdated: async (nextArtifacts) => {
             currentArtifacts = nextArtifacts;
-            await persistRuntimePatch({
-              threadId: conversationId,
-              conversation,
-              artifacts: currentArtifacts,
-              sandboxId,
-              sandboxDependencyProfileHash,
-            });
-          },
-          onAuthPending: async (pendingAuth) => {
-            authPendingErrorMessage = `Scheduled task requires ${pendingAuth.provider} authorization.`;
-            await applyPendingAuthUpdate({
-              conversation,
-              conversationId,
-              nextPendingAuth: pendingAuth,
-            });
             await persistRuntimePatch({
               threadId: conversationId,
               conversation,
@@ -266,12 +256,6 @@ export function createSlackScheduledTaskRunner(
             reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
         });
 
-        if (authPendingErrorMessage) {
-          return {
-            status: "blocked",
-            errorMessage: authPendingErrorMessage,
-          };
-        }
         if (turnFailureErrorMessage) {
           return {
             status: "failed",
@@ -284,6 +268,12 @@ export function createSlackScheduledTaskRunner(
           resultMessageTs,
         };
       } catch (error) {
+        if (error instanceof AuthorizationFlowDisabledError) {
+          return {
+            status: "blocked",
+            errorMessage: buildScheduledAuthError(error),
+          };
+        }
         if (
           isRetryableTurnError(error, "mcp_auth_resume") ||
           isRetryableTurnError(error, "plugin_auth_resume")
@@ -291,8 +281,7 @@ export function createSlackScheduledTaskRunner(
           return {
             status: "blocked",
             errorMessage:
-              authPendingErrorMessage ??
-              (error instanceof Error ? error.message : String(error)),
+              "Scheduled task requires authorization. Connect the required provider in an interactive Slack message, then resume the task.",
           };
         }
 

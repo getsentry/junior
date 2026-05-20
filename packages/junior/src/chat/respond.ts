@@ -102,7 +102,11 @@ import {
 } from "@/chat/services/turn-checkpoint";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import {
+  AuthorizationFlowDisabledError,
+  AuthorizationPauseError,
+  type AuthorizationFlowMode,
+} from "@/chat/services/auth-pause";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
@@ -136,6 +140,7 @@ export interface ReplyRequestContext {
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
+  authorizationFlowMode?: AuthorizationFlowMode;
   configuration?: Record<string, unknown>;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
   piMessages?: PiMessage[];
@@ -633,6 +638,7 @@ export async function generateAssistantReply(
         getMergedArtifactState: () =>
           mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
         onPendingAuth: context.onAuthPending,
+        authorizationFlowMode: context.authorizationFlowMode,
       },
       () => agent?.abort(),
     );
@@ -647,6 +653,7 @@ export async function generateAssistantReply(
         channelConfiguration: context.channelConfiguration,
         currentPendingAuth: context.pendingAuth,
         onPendingAuth: context.onAuthPending,
+        authorizationFlowMode: context.authorizationFlowMode,
         userTokenStore,
       },
       () => agent?.abort(),
@@ -1204,6 +1211,9 @@ export async function generateAssistantReply(
     }
 
     if (isRetryableTurnError(error)) {
+      throw error;
+    }
+    if (error instanceof AuthorizationFlowDisabledError) {
       throw error;
     }
 

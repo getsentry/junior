@@ -7,7 +7,11 @@ import {
 } from "@/chat/mcp/auth-store";
 import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
-import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import {
+  AuthorizationFlowDisabledError,
+  AuthorizationPauseError,
+  type AuthorizationFlowMode,
+} from "@/chat/services/auth-pause";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -36,6 +40,7 @@ export interface McpAuthOrchestrationDeps {
   onPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
+  authorizationFlowMode?: AuthorizationFlowMode;
 }
 
 export interface McpAuthOrchestration {
@@ -89,6 +94,10 @@ export function createMcpAuthOrchestration(
       throw new Error(
         `Missing MCP auth session context for plugin "${provider}"`,
       );
+    }
+    if (deps.authorizationFlowMode === "disabled") {
+      await deleteMcpAuthSession(authSessionId);
+      throw new AuthorizationFlowDisabledError("mcp", provider);
     }
 
     const latestArtifactState = deps.getMergedArtifactState();
