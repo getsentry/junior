@@ -185,7 +185,10 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
 
   // User-callable skills: model must not auto-select these.
   if (explicitOnly.length > 0) {
-    const userCallable = ["<user-callable-skills>"];
+    const userCallable = [
+      "<user-callable-skills>",
+      "Do not load based on context match or semantic relevance. Only load when the user's current message explicitly references the skill by name.",
+    ];
     for (const skill of explicitOnly) {
       userCallable.push(...formatSkillEntry(skill));
     }
@@ -405,9 +408,8 @@ const TOOL_CALL_STYLE_RULES = [
 
 const SKILL_POLICY_RULES = [
   "- Before answering, scan `<available-skills>`. For matching operational or conceptual provider/repository workflow questions, load the most specific skill; do not answer from memory first. If none fits, do not load a skill.",
-  "- Skills listed under `<user-callable-skills>` must not be loaded based on context match or semantic relevance. Only load a user-callable skill when the user's current message explicitly references that skill by name. Do not use their descriptions as source material for answering.",
   "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
-  "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable; this applies to both available and user-callable skills.",
+  "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable.",
   "- For active MCP catalogs, use `searchMcpTools` to inspect descriptors before `callMcpTool`; pass exact returned `tool_name` values and put provider fields inside `arguments`.",
   "- Run authenticated provider commands directly after resolving target defaults; let the runtime handle auth pauses/resumes.",
   "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults; do not chain them with `cd`, `&&`, pipes, or provider commands.",
