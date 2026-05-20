@@ -51,6 +51,7 @@ async function createTask(
 ) {
   const tool = createSlackScheduleCreateTaskTool(context);
   return await executeTool(tool, {
+    confirmed_by_user: true,
     title: "Weekly issue digest",
     objective: "Summarize open scheduler issues.",
     instructions: ["Find open scheduler issues", "Post a concise summary"],
@@ -113,6 +114,31 @@ describe("Slack schedule tools", () => {
       ok: true,
       tasks: [],
     });
+  });
+
+  it("requires explicit confirmation before creating a task", async () => {
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(createContext()),
+      {
+        title: "Weekly issue digest",
+        objective: "Summarize open scheduler issues.",
+        instructions: ["Find open scheduler issues", "Post a concise summary"],
+        schedule_description: "Every Monday at 9am",
+        timezone: "America/Los_Angeles",
+        next_run_at_iso: "2026-05-25T16:00:00.000Z",
+        recurrence_frequency: "weekly",
+        recurrence_weekdays: [1],
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        "Scheduled tasks require explicit user confirmation before they are created. Draft the task contract for the user to confirm.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
   });
 
   it("edits and deletes a task from the same Slack destination", async () => {

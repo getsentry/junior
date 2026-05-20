@@ -235,6 +235,7 @@ describe("scheduler executor", () => {
     });
     await store.markRunStarted({
       runId: firstRun.id,
+      claimedAtMs: firstRun.claimedAtMs,
       nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
     });
     const editedNextRunAtMs = Date.parse("2026-03-09T16:00:00.000Z");
@@ -255,6 +256,7 @@ describe("scheduler executor", () => {
     await store.markRunCompleted({
       runId: firstRun.id,
       completedAtMs: Date.parse("2026-03-02T17:00:03.000Z"),
+      startedAtMs: Date.parse("2026-03-02T17:00:01.000Z"),
     });
 
     const [nextRun] = await store.claimDueRuns({
@@ -305,6 +307,46 @@ describe("scheduler executor", () => {
       taskId: secondTask.id,
       scheduledForMs: abandonedRun.scheduledForMs,
       status: "pending",
+    });
+  });
+
+  it("does not let an abandoned claim start after the run is reclaimed", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_stale_claim_${Date.now()}` });
+    await store.saveTask(task);
+    const [abandonedRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
+      limit: 10,
+    });
+    const [reclaimedRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:01:00.000Z"),
+      limit: 10,
+    });
+
+    await expect(
+      executeScheduledRun({
+        store,
+        run: abandonedRun,
+        nowMs: Date.parse("2026-03-02T17:01:01.000Z"),
+        runner: {
+          run: async () => {
+            throw new Error("stale claim should not start");
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      executeScheduledRun({
+        store,
+        run: reclaimedRun,
+        nowMs: Date.parse("2026-03-02T17:01:02.000Z"),
+        runner: {
+          run: async () => ({ status: "completed" }),
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
     });
   });
 

@@ -273,8 +273,12 @@ function shouldRebuildRecurrence(input: {
 export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "Create a Junior scheduled task for the active Slack destination. The destination is always the current Slack channel/thread context; never accept or invent another destination. Use only after the user asks to schedule future or recurring Junior work. For recurring work, provide an exact next_run_at_iso and a calendar recurrence_frequency.",
+      "Create a Junior scheduled task for the active Slack destination. The destination is always the current Slack channel/thread context; never accept or invent another destination. Use only after the user has confirmed the normalized scheduled task contract. For recurring work, provide an exact next_run_at_iso and a calendar recurrence_frequency.",
     inputSchema: Type.Object({
+      confirmed_by_user: Type.Boolean({
+        description:
+          "Must be true only after the user explicitly confirms the normalized task, cadence, timezone, destination, and next run.",
+      }),
       title: Type.String({ minLength: 1, maxLength: 120 }),
       objective: Type.String({ minLength: 1, maxLength: 1000 }),
       instructions: Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
@@ -336,6 +340,13 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       if (!destination.ok) return destination;
       const requester = requireRequester(context);
       if (!requester.ok) return requester;
+      if (input.confirmed_by_user !== true) {
+        return {
+          ok: false,
+          error:
+            "Scheduled tasks require explicit user confirmation before they are created. Draft the task contract for the user to confirm.",
+        };
+      }
 
       const nextRunAtMs = parseScheduleTimestamp(input.next_run_at_iso);
       if (!nextRunAtMs) {

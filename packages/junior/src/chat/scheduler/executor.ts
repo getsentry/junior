@@ -1,5 +1,4 @@
 import { buildScheduledTaskRunPrompt } from "@/chat/scheduler/prompt";
-import { getNextRunAtMs } from "@/chat/scheduler/cadence";
 import type { SchedulerStore } from "@/chat/scheduler/store";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 
@@ -22,49 +21,6 @@ export interface ScheduledTaskRunner {
   }): Promise<ScheduledTaskRunResult>;
 }
 
-async function updateTaskAfterRun(args: {
-  errorMessage?: string;
-  nowMs: number;
-  run: ScheduledRun;
-  status: ScheduledTaskRunResult["status"];
-  store: SchedulerStore;
-  task: ScheduledTask;
-}): Promise<void> {
-  const current = await args.store.getTask(args.task.id);
-  if (!current || current.status === "deleted") {
-    return;
-  }
-
-  if (
-    current.status !== "active" ||
-    current.nextRunAtMs !== args.run.scheduledForMs
-  ) {
-    await args.store.saveTask({
-      ...current,
-      lastRunAtMs: args.run.scheduledForMs,
-      updatedAtMs: args.nowMs,
-      version: current.version + 1,
-    });
-    return;
-  }
-
-  const nextRunAtMs =
-    args.status === "blocked"
-      ? undefined
-      : getNextRunAtMs(current, args.run.scheduledForMs, args.nowMs);
-
-  await args.store.saveTask({
-    ...current,
-    lastRunAtMs: args.run.scheduledForMs,
-    nextRunAtMs,
-    status:
-      args.status === "blocked" ? "blocked" : nextRunAtMs ? "active" : "paused",
-    statusReason: args.status === "blocked" ? args.errorMessage : undefined,
-    updatedAtMs: args.nowMs,
-    version: current.version + 1,
-  });
-}
-
 /** Execute one claimed scheduled run through the compiled task prompt. */
 export async function executeScheduledRun(args: {
   nowMs: number;
@@ -83,6 +39,7 @@ export async function executeScheduledRun(args: {
 
   const startedRun = await args.store.markRunStarted({
     runId: args.run.id,
+    claimedAtMs: args.run.claimedAtMs,
     nowMs: args.nowMs,
   });
   if (!startedRun) {
@@ -108,10 +65,12 @@ export async function executeScheduledRun(args: {
         runId: startedRun.id,
         completedAtMs: args.nowMs,
         resultMessageTs: result.resultMessageTs,
+        startedAtMs: startedRun.startedAtMs!,
       });
-      await updateTaskAfterRun({
-        store: args.store,
-        task,
+      if (!completed) {
+        return undefined;
+      }
+      await args.store.updateTaskAfterRun({
         run: startedRun,
         status: result.status,
         nowMs: args.nowMs,
@@ -124,10 +83,12 @@ export async function executeScheduledRun(args: {
         runId: startedRun.id,
         completedAtMs: args.nowMs,
         errorMessage: result.errorMessage,
+        startedAtMs: startedRun.startedAtMs!,
       });
-      await updateTaskAfterRun({
-        store: args.store,
-        task,
+      if (!blocked) {
+        return undefined;
+      }
+      await args.store.updateTaskAfterRun({
         run: startedRun,
         status: result.status,
         errorMessage: result.errorMessage,
@@ -140,10 +101,12 @@ export async function executeScheduledRun(args: {
       runId: startedRun.id,
       completedAtMs: args.nowMs,
       errorMessage: result.errorMessage,
+      startedAtMs: startedRun.startedAtMs!,
     });
-    await updateTaskAfterRun({
-      store: args.store,
-      task,
+    if (!failed) {
+      return undefined;
+    }
+    await args.store.updateTaskAfterRun({
       run: startedRun,
       status: result.status,
       errorMessage: result.errorMessage,
@@ -156,10 +119,12 @@ export async function executeScheduledRun(args: {
       runId: startedRun.id,
       completedAtMs: args.nowMs,
       errorMessage,
+      startedAtMs: startedRun.startedAtMs!,
     });
-    await updateTaskAfterRun({
-      store: args.store,
-      task,
+    if (!failed) {
+      return undefined;
+    }
+    await args.store.updateTaskAfterRun({
       run: startedRun,
       status: "failed",
       errorMessage,

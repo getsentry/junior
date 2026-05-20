@@ -5,9 +5,9 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { ScheduledTaskRunner } from "@/chat/scheduler/executor";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import { logException } from "@/chat/logging";
+import { deliverPrivateMessage } from "@/chat/oauth-flow";
 import {
   buildConversationContext,
-  generateConversationId,
   markConversationMessage,
   normalizeConversationText,
   updateConversationStats,
@@ -39,17 +39,33 @@ export interface SlackScheduledTaskRunnerDeps {
 }
 
 function getConversationId(task: ScheduledTask): string {
-  return `slack:${task.destination.channelId}:${task.destination.threadTs}`;
+  return `slack:${task.destination.teamId}:${task.destination.channelId}:${task.destination.threadTs}`;
 }
 
 function buildScheduledConversationText(task: ScheduledTask): string {
   return `[scheduled task] ${task.task.title}: ${task.task.objective}`;
 }
 
+function getScheduledAssistantMessageId(run: ScheduledRun): string {
+  return `scheduled-run:${run.id}:assistant`;
+}
+
 function buildScheduledAuthError(
   error: AuthorizationFlowDisabledError,
 ): string {
   return `Scheduled task requires ${error.provider} authorization. Connect ${error.provider} in an interactive Slack message, then resume the task.`;
+}
+
+async function notifyCreatorOfBlockedRun(args: {
+  errorMessage: string;
+  task: ScheduledTask;
+}): Promise<void> {
+  await deliverPrivateMessage({
+    channelId: args.task.destination.channelId,
+    threadTs: args.task.destination.threadTs,
+    userId: args.task.createdBy.slackUserId,
+    text: `Scheduled task "${args.task.task.title}" is blocked: ${args.errorMessage}`,
+  });
 }
 
 function upsertScheduledUserMessage(args: {
@@ -109,6 +125,19 @@ export function createSlackScheduledTaskRunner(
       const conversationId = getConversationId(task);
       const persisted = await getPersistedThreadState(conversationId);
       const conversation = coerceThreadConversationState(persisted);
+      const deliveredMessage = conversation.messages.find(
+        (message) =>
+          message.id === getScheduledAssistantMessageId(run) &&
+          message.meta?.replied === true &&
+          typeof message.meta.slackTs === "string",
+      );
+      if (deliveredMessage?.meta?.slackTs) {
+        return {
+          status: "completed",
+          resultMessageTs: deliveredMessage.meta.slackTs,
+        };
+      }
+
       const artifacts = coerceThreadArtifactsState(persisted);
       const channelConfiguration = getChannelConfigurationServiceById(
         task.destination.channelId,
@@ -226,7 +255,7 @@ export function createSlackScheduledTaskRunner(
           skippedReason: undefined,
         });
         upsertConversationMessage(conversation, {
-          id: generateConversationId("assistant"),
+          id: getScheduledAssistantMessageId(run),
           role: "assistant",
           text: normalizeConversationText(reply.text) || "[empty response]",
           createdAtMs: nowMs,
@@ -269,19 +298,29 @@ export function createSlackScheduledTaskRunner(
         };
       } catch (error) {
         if (error instanceof AuthorizationFlowDisabledError) {
+          const errorMessage = buildScheduledAuthError(error);
+          await notifyCreatorOfBlockedRun({
+            task,
+            errorMessage,
+          });
           return {
             status: "blocked",
-            errorMessage: buildScheduledAuthError(error),
+            errorMessage,
           };
         }
         if (
           isRetryableTurnError(error, "mcp_auth_resume") ||
           isRetryableTurnError(error, "plugin_auth_resume")
         ) {
+          const errorMessage =
+            "Scheduled task requires authorization. Connect the required provider in an interactive Slack message, then resume the task.";
+          await notifyCreatorOfBlockedRun({
+            task,
+            errorMessage,
+          });
           return {
             status: "blocked",
-            errorMessage:
-              "Scheduled task requires authorization. Connect the required provider in an interactive Slack message, then resume the task.",
+            errorMessage,
           };
         }
 

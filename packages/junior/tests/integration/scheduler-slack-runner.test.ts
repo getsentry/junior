@@ -5,7 +5,10 @@ import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import type { AssistantReply } from "@/chat/respond";
-import { chatPostMessageOk } from "../fixtures/slack/factories/api";
+import {
+  chatPostEphemeralOk,
+  chatPostMessageOk,
+} from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
@@ -155,7 +158,113 @@ describe("scheduled Slack runner", () => {
     ]);
   });
 
+  it("does not post again when a scheduled run already has a delivered result", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000001",
+      }),
+    });
+    const task = createTask();
+    const run = createRun(task);
+    const generateAssistantReply = vi.fn(async () => createReply());
+    const runner = createSlackScheduledTaskRunner({ generateAssistantReply });
+
+    await expect(
+      runner.run({
+        task,
+        run,
+        prompt: "<scheduled-task-run />",
+        nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+      }),
+    ).resolves.toEqual({
+      status: "completed",
+      resultMessageTs: "1700000000.000001",
+    });
+    await expect(
+      runner.run({
+        task,
+        run,
+        prompt: "<scheduled-task-run />",
+        nowMs: Date.parse("2026-03-02T17:00:02.000Z"),
+      }),
+    ).resolves.toEqual({
+      status: "completed",
+      resultMessageTs: "1700000000.000001",
+    });
+
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+  });
+
+  it("isolates scheduled conversation state by Slack workspace", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000001",
+      }),
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000002",
+      }),
+    });
+    const firstTask = createTask();
+    const baseSecondTask = createTask();
+    const secondTask = {
+      ...baseSecondTask,
+      id: "sched_slack_runner_other_team",
+      destination: {
+        ...baseSecondTask.destination,
+        teamId: "T999",
+      },
+    };
+    const runner = createSlackScheduledTaskRunner({
+      generateAssistantReply: async () => createReply(),
+    });
+
+    await runner.run({
+      task: firstTask,
+      run: createRun(firstTask),
+      prompt: "<scheduled-task-run />",
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+    });
+    await runner.run({
+      task: secondTask,
+      run: createRun(secondTask),
+      prompt: "<scheduled-task-run />",
+      nowMs: Date.parse("2026-03-02T17:00:02.000Z"),
+    });
+
+    await expect(
+      getPersistedThreadState("slack:T123:C123:1700000000.000000"),
+    ).resolves.toMatchObject({
+      conversation: {
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            id: `scheduled-run:${createRun(firstTask).id}:assistant`,
+          }),
+        ]),
+      },
+    });
+    await expect(
+      getPersistedThreadState("slack:T999:C123:1700000000.000000"),
+    ).resolves.toMatchObject({
+      conversation: {
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            id: `scheduled-run:${createRun(secondTask).id}:assistant`,
+          }),
+        ]),
+      },
+    });
+  });
+
   it("blocks scheduled runs instead of starting authorization", async () => {
+    queueSlackApiResponse("chat.postEphemeral", {
+      body: chatPostEphemeralOk(),
+    });
     const task = createTask();
     const run = createRun(task);
     const runner = createSlackScheduledTaskRunner({
@@ -183,8 +292,20 @@ describe("scheduled Slack runner", () => {
         "Scheduled task requires github authorization. Connect github in an interactive Slack message, then resume the task.",
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.000000",
+          user: "U123",
+          text: expect.stringContaining(
+            'Scheduled task "Issue digest" is blocked',
+          ),
+        }),
+      }),
+    ]);
     await expect(
-      getPersistedThreadState("slack:C123:1700000000.000000"),
+      getPersistedThreadState("slack:T123:C123:1700000000.000000"),
     ).resolves.not.toMatchObject({
       conversation: { processing: { pendingAuth: expect.anything() } },
     });

@@ -1,4 +1,5 @@
 import type { Lock, StateAdapter } from "chat";
+import { getNextRunAtMs } from "@/chat/scheduler/cadence";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 
@@ -18,26 +19,40 @@ export interface SchedulerStore {
     completedAtMs: number;
     errorMessage: string;
     runId: string;
+    startedAtMs: number;
   }): Promise<ScheduledRun | undefined>;
   markRunCompleted(args: {
     completedAtMs: number;
     resultMessageTs?: string;
     runId: string;
+    startedAtMs: number;
   }): Promise<ScheduledRun | undefined>;
   markRunFailed(args: {
     completedAtMs: number;
     errorMessage: string;
+    startedAtMs?: number;
     runId: string;
   }): Promise<ScheduledRun | undefined>;
   markRunStarted(args: {
+    claimedAtMs: number;
     nowMs: number;
     runId: string;
   }): Promise<ScheduledRun | undefined>;
   saveTask(task: ScheduledTask): Promise<void>;
+  updateTaskAfterRun(args: {
+    errorMessage?: string;
+    nowMs: number;
+    run: ScheduledRun;
+    status: "blocked" | "completed" | "failed";
+  }): Promise<void>;
 }
 
 function taskKey(taskId: string): string {
   return `${SCHEDULER_KEY_PREFIX}:task:${taskId}`;
+}
+
+function taskLockKey(taskId: string): string {
+  return `${taskKey(taskId)}:lock`;
 }
 
 function runKey(runId: string): string {
@@ -187,6 +202,16 @@ function buildScheduledRun(args: {
   };
 }
 
+function canFinishRun(
+  run: ScheduledRun,
+  startedAtMs: number | undefined,
+): boolean {
+  if (run.status === "pending") {
+    return startedAtMs === undefined;
+  }
+  return run.status === "running" && run.startedAtMs === startedAtMs;
+}
+
 class StateAdapterSchedulerStore implements SchedulerStore {
   private readonly state: StateAdapter;
 
@@ -196,8 +221,17 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
   async saveTask(task: ScheduledTask): Promise<void> {
     await this.state.connect();
-    const current =
-      (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
+    await withLock(this.state, taskLockKey(task.id), async () => {
+      const current =
+        (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
+      await this.saveTaskRecord(task, current);
+    });
+  }
+
+  private async saveTaskRecord(
+    task: ScheduledTask,
+    current: ScheduledTask | undefined,
+  ): Promise<void> {
     if (
       current?.status === "blocked" &&
       task.status === "active" &&
@@ -335,11 +369,12 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   }
 
   async markRunStarted(args: {
+    claimedAtMs: number;
     nowMs: number;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
     return await this.updateRun(args.runId, (run) =>
-      run.status === "pending"
+      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
         ? {
             ...run,
             startedAtMs: args.nowMs,
@@ -353,13 +388,18 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     completedAtMs: number;
     resultMessageTs?: string;
     runId: string;
+    startedAtMs: number;
   }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) => ({
-      ...run,
-      completedAtMs: args.completedAtMs,
-      resultMessageTs: args.resultMessageTs,
-      status: "completed",
-    }));
+    const next = await this.updateRun(args.runId, (run) =>
+      canFinishRun(run, args.startedAtMs)
+        ? {
+            ...run,
+            completedAtMs: args.completedAtMs,
+            resultMessageTs: args.resultMessageTs,
+            status: "completed",
+          }
+        : undefined,
+    );
     if (next) {
       await clearActiveRun(this.state, next.taskId, next.id);
     }
@@ -369,14 +409,19 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   async markRunFailed(args: {
     completedAtMs: number;
     errorMessage: string;
+    startedAtMs?: number;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) => ({
-      ...run,
-      completedAtMs: args.completedAtMs,
-      errorMessage: args.errorMessage,
-      status: "failed",
-    }));
+    const next = await this.updateRun(args.runId, (run) =>
+      canFinishRun(run, args.startedAtMs)
+        ? {
+            ...run,
+            completedAtMs: args.completedAtMs,
+            errorMessage: args.errorMessage,
+            status: "failed",
+          }
+        : undefined,
+    );
     if (next) {
       await clearActiveRun(this.state, next.taskId, next.id);
     }
@@ -387,17 +432,79 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     completedAtMs: number;
     errorMessage: string;
     runId: string;
+    startedAtMs: number;
   }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) => ({
-      ...run,
-      completedAtMs: args.completedAtMs,
-      errorMessage: args.errorMessage,
-      status: "blocked",
-    }));
+    const next = await this.updateRun(args.runId, (run) =>
+      canFinishRun(run, args.startedAtMs)
+        ? {
+            ...run,
+            completedAtMs: args.completedAtMs,
+            errorMessage: args.errorMessage,
+            status: "blocked",
+          }
+        : undefined,
+    );
     if (next) {
       await clearActiveRun(this.state, next.taskId, next.id);
     }
     return next;
+  }
+
+  async updateTaskAfterRun(args: {
+    errorMessage?: string;
+    nowMs: number;
+    run: ScheduledRun;
+    status: "blocked" | "completed" | "failed";
+  }): Promise<void> {
+    await this.state.connect();
+    await withLock(this.state, taskLockKey(args.run.taskId), async () => {
+      const current =
+        (await this.state.get<ScheduledTask>(taskKey(args.run.taskId))) ??
+        undefined;
+      if (!current || current.status === "deleted") {
+        return;
+      }
+
+      if (
+        current.status !== "active" ||
+        current.nextRunAtMs !== args.run.scheduledForMs
+      ) {
+        await this.saveTaskRecord(
+          {
+            ...current,
+            lastRunAtMs: args.run.scheduledForMs,
+            updatedAtMs: args.nowMs,
+            version: current.version + 1,
+          },
+          current,
+        );
+        return;
+      }
+
+      const nextRunAtMs =
+        args.status === "blocked"
+          ? undefined
+          : getNextRunAtMs(current, args.run.scheduledForMs, args.nowMs);
+
+      await this.saveTaskRecord(
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          nextRunAtMs,
+          status:
+            args.status === "blocked"
+              ? "blocked"
+              : nextRunAtMs
+                ? "active"
+                : "paused",
+          statusReason:
+            args.status === "blocked" ? args.errorMessage : undefined,
+          updatedAtMs: args.nowMs,
+          version: current.version + 1,
+        },
+        current,
+      );
+    });
   }
 
   private async updateRun(
