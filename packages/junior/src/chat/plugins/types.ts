@@ -98,6 +98,71 @@ export interface PluginManifest {
   };
 }
 
+type PluginRuntimeDependencyConfig =
+  | {
+      type: "npm";
+      package: string;
+      version?: string;
+    }
+  | {
+      type: "system";
+      package: string;
+    }
+  | {
+      type: "system";
+      url: string;
+      sha256: string;
+    };
+
+interface PluginOAuthConfigPatch extends Omit<
+  Partial<PluginOAuthConfig>,
+  "authorizeParams" | "tokenExtraHeaders"
+> {
+  authorizeParams?: Record<string, string | null> | null;
+  tokenExtraHeaders?: Record<string, string | null> | null;
+}
+
+/** Install-level changes applied to one plugin manifest before validation. */
+export interface PluginManifestConfig {
+  description?: string;
+  capabilities?: string[];
+  configKeys?: string[];
+  domains?: string[] | null;
+  apiHeaders?: Record<string, string | null> | null;
+  commandEnv?: Record<string, string | null> | null;
+  envVars?: Record<string, PluginEnvVarDeclaration | null> | null;
+  credentials?: {
+    type?: "oauth-bearer" | "github-app";
+    domains?: string[];
+    apiHeaders?: Record<string, string | null> | null;
+    authTokenEnv?: string;
+    authTokenPlaceholder?: string | null;
+    appIdEnv?: string;
+    privateKeyEnv?: string;
+    installationIdEnv?: string;
+  } | null;
+  runtimeDependencies?: PluginRuntimeDependencyConfig[] | null;
+  runtimePostinstall?: PluginRuntimePostinstallCommand[] | null;
+  mcp?: {
+    transport?: "http";
+    url?: string;
+    headers?: Record<string, string | null> | null;
+    allowedTools?: string[] | null;
+  } | null;
+  oauth?: PluginOAuthConfigPatch | null;
+  target?: {
+    type?: string;
+    configKey?: string;
+    commandFlags?: string[] | null;
+  } | null;
+}
+
+/** Install-level plugin package list and manifest configuration. */
+export interface PluginConfig {
+  packages?: string[];
+  manifests?: Record<string, PluginManifestConfig>;
+}
+
 export interface PluginBrokerDeps {
   userTokenStore: UserTokenStore;
 }

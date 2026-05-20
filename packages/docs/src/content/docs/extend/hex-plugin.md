@@ -25,11 +25,13 @@ pnpm add @sentry/junior @sentry/junior-hex
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-hex"],
+  plugins: {
+    packages: ["@sentry/junior-hex"],
+  },
 });
 ```
 

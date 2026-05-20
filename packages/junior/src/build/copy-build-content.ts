@@ -8,12 +8,12 @@ import { resolvePackageDir } from "@/build/resolve-package";
 export function copyAppAndPluginContent(
   cwd: string,
   serverRoot: string,
-  pluginPackages?: string[],
+  packageNames?: string[],
 ): void {
   copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
 
   const packagedContent = discoverInstalledPluginPackageContent(cwd, {
-    packageNames: pluginPackages,
+    packageNames,
   });
   for (const root of packagedContent.manifestRoots) {
     if (existsSync(path.join(root, "plugin.yaml"))) {

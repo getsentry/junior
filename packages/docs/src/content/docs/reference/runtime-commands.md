@@ -34,7 +34,7 @@ Different plugins authenticate in different ways, but the visible pattern stays 
 
 Junior works best when the request names the target clearly.
 
-- Loaded skills determine which provider credentials are even eligible for injection.
+- Loaded plugin manifests determine which provider credentials are eligible for injection. Skills can use the provider surface, but they do not gate token availability.
 - For GitHub, include `owner/repo` when the repository is not obvious from the request or surrounding conversation.
 - For Sentry, include the org and project when your workspace spans multiple targets.
 - When follow-up requests stay on the same target, Junior can continue the workflow without restating every detail.

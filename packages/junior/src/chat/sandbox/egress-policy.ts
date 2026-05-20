@@ -71,16 +71,13 @@ export function buildSandboxEgressNetworkPolicy(): NetworkPolicy {
 }
 
 /** Resolve non-secret command environment values for registered sandbox providers. */
-export async function resolveSandboxCommandEnvironment(
-  provider?: string,
-): Promise<Record<string, string>> {
+export async function resolveSandboxCommandEnvironment(): Promise<
+  Record<string, string>
+> {
   const env: Record<string, string> = {};
   for (const plugin of getPluginProviders().sort((left, right) =>
     left.manifest.name.localeCompare(right.manifest.name),
   )) {
-    if (provider && plugin.manifest.name !== provider) {
-      continue;
-    }
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
     if (credentials) {

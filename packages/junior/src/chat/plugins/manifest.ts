@@ -7,7 +7,9 @@ import type {
   PluginOAuthConfig,
   OAuthBearerCredentials,
   PluginCredentials,
+  PluginConfig,
   PluginManifest,
+  PluginManifestConfig,
   PluginNpmRuntimeDependency,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -307,6 +309,154 @@ const manifestSourceSchema = z
       .optional(),
   })
   .passthrough();
+
+type ManifestSource = Record<string, unknown>;
+
+function setDefined(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
+function manifestConfigPatch(
+  config: PluginManifestConfig,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  setDefined(result, "description", config.description);
+  setDefined(result, "capabilities", config.capabilities);
+  setDefined(result, "config-keys", config.configKeys);
+  setDefined(result, "domains", config.domains);
+  setDefined(result, "api-headers", config.apiHeaders);
+  setDefined(result, "command-env", config.commandEnv);
+  setDefined(result, "env-vars", config.envVars);
+
+  if (config.credentials !== undefined) {
+    if (!config.credentials) {
+      result.credentials = null;
+    } else {
+      const credentials: Record<string, unknown> = {};
+      setDefined(credentials, "type", config.credentials.type);
+      setDefined(credentials, "domains", config.credentials.domains);
+      setDefined(credentials, "api-headers", config.credentials.apiHeaders);
+      setDefined(
+        credentials,
+        "auth-token-env",
+        config.credentials.authTokenEnv,
+      );
+      setDefined(
+        credentials,
+        "auth-token-placeholder",
+        config.credentials.authTokenPlaceholder,
+      );
+      setDefined(credentials, "app-id-env", config.credentials.appIdEnv);
+      setDefined(
+        credentials,
+        "private-key-env",
+        config.credentials.privateKeyEnv,
+      );
+      setDefined(
+        credentials,
+        "installation-id-env",
+        config.credentials.installationIdEnv,
+      );
+      result.credentials = credentials;
+    }
+  }
+  setDefined(result, "runtime-dependencies", config.runtimeDependencies);
+  setDefined(result, "runtime-postinstall", config.runtimePostinstall);
+
+  if (config.mcp !== undefined) {
+    if (!config.mcp) {
+      result.mcp = null;
+    } else {
+      const mcp: Record<string, unknown> = {};
+      setDefined(mcp, "transport", config.mcp.transport);
+      setDefined(mcp, "url", config.mcp.url);
+      setDefined(mcp, "headers", config.mcp.headers);
+      setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
+      result.mcp = mcp;
+    }
+  }
+  if (config.oauth !== undefined) {
+    if (!config.oauth) {
+      result.oauth = null;
+    } else {
+      const oauth: Record<string, unknown> = {};
+      setDefined(oauth, "client-id-env", config.oauth.clientIdEnv);
+      setDefined(oauth, "client-secret-env", config.oauth.clientSecretEnv);
+      setDefined(oauth, "authorize-endpoint", config.oauth.authorizeEndpoint);
+      setDefined(oauth, "token-endpoint", config.oauth.tokenEndpoint);
+      setDefined(oauth, "scope", config.oauth.scope);
+      setDefined(oauth, "authorize-params", config.oauth.authorizeParams);
+      setDefined(oauth, "token-auth-method", config.oauth.tokenAuthMethod);
+      setDefined(oauth, "token-extra-headers", config.oauth.tokenExtraHeaders);
+      result.oauth = oauth;
+    }
+  }
+  if (config.target !== undefined) {
+    if (!config.target) {
+      result.target = null;
+    } else {
+      const target: Record<string, unknown> = {};
+      setDefined(target, "type", config.target.type);
+      setDefined(target, "config-key", config.target.configKey);
+      setDefined(target, "command-flags", config.target.commandFlags);
+      result.target = target;
+    }
+  }
+  return result;
+}
+
+function isPlainRecord(value: unknown): value is ManifestSource {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function mergeManifestConfig(
+  base: ManifestSource,
+  patch: ManifestSource,
+  options: { root?: boolean } = {},
+): ManifestSource {
+  const merged: ManifestSource = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (options.root && key === "name") {
+      throw new Error("plugins.manifests cannot change plugin names");
+    }
+    if (value === null) {
+      delete merged[key];
+      continue;
+    }
+    const current = merged[key];
+    if (isPlainRecord(current) && isPlainRecord(value)) {
+      merged[key] = mergeManifestConfig(current, value);
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
+function applyManifestConfig(
+  source: ManifestSource,
+  config: PluginConfig | undefined,
+): ManifestSource {
+  const name = source.name;
+  if (typeof name !== "string") {
+    return source;
+  }
+  const manifestConfig = config?.manifests?.[name];
+  if (manifestConfig && "name" in manifestConfig) {
+    throw new Error("plugins.manifests cannot change plugin names");
+  }
+  return manifestConfig
+    ? mergeManifestConfig(source, manifestConfigPatch(manifestConfig), {
+        root: true,
+      })
+    : source;
+}
 
 function formatPath(path: PropertyKey[]): string {
   return path.map((segment) => String(segment)).join(".");
@@ -816,7 +966,12 @@ function normalizeMcp(
   } satisfies PluginMcpConfig;
 }
 
-export function parsePluginManifest(raw: string, dir: string): PluginManifest {
+/** Parse one plugin manifest after applying install-level plugin config. */
+export function parsePluginManifest(
+  raw: string,
+  dir: string,
+  config?: PluginConfig,
+): PluginManifest {
   let parsedYaml: unknown;
   try {
     parsedYaml = parseYaml(raw);
@@ -834,7 +989,8 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     throw new Error(`Invalid plugin manifest in ${dir}: expected an object`);
   }
 
-  const sourceResult = manifestSourceSchema.safeParse(parsedYaml);
+  const source = applyManifestConfig(parsedYaml as ManifestSource, config);
+  const sourceResult = manifestSourceSchema.safeParse(source);
   if (!sourceResult.success) {
     const issue = sourceResult.error.issues[0];
     const path = formatPath(issue?.path ?? []);

@@ -25,11 +25,13 @@ pnpm add @sentry/junior @sentry/junior-datadog
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-datadog"],
+  plugins: {
+    packages: ["@sentry/junior-datadog"],
+  },
 });
 ```
 

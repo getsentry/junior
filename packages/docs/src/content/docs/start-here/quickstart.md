@@ -94,14 +94,16 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      pluginPackages: [
-        "@sentry/junior-datadog",
-        "@sentry/junior-github",
-        "@sentry/junior-hex",
-        "@sentry/junior-linear",
-        "@sentry/junior-notion",
-        "@sentry/junior-sentry",
-      ],
+      plugins: {
+        packages: [
+          "@sentry/junior-datadog",
+          "@sentry/junior-github",
+          "@sentry/junior-hex",
+          "@sentry/junior-linear",
+          "@sentry/junior-notion",
+          "@sentry/junior-sentry",
+        ],
+      },
     }),
   ],
   routes: {
@@ -131,7 +133,7 @@ export default app;
 
 ### Vercel config
 
-`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. The `juniorNitro()` module copies `app/**/*` and any declared `pluginPackages` content into the Vercel function bundle at build time.
+`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. The `juniorNitro()` module copies `app/**/*` and any declared plugin package content into the Vercel function bundle at build time.
 
 ## Deploy to Vercel
 

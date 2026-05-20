@@ -188,7 +188,7 @@ junior-plugin-acme/
 Validate:
 
 1. Package/repo checks.
-2. Add package to `pluginPackages`.
+2. Add package to `plugins.packages`.
 3. `pnpm exec junior check` for app-local files.
 4. Runtime load or parser test for packaged `plugin.yaml`.
 5. One real workflow after env is configured.

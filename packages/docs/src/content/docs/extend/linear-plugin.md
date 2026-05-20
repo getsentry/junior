@@ -23,11 +23,13 @@ pnpm add @sentry/junior @sentry/junior-linear
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-linear"],
+  plugins: {
+    packages: ["@sentry/junior-linear"],
+  },
 });
 ```
 

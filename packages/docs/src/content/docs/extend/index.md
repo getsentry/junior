@@ -13,14 +13,14 @@ related:
   - /extend/sentry-plugin/
 ---
 
-Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place.
+Junior plugins are manifest-owned provider integrations. A plugin package can also ship skills that use that provider surface, but skills do not define plugin config, credentials, domains, OAuth scopes, MCP endpoints, or runtime dependencies.
 
 ## Where plugins live
 
-A plugin bundles:
+A plugin declares:
 
 - A manifest (`plugin.yaml`) that declares optional capabilities, optional config keys, and optional credential behavior.
-- Skills (`SKILL.md`) that consume those capabilities at runtime.
+- Optional skills (`SKILL.md`) that consume those capabilities at runtime.
 
 For app-specific workflows, define plugins directly in your app:
 
@@ -47,7 +47,7 @@ my-junior-plugin/
 
 ## How to add packaged plugins
 
-For reuse across apps or teams, package plugin manifests + skills as npm packages and install them next to `@sentry/junior`.
+For reuse across apps or teams, package plugin manifests and any bundled skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
@@ -63,14 +63,16 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      pluginPackages: [
-        "@sentry/junior-datadog",
-        "@sentry/junior-github",
-        "@sentry/junior-hex",
-        "@sentry/junior-linear",
-        "@sentry/junior-notion",
-        "@sentry/junior-sentry",
-      ],
+      plugins: {
+        packages: [
+          "@sentry/junior-datadog",
+          "@sentry/junior-github",
+          "@sentry/junior-hex",
+          "@sentry/junior-linear",
+          "@sentry/junior-notion",
+          "@sentry/junior-sentry",
+        ],
+      },
     }),
   ],
   routes: {
@@ -79,7 +81,27 @@ export default defineConfig({
 });
 ```
 
-If you publish your own package, include `plugin.yaml` and `skills` in package `files`.
+Use the same `plugins` config to adjust packaged manifest defaults at install time:
+
+```ts title="nitro.config.ts"
+juniorNitro({
+  plugins: {
+    packages: ["@sentry/junior-github"],
+    manifests: {
+      github: {
+        credentials: {
+          domains: ["api.github.com", "github.com"],
+        },
+        oauth: {
+          scope: "repo read:org workflow",
+        },
+      },
+    },
+  },
+});
+```
+
+If you publish your own package with bundled skills, include both `plugin.yaml` and `skills` in package `files`. Manifest-only packages can include just `plugin.yaml`.
 
 ## Local skills vs plugin skills
 
@@ -92,7 +114,7 @@ Use `app/skills` for skills that do not belong to a plugin. Use plugin skills wh
 
 ## Build your own plugin
 
-Most custom plugins need a `plugin.yaml` and at least one skill.
+Every custom plugin needs a `plugin.yaml`. Add bundled skills only when the package should also teach the agent provider-specific workflows.
 
 ### Minimal manifest
 
@@ -156,7 +178,7 @@ runtime-postinstall:
 
 - `name`: unique lowercase plugin identifier; capabilities and config keys are qualified with it
 - `description`: short summary of what the plugin integrates
-- `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
+- `capabilities`: provider actions qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
 - `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin
 - `command-env`: optional non-secret sandbox env vars injected for registered credential/header providers; use it for CLI placeholders, deployment defaults, and public install metadata
@@ -241,9 +263,9 @@ command-env:
   EXAMPLE_BOT_EMAIL: ${EXAMPLE_BOT_EMAIL}
 ```
 
-### Add skills to the plugin
+### Optionally add skills to the plugin
 
-Put at least one skill under `skills/<skill-name>/SKILL.md`. Provider config keys belong in `plugin.yaml`, not in skill frontmatter.
+Put bundled provider workflows under `skills/<skill-name>/SKILL.md`. Provider config keys belong in `plugin.yaml`, not in skill frontmatter.
 
 ```yaml
 ---
@@ -271,7 +293,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` — no need to declare it twice.
+The `juniorNitro({ plugins: { packages: [...] } })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` — no need to declare it twice.
 
 ## Validate extensions
 

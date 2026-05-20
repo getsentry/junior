@@ -161,7 +161,7 @@ export function parseSkillFile(
     return {
       ok: false,
       error:
-        'Frontmatter field "requires-capabilities" is no longer supported; plugin-backed skills inherit credentials from their plugin.',
+        'Frontmatter field "requires-capabilities" is no longer supported; provider credentials are declared by plugin.yaml.',
     };
   }
   if ("uses-config" in parsed) {

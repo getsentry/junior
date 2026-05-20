@@ -287,7 +287,7 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
   }
   if ("requires-capabilities" in frontmatter.data) {
     errors.push(
-      `${skillFile}: frontmatter field "requires-capabilities" is no longer supported; plugin-backed skills inherit credentials from their plugin`,
+      `${skillFile}: frontmatter field "requires-capabilities" is no longer supported; provider credentials are declared by plugin.yaml`,
     );
   }
 

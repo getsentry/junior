@@ -21,11 +21,13 @@ pnpm add @sentry/junior @sentry/junior-github
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-github"],
+  plugins: {
+    packages: ["@sentry/junior-github"],
+  },
 });
 ```
 

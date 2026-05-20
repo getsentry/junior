@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createRemoteJWKSetMock,
   decodeJwtMock,
+  getPluginProvidersMock,
   issueProviderCredentialLeaseMock,
   jwtVerifyMock,
 } = vi.hoisted(() => ({
   createRemoteJWKSetMock: vi.fn(() => async () => null),
   decodeJwtMock: vi.fn(),
+  getPluginProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
   jwtVerifyMock: vi.fn(),
 }));
@@ -32,29 +34,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
 });
 
 vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: () => [
-    {
-      manifest: {
-        name: "sentry",
-        description: "Sentry",
-        capabilities: ["sentry.api"],
-        configKeys: [],
-        envVars: {
-          SENTRY_BOT_EMAIL: {},
-        },
-        commandEnv: {
-          SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
-          SENTRY_READ_ONLY: "1",
-        },
-        credentials: {
-          type: "oauth-bearer",
-          domains: ["sentry.io", "us.sentry.io"],
-          authTokenEnv: "SENTRY_AUTH_TOKEN",
-          authTokenPlaceholder: "host_managed_credential",
-        },
-      },
-    },
-  ],
+  getPluginProviders: getPluginProvidersMock,
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
@@ -78,6 +58,51 @@ import { ALL } from "@/handlers/sandbox-egress-proxy";
 
 const EGRESS_ID = "junior-sbx";
 const REQUESTER_ID = "U123";
+
+function sentryPlugin() {
+  return {
+    manifest: {
+      name: "sentry",
+      description: "Sentry",
+      capabilities: ["sentry.api"],
+      configKeys: [],
+      envVars: {
+        SENTRY_BOT_EMAIL: {},
+      },
+      commandEnv: {
+        SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
+        SENTRY_READ_ONLY: "1",
+      },
+      credentials: {
+        type: "oauth-bearer",
+        domains: ["sentry.io", "us.sentry.io"],
+        authTokenEnv: "SENTRY_AUTH_TOKEN",
+        authTokenPlaceholder: "host_managed_credential",
+      },
+    },
+  };
+}
+
+function githubPlugin() {
+  return {
+    manifest: {
+      name: "github",
+      description: "GitHub",
+      capabilities: ["github.api"],
+      configKeys: [],
+      envVars: {},
+      commandEnv: {
+        GITHUB_READ_ONLY: "1",
+      },
+      credentials: {
+        type: "oauth-bearer",
+        domains: ["api.github.com"],
+        authTokenEnv: "GITHUB_TOKEN",
+        authTokenPlaceholder: "host_managed_credential",
+      },
+    },
+  };
+}
 
 async function authorizeSandboxEgress(
   requesterId = REQUESTER_ID,
@@ -149,6 +174,7 @@ describe("sandbox egress proxy", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
     createRemoteJWKSetMock.mockClear();
     createRemoteJWKSetMock.mockReturnValue(async () => null);
     decodeJwtMock.mockReset();
@@ -202,14 +228,15 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("resolves command env for a single active sandbox provider", async () => {
-    await expect(resolveSandboxCommandEnvironment("sentry")).resolves.toEqual({
+  it("resolves command env for every registered sandbox provider", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin(), sentryPlugin()]);
+
+    await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
+      GITHUB_READ_ONLY: "1",
+      GITHUB_TOKEN: "host_managed_credential",
       SENTRY_READ_ONLY: "1",
       SENTRY_AUTH_TOKEN: "host_managed_credential",
     });
-    await expect(resolveSandboxCommandEnvironment("github")).resolves.toEqual(
-      {},
-    );
   });
 
   it("resolves host env bindings for sandbox commands", async () => {

@@ -11,6 +11,7 @@ import { createApiHeadersBroker } from "./auth/api-headers-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
   PluginBrokerDeps,
+  PluginConfig,
   PluginDefinition,
   OAuthProviderConfig,
   PluginRuntimeDependency,
@@ -34,6 +35,7 @@ interface PluginCatalogSource {
 }
 
 let loadedPluginState: LoadedPluginState | undefined;
+let pluginConfig: PluginConfig | undefined;
 
 function getLoggedPluginNames(): Set<string> {
   const globalState = globalThis as typeof globalThis & {
@@ -69,7 +71,7 @@ function registerPluginManifest(
   raw: string,
   pluginDir: string,
 ): void {
-  const manifest = parsePluginManifest(raw, pluginDir);
+  const manifest = parsePluginManifest(raw, pluginDir, pluginConfig);
 
   if (state.pluginsByName.has(manifest.name)) {
     throw new Error(`Duplicate plugin name "${manifest.name}"`);
@@ -87,7 +89,7 @@ function registerPluginManifest(
     const owner = state.domainToPlugin.get(domain);
     if (owner) {
       throw new Error(
-        `Duplicate provider domain "${domain}" in plugin "${manifest.name}" already declared by plugin "${owner}"`,
+        `Duplicate provider domain "${domain}" in plugin "${manifest.name}" already declared by plugin "${owner}". Use plugins.manifests in PluginConfig to change one plugin's domains or credentials.`,
       );
     }
   }
@@ -174,6 +176,7 @@ function getPluginCatalogSource(): PluginCatalogSource {
       manifestRoots,
       packagedSkillRoots,
       packageNames: [...packagedContent.packageNames].sort(),
+      pluginConfig: pluginConfig ?? {},
     }),
   };
 }
@@ -257,6 +260,14 @@ function buildLoadedPluginState(
     }
   }
 
+  for (const name of Object.keys(pluginConfig?.manifests ?? {})) {
+    if (!state.pluginsByName.has(name)) {
+      throw new Error(
+        `plugins.manifests.${name} does not match a loaded plugin`,
+      );
+    }
+  }
+
   return state;
 }
 
@@ -298,6 +309,11 @@ function ensurePluginsLoaded(): LoadedPluginState {
 }
 
 // --- Sync exports ---
+
+/** Set install-wide plugin configuration before plugin discovery. */
+export function setPluginConfig(config: PluginConfig | undefined): void {
+  pluginConfig = config;
+}
 
 /** Return the current plugin catalog signature used for cache invalidation. */
 export function getPluginCatalogSignature(): string {

@@ -25,11 +25,13 @@ pnpm add @sentry/junior @sentry/junior-notion
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-notion"],
+  plugins: {
+    packages: ["@sentry/junior-notion"],
+  },
 });
 ```
 

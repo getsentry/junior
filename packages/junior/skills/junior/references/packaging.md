@@ -22,7 +22,7 @@ my-junior-plugin/
 
 ## Host app wiring
 
-Install next to `@sentry/junior`, then list in `pluginPackages`.
+Install next to `@sentry/junior`, then list in `plugins.packages`.
 
 ```ts
 import { defineConfig } from "nitro";
@@ -32,7 +32,9 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      pluginPackages: ["@acme/junior-my-provider"],
+      plugins: {
+        packages: ["@acme/junior-my-provider"],
+      },
     }),
   ],
   routes: {
@@ -45,7 +47,9 @@ For local dev paths that call `createApp()` directly, pass the same list there u
 
 ```ts
 const app = await createApp({
-  pluginPackages: ["@acme/junior-my-provider"],
+  plugins: {
+    packages: ["@acme/junior-my-provider"],
+  },
 });
 ```
 

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginConfig } from "@/chat/plugins/types";
 
 const originalCwd = process.cwd();
 
@@ -9,6 +10,11 @@ async function setPackages(packageNames: string[]): Promise<void> {
   const { setPluginPackages } =
     await import("@/chat/plugins/package-discovery");
   setPluginPackages(packageNames);
+}
+
+async function setConfig(config: PluginConfig): Promise<void> {
+  const { setPluginConfig } = await import("@/chat/plugins/registry");
+  setPluginConfig(config);
 }
 
 async function expectRegistryLoadFailure(
@@ -163,7 +169,7 @@ async function writePackagedPluginWithInvalidDomain(
   );
 }
 
-async function writePackagedPluginsWithDuplicateDomain(
+async function writePackagedPluginsWithSharedDomain(
   tempRoot: string,
 ): Promise<void> {
   for (const name of ["alpha", "beta"]) {
@@ -757,7 +763,7 @@ describe("plugin registry package discovery", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
-    await writePackagedPluginsWithDuplicateDomain(tempRoot);
+    await writePackagedPluginsWithSharedDomain(tempRoot);
     await fs.writeFile(
       path.join(tempRoot, "package.json"),
       JSON.stringify({
@@ -781,6 +787,95 @@ describe("plugin registry package discovery", () => {
     await expectRegistryLoadFailure(
       ["@acme/junior-plugin-alpha", "@acme/junior-plugin-beta"],
       'Duplicate provider domain "api.example.com" in plugin "beta" already declared by plugin "alpha"',
+    );
+  });
+
+  it("applies PluginConfig manifest overrides before duplicate domain validation", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginsWithSharedDomain(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-alpha": "1.0.0",
+          "@acme/junior-plugin-beta": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
+      pluginRoots: () => [],
+    }));
+
+    await setPackages([
+      "@acme/junior-plugin-alpha",
+      "@acme/junior-plugin-beta",
+    ]);
+    await setConfig({
+      manifests: {
+        beta: {
+          credentials: {
+            domains: ["beta.example.com"],
+          },
+        },
+      },
+    });
+    const registry = await import("@/chat/plugins/registry");
+    expect(
+      registry.getPluginProviders().map((plugin) => ({
+        name: plugin.manifest.name,
+        domains: plugin.manifest.credentials?.domains,
+      })),
+    ).toEqual([
+      { name: "alpha", domains: ["api.example.com"] },
+      { name: "beta", domains: ["beta.example.com"] },
+    ]);
+  });
+
+  it("rejects PluginConfig manifest overrides for missing plugins", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPlugin(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-demo": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
+      pluginRoots: () => [],
+    }));
+
+    await setPackages(["@acme/junior-plugin-demo"]);
+    await setConfig({
+      manifests: {
+        missing: {
+          description: "Typo",
+        },
+      },
+    });
+    const registry = await import("@/chat/plugins/registry");
+
+    expect(() => registry.getPluginProviders()).toThrow(
+      "plugins.manifests.missing does not match a loaded plugin",
     );
   });
 

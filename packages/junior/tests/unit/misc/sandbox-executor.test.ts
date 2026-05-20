@@ -684,7 +684,6 @@ describe("createSandboxExecutor", () => {
       sandboxId: "sbx_authorize_credentials",
       credentialEgress: {
         requesterId: "U123",
-        activeProvider: () => "sentry",
       },
     });
     executor.configureSkills([]);
@@ -719,8 +718,8 @@ describe("createSandboxExecutor", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("runs active provider commands without credentials when no credential surface exists", async () => {
-    const sandbox = makeSandbox("sbx_provider_without_credentials");
+  it("makes registered provider credentials available to sandbox commands", async () => {
+    const sandbox = makeSandbox("sbx_registered_credentials");
     sandboxGetMock.mockResolvedValue(sandbox);
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
@@ -730,10 +729,9 @@ describe("createSandboxExecutor", () => {
     } as never);
 
     const executor = createSandboxExecutor({
-      sandboxId: "sbx_provider_without_credentials",
+      sandboxId: "sbx_registered_credentials",
       credentialEgress: {
         requesterId: "U123",
-        activeProvider: () => "docs",
       },
     });
     executor.configureSkills([]);
@@ -759,7 +757,9 @@ describe("createSandboxExecutor", () => {
       },
     });
     const invocation = sandbox.runCommand.mock.calls[0]?.[0];
-    expect(invocation.args?.[1]).not.toContain("SENTRY_AUTH_TOKEN");
+    expect(invocation.args?.[1]).toContain(
+      "export SENTRY_AUTH_TOKEN='host_managed_credential'",
+    );
     expect(invocation.args?.[1]).toContain("echo local-only");
   });
 

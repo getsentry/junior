@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { setConfigDefaults } from "@/chat/configuration/defaults";
 import { logException } from "@/chat/logging";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
+import { setPluginConfig } from "@/chat/plugins/registry";
+import type { PluginConfig } from "@/chat/plugins/types";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
@@ -18,7 +20,8 @@ import type { WaitUntilFn } from "@/handlers/types";
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
-  pluginPackages?: string[];
+  /** Plugin packages and manifest overrides loaded by this app instance. */
+  plugins?: PluginConfig;
   waitUntil?: WaitUntilFn;
 }
 
@@ -39,18 +42,18 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
   }
 }
 
-/** Resolve plugin packages from the virtual module injected by juniorNitro(). */
-async function resolveBuildPluginPackages(): Promise<string[] | undefined> {
+/** Resolve plugin configuration from the virtual module injected by juniorNitro(). */
+async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
   try {
-    const mod: { pluginPackages?: string[] } = await import("#junior/config");
-    return mod.pluginPackages;
+    const mod: { plugins?: PluginConfig } = await import("#junior/config");
+    return mod.plugins;
   } catch {
     // Virtual module unavailable (not running in Nitro context).
     // Fall back to env var for dev mode and tests.
     const env = process.env.JUNIOR_PLUGIN_PACKAGES;
     if (env) {
       try {
-        return JSON.parse(env);
+        return { packages: JSON.parse(env) };
       } catch {}
     }
     return undefined;
@@ -59,9 +62,9 @@ async function resolveBuildPluginPackages(): Promise<string[] | undefined> {
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  setPluginPackages(
-    options?.pluginPackages ?? (await resolveBuildPluginPackages()),
-  );
+  const pluginConfig = options?.plugins ?? (await resolveBuildPluginConfig());
+  setPluginPackages(pluginConfig?.packages);
+  setPluginConfig(pluginConfig);
   setConfigDefaults(options?.configDefaults);
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());

@@ -109,7 +109,6 @@ export function createSandboxExecutor(options?: {
   traceContext?: LogContext;
   credentialEgress?: {
     requesterId: string;
-    activeProvider?: () => string | undefined;
   };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
@@ -140,12 +139,7 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     commandEnv: credentialEgress
-      ? async () => {
-          const provider = credentialEgress.activeProvider?.();
-          return provider
-            ? await resolveSandboxCommandEnvironment(provider)
-            : {};
-        }
+      ? async () => await resolveSandboxCommandEnvironment()
       : undefined,
     createNetworkPolicy: credentialEgress
       ? buildSandboxEgressNetworkPolicy

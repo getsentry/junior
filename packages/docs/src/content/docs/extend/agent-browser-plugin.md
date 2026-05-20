@@ -22,11 +22,13 @@ pnpm add @sentry/junior @sentry/junior-agent-browser
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-agent-browser"],
+  plugins: {
+    packages: ["@sentry/junior-agent-browser"],
+  },
 });
 ```
 
