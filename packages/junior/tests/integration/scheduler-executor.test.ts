@@ -268,6 +268,78 @@ describe("scheduler executor", () => {
     });
   });
 
+  it("reclaims due tasks left pending by an aborted tick", async () => {
+    const store = createStateSchedulerStore();
+    const firstTask = createTask({ id: `sched_aborted_first_${Date.now()}` });
+    const secondTask = createTask({
+      id: `sched_aborted_second_${Date.now()}`,
+    });
+    await store.saveTask(firstTask);
+    await store.saveTask(secondTask);
+
+    const [firstRun, abandonedRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
+      limit: 10,
+    });
+    expect(firstRun).toMatchObject({ taskId: firstTask.id });
+    expect(abandonedRun).toMatchObject({
+      taskId: secondTask.id,
+      status: "pending",
+    });
+
+    await executeScheduledRun({
+      store,
+      run: firstRun,
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+      runner: {
+        run: async () => ({ status: "completed" }),
+      },
+    });
+
+    const [retryRun] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:01:00.000Z"),
+      limit: 10,
+    });
+    expect(retryRun).toMatchObject({
+      id: abandonedRun.id,
+      taskId: secondTask.id,
+      scheduledForMs: abandonedRun.scheduledForMs,
+      status: "pending",
+    });
+  });
+
+  it("does not restart a run another tick already completed", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_completed_claim_${Date.now()}` });
+    await store.saveTask(task);
+    const [run] = await store.claimDueRuns({
+      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
+      limit: 10,
+    });
+
+    await executeScheduledRun({
+      store,
+      run,
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+      runner: {
+        run: async () => ({ status: "completed" }),
+      },
+    });
+
+    await expect(
+      executeScheduledRun({
+        store,
+        run,
+        nowMs: Date.parse("2026-03-02T17:00:02.000Z"),
+        runner: {
+          run: async () => {
+            throw new Error("completed run should not restart");
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("does not resurrect a task deleted while a run is executing", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_deleted_${Date.now()}` });

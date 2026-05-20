@@ -6,6 +6,7 @@ const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const SCHEDULER_RECORD_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 const SCHEDULED_RUN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
+const PENDING_CLAIM_STALE_MS = 60_000;
 const LOCK_TTL_MS = 10_000;
 
 export interface SchedulerStore {
@@ -144,6 +145,16 @@ async function clearActiveRun(
   });
 }
 
+function isStalePendingRun(
+  run: ScheduledRun | undefined,
+  nowMs: number,
+): boolean {
+  return (
+    run?.status === "pending" &&
+    run.claimedAtMs + PENDING_CLAIM_STALE_MS <= nowMs
+  );
+}
+
 function isDueTask(
   task: ScheduledTask,
   nowMs: number,
@@ -264,23 +275,46 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
       const scheduledForMs = task.nextRunAtMs;
       const runId = buildRunId(task.id, scheduledForMs);
-      const activeClaimed = await this.state.setIfNotExists(
-        activeRunKey(task.id),
-        { claimedAtMs: args.nowMs, runId, scheduledForMs },
-        CLAIM_TTL_MS,
-      );
+      const tryClaimActiveRun = async (): Promise<boolean> =>
+        await this.state.setIfNotExists(
+          activeRunKey(task.id),
+          { claimedAtMs: args.nowMs, runId, scheduledForMs },
+          CLAIM_TTL_MS,
+        );
+
+      let activeClaimed = await tryClaimActiveRun();
       if (!activeClaimed) {
-        continue;
+        const activeRun = await this.getRun(runId);
+        if (isStalePendingRun(activeRun, args.nowMs)) {
+          await clearActiveRun(this.state, task.id, runId);
+          await this.state.delete(claimKey(task.id, scheduledForMs));
+          activeClaimed = await tryClaimActiveRun();
+        }
+        if (!activeClaimed) {
+          continue;
+        }
       }
 
-      const claimed = await this.state.setIfNotExists(
-        claimKey(task.id, scheduledForMs),
-        { claimedAtMs: args.nowMs },
-        CLAIM_TTL_MS,
-      );
+      const tryClaimScheduledSlot = async (): Promise<boolean> =>
+        await this.state.setIfNotExists(
+          claimKey(task.id, scheduledForMs),
+          { claimedAtMs: args.nowMs },
+          CLAIM_TTL_MS,
+        );
+
+      let claimed = await tryClaimScheduledSlot();
       if (!claimed) {
-        await clearActiveRun(this.state, task.id, runId);
-        continue;
+        const existingRun = await this.getRun(runId);
+        if (isStalePendingRun(existingRun, args.nowMs)) {
+          await clearActiveRun(this.state, task.id, runId);
+          await this.state.delete(claimKey(task.id, scheduledForMs));
+          activeClaimed = await tryClaimActiveRun();
+          claimed = activeClaimed ? await tryClaimScheduledSlot() : false;
+        }
+        if (!claimed) {
+          await clearActiveRun(this.state, task.id, runId);
+          continue;
+        }
       }
 
       const run = buildScheduledRun({
@@ -304,11 +338,15 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     nowMs: number;
     runId: string;
   }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) => ({
-      ...run,
-      startedAtMs: args.nowMs,
-      status: "running",
-    }));
+    return await this.updateRun(args.runId, (run) =>
+      run.status === "pending"
+        ? {
+            ...run,
+            startedAtMs: args.nowMs,
+            status: "running",
+          }
+        : undefined,
+    );
   }
 
   async markRunCompleted(args: {
@@ -364,7 +402,7 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
   private async updateRun(
     runId: string,
-    update: (run: ScheduledRun) => ScheduledRun,
+    update: (run: ScheduledRun) => ScheduledRun | undefined,
   ): Promise<ScheduledRun | undefined> {
     await this.state.connect();
     return await withLock(this.state, indexLockKey(runKey(runId)), async () => {
@@ -373,6 +411,9 @@ class StateAdapterSchedulerStore implements SchedulerStore {
         return undefined;
       }
       const next = update(current);
+      if (!next) {
+        return undefined;
+      }
       await this.state.set(runKey(runId), next, SCHEDULED_RUN_TTL_MS);
       return next;
     });
