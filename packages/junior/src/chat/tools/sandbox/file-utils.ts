@@ -1,6 +1,7 @@
 import path from "node:path";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export type { SandboxFileSystem };
 
@@ -152,7 +153,7 @@ export function resolveWorkspacePath(
     normalized !== SANDBOX_WORKSPACE_ROOT &&
     !normalized.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`)
   ) {
-    throw new Error(
+    throw new ToolInputError(
       `Path must stay within ${SANDBOX_WORKSPACE_ROOT}: ${requested}`,
     );
   }

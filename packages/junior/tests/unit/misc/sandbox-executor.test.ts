@@ -1146,6 +1146,35 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("throws ToolInputError when editFile targets a missing path", async () => {
+    const sandbox = makeSandbox("sbx_missing_edit_file");
+    sandbox.fs.readFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT: no such file or directory"), {
+        code: "ENOENT",
+      }),
+    );
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(
+      executor.execute({
+        toolName: "editFile",
+        input: {
+          path: "missing.ts",
+          edits: [{ oldText: "a", newText: "b" }],
+        },
+      }),
+    ).rejects.toThrow("File not found: missing.ts");
+  });
+
   it("keeps sandbox API failures as readFile errors", async () => {
     const sandbox = makeSandbox("sbx_read_file_api_error");
     sandboxCreateMock.mockResolvedValue(sandbox);

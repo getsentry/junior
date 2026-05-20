@@ -13,6 +13,7 @@ import {
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LINE_CHARS = 500;
@@ -70,9 +71,16 @@ export async function grepFiles(params: {
   const root = resolveWorkspacePath(params.path);
   const limit = positiveInteger(params.limit) ?? DEFAULT_GREP_LIMIT;
   const context = positiveInteger(params.context) ?? 0;
-  const regex = params.literal
-    ? undefined
-    : new RegExp(params.pattern, params.ignoreCase ? "i" : "");
+  let regex: RegExp | undefined;
+  if (!params.literal) {
+    try {
+      regex = new RegExp(params.pattern, params.ignoreCase ? "i" : "");
+    } catch (error) {
+      throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
+        cause: error,
+      });
+    }
+  }
   const { files, missingPath, missingRoot } = await collectFiles({
     fs: params.fs,
     root,

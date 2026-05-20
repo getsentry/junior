@@ -6,13 +6,17 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import {
-  getMcpAwareErrorMessage,
-  getMcpAwareErrorType,
-  McpToolError,
-} from "@/chat/mcp/errors";
+import { getMcpAwareErrorMessage, McpToolError } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+
+/** Classify tool errors into stable observability types. */
+function getToolErrorType(error: unknown): string {
+  if (error instanceof McpToolError) return "tool_error";
+  if (error instanceof ToolInputError) return "tool_input_error";
+  return error instanceof Error ? error.name : "tool_execution_error";
+}
 
 function getToolErrorAttributes(
   error: unknown,
@@ -40,7 +44,7 @@ export function handleToolExecutionError(
   shouldTrace: boolean,
   traceContext: LogContext,
 ): never {
-  const errorType = getMcpAwareErrorType(error, "tool_execution_error");
+  const errorType = getToolErrorType(error);
   const errorMessage = getMcpAwareErrorMessage(error);
   setSpanAttributes({
     "error.type": errorType,
@@ -84,8 +88,10 @@ export function handleToolExecutionError(
     );
   }
 
-  // MCP tool errors are expected outcomes — log as warnings, not Sentry exceptions.
-  if (!(error instanceof McpToolError)) {
+  // Expected tool failures (MCP errors, model input errors) are not Sentry exceptions.
+  const isExpectedToolFailure =
+    error instanceof McpToolError || error instanceof ToolInputError;
+  if (!isExpectedToolFailure) {
     logException(
       error,
       "agent_tool_call_failed",

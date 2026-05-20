@@ -1,8 +1,10 @@
 import {
+  isMissingPathError,
   normalizeToLf,
   resolveWorkspacePath,
   type SandboxFileSystem,
 } from "@/chat/tools/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   buildCompactDiff,
   detectLineEnding,
@@ -45,7 +47,17 @@ export async function editFile(params: {
   path: string;
 }): Promise<EditFileResult> {
   const filePath = resolveWorkspacePath(params.path);
-  const rawContent = await params.fs.readFile(filePath, { encoding: "utf8" });
+  let rawContent: string;
+  try {
+    rawContent = await params.fs.readFile(filePath, { encoding: "utf8" });
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      throw new ToolInputError(`File not found: ${params.path}`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
   const { bom, text } = stripBom(rawContent);
   const lineEnding = detectLineEnding(text);
   const normalizedContent = normalizeToLf(text);

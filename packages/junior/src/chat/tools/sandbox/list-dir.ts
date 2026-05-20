@@ -11,6 +11,7 @@ import {
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIST_LIMIT = 500;
 
@@ -39,7 +40,7 @@ export async function listDir(params: {
     throw error;
   }
   if (!stat.isDirectory()) {
-    throw new Error(`Not a directory: ${params.path ?? "."}`);
+    throw new ToolInputError(`Not a directory: ${params.path ?? "."}`);
   }
 
   let entries: string[];

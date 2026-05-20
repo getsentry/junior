@@ -1,4 +1,5 @@
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface TextReplacement {
   oldText: string;
@@ -180,17 +181,17 @@ export function validateAndApplyTextEdits(
   targetName: string,
 ): { baseContent: string; newContent: string } {
   if (!Array.isArray(edits) || edits.length === 0) {
-    throw new Error(`${targetName} requires at least one edit.`);
+    throw new ToolInputError(`${targetName} requires at least one edit.`);
   }
 
   const normalizedEdits = edits.map((edit, index) => {
     if (typeof edit.oldText !== "string" || edit.oldText.length === 0) {
-      throw new Error(
+      throw new ToolInputError(
         `edits[${index}].oldText must not be empty in ${targetName}.`,
       );
     }
     if (typeof edit.newText !== "string") {
-      throw new Error(
+      throw new ToolInputError(
         `edits[${index}].newText must be a string in ${targetName}.`,
       );
     }
@@ -205,13 +206,13 @@ export function validateAndApplyTextEdits(
     const edit = normalizedEdits[index];
     const matchIndex = content.indexOf(edit.oldText);
     if (matchIndex === -1) {
-      throw new Error(
+      throw new ToolInputError(
         `Could not find edits[${index}] in ${targetName}. oldText must match exactly including whitespace and newlines.`,
       );
     }
     const occurrences = countOccurrences(content, edit.oldText);
     if (occurrences > 1) {
-      throw new Error(
+      throw new ToolInputError(
         `Found ${occurrences} occurrences of edits[${index}] in ${targetName}. Each oldText must be unique.`,
       );
     }
@@ -228,7 +229,7 @@ export function validateAndApplyTextEdits(
     const previous = matchedEdits[index - 1];
     const current = matchedEdits[index];
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
-      throw new Error(
+      throw new ToolInputError(
         `edits[${previous.editIndex}] and edits[${current.editIndex}] overlap in ${targetName}. Merge overlapping replacements into one edit.`,
       );
     }
@@ -244,7 +245,7 @@ export function validateAndApplyTextEdits(
   }
 
   if (newContent === content) {
-    throw new Error(`No changes made to ${targetName}.`);
+    throw new ToolInputError(`No changes made to ${targetName}.`);
   }
 
   return { baseContent: content, newContent };

@@ -10,6 +10,7 @@ import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function workspacePath(filePath: string): string {
   return path.posix.join(SANDBOX_WORKSPACE_ROOT, filePath);
@@ -298,5 +299,65 @@ describe("sandbox file tools", () => {
       ],
       details: { ok: true, path: "src", truncated: false },
     });
+  });
+
+  it("throws ToolInputError for ambiguous edits", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "same\nsame\n",
+    });
+
+    await expect(
+      editFile({
+        fs: memory.fs,
+        path: "src/app.ts",
+        edits: [{ oldText: "same", newText: "changed" }],
+      }),
+    ).rejects.toThrow(ToolInputError);
+  });
+
+  it("throws ToolInputError for old text not found", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "hello world\n",
+    });
+
+    await expect(
+      editFile({
+        fs: memory.fs,
+        path: "src/app.ts",
+        edits: [{ oldText: "missing text", newText: "new" }],
+      }),
+    ).rejects.toThrow(ToolInputError);
+  });
+
+  it("throws ToolInputError for workspace path traversal", async () => {
+    const memory = createMemoryFs({});
+
+    await expect(
+      listDir({ fs: memory.fs, path: "../../../etc" }),
+    ).rejects.toThrow(ToolInputError);
+  });
+
+  it("throws ToolInputError for invalid grep regex", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "content\n",
+    });
+
+    await expect(
+      grepFiles({
+        fs: memory.fs,
+        path: "src",
+        pattern: "[invalid",
+      }),
+    ).rejects.toThrow(ToolInputError);
+  });
+
+  it("throws ToolInputError when listDir targets a file", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "content\n",
+    });
+
+    await expect(
+      listDir({ fs: memory.fs, path: "src/app.ts" }),
+    ).rejects.toThrow(ToolInputError);
   });
 });
