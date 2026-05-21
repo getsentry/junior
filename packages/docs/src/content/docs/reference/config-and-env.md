@@ -34,13 +34,14 @@ If your build command runs `junior snapshot create`:
 
 ## Sandbox credential egress
 
-If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The proxy verifies each Vercel-signed sandbox request and requires an active egress session before it injects credentials.
+If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The proxy verifies each Vercel-signed sandbox request and requires a signed requester context before it injects credentials lazily.
 
-The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request and binds them to the active VM session used in the forwarding route. No separate audience, project, or team env vars are required for the proxy.
+The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authenticate the sandbox VM; requester authorization comes from the signed forwarding-route context bound to that VM session. No separate audience, project, or team env vars are required for the proxy.
 
-| Variable          | Required    | Purpose                                                                      |
-| ----------------- | ----------- | ---------------------------------------------------------------------------- |
-| `JUNIOR_BASE_URL` | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it. |
+| Variable                       | Required    | Purpose                                                                                                                           |
+| ------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `JUNIOR_BASE_URL`              | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it.                                                      |
+| `JUNIOR_SANDBOX_EGRESS_SECRET` | No          | Secret for signed sandbox egress requester-context URLs. Falls back to `JUNIOR_INTERNAL_RESUME_SECRET` or `SLACK_SIGNING_SECRET`. |
 
 ## GitHub plugin
 

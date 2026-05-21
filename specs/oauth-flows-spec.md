@@ -202,8 +202,8 @@ Providers define OAuth through plugin manifests:
 - The runtime must not post the authorization URL into the public thread. Slack-thread acknowledgements for auth pauses must stay URL-free and only say that authorization is needed and the private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
-- Leases are requester-bound; sandbox egress leases are scoped to one command activation.
-- Target-aware providers may narrow leases to repo/project/org scope when available.
+- Leases are requester-bound; sandbox egress leases are issued lazily when forwarded provider traffic needs them and are scoped to the signed requester/sandbox context plus lease expiry.
+- Target-aware providers may narrow leases only from explicit provider/request context, not guessed command intent.
 
 ## Disconnect behavior
 

@@ -20,7 +20,9 @@ requester-bound lease and injects auth at the host boundary.
 - User-owned provider access is only activated for the author of the current message.
 - Plugin declarations determine which credentials can be injected for matching provider domains.
 - Sandbox receives placeholder env vars and proxied HTTP responses, not raw long-lived tokens.
-- Junior rejects proxied provider requests unless the sandbox command has an active requester-bound egress session and the forwarded host matches a registered provider domain.
+- Credential issuance is lazy: Junior does not mint provider tokens until sandbox traffic actually reaches a declared provider domain, avoiding wasted token work for commands that never need auth.
+- Junior does not guess intent from command text to pre-scope or pre-mint credentials; request-time provider/domain matching is the boundary.
+- Junior rejects proxied provider requests unless the sandbox has a signed requester context for that VM session and the forwarded host matches a registered provider domain.
 
 ## OAuth model
 

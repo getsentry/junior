@@ -1,15 +1,19 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { getSlackSigningSecret } from "@/chat/config";
 import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-const SANDBOX_EGRESS_SESSION_PREFIX = "sandbox-egress-session";
+export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
+
+const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
-export interface SandboxEgressSession {
+export interface SandboxEgressRequesterContext {
   requesterId: string;
+  egressId: string;
   expiresAtMs: number;
-  activationId: string;
+  contextId: string;
 }
 
 export interface SandboxEgressCredentialLease {
@@ -18,29 +22,70 @@ export interface SandboxEgressCredentialLease {
   headerTransforms: CredentialHeaderTransform[];
 }
 
-function sessionKey(egressId: string): string {
-  return `${SANDBOX_EGRESS_SESSION_PREFIX}:${egressId}`;
-}
-
 function leaseKey(
-  egressId: string,
   provider: string,
-  session: SandboxEgressSession,
+  context: SandboxEgressRequesterContext,
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${egressId}:${provider}:${session.requesterId}:${session.activationId}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${context.requesterId}:${context.egressId}:${context.contextId}`;
 }
 
-function parseSession(value: unknown): SandboxEgressSession | undefined {
+function getSandboxEgressSecret(): string {
+  const explicit = process.env.JUNIOR_SANDBOX_EGRESS_SECRET?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const sharedInternal = process.env.JUNIOR_INTERNAL_RESUME_SECRET?.trim();
+  if (sharedInternal) {
+    return sharedInternal;
+  }
+  const slackSigningSecret = getSlackSigningSecret();
+  if (slackSigningSecret) {
+    return slackSigningSecret;
+  }
+  throw new Error(
+    "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET, JUNIOR_INTERNAL_RESUME_SECRET, or SLACK_SIGNING_SECRET)",
+  );
+}
+
+function base64Url(input: string): string {
+  return Buffer.from(input, "utf8").toString("base64url");
+}
+
+function fromBase64Url(input: string): string {
+  return Buffer.from(input, "base64url").toString("utf8");
+}
+
+function signPayload(payload: string): string {
+  return createHmac("sha256", getSandboxEgressSecret())
+    .update(payload)
+    .digest("base64url");
+}
+
+function timingSafeMatch(expected: string, actual: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function parseRequesterContext(
+  value: unknown,
+): SandboxEgressRequesterContext | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
-  const record = value as Partial<SandboxEgressSession>;
+  const record = value as Partial<SandboxEgressRequesterContext>;
   if (
     typeof record.requesterId !== "string" ||
+    !record.requesterId ||
+    typeof record.egressId !== "string" ||
+    !record.egressId ||
     typeof record.expiresAtMs !== "number" ||
     !Number.isFinite(record.expiresAtMs) ||
-    typeof record.activationId !== "string" ||
-    !record.activationId
+    typeof record.contextId !== "string" ||
+    !record.contextId
   ) {
     return undefined;
   }
@@ -49,8 +94,9 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   }
   return {
     requesterId: record.requesterId,
+    egressId: record.egressId,
     expiresAtMs: record.expiresAtMs,
-    activationId: record.activationId,
+    contextId: record.contextId,
   };
 }
 
@@ -89,46 +135,56 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-/** Persist requester authorization for credential activation by one forwarded VM session. */
-export async function upsertSandboxEgressSession(input: {
-  egressId: string;
+/** Create a signed requester/sandbox context token for lazy sandbox egress auth. */
+export function createSandboxEgressRequesterToken(input: {
   requesterId: string;
+  egressId: string;
   ttlMs?: number;
-}): Promise<void> {
-  const state = getStateAdapter();
-  await state.connect();
+}): string {
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
-  const session: SandboxEgressSession = {
+  const context: SandboxEgressRequesterContext = {
     requesterId: input.requesterId,
+    egressId: input.egressId,
     expiresAtMs: now + ttlMs,
-    activationId: randomUUID(),
+    contextId: randomUUID(),
   };
-  await state.set(sessionKey(input.egressId), session, ttlMs);
+  const payload = `${SANDBOX_EGRESS_TOKEN_VERSION}.${base64Url(
+    JSON.stringify(context),
+  )}`;
+  return `${payload}.${signPayload(payload)}`;
 }
 
-/** Clear the active requester-bound authorization context for a forwarded VM session. */
-export async function clearSandboxEgressSession(
-  egressId: string,
-): Promise<void> {
-  const state = getStateAdapter();
-  await state.connect();
-  await state.delete(sessionKey(egressId));
+/** Verify a signed requester/sandbox context token from the proxy URL. */
+export function parseSandboxEgressRequesterToken(
+  token: string | undefined,
+): SandboxEgressRequesterContext | undefined {
+  if (!token) {
+    return undefined;
+  }
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts[0] !== SANDBOX_EGRESS_TOKEN_VERSION) {
+    return undefined;
+  }
+  const encodedSession = parts[1];
+  const signature = parts[2];
+  if (!encodedSession || !signature) {
+    return undefined;
+  }
+  const payload = `${parts[0]}.${encodedSession}`;
+  if (!timingSafeMatch(signPayload(payload), signature)) {
+    return undefined;
+  }
+  try {
+    return parseRequesterContext(JSON.parse(fromBase64Url(encodedSession)));
+  } catch {
+    return undefined;
+  }
 }
 
-/** Load the active egress authorization session for a forwarded VM session. */
-export async function getSandboxEgressSession(
-  egressId: string,
-): Promise<SandboxEgressSession | undefined> {
-  const state = getStateAdapter();
-  await state.connect();
-  return parseSession(await state.get(sessionKey(egressId)));
-}
-
-/** Cache a short-lived credential lease for repeated requests from one forwarded VM session. */
+/** Cache a short-lived credential lease for repeated forwarded requests for one requester/sandbox context. */
 export async function setSandboxEgressCredentialLease(
-  egressId: string,
-  session: SandboxEgressSession,
+  context: SandboxEgressRequesterContext,
   lease: SandboxEgressCredentialLease,
 ): Promise<void> {
   const leaseExpiresAtMs = Date.parse(lease.expiresAt);
@@ -137,31 +193,29 @@ export async function setSandboxEgressCredentialLease(
   }
   const ttlMs = Math.max(
     1,
-    Math.min(leaseExpiresAtMs, session.expiresAtMs) - Date.now(),
+    Math.min(leaseExpiresAtMs, context.expiresAtMs) - Date.now(),
   );
   const state = getStateAdapter();
   await state.connect();
-  await state.set(leaseKey(egressId, lease.provider, session), lease, ttlMs);
+  await state.set(leaseKey(lease.provider, context), lease, ttlMs);
 }
 
-/** Load a cached egress credential lease for a forwarded session/provider pair. */
+/** Load a cached egress credential lease for a requester/sandbox context/provider pair. */
 export async function getSandboxEgressCredentialLease(
-  egressId: string,
   provider: string,
-  session: SandboxEgressSession,
+  context: SandboxEgressRequesterContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(egressId, provider, session)));
+  return parseLease(await state.get(leaseKey(provider, context)));
 }
 
 /** Clear a cached egress credential lease after the provider rejects its headers. */
 export async function clearSandboxEgressCredentialLease(
-  egressId: string,
   provider: string,
-  session: SandboxEgressSession,
+  context: SandboxEgressRequesterContext,
 ): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(egressId, provider, session));
+  await state.delete(leaseKey(provider, context));
 }

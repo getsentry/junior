@@ -88,7 +88,10 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
-import { getSandboxEgressSession } from "@/chat/sandbox/egress-session";
+import {
+  parseSandboxEgressRequesterToken,
+  SANDBOX_EGRESS_PROXY_PATH,
+} from "@/chat/sandbox/egress-session";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createBashTool } from "bash-tool";
@@ -149,6 +152,26 @@ function makeSandbox(
     snapshot: vi.fn(async () => ({ snapshotId: "snap_test" })),
     update: vi.fn(async () => {}),
   };
+}
+
+function sentryForwardURLFromPolicy(policy: unknown): string | undefined {
+  const allow = (
+    policy as { allow?: Record<string, Array<{ forwardURL?: string }>> }
+  ).allow;
+  return allow?.["sentry.io"]?.[0]?.forwardURL;
+}
+
+function requesterTokenFromForwardURL(
+  forwardURL: string | undefined,
+): string | undefined {
+  if (!forwardURL) {
+    return undefined;
+  }
+  const pathname = new URL(forwardURL).pathname;
+  const prefix = `${SANDBOX_EGRESS_PROXY_PATH}/`;
+  return pathname.startsWith(prefix)
+    ? pathname.slice(prefix.length)
+    : undefined;
 }
 
 function createApiError(
@@ -232,11 +255,13 @@ describe("createSandboxExecutor", () => {
     delete process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env.JUNIOR_SANDBOX_EGRESS_SECRET = "test-egress-secret";
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_BASE_URL;
+    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -622,51 +647,19 @@ describe("createSandboxExecutor", () => {
     );
   });
 
-  it("runs sandbox command hooks around each bash command", async () => {
-    const sandbox = makeSandbox("sbx_command_hooks");
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-    const beforeCommand = vi.fn();
-    const afterCommand = vi.fn();
-
-    const manager = createSandboxSessionManager({
-      sandboxId: "sbx_command_hooks",
-      beforeCommand,
-      afterCommand,
-    });
-    const bash = (await manager.ensureToolExecutors()).bash;
-
-    sandbox.currentSession.mockReturnValue({
-      sessionId: "sbx_command_hooks_resumed_session",
-    });
-    await bash({ command: "echo ok" });
-
-    expect(beforeCommand).toHaveBeenCalledWith(
-      "sbx_command_hooks_resumed_session",
-    );
-    expect(afterCommand).toHaveBeenCalledWith(
-      "sbx_command_hooks_resumed_session",
-    );
-    expect(beforeCommand.mock.invocationCallOrder[0]).toBeLessThan(
-      sandbox.runCommand.mock.invocationCallOrder[0] as number,
-    );
-    expect(afterCommand.mock.invocationCallOrder[0]).toBeGreaterThan(
-      sandbox.runCommand.mock.invocationCallOrder[0] as number,
-    );
-  });
-
-  it("authorizes credential egress only while running bash commands", async () => {
+  it("configures lazy requester auth for sandbox egress", async () => {
     const sandbox = makeSandbox("sbx_authorize_credentials");
     sandbox.runCommand.mockImplementationOnce(async () => {
-      await expect(
-        getSandboxEgressSession("sbx_authorize_credentials_session"),
-      ).resolves.toMatchObject({
+      const activePolicy = sandbox.update.mock.calls.at(-1)?.[0].networkPolicy;
+      const activeRequesterToken = requesterTokenFromForwardURL(
+        sentryForwardURLFromPolicy(activePolicy),
+      );
+
+      expect(
+        parseSandboxEgressRequesterToken(activeRequesterToken),
+      ).toMatchObject({
         requesterId: "U123",
+        egressId: "sbx_authorize_credentials_session",
       });
       return {
         exitCode: 0,
@@ -698,26 +691,18 @@ describe("createSandboxExecutor", () => {
     });
 
     expect(sandbox.update).toHaveBeenCalledTimes(1);
-    expect(sandbox.update).toHaveBeenCalledWith({
-      networkPolicy: {
-        allow: {
-          "*": [],
-          "sentry.io": [
-            {
-              forwardURL: "https://junior.example.com/",
-            },
-          ],
-        },
-      },
-    });
+    expect(
+      requesterTokenFromForwardURL(
+        sentryForwardURLFromPolicy(
+          sandbox.update.mock.calls[0]?.[0].networkPolicy,
+        ),
+      ),
+    ).toBeTruthy();
     const invocation = sandbox.runCommand.mock.calls[0]?.[0];
     expect(invocation.args?.[1]).toContain(
       "export SENTRY_AUTH_TOKEN='host_managed_credential'",
     );
     expect(invocation.args?.[1]).toContain("sentry-cli issues list");
-    await expect(
-      getSandboxEgressSession("sbx_authorize_credentials_session"),
-    ).resolves.toBeUndefined();
   });
 
   it("makes registered provider credentials available to sandbox commands", async () => {
@@ -746,87 +731,18 @@ describe("createSandboxExecutor", () => {
     });
 
     expect(sandbox.update).toHaveBeenCalledTimes(1);
-    expect(sandbox.update).toHaveBeenCalledWith({
-      networkPolicy: {
-        allow: {
-          "*": [],
-          "sentry.io": [
-            {
-              forwardURL: "https://junior.example.com/",
-            },
-          ],
-        },
-      },
-    });
+    expect(
+      requesterTokenFromForwardURL(
+        sentryForwardURLFromPolicy(
+          sandbox.update.mock.calls[0]?.[0].networkPolicy,
+        ),
+      ),
+    ).toBeTruthy();
     const invocation = sandbox.runCommand.mock.calls[0]?.[0];
     expect(invocation.args?.[1]).toContain(
       "export SENTRY_AUTH_TOKEN='host_managed_credential'",
     );
     expect(invocation.args?.[1]).toContain("echo local-only");
-  });
-
-  it("clears sandbox command hooks when command env resolution fails", async () => {
-    const sandbox = makeSandbox("sbx_command_env_failure");
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-    const afterCommand = vi.fn();
-
-    const manager = createSandboxSessionManager({
-      sandboxId: "sbx_command_env_failure",
-      beforeCommand: vi.fn(),
-      afterCommand,
-      commandEnv: vi.fn(async () => {
-        throw new Error("env failed");
-      }),
-    });
-    const bash = (await manager.ensureToolExecutors()).bash;
-
-    await expect(bash({ command: "echo ok" })).rejects.toThrow("env failed");
-
-    expect(afterCommand).toHaveBeenCalledWith(
-      "sbx_command_env_failure_session",
-    );
-    expect(sandbox.runCommand).not.toHaveBeenCalled();
-  });
-
-  it("does not mask command timeout results when command cleanup fails", async () => {
-    const sandbox = makeSandbox("sbx_timeout_cleanup_failure");
-    sandbox.runCommand.mockImplementation(
-      async (input: { signal?: AbortSignal }) =>
-        await new Promise((_resolve, reject) => {
-          input.signal?.addEventListener("abort", () => {
-            reject(new Error("aborted"));
-          });
-        }),
-    );
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-
-    const manager = createSandboxSessionManager({
-      sandboxId: "sbx_timeout_cleanup_failure",
-      afterCommand: vi.fn(async () => {
-        throw new Error("cleanup failed");
-      }),
-    });
-    const bash = (await manager.ensureToolExecutors()).bash;
-
-    await expect(
-      bash({ command: "sleep 10", timeoutMs: 1 }),
-    ).resolves.toMatchObject({
-      exitCode: 124,
-      timedOut: true,
-      stderr: "Command timed out after 1ms",
-    });
   });
 
   it("returns a failed bash result when the command stream ends without a status", async () => {

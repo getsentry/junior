@@ -1,5 +1,6 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
@@ -40,18 +41,23 @@ export function resolveSandboxEgressProviderForHost(
   )?.provider;
 }
 
-function sandboxProxyUrl(): string {
+function sandboxProxyUrl(requesterToken?: string): string {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
     );
   }
-  return new URL("/", baseUrl).toString();
+  const path = requesterToken
+    ? `${SANDBOX_EGRESS_PROXY_PATH}/${requesterToken}`
+    : SANDBOX_EGRESS_PROXY_PATH;
+  return new URL(path, baseUrl).toString();
 }
 
 /** Build the policy that forwards provider requests back to Junior for credentials. */
-export function buildSandboxEgressNetworkPolicy(): NetworkPolicy {
+export function buildSandboxEgressNetworkPolicy(input?: {
+  requesterToken?: string;
+}): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
   };
@@ -60,7 +66,7 @@ export function buildSandboxEgressNetworkPolicy(): NetworkPolicy {
     return { allow };
   }
 
-  const forwardURL = sandboxProxyUrl();
+  const forwardURL = sandboxProxyUrl(input?.requesterToken);
   for (const entry of entries) {
     for (const domain of entry.domains) {
       allow[domain] = [{ forwardURL }];

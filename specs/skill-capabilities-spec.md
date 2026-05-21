@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-05-13
+- Last Edited: 2026-05-21
 
 ## Changelog
 
@@ -15,6 +15,7 @@
 - 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
 - 2026-05-12: Added Vercel Sandbox egress proxy activation for request-time credential issuance.
 - 2026-05-13: Removed the old per-turn credential runtime in favor of egress proxy-only credential activation.
+- 2026-05-21: Clarified lazy sandbox egress auth: signed requester/sandbox context in the forwarding URL, request-time provider resolution, and no intent guessing.
 
 ## Status
 
@@ -36,7 +37,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 2. Skills do not declare capabilities or config keys.
 3. Registered providers are always available to sandbox commands.
 4. The agent runs the real provider command.
-5. The runtime resolves the provider from the outgoing request host, issues a command-scoped provider lease, and injects credentials for that request only.
+5. The runtime resolves the provider from the outgoing request host, lazily issues a requester-bound provider lease, and injects credentials for that forwarded request.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
 7. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 
@@ -78,7 +79,7 @@ Rules:
 - Resolve provider from the Vercel Sandbox forwarded host for proxied sandbox egress.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
-- Keep any host-side egress lease cache bounded by the sandbox egress session expiry and lease expiry.
+- Keep any host-side egress lease cache bounded by the signed requester/sandbox context expiry and lease expiry.
 
 ### Injection behavior
 
@@ -87,16 +88,19 @@ Rules:
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
 - Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or explicit public host env bindings, but never real secrets.
 - Do not inject long-lived secrets into sandbox files.
+- Credential issuance is intentionally lazy to avoid wasted token minting and provider compute for commands that never touch authenticated domains.
+- Do not infer provider intent from bash commands, skill prose, or planned work to pre-scope tokens. Fine-grained token scopes are desirable, but guessing intent is not a safe authorization boundary; provider/domain matching at request time is the contract.
 
 ### Sandbox egress proxy
 
 - New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress handler.
-- The internal egress handler must verify the Vercel Sandbox OIDC token before proxying.
+- The runtime configures the forwarding URL with a signed requester context bound to the sandbox VM session so the proxy can mint per-user OAuth leases lazily without a state-store lookup.
+- The internal egress handler must verify the Vercel Sandbox OIDC token and signed requester/sandbox context before proxying.
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
 - The egress route must reject forwarded hosts that do not match a registered provider domain.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
-- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, command-scoped requester session state, and provider-domain ownership have been verified.
+- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester context, and provider-domain ownership have been verified.
 
 ### Runtime setup boundary
 

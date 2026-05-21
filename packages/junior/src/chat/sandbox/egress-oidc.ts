@@ -90,7 +90,7 @@ export async function verifyVercelSandboxOidcToken(
     issuer: unverified.iss,
   });
   // The Sandbox proxy token is request identity. Do not compare its audience,
-  // team, or project claims with deployment OIDC; the egress session decides
-  // whether this VM session may activate requester-bound credentials.
+  // team, or project claims with deployment OIDC; the signed requester
+  // context decides which requester credentials may be issued lazily.
   return verified.payload;
 }

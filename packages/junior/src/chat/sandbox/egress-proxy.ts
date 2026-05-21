@@ -9,10 +9,11 @@ import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
   clearSandboxEgressCredentialLease,
   getSandboxEgressCredentialLease,
-  getSandboxEgressSession,
+  parseSandboxEgressRequesterToken,
+  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialLease,
-  type SandboxEgressSession,
+  type SandboxEgressRequesterContext,
 } from "@/chat/sandbox/egress-session";
 import type { JWTPayload } from "jose";
 
@@ -88,13 +89,37 @@ function egressAttributes(input: {
   };
 }
 
+function requesterTokenFromRequest(request: Request): string | undefined {
+  const pathname = new URL(request.url).pathname;
+  const prefix = `${SANDBOX_EGRESS_PROXY_PATH}/`;
+  if (!pathname.startsWith(prefix)) {
+    return undefined;
+  }
+  const token = pathname.slice(prefix.length).split("/")[0];
+  if (!token) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(token);
+  } catch {
+    return undefined;
+  }
+}
+
+function redactedProxyPath(pathname: string): string {
+  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
+    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
+  }
+  return pathname;
+}
+
 function routingAttributes(
   request: Request,
   upstreamUrl?: URL,
 ): Record<string, unknown> {
   const proxyUrl = new URL(request.url);
   const attributes: Record<string, unknown> = {
-    "app.sandbox.egress.proxy_path": proxyUrl.pathname,
+    "app.sandbox.egress.proxy_path": redactedProxyPath(proxyUrl.pathname),
   };
   if (upstreamUrl) {
     attributes["app.sandbox.egress.upstream_path"] = upstreamUrl.pathname;
@@ -167,28 +192,48 @@ function sandboxIdFromPayload(payload: JWTPayload): string | undefined {
     : undefined;
 }
 
+function normalizedForwardedPath(path: string): UpstreamPathResult {
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("#") ||
+    /[\r\n]/.test(path)
+  ) {
+    return { ok: false, error: "Invalid forwarded path" };
+  }
+  try {
+    const url = new URL(path, "https://sandbox-forwarded.local");
+    return { ok: true, path: `${url.pathname}${url.search}` };
+  } catch {
+    return { ok: false, error: "Invalid forwarded path" };
+  }
+}
+
+function upstreamPathFromProxyUrl(url: URL): string | undefined {
+  const prefix = `${SANDBOX_EGRESS_PROXY_PATH}/`;
+  if (!url.pathname.startsWith(prefix)) {
+    return undefined;
+  }
+  const remainder = url.pathname.slice(prefix.length);
+  const upstreamPathStart = remainder.indexOf("/");
+  if (upstreamPathStart === -1) {
+    return undefined;
+  }
+  return `${remainder.slice(upstreamPathStart)}${url.search}`;
+}
+
 function upstreamPath(request: Request): UpstreamPathResult {
   const forwardedPath = request.headers.get(FORWARDED_PATH_HEADER);
   if (forwardedPath?.trim()) {
     // Vercel may normalize request.url; this header carries the original target.
-    const path = forwardedPath.trim();
-    if (
-      !path.startsWith("/") ||
-      path.startsWith("//") ||
-      path.includes("#") ||
-      /[\r\n]/.test(path)
-    ) {
-      return { ok: false, error: "Invalid forwarded path" };
-    }
-    try {
-      const url = new URL(path, "https://sandbox-forwarded.local");
-      return { ok: true, path: `${url.pathname}${url.search}` };
-    } catch {
-      return { ok: false, error: "Invalid forwarded path" };
-    }
+    return normalizedForwardedPath(forwardedPath.trim());
   }
 
   const url = new URL(request.url);
+  const proxyPath = upstreamPathFromProxyUrl(url);
+  if (proxyPath) {
+    return normalizedForwardedPath(proxyPath);
+  }
   return { ok: true, path: `${url.pathname}${url.search}` };
 }
 
@@ -284,22 +329,17 @@ function responseHeaders(upstream: Response): Headers {
 }
 
 async function credentialLease(
-  egressId: string,
   provider: string,
-  session: SandboxEgressSession,
+  context: SandboxEgressRequesterContext,
 ): Promise<SandboxEgressCredentialLease> {
-  const cached = await getSandboxEgressCredentialLease(
-    egressId,
-    provider,
-    session,
-  );
+  const cached = await getSandboxEgressCredentialLease(provider, context);
   if (cached) {
     return cached;
   }
 
   const lease = await issueProviderCredentialLease({
     provider,
-    requesterId: session.requesterId,
+    requesterId: context.requesterId,
     reason: `sandbox-egress:${provider}`,
   });
   const headerTransforms = lease.headerTransforms ?? [];
@@ -314,7 +354,7 @@ async function credentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  await setSandboxEgressCredentialLease(egressId, session, cachedLease);
+  await setSandboxEgressCredentialLease(context, cachedLease);
   return cachedLease;
 }
 
@@ -336,7 +376,7 @@ export function isSandboxEgressForwardedRequest(request: Request): boolean {
   );
 }
 
-/** Proxy one Vercel Sandbox firewall egress request through Junior credential activation. */
+/** Proxy one Vercel Sandbox firewall egress request through lazy credential injection. */
 export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},
@@ -371,7 +411,7 @@ export async function proxySandboxEgressRequest(
       {},
       {
         "http.request.method": request.method,
-        "url.path": new URL(request.url).pathname,
+        "url.path": redactedProxyPath(new URL(request.url).pathname),
       },
       "Sandbox egress OIDC payload did not include a VM session id",
     );
@@ -390,7 +430,7 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           method: request.method,
-          path: new URL(request.url).pathname,
+          path: redactedProxyPath(new URL(request.url).pathname),
           status: 400,
         }),
         ...routingAttributes(request),
@@ -421,12 +461,15 @@ export async function proxySandboxEgressRequest(
     return jsonError("No provider owns forwarded host", 403);
   }
 
-  // Vercel OIDC authenticates the forwarded VM session; Junior's egress
-  // session authorizes credential activation for the current requester.
-  const session = await getSandboxEgressSession(activeEgressId);
-  if (!session) {
+  // Vercel OIDC authenticates the forwarded VM session; Junior's signed
+  // requester context identifies which user-backed credentials to issue lazily
+  // for that session.
+  const requesterContext = parseSandboxEgressRequesterToken(
+    requesterTokenFromRequest(request),
+  );
+  if (!requesterContext || requesterContext.egressId !== activeEgressId) {
     logWarn(
-      "sandbox_egress_session_unauthorized",
+      "sandbox_egress_requester_context_unauthorized",
       {},
       {
         ...egressAttributes({
@@ -439,14 +482,14 @@ export async function proxySandboxEgressRequest(
         }),
         ...routingAttributes(request, upstreamUrl),
       },
-      "Sandbox egress VM session is not authorized for requester credentials",
+      "Sandbox egress request did not include a valid requester context for the VM session",
     );
-    return jsonError("Sandbox egress session is not authorized", 403);
+    return jsonError("Sandbox egress requester context is not authorized", 403);
   }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(activeEgressId, provider, session);
+    lease = await credentialLease(provider, requesterContext);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       logWarn(
@@ -551,7 +594,7 @@ export async function proxySandboxEgressRequest(
       },
       "Sandbox egress upstream auth rejected",
     );
-    await clearSandboxEgressCredentialLease(activeEgressId, provider, session);
+    await clearSandboxEgressCredentialLease(provider, requesterContext);
   }
 
   return new Response(upstream.body, {

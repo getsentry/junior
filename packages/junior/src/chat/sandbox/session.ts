@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import {
-  logWarn,
-  setSpanAttributes,
-  withSpan,
-  type LogContext,
-} from "@/chat/logging";
+import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
@@ -165,8 +160,6 @@ export function createSandboxSessionManager(options?: {
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
-  beforeCommand?: (egressId: string) => void | Promise<void>;
-  afterCommand?: (egressId: string) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -631,7 +624,6 @@ export function createSandboxSessionManager(options?: {
   const buildToolExecutors = async (
     sandboxInstance: SandboxInstance,
   ): Promise<SandboxToolExecutors> => {
-    const activeSandboxId = sandboxInstance.sandboxId;
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
       "sandbox.tool.init",
@@ -654,38 +646,9 @@ export function createSandboxSessionManager(options?: {
 
     return {
       bash: async (input) => {
-        const commandEgressId = sandboxInstance.sandboxEgressId;
         let timedOut = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let commandFinished = false;
-        const finishCommand = async (): Promise<void> => {
-          if (commandFinished) {
-            return;
-          }
-          commandFinished = true;
-          await options?.afterCommand?.(commandEgressId);
-          await refreshNetworkPolicy(sandboxInstance);
-        };
-        const finishCommandBestEffort = async (): Promise<void> => {
-          try {
-            await finishCommand();
-          } catch (error) {
-            logWarn(
-              "sandbox_command_cleanup_failed",
-              traceContext,
-              {
-                "app.sandbox.id": activeSandboxId,
-                "error.type":
-                  error instanceof Error
-                    ? error.name
-                    : "sandbox_command_cleanup_error",
-              },
-              "Sandbox command cleanup failed",
-            );
-          }
-        };
         try {
-          await options?.beforeCommand?.(commandEgressId);
           await refreshNetworkPolicy(sandboxInstance);
           const sandboxCommandEnv = await resolveCommandEnv();
           const script = buildNonInteractiveShellScript(input.command, {
@@ -712,7 +675,6 @@ export function createSandboxSessionManager(options?: {
             cwd: SANDBOX_WORKSPACE_ROOT,
             ...(controller ? { signal: controller.signal } : {}),
           });
-          await finishCommandBestEffort();
           return await readCommandOutput(commandResult);
         } catch (error) {
           if (timedOut) {
@@ -733,7 +695,6 @@ export function createSandboxSessionManager(options?: {
           if (timeoutId) {
             clearTimeout(timeoutId);
           }
-          await finishCommandBestEffort();
         }
       },
       readFile: async (input) =>

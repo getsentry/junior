@@ -10,10 +10,7 @@ import {
   buildSandboxEgressNetworkPolicy,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import {
-  clearSandboxEgressSession,
-  upsertSandboxEgressSession,
-} from "@/chat/sandbox/egress-session";
+import { createSandboxEgressRequesterToken } from "@/chat/sandbox/egress-session";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
@@ -120,20 +117,34 @@ export function createSandboxExecutor(options?: {
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
   const credentialEgress = options?.credentialEgress;
-  const authorizeSandboxEgressForCommand = credentialEgress
-    ? async (egressId: string): Promise<void> => {
-        await upsertSandboxEgressSession({
-          egressId,
-          requesterId: credentialEgress.requesterId,
-          ttlMs: options?.timeoutMs,
-        });
-      }
-    : undefined;
-  const clearSandboxEgressForCommand = credentialEgress
-    ? async (egressId: string): Promise<void> => {
-        await clearSandboxEgressSession(egressId);
-      }
-    : undefined;
+  const sandboxEgressTokenTtlMs = Math.max(
+    1,
+    options?.timeoutMs ?? 1000 * 60 * 30,
+  );
+  const sandboxEgressRequesterTokens = new Map<
+    string,
+    { expiresAtMs: number; token: string }
+  >();
+  const sandboxEgressRequesterTokenFor = (egressId: string): string => {
+    const cached = sandboxEgressRequesterTokens.get(egressId);
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.token;
+    }
+    if (!credentialEgress) {
+      throw new Error("Sandbox credential egress is not configured");
+    }
+    const now = Date.now();
+    const token = createSandboxEgressRequesterToken({
+      requesterId: credentialEgress.requesterId,
+      egressId,
+      ttlMs: sandboxEgressTokenTtlMs,
+    });
+    sandboxEgressRequesterTokens.set(egressId, {
+      expiresAtMs: now + sandboxEgressTokenTtlMs,
+      token,
+    });
+    return token;
+  };
   const sessionManager = createSandboxSessionManager({
     sandboxId: options?.sandboxId,
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
@@ -143,10 +154,11 @@ export function createSandboxExecutor(options?: {
       ? async () => await resolveSandboxCommandEnvironment()
       : undefined,
     createNetworkPolicy: credentialEgress
-      ? buildSandboxEgressNetworkPolicy
+      ? (egressId) =>
+          buildSandboxEgressNetworkPolicy({
+            requesterToken: sandboxEgressRequesterTokenFor(egressId),
+          })
       : undefined,
-    beforeCommand: authorizeSandboxEgressForCommand,
-    afterCommand: clearSandboxEgressForCommand,
     onSandboxAcquired: async (sandbox) => {
       await options?.onSandboxAcquired?.(sandbox);
     },
