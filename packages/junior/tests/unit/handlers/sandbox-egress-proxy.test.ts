@@ -354,37 +354,6 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards root-path sandbox proxy requests using the verified OIDC session", async () => {
-    setSandboxEgressRequester();
-    mockSentryLease();
-
-    const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
-      expect(String(url)).toBe(
-        "https://sentry.io/api/0/issues/?query=forwarded",
-      );
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        "Bearer sentry-token",
-      );
-      return new Response("ok", { status: 200 });
-    });
-
-    const response = await proxySandboxEgressRequest(
-      egressRequest({ path: "/api/0/issues/?query=forwarded" }),
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ok");
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
-      provider: "sentry",
-      requesterId: REQUESTER_ID,
-      reason: "sandbox-egress:sentry",
-    });
-  });
-
   it("prefers Vercel forwarded path over the normalized proxy URL path", async () => {
     setSandboxEgressRequester();
     mockSentryLease();

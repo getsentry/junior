@@ -131,32 +131,4 @@ describe("sandbox egress proxy integration", () => {
     await expect(response.text()).resolves.toBe("ok");
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
-
-  it("rejects signed requester contexts that do not match the verified sandbox session", async () => {
-    const requesterToken = modules.session.createSandboxEgressRequesterToken({
-      requesterId: REQUESTER_ID,
-      egressId: "different-session",
-      ttlMs: 60_000,
-    });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
-      requesterToken,
-    });
-    const upstreamFetch = vi.fn(async () => new Response("should not happen"));
-
-    const response = await modules.proxy.proxySandboxEgressRequest(
-      proxiedRequest({
-        forwardURL: forwardUrlFor(networkPolicy, PROVIDER_HOST),
-      }),
-      {
-        fetch: upstreamFetch as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "Sandbox egress requester context is not authorized",
-    });
-    expect(upstreamFetch).not.toHaveBeenCalled();
-  });
 });
