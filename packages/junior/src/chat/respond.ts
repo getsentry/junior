@@ -86,6 +86,7 @@ import {
   loadTurnCheckpoint,
   persistCompletedCheckpoint,
   persistAuthPauseCheckpoint,
+  persistRunningCheckpoint,
   persistTimeoutCheckpoint,
 } from "@/chat/services/turn-checkpoint";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
@@ -927,8 +928,38 @@ export async function generateAssistantReply(
     });
     let hasEmittedText = false;
     let needsSeparator = false;
+    const persistSafeBoundary = async (
+      messages: PiMessage[],
+    ): Promise<void> => {
+      if (
+        !checkpointState.canUseTurnSession ||
+        !sessionConversationId ||
+        !sessionId
+      ) {
+        return;
+      }
+
+      await persistRunningCheckpoint({
+        conversationId: sessionConversationId,
+        sessionId,
+        sliceId: currentSliceId,
+        messages,
+        loadedSkillNames: loadedSkillNamesForResume,
+        logContext: {
+          threadId: context.correlation?.threadId,
+          requesterId: context.correlation?.requesterId,
+          channelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId,
+        },
+      });
+    };
 
     const unsubscribe = agent.subscribe((event) => {
+      if (event.type === "turn_end" && event.toolResults.length > 0) {
+        return persistSafeBoundary([...agent!.state.messages]);
+      }
       if (event.type === "message_start") {
         Promise.resolve(context.onAssistantMessageStart?.()).catch((error) => {
           logWarn(
@@ -987,13 +1018,20 @@ export async function generateAssistantReply(
         spanContext,
         async () => {
           let promptResult: unknown;
+          const freshPromptMessage: PiMessage = {
+            role: "user",
+            content: promptContentParts,
+            timestamp: Date.now(),
+          } as PiMessage;
+          if (!resumedFromCheckpoint) {
+            await persistSafeBoundary([
+              ...agent.state.messages,
+              freshPromptMessage,
+            ]);
+          }
           const promptPromise = resumedFromCheckpoint
             ? agent.continue()
-            : agent.prompt({
-                role: "user",
-                content: promptContentParts,
-                timestamp: Date.now(),
-              });
+            : agent.prompt(freshPromptMessage);
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           const timeoutPromise = new Promise<never>((_, reject) => {

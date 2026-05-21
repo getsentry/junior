@@ -19,6 +19,13 @@ export interface AgentTurnUsage {
   totalTokens?: number;
 }
 
+const COMPONENT_USAGE_FIELDS = [
+  "inputTokens",
+  "outputTokens",
+  "cachedInputTokens",
+  "cacheCreationTokens",
+] as const satisfies ReadonlyArray<keyof AgentTurnUsage>;
+
 /** Return whether any token counter is present on a usage record. */
 export function hasAgentTurnUsage(
   usage: AgentTurnUsage | undefined,
@@ -31,18 +38,54 @@ export function hasAgentTurnUsage(
   );
 }
 
-/** Sum token counters across turn slices while preserving absent fields. */
+function getFiniteCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : undefined;
+}
+
+function getComponentTotal(usage: AgentTurnUsage): number | undefined {
+  let total: number | undefined;
+  for (const field of COMPONENT_USAGE_FIELDS) {
+    const value = getFiniteCount(usage[field]);
+    if (value === undefined) continue;
+    total = (total ?? 0) + value;
+  }
+  return total;
+}
+
+/** Aggregate token usage across slices without double-counting provider totals. */
 export function addAgentTurnUsage(
   ...usages: Array<AgentTurnUsage | undefined>
 ): AgentTurnUsage | undefined {
-  const total: AgentTurnUsage = {};
+  const components: AgentTurnUsage = {};
+  let componentTotal: number | undefined;
+  let totalOnlyTokens: number | undefined;
+
   for (const usage of usages) {
     if (!usage) continue;
-    for (const field of Object.keys(usage) as (keyof AgentTurnUsage)[]) {
-      const value = usage[field];
-      if (typeof value !== "number" || !Number.isFinite(value)) continue;
-      total[field] = (total[field] ?? 0) + value;
+    const usageComponentTotal = getComponentTotal(usage);
+    if (usageComponentTotal !== undefined) {
+      componentTotal = (componentTotal ?? 0) + usageComponentTotal;
+      for (const field of COMPONENT_USAGE_FIELDS) {
+        const value = getFiniteCount(usage[field]);
+        if (value === undefined) continue;
+        components[field] = (components[field] ?? 0) + value;
+      }
+      continue;
+    }
+
+    const totalTokens = getFiniteCount(usage.totalTokens);
+    if (totalTokens !== undefined) {
+      totalOnlyTokens = (totalOnlyTokens ?? 0) + totalTokens;
     }
   }
-  return hasAgentTurnUsage(total) ? total : undefined;
+
+  if (totalOnlyTokens !== undefined) {
+    return {
+      totalTokens: totalOnlyTokens + (componentTotal ?? 0),
+    };
+  }
+
+  return hasAgentTurnUsage(components) ? components : undefined;
 }

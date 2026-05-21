@@ -228,6 +228,8 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
+    delete process.env.JUNIOR_EVAL_ENABLE_FAULTS;
+    delete process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   });
@@ -825,6 +827,87 @@ describe("createSandboxExecutor", () => {
       timedOut: true,
       stderr: "Command timed out after 1ms",
     });
+  });
+
+  it("returns a failed bash result when the command stream ends without a status", async () => {
+    const streamError = Object.assign(
+      new Error("Stream ended before command finished"),
+      { name: "StreamError" },
+    );
+    const sandbox = makeSandbox("sbx_stream_interrupted");
+    sandbox.runCommand.mockRejectedValueOnce(streamError);
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_stream_interrupted",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "pnpm test",
+      },
+    });
+
+    expect(response.result).toMatchObject({
+      ok: false,
+      exit_code: 125,
+      stderr:
+        "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
+    });
+  });
+
+  it("supports eval-only bash stream interruption fault injection", async () => {
+    process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
+    process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = "1";
+    const sandbox = makeSandbox("sbx_fault_injection");
+    sandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: async () => "ok\n",
+      stderr: async () => "",
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_fault_injection",
+    });
+    executor.configureSkills([]);
+
+    const interrupted = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    const recovered = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(interrupted.result).toMatchObject({
+      ok: false,
+      exit_code: 125,
+    });
+    expect(recovered.result).toMatchObject({
+      ok: true,
+      stdout: "ok\n",
+    });
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
   });
 
   it("routes matching bash commands through custom command handler", async () => {

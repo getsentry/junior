@@ -148,4 +148,136 @@ describe("persistAuthPauseCheckpoint", () => {
       },
     });
   });
+
+  it("stores running checkpoints only at continuable message boundaries", async () => {
+    const { persistRunningCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+    const { getAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+    const userBoundary: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "help me" }],
+        timestamp: 1,
+      },
+    ];
+    const unsafeAssistantBoundary: PiMessage[] = [
+      ...userBoundary,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "working" }],
+        timestamp: 2,
+      } as PiMessage,
+    ];
+    const toolResultBoundary: PiMessage[] = [
+      ...unsafeAssistantBoundary,
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "bash",
+        content: [{ type: "text", text: "ok" }],
+        timestamp: 3,
+      } as PiMessage,
+    ];
+
+    await persistRunningCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      messages: userBoundary,
+      loadedSkillNames: [],
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    await persistRunningCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      messages: unsafeAssistantBoundary,
+      loadedSkillNames: [],
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    let checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-1",
+      "turn-1",
+    );
+    expect(checkpoint).toMatchObject({
+      state: "running",
+      piMessages: userBoundary,
+    });
+
+    await persistRunningCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      messages: toolResultBoundary,
+      loadedSkillNames: ["demo-skill"],
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-1",
+      "turn-1",
+    );
+    expect(checkpoint).toMatchObject({
+      state: "running",
+      loadedSkillNames: ["demo-skill"],
+      piMessages: toolResultBoundary,
+    });
+  });
+
+  it("promotes the latest running checkpoint when timeout capture has no messages", async () => {
+    const { persistTimeoutCheckpoint, persistRunningCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+    const { getAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+    const messages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "help me" }],
+        timestamp: 1,
+      },
+    ];
+
+    await persistRunningCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      messages,
+      loadedSkillNames: ["demo-skill"],
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    await persistTimeoutCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      currentSliceId: 1,
+      messages: [],
+      loadedSkillNames: ["demo-skill"],
+      errorMessage: "provider stream interrupted",
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-1",
+      "turn-1",
+    );
+    expect(checkpoint).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      sliceId: 2,
+      piMessages: messages,
+    });
+  });
 });

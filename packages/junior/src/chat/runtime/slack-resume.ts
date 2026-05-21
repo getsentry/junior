@@ -15,21 +15,18 @@ import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
-import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
 } from "@/chat/slack/assistant-thread/status";
-import {
-  buildSlackReplyBlocks,
-  buildSlackReplyFooter,
-} from "@/chat/slack/footer";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
+import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation-notice";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { addAgentTurnUsage } from "@/chat/usage";
@@ -177,18 +174,15 @@ async function postTurnContinuationNoticeBestEffort(args: {
   lockKey: string;
   resumeArgs: ResumeSlackTurnArgs;
 }): Promise<void> {
-  const text = buildTurnContinuationResponse();
-  const footer = buildSlackReplyFooter({
+  const notice = buildSlackTurnContinuationNotice({
     conversationId:
       args.resumeArgs.replyContext?.correlation?.conversationId ?? args.lockKey,
   });
-  const blocks = buildSlackReplyBlocks(text, footer);
   try {
     await postSlackApiMessage({
       channelId: args.resumeArgs.channelId,
       threadTs: args.resumeArgs.threadTs,
-      text,
-      ...(blocks ? { blocks } : {}),
+      ...notice,
     });
   } catch (error) {
     logException(

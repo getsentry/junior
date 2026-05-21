@@ -264,6 +264,8 @@ async function resumeCheckpointedOAuthTurn(
         fullName: userMessage.author.fullName,
       },
       correlation: {
+        conversationId: stored.resumeConversationId,
+        turnId: resolvedSessionId,
         channelId: stored.channelId,
         threadTs: stored.threadTs,
         requesterId: userMessage.author.userId,

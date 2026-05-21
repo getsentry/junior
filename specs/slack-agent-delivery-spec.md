@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-19
+- Last Edited: 2026-05-20
 
 ## Changelog
 
@@ -25,6 +25,7 @@
 - 2026-05-16: Added automatic processing reactions for Slack messages Junior is handling or evaluating for handling.
 - 2026-05-19: Restored the visible URL-free auth-pause thread acknowledgement and required processing reaction restoration during auth resumes.
 - 2026-05-19: Deferred subscribed-thread processing reactions until after routing approves a reply.
+- 2026-05-20: Allowed timeout continuation acknowledgements to include correlation-only footer metadata for traceability.
 
 ## Status
 
@@ -173,7 +174,7 @@ Current rules:
 4. If explicit user intent requested an in-channel post and that post already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan.
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
-7. When Junior adds reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
+7. When Junior adds finalized reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
 8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, selected thinking level, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
 9. Footer metadata is not an assistant-status surface and must not be used to convey in-flight progress.
 
@@ -244,6 +245,7 @@ Current rules:
 9. When a turn checkpoint is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.
 10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Checkpoint rescheduling mechanics belong to `./agent-session-resumability-spec.md`.
 11. Turn-continuation acknowledgements are not final assistant replies. They do not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
+12. Turn-continuation acknowledgements may include a correlation-only footer with the conversation ID or trace link so operators can connect the durable notice to diagnostics. They must not include final-turn duration, token usage, or thinking-level metadata because those belong to the finalized reply.
 
 ### 12. Testing Contract
 

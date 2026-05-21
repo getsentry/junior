@@ -130,6 +130,9 @@ export interface EvalOverrides {
   auto_complete_oauth?: string[];
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
+  faults?: {
+    sandbox_bash_stream_interrupts?: number;
+  };
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -397,6 +400,8 @@ const HARNESS_ENV_KEYS = [
   "EVAL_TEST_CREDENTIAL_TOKEN",
   "JUNIOR_BASE_URL",
   "JUNIOR_EXTRA_PLUGIN_ROOTS",
+  "JUNIOR_EVAL_ENABLE_FAULTS",
+  "JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS",
   "JUNIOR_STATE_ADAPTER",
   "SLACK_BOT_TOKEN",
 ] as const;
@@ -941,6 +946,18 @@ async function setupHarnessEnvironment(
       process.env.EVAL_TEST_CREDENTIAL_TOKEN =
         scenario.overrides.test_credential_token;
     }
+  }
+  const sandboxBashStreamInterrupts =
+    scenario.overrides?.faults?.sandbox_bash_stream_interrupts;
+  if (
+    typeof sandboxBashStreamInterrupts === "number" &&
+    Number.isFinite(sandboxBashStreamInterrupts) &&
+    sandboxBashStreamInterrupts > 0
+  ) {
+    process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
+    process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = String(
+      Math.floor(sandboxBashStreamInterrupts),
+    );
   }
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_STATE_ADAPTER = "memory";

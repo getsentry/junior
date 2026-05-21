@@ -5,7 +5,10 @@ import {
 } from "@/chat/state/turn-session-store";
 import { logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
-import { trimTrailingAssistantMessages } from "@/chat/respond-helpers";
+import {
+  getPiMessageRole,
+  trimTrailingAssistantMessages,
+} from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
 export interface TurnCheckpointContext {
@@ -33,6 +36,11 @@ function addDurationMs(
   return total;
 }
 
+function isContinuableBoundary(messages: PiMessage[]): boolean {
+  const lastRole = getPiMessageRole(messages.at(-1));
+  return lastRole === "user" || lastRole === "toolResult";
+}
+
 /** Load turn checkpoint state for a conversation/session pair. */
 export async function loadTurnCheckpoint(
   ctx: TurnCheckpointContext,
@@ -55,6 +63,63 @@ export async function loadTurnCheckpoint(
       : 1,
     existingCheckpoint,
   };
+}
+
+/** Persist the latest safe in-progress boundary without scheduling continuation. */
+export async function persistRunningCheckpoint(args: {
+  conversationId: string;
+  sessionId: string;
+  sliceId: number;
+  messages: PiMessage[];
+  loadedSkillNames: string[];
+  logContext: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    runId?: string;
+    assistantUserName?: string;
+    modelId: string;
+  };
+}): Promise<void> {
+  if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
+    return;
+  }
+
+  try {
+    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+      args.conversationId,
+      args.sessionId,
+    );
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      cumulativeDurationMs: latestCheckpoint?.cumulativeDurationMs,
+      cumulativeUsage: latestCheckpoint?.cumulativeUsage,
+      sessionId: args.sessionId,
+      sliceId: args.sliceId,
+      state: "running",
+      piMessages: args.messages,
+      loadedSkillNames: args.loadedSkillNames,
+    });
+  } catch (checkpointError) {
+    logException(
+      checkpointError,
+      "agent_turn_running_checkpoint_failed",
+      {
+        slackThreadId: args.logContext.threadId,
+        slackUserId: args.logContext.requesterId,
+        slackChannelId: args.logContext.channelId,
+        runId: args.logContext.runId,
+        assistantUserName: args.logContext.assistantUserName,
+        modelId: args.logContext.modelId,
+      },
+      {
+        "app.ai.resume_conversation_id": args.conversationId,
+        "app.ai.resume_session_id": args.sessionId,
+        "app.ai.resume_slice_id": args.sliceId,
+      },
+      "Failed to persist running turn checkpoint",
+    );
+  }
 }
 
 /** Persist a completed turn checkpoint. */

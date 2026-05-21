@@ -68,4 +68,37 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       }),
     });
   });
+
+  it("when a sandbox command stream is interrupted, recover and finish the request", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        faults: {
+          sandbox_bash_stream_interrupts: 1,
+        },
+        skill_dirs: ["evals/fixtures/skills"],
+      },
+      events: [
+        mention(
+          "/resilient-working-directory list files in the working directory",
+        ),
+      ],
+      taskTimeout: 120_000,
+      criteria: rubric({
+        contract:
+          "A transient sandbox command-stream interruption is treated as recoverable tool output, not a terminal assistant failure.",
+        pass: [
+          "observed_tool_invocations includes at least two `bash` calls, showing the agent retried after the injected interruption.",
+          "assistant_posts contains exactly one final reply.",
+          "The reply includes `Working directory files:` and a fenced list of files from the successful retry.",
+        ],
+        fail: [
+          "Do not post a generic assistant failure reply.",
+          "Do not stop after reporting only the injected stream interruption.",
+          "Do not mention Sentry event IDs, stack traces, or provider internals.",
+        ],
+      }),
+    });
+  });
 });

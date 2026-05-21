@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WaitUntilFn } from "@/handlers/types";
+import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
@@ -349,6 +350,124 @@ describe("turn resume slack integration", () => {
       processing?: { activeTurnId?: string };
     };
     expect(conversation.processing?.activeTurnId).toBeUndefined();
+  });
+
+  it("posts a continuation notice with a correlation footer when a resumed slice times out again", async () => {
+    const conversationId = "slack:C123:1712345.0006";
+    const sessionId = "turn_msg_6";
+    const checkpoint =
+      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        loadedSkillNames: ["demo-skill"],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.6",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const { RetryableTurnError } = await import("@/chat/runtime/turn");
+    generateAssistantReplyMock.mockRejectedValueOnce(
+      new RetryableTurnError("turn_timeout_resume", "timed out again", {
+        conversationId,
+        sessionId,
+        checkpointVersion: checkpoint.checkpointVersion + 1,
+        sliceId: 3,
+      }),
+    );
+
+    const response = await turnResumeHandlerModule.POST(
+      await buildSignedTurnResumeRequest({
+        conversationId,
+        sessionId,
+        expectedCheckpointVersion: checkpoint.checkpointVersion,
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    expect(waitUntilCallbacks).toHaveLength(1);
+
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(
+      async () => new Response("Accepted", { status: 202 }),
+    );
+    global.fetch = fetchMock as typeof fetch;
+    try {
+      await waitUntilCallbacks[0]?.();
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0006",
+          text: buildTurnContinuationResponse(),
+          blocks: [
+            {
+              type: "markdown",
+              text: buildTurnContinuationResponse(),
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: `*ID:* ${conversationId}`,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("uploads resumed reply files through the shared delivery path", async () => {

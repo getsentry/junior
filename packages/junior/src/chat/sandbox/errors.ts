@@ -95,6 +95,24 @@ export function isSnapshottingError(error: unknown): boolean {
   });
 }
 
+/** Detect interrupted command streams where no reliable exit status is available. */
+export function isSandboxCommandStreamInterruptedError(
+  error: unknown,
+): boolean {
+  return findInErrorChain(error, (candidate) => {
+    if (!(candidate instanceof Error)) {
+      return false;
+    }
+
+    return (
+      candidate.name === "StreamError" &&
+      candidate.message
+        .toLowerCase()
+        .includes("stream ended before command finished")
+    );
+  });
+}
+
 /** Wrap raw sandbox setup failures into one stable user-facing error contract. */
 export function wrapSandboxSetupError(error: unknown): Error {
   try {

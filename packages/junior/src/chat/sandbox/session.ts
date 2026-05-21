@@ -10,10 +10,12 @@ import {
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
+  isSandboxCommandStreamInterruptedError,
   isSandboxUnavailableError,
   isSnapshottingError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
+import { consumeSandboxBashStreamInterruptFault } from "@/chat/sandbox/fault-injection";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
@@ -136,6 +138,23 @@ function parseKeepAliveMs(): number {
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function getCommandStreamInterruptedResult(): {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+} {
+  return {
+    stdout: "",
+    stderr:
+      "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
+    exitCode: 125,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  };
 }
 
 /** Manage sandbox lifecycle, sync, keepalive, and tool executor caching for one executor instance. */
@@ -683,6 +702,10 @@ export function createSandboxSessionManager(options?: {
                 controller.abort();
               }, input.timeoutMs)
             : undefined;
+          const streamInterruptFault = consumeSandboxBashStreamInterruptFault();
+          if (streamInterruptFault) {
+            throw streamInterruptFault;
+          }
           const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
@@ -701,6 +724,9 @@ export function createSandboxSessionManager(options?: {
               stderrTruncated: false,
               timedOut: true,
             };
+          }
+          if (isSandboxCommandStreamInterruptedError(error)) {
+            return getCommandStreamInterruptedResult();
           }
           throw error;
         } finally {

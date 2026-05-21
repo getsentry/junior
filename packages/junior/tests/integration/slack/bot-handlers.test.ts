@@ -5,6 +5,10 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
+import {
   FakeSlackAdapter,
   createTestThread,
   createTestMessage,
@@ -77,6 +81,7 @@ function createAwaitingContinuationState(args: {
 
 describe("bot handlers (integration)", () => {
   afterEach(() => {
+    resetSlackApiMockState();
     vi.restoreAllMocks();
   });
 
@@ -554,6 +559,78 @@ describe("bot handlers (integration)", () => {
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBe(sessionId);
+  });
+
+  it("posts a Slack continuation notice with a correlation footer when a live turn times out", async () => {
+    resetSlackApiMockState();
+    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const conversationId = "slack:C_TIMEOUT_API:1700000000.000";
+    const sessionId = "turn_msg-timeout-api";
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          scheduleTurnTimeoutResume,
+          generateAssistantReply: async () => {
+            throw new RetryableTurnError(
+              "turn_timeout_resume",
+              "simulated timeout continuation",
+              {
+                conversationId,
+                sessionId,
+                checkpointVersion: 3,
+                sliceId: 2,
+              },
+            );
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: conversationId });
+    (thread.adapter as { name?: string }).name = "slack";
+
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-timeout-api",
+          threadId: conversationId,
+          text: "please keep working",
+          isMention: true,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: 3,
+    });
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C_TIMEOUT_API",
+          thread_ts: "1700000000.000",
+          text: buildTurnContinuationResponse(),
+          blocks: [
+            {
+              type: "markdown",
+              text: buildTurnContinuationResponse(),
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: `*ID:* ${conversationId}`,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("reschedules an awaiting turn continuation instead of starting a new turn", async () => {
