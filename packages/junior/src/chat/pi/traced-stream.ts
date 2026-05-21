@@ -44,11 +44,10 @@ function buildChatStartAttributes(
   return attributes;
 }
 
-// Composes post-stream attributes for the chat span. Two deferrals worth
-// flagging: `extractGenAiUsageAttributes` currently omits cache token fields,
-// and `gen_ai.response.finish_reasons` is emitted with pi-ai's raw StopReason
-// (Sentry ingest expects the OTel set). Both are tracked separately and out
-// of scope here.
+// Composes post-stream attributes for the chat span.
+// Known gap: `gen_ai.response.finish_reasons` emits pi-ai's raw StopReason
+// values (e.g. "toolUse", "aborted") instead of the OTel canonical set
+// ("tool_use", "max_tokens"). Tracked separately, out of scope here.
 function buildChatEndAttributes(
   message: AssistantMessage,
 ): Record<string, string | string[] | number> {
