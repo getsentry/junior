@@ -33,7 +33,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     }
 
     subscribe(listener: (event: unknown) => Promise<void> | void) {
-      console.log("DEBUG subscribe called");
       agentEvents.listeners.push(listener);
       return () => {
         const index = agentEvents.listeners.indexOf(listener);
@@ -52,10 +51,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     }
 
     async prompt(message: PiMessage) {
-      console.log(
-        "DEBUG prompt called, listener count:",
-        agentEvents.listeners.length,
-      );
       this.state.messages.push(message);
       const toolResultMessage = {
         role: "toolResult",
@@ -74,7 +69,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       this.state.messages.push(assistantMessage);
       this.state.messages.push(toolResultMessage);
       for (const listener of agentEvents.listeners) {
-        await listener({ type: "message_end", message: toolResultMessage });
         await listener({
           type: "turn_end",
           message: assistantMessage,
@@ -206,12 +200,9 @@ describe("generateAssistantReply eager Pi message persistence", () => {
       },
     });
 
-    console.log(
-      "DEBUG snapshots:",
-      persistedSnapshots.length,
-      JSON.stringify(persistedSnapshots).slice(0, 2000),
-    );
-    expect(persistedSnapshots.length).toBeGreaterThanOrEqual(2);
+    // One snapshot from the pre-prompt safe-boundary write (durable history
+    // captures the user prompt before any LLM call), one from `turn_end`.
+    expect(persistedSnapshots.length).toBe(2);
 
     const finalSnapshot = persistedSnapshots[persistedSnapshots.length - 1];
     const lastMessage = finalSnapshot.at(-1) as { role?: unknown };
@@ -231,5 +222,22 @@ describe("generateAssistantReply eager Pi message persistence", () => {
       );
       expect(turnContextParts).toHaveLength(0);
     }
+  });
+
+  it("propagates onPiMessagesPersisted failures as turn errors", async () => {
+    const reply = await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-2",
+        turnId: "turn-2",
+        channelId: "C123",
+        threadTs: "1712345.0002",
+      },
+      onPiMessagesPersisted: () => {
+        throw new Error("durable store offline");
+      },
+    });
+
+    expect(reply.text).toContain("Error: durable store offline");
   });
 });

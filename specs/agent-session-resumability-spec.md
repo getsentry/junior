@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-05-19
+- Last Edited: 2026-05-21
 
 ## Changelog
 
@@ -16,6 +16,7 @@
 - 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
 - 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
 - 2026-05-19: Clarified that Slack auth pauses also post a visible URL-free acknowledgement owned by the Slack delivery contract.
+- 2026-05-21: Required durable Pi-transcript persistence at every `turn_end` safe boundary so ungraceful failures resume from the latest completed LLM turn. Persistence failures are hard turn failures, not silently degraded.
 
 ## Status
 
@@ -261,7 +262,7 @@ Required attributes when available:
 6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation checkpoint reschedules the existing session instead of starting a new turn.
 7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
 8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
-9. Unit/integration: eager Pi-transcript persistence at safe boundaries means a turn that dies without an `awaiting_resume` checkpoint still leaves durable thread state pointing at the latest safe boundary, so the next user message does not rebuild from pre-turn history.
+9. Unit/integration: every `turn_end` safe boundary advances the durable Pi transcript on the thread, and a durable-store write failure surfaces as a hard turn error (no silent degradation).
 10. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
 
 ## Related Specs
