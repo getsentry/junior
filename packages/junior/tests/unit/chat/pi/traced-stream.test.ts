@@ -157,7 +157,7 @@ describe("createTracedStreamFn", () => {
     const traced = createTracedStreamFn(base as unknown as StreamFn);
 
     await withLogContext(
-      { conversationId: "conv_123", turnId: "turn_456" },
+      { conversationId: "conv_123", runId: "run_456" },
       async () => {
         await traced(
           fakeModel("openai/gpt-5.4"),
@@ -171,7 +171,7 @@ describe("createTracedStreamFn", () => {
       attributes: Record<string, unknown>;
     };
     expect(opts.attributes["gen_ai.conversation.id"]).toBe("conv_123");
-    expect(opts.attributes["app.turn.id"]).toBe("turn_456");
+    expect(opts.attributes["app.run.id"]).toBe("run_456");
     // wrapper-supplied attributes still present
     expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");

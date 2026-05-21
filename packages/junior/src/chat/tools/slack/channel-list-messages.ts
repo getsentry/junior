@@ -94,12 +94,22 @@ export function createSlackChannelListMessagesTool(
         throw error;
       }
 
-      return {
+      const summary = {
         ok: true,
         channel_id: targetChannelId,
         count: result.messages.length,
         next_cursor: result.nextCursor,
         messages: result.messages,
+      };
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(summary) }],
+        details: {
+          ok: true,
+          channel_id: targetChannelId,
+          count: result.messages.length,
+          ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
+        },
       };
     },
   });
