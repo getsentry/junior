@@ -134,7 +134,6 @@ async function persistCompletedReplyState(
     },
   });
   markTurnCompleted({
-    completedSessionId: sessionId,
     conversation,
     nowMs: Date.now(),
     sessionId,

@@ -2,7 +2,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { markTurnCompleted } from "@/chat/runtime/turn";
+import { markTurnClosed } from "@/chat/runtime/turn";
 import { getTurnUserMessageId } from "@/chat/runtime/turn-user-message";
 import {
   markConversationMessage,
@@ -26,7 +26,7 @@ export function completeAuthPauseTurn(args: {
       skippedReason: undefined,
     },
   );
-  markTurnCompleted({
+  markTurnClosed({
     conversation: args.conversation,
     nowMs: Date.now(),
     sessionId: args.sessionId,

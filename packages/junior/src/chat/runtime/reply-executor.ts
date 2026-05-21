@@ -58,7 +58,11 @@ import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
-import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import {
+  markTurnClosed,
+  markTurnCompleted,
+  markTurnFailed,
+} from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
 import { deleteSlackMessage, postSlackMessage } from "@/chat/slack/outbound";
@@ -736,14 +740,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const nextArtifacts = shouldPersistArtifacts
             ? mergeArtifactsState(preparedState.artifacts, artifactStatePatch)
             : undefined;
-          // Live turn owns the in-memory conversation; `sessionId` is omitted
-          // so `activeTurnId` clears unconditionally. Callback paths that
-          // reload thread state fresh must pass `sessionId` to avoid wiping a
-          // concurrent turn's active id.
           markTurnCompleted({
-            completedSessionId: turnId,
             conversation: preparedState.conversation,
             nowMs: Date.now(),
+            sessionId: turnId,
             updateConversationStats,
           });
           await persistThreadState(thread, {
@@ -885,9 +885,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 replied: true,
               },
             });
-            markTurnCompleted({
+            markTurnClosed({
               conversation: preparedState.conversation,
               nowMs: Date.now(),
+              sessionId: turnId,
               updateConversationStats,
             });
             await persistThreadState(thread, {

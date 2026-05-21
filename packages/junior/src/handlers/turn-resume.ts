@@ -91,7 +91,6 @@ async function persistCompletedReplyState(args: {
     },
   });
   markTurnCompleted({
-    completedSessionId: args.checkpoint.sessionId,
     conversation,
     nowMs: Date.now(),
     sessionId: args.checkpoint.sessionId,

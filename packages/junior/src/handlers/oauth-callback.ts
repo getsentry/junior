@@ -128,7 +128,6 @@ async function persistCompletedOAuthReplyState(args: {
     },
   });
   markTurnCompleted({
-    completedSessionId: args.sessionId,
     conversation,
     nowMs: Date.now(),
     sessionId: args.sessionId,
