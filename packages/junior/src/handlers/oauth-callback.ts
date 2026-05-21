@@ -287,6 +287,12 @@ async function resumeCheckpointedOAuthTurn(
           conversation,
         });
       },
+      onPiMessagesPersisted: async (piMessages) => {
+        conversation.piMessages = piMessages;
+        await persistThreadStateById(stored.resumeConversationId!, {
+          conversation,
+        });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {

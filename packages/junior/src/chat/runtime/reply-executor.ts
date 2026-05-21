@@ -497,6 +497,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               latestArtifacts = artifacts;
               await persistThreadState(thread, { artifacts });
             },
+            onPiMessagesPersisted: async (piMessages) => {
+              // Mid-turn safe-boundary writes feed the durable conversation
+              // transcript so a follow-up user message after an ungraceful
+              // failure resumes from the latest safe boundary instead of the
+              // pre-turn snapshot.
+              preparedState.conversation.piMessages = piMessages;
+              await persistThreadState(thread, {
+                conversation: preparedState.conversation,
+              });
+            },
             onAuthPending: async (pendingAuth) => {
               await applyPendingAuthUpdate({
                 conversation: preparedState.conversation,

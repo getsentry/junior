@@ -265,6 +265,10 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         await persistThreadStateById(threadId, { conversation });
       },
+      onPiMessagesPersisted: async (piMessages) => {
+        conversation.piMessages = piMessages;
+        await persistThreadStateById(threadId, { conversation });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {

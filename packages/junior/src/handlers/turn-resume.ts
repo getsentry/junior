@@ -210,6 +210,12 @@ async function resumeTimedOutTurn(
           conversation,
         });
       },
+      onPiMessagesPersisted: async (piMessages) => {
+        conversation.piMessages = piMessages;
+        await persistThreadStateById(payload.conversationId, {
+          conversation,
+        });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {

@@ -261,7 +261,8 @@ Required attributes when available:
 6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation checkpoint reschedules the existing session instead of starting a new turn.
 7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
 8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
-9. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
+9. Unit/integration: eager Pi-transcript persistence at safe boundaries means a turn that dies without an `awaiting_resume` checkpoint still leaves durable thread state pointing at the latest safe boundary, so the next user message does not rebuild from pre-turn history.
+10. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
 
 ## Related Specs
 

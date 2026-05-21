@@ -153,6 +153,15 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void;
+  /**
+   * Called after each safe-boundary checkpoint write succeeds during the
+   * agent loop. The supplied `piMessages` are the latest persisted Pi
+   * transcript with turn-context user-message parts stripped, suitable for
+   * use as durable conversation history. Used to persist mid-turn progress
+   * so a follow-up user message after an ungraceful failure does not start
+   * from stale pre-turn history.
+   */
+  onPiMessagesPersisted?: (piMessages: PiMessage[]) => void | Promise<void>;
 }
 
 let startupDiscoveryLogged = false;
@@ -939,6 +948,30 @@ export async function generateAssistantReply(
     });
     let hasEmittedText = false;
     let needsSeparator = false;
+    const notifyPiMessagesPersisted = async (
+      messages: PiMessage[],
+    ): Promise<void> => {
+      if (!context.onPiMessagesPersisted) {
+        return;
+      }
+      try {
+        await context.onPiMessagesPersisted(
+          stripTurnContextFromMessages(messages, turnContextPrompt),
+        );
+      } catch (error) {
+        // Eager-persistence failures must not interrupt the agent loop. The
+        // turn-session checkpoint already captured the safe boundary.
+        logWarn(
+          "agent_turn_eager_pi_messages_persist_failed",
+          spanContext,
+          {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to persist Pi messages to durable thread state",
+        );
+      }
+    };
     const persistSafeBoundary = async (
       messages: PiMessage[],
     ): Promise<void> => {
@@ -958,10 +991,21 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: checkpointLogContext,
       });
+      await notifyPiMessagesPersisted(messages);
     };
 
     const unsubscribe = agent.subscribe((event) => {
       if (event.type === "turn_end" && event.toolResults.length > 0) {
+        return persistSafeBoundary([...agent!.state.messages]);
+      }
+      // Also persist after each individual tool-result message is appended.
+      // With sequential tool execution this captures incremental progress
+      // within a multi-tool batch so a function-level interruption mid-batch
+      // does not lose earlier tool results.
+      if (
+        event.type === "message_end" &&
+        (event.message as { role?: unknown }).role === "toolResult"
+      ) {
         return persistSafeBoundary([...agent!.state.messages]);
       }
       if (event.type === "message_start") {
