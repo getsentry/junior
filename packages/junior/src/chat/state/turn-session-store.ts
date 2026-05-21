@@ -4,7 +4,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   commitPiSessionMessages,
   loadPiSessionMessages,
-} from "@/chat/pi/session-state-store";
+} from "./pi-session-message-store";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 

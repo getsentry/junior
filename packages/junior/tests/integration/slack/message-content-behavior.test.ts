@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -7,10 +15,15 @@ import {
 
 interface CapturedCall {
   contextConversation?: string;
+  piMessages?: PiMessage[];
   prompt: string;
 }
 
 describe("Slack behavior: message content", () => {
+  afterEach(async () => {
+    await disconnectStateAdapter();
+  });
+
   it("strips leading Slack mention token before invoking the agent", async () => {
     const calls: CapturedCall[] = [];
 
@@ -210,6 +223,19 @@ describe("Slack behavior: message content", () => {
 
   it("passes durable Pi history into the next turn", async () => {
     const calls: CapturedCall[] = [];
+    const firstTurnHistory: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "I need the budget by Friday" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "First response." }],
+        timestamp: 2,
+      },
+    ] as PiMessage[];
+
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -229,7 +255,21 @@ describe("Slack behavior: message content", () => {
             calls.push({
               prompt,
               contextConversation: context?.conversationContext,
+              piMessages: context?.piMessages,
             });
+            if (
+              calls.length === 1 &&
+              context?.correlation?.conversationId &&
+              context.correlation.turnId
+            ) {
+              await upsertAgentTurnSessionCheckpoint({
+                conversationId: context.correlation.conversationId,
+                sessionId: context.correlation.turnId,
+                sliceId: 1,
+                state: "completed",
+                piMessages: firstTurnHistory,
+              });
+            }
             return {
               text: calls.length === 1 ? "First response." : "Second response.",
               diagnostics: {
@@ -264,9 +304,16 @@ describe("Slack behavior: message content", () => {
     });
 
     await slackRuntime.handleNewMention(thread, first);
+
+    const persistedState = await getPersistedThreadState(thread.id);
+    const conversation = coerceThreadConversationState(persistedState);
+    conversation.processing.activeTurnId = "missing-active-turn";
+    await persistThreadStateById(thread.id, { conversation });
+
     await slackRuntime.handleSubscribedMessage(thread, second);
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
+    expect(calls[1]?.piMessages).toEqual(firstTurnHistory);
   });
 });

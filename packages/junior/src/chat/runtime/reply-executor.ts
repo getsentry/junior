@@ -152,11 +152,11 @@ async function loadPiMessagesForTurn(args: {
       args.conversationId,
       args.activeTurnId,
     );
-    return checkpoint && checkpoint.piMessages.length > 0
-      ? stripRuntimeTurnContext(
-          trimTrailingAssistantMessages(checkpoint.piMessages),
-        )
-      : fallback;
+    if (checkpoint?.piMessages.length) {
+      return stripRuntimeTurnContext(
+        trimTrailingAssistantMessages(checkpoint.piMessages),
+      );
+    }
   }
 
   if (!args.lastSessionId) {

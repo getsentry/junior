@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "./adapter";
 
 const PI_SESSION_MESSAGE_PREFIX = "junior:pi_session_message";
 
