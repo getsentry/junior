@@ -34,6 +34,17 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "app", "DESCRIPTION.md"))).toBe(
       true,
     );
+    expect(
+      fs.existsSync(path.join(target, ".github", "workflows", "ci.yml")),
+    ).toBe(true);
+
+    const workflow = fs.readFileSync(
+      path.join(target, ".github", "workflows", "ci.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("pnpm check");
+    expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain("pnpm install --frozen-lockfile");
 
     const vercelConfig = JSON.parse(
       fs.readFileSync(path.join(target, "vercel.json"), "utf8"),
