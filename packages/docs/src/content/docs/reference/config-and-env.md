@@ -38,10 +38,10 @@ If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior fo
 
 The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authenticate the sandbox VM; requester authorization comes from the signed forwarding-route context bound to that VM session. No separate audience, project, or team env vars are required for the proxy.
 
-| Variable                       | Required    | Purpose                                                                                                                           |
-| ------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `JUNIOR_BASE_URL`              | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it.                                                      |
-| `JUNIOR_SANDBOX_EGRESS_SECRET` | No          | Secret for signed sandbox egress requester-context URLs. Falls back to `JUNIOR_INTERNAL_RESUME_SECRET` or `SLACK_SIGNING_SECRET`. |
+| Variable                       | Required    | Purpose                                                                                                            |
+| ------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `JUNIOR_BASE_URL`              | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it.                                       |
+| `JUNIOR_SANDBOX_EGRESS_SECRET` | No          | Secret for signed sandbox egress requester-context URLs. Falls back to `JUNIOR_INTERNAL_RESUME_SECRET` when unset. |
 
 ## GitHub plugin
 

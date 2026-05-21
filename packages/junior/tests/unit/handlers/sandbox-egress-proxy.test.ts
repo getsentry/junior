@@ -257,6 +257,22 @@ describe("sandbox egress proxy", () => {
     );
   });
 
+  it("does not reuse Slack signing secret for sandbox egress tokens", () => {
+    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
+    delete process.env.JUNIOR_INTERNAL_RESUME_SECRET;
+    process.env.SLACK_SIGNING_SECRET = "test-slack-signing-secret";
+
+    expect(() =>
+      createSandboxEgressRequesterToken({
+        requesterId: REQUESTER_ID,
+        egressId: EGRESS_ID,
+        ttlMs: 60_000,
+      }),
+    ).toThrow(
+      "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET or JUNIOR_INTERNAL_RESUME_SECRET)",
+    );
+  });
+
   it("resolves command env for registered sandbox providers", async () => {
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       SENTRY_READ_ONLY: "1",

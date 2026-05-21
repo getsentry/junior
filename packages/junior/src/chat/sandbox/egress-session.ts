@@ -1,5 +1,4 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { getSlackSigningSecret } from "@/chat/config";
 import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -38,12 +37,8 @@ function getSandboxEgressSecret(): string {
   if (sharedInternal) {
     return sharedInternal;
   }
-  const slackSigningSecret = getSlackSigningSecret();
-  if (slackSigningSecret) {
-    return slackSigningSecret;
-  }
   throw new Error(
-    "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET, JUNIOR_INTERNAL_RESUME_SECRET, or SLACK_SIGNING_SECRET)",
+    "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET or JUNIOR_INTERNAL_RESUME_SECRET)",
   );
 }
 
