@@ -30,7 +30,7 @@ export function initSentry(): void {
     sendDefaultPii: true,
     enabled: Boolean(dsn),
     enableLogs,
-    streamGenAISpans: true,
+    streamGenAiSpans: true,
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,
