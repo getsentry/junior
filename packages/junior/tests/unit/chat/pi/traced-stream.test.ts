@@ -204,4 +204,75 @@ describe("createTracedStreamFn", () => {
     const endAttributeKeys = span.setAttribute.mock.calls.map((c) => c[0]);
     expect(endAttributeKeys).toContain("gen_ai.output.messages");
   });
+
+  it("sets error status and ends the span when base() throws", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const base = vi.fn(() => {
+      throw new Error("gateway down");
+    });
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await expect(
+      traced(
+        fakeModel("openai/gpt-5.4"),
+        { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+        undefined,
+      ),
+    ).rejects.toThrow("gateway down");
+
+    const span = getSpan();
+    expect(span.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: "LLM call failed",
+    });
+    expect(span.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets error status and ends the span when stream.result() rejects", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const fakeStream = {
+      result: () => Promise.reject(new Error("stream failure")),
+    };
+    const base = vi.fn(() => fakeStream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    expect(span.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: "LLM stream failed",
+    });
+    expect(span.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends the span even when setAttribute throws in the success callback", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const span = getSpan();
+    span.setAttribute.mockImplementation(() => {
+      throw new Error("setAttribute exploded");
+    });
+
+    stream.end(fakeMessage());
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    expect(span.end).toHaveBeenCalledTimes(1);
+  });
 });

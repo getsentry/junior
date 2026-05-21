@@ -820,6 +820,7 @@ export async function generateAssistantReply(
           conversationId: sessionConversationId,
           logContext: spanContext,
           getTools: () => advisorTools,
+          streamFn: createTracedStreamFn(),
         },
       },
     );

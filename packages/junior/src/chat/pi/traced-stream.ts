@@ -96,22 +96,33 @@ export function createTracedStreamFn(base: StreamFn = streamSimple): StreamFn {
         Promise.resolve(base(model, context, options)),
       );
 
-      stream.result().then(
-        (finalMessage) => {
-          for (const [key, value] of Object.entries(
-            buildChatEndAttributes(finalMessage),
-          )) {
-            span.setAttribute(key, value);
-          }
-          span.end();
-        },
-        () => {
-          span.end();
-        },
-      );
+      stream
+        .result()
+        .then(
+          (finalMessage) => {
+            try {
+              for (const [key, value] of Object.entries(
+                buildChatEndAttributes(finalMessage),
+              )) {
+                span.setAttribute(key, value);
+              }
+            } finally {
+              span.end();
+            }
+          },
+          () => {
+            span.setStatus({ code: 2, message: "LLM stream failed" });
+            span.end();
+          },
+        )
+        .catch(() => {
+          // setAttribute is best-effort; suppress unexpected attribute-write
+          // errors so they don't surface as unhandled promise rejections.
+        });
 
       return stream;
     } catch (error) {
+      span.setStatus({ code: 2, message: "LLM call failed" });
       span.end();
       throw error;
     }
