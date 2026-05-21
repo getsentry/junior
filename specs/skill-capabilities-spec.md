@@ -96,7 +96,7 @@ Rules:
 - New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress handler.
 - The runtime configures the forwarding URL with a signed requester context bound to the sandbox VM session so the proxy can mint per-user OAuth leases lazily without a state-store lookup.
 - The internal egress handler must verify the Vercel Sandbox OIDC token and signed requester/sandbox context before proxying.
-- The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
+- The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port/path headers. The proxy route URL contains Junior routing state and must not be used as the upstream path.
 - The egress route must reject forwarded hosts that do not match a registered provider domain.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.

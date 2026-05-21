@@ -161,7 +161,7 @@ function egressRequest(
         ? {}
         : { "vercel-forwarded-scheme": input.scheme ?? "https" }),
       "vercel-sandbox-oidc-token": "signed-token",
-      ...(activeRequesterToken && forwardedPath !== null
+      ...(forwardedPath !== null
         ? { "vercel-forwarded-path": forwardedPath }
         : {}),
       ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
@@ -401,30 +401,24 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the token-prefixed proxy URL path when Vercel omits forwarded path", async () => {
+  it("rejects sandbox egress requests without a forwarded path", async () => {
     setSandboxEgressRequester();
-    mockSentryLease();
 
-    const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
-      expect(String(url)).toBe("https://sentry.io/api/0/issues/?query=proxy");
-      expect(
-        new Headers(init?.headers).get("vercel-forwarded-path"),
-      ).toBeNull();
-      return new Response("ok", { status: 200 });
-    });
-
+    const fetchMock = vi.fn();
     const response = await proxy(
       egressRequest({
         forwardedPath: null,
-        proxyPath: `${SANDBOX_EGRESS_PROXY_PATH}/${activeRequesterToken}/api/0/issues/?query=proxy`,
+        proxyPath: `${SANDBOX_EGRESS_PROXY_PATH}/${activeRequesterToken}`,
       }),
       fetchMock as typeof fetch,
     );
 
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing forwarded path",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });
 
   it("recognizes root-path forwarded sandbox proxy requests", () => {

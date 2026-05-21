@@ -62,6 +62,7 @@ function proxiedRequest(input: {
   return new Request(url, {
     headers: {
       "vercel-forwarded-host": PROVIDER_HOST,
+      "vercel-forwarded-path": upstreamPath,
       "vercel-forwarded-scheme": "https",
       "vercel-sandbox-oidc-token": "signed-vercel-token",
       ...(input.headers ?? {}),

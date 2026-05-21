@@ -209,32 +209,14 @@ function normalizedForwardedPath(path: string): UpstreamPathResult {
   }
 }
 
-function upstreamPathFromProxyUrl(url: URL): string | undefined {
-  const prefix = `${SANDBOX_EGRESS_PROXY_PATH}/`;
-  if (!url.pathname.startsWith(prefix)) {
-    return undefined;
-  }
-  const remainder = url.pathname.slice(prefix.length);
-  const upstreamPathStart = remainder.indexOf("/");
-  if (upstreamPathStart === -1) {
-    return undefined;
-  }
-  return `${remainder.slice(upstreamPathStart)}${url.search}`;
-}
-
 function upstreamPath(request: Request): UpstreamPathResult {
   const forwardedPath = request.headers.get(FORWARDED_PATH_HEADER);
-  if (forwardedPath?.trim()) {
-    // Vercel may normalize request.url; this header carries the original target.
-    return normalizedForwardedPath(forwardedPath.trim());
+  if (!forwardedPath?.trim()) {
+    return { ok: false, error: "Missing forwarded path" };
   }
 
-  const url = new URL(request.url);
-  const proxyPath = upstreamPathFromProxyUrl(url);
-  if (proxyPath) {
-    return normalizedForwardedPath(proxyPath);
-  }
-  return { ok: true, path: `${url.pathname}${url.search}` };
+  // Vercel may normalize request.url; this header carries the original target.
+  return normalizedForwardedPath(forwardedPath.trim());
 }
 
 function buildUpstreamUrl(request: Request): UpstreamUrlResult {

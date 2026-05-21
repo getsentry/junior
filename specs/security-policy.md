@@ -32,7 +32,7 @@ This policy applies to:
 
 - Production should use explicit network policy and minimal allowlists.
 - Credential-capable provider domains should route through the Junior sandbox egress proxy instead of receiving long-lived sandbox secrets.
-- Proxied sandbox egress requests must verify the Vercel-signed Sandbox OIDC token, use its sandbox claim as the active VM session id, resolve the provider from the forwarded host, and require a signed requester-bound context token in the forwarding route that matches the OIDC sandbox claim. Cached provider leases must be scoped to one requester/sandbox context and lease expiry.
+- Proxied sandbox egress requests must verify the Vercel-signed Sandbox OIDC token, use its sandbox claim as the active VM session id, resolve the provider from the Vercel forwarded host/path headers, and require a signed requester-bound context token in the forwarding route that matches the OIDC sandbox claim. Cached provider leases must be scoped to one requester/sandbox context and lease expiry.
 - The egress handler must verify Vercel Sandbox OIDC before returning configuration, provider, or session-specific responses.
 - The egress proxy must not reject duplicate method/URL/body requests as replay; duplicate request shapes can be legitimate retries. Requester-bound credential issuance is the security boundary.
 
