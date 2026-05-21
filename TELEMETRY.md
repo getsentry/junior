@@ -134,7 +134,7 @@ Events: `agent_message_in`, `agent_message_out`, `agent_turn_timeout`,
 `assistant_reply_generation_failed`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `ai.invoke_advisor`
+`chat.route_thinking`, `ai.invoke_advisor`, `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons`, `app.ai.outcome`,
@@ -153,7 +153,7 @@ Events: `agent_tool_call_failed`, `mcp_tool_call_failed`,
 Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 `sandbox.snapshot.resolve`, `sandbox.sync_skills`, `bash`
 
-Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`, `mcp.method.name`,
+Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.call.result`, `mcp.method.name`,
 `process.executable.name`, `process.exit.code`, `app.sandbox.source`,
 `app.sandbox.snapshot.resolve_outcome`
 
