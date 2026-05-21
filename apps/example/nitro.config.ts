@@ -6,7 +6,9 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      pluginPackages: examplePluginPackages,
+      plugins: {
+        packages: examplePluginPackages,
+      },
     }),
   ],
   routes: {

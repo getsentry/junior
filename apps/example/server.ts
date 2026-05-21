@@ -5,7 +5,9 @@ import { examplePluginPackages } from "./plugin-packages";
 initSentry();
 
 const app = await createApp({
-  pluginPackages: examplePluginPackages,
+  plugins: {
+    packages: examplePluginPackages,
+  },
   configDefaults: {
     "sentry.org": "sentry",
   },

@@ -555,6 +555,46 @@ interface AppFileValidationResult {
   warnings: string[];
 }
 
+async function validateAppSourceFiles(
+  rootDir: string,
+  registeredConfigKeys: Set<string>,
+): Promise<AppFileValidationResult> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  for (const fileName of ["server.ts", "server.js", "nitro.config.ts"]) {
+    const sourcePath = path.join(rootDir, fileName);
+    let source: string;
+    try {
+      source = await fs.readFile(sourcePath, "utf8");
+    } catch {
+      continue;
+    }
+
+    if (/\bpluginPackages\s*:/.test(source)) {
+      errors.push(
+        `${sourcePath}: pluginPackages is no longer supported. Use plugins: { packages: [...] }.`,
+      );
+    }
+
+    for (const defaultsBlock of source.matchAll(
+      /\bconfigDefaults\s*:\s*\{([\s\S]*?)\}/g,
+    )) {
+      const block = defaultsBlock[1] ?? "";
+      for (const keyMatch of block.matchAll(/["']([^"']+)["']\s*:/g)) {
+        const key = keyMatch[1];
+        if (key && !registeredConfigKeys.has(key)) {
+          errors.push(
+            `${sourcePath}: configDefaults key "${key}" is not a registered plugin config key`,
+          );
+        }
+      }
+    }
+  }
+
+  return { errors, warnings };
+}
+
 async function validateAppFiles(
   appDir: string,
 ): Promise<AppFileValidationResult> {
@@ -698,6 +738,16 @@ export async function runCheck(
     });
     errors.push(...result.errors);
   }
+
+  const registeredConfigKeys = new Set(
+    pluginResults.flatMap((result) => result.manifest?.configKeys ?? []),
+  );
+  const appSourceResult = await validateAppSourceFiles(
+    resolvedRoot,
+    registeredConfigKeys,
+  );
+  warnings.push(...appSourceResult.warnings);
+  errors.push(...appSourceResult.errors);
 
   for (const skillDir of appAndLocalPluginSkillDirs) {
     const result = await validateSkillDirectory(skillDir, duplicateSkillNames);

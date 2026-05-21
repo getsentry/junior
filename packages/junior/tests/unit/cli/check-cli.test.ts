@@ -183,6 +183,108 @@ describe("check cli", () => {
     ]);
   });
 
+  it("fails when app source uses the removed pluginPackages option", async () => {
+    const repoRoot = makeTempDir("junior-validate-plugin-packages-option-");
+    writeFile(
+      path.join(repoRoot, "server.ts"),
+      [
+        'import { createApp } from "@sentry/junior";',
+        "",
+        "export default await createApp({",
+        '  pluginPackages: ["@acme/junior-demo"],',
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 0 plugin manifests, 0 skill directories checked).",
+    );
+
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "pluginPackages is no longer supported. Use plugins: { packages: [...] }.",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails when app configDefaults references an unregistered plugin key", async () => {
+    const repoRoot = makeTempDir("junior-validate-config-defaults-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify(
+        {
+          dependencies: {
+            "@acme/junior-demo": "1.0.0",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const packageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@acme",
+      "junior-demo",
+    );
+    writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: "@acme/junior-demo", version: "1.0.0" }),
+    );
+    writeFile(
+      path.join(packageRoot, "plugin.yaml"),
+      [
+        "name: demo",
+        "description: Demo packaged plugin",
+        "config-keys:",
+        "  - org",
+        "",
+      ].join("\n"),
+    );
+    writeFile(
+      path.join(repoRoot, "server.ts"),
+      [
+        'import { createApp } from "@sentry/junior";',
+        "",
+        "export default await createApp({",
+        "  configDefaults: {",
+        '    "sentry.org": "sentry",',
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 1 plugin manifest, 0 skill directories checked).",
+    );
+
+    expect(
+      lines.some((line) =>
+        line.includes(
+          'configDefaults key "sentry.org" is not a registered plugin config key',
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("warns when official plugin package versions differ from core", async () => {
     const repoRoot = makeTempDir("junior-validate-version-skew-");
     writeFile(
