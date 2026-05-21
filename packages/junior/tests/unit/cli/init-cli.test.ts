@@ -62,7 +62,6 @@ describe("init cli", () => {
     expect(pkg.scripts.dev).toBe("vite dev");
     expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && vite build");
-    expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
   });
 
   it("refuses to initialize a non-empty directory", async () => {

@@ -74,6 +74,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
+        with:
+          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -113,7 +115,6 @@ export async function runInit(
     version: "0.1.0",
     private: true,
     type: "module",
-    packageManager: "pnpm@10.0.0",
     scripts: {
       dev: "vite dev",
       check: "junior check",
