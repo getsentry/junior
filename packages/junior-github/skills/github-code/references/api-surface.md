@@ -26,8 +26,14 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                       |
 | Deepen shallow clone               | `git -C DIRECTORY fetch --depth=N origin`                                                 |
 | Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow`                                                      |
+| Check branch                       | `git -C DIRECTORY branch --show-current`                                                  |
+| Check worktree state               | `git -C DIRECTORY status --short --branch`                                                |
+| View commit log against base       | `git -C DIRECTORY log BASE..HEAD --oneline`                                               |
+| Diff against base                  | `git -C DIRECTORY diff BASE...HEAD`                                                       |
+| Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                     |
+| Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                         |
 | Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                  |
-| Create pull request                | `gh pr create --repo owner/repo --head BRANCH --base BASE --title "..." --body-file PATH` |
+| Create pull request (draft)        | `gh pr create --draft --repo owner/repo --head BRANCH --base BASE --title "..." --body-file PATH` |
 | Update pull request                | `gh pr edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]`                  |
 | Close pull request                 | `gh pr close NUMBER --repo owner/repo`                                                    |
 | Merge pull request                 | `gh pr merge NUMBER --repo owner/repo [--merge \| --squash \| --rebase]`                  |
