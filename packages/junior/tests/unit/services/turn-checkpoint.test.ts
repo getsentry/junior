@@ -336,4 +336,56 @@ describe("persistAuthPauseCheckpoint", () => {
       piMessages: messages,
     });
   });
+
+  it("branches Pi session state from the recoverable cursor after trimming an unsafe assistant tail", async () => {
+    const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+    const user: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "help me" }],
+      timestamp: 1,
+    };
+    const unsafeAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "not committed" }],
+      timestamp: 2,
+    } as PiMessage;
+    const replacementToolResult = {
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: "bash",
+      content: [{ type: "text", text: "safe result" }],
+      timestamp: 3,
+    } as PiMessage;
+
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-branch",
+      sessionId: "turn-branch",
+      sliceId: 1,
+      state: "running",
+      piMessages: [user, unsafeAssistant],
+    });
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-branch",
+      sessionId: "turn-branch",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [user],
+      resumeReason: "timeout",
+    });
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-branch",
+      sessionId: "turn-branch",
+      sliceId: 2,
+      state: "running",
+      piMessages: [user, replacementToolResult],
+    });
+
+    await expect(
+      getAgentTurnSessionCheckpoint("conversation-branch", "turn-branch"),
+    ).resolves.toMatchObject({
+      state: "running",
+      piMessages: [user, replacementToolResult],
+    });
+  });
 });

@@ -16,6 +16,7 @@
 - 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
 - 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
 - 2026-05-19: Clarified that Slack auth pauses also post a visible URL-free acknowledgement owned by the Slack delivery contract.
+- 2026-05-21: Reframed Pi persistence as an incremental Redis-backed Pi session state store. Checkpoints store metadata and recoverable cursors; materialized `pi_messages` are a read view, not the primary write model.
 
 ## Status
 
@@ -29,7 +30,7 @@ Define how a single assistant turn is split into resumable execution slices so s
 
 - Session/slice lifecycle for one assistant turn.
 - Durable checkpoint schema at safe resume boundaries.
-- Pi replay/continue contract (`replaceMessages` + `continue`) across slices.
+- Pi replay/continue contract (`agent.state.messages = ...` + `continue`) across slices.
 - Signed internal callback contract for timeout continuation.
 - Separation between turn-session checkpoints and durable thread state.
 - Failure recovery and observability requirements.
@@ -61,11 +62,13 @@ A conversation can have multiple sessions over time. Each checkpoint version ide
 
 ### Runtime State Partition
 
-- The turn-session checkpoint store is for Pi transcript state and resume metadata only.
+- The turn-session store is for Pi execution state and resume metadata only.
+- Pi messages are persisted incrementally in the Redis state cache as Pi session message state. Checkpoint metadata stores the recoverable cursor/version, not an independently rewritten transcript blob.
 - Durable thread state is the canonical home for mutable turn-local runtime state that can change mid-slice:
   - artifact state (for example active canvas/list context)
   - sandbox identity and dependency-profile hash
   - conversation/thread state and user/assistant message history
+- Durable thread state may point at the active or last completed agent session. It must not become a second source of truth for mid-turn Pi execution history.
 - Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the checkpoint payload.
 - Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful turn completion.
 
@@ -74,7 +77,7 @@ A conversation can have multiple sessions over time. Each checkpoint version ide
 - The checkpoint schema supports `running | awaiting_resume | completed | failed | superseded`.
 - The current runtime writes:
   - `awaiting_resume` for timeout/auth safe-boundary checkpoints
-  - `completed` when a turn finishes successfully
+  - `completed` when agent execution finishes successfully
   - `superseded` when a newer thread request replaces an older auth-blocked checkpoint
 - Terminal user-visible failure is currently reflected in conversation/thread state. The timeout-resume implementation does not rely on a `failed` checkpoint write.
 
@@ -94,7 +97,7 @@ A checkpoint is resumable only when all conditions are true:
 
 1. No tool call is currently in flight.
 2. All tool results prior to the boundary are durably recorded.
-3. Pi message history is durably recorded up to the same logical point.
+3. Pi session message state is durably recorded up to the same logical point, and the recoverable cursor points at that boundary.
 4. Side-effect markers/idempotency entries for completed actions are committed.
 
 Forbidden boundary:
@@ -103,13 +106,13 @@ Forbidden boundary:
 
 ### Checkpoint Payload Contract
 
-Each checkpoint must include:
+Each materialized checkpoint read must include:
 
 - `conversation_id`
 - `session_id`
 - `slice_id`
 - `checkpoint_version`
-- `pi_messages`: Canonical message list to replay into Pi.
+- `pi_messages`: Canonical message list to replay into Pi, materialized from Pi session state through the checkpoint cursor.
 - `state`: one of `running|awaiting_resume|completed|failed|superseded`.
 - `updated_at_ms`
 
@@ -120,14 +123,16 @@ Optional checkpoint fields:
 - `resumed_from_slice_id`
 - `error_message`
 
-The checkpoint does not store:
+The checkpoint metadata does not store:
 
 - artifact state
 - sandbox identity
 - channel configuration values
-- a durable tool-call log
+- a second durable tool-call log
 - a separate visible transcript log
 - per-slice deadline metadata
+
+Primary writes persist new stable Pi session messages and then update checkpoint metadata/cursors. Rewriting a whole Pi transcript is a compatibility read shape only.
 
 `inflight_partial` is not part of the checkpoint schema.
 
@@ -138,7 +143,7 @@ For slice `n+1`, runtime must:
 1. Load latest committed checkpoint for `(conversation_id, session_id)`.
 2. Instantiate Pi agent.
 3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills).
-4. Call `replaceMessages(checkpoint.pi_messages)`.
+4. Assign `agent.state.messages = checkpoint.pi_messages`.
 5. Resume generation by calling `continue()` to resume generation/tool loop.
 
 For auth-driven pauses and timeout checkpoints, the checkpoint written at the pause boundary must trim any trailing uncommitted assistant-only messages so the restored Pi history is resumable with `continue()`.
@@ -197,14 +202,14 @@ The callback must:
    - artifact state
    - sandbox identity
    - channel configuration
-7. Restore Pi messages with `replaceMessages(...)` and resume with `continue()`.
+7. Restore Pi messages with `agent.state.messages = ...` and resume with `continue()`.
 8. If the resumed slice times out again before visible output, schedule a new callback carrying the new `checkpoint_version`.
 
 ### Slice Lifecycle
 
 1. User message starts a new `session_id` under `conversation_id`.
 2. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
-3. If the turn finishes, commit `completed` after the final delivery contract has succeeded.
+3. If agent execution finishes, commit `completed`; thread state only points at that session after the final delivery contract has succeeded.
 4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the OAuth callback later consults thread-local pending-auth state before resuming.
 5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
 6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
@@ -214,12 +219,13 @@ The callback must:
 
 ## Failure Model
 
-1. Timeout or crash before checkpoint commit: no new boundary exists; the system can only rely on whatever thread state had already been eagerly persisted.
+1. Timeout or crash before a stable Pi session message/cursor commit: no new boundary exists; the system can rely on the previous cursor plus whatever thread state had already been eagerly persisted.
 2. Checkpoint commit succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback, a later user follow-up that reschedules the existing checkpoint, or operator intervention.
 3. Stale timeout-resume callbacks with an older `expected_checkpoint_version` are dropped without doing work.
 4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock. Lock-busy callbacks retry for a short bounded window, but there is no durable delayed retry queue after that window is exhausted.
 5. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
 6. Repeated resumed timeouts before visible output may produce further `awaiting_resume` checkpoints with incremented `slice_id` and `checkpoint_version`.
+7. A later user message after an ungraceful crash may build its prompt history from the active session's latest recoverable Pi session cursor. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
 
 ## Observability
 
@@ -255,13 +261,14 @@ Required attributes when available:
 
 1. Unit: timeout checkpoints trim trailing assistant-only messages and increment `slice_id`/`checkpoint_version`.
 2. Unit: signed timeout-resume callbacks verify successfully and tampered payloads are rejected.
-3. Unit/integration: a timed-out turn resumes with `replaceMessages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
+3. Unit/integration: a timed-out turn resumes with restored `agent.state.messages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
 4. Unit/integration: a resumed timeout slice can time out again and schedule the next callback with the new `checkpoint_version`.
 5. Unit/integration: a lock-busy timeout callback retries before giving up.
 6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation checkpoint reschedules the existing session instead of starting a new turn.
 7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
 8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
-9. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
+9. Unit/integration: fresh follow-up turns can recover Pi history from active/last Pi session state without depending on conversation-state Pi transcript mirroring.
+10. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
 
 ## Related Specs
 

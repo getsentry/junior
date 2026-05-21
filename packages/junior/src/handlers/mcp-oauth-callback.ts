@@ -106,8 +106,6 @@ async function persistCompletedReplyState(
   sessionId: string,
   reply: AssistantReply,
 ): Promise<void> {
-  // OAuth resumes only persist completion after the final visible reply has
-  // already been delivered to Slack.
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
@@ -115,10 +113,10 @@ async function persistCompletedReplyState(
   const nextArtifacts = reply.artifactStatePatch
     ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
     : undefined;
-  const userMessageId = getTurnUserMessageId(conversation, sessionId);
+  const userMessage = getTurnUserMessage(conversation, sessionId);
   clearPendingAuth(conversation, sessionId);
 
-  markConversationMessage(conversation, userMessageId, {
+  markConversationMessage(conversation, userMessage?.id, {
     replied: true,
     skippedReason: undefined,
   });
@@ -135,10 +133,8 @@ async function persistCompletedReplyState(
       replied: true,
     },
   });
-  if (reply.piMessages) {
-    conversation.piMessages = reply.piMessages;
-  }
   markTurnCompleted({
+    completedSessionId: sessionId,
     conversation,
     nowMs: Date.now(),
     sessionId,

@@ -39,10 +39,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       this.resolveAbort?.();
     }
 
-    async replaceMessages(messages: unknown[]) {
-      this.state.messages = [...messages];
-    }
-
     async continue() {
       this.state.messages.push({
         role: "assistant",

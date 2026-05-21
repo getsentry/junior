@@ -59,8 +59,6 @@ async function persistCompletedReplyState(args: {
   checkpoint: AgentTurnSessionCheckpoint;
   reply: AssistantReply;
 }): Promise<void> {
-  // Timeout resumes only persist completion after the final visible reply has
-  // already been delivered to Slack.
   const currentState = await getPersistedThreadState(
     args.checkpoint.conversationId,
   );
@@ -92,10 +90,8 @@ async function persistCompletedReplyState(args: {
       replied: true,
     },
   });
-  if (args.reply.piMessages) {
-    conversation.piMessages = args.reply.piMessages;
-  }
   markTurnCompleted({
+    completedSessionId: args.checkpoint.sessionId,
     conversation,
     nowMs: Date.now(),
     sessionId: args.checkpoint.sessionId,

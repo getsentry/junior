@@ -1,10 +1,15 @@
+import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";
+import {
+  commitPiSessionMessages,
+  loadPiSessionMessages,
+} from "@/chat/pi/session-state-store";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
-const AGENT_TURN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
 
 export type AgentTurnSessionStatus =
   | "running"
@@ -29,6 +34,13 @@ export interface AgentTurnSessionCheckpoint {
   sliceId: number;
   state: AgentTurnSessionStatus;
   updatedAtMs: number;
+}
+
+interface AgentTurnSessionRecord extends Omit<
+  AgentTurnSessionCheckpoint,
+  "piMessages"
+> {
+  messageCount: number;
 }
 
 function agentTurnSessionKey(
@@ -66,61 +78,83 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
-function parseAgentTurnSessionCheckpoint(
+function parseStoredRecord(
   value: unknown,
-): AgentTurnSessionCheckpoint | undefined {
+): Record<string, unknown> | undefined {
+  if (isRecord(value)) {
+    return value;
+  }
   if (typeof value !== "string") {
     return undefined;
   }
 
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
-    const status = parsed.state;
-    if (
-      status !== "running" &&
-      status !== "awaiting_resume" &&
-      status !== "completed" &&
-      status !== "failed" &&
-      status !== "superseded"
-    ) {
-      return undefined;
+function parseAgentTurnSessionRecord(value: unknown):
+  | {
+      legacyPiMessages: PiMessage[];
+      record: AgentTurnSessionRecord;
     }
+  | undefined {
+  const parsed = parseStoredRecord(value);
+  if (!parsed) {
+    return undefined;
+  }
 
-    const conversationId = parsed.conversationId;
-    const sessionId = parsed.sessionId;
-    const sliceId = parsed.sliceId;
-    const checkpointVersion = parsed.checkpointVersion;
-    const updatedAtMs = parsed.updatedAtMs;
-    const cumulativeDurationMs = toFiniteNonNegativeNumber(
-      parsed.cumulativeDurationMs,
-    );
-    const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
-    if (
-      typeof conversationId !== "string" ||
-      typeof sessionId !== "string" ||
-      typeof sliceId !== "number" ||
-      typeof checkpointVersion !== "number" ||
-      typeof updatedAtMs !== "number"
-    ) {
-      return undefined;
-    }
+  const status = parsed.state;
+  if (
+    status !== "running" &&
+    status !== "awaiting_resume" &&
+    status !== "completed" &&
+    status !== "failed" &&
+    status !== "superseded"
+  ) {
+    return undefined;
+  }
 
-    return {
+  const conversationId = parsed.conversationId;
+  const sessionId = parsed.sessionId;
+  const sliceId = parsed.sliceId;
+  const checkpointVersion = parsed.checkpointVersion;
+  const updatedAtMs = parsed.updatedAtMs;
+  const cumulativeDurationMs = toFiniteNonNegativeNumber(
+    parsed.cumulativeDurationMs,
+  );
+  const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
+  if (
+    typeof conversationId !== "string" ||
+    typeof sessionId !== "string" ||
+    typeof sliceId !== "number" ||
+    typeof checkpointVersion !== "number" ||
+    typeof updatedAtMs !== "number"
+  ) {
+    return undefined;
+  }
+
+  const legacyPiMessages = Array.isArray(parsed.piMessages)
+    ? (parsed.piMessages as PiMessage[])
+    : [];
+  const messageCount =
+    toFiniteNonNegativeNumber(parsed.messageCount) ?? legacyPiMessages.length;
+
+  return {
+    legacyPiMessages,
+    record: {
       checkpointVersion,
       conversationId,
       sessionId,
       sliceId,
       state: status,
       updatedAtMs,
+      messageCount,
       ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
       ...(cumulativeUsage ? { cumulativeUsage } : {}),
-      piMessages: Array.isArray(parsed.piMessages)
-        ? (parsed.piMessages as PiMessage[])
-        : [],
       ...(Array.isArray(parsed.loadedSkillNames)
         ? {
             loadedSkillNames: parsed.loadedSkillNames.filter(
@@ -137,12 +171,28 @@ function parseAgentTurnSessionCheckpoint(
       ...(typeof parsed.resumedFromSliceId === "number"
         ? { resumedFromSliceId: parsed.resumedFromSliceId }
         : {}),
-    };
-  } catch {
-    return undefined;
-  }
+    },
+  };
 }
 
+function materializePiMessages(
+  legacyPiMessages: PiMessage[],
+  messageCount: number,
+  sessionMessages?: PiMessage[],
+): PiMessage[] | undefined {
+  if (messageCount === 0) {
+    return [];
+  }
+  if (sessionMessages) {
+    return sessionMessages;
+  }
+  if (legacyPiMessages.length >= messageCount) {
+    return legacyPiMessages.slice(0, messageCount);
+  }
+  return undefined;
+}
+
+/** Read a materialized turn-session checkpoint for resume and history loading. */
 export async function getAgentTurnSessionCheckpoint(
   conversationId: string,
   sessionId: string,
@@ -152,9 +202,32 @@ export async function getAgentTurnSessionCheckpoint(
   const value = await stateAdapter.get(
     agentTurnSessionKey(conversationId, sessionId),
   );
-  return parseAgentTurnSessionCheckpoint(value);
+  const parsed = parseAgentTurnSessionRecord(value);
+  if (!parsed) {
+    return undefined;
+  }
+
+  const sessionMessages = await loadPiSessionMessages({
+    conversationId,
+    sessionId,
+    messageCount: parsed.record.messageCount,
+  });
+  const piMessages = materializePiMessages(
+    parsed.legacyPiMessages,
+    parsed.record.messageCount,
+    sessionMessages,
+  );
+  if (!piMessages) {
+    return undefined;
+  }
+
+  return {
+    ...parsed.record,
+    piMessages,
+  };
 }
 
+/** Commit stable Pi session state and advance the turn-session checkpoint cursor. */
 export async function upsertAgentTurnSessionCheckpoint(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
@@ -172,18 +245,27 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
-  const existing = await getAgentTurnSessionCheckpoint(
-    args.conversationId,
-    args.sessionId,
+  const existingValue = await stateAdapter.get(
+    agentTurnSessionKey(args.conversationId, args.sessionId),
   );
-  const checkpoint: AgentTurnSessionCheckpoint = {
-    checkpointVersion: (existing?.checkpointVersion ?? 0) + 1,
+  const existingRecord = parseAgentTurnSessionRecord(existingValue);
+  const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  await commitPiSessionMessages({
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    messages: args.piMessages,
+    ttlMs,
+  });
+  const storedMessageCount = args.piMessages.length;
+
+  const checkpoint: AgentTurnSessionRecord = {
+    checkpointVersion: (existingRecord?.record.checkpointVersion ?? 0) + 1,
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
     state: args.state,
     updatedAtMs: Date.now(),
-    piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
+    messageCount: storedMessageCount,
     ...(typeof args.cumulativeDurationMs === "number" &&
     Number.isFinite(args.cumulativeDurationMs)
       ? {
@@ -208,15 +290,18 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
       : {}),
   };
 
-  const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
   await stateAdapter.set(
     agentTurnSessionKey(args.conversationId, args.sessionId),
-    JSON.stringify(checkpoint),
+    checkpoint,
     ttlMs,
   );
-  return checkpoint;
+  return {
+    ...checkpoint,
+    piMessages: [...args.piMessages],
+  };
 }
 
+/** Mark an unfinished turn-session checkpoint as superseded when a newer turn wins. */
 export async function supersedeAgentTurnSessionCheckpoint(args: {
   conversationId: string;
   sessionId: string;

@@ -69,6 +69,12 @@ import {
 import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation-notice";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
+import type { PiMessage } from "@/chat/pi/messages";
+import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import {
+  getPiMessageRole,
+  trimTrailingAssistantMessages,
+} from "@/chat/respond-helpers";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -95,6 +101,75 @@ function getCurrentTurnCanvasUrl(args: {
 
 function buildCanvasRecoveryReply(canvasUrl: string) {
   return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
+}
+
+const RUNTIME_TURN_CONTEXT_START = "<runtime-turn-context>";
+
+function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
+  return messages.flatMap((message) => {
+    if (getPiMessageRole(message) !== "user") {
+      return [message];
+    }
+
+    const content = (message as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      return [message];
+    }
+
+    const nextContent = content.filter(
+      (part) =>
+        !(
+          part !== null &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "text" &&
+          typeof (part as { text?: unknown }).text === "string" &&
+          (part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START)
+        ),
+    );
+    if (nextContent.length === content.length) {
+      return [message];
+    }
+    if (nextContent.length === 0) {
+      return [];
+    }
+    return [{ ...message, content: nextContent } as PiMessage];
+  });
+}
+
+async function loadPiMessagesForTurn(args: {
+  conversationId?: string;
+  activeTurnId?: string;
+  lastSessionId?: string;
+  fallback: PiMessage[];
+}): Promise<PiMessage[] | undefined> {
+  const fallback = args.fallback.length > 0 ? [...args.fallback] : undefined;
+  if (!args.conversationId) {
+    return fallback;
+  }
+
+  if (args.activeTurnId) {
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      args.conversationId,
+      args.activeTurnId,
+    );
+    return checkpoint && checkpoint.piMessages.length > 0
+      ? stripRuntimeTurnContext(
+          trimTrailingAssistantMessages(checkpoint.piMessages),
+        )
+      : fallback;
+  }
+
+  if (!args.lastSessionId) {
+    return fallback;
+  }
+
+  const checkpoint = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.lastSessionId,
+  );
+  return checkpoint?.state === "completed" && checkpoint.piMessages.length > 0
+    ? stripRuntimeTurnContext(checkpoint.piMessages)
+    : fallback;
 }
 
 export interface ReplyExecutorServices {
@@ -325,6 +400,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
         }
+        const lastSessionIdForHistory =
+          preparedState.conversation.processing.lastSessionId;
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,
           requesterId: message.author.userId,
@@ -405,6 +482,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
             ? countPotentialImageAttachments(message.attachments)
             : 0;
+        const piMessages = await loadPiMessagesForTurn({
+          conversationId,
+          activeTurnId,
+          lastSessionId: lastSessionIdForHistory,
+          fallback: preparedState.conversation.piMessages,
+        });
 
         const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
@@ -463,7 +546,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversationContext:
               preparedState.routingContext ?? preparedState.conversationContext,
             artifactState: preparedState.artifacts,
-            piMessages: preparedState.conversation.piMessages,
+            piMessages,
             pendingAuth: preparedState.conversation.processing.pendingAuth,
             configuration: preparedState.configuration,
             channelConfiguration: preparedState.channelConfiguration,
@@ -551,10 +634,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               replied: true,
             },
           });
-          if (reply.piMessages) {
-            preparedState.conversation.piMessages = reply.piMessages;
-          }
-
           const artifactStatePatch: Partial<ThreadArtifactsState> =
             reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
 
@@ -662,6 +741,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // reload thread state fresh must pass `sessionId` to avoid wiping a
           // concurrent turn's active id.
           markTurnCompleted({
+            completedSessionId: turnId,
             conversation: preparedState.conversation,
             nowMs: Date.now(),
             updateConversationStats,

@@ -83,6 +83,7 @@ export function startActiveTurn(args: {
  * clearing a newer concurrent turn's active id.
  */
 export function markTurnCompleted(args: {
+  completedSessionId?: string;
   conversation: ThreadConversationState;
   nowMs: number;
   sessionId?: string;
@@ -93,6 +94,9 @@ export function markTurnCompleted(args: {
     args.conversation.processing.activeTurnId === args.sessionId
   ) {
     args.conversation.processing.activeTurnId = undefined;
+  }
+  if (args.completedSessionId) {
+    args.conversation.processing.lastSessionId = args.completedSessionId;
   }
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
   args.updateConversationStats(args.conversation);

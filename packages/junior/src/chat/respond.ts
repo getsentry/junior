@@ -341,30 +341,6 @@ function refreshCheckpointTurnContext(
   ];
 }
 
-function stripTurnContextFromMessages(
-  messages: PiMessage[],
-  turnContextPrompt: string,
-): PiMessage[] {
-  const marker = getTurnContextMarker(turnContextPrompt);
-  return messages.flatMap((message) => {
-    const content = getUserMessageContent(message);
-    if (!content) {
-      return [message];
-    }
-
-    const strippedContent = content.filter(
-      (part) => !isTurnContextPart(part, marker),
-    );
-    if (strippedContent.length === content.length) {
-      return [message];
-    }
-    if (strippedContent.length === 0) {
-      return [];
-    }
-    return [{ ...message, content: strippedContent } as PiMessage];
-  });
-}
-
 function getTurnContextMarker(turnContextPrompt: string): string {
   return turnContextPrompt.split("\n", 1)[0];
 }
@@ -1124,7 +1100,6 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    // ── Persist completed checkpoint ─────────────────────────────────
     if (
       checkpointState.canUseTurnSession &&
       sessionConversationId &&
@@ -1145,10 +1120,6 @@ export async function generateAssistantReply(
     // ── Build turn result ────────────────────────────────────────────
     return buildTurnResult({
       newMessages,
-      piMessages: stripTurnContextFromMessages(
-        agent.state.messages,
-        turnContextPrompt,
-      ),
       userInput,
       replyFiles,
       artifactStatePatch,

@@ -11,7 +11,6 @@ const {
   continueCallCount,
   continueStopsOnAbort,
   deliverPrivateMessageMock,
-  ignoreReplaceMessages,
   listToolsMock,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
@@ -38,7 +37,6 @@ const {
   continueCallCount: { value: 0 },
   continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
-  ignoreReplaceMessages: { value: false },
   listToolsMock: vi.fn(),
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
@@ -140,13 +138,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
     abort() {
       this.aborted = true;
-    }
-
-    async replaceMessages(messages: unknown[]) {
-      if (ignoreReplaceMessages.value) {
-        return;
-      }
-      this.state.messages = [...messages];
     }
 
     async prompt(message: unknown) {
@@ -567,7 +558,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     continueCallCount.value = 0;
     continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
-    ignoreReplaceMessages.value = false;
     listToolsMock.mockReset();
     searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
@@ -742,7 +732,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
   });
 
-  it("seeds normal turns from persisted Pi history without storing turn context", async () => {
+  it("seeds normal turns from persisted Pi history", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const priorMessages: PiMessage[] = [
@@ -758,7 +748,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as PiMessage[];
 
-    const reply = await generateAssistantReply("help me", {
+    await generateAssistantReply("help me", {
       ...makeReplyContext({
         conversationId: "conversation-history",
         threadTs: "1712345.0003",
@@ -769,12 +759,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(reply.piMessages?.slice(0, 2)).toEqual(priorMessages);
-    expect(JSON.stringify(reply.piMessages)).not.toContain("Turn context");
-    expect(JSON.stringify(reply.piMessages)).not.toContain(
-      "duplicated prior transcript",
-    );
-    expect(JSON.stringify(reply.piMessages)).toContain("help me");
   });
 
   it("parks for auth when MCP auth is requested during a tool call", async () => {
@@ -890,7 +874,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
   });
 
   it("falls back to the latest stored checkpoint when auth pause captures no messages", async () => {
-    ignoreReplaceMessages.value = true;
     continueStopsOnAbort.value = true;
 
     const priorMessages: PiMessage[] = [

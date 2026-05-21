@@ -124,10 +124,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       this.aborted = true;
     }
 
-    replaceMessages(messages: unknown[]) {
-      this.state.messages = [...messages];
-    }
-
     async prompt(message: unknown) {
       agentProbe.promptCallCount += 1;
       this.aborted = false;
