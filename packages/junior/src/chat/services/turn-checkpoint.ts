@@ -131,27 +131,56 @@ export async function persistCompletedCheckpoint(args: {
   sliceId: number;
   allMessages: PiMessage[];
   loadedSkillNames: string[];
+  logContext: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    runId?: string;
+    assistantUserName?: string;
+    modelId: string;
+  };
 }): Promise<void> {
-  const latestCheckpoint = await getAgentTurnSessionCheckpoint(
-    args.conversationId,
-    args.sessionId,
-  );
-  await upsertAgentTurnSessionCheckpoint({
-    conversationId: args.conversationId,
-    cumulativeDurationMs: addDurationMs(
-      latestCheckpoint?.cumulativeDurationMs,
-      args.currentDurationMs,
-    ),
-    cumulativeUsage: addAgentTurnUsage(
-      latestCheckpoint?.cumulativeUsage,
-      args.currentUsage,
-    ),
-    sessionId: args.sessionId,
-    sliceId: args.sliceId,
-    state: "completed",
-    piMessages: args.allMessages,
-    loadedSkillNames: args.loadedSkillNames,
-  });
+  try {
+    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+      args.conversationId,
+      args.sessionId,
+    );
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      cumulativeDurationMs: addDurationMs(
+        latestCheckpoint?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latestCheckpoint?.cumulativeUsage,
+        args.currentUsage,
+      ),
+      sessionId: args.sessionId,
+      sliceId: args.sliceId,
+      state: "completed",
+      piMessages: args.allMessages,
+      loadedSkillNames: args.loadedSkillNames,
+    });
+  } catch (checkpointError) {
+    logException(
+      checkpointError,
+      "agent_turn_completed_checkpoint_failed",
+      {
+        slackThreadId: args.logContext.threadId,
+        slackUserId: args.logContext.requesterId,
+        slackChannelId: args.logContext.channelId,
+        runId: args.logContext.runId,
+        assistantUserName: args.logContext.assistantUserName,
+        modelId: args.logContext.modelId,
+      },
+      {
+        "app.ai.resume_conversation_id": args.conversationId,
+        "app.ai.resume_session_id": args.sessionId,
+        "app.ai.resume_slice_id": args.sliceId,
+      },
+      "Failed to persist completed turn checkpoint",
+    );
+  }
 }
 
 /**

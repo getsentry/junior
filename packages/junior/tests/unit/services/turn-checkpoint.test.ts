@@ -17,6 +17,8 @@ describe("persistAuthPauseCheckpoint", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
+    vi.doUnmock("@/chat/logging");
+    vi.doUnmock("@/chat/state/turn-session-store");
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });
@@ -147,6 +149,60 @@ describe("persistAuthPauseCheckpoint", () => {
         cachedInputTokens: 2,
       },
     });
+  });
+
+  it("does not fail a completed turn when checkpoint persistence fails", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", () => ({
+      logException,
+    }));
+    vi.doMock("@/chat/state/turn-session-store", () => ({
+      getAgentTurnSessionCheckpoint: vi.fn(async () => {
+        throw new Error("state adapter unavailable");
+      }),
+      upsertAgentTurnSessionCheckpoint: vi.fn(),
+    }));
+    const { persistCompletedCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+
+    await expect(
+      persistCompletedCheckpoint({
+        conversationId: "conversation-1",
+        sessionId: "turn-1",
+        sliceId: 1,
+        allMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "help me" }],
+            timestamp: 1,
+          },
+        ],
+        loadedSkillNames: [],
+        logContext: {
+          channelId: "C123",
+          modelId: "test-model",
+          requesterId: "U123",
+          threadId: "slack:C123:1",
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logException).toHaveBeenCalledWith(
+      expect.any(Error),
+      "agent_turn_completed_checkpoint_failed",
+      expect.objectContaining({
+        modelId: "test-model",
+        slackChannelId: "C123",
+        slackThreadId: "slack:C123:1",
+        slackUserId: "U123",
+      }),
+      expect.objectContaining({
+        "app.ai.resume_conversation_id": "conversation-1",
+        "app.ai.resume_session_id": "turn-1",
+        "app.ai.resume_slice_id": 1,
+      }),
+      "Failed to persist completed turn checkpoint",
+    );
   });
 
   it("stores running checkpoints only at continuable message boundaries", async () => {

@@ -1134,6 +1134,14 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
         loadedSkillNames: activeSkills.map((skill) => skill.name),
+        logContext: {
+          threadId: context.correlation?.threadId,
+          requesterId: context.correlation?.requesterId,
+          channelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId,
+        },
       });
     }
 
