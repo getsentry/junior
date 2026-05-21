@@ -143,15 +143,16 @@ describe("slack channel tools", () => {
       max_pages: 3,
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 1,
-      next_cursor: undefined,
     });
-    expect(result).toMatchObject({
-      messages: [{ ts: "1700000000.300", text: "hello", user: "U1" }],
-    });
+    expect(result.details).not.toHaveProperty("next_cursor");
+    const body = JSON.parse(result.content[0].text);
+    expect(body.messages).toMatchObject([
+      { ts: "1700000000.300", text: "hello", user: "U1" },
+    ]);
 
     const historyCalls = getCapturedSlackApiCalls("conversations.history");
     expect(historyCalls).toHaveLength(1);
@@ -213,18 +214,17 @@ describe("slack channel tools", () => {
       max_pages: 3,
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 2,
-      next_cursor: undefined,
     });
-    expect(result).toMatchObject({
-      messages: [
-        { ts: "1700000000.500", text: "page-1", user: "U1" },
-        { ts: "1700000000.501", text: "page-2", user: "U2" },
-      ],
-    });
+    expect(result.details).not.toHaveProperty("next_cursor");
+    const body = JSON.parse(result.content[0].text);
+    expect(body.messages).toMatchObject([
+      { ts: "1700000000.500", text: "page-1", user: "U1" },
+      { ts: "1700000000.501", text: "page-2", user: "U2" },
+    ]);
 
     const historyCalls = getCapturedSlackApiCalls("conversations.history");
     expect(historyCalls).toHaveLength(2);
