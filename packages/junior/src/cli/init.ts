@@ -113,7 +113,7 @@ export async function runInit(
     version: "0.1.0",
     private: true,
     type: "module",
-    packageManager: "pnpm@10",
+    packageManager: "pnpm@10.0.0",
     scripts: {
       dev: "vite dev",
       check: "junior check",
