@@ -264,19 +264,6 @@ function createResumeReplyContext(
   };
 }
 
-async function getResumeCheckpoint(args: {
-  conversationId?: string;
-  sessionId?: string;
-}) {
-  if (!args.conversationId || !args.sessionId) {
-    return undefined;
-  }
-  return await getAgentTurnSessionCheckpoint(
-    args.conversationId,
-    args.sessionId,
-  );
-}
-
 /**
  * Resume a paused Slack turn under the normal thread lock.
  *
@@ -330,10 +317,14 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
 
     const generateReply = args.generateReply ?? generateAssistantReply;
     const replyContext = createResumeReplyContext(args, status);
-    const priorCheckpoint = await getResumeCheckpoint({
-      conversationId: replyContext.correlation?.conversationId,
-      sessionId: replyContext.correlation?.turnId,
-    });
+    const priorCheckpoint =
+      replyContext.correlation?.conversationId &&
+      replyContext.correlation?.turnId
+        ? await getAgentTurnSessionCheckpoint(
+            replyContext.correlation.conversationId,
+            replyContext.correlation.turnId,
+          )
+        : undefined;
     const replyPromise = generateReply(args.messageText, replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
     let reply =

@@ -23,6 +23,46 @@ export interface TurnCheckpointState {
   existingCheckpoint?: AgentTurnSessionCheckpoint;
 }
 
+interface CheckpointLogContext {
+  threadId?: string;
+  requesterId?: string;
+  channelId?: string;
+  runId?: string;
+  assistantUserName?: string;
+  modelId: string;
+}
+
+function logCheckpointError(
+  error: unknown,
+  eventName: string,
+  args: {
+    conversationId: string;
+    sessionId: string;
+    logContext: CheckpointLogContext;
+  },
+  attributes: Record<string, string | number>,
+  message: string,
+): void {
+  logException(
+    error,
+    eventName,
+    {
+      slackThreadId: args.logContext.threadId,
+      slackUserId: args.logContext.requesterId,
+      slackChannelId: args.logContext.channelId,
+      runId: args.logContext.runId,
+      assistantUserName: args.logContext.assistantUserName,
+      modelId: args.logContext.modelId,
+    },
+    {
+      "app.ai.resume_conversation_id": args.conversationId,
+      "app.ai.resume_session_id": args.sessionId,
+      ...attributes,
+    },
+    message,
+  );
+}
+
 function addDurationMs(
   prior: number | undefined,
   current: number | undefined,
@@ -72,14 +112,7 @@ export async function persistRunningCheckpoint(args: {
   sliceId: number;
   messages: PiMessage[];
   loadedSkillNames: string[];
-  logContext: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    assistantUserName?: string;
-    modelId: string;
-  };
+  logContext: CheckpointLogContext;
 }): Promise<void> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return;
@@ -101,20 +134,11 @@ export async function persistRunningCheckpoint(args: {
       loadedSkillNames: args.loadedSkillNames,
     });
   } catch (checkpointError) {
-    logException(
+    logCheckpointError(
       checkpointError,
       "agent_turn_running_checkpoint_failed",
+      args,
       {
-        slackThreadId: args.logContext.threadId,
-        slackUserId: args.logContext.requesterId,
-        slackChannelId: args.logContext.channelId,
-        runId: args.logContext.runId,
-        assistantUserName: args.logContext.assistantUserName,
-        modelId: args.logContext.modelId,
-      },
-      {
-        "app.ai.resume_conversation_id": args.conversationId,
-        "app.ai.resume_session_id": args.sessionId,
         "app.ai.resume_slice_id": args.sliceId,
       },
       "Failed to persist running turn checkpoint",
@@ -131,14 +155,7 @@ export async function persistCompletedCheckpoint(args: {
   sliceId: number;
   allMessages: PiMessage[];
   loadedSkillNames: string[];
-  logContext: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    assistantUserName?: string;
-    modelId: string;
-  };
+  logContext: CheckpointLogContext;
 }): Promise<void> {
   try {
     const latestCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -162,20 +179,11 @@ export async function persistCompletedCheckpoint(args: {
       loadedSkillNames: args.loadedSkillNames,
     });
   } catch (checkpointError) {
-    logException(
+    logCheckpointError(
       checkpointError,
       "agent_turn_completed_checkpoint_failed",
+      args,
       {
-        slackThreadId: args.logContext.threadId,
-        slackUserId: args.logContext.requesterId,
-        slackChannelId: args.logContext.channelId,
-        runId: args.logContext.runId,
-        assistantUserName: args.logContext.assistantUserName,
-        modelId: args.logContext.modelId,
-      },
-      {
-        "app.ai.resume_conversation_id": args.conversationId,
-        "app.ai.resume_session_id": args.sessionId,
         "app.ai.resume_slice_id": args.sliceId,
       },
       "Failed to persist completed turn checkpoint",
@@ -196,14 +204,7 @@ export async function persistAuthPauseCheckpoint(args: {
   messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
-  logContext: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    assistantUserName?: string;
-    modelId: string;
-  };
+  logContext: CheckpointLogContext;
 }): Promise<number> {
   const nextSliceId = args.currentSliceId + 1;
   try {
@@ -236,20 +237,11 @@ export async function persistAuthPauseCheckpoint(args: {
       errorMessage: args.errorMessage,
     });
   } catch (checkpointError) {
-    logException(
+    logCheckpointError(
       checkpointError,
       "agent_turn_auth_resume_checkpoint_failed",
+      args,
       {
-        slackThreadId: args.logContext.threadId,
-        slackUserId: args.logContext.requesterId,
-        slackChannelId: args.logContext.channelId,
-        runId: args.logContext.runId,
-        assistantUserName: args.logContext.assistantUserName,
-        modelId: args.logContext.modelId,
-      },
-      {
-        "app.ai.resume_conversation_id": args.conversationId,
-        "app.ai.resume_session_id": args.sessionId,
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },
@@ -272,14 +264,7 @@ export async function persistTimeoutCheckpoint(args: {
   messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
-  logContext: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    assistantUserName?: string;
-    modelId: string;
-  };
+  logContext: CheckpointLogContext;
 }): Promise<AgentTurnSessionCheckpoint | undefined> {
   const nextSliceId = args.currentSliceId + 1;
 
@@ -313,20 +298,11 @@ export async function persistTimeoutCheckpoint(args: {
       errorMessage: args.errorMessage,
     });
   } catch (checkpointError) {
-    logException(
+    logCheckpointError(
       checkpointError,
       "agent_turn_timeout_resume_checkpoint_failed",
+      args,
       {
-        slackThreadId: args.logContext.threadId,
-        slackUserId: args.logContext.requesterId,
-        slackChannelId: args.logContext.channelId,
-        runId: args.logContext.runId,
-        assistantUserName: args.logContext.assistantUserName,
-        modelId: args.logContext.modelId,
-      },
-      {
-        "app.ai.resume_conversation_id": args.conversationId,
-        "app.ai.resume_session_id": args.sessionId,
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },

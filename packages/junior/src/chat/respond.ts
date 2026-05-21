@@ -405,6 +405,14 @@ export async function generateAssistantReply(
   let timedOut = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
+  const checkpointLogContext = {
+    threadId: context.correlation?.threadId,
+    requesterId: context.correlation?.requesterId,
+    channelId: context.correlation?.channelId,
+    runId: context.correlation?.runId,
+    assistantUserName: botConfig.userName,
+    modelId: botConfig.modelId,
+  };
 
   const getSandboxMetadata = () =>
     sandboxExecutor
@@ -945,14 +953,7 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         messages,
         loadedSkillNames: loadedSkillNamesForResume,
-        logContext: {
-          threadId: context.correlation?.threadId,
-          requesterId: context.correlation?.requesterId,
-          channelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
-        },
+        logContext: checkpointLogContext,
       });
     };
 
@@ -1134,14 +1135,7 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
         loadedSkillNames: activeSkills.map((skill) => skill.name),
-        logContext: {
-          threadId: context.correlation?.threadId,
-          requesterId: context.correlation?.requesterId,
-          channelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
-        },
+        logContext: checkpointLogContext,
       });
     }
 
@@ -1182,14 +1176,7 @@ export async function generateAssistantReply(
         messages: timeoutResumeMessages,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error instanceof Error ? error.message : String(error),
-        logContext: {
-          threadId: context.correlation?.threadId,
-          requesterId: context.correlation?.requesterId,
-          channelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
-        },
+        logContext: checkpointLogContext,
       });
       if (checkpoint) {
         throw new RetryableTurnError(
@@ -1226,14 +1213,7 @@ export async function generateAssistantReply(
         messages: timeoutResumeMessages,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error.message,
-        logContext: {
-          threadId: context.correlation?.threadId,
-          requesterId: context.correlation?.requesterId,
-          channelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId,
-        },
+        logContext: checkpointLogContext,
       });
       throw new RetryableTurnError(
         error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
