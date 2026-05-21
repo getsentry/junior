@@ -12,8 +12,7 @@ import {
   getLogContextAttributes,
   serializeGenAiAttribute,
 } from "@/chat/logging";
-
-const PROVIDER_NAME = "vercel-ai-gateway";
+import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 
 // Compose only the OTel GenAI attributes that are knowable at span start
 // (request-shape + system instructions). End-of-call attributes such as
@@ -24,7 +23,7 @@ function buildChatStartAttributes(
 ): Record<string, string> {
   const attributes: Record<string, string> = {
     "gen_ai.operation.name": "chat",
-    "gen_ai.provider.name": PROVIDER_NAME,
+    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.request.model": model.id,
   };
 
