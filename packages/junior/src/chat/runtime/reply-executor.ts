@@ -76,7 +76,7 @@ import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider
 import type { PiMessage } from "@/chat/pi/messages";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import {
-  getPiMessageRole,
+  stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 
@@ -105,39 +105,6 @@ function getCurrentTurnCanvasUrl(args: {
 
 function buildCanvasRecoveryReply(canvasUrl: string) {
   return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
-}
-
-const RUNTIME_TURN_CONTEXT_START = "<runtime-turn-context>";
-
-function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
-  return messages.flatMap((message) => {
-    if (getPiMessageRole(message) !== "user") {
-      return [message];
-    }
-
-    const content = (message as { content?: unknown }).content;
-    if (!Array.isArray(content)) {
-      return [message];
-    }
-
-    const nextContent = content.filter(
-      (part) =>
-        !(
-          part !== null &&
-          typeof part === "object" &&
-          (part as { type?: unknown }).type === "text" &&
-          typeof (part as { text?: unknown }).text === "string" &&
-          (part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START)
-        ),
-    );
-    if (nextContent.length === content.length) {
-      return [message];
-    }
-    if (nextContent.length === 0) {
-      return [];
-    }
-    return [{ ...message, content: nextContent } as PiMessage];
-  });
 }
 
 async function loadPiMessagesForTurn(args: {

@@ -9,6 +9,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { Skill } from "@/chat/skills";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
+const RUNTIME_TURN_CONTEXT_START = "<runtime-turn-context>";
 
 /** Extract conversation and session identifiers from correlation context. */
 export function getSessionIdentifiers(context: {
@@ -275,6 +276,101 @@ export function getPiMessageRole(value: unknown): string | undefined {
   }
   const role = (value as { role?: unknown }).role;
   return typeof role === "string" ? role : undefined;
+}
+
+function getUserMessageContent(message: PiMessage): unknown[] | undefined {
+  const record = message as { role?: unknown; content?: unknown };
+  return record.role === "user" && Array.isArray(record.content)
+    ? record.content
+    : undefined;
+}
+
+function isRuntimeTurnContextPart(part: unknown, marker: string): boolean {
+  return (
+    part !== null &&
+    typeof part === "object" &&
+    (part as { type?: unknown }).type === "text" &&
+    typeof (part as { text?: unknown }).text === "string" &&
+    (part as { text: string }).text.startsWith(marker)
+  );
+}
+
+function replaceRuntimeTurnContext(
+  message: PiMessage,
+  turnContextPrompt: string,
+): PiMessage | undefined {
+  const content = getUserMessageContent(message);
+  if (!content) {
+    return undefined;
+  }
+
+  const marker = turnContextPrompt.split("\n", 1)[0];
+  const contextIndex = content.findIndex((part) =>
+    isRuntimeTurnContextPart(part, marker),
+  );
+  if (contextIndex < 0) {
+    return undefined;
+  }
+
+  const nextContent = [...content];
+  nextContent[contextIndex] = {
+    ...(nextContent[contextIndex] as object),
+    text: turnContextPrompt,
+  };
+  return {
+    ...message,
+    content: nextContent,
+  } as PiMessage;
+}
+
+/** Refresh volatile runtime context in a checkpoint before continuing Pi. */
+export function refreshRuntimeTurnContext(
+  messages: PiMessage[],
+  turnContextPrompt: string,
+): PiMessage[] {
+  for (let index = 0; index < messages.length; index += 1) {
+    const updated = replaceRuntimeTurnContext(
+      messages[index],
+      turnContextPrompt,
+    );
+    if (!updated) {
+      continue;
+    }
+
+    const nextMessages = [...messages];
+    nextMessages[index] = updated;
+    return nextMessages;
+  }
+
+  return [
+    ...messages,
+    {
+      role: "user",
+      content: [{ type: "text", text: turnContextPrompt }],
+      timestamp: Date.now(),
+    } as PiMessage,
+  ];
+}
+
+/** Remove volatile runtime context before using checkpoint messages as history. */
+export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
+  return messages.flatMap((message) => {
+    const content = getUserMessageContent(message);
+    if (!content) {
+      return [message];
+    }
+
+    const nextContent = content.filter(
+      (part) => !isRuntimeTurnContextPart(part, RUNTIME_TURN_CONTEXT_START),
+    );
+    if (nextContent.length === content.length) {
+      return [message];
+    }
+    if (nextContent.length === 0) {
+      return [];
+    }
+    return [{ ...message, content: nextContent } as PiMessage];
+  });
 }
 
 /** Concatenate text content parts from an assistant message. */

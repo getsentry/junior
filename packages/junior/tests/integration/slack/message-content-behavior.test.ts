@@ -223,10 +223,16 @@ describe("Slack behavior: message content", () => {
 
   it("passes durable Pi history into the next turn", async () => {
     const calls: CapturedCall[] = [];
-    const firstTurnHistory: PiMessage[] = [
+    const storedFirstTurnHistory: PiMessage[] = [
       {
         role: "user",
-        content: [{ type: "text", text: "I need the budget by Friday" }],
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nold runtime facts\n</runtime-turn-context>",
+          },
+          { type: "text", text: "I need the budget by Friday" },
+        ],
         timestamp: 1,
       },
       {
@@ -234,6 +240,14 @@ describe("Slack behavior: message content", () => {
         content: [{ type: "text", text: "First response." }],
         timestamp: 2,
       },
+    ] as PiMessage[];
+    const expectedHistory: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "I need the budget by Friday" }],
+        timestamp: 1,
+      },
+      storedFirstTurnHistory[1]!,
     ] as PiMessage[];
 
     const { slackRuntime } = createTestChatRuntime({
@@ -267,7 +281,7 @@ describe("Slack behavior: message content", () => {
                 sessionId: context.correlation.turnId,
                 sliceId: 1,
                 state: "completed",
-                piMessages: firstTurnHistory,
+                piMessages: storedFirstTurnHistory,
               });
             }
             return {
@@ -314,6 +328,6 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
-    expect(calls[1]?.piMessages).toEqual(firstTurnHistory);
+    expect(calls[1]?.piMessages).toEqual(expectedHistory);
   });
 });
