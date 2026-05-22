@@ -27,7 +27,7 @@ import {
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation-notice";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { ACTIVE_LOCK_TTL_MS, getStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { addAgentTurnUsage } from "@/chat/usage";
 import {
@@ -119,6 +119,8 @@ interface ResumeSlackTurnArgs {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
   onTimeoutPause?: (error: unknown) => Promise<void>;
+  onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
+  beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
 }
 
@@ -273,18 +275,11 @@ function createResumeReplyContext(
  * never arrived.
  */
 export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
-  if (!args.replyContext?.requester?.userId) {
-    throw new Error("Resumed turn requires replyContext.requester.userId");
-  }
-
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const lock = await stateAdapter.acquireLock(
-    lockKey,
-    botConfig.turnTimeoutMs + 60_000,
-  );
+  const lock = await stateAdapter.acquireLock(lockKey, ACTIVE_LOCK_TTL_MS);
   if (!lock) {
     throw new ResumeTurnBusyError(lockKey);
   }
@@ -297,26 +292,41 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
+  let finalReplyDelivered = false;
+  let postDeliveryCommitError: unknown;
+  let runArgs = args;
   try {
-    if (args.messageTs) {
+    const preparedArgs = await args.beforeStart?.();
+    if (preparedArgs === false) {
+      return;
+    }
+    if (preparedArgs) {
+      runArgs = { ...args, ...preparedArgs };
+    }
+
+    if (!runArgs.replyContext?.requester?.userId) {
+      throw new Error("Resumed turn requires replyContext.requester.userId");
+    }
+
+    if (runArgs.messageTs) {
       processingReaction = await startSlackProcessingReactionForMessage({
-        channelId: args.channelId,
-        timestamp: args.messageTs,
+        channelId: runArgs.channelId,
+        timestamp: runArgs.messageTs,
         logException,
-        logContext: { ...getResumeLogContext(args, lockKey) },
+        logContext: { ...getResumeLogContext(runArgs, lockKey) },
       });
     }
-    if (args.initialText) {
+    if (runArgs.initialText) {
       await postSlackMessageBestEffort(
-        args.channelId,
-        args.threadTs,
-        args.initialText,
+        runArgs.channelId,
+        runArgs.threadTs,
+        runArgs.initialText,
       );
     }
     status.start();
 
-    const generateReply = args.generateReply ?? generateAssistantReply;
-    const replyContext = createResumeReplyContext(args, status);
+    const generateReply = runArgs.generateReply ?? generateAssistantReply;
+    const replyContext = createResumeReplyContext(runArgs, status);
     const priorCheckpoint =
       replyContext.correlation?.conversationId &&
       replyContext.correlation?.turnId
@@ -325,8 +335,8 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
             replyContext.correlation.turnId,
           )
         : undefined;
-    const replyPromise = generateReply(args.messageText, replyContext);
-    const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
+    const replyPromise = generateReply(runArgs.messageText, replyContext);
+    const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
     let reply =
       typeof replyTimeoutMs === "number"
         ? await Promise.race([
@@ -347,12 +357,13 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     reply = finalizeFailedTurnReply({
       reply,
       logException,
-      context: getResumeLogContext(args, lockKey),
+      context: getResumeLogContext(runArgs, lockKey),
     });
 
     await status.stop();
     const footer = buildSlackReplyFooter({
-      conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
+      conversationId:
+        runArgs.replyContext?.correlation?.conversationId ?? lockKey,
       durationMs:
         typeof priorCheckpoint?.cumulativeDurationMs === "number" ||
         typeof reply.diagnostics.durationMs === "number"
@@ -367,19 +378,33 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         ) ?? reply.diagnostics.usage,
     });
     await postSlackApiReplyPosts({
-      channelId: args.channelId,
-      threadTs: args.threadTs,
+      channelId: runArgs.channelId,
+      threadTs: runArgs.threadTs,
       posts: planSlackReplyPosts({ reply }),
       fileUploadFailureMode: "best_effort",
       footer,
     });
-    await args.onSuccess?.(reply);
+    finalReplyDelivered = true;
+    await runArgs.onSuccess?.(reply);
   } catch (error) {
     await status.stop();
 
-    const onAuthPause = args.onAuthPause;
-    const onTimeoutPause = args.onTimeoutPause;
-    if (
+    const onAuthPause = runArgs.onAuthPause;
+    const onTimeoutPause = runArgs.onTimeoutPause;
+    if (finalReplyDelivered) {
+      postDeliveryCommitError = error;
+      try {
+        await runArgs.onPostDeliveryCommitFailure?.(error);
+      } catch (terminalizeError) {
+        logException(
+          terminalizeError,
+          "slack_resume_post_delivery_terminalize_failed",
+          getResumeLogContext(runArgs, lockKey),
+          {},
+          "Failed to terminalize resumed turn after post-delivery commit failure",
+        );
+      }
+    } else if (
       (isRetryableTurnError(error, "mcp_auth_resume") ||
         isRetryableTurnError(error, "plugin_auth_resume")) &&
       onAuthPause
@@ -403,7 +428,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
           error,
           eventName: "slack_resume_turn_failed",
           lockKey,
-          resumeArgs: args,
+          resumeArgs: runArgs,
         });
       };
     }
@@ -412,20 +437,31 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     await stateAdapter.releaseLock(lock);
   }
 
+  if (postDeliveryCommitError) {
+    logException(
+      postDeliveryCommitError,
+      "slack_resume_success_handler_failed",
+      getResumeLogContext(runArgs, lockKey),
+      {},
+      "Failed to persist resumed turn state after final reply delivery",
+    );
+    throw postDeliveryCommitError;
+  }
+
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
       if (deferredPauseKind === "auth") {
         await postSlackMessageBestEffort(
-          args.channelId,
-          args.threadTs,
+          runArgs.channelId,
+          runArgs.threadTs,
           buildAuthPauseResponse(),
         );
       }
       if (deferredPauseKind === "timeout") {
         await postTurnContinuationNoticeBestEffort({
           lockKey,
-          resumeArgs: args,
+          resumeArgs: runArgs,
         });
       }
       return;
@@ -435,7 +471,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         error: pauseError,
         eventName: "slack_resume_pause_handler_failed",
         lockKey,
-        resumeArgs: args,
+        resumeArgs: runArgs,
       });
       return;
     }
@@ -460,6 +496,8 @@ export async function resumeAuthorizedRequest(args: {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
   onTimeoutPause?: (error: unknown) => Promise<void>;
+  onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
+  beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
 }) {
   await resumeSlackTurn({
@@ -475,6 +513,8 @@ export async function resumeAuthorizedRequest(args: {
     onFailure: args.onFailure,
     onAuthPause: args.onAuthPause,
     onTimeoutPause: args.onTimeoutPause,
+    onPostDeliveryCommitFailure: args.onPostDeliveryCommitFailure,
+    beforeStart: args.beforeStart,
     replyTimeoutMs: args.replyTimeoutMs,
   });
 }

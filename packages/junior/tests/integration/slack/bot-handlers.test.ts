@@ -296,6 +296,82 @@ describe("bot handlers (integration)", () => {
     expect(String(errorPost)).not.toContain("LLM unavailable");
   });
 
+  it("does not persist an assistant message when final Slack delivery fails", async () => {
+    const finalText = "This reply never reaches Slack.";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: finalText,
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+        visionContext: {
+          listThreadReplies: async () => [],
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: "slack:C_DELIVERY_FAIL:1700000000.000",
+    });
+    thread.post = vi.fn(async () => {
+      throw new Error("Slack unavailable");
+    }) as typeof thread.post;
+
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-delivery-fail",
+          threadId: "slack:C_DELIVERY_FAIL:1700000000.000",
+          text: "please answer",
+          isMention: true,
+        }),
+      ),
+    ).rejects.toThrow("Slack unavailable");
+
+    const conversation = (
+      thread.getState() as {
+        conversation?: {
+          messages?: Array<{
+            id?: string;
+            meta?: { replied?: boolean; skippedReason?: string };
+            role?: string;
+            text?: string;
+          }>;
+          processing?: { activeTurnId?: string };
+        };
+      }
+    ).conversation;
+    expect(conversation?.processing?.activeTurnId).toBeUndefined();
+    expect(conversation?.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          text: finalText,
+        }),
+      ]),
+    );
+    expect(
+      conversation?.messages?.find(
+        (message) => message.id === "msg-delivery-fail",
+      ),
+    ).toMatchObject({
+      meta: {
+        replied: false,
+        skippedReason: "reply failed",
+      },
+    });
+  });
+
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {
     const capturedCorrelation: Array<{
       conversationId?: string;

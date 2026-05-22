@@ -1117,7 +1117,7 @@ export async function generateAssistantReply(
           beforeMessageCount,
         );
       }
-      const nextSliceId = await persistAuthPauseCheckpoint({
+      const checkpoint = await persistAuthPauseCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
@@ -1128,21 +1128,23 @@ export async function generateAssistantReply(
         errorMessage: error.message,
         logContext: checkpointLogContext,
       });
-      throw new RetryableTurnError(
-        error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
-        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
-        {
-          authDisposition: error.disposition,
-          authDurationMs: Date.now() - replyStartedAtMs,
-          authKind: error.kind,
-          authProvider: error.provider,
-          authThinkingLevel: thinkingSelection?.thinkingLevel,
-          authUsage: turnUsage,
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: nextSliceId,
-        },
-      );
+      if (checkpoint) {
+        throw new RetryableTurnError(
+          error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
+          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${checkpoint.sliceId}`,
+          {
+            authDisposition: error.disposition,
+            authDurationMs: Date.now() - replyStartedAtMs,
+            authKind: error.kind,
+            authProvider: error.provider,
+            authThinkingLevel: thinkingSelection?.thinkingLevel,
+            authUsage: turnUsage,
+            conversationId: timeoutResumeConversationId,
+            sessionId: timeoutResumeSessionId,
+            sliceId: checkpoint.sliceId,
+          },
+        );
+      }
     }
 
     if (isRetryableTurnError(error)) {

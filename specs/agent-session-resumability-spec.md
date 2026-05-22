@@ -195,7 +195,7 @@ The callback must:
    - `state !== awaiting_resume`
    - `resume_reason !== timeout`
    - `checkpoint_version !== expected_checkpoint_version`
-5. Acquire the same per-thread state-adapter lock used by live turn execution. Because callbacks are often scheduled before the scheduling live handler has released the lock, a busy lock must be retried for a short bounded window before the callback gives up.
+5. Acquire the same per-thread state-adapter lock used by live turn execution. Because callbacks are often scheduled before the scheduling live handler has released the lock, a busy lock must be retried for a short bounded window before the callback reschedules itself.
 6. Rebuild turn runtime state from durable thread/configuration state:
    - user message
    - conversation context
@@ -213,7 +213,7 @@ The callback must:
 4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the OAuth callback later consults thread-local pending-auth state before resuming.
 5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
 6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
-7. If the callback loses the per-thread lock because the scheduling live handler is still unwinding, it retries briefly and then either resumes or logs a lock-busy exit without mutating state.
+7. If the callback loses the per-thread lock because the scheduling live handler is still unwinding, it retries briefly and then reschedules the same checkpoint-version callback without mutating state.
 8. If the user pings the thread while the timeout checkpoint is still awaiting resume, the runtime reschedules the existing callback. The ping must not overwrite `activeTurnId` or create a second agent turn.
 9. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.
 
@@ -222,7 +222,7 @@ The callback must:
 1. Timeout or crash before a stable Pi session message/cursor commit: no new boundary exists; the system can rely on the previous cursor plus whatever thread state had already been eagerly persisted.
 2. Checkpoint commit succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback, a later user follow-up that reschedules the existing checkpoint, or operator intervention.
 3. Stale timeout-resume callbacks with an older `expected_checkpoint_version` are dropped without doing work.
-4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock. Lock-busy callbacks retry for a short bounded window, but there is no durable delayed retry queue after that window is exhausted.
+4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock. Lock-busy callbacks retry for a short bounded window, then reschedule the same checkpoint-version callback rather than abandoning the awaiting checkpoint.
 5. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
 6. Repeated resumed timeouts before visible output may produce further `awaiting_resume` checkpoints with incremented `slice_id` and `checkpoint_version`.
 7. A later user message after an ungraceful crash may build its prompt history from the active session's latest recoverable Pi session cursor. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
@@ -263,7 +263,7 @@ Required attributes when available:
 2. Unit: signed timeout-resume callbacks verify successfully and tampered payloads are rejected.
 3. Unit/integration: a timed-out turn resumes with restored `agent.state.messages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
 4. Unit/integration: a resumed timeout slice can time out again and schedule the next callback with the new `checkpoint_version`.
-5. Unit/integration: a lock-busy timeout callback retries before giving up.
+5. Unit/integration: a lock-busy timeout callback retries before rescheduling the same checkpoint.
 6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation checkpoint reschedules the existing session instead of starting a new turn.
 7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
 8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.

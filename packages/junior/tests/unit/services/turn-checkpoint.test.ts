@@ -71,7 +71,7 @@ describe("persistAuthPauseCheckpoint", () => {
       errorMessage: "initial auth pause",
     });
 
-    const nextSliceId = await persistAuthPauseCheckpoint({
+    const authCheckpoint = await persistAuthPauseCheckpoint({
       conversationId: "conversation-1",
       sessionId: "turn-1",
       currentSliceId: 1,
@@ -83,7 +83,7 @@ describe("persistAuthPauseCheckpoint", () => {
       },
     });
 
-    expect(nextSliceId).toBe(2);
+    expect(authCheckpoint?.sliceId).toBe(2);
 
     const checkpoint = await getAgentTurnSessionCheckpoint(
       "conversation-1",

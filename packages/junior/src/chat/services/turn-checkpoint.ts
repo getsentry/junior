@@ -192,8 +192,8 @@ export async function persistCompletedCheckpoint(args: {
 }
 
 /**
- * Persist an auth-pause checkpoint. Returns the next slice ID for the caller
- * to throw the appropriate retry error.
+ * Persist an auth-pause checkpoint. Returns the durable checkpoint only when
+ * the caller can safely hand the user to an authorization resume flow.
  */
 export async function persistAuthPauseCheckpoint(args: {
   conversationId: string;
@@ -205,7 +205,7 @@ export async function persistAuthPauseCheckpoint(args: {
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: CheckpointLogContext;
-}): Promise<number> {
+}): Promise<AgentTurnSessionCheckpoint | undefined> {
   const nextSliceId = args.currentSliceId + 1;
   try {
     const latestCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -217,7 +217,7 @@ export async function persistAuthPauseCheckpoint(args: {
         ? args.messages
         : (latestCheckpoint?.piMessages ?? []),
     );
-    await upsertAgentTurnSessionCheckpoint({
+    return await upsertAgentTurnSessionCheckpoint({
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestCheckpoint?.cumulativeDurationMs,
@@ -248,7 +248,7 @@ export async function persistAuthPauseCheckpoint(args: {
       "Failed to persist auth checkpoint before retry",
     );
   }
-  return nextSliceId;
+  return undefined;
 }
 
 /**

@@ -86,6 +86,93 @@ describe("turn resume handler", () => {
     expect(waitUntilCallbacks).toHaveLength(0);
   });
 
+  it("drops stale callbacks after the resume lock is acquired", async () => {
+    const conversationId = "slack:C123:1712345.0000";
+    const sessionId = "turn_msg_0";
+    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.0",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+
+    resumeSlackTurnMock.mockImplementationOnce(async (args) => {
+      await upsertAgentTurnSessionCheckpoint({
+        conversationId,
+        sessionId,
+        sliceId: checkpoint.sliceId,
+        state: "completed",
+        piMessages: checkpoint.piMessages,
+        loadedSkillNames: checkpoint.loadedSkillNames,
+      });
+      expect(await args.beforeStart?.()).toBe(false);
+    });
+
+    const response = await POST(
+      new Request("https://example.com/api/internal/turn-resume", {
+        method: "POST",
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    await waitUntilCallbacks[0]?.();
+
+    expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
+  });
+
   it("re-enqueues the next slice when a resumed turn times out again", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
@@ -149,7 +236,10 @@ describe("turn resume handler", () => {
     });
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
-      await args.onTimeoutPause?.(
+      const prepared = await args.beforeStart?.();
+      if (prepared === false) return;
+      const runArgs = { ...args, ...(prepared ?? {}) };
+      await runArgs.onTimeoutPause?.(
         new RetryableTurnError("turn_timeout_resume", "timed out again", {
           conversationId,
           sessionId,
@@ -257,7 +347,93 @@ describe("turn resume handler", () => {
     expect(resumeSlackTurnMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not mutate persisted state when completion persistence fails afterward", async () => {
+  it("reschedules when the timeout-resume callback remains lock-busy", async () => {
+    vi.useFakeTimers();
+    const conversationId = "slack:C123:1712345.0006";
+    const sessionId = "turn_msg_6";
+    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.6",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+    resumeSlackTurnMock.mockRejectedValue(
+      new ResumeTurnBusyError(conversationId),
+    );
+
+    const response = await POST(
+      new Request("https://example.com/api/internal/turn-resume", {
+        method: "POST",
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    const task = waitUntilCallbacks[0]?.();
+    await vi.runAllTimersAsync();
+    await task;
+
+    expect(resumeSlackTurnMock).toHaveBeenCalledTimes(4);
+    expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+  });
+
+  it("leaves persisted state unchanged when completion persistence fails after delivery", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -324,6 +500,9 @@ describe("turn resume handler", () => {
     );
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
+      const prepared = await args.beforeStart?.();
+      if (prepared === false) return;
+      const runArgs = { ...args, ...(prepared ?? {}) };
       const reply = {
         text: "Final resumed answer",
         diagnostics: {
@@ -336,11 +515,7 @@ describe("turn resume handler", () => {
         },
       } as any;
 
-      try {
-        await args.onSuccess?.(reply);
-      } catch (error) {
-        await args.onFailure?.(error);
-      }
+      await runArgs.onSuccess?.(reply);
     });
 
     const response = await POST(
@@ -427,8 +602,11 @@ describe("turn resume handler", () => {
     });
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
+      const prepared = await args.beforeStart?.();
+      if (prepared === false) return;
+      const runArgs = { ...args, ...(prepared ?? {}) };
       try {
-        await args.onTimeoutPause?.(
+        await runArgs.onTimeoutPause?.(
           new RetryableTurnError("turn_timeout_resume", "timed out again", {
             conversationId,
             sessionId,
@@ -437,7 +615,7 @@ describe("turn resume handler", () => {
           }),
         );
       } catch (error) {
-        await args.onFailure?.(error);
+        await runArgs.onFailure?.(error);
       }
     });
 

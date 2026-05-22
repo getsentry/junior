@@ -1,4 +1,3 @@
-import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
 import {
   ResumeTurnBusyError,
@@ -6,34 +5,29 @@ import {
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
+  failAgentTurnSessionCheckpoint,
   getAgentTurnSessionCheckpoint,
   type AgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
-  mergeArtifactsState,
   persistThreadStateById,
   getChannelConfigurationServiceById,
 } from "@/chat/runtime/thread-state";
+import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
+  getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
   buildConversationContext,
-  generateConversationId,
   markConversationMessage,
-  normalizeConversationText,
-  upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import {
-  isRetryableTurnError,
-  markTurnCompleted,
-  markTurnFailed,
-} from "@/chat/runtime/turn";
+import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import {
   canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
@@ -64,44 +58,20 @@ async function persistCompletedReplyState(args: {
   );
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const nextArtifacts = args.reply.artifactStatePatch
-    ? mergeArtifactsState(artifacts, args.reply.artifactStatePatch)
-    : undefined;
   const userMessage = getTurnUserMessage(
     conversation,
     args.checkpoint.sessionId,
   );
-  clearPendingAuth(conversation, args.checkpoint.sessionId);
-
-  markConversationMessage(conversation, userMessage?.id, {
-    replied: true,
-    skippedReason: undefined,
-  });
-  upsertConversationMessage(conversation, {
-    id: generateConversationId("assistant"),
-    role: "assistant",
-    text: normalizeConversationText(args.reply.text) || "[empty response]",
-    createdAtMs: Date.now(),
-    author: {
-      userName: botConfig.userName,
-      isBot: true,
-    },
-    meta: {
-      replied: true,
-    },
-  });
-  markTurnCompleted({
+  const statePatch = buildDeliveredTurnStatePatch({
+    artifacts,
     conversation,
-    nowMs: Date.now(),
+    reply: args.reply,
     sessionId: args.checkpoint.sessionId,
-    updateConversationStats,
+    userMessageId: userMessage?.id,
   });
 
   await persistThreadStateById(args.checkpoint.conversationId, {
-    artifacts: nextArtifacts,
-    conversation,
-    sandboxId: args.reply.sandboxId,
-    sandboxDependencyProfileHash: args.reply.sandboxDependencyProfileHash,
+    ...statePatch,
   });
 }
 
@@ -121,6 +91,12 @@ async function persistFailedReplyState(
     updateConversationStats,
   });
 
+  await failAgentTurnSessionCheckpoint({
+    conversationId: checkpoint.conversationId,
+    expectedCheckpointVersion: checkpoint.checkpointVersion,
+    sessionId: checkpoint.sessionId,
+    errorMessage: "Timed-out turn failed while resuming",
+  });
   await persistThreadStateById(checkpoint.conversationId, {
     conversation,
   });
@@ -129,19 +105,6 @@ async function persistFailedReplyState(
 async function resumeTimedOutTurn(
   payload: TurnContinuationRequest,
 ): Promise<void> {
-  const checkpoint = await getAgentTurnSessionCheckpoint(
-    payload.conversationId,
-    payload.sessionId,
-  );
-  if (
-    !checkpoint ||
-    checkpoint.state !== "awaiting_resume" ||
-    checkpoint.resumeReason !== "timeout" ||
-    checkpoint.checkpointVersion !== payload.expectedCheckpointVersion
-  ) {
-    return;
-  }
-
   const thread = parseSlackThreadId(payload.conversationId);
   if (!thread) {
     throw new Error(
@@ -149,132 +112,150 @@ async function resumeTimedOutTurn(
     );
   }
 
-  const currentState = await getPersistedThreadState(payload.conversationId);
-  const conversation = coerceThreadConversationState(currentState);
-  const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getTurnUserMessage(conversation, payload.sessionId);
-  if (!userMessage?.author?.userId) {
-    throw new Error(
-      `Unable to locate the persisted user message for timeout resume session "${payload.sessionId}"`,
-    );
-  }
-  if (conversation.processing.activeTurnId !== payload.sessionId) {
-    return;
-  }
-
-  const channelConfiguration = getChannelConfigurationServiceById(
-    thread.channelId,
-  );
-  const conversationContext = buildConversationContext(conversation, {
-    excludeMessageId: userMessage.id,
-  });
-  const sandbox = getPersistedSandboxState(currentState);
-
   await resumeSlackTurn({
-    messageText: userMessage.text,
+    messageText: "",
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
-    replyContext: {
-      requester: {
-        userId: userMessage.author.userId,
-        userName: userMessage.author.userName,
-        fullName: userMessage.author.fullName,
-      },
-      correlation: {
-        conversationId: payload.conversationId,
-        turnId: payload.sessionId,
-        channelId: thread.channelId,
-        threadTs: thread.threadTs,
-        requesterId: userMessage.author.userId,
-      },
-      toolChannelId: artifacts.assistantContextChannelId ?? thread.channelId,
-      artifactState: artifacts,
-      pendingAuth: conversation.processing.pendingAuth,
-      conversationContext,
-      channelConfiguration,
-      piMessages: conversation.piMessages,
-      sandbox,
-      onAuthPending: async (nextPendingAuth) => {
-        await applyPendingAuthUpdate({
-          conversation,
-          conversationId: payload.conversationId,
-          nextPendingAuth,
-        });
-        await persistThreadStateById(payload.conversationId, {
-          conversation,
-        });
-      },
-      ...getTurnUserReplyAttachmentContext(userMessage),
-    },
-    onSuccess: async (reply) => {
-      try {
-        await persistCompletedReplyState({ checkpoint, reply });
-      } catch (persistError) {
-        logException(
-          persistError,
-          "timeout_resume_complete_persist_failed",
-          {},
-          {
-            "app.ai.conversation_id": payload.conversationId,
-            "app.ai.session_id": payload.sessionId,
-          },
-          "Failed to persist completed timeout-resume state after reply delivery",
-        );
-      }
-    },
-    onFailure: async () => {
-      await persistFailedReplyState(checkpoint);
-    },
-    onAuthPause: async () => {
-      await persistAuthPauseTurnState({
-        sessionId: payload.sessionId,
-        threadStateId: payload.conversationId,
-      });
-      logWarn(
-        "timeout_resume_reparked_for_auth",
-        {},
-        {
-          "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.sessionId,
-        },
-        "Resumed timed-out turn parked for auth",
+    beforeStart: async () => {
+      const checkpoint = await getAgentTurnSessionCheckpoint(
+        payload.conversationId,
+        payload.sessionId,
       );
-    },
-    onTimeoutPause: async (error) => {
-      if (!isRetryableTurnError(error, "turn_timeout_resume")) {
-        throw error;
-      }
-      const checkpointVersion = error.metadata?.checkpointVersion;
-      const nextSliceId = error.metadata?.sliceId;
-      if (typeof checkpointVersion !== "number") {
-        throw new Error(
-          "Timed-out resume turn did not include a checkpoint version",
-        );
-      }
-      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
-        logWarn(
-          "timeout_resume_slice_limit_reached",
-          {},
-          {
-            "app.ai.conversation_id": payload.conversationId,
-            "app.ai.session_id": payload.sessionId,
-            ...(typeof nextSliceId === "number"
-              ? { "app.ai.resume_slice_id": nextSliceId }
-              : {}),
-          },
-          "Skipped automatic timeout resume because the turn exceeded the slice limit",
-        );
-        throw new Error(
-          "Timed-out turn exceeded the automatic resume slice limit",
-        );
+      if (
+        !checkpoint ||
+        checkpoint.state !== "awaiting_resume" ||
+        checkpoint.resumeReason !== "timeout" ||
+        checkpoint.checkpointVersion !== payload.expectedCheckpointVersion
+      ) {
+        return false;
       }
 
-      await scheduleTurnTimeoutResume({
-        conversationId: payload.conversationId,
-        sessionId: payload.sessionId,
-        expectedCheckpointVersion: checkpointVersion,
+      const currentState = await getPersistedThreadState(
+        payload.conversationId,
+      );
+      const conversation = coerceThreadConversationState(currentState);
+      const artifacts = coerceThreadArtifactsState(currentState);
+      const userMessage = getTurnUserMessage(conversation, payload.sessionId);
+      if (!userMessage?.author?.userId) {
+        throw new Error(
+          `Unable to locate the persisted user message for timeout resume session "${payload.sessionId}"`,
+        );
+      }
+      if (conversation.processing.activeTurnId !== payload.sessionId) {
+        return false;
+      }
+
+      const channelConfiguration = getChannelConfigurationServiceById(
+        thread.channelId,
+      );
+      const conversationContext = buildConversationContext(conversation, {
+        excludeMessageId: userMessage.id,
       });
+      const sandbox = getPersistedSandboxState(currentState);
+
+      return {
+        messageText: userMessage.text,
+        messageTs: getTurnUserSlackMessageTs(userMessage),
+        replyContext: {
+          requester: {
+            userId: userMessage.author.userId,
+            userName: userMessage.author.userName,
+            fullName: userMessage.author.fullName,
+          },
+          correlation: {
+            conversationId: payload.conversationId,
+            turnId: payload.sessionId,
+            channelId: thread.channelId,
+            threadTs: thread.threadTs,
+            requesterId: userMessage.author.userId,
+          },
+          toolChannelId:
+            artifacts.assistantContextChannelId ?? thread.channelId,
+          artifactState: artifacts,
+          pendingAuth: conversation.processing.pendingAuth,
+          conversationContext,
+          channelConfiguration,
+          piMessages: conversation.piMessages,
+          sandbox,
+          onAuthPending: async (nextPendingAuth) => {
+            await applyPendingAuthUpdate({
+              conversation,
+              conversationId: payload.conversationId,
+              nextPendingAuth,
+            });
+            await persistThreadStateById(payload.conversationId, {
+              conversation,
+            });
+          },
+          ...getTurnUserReplyAttachmentContext(userMessage),
+        },
+        onSuccess: async (reply: AssistantReply) => {
+          await persistCompletedReplyState({ checkpoint, reply });
+        },
+        onFailure: async () => {
+          await persistFailedReplyState(checkpoint);
+        },
+        onPostDeliveryCommitFailure: async () => {
+          await failAgentTurnSessionCheckpoint({
+            conversationId: checkpoint.conversationId,
+            expectedCheckpointVersion: checkpoint.checkpointVersion,
+            sessionId: checkpoint.sessionId,
+            errorMessage:
+              "Timed-out turn reply was delivered but completion state did not persist",
+          });
+        },
+        onAuthPause: async () => {
+          await persistAuthPauseTurnState({
+            sessionId: payload.sessionId,
+            threadStateId: payload.conversationId,
+          });
+          logWarn(
+            "timeout_resume_reparked_for_auth",
+            {},
+            {
+              "app.ai.conversation_id": payload.conversationId,
+              "app.ai.session_id": payload.sessionId,
+            },
+            "Resumed timed-out turn parked for auth",
+          );
+        },
+        onTimeoutPause: async (error: unknown) => {
+          if (!isRetryableTurnError(error, "turn_timeout_resume")) {
+            throw error;
+          }
+          const checkpointVersion = error.metadata?.checkpointVersion;
+          const nextSliceId = error.metadata?.sliceId;
+          if (typeof checkpointVersion !== "number") {
+            throw new Error(
+              "Timed-out resume turn did not include a checkpoint version",
+            );
+          }
+          if (!canScheduleTurnTimeoutResume(nextSliceId)) {
+            logWarn(
+              "timeout_resume_slice_limit_reached",
+              {},
+              {
+                "app.ai.conversation_id": payload.conversationId,
+                "app.ai.session_id": payload.sessionId,
+                ...(typeof nextSliceId === "number"
+                  ? { "app.ai.resume_slice_id": nextSliceId }
+                  : {}),
+              },
+              "Skipped automatic timeout resume because the turn exceeded the slice limit",
+            );
+            throw new Error(
+              "Timed-out turn exceeded the automatic resume slice limit",
+            );
+          }
+
+          await scheduleTurnTimeoutResume({
+            conversationId: payload.conversationId,
+            sessionId: payload.sessionId,
+            expectedCheckpointVersion: checkpointVersion,
+          });
+        },
+      };
     },
   });
 }
@@ -302,8 +283,9 @@ async function resumeTimedOutTurnWithLockRetry(
             "app.ai.session_id": payload.sessionId,
             "app.ai.resume_lock_retry_count": attempt,
           },
-          "Skipped timeout resume because another turn still owns the thread lock",
+          "Rescheduling timeout resume because another turn still owns the thread lock",
         );
+        await scheduleTurnTimeoutResume(payload);
         return;
       }
 

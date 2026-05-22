@@ -187,7 +187,7 @@ describe("sandbox egress proxy", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SANDBOX_EGRESS_SECRET = "test-egress-secret";
+    process.env.JUNIOR_SECRET = "test-secret";
     activeRequesterToken = undefined;
     getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
     createRemoteJWKSetMock.mockClear();
@@ -202,7 +202,7 @@ describe("sandbox egress proxy", () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
     delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
+    delete process.env.JUNIOR_SECRET;
     delete process.env.SENTRY_BOT_EMAIL;
     vi.restoreAllMocks();
   });
@@ -248,7 +248,7 @@ describe("sandbox egress proxy", () => {
 
   it("fails sandbox egress policy setup without a public callback URL", () => {
     delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
+    delete process.env.JUNIOR_SECRET;
     delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
     delete process.env.VERCEL_URL;
 
@@ -258,8 +258,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("does not reuse Slack signing secret for sandbox egress tokens", () => {
-    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
-    delete process.env.JUNIOR_INTERNAL_RESUME_SECRET;
+    delete process.env.JUNIOR_SECRET;
     process.env.SLACK_SIGNING_SECRET = "test-slack-signing-secret";
 
     expect(() =>
@@ -268,9 +267,7 @@ describe("sandbox egress proxy", () => {
         egressId: EGRESS_ID,
         ttlMs: 60_000,
       }),
-    ).toThrow(
-      "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET or JUNIOR_INTERNAL_RESUME_SECRET)",
-    );
+    ).toThrow("Cannot determine sandbox egress secret (set JUNIOR_SECRET)");
   });
 
   it("resolves command env for registered sandbox providers", async () => {

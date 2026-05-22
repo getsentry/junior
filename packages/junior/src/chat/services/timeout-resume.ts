@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { getSlackSigningSecret } from "@/chat/config";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 
 const TURN_TIMEOUT_RESUME_PATH = "/api/internal/turn-resume";
+const TURN_TIMEOUT_RESUME_HMAC_CONTEXT = "junior.turn_timeout_resume.v1";
 const TURN_TIMEOUT_RESUME_SIGNATURE_VERSION = "v1";
 const TURN_TIMEOUT_RESUME_MAX_SKEW_MS = 5 * 60 * 1000;
 const TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER = "x-junior-resume-timestamp";
@@ -55,15 +55,11 @@ export async function getAwaitingTurnContinuationRequest(args: {
 }
 
 function getTurnTimeoutResumeSecret(): string | undefined {
-  const explicit = process.env.JUNIOR_INTERNAL_RESUME_SECRET?.trim();
-  if (explicit) {
-    return explicit;
-  }
-  return getSlackSigningSecret();
+  return process.env.JUNIOR_SECRET?.trim() || undefined;
 }
 
 function buildSignedPayload(timestamp: string, body: string): string {
-  return `${timestamp}:${body}`;
+  return `${TURN_TIMEOUT_RESUME_HMAC_CONTEXT}:${timestamp}:${body}`;
 }
 
 function signTurnTimeoutResumeBody(
@@ -123,7 +119,7 @@ export async function scheduleTurnTimeoutResume(
   const secret = getTurnTimeoutResumeSecret();
   if (!secret) {
     throw new Error(
-      "Cannot determine timeout resume secret (set JUNIOR_INTERNAL_RESUME_SECRET or SLACK_SIGNING_SECRET)",
+      "Cannot determine timeout resume secret (set JUNIOR_SECRET)",
     );
   }
 

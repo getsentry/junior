@@ -146,6 +146,55 @@ describe("resumeAuthorizedRequest", () => {
     );
   });
 
+  it("does not post a failure reply when completion persistence fails after final delivery", async () => {
+    const onFailure = vi.fn(async () => undefined);
+
+    await expect(
+      resumeSlackTurn({
+        messageText: "continue this turn",
+        channelId: "C-test",
+        threadTs: "1700000000.0005",
+        replyContext: {
+          requester: { userId: "U-test" },
+        },
+        generateReply: async () => ({
+          text: "Final resumed answer",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        }),
+        onSuccess: async () => {
+          throw new Error("state write failed");
+        },
+        onFailure,
+      }),
+    ).rejects.toThrow("state write failed");
+
+    expect(onFailure).not.toHaveBeenCalled();
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0005",
+        text: expect.stringContaining("Final resumed answer"),
+      }),
+    );
+    expect(postMessageMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0005",
+        text: expect.stringContaining(
+          "I ran into an internal error while processing that.",
+        ),
+      }),
+    );
+  });
+
   it("releases the thread lock before scheduling another timeout slice", async () => {
     const onTimeoutPause = vi.fn(async () => {
       const stateAdapter = getStateAdapter();

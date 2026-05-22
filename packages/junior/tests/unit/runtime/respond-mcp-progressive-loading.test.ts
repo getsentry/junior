@@ -845,14 +845,16 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
-  it("still returns auth resume when auth checkpoint persistence fails", async () => {
+  it("does not return auth resume when auth checkpoint persistence fails", async () => {
+    const turnSessionStore = await import("@/chat/state/turn-session-store");
+    const originalUpsert = turnSessionStore.upsertAgentTurnSessionCheckpoint;
     const checkpointSpy = vi
-      .spyOn(
-        await import("@/chat/state/turn-session-store"),
-        "upsertAgentTurnSessionCheckpoint",
-      )
-      .mockImplementationOnce(async () => {
-        throw new Error("state adapter unavailable");
+      .spyOn(turnSessionStore, "upsertAgentTurnSessionCheckpoint")
+      .mockImplementation(async (args) => {
+        if (args.state === "awaiting_resume" && args.resumeReason === "auth") {
+          throw new Error("state adapter unavailable");
+        }
+        return await originalUpsert(args);
       });
 
     const context = {
@@ -865,11 +867,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     };
 
-    const firstError = await generateAssistantReply("help me", context).catch(
-      (error) => error,
-    );
+    const reply = await generateAssistantReply("help me", context);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(isRetryableTurnError(reply, "mcp_auth_resume")).toBe(false);
+    expect(reply.diagnostics.outcome).toBe("provider_error");
     expect(checkpointSpy).toHaveBeenCalled();
   });
 

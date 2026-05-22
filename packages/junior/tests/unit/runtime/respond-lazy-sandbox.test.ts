@@ -317,7 +317,15 @@ vi.mock("@/chat/services/turn-checkpoint", () => ({
     canUseTurnSession: false,
   }),
   persistCompletedCheckpoint: async () => undefined,
-  persistAuthPauseCheckpoint: async () => 2,
+  persistAuthPauseCheckpoint: async () => ({
+    checkpointVersion: 1,
+    conversationId: "conversation-1",
+    piMessages: [],
+    sessionId: "turn-1",
+    sliceId: 2,
+    state: "awaiting_resume",
+    updatedAtMs: 1,
+  }),
 }));
 
 vi.mock("@/chat/services/mcp-auth-orchestration", () => {

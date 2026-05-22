@@ -5,6 +5,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
 const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
+const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -29,17 +30,11 @@ function leaseKey(
 }
 
 function getSandboxEgressSecret(): string {
-  const explicit = process.env.JUNIOR_SANDBOX_EGRESS_SECRET?.trim();
-  if (explicit) {
-    return explicit;
+  const secret = process.env.JUNIOR_SECRET?.trim();
+  if (secret) {
+    return secret;
   }
-  const sharedInternal = process.env.JUNIOR_INTERNAL_RESUME_SECRET?.trim();
-  if (sharedInternal) {
-    return sharedInternal;
-  }
-  throw new Error(
-    "Cannot determine sandbox egress secret (set JUNIOR_SANDBOX_EGRESS_SECRET or JUNIOR_INTERNAL_RESUME_SECRET)",
-  );
+  throw new Error("Cannot determine sandbox egress secret (set JUNIOR_SECRET)");
 }
 
 function base64Url(input: string): string {
@@ -52,7 +47,7 @@ function fromBase64Url(input: string): string {
 
 function signPayload(payload: string): string {
   return createHmac("sha256", getSandboxEgressSecret())
-    .update(payload)
+    .update(`${SANDBOX_EGRESS_HMAC_CONTEXT}:${payload}`)
     .digest("base64url");
 }
 

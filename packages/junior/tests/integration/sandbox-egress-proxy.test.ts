@@ -80,7 +80,7 @@ describe("sandbox egress proxy integration", () => {
       EVAL_TEST_CREDENTIAL_TOKEN: "integration-egress-token",
       JUNIOR_BASE_URL: BASE_URL,
       JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([FIXTURE_PLUGIN_ROOT]),
-      JUNIOR_SANDBOX_EGRESS_SECRET: "integration-egress-secret",
+      JUNIOR_SECRET: "integration-secret",
       JUNIOR_STATE_ADAPTER: "memory",
     };
     modules = await loadModules();

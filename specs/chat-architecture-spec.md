@@ -268,6 +268,7 @@ interface EvalScenarioRunner {
 - Adapter/backend selection belongs in the adapter layer.
 - Key-building, TTL policy, and persistence rules belong in store modules.
 - Consumers should import the narrowest store they need rather than routing all access through a broad facade.
+- Per-thread Chat SDK locks use a short renewable state-adapter lease. Live workers heartbeat the lease while processing; if a worker disappears, the lease must expire quickly enough for a retry or continuation callback to acquire ownership.
 
 ### Turn Continuation Recovery
 
@@ -279,7 +280,7 @@ Rules:
 2. Chat SDK retry, dedupe, queueing, and per-thread locking protect inbound delivery. They do not replace session continuation because they do not carry Pi session state, sandbox/artifact state, pending auth, or final Slack delivery state.
 3. `respond.ts` creates safe checkpoints; `runtime/reply-executor.ts` schedules or reschedules continuation; `handlers/turn-resume.ts` validates callback version and lock ownership; `runtime/slack-resume.ts` reuses the normal final-delivery path.
 4. Continuation acknowledgements are Slack UX only. They do not complete the turn and are not a recovery mechanism.
-5. Lock-busy callback retry is bounded. There is no durable sweeper or delayed retry queue today, so a lost callback after retry exhaustion requires another callback, a later user follow-up that reschedules the checkpoint, or operator intervention.
+5. Lock-busy callback retry is bounded. There is no durable sweeper today, so retry exhaustion reschedules the same signed callback for the current checkpoint version rather than completing or abandoning the turn.
 
 ### Test And Eval Rules
 

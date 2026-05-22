@@ -28,10 +28,8 @@ import {
   getRunId,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
-import {
-  persistThreadState,
-  mergeArtifactsState,
-} from "@/chat/runtime/thread-state";
+import { persistThreadState } from "@/chat/runtime/thread-state";
+import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
@@ -58,11 +56,7 @@ import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
-import {
-  markTurnClosed,
-  markTurnCompleted,
-  markTurnFailed,
-} from "@/chat/runtime/turn";
+import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
 import { deleteSlackMessage, postSlackMessage } from "@/chat/slack/outbound";
@@ -74,7 +68,10 @@ import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
-import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import {
+  failAgentTurnSessionCheckpoint,
+  getAgentTurnSessionCheckpoint,
+} from "@/chat/state/turn-session-store";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -583,28 +580,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
           }
 
-          markConversationMessage(
-            preparedState.conversation,
-            preparedState.userMessageId,
-            {
-              replied: true,
-              skippedReason: undefined,
-            },
-          );
-
-          upsertConversationMessage(preparedState.conversation, {
-            id: generateConversationId("assistant"),
-            role: "assistant",
-            text: normalizeConversationText(reply.text) || "[empty response]",
-            createdAtMs: Date.now(),
-            author: {
-              userName: botConfig.userName,
-              isBot: true,
-            },
-            meta: {
-              replied: true,
-            },
-          });
           const artifactStatePatch: Partial<ThreadArtifactsState> =
             reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
 
@@ -702,23 +677,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               titleUpdateResult;
           }
 
-          const shouldPersistArtifacts =
-            Object.keys(artifactStatePatch).length > 0;
-          const nextArtifacts = shouldPersistArtifacts
-            ? mergeArtifactsState(preparedState.artifacts, artifactStatePatch)
-            : undefined;
-          markTurnCompleted({
+          const completedState = buildDeliveredTurnStatePatch({
+            artifactStatePatch,
+            artifacts: preparedState.artifacts,
             conversation: preparedState.conversation,
-            nowMs: Date.now(),
+            reply,
             sessionId: turnId,
-            updateConversationStats,
+            userMessageId: preparedState.userMessageId,
           });
           await persistThreadState(thread, {
-            artifacts: nextArtifacts,
-            conversation: preparedState.conversation,
-            sandboxId: reply.sandboxId,
-            sandboxDependencyProfileHash: reply.sandboxDependencyProfileHash,
+            ...completedState,
           });
+          preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
           if (shouldEmitDevAgentTrace()) {
             logInfo(
@@ -872,12 +842,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             markTurnFailed({
               conversation: preparedState.conversation,
               nowMs: Date.now(),
+              sessionId: turnId,
               userMessageId: preparedState.userMessageId,
               markConversationMessage: (conversation, messageId, patch) => {
                 markConversationMessage(conversation, messageId, patch);
               },
               updateConversationStats,
             });
+            if (conversationId) {
+              await failAgentTurnSessionCheckpoint({
+                conversationId,
+                sessionId: turnId,
+                errorMessage:
+                  "Agent turn failed before final reply delivery completed",
+              });
+            }
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });

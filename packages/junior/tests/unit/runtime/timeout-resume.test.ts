@@ -7,16 +7,22 @@ import {
 
 describe("timeout resume callback signing", () => {
   const originalFetch = global.fetch;
+  const originalSlackSigningSecret = process.env.SLACK_SIGNING_SECRET;
 
   beforeEach(() => {
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_INTERNAL_RESUME_SECRET = "resume-secret";
+    process.env.JUNIOR_SECRET = "resume-secret";
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_INTERNAL_RESUME_SECRET;
+    delete process.env.JUNIOR_SECRET;
+    if (originalSlackSigningSecret === undefined) {
+      delete process.env.SLACK_SIGNING_SECRET;
+    } else {
+      process.env.SLACK_SIGNING_SECRET = originalSlackSigningSecret;
+    }
     vi.restoreAllMocks();
   });
 
@@ -72,6 +78,24 @@ describe("timeout resume callback signing", () => {
     await expect(
       verifyTurnTimeoutResumeRequest(request),
     ).resolves.toBeUndefined();
+  });
+
+  it("requires the Junior secret instead of the Slack signing secret", async () => {
+    delete process.env.JUNIOR_SECRET;
+    process.env.SLACK_SIGNING_SECRET = "slack-secret";
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    await expect(
+      scheduleTurnTimeoutResume({
+        conversationId: "slack:C123:1712345.0001",
+        sessionId: "turn_msg_1",
+        expectedCheckpointVersion: 3,
+      }),
+    ).rejects.toThrow("JUNIOR_SECRET");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("caps automatic timeout resume depth", () => {

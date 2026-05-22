@@ -48,6 +48,7 @@ Required:
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN`
 - `REDIS_URL`
+- `JUNIOR_SECRET`
 
 Recommended:
 
@@ -169,6 +170,7 @@ Required:
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN` (or `SLACK_BOT_USER_TOKEN`)
 - `REDIS_URL`
+- `JUNIOR_SECRET`
 
 Also required for build-time snapshot warmup:
 

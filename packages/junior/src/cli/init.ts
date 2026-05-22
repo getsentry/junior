@@ -174,6 +174,7 @@ export async function runInit(
     path.join(target, ".env.example"),
     `SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
+JUNIOR_SECRET=
 JUNIOR_BOT_NAME=
 AI_MODEL=
 AI_FAST_MODEL=

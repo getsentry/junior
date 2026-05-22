@@ -81,7 +81,7 @@ describe("turn resume slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_INTERNAL_RESUME_SECRET: "resume-secret",
+      JUNIOR_SECRET: "resume-secret",
       SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token",
     };
 

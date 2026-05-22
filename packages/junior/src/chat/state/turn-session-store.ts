@@ -334,3 +334,40 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     errorMessage: args.errorMessage ?? existing.errorMessage,
   });
 }
+
+/** Mark an unfinished turn-session checkpoint as failed so it cannot resume. */
+export async function failAgentTurnSessionCheckpoint(args: {
+  conversationId: string;
+  expectedCheckpointVersion?: number;
+  sessionId: string;
+  errorMessage?: string;
+}): Promise<AgentTurnSessionCheckpoint | undefined> {
+  const existing = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !existing ||
+    existing.state === "completed" ||
+    existing.state === "failed" ||
+    existing.state === "superseded" ||
+    (typeof args.expectedCheckpointVersion === "number" &&
+      existing.checkpointVersion !== args.expectedCheckpointVersion)
+  ) {
+    return undefined;
+  }
+
+  return await upsertAgentTurnSessionCheckpoint({
+    conversationId: existing.conversationId,
+    sessionId: existing.sessionId,
+    sliceId: existing.sliceId,
+    state: "failed",
+    piMessages: existing.piMessages,
+    cumulativeDurationMs: existing.cumulativeDurationMs,
+    cumulativeUsage: existing.cumulativeUsage,
+    loadedSkillNames: existing.loadedSkillNames,
+    resumeReason: existing.resumeReason,
+    resumedFromSliceId: existing.resumedFromSliceId,
+    errorMessage: args.errorMessage ?? existing.errorMessage,
+  });
+}

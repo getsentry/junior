@@ -255,13 +255,13 @@ describe("createSandboxExecutor", () => {
     delete process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SANDBOX_EGRESS_SECRET = "test-egress-secret";
+    process.env.JUNIOR_SECRET = "test-secret";
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SANDBOX_EGRESS_SECRET;
+    delete process.env.JUNIOR_SECRET;
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
