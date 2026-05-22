@@ -77,8 +77,8 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `gen_ai.response.finish_reasons` when available from provider responses.
 - `gen_ai.system_instructions` when provided separately from chat history and safely captured.
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
-- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
-- `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` when available from provider responses.
+- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` / `gen_ai.usage.total_tokens` when available from provider responses.
+- `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.input_tokens.cache_write` when available from provider responses (Sentry convention names; required for AI Monitoring UI visibility).
 - `gen_ai.tool.description` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
 - Keep existing context keys aligned with `packages/junior/src/chat/logging.ts`.

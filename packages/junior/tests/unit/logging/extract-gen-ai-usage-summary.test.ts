@@ -100,7 +100,7 @@ describe("extractGenAiUsageSummary", () => {
     });
   });
 
-  it("maps cache token counters to current GenAI semantic attributes", () => {
+  it("maps cache token counters to Sentry convention attribute names", () => {
     expect(
       extractGenAiUsageAttributes({
         inputTokens: 10,
@@ -111,8 +111,9 @@ describe("extractGenAiUsageSummary", () => {
     ).toEqual({
       "gen_ai.usage.input_tokens": 15,
       "gen_ai.usage.output_tokens": 2,
-      "gen_ai.usage.cache_read.input_tokens": 4,
-      "gen_ai.usage.cache_creation.input_tokens": 1,
+      "gen_ai.usage.total_tokens": 17,
+      "gen_ai.usage.input_tokens.cached": 4,
+      "gen_ai.usage.input_tokens.cache_write": 1,
     });
   });
 });

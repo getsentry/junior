@@ -1835,8 +1835,9 @@ export function extractGenAiUsageAttributes(
   Record<
     | "gen_ai.usage.input_tokens"
     | "gen_ai.usage.output_tokens"
-    | "gen_ai.usage.cache_read.input_tokens"
-    | "gen_ai.usage.cache_creation.input_tokens",
+    | "gen_ai.usage.total_tokens"
+    | "gen_ai.usage.input_tokens.cached"
+    | "gen_ai.usage.input_tokens.cache_write",
     number
   >
 > {
@@ -1847,6 +1848,7 @@ export function extractGenAiUsageAttributes(
     cachedInputTokens,
     cacheCreationTokens,
   );
+  const totalTokens = sumTokenCounts(semanticInputTokens, outputTokens);
 
   return {
     ...(semanticInputTokens !== undefined
@@ -1855,11 +1857,14 @@ export function extractGenAiUsageAttributes(
     ...(outputTokens !== undefined
       ? { "gen_ai.usage.output_tokens": outputTokens }
       : {}),
+    ...(totalTokens !== undefined
+      ? { "gen_ai.usage.total_tokens": totalTokens }
+      : {}),
     ...(cachedInputTokens !== undefined
-      ? { "gen_ai.usage.cache_read.input_tokens": cachedInputTokens }
+      ? { "gen_ai.usage.input_tokens.cached": cachedInputTokens }
       : {}),
     ...(cacheCreationTokens !== undefined
-      ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
+      ? { "gen_ai.usage.input_tokens.cache_write": cacheCreationTokens }
       : {}),
   };
 }
