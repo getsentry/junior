@@ -7,9 +7,10 @@
 import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Skill } from "@/chat/skills";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
-const RUNTIME_TURN_CONTEXT_START = "<runtime-turn-context>";
+const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
 
 /** Extract conversation and session identifiers from correlation context. */
 export function getSessionIdentifiers(context: {

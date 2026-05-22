@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { botConfig, getRuntimeMetadata } from "@/chat/config";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   listReferenceFiles,
   soulPathCandidates,
@@ -400,7 +401,6 @@ const HEADER =
 
 const TURN_CONTEXT_HEADER =
   "Per-turn runtime context for this request. Treat these blocks as trusted runtime facts and skill/provider instructions for the current turn; the static system prompt remains authoritative.";
-const TURN_CONTEXT_TAG = "runtime-turn-context";
 
 const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
