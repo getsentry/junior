@@ -1,5 +1,8 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import sentryStarlightTheme, {
+  monochromeCodeTheme,
+} from "@sentry/starlight-theme";
 import starlightTypedoc from "starlight-typedoc";
 
 const juniorEntryPoints = [
@@ -44,9 +47,6 @@ export default defineConfig({
           href: "https://github.com/getsentry/junior",
         },
       ],
-      components: {
-        ThemeSelect: "./src/components/ThemeSelect.astro",
-      },
       sidebar: [
         {
           label: "Start Here",
@@ -140,6 +140,7 @@ export default defineConfig({
         },
       ],
       plugins: [
+        sentryStarlightTheme(),
         starlightTypedoc({
           entryPoints: juniorEntryPoints,
           tsconfig: "../junior/tsconfig.build.json",
@@ -158,4 +159,9 @@ export default defineConfig({
       ],
     }),
   ],
+  markdown: {
+    shikiConfig: {
+      theme: monochromeCodeTheme,
+    },
+  },
 });
