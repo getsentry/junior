@@ -13,6 +13,75 @@ import {
   serializeGenAiAttribute,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
+
+const TURN_CONTEXT_OPEN = `<${TURN_CONTEXT_TAG}>`;
+const CURRENT_INSTRUCTION_RE =
+  /<current-instruction[^>]*>\n?([\s\S]*?)\n?<\/current-instruction>/;
+const WRAPPER_BLOCKS_RE =
+  /<(?:thread-background|session-context|turn-context)>[\s\S]*?<\/(?:thread-background|session-context|turn-context)>\n*/g;
+
+/** Extract the user's actual instruction from a `buildUserTurnText` output. */
+function extractUserInstruction(text: string): string {
+  const match = CURRENT_INSTRUCTION_RE.exec(text);
+  if (match) {
+    return match[1].trim();
+  }
+  return text.replace(WRAPPER_BLOCKS_RE, "").trim();
+}
+
+/**
+ * Clean user messages for the observable `gen_ai.input.messages` attribute:
+ * 1. Drop `<runtime-turn-context>` content parts entirely (volatile runtime metadata).
+ * 2. Unwrap `<current-instruction>` / strip `<thread-background>` etc. from text
+ *    so only the actual user instruction remains.
+ */
+function cleanUserMessagesForObservability(messages: unknown[]): unknown[] {
+  return messages.map((msg) => {
+    const record = msg as Record<string, unknown> | null;
+    if (!record || record.role !== "user") {
+      return msg;
+    }
+
+    const content = record.content;
+    if (!Array.isArray(content)) {
+      return msg;
+    }
+
+    let changed = false;
+    const cleaned = content
+      .filter((part) => {
+        if (
+          part &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "text"
+        ) {
+          const text = (part as { text?: unknown }).text;
+          if (typeof text === "string" && text.startsWith(TURN_CONTEXT_OPEN)) {
+            changed = true;
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((part) => {
+        if (
+          part &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "text"
+        ) {
+          const text = (part as { text?: unknown }).text;
+          if (typeof text === "string" && CURRENT_INSTRUCTION_RE.test(text)) {
+            changed = true;
+            return { ...part, text: extractUserInstruction(text) };
+          }
+        }
+        return part;
+      });
+
+    return changed ? { ...record, content: cleaned } : msg;
+  });
+}
 
 // Compose only the OTel GenAI attributes that are knowable at span start
 // (request-shape + system instructions). End-of-call attributes such as
@@ -27,7 +96,10 @@ function buildChatStartAttributes(
     "gen_ai.request.model": model.id,
   };
 
-  const inputMessages = serializeGenAiAttribute(context.messages);
+  const observableMessages = cleanUserMessagesForObservability(
+    context.messages,
+  );
+  const inputMessages = serializeGenAiAttribute(observableMessages);
   if (inputMessages) {
     attributes["gen_ai.input.messages"] = inputMessages;
   }

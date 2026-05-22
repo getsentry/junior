@@ -116,6 +116,62 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
+  it("strips runtime context and XML wrappers from observable user messages", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const userText = [
+      "<thread-background>",
+      "<thread-transcript>",
+      '  <message index="1" role="user">prior question</message>',
+      '  <message index="2" role="assistant">prior answer</message>',
+      "</thread-transcript>",
+      "</thread-background>",
+      "",
+      "<session-context>",
+      "- gen_ai.conversation.id: conv123",
+      "</session-context>",
+      "",
+      '<current-instruction priority="highest">',
+      "what is sentry?",
+      "</current-instruction>",
+    ].join("\n");
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      {
+        systemPrompt: "you are junior",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<runtime-turn-context>\nskills and config...\n</runtime-turn-context>",
+              },
+              { type: "text", text: userText },
+            ],
+            timestamp: 0,
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      attributes: Record<string, unknown>;
+    };
+    const inputMessages = opts.attributes["gen_ai.input.messages"] as string;
+    expect(inputMessages).toContain("what is sentry?");
+    expect(inputMessages).not.toContain("runtime-turn-context");
+    expect(inputMessages).not.toContain("thread-background");
+    expect(inputMessages).not.toContain("session-context");
+    expect(inputMessages).not.toContain("current-instruction");
+    expect(inputMessages).not.toContain("prior answer");
+  });
+
   it("sets output.messages, usage tokens, finish_reasons, response.model after stream completion", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
