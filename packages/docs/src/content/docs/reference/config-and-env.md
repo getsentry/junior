@@ -26,6 +26,14 @@ related:
 | `JUNIOR_BASE_URL`                           | No       | Canonical base URL for callback/auth URL generation.                                                                                                 |
 | `AI_GATEWAY_API_KEY`                        | No       | AI gateway auth if used in your setup.                                                                                                               |
 
+Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Use one stable value per deployment. Rotating it invalidates pending internal resume callbacks and sandbox requester context signed with the previous value.
+
 ## Build-time snapshot warmup
 
 If your build command runs `junior snapshot create`:
