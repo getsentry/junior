@@ -43,7 +43,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { POST } from "@/handlers/turn-resume";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -539,7 +539,7 @@ describe("turn resume handler", () => {
     expect(conversation.messages).toHaveLength(1);
   });
 
-  it("fails the resumed turn when the timeout slice limit is reached", async () => {
+  it("persists timeout-resume failure state when checkpoint terminalization fails", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -615,6 +615,14 @@ describe("turn resume handler", () => {
           }),
         );
       } catch (error) {
+        const adapter = getStateAdapter();
+        const originalGet = adapter.get.bind(adapter);
+        vi.spyOn(adapter, "get").mockImplementation(async (key: string) => {
+          if (key.startsWith("junior:agent_turn_session:")) {
+            throw new Error("checkpoint store unavailable");
+          }
+          return await originalGet(key);
+        });
         await runArgs.onFailure?.(error);
       }
     });

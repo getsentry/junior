@@ -104,6 +104,31 @@ async function persistCompletedReplyState(
   });
 }
 
+async function failCheckpointBestEffort(args: {
+  conversationId: string;
+  errorMessage: string;
+  sessionId: string;
+}): Promise<void> {
+  try {
+    await failAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+      errorMessage: args.errorMessage,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "mcp_oauth_callback_checkpoint_fail_persist_failed",
+      {},
+      {
+        "app.ai.conversation_id": args.conversationId,
+        "app.ai.session_id": args.sessionId,
+      },
+      "Failed to mark MCP OAuth-resumed turn checkpoint failed",
+    );
+  }
+}
+
 async function persistFailedReplyState(
   channelId: string,
   threadTs: string,
@@ -123,7 +148,7 @@ async function persistFailedReplyState(
     updateConversationStats,
   });
 
-  await failAgentTurnSessionCheckpoint({
+  await failCheckpointBestEffort({
     conversationId: threadId,
     sessionId,
     errorMessage: "OAuth-resumed MCP turn failed",
@@ -357,103 +382,6 @@ async function resumeAuthorizedMcpTurn(args: {
           });
         },
       };
-    },
-    replyContext: {
-      requester: {
-        userId: authSession.userId,
-        userName: userMessage?.author?.userName,
-        fullName: userMessage?.author?.fullName,
-      },
-      correlation: {
-        conversationId: authSession.conversationId,
-        turnId: resolvedSessionId,
-        channelId: authSession.channelId,
-        threadTs: authSession.threadTs,
-        requesterId: authSession.userId,
-      },
-    },
-    onSuccess: async (reply) => {
-      await persistCompletedReplyState(
-        authSession.channelId!,
-        authSession.threadTs!,
-        resolvedSessionId,
-        reply,
-      );
-    },
-    onPostDeliveryCommitFailure: async () => {
-      await failAgentTurnSessionCheckpoint({
-        conversationId: authSession.conversationId,
-        sessionId: resolvedSessionId,
-        errorMessage:
-          "OAuth-resumed MCP reply was delivered but completion state did not persist",
-      });
-    },
-    onFailure: async () => {
-      try {
-        await persistFailedReplyState(
-          authSession.channelId!,
-          authSession.threadTs!,
-          resolvedSessionId,
-        );
-      } catch (persistError) {
-        logException(
-          persistError,
-          "mcp_oauth_callback_resume_failure_persist_failed",
-          {},
-          { "app.credential.provider": provider },
-          "Failed to persist failed MCP resume state",
-        );
-      }
-    },
-    onAuthPause: async (error) => {
-      await persistAuthPauseTurnState({
-        sessionId: resolvedSessionId,
-        threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
-      });
-      logWarn(
-        "mcp_oauth_callback_resume_reparked_for_auth",
-        {},
-        {
-          "app.credential.provider": provider,
-          ...(isRetryableTurnError(error)
-            ? { "app.ai.retryable_reason": error.reason }
-            : {}),
-        },
-        "Resumed MCP turn requested another authorization flow",
-      );
-    },
-    onTimeoutPause: async (error) => {
-      if (!isRetryableTurnError(error, "turn_timeout_resume")) {
-        throw error;
-      }
-      const checkpointVersion = error.metadata?.checkpointVersion;
-      const nextSliceId = error.metadata?.sliceId;
-      if (typeof checkpointVersion !== "number") {
-        throw new Error(
-          "Timed-out MCP resume did not include a checkpoint version",
-        );
-      }
-      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
-        logWarn(
-          "mcp_oauth_callback_resume_slice_limit_reached",
-          {},
-          {
-            "app.credential.provider": provider,
-            ...(typeof nextSliceId === "number"
-              ? { "app.ai.resume_slice_id": nextSliceId }
-              : {}),
-          },
-          "Skipped automatic timeout resume because the turn exceeded the slice limit",
-        );
-        throw new Error(
-          "Timed-out turn exceeded the automatic resume slice limit",
-        );
-      }
-      await scheduleTurnTimeoutResume({
-        conversationId: authSession.conversationId,
-        sessionId: resolvedSessionId,
-        expectedCheckpointVersion: checkpointVersion,
-      });
     },
   });
 }

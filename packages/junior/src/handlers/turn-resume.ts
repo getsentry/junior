@@ -75,6 +75,31 @@ async function persistCompletedReplyState(args: {
   });
 }
 
+async function failCheckpointBestEffort(args: {
+  checkpoint: AgentTurnSessionCheckpoint;
+  errorMessage: string;
+}): Promise<void> {
+  try {
+    await failAgentTurnSessionCheckpoint({
+      conversationId: args.checkpoint.conversationId,
+      expectedCheckpointVersion: args.checkpoint.checkpointVersion,
+      sessionId: args.checkpoint.sessionId,
+      errorMessage: args.errorMessage,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "timeout_resume_checkpoint_fail_persist_failed",
+      {},
+      {
+        "app.ai.conversation_id": args.checkpoint.conversationId,
+        "app.ai.session_id": args.checkpoint.sessionId,
+      },
+      "Failed to mark timed-out turn checkpoint failed",
+    );
+  }
+}
+
 async function persistFailedReplyState(
   checkpoint: AgentTurnSessionCheckpoint,
 ): Promise<void> {
@@ -91,10 +116,8 @@ async function persistFailedReplyState(
     updateConversationStats,
   });
 
-  await failAgentTurnSessionCheckpoint({
-    conversationId: checkpoint.conversationId,
-    expectedCheckpointVersion: checkpoint.checkpointVersion,
-    sessionId: checkpoint.sessionId,
+  await failCheckpointBestEffort({
+    checkpoint,
     errorMessage: "Timed-out turn failed while resuming",
   });
   await persistThreadStateById(checkpoint.conversationId, {

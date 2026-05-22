@@ -18,7 +18,7 @@ import {
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { logInfo } from "@/chat/logging";
+import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
   getChannelConfigurationServiceById,
@@ -98,6 +98,31 @@ async function persistCompletedOAuthReplyState(args: {
   });
 }
 
+async function failCheckpointBestEffort(args: {
+  conversationId: string;
+  errorMessage: string;
+  sessionId: string;
+}): Promise<void> {
+  try {
+    await failAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+      errorMessage: args.errorMessage,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "oauth_callback_checkpoint_fail_persist_failed",
+      {},
+      {
+        "app.ai.conversation_id": args.conversationId,
+        "app.ai.session_id": args.sessionId,
+      },
+      "Failed to mark OAuth-resumed turn checkpoint failed",
+    );
+  }
+}
+
 async function persistFailedOAuthReplyState(args: {
   conversationId: string;
   sessionId: string;
@@ -115,7 +140,7 @@ async function persistFailedOAuthReplyState(args: {
     updateConversationStats,
   });
 
-  await failAgentTurnSessionCheckpoint({
+  await failCheckpointBestEffort({
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     errorMessage: "OAuth-resumed turn failed",
@@ -374,80 +399,6 @@ async function resumeCheckpointedOAuthTurn(
           });
         },
       };
-    },
-    replyContext: {
-      requester: {
-        userId: userMessage.author.userId,
-        userName: userMessage.author.userName,
-        fullName: userMessage.author.fullName,
-      },
-      correlation: {
-        conversationId: stored.resumeConversationId,
-        turnId: resolvedSessionId,
-        channelId: stored.channelId,
-        threadTs: stored.threadTs,
-        requesterId: userMessage.author.userId,
-      },
-    },
-    onSuccess: async (reply) => {
-      logInfo(
-        "oauth_callback_resume_complete",
-        {},
-        {
-          "app.credential.provider": stored.provider,
-          "app.ai.outcome": reply.diagnostics.outcome,
-          "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
-        },
-        "OAuth callback auto-resumed checkpoint finished replying",
-      );
-      await persistCompletedOAuthReplyState({
-        conversationId: stored.resumeConversationId!,
-        sessionId: resolvedSessionId,
-        reply,
-      });
-    },
-    onPostDeliveryCommitFailure: async () => {
-      await failAgentTurnSessionCheckpoint({
-        conversationId: stored.resumeConversationId!,
-        expectedCheckpointVersion: checkpoint.checkpointVersion,
-        sessionId: resolvedSessionId,
-        errorMessage:
-          "OAuth-resumed reply was delivered but completion state did not persist",
-      });
-    },
-    onFailure: async () => {
-      await persistFailedOAuthReplyState({
-        conversationId: stored.resumeConversationId!,
-        sessionId: resolvedSessionId,
-      });
-    },
-    onAuthPause: async () => {
-      await persistAuthPauseTurnState({
-        sessionId: resolvedSessionId,
-        threadStateId: stored.resumeConversationId!,
-      });
-    },
-    onTimeoutPause: async (error) => {
-      if (!isRetryableTurnError(error, "turn_timeout_resume")) {
-        throw error;
-      }
-      const checkpointVersion = error.metadata?.checkpointVersion;
-      const nextSliceId = error.metadata?.sliceId;
-      if (typeof checkpointVersion !== "number") {
-        throw new Error(
-          "Timed-out OAuth resume did not include a checkpoint version",
-        );
-      }
-      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
-        throw new Error(
-          "Timed-out turn exceeded the automatic resume slice limit",
-        );
-      }
-      await scheduleTurnTimeoutResume({
-        conversationId: stored.resumeConversationId!,
-        sessionId: resolvedSessionId,
-        expectedCheckpointVersion: checkpointVersion,
-      });
     },
   });
 

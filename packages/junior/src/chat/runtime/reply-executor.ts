@@ -850,12 +850,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               updateConversationStats,
             });
             if (conversationId) {
-              await failAgentTurnSessionCheckpoint({
-                conversationId,
-                sessionId: turnId,
-                errorMessage:
-                  "Agent turn failed before final reply delivery completed",
-              });
+              try {
+                await failAgentTurnSessionCheckpoint({
+                  conversationId,
+                  sessionId: turnId,
+                  errorMessage:
+                    "Agent turn failed before final reply delivery completed",
+                });
+              } catch (checkpointError) {
+                logException(
+                  checkpointError,
+                  "agent_turn_failed_checkpoint_persist_failed",
+                  turnTraceContext,
+                  {},
+                  "Failed to mark failed turn checkpoint",
+                );
+              }
             }
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
