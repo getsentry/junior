@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import sentryStarlightTheme, {
   monochromeCodeTheme,
 } from "@sentry/starlight-theme";
+import { sentryAgentMarkdown } from "@sentry/starlight-theme/agent-markdown";
 import starlightTypedoc from "starlight-typedoc";
 
 const juniorEntryPoints = [
@@ -141,6 +142,7 @@ export default defineConfig({
       ],
       plugins: [
         sentryStarlightTheme(),
+        sentryAgentMarkdown(),
         starlightTypedoc({
           entryPoints: juniorEntryPoints,
           tsconfig: "../junior/tsconfig.build.json",

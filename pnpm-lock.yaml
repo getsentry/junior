@@ -79,8 +79,8 @@ importers:
         specifier: ^0.39.2
         version: 0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3)
       "@sentry/starlight-theme":
-        specifier: ^0.3.0
-        version: 0.3.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3))
+        specifier: ^0.6.0
+        version: 0.6.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3))
       astro:
         specifier: ^6.3.7
         version: 6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4)
@@ -1315,6 +1315,18 @@ packages:
       }
     peerDependencies:
       "@opentelemetry/api": ^1.9.0
+
+  "@fontsource-variable/rubik@5.2.8":
+    resolution:
+      {
+        integrity: sha512-vGDExLzB4a2Fj9mca5LqNoA2ZKcU9o+x5FEBLte/nxYkCB9hOQwZS6ZlItUv+Ssn7YMzKauGuI/Po+YueFuZbg==,
+      }
+
+  "@fontsource/ibm-plex-mono@5.2.7":
+    resolution:
+      {
+        integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==,
+      }
 
   "@gerrit0/mini-shiki@3.23.0":
     resolution:
@@ -3483,10 +3495,10 @@ packages:
       "@opentelemetry/sdk-trace-base": ^1.30.1 || ^2.1.0
       "@opentelemetry/semantic-conventions": ^1.39.0
 
-  "@sentry/starlight-theme@0.3.0":
+  "@sentry/starlight-theme@0.6.0":
     resolution:
       {
-        integrity: sha512-/6HZoCd54dQ9lJHcF5C5f9EDM1iZZZkMjDaItMPhC5ExpYgwT82sci77a+lFVx/85U7n1/0fGpekB4aozLQXAA==,
+        integrity: sha512-olQRVtrN9nJWoVVWhxUqk3KVEBCXRF2xLq4Pkd2/eyfpfzJTzfxFbAI4Sg/GV11IK3fFwNviIyFUPQR6aHsfKA==,
       }
     engines: { node: ">=22.12.0" }
     peerDependencies:
@@ -11910,6 +11922,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  "@fontsource-variable/rubik@5.2.8": {}
+
+  "@fontsource/ibm-plex-mono@5.2.7": {}
+
   "@gerrit0/mini-shiki@3.23.0":
     dependencies:
       "@shikijs/engine-oniguruma": 3.23.0
@@ -13161,9 +13177,12 @@ snapshots:
       "@opentelemetry/semantic-conventions": 1.40.0
       "@sentry/core": 10.53.1
 
-  "@sentry/starlight-theme@0.3.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3))":
+  "@sentry/starlight-theme@0.6.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3))":
     dependencies:
       "@astrojs/starlight": 0.39.2(astro@6.3.7(@types/node@25.6.0)(@vercel/blob@2.3.0)(@vercel/functions@3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33))(db0@0.3.4)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.4))(typescript@5.9.3)
+      "@fontsource-variable/rubik": 5.2.8
+      "@fontsource/ibm-plex-mono": 5.2.7
+      ultrahtml: 1.6.0
 
   "@shikijs/core@4.1.0":
     dependencies:
