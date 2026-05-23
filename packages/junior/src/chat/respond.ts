@@ -766,10 +766,7 @@ export async function generateAssistantReply(
       activeMcpCatalogs,
       toolGuidance,
       runtime: {
-        channelId: toolChannelId,
-        fastModelId: botConfig.fastModelId,
-        modelId: botConfig.modelId,
-        slackCapabilities: channelCapabilities,
+        conversationId: spanContext.conversationId,
         thinkingLevel: thinkingSelection.thinkingLevel,
         traceId: getActiveTraceId(),
       },
