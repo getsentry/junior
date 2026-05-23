@@ -103,6 +103,20 @@ describe("plugin package discovery", () => {
     );
   });
 
+  it("reports configured package resolution errors when cwd has no package manifest", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-package-discovery-"),
+    );
+
+    expect(() =>
+      discoverInstalledPluginPackageContent(tempRoot, {
+        packageNames: ["@acme/missing-plugin"],
+      }),
+    ).toThrow(
+      'Plugin package "@acme/missing-plugin" was configured but could not be resolved',
+    );
+  });
+
   it("fails when an explicit plugin package is not a package name", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-package-discovery-"),

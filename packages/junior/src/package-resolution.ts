@@ -141,7 +141,12 @@ function resolvePackageWithNode(
   cwd: string,
   packageName: string,
 ): ResolvedPackageLocation | undefined {
-  const requireFromCwd = createRequire(path.join(cwd, "package.json"));
+  let requireFromCwd: NodeJS.Require;
+  try {
+    requireFromCwd = createRequire(path.join(cwd, "package.json"));
+  } catch {
+    return undefined;
+  }
 
   for (const specifier of [`${packageName}/package.json`, packageName]) {
     try {
