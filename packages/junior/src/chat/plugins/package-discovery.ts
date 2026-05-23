@@ -1,11 +1,14 @@
 import path from "node:path";
-import { createRequire } from "node:module";
 import { discoverNodeModulesDirs, isDirectory, isFile } from "@/chat/discovery";
+import {
+  isValidPackageName,
+  resolvePackageLocation,
+} from "@/package-resolution";
 
 interface InstalledJuniorContentPackage {
   name: string;
   dir: string;
-  nodeModulesDir: string | null;
+  nodeModulesDir?: string;
   hasRootPluginManifest: boolean;
   hasPluginsDir: boolean;
   hasSkillsDir: boolean;
@@ -64,10 +67,12 @@ function normalizePackageNames(packageNames: string[] | undefined): string[] {
 
   const normalized: string[] = [];
   for (const packageName of packageNames) {
-    if (typeof packageName !== "string" || !packageName.trim()) {
-      throw new Error("Plugin package names must be non-empty strings");
+    const normalizedPackageName =
+      typeof packageName === "string" ? packageName.trim() : "";
+    if (!normalizedPackageName || !isValidPackageName(normalizedPackageName)) {
+      throw new Error("Plugin package names must be valid npm package names");
     }
-    normalized.push(packageName.trim());
+    normalized.push(normalizedPackageName);
   }
   return normalized;
 }
@@ -82,73 +87,12 @@ function resolvePackageDirFromName(
   cwd: string,
   packageName: string,
   candidateNodeModulesDirs: string[],
-): { dir: string; nodeModulesDir: string } | null {
-  for (const nodeModulesDir of candidateNodeModulesDirs) {
-    const packageDir = path.join(nodeModulesDir, ...packageName.split("/"));
-    if (isDirectory(packageDir)) {
-      return {
-        dir: path.resolve(packageDir),
-        nodeModulesDir: path.resolve(nodeModulesDir),
-      };
-    }
-  }
-
-  return resolvePackageDirFromNode(packageName, cwd);
-}
-
-function findPackageRoot(entryPath: string): string | null {
-  let dir = path.dirname(entryPath);
-  while (dir !== path.dirname(dir)) {
-    if (isFile(path.join(dir, "package.json"))) {
-      return path.resolve(dir);
-    }
-    dir = path.dirname(dir);
-  }
-  return null;
-}
-
-function findPackageNodeModulesDir(
-  packageDir: string,
-  packageName: string,
-): string | null {
-  const parts = path.resolve(packageDir).split(path.sep);
-  const packageParts = packageName.split("/");
-
-  for (let index = parts.length - 1; index >= 0; index -= 1) {
-    if (parts[index] !== "node_modules") {
-      continue;
-    }
-    const candidatePackageParts = parts.slice(
-      index + 1,
-      index + 1 + packageParts.length,
-    );
-    if (candidatePackageParts.join("/") !== packageParts.join("/")) {
-      continue;
-    }
-    return path.resolve(parts.slice(0, index + 1).join(path.sep) || path.sep);
-  }
-
-  return null;
-}
-
-function resolvePackageDirFromNode(
-  packageName: string,
-  cwd: string,
-): { dir: string; nodeModulesDir: string } | null {
-  try {
-    const requireFromCwd = createRequire(path.join(cwd, "package.json"));
-    const entry = requireFromCwd.resolve(packageName);
-    const dir = findPackageRoot(entry);
-    const nodeModulesDir = dir
-      ? findPackageNodeModulesDir(dir, packageName)
-      : null;
-    if (!dir || !nodeModulesDir) {
-      return null;
-    }
-    return { dir, nodeModulesDir };
-  } catch {
-    return null;
-  }
+): { dir: string; nodeModulesDir?: string } | null {
+  return (
+    resolvePackageLocation(cwd, packageName, {
+      nodeModulesDirs: candidateNodeModulesDirs,
+    }) ?? null
+  );
 }
 
 function readPluginPackageFlags(dir: string): {

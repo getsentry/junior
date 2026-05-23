@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
 import { globToRegex } from "@/build/glob-to-regex";
-import { resolvePackageDir } from "@/build/resolve-package";
+import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
 /** Copy app directory and plugin manifests into the server output. */
 export function copyAppAndPluginContent(
@@ -106,7 +106,7 @@ function parseIncludePattern(pattern: string): {
   const packagePartCount = isScopedPackage ? 2 : 1;
   const pkgName = parts.slice(0, packagePartCount).join("/");
   const subpath = parts.slice(packagePartCount).join("/");
-  if (!pkgName || !subpath) {
+  if (!pkgName || !isValidPackageName(pkgName) || !subpath) {
     throw new Error(
       `includeFiles entry "${pattern}" must include a package subpath`,
     );

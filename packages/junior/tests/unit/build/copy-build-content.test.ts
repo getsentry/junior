@@ -17,18 +17,25 @@ function makeTempDir(): string {
   return tempDir;
 }
 
-function writePackage(root: string, packageName: string): string {
+function writePackage(
+  root: string,
+  packageName: string,
+  options: { entryPoint?: boolean } = {},
+): string {
   const packageDir = path.join(root, "node_modules", ...packageName.split("/"));
   fs.mkdirSync(packageDir, { recursive: true });
+  const entryPoint = options.entryPoint ?? true;
   fs.writeFileSync(
     path.join(packageDir, "package.json"),
     JSON.stringify({
       name: packageName,
-      main: "index.js",
+      ...(entryPoint ? { main: "index.js" } : {}),
     }),
     "utf8",
   );
-  fs.writeFileSync(path.join(packageDir, "index.js"), "export {};\n", "utf8");
+  if (entryPoint) {
+    fs.writeFileSync(path.join(packageDir, "index.js"), "export {};\n", "utf8");
+  }
   return packageDir;
 }
 
@@ -83,6 +90,15 @@ describe("copyIncludedFiles", () => {
     );
   });
 
+  it("fails when a configured include pattern has a malformed package name", () => {
+    const cwd = process.cwd();
+    const serverRoot = makeTempDir();
+
+    expect(() => copyIncludedFiles(cwd, serverRoot, ["@/dist/*.js"])).toThrow(
+      'includeFiles entry "@/dist/*.js" must include a package subpath',
+    );
+  });
+
   it("resolves configured packages from the app root", () => {
     const cwd = makeTempDir();
     const serverRoot = makeTempDir();
@@ -133,6 +149,53 @@ describe("copyIncludedFiles", () => {
       'includeFiles entry "@acme/broken-provider/dist/*.js" matched files',
     );
   });
+
+  it("resolves configured packages from ancestor node_modules without a package entry point", () => {
+    const workspaceRoot = makeTempDir();
+    const cwd = path.join(workspaceRoot, "apps", "example");
+    const serverRoot = makeTempDir();
+    const packageDir = writePackage(workspaceRoot, "@acme/content-provider", {
+      entryPoint: false,
+    });
+    fs.mkdirSync(path.join(packageDir, "dist"), { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDir, "dist", "provider.js"),
+      "export {};\n",
+      "utf8",
+    );
+    fs.mkdirSync(cwd, { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({
+        name: "example",
+        dependencies: {
+          "@acme/content-provider": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(workspaceRoot, "package.json"),
+      JSON.stringify({ name: "workspace", private: true }),
+      "utf8",
+    );
+
+    copyIncludedFiles(cwd, serverRoot, ["@acme/content-provider/dist/*.js"]);
+
+    expect(
+      fs.readFileSync(
+        path.join(
+          serverRoot,
+          "node_modules",
+          "@acme",
+          "content-provider",
+          "dist",
+          "provider.js",
+        ),
+        "utf8",
+      ),
+    ).toBe("export {};\n");
+  });
 });
 
 describe("copyAppAndPluginContent", () => {
@@ -140,7 +203,9 @@ describe("copyAppAndPluginContent", () => {
     const workspaceRoot = makeTempDir();
     const cwd = path.join(workspaceRoot, "apps", "example");
     const serverRoot = makeTempDir();
-    const packageDir = writePackage(workspaceRoot, "@acme/ancestor-plugin");
+    const packageDir = writePackage(workspaceRoot, "@acme/ancestor-plugin", {
+      entryPoint: false,
+    });
 
     fs.mkdirSync(path.join(packageDir, "skills", "demo"), { recursive: true });
     fs.writeFileSync(

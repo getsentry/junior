@@ -7,22 +7,26 @@ import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-di
 async function writePluginPackage(
   nodeModulesRoot: string,
   packageName: string,
+  options: { entryPoint?: boolean } = {},
 ): Promise<string> {
   const packageRoot = path.join(nodeModulesRoot, ...packageName.split("/"));
   await fs.mkdir(path.join(packageRoot, "skills", "demo"), { recursive: true });
+  const entryPoint = options.entryPoint ?? true;
   await fs.writeFile(
     path.join(packageRoot, "package.json"),
     JSON.stringify({
       name: packageName,
-      main: "index.js",
+      ...(entryPoint ? { main: "index.js" } : {}),
     }),
     "utf8",
   );
-  await fs.writeFile(
-    path.join(packageRoot, "index.js"),
-    "export {};\n",
-    "utf8",
-  );
+  if (entryPoint) {
+    await fs.writeFile(
+      path.join(packageRoot, "index.js"),
+      "export {};\n",
+      "utf8",
+    );
+  }
   await fs.writeFile(
     path.join(packageRoot, "plugin.yaml"),
     "name: demo\ndescription: demo\n",
@@ -97,6 +101,40 @@ describe("plugin package discovery", () => {
     ).toThrow(
       'Plugin package "@acme/missing-plugin" was configured but could not be resolved from node_modules',
     );
+  });
+
+  it("fails when an explicit plugin package is not a package name", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-package-discovery-"),
+    );
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({ name: "temp", private: true }),
+      "utf8",
+    );
+
+    expect(() =>
+      discoverInstalledPluginPackageContent(tempRoot, {
+        packageNames: ["../plugins"],
+      }),
+    ).toThrow("Plugin package names must be valid npm package names");
+  });
+
+  it("fails when an explicit scoped plugin package is malformed", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-package-discovery-"),
+    );
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({ name: "temp", private: true }),
+      "utf8",
+    );
+
+    expect(() =>
+      discoverInstalledPluginPackageContent(tempRoot, {
+        packageNames: ["@acme"],
+      }),
+    ).toThrow("Plugin package names must be valid npm package names");
   });
 
   it("fails when an explicit plugin package has no plugin content", async () => {
@@ -214,6 +252,7 @@ describe("plugin package discovery", () => {
     const packageRoot = await writePluginPackage(
       path.join(tempRoot, "node_modules"),
       "@acme/junior-plugin-ancestor",
+      { entryPoint: false },
     );
 
     await fs.mkdir(appRoot, { recursive: true });

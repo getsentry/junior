@@ -30,13 +30,13 @@ describe("createApp plugin config", () => {
     );
   });
 
-  it("fails loudly when configured plugin package names are empty", async () => {
+  it("fails loudly when configured plugin package names are invalid", async () => {
     await expect(
       createApp({
         plugins: {
-          packages: [" "],
+          packages: ["../plugins"],
         },
       }),
-    ).rejects.toThrow("Plugin package names must be non-empty strings");
+    ).rejects.toThrow("Plugin package names must be valid npm package names");
   });
 });
