@@ -87,6 +87,16 @@ describe("createApp plugin config", () => {
     ).rejects.toThrow("Plugin package names must be valid npm package names");
   });
 
+  it("fails loudly when configured plugin packages are not an array", async () => {
+    await expect(
+      createApp({
+        plugins: {
+          packages: "@acme/junior-plugin" as unknown as string[],
+        },
+      }),
+    ).rejects.toThrow("plugins.packages must be an array of package names");
+  });
+
   it("rolls back plugin config when config default validation fails", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/base-plugin", "base");
@@ -117,6 +127,41 @@ describe("createApp plugin config", () => {
       }),
     ).rejects.toThrow(
       'configDefaults: "missing.org" is not a registered plugin config key',
+    );
+
+    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "base",
+    ]);
+    expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
+  });
+
+  it("fails startup and rolls back config when a configured plugin package is missing", async () => {
+    const tempRoot = await makeTempDir();
+    await writePluginPackage(tempRoot, "@acme/base-plugin", "base");
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/base-plugin": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    await createApp({
+      plugins: { packages: ["@acme/base-plugin"] },
+      configDefaults: { "base.org": "sentry" },
+    });
+
+    await expect(
+      createApp({
+        plugins: { packages: ["@acme/missing-plugin"] },
+      }),
+    ).rejects.toThrow(
+      'Plugin package "@acme/missing-plugin" was configured but could not be resolved',
     );
 
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([

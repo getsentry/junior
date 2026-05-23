@@ -1,7 +1,13 @@
 import { Hono } from "hono";
-import { setConfigDefaults } from "@/chat/configuration/defaults";
+import {
+  getConfigDefaults,
+  setConfigDefaults,
+} from "@/chat/configuration/defaults";
 import { logException } from "@/chat/logging";
-import { setPluginConfig } from "@/chat/plugins/registry";
+import {
+  getPluginCatalogSignature,
+  setPluginConfig,
+} from "@/chat/plugins/registry";
 import type { PluginConfig } from "@/chat/plugins/types";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
@@ -98,14 +104,32 @@ function readEnvPluginPackages(): string[] | undefined {
   return parsed;
 }
 
+function hasConfiguredPluginCatalog(config: PluginConfig | undefined): boolean {
+  if (!config) {
+    return false;
+  }
+
+  return Boolean(
+    config.packages?.length || Object.keys(config.manifests ?? {}).length,
+  );
+}
+
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const pluginConfig = options?.plugins ?? (await resolveBuildPluginConfig());
+  const shouldValidatePluginCatalog =
+    hasConfiguredPluginCatalog(pluginConfig) ||
+    Boolean(Object.keys(options?.configDefaults ?? {}).length);
   const previousPluginConfig = setPluginConfig(pluginConfig);
+  const previousConfigDefaults = getConfigDefaults();
   try {
     setConfigDefaults(options?.configDefaults);
+    if (shouldValidatePluginCatalog) {
+      getPluginCatalogSignature();
+    }
   } catch (error) {
     setPluginConfig(previousPluginConfig);
+    setConfigDefaults(previousConfigDefaults);
     throw error;
   }
 

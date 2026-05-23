@@ -8,7 +8,7 @@ import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 export function copyAppAndPluginContent(
   cwd: string,
   serverRoot: string,
-  packageNames?: string[],
+  packageNames?: unknown,
 ): void {
   copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
 
@@ -37,10 +37,20 @@ export function copyAppAndPluginContent(
 export function copyIncludedFiles(
   cwd: string,
   serverRoot: string,
-  patterns?: string[],
+  patterns?: unknown,
 ): void {
-  if (!patterns?.length) return;
+  if (patterns === undefined) return;
+  if (!Array.isArray(patterns)) {
+    throw new Error(
+      "includeFiles must be an array of package subpath patterns",
+    );
+  }
+  if (patterns.length === 0) return;
+
   for (const pattern of patterns) {
+    if (typeof pattern !== "string" || !pattern.trim()) {
+      throw new Error("includeFiles entries must be package subpath patterns");
+    }
     const { pkgName, subDir, fileGlob } = parseIncludePattern(pattern);
 
     const pkgDir = resolvePackageDir(cwd, pkgName);

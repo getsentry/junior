@@ -54,20 +54,27 @@ function pathForTracingInclude(cwd: string, targetPath: string): string | null {
 }
 
 /** Normalize and validate configured plugin package names. */
-export function normalizePluginPackageNames(
-  packageNames: string[] | undefined,
-): string[] {
-  if (!packageNames) {
+export function normalizePluginPackageNames(packageNames: unknown): string[] {
+  if (packageNames === undefined) {
     return [];
   }
 
+  if (!Array.isArray(packageNames)) {
+    throw new Error("plugins.packages must be an array of package names");
+  }
+
   const normalized: string[] = [];
+  const seen = new Set<string>();
   for (const packageName of packageNames) {
     const normalizedPackageName =
       typeof packageName === "string" ? packageName.trim() : "";
     if (!normalizedPackageName || !isValidPackageName(normalizedPackageName)) {
       throw new Error("Plugin package names must be valid npm package names");
     }
+    if (seen.has(normalizedPackageName)) {
+      continue;
+    }
+    seen.add(normalizedPackageName);
     normalized.push(normalizedPackageName);
   }
   return normalized;
@@ -118,7 +125,7 @@ function discoverDeclaredPackages(
   const discovered: InstalledJuniorContentPackage[] = [];
   const seenPackageDirs = new Set<string>();
 
-  for (const packageName of uniqueStringsInOrder(packageNames)) {
+  for (const packageName of packageNames) {
     const resolved = resolvePackageDirFromName(
       cwd,
       packageName,
@@ -155,7 +162,7 @@ function discoverDeclaredPackages(
 
 export interface DiscoverInstalledPluginPackageContentOptions {
   nodeModulesDirs?: string[];
-  packageNames?: string[];
+  packageNames?: unknown;
 }
 
 /** Discover plugin package content from explicitly declared package names. */

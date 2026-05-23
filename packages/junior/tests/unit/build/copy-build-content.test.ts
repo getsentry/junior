@@ -70,6 +70,24 @@ describe("copyIncludedFiles", () => {
     );
   });
 
+  it("fails when includeFiles is not an array", () => {
+    const cwd = process.cwd();
+    const serverRoot = makeTempDir();
+
+    expect(() =>
+      copyIncludedFiles(cwd, serverRoot, "yaml/package.json"),
+    ).toThrow("includeFiles must be an array of package subpath patterns");
+  });
+
+  it("fails when an includeFiles entry is not a string pattern", () => {
+    const cwd = process.cwd();
+    const serverRoot = makeTempDir();
+
+    expect(() => copyIncludedFiles(cwd, serverRoot, [42])).toThrow(
+      "includeFiles entries must be package subpath patterns",
+    );
+  });
+
   it("fails when a configured include pattern matches no files", () => {
     const cwd = process.cwd();
     const serverRoot = makeTempDir();
