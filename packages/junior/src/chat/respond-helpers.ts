@@ -163,20 +163,15 @@ export function buildUserTurnText(
     return userInput;
   }
 
-  const sections: string[] = [];
-
-  if (trimmedContext) {
-    sections.push(
-      "<thread-background>",
-      trimmedContext,
-      "</thread-background>",
-      "",
-    );
-  }
-
-  sections.push("<current-instruction>", userInput, "</current-instruction>");
-
-  return sections.join("\n");
+  return [
+    "<thread-background>",
+    trimmedContext,
+    "</thread-background>",
+    "",
+    "<current-instruction>",
+    userInput,
+    "</current-instruction>",
+  ].join("\n");
 }
 
 /** Encode a non-image attachment as base64 XML for the prompt. */
