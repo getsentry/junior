@@ -39,6 +39,18 @@ describe("install config defaults", () => {
     );
   });
 
+  it("rejects null defaults", () => {
+    expect(() =>
+      setConfigDefaults(null as unknown as Record<string, unknown>),
+    ).toThrow("configDefaults must be an object keyed by plugin config key");
+  });
+
+  it("rejects array defaults", () => {
+    expect(() =>
+      setConfigDefaults([] as unknown as Record<string, unknown>),
+    ).toThrow("configDefaults must be an object keyed by plugin config key");
+  });
+
   it("does not mutate the input object", () => {
     const input = { "sentry.org": "sentry" };
     setConfigDefaults(input);
@@ -46,9 +58,24 @@ describe("install config defaults", () => {
     expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
   });
 
+  it("does not share nested input values", () => {
+    const input = {
+      "sentry.org": { slug: "sentry" },
+    };
+    setConfigDefaults(input);
+    input["sentry.org"].slug = "changed";
+    expect(getConfigDefaults()["sentry.org"]).toEqual({ slug: "sentry" });
+  });
+
   it("does not expose mutable defaults", () => {
     setConfigDefaults({ "sentry.org": "sentry" });
     getConfigDefaults()["sentry.org"] = "changed";
     expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
+  });
+
+  it("does not expose nested mutable defaults", () => {
+    setConfigDefaults({ "sentry.org": { slug: "sentry" } });
+    (getConfigDefaults()["sentry.org"] as { slug: string }).slug = "changed";
+    expect(getConfigDefaults()["sentry.org"]).toEqual({ slug: "sentry" });
   });
 });
