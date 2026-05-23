@@ -45,4 +45,10 @@ describe("install config defaults", () => {
     input["sentry.org"] = "changed";
     expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
   });
+
+  it("does not expose mutable defaults", () => {
+    setConfigDefaults({ "sentry.org": "sentry" });
+    getConfigDefaults()["sentry.org"] = "changed";
+    expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
+  });
 });

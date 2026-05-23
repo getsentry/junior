@@ -24,5 +24,5 @@ export function setConfigDefaults(
 
 /** Return the install-wide configuration defaults (empty object when none set). */
 export function getConfigDefaults(): Record<string, unknown> {
-  return installDefaults;
+  return { ...installDefaults };
 }
