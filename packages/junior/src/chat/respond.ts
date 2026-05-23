@@ -767,7 +767,6 @@ export async function generateAssistantReply(
       toolGuidance,
       runtime: {
         conversationId: spanContext.conversationId,
-        thinkingLevel: thinkingSelection.thinkingLevel,
         traceId: getActiveTraceId(),
       },
       invocation: skillInvocation,
