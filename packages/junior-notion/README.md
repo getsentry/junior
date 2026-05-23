@@ -12,7 +12,9 @@ Then register the plugin package in `juniorNitro(...)`:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
-  pluginPackages: ["@sentry/junior-notion"],
+  plugins: {
+    packages: ["@sentry/junior-notion"],
+  },
 });
 ```
 

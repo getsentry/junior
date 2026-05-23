@@ -5,8 +5,15 @@ prev: false
 title: "@sentry/junior"
 ---
 
-## Modules
+## Interfaces
 
-- [handlers/health](/reference/api/handlers/health/readme/)
-- [handlers/webhooks](/reference/api/handlers/webhooks/readme/)
-- [instrumentation](/reference/api/instrumentation/readme/)
+- [JuniorAppOptions](/reference/api/interfaces/juniorappoptions/)
+- [JuniorNitroOptions](/reference/api/interfaces/juniornitrooptions/)
+- [JuniorVercelConfigOptions](/reference/api/interfaces/juniorvercelconfigoptions/)
+
+## Functions
+
+- [createApp](/reference/api/functions/createapp/)
+- [initSentry](/reference/api/functions/initsentry/)
+- [juniorNitro](/reference/api/functions/juniornitro/)
+- [juniorVercelConfig](/reference/api/functions/juniorvercelconfig/)

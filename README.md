@@ -1,6 +1,6 @@
 # junior
 
-**Junior is broadly unstable as we rapidly improve it, but if you're interested in using it we'd love to hear your feedback!**
+**Junior is moving quickly. If you're interested in using it, we'd love to hear your feedback.**
 
 Junior is a Slack bot runtime powered by Hono.
 
@@ -13,8 +13,9 @@ Canonical docs live at **https://junior.sentry.dev/**.
 Start here:
 
 - [Quickstart](https://junior.sentry.dev/start-here/quickstart/)
-- [Deploy on Vercel](https://junior.sentry.dev/start-here/deploy/)
-- [Plugin setup](https://junior.sentry.dev/extend/plugins-overview/)
+- [Slack App Setup](https://junior.sentry.dev/start-here/slack-app-setup/)
+- [Deploy on Vercel](https://junior.sentry.dev/start-here/deploy-to-vercel/)
+- [Plugin setup](https://junior.sentry.dev/extend/)
 - [Contributing](https://junior.sentry.dev/contribute/development/)
 
 ## Packages

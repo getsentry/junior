@@ -32,6 +32,7 @@ Use `juniorNitro({ plugins: { packages: [...] } })` in `nitro.config.ts` to decl
 Canonical docs: **https://junior.sentry.dev/**
 
 - Quickstart: https://junior.sentry.dev/start-here/quickstart/
-- Deployment: https://junior.sentry.dev/start-here/deploy/
-- Plugin setup: https://junior.sentry.dev/extend/plugins-overview/
+- Slack app setup: https://junior.sentry.dev/start-here/slack-app-setup/
+- Deployment: https://junior.sentry.dev/start-here/deploy-to-vercel/
+- Plugin setup: https://junior.sentry.dev/extend/
 - API reference: https://junior.sentry.dev/reference/api/

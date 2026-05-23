@@ -2,6 +2,7 @@
 title: API Reference Guide
 description: How to use the generated API reference effectively.
 type: reference
+summary: Find the generated API entrypoints for app creation, Nitro wiring, Vercel config, handlers, and instrumentation.
 prerequisites:
   - /reference/handler-surface/
 related:
@@ -14,14 +15,17 @@ The API reference is generated from public package entry points.
 ## Start points
 
 - [Package API index](/reference/api/readme/)
-- [App factory](/reference/api/app/)
-- [Instrumentation exports](/reference/api/instrumentation/)
+- [App factory](/reference/api/functions/createapp/)
+- [Nitro wiring](/reference/api/functions/juniornitro/)
+- [Vercel config helper](/reference/api/functions/juniorvercelconfig/)
+- [Instrumentation](/reference/api/functions/initsentry/)
 
 ## Suggested reading order
 
 1. Read [Route & Handler Surface](/reference/handler-surface/) first.
-2. Read `createApp` options to understand runtime wiring.
-3. Read instrumentation exports for telemetry setup.
+2. Read `createApp` options to understand runtime route wiring.
+3. Read `juniorNitro` options before changing plugin package bundling.
+4. Read instrumentation exports for telemetry setup.
 
 ## Next step
 

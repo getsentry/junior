@@ -2,9 +2,12 @@
 title: Plugins
 description: Where Junior plugins live, how to add them, and how to build your own.
 type: tutorial
+summary: Add packaged or local provider integrations to a Junior app.
 prerequisites:
   - /start-here/quickstart/
 related:
+  - /extend/build-a-plugin/
+  - /extend/agent-browser-plugin/
   - /extend/datadog-plugin/
   - /extend/github-plugin/
   - /extend/hex-plugin/
@@ -50,7 +53,7 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests and any bundled skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
@@ -65,6 +68,7 @@ export default defineConfig({
     juniorNitro({
       plugins: {
         packages: [
+          "@sentry/junior-agent-browser",
           "@sentry/junior-datadog",
           "@sentry/junior-github",
           "@sentry/junior-hex",

@@ -7,6 +7,7 @@
     "outDir": "dist"
   },
   "include": [
+    "src/api-reference.ts",
     "src/app.ts",
     "src/handlers/**/*.ts",
     "src/instrumentation.ts",

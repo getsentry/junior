@@ -2,9 +2,12 @@
 title: Verify & Troubleshoot
 description: Post-deploy checks and first-response troubleshooting.
 type: troubleshooting
+summary: Confirm a Junior deployment works and isolate the first likely failure point.
 prerequisites:
   - /start-here/quickstart/
 related:
+  - /start-here/slack-app-setup/
+  - /start-here/deploy-to-vercel/
   - /operate/observability/
   - /operate/reliability-runbooks/
   - /concepts/execution-model/

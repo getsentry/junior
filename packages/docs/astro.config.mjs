@@ -6,14 +6,7 @@ import sentryStarlightTheme, {
 import { sentryAgentMarkdown } from "@sentry/starlight-theme/agent-markdown";
 import starlightTypedoc from "starlight-typedoc";
 
-const juniorEntryPoints = [
-  "../junior/src/handlers/router.ts",
-  "../junior/src/handlers/webhooks.ts",
-  "../junior/src/handlers/health.ts",
-  "../junior/src/next-config.ts",
-  "../junior/src/instrumentation.ts",
-  "../junior/src/app/layout.tsx",
-];
+const juniorEntryPoints = ["../junior/src/api-reference.ts"];
 
 export default defineConfig({
   site: "https://junior.sentry.dev",
@@ -21,24 +14,32 @@ export default defineConfig({
     "/get-started": "/start-here/quickstart",
     "/get-started/index": "/start-here/quickstart",
     "/get-started/quickstart": "/start-here/quickstart",
-    "/extend/custom-plugins": "/extend",
+    "/start-here/deploy": "/start-here/deploy-to-vercel",
+    "/deploy": "/start-here/deploy-to-vercel",
+    "/deploy/vercel": "/start-here/deploy-to-vercel",
+    "/extend/custom-plugins": "/extend/build-a-plugin",
     "/extend/plugins-overview": "/extend",
+    "/extend/datadog": "/extend/datadog-plugin",
+    "/extend/hex": "/extend/hex-plugin",
     "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
+    "/plugins/datadog": "/extend/datadog-plugin",
     "/plugins/github": "/extend/github-plugin",
+    "/plugins/hex": "/extend/hex-plugin",
     "/plugins/linear": "/extend/linear-plugin",
     "/plugins/notion": "/extend/notion-plugin",
     "/plugins/sentry": "/extend/sentry-plugin",
     "/operate/telemetry-runbooks": "/operate/reliability-runbooks",
     "/operate/security": "/operate/security-hardening",
     "/operate/reliability": "/operate/reliability-runbooks",
-    "/integrate/existing-app": "/start-here/quickstart",
+    "/operate/snapshots": "/operate/sandbox-snapshots",
+    "/integrate/existing-app": "/start-here/existing-app",
   },
   integrations: [
     starlight({
       title: "Junior",
       description:
-        "Production docs for Junior, the Slack bot runtime for Next.js apps.",
+        "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
       favicon: "/favicon.svg",
       customCss: ["./src/styles/custom.css"],
       social: [
@@ -52,7 +53,20 @@ export default defineConfig({
         {
           label: "Start Here",
           items: [
+            { label: "Overview", link: "/start-here/overview/" },
             { label: "Quickstart", link: "/start-here/quickstart/" },
+            {
+              label: "Slack App Setup",
+              link: "/start-here/slack-app-setup/",
+            },
+            {
+              label: "Deploy to Vercel",
+              link: "/start-here/deploy-to-vercel/",
+            },
+            {
+              label: "Existing App",
+              link: "/start-here/existing-app/",
+            },
             {
               label: "Verify & Troubleshoot",
               link: "/start-here/verify-and-troubleshoot/",
@@ -78,11 +92,14 @@ export default defineConfig({
           label: "Extend",
           items: [
             { label: "Plugins", link: "/extend/" },
+            { label: "Build a Plugin", link: "/extend/build-a-plugin/" },
             {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
             },
+            { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
+            { label: "Hex Plugin", link: "/extend/hex-plugin/" },
             { label: "Linear Plugin", link: "/extend/linear-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
@@ -99,6 +116,10 @@ export default defineConfig({
             {
               label: "Security Hardening",
               link: "/operate/security-hardening/",
+            },
+            {
+              label: "Sandbox Snapshots",
+              link: "/operate/sandbox-snapshots/",
             },
           ],
         },
@@ -136,6 +157,10 @@ export default defineConfig({
           items: [
             { label: "Development", link: "/contribute/development/" },
             { label: "Testing", link: "/contribute/testing/" },
+            {
+              label: "Documentation Guidelines",
+              link: "/contribute/documentation-guidelines/",
+            },
             { label: "Releasing", link: "/contribute/releasing/" },
           ],
         },

@@ -1,99 +1,108 @@
 ---
 title: Quickstart
-description: Start from `junior init`, verify locally, then add the few deployment-specific pieces needed for Vercel.
+description: Create a Junior app, run it locally, and verify the runtime before adding Slack or plugins.
 type: tutorial
+summary: Scaffold a Junior app and confirm the local runtime is healthy.
 prerequisites: []
 related:
+  - /start-here/slack-app-setup/
+  - /start-here/deploy-to-vercel/
   - /extend/
-  - /start-here/verify-and-troubleshoot/
 ---
+
+Start here when you want a new Junior app that follows the supported Hono, Nitro, and Vercel shape.
 
 ## Prerequisites
 
-- Node.js 20+
+Use the same baseline that the scaffolded CI workflow uses:
+
+- Node.js 24
 - pnpm
-- A Slack app with signing secret + bot token
-- Redis URL
-- A Vercel account
+- A Redis URL for queue and state storage
+
+Slack credentials are needed before the bot can reply in Slack. You can scaffold and verify the local health route first, then finish [Slack App Setup](/start-here/slack-app-setup/).
 
 ## Create a new app
 
-Start with the initializer. This is the default path for a new project.
+Run the initializer in an empty target directory:
 
 ```bash
-npx @sentry/junior init my-bot
+pnpm dlx @sentry/junior init my-bot
 cd my-bot
 pnpm install
 ```
 
-`junior init` already creates the core runtime wiring for you:
+`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, CI workflow, app context files, local plugin and skill directories, and `.env.example`.
 
-- `server.ts`
-- `nitro.config.ts` and `vite.config.ts`
-- `vercel.json`
-- `app/SOUL.md`, `app/WORLD.md`, and `app/DESCRIPTION.md`
-- `app/skills/` and `app/plugins/`
-- `.env.example`
+The generated `app/` files have separate jobs:
 
-`SOUL.md` defines Junior's voice, `WORLD.md` carries operational context, and `DESCRIPTION.md` is the app description shown on user-facing surfaces. If you need extra context files, add more `app/*.md` documents and Junior will make them available as optional reference docs at runtime. Do not recreate the old `ABOUT.md`; use `WORLD.md` and `DESCRIPTION.md` instead.
+| File                 | Purpose                                               |
+| -------------------- | ----------------------------------------------------- |
+| `app/SOUL.md`        | Assistant voice and behavior.                         |
+| `app/WORLD.md`       | Operational context and domain knowledge.             |
+| `app/DESCRIPTION.md` | User-facing app description.                          |
+| `app/skills/`        | Local skills that are not owned by a plugin.          |
+| `app/plugins/`       | App-local plugin manifests and bundled plugin skills. |
 
-For a new app, you usually do not need to hand-create routes or runtime wrapper files.
+Do not recreate the old `ABOUT.md`; use `WORLD.md` and `DESCRIPTION.md`.
 
 ## Configure environment
 
-Copy values into your local env file. The scaffold includes `.env.example` with the core runtime variables.
-
-Generate `JUNIOR_SECRET` once, then paste the output into your local and production environments:
+Copy `.env.example` to your local environment file, then generate one stable `JUNIOR_SECRET`:
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Keep this value private and stable for the deployment. Junior uses it to sign internal resume callbacks and sandbox requester context.
+Set these values before running real turns:
 
-Required:
-
-- `SLACK_SIGNING_SECRET`
-- `SLACK_BOT_TOKEN`
-- `REDIS_URL`
-- `JUNIOR_SECRET`
-
-Recommended:
-
-- `JUNIOR_BOT_NAME`
-- `AI_MODEL`
-- `AI_FAST_MODEL`
-- `AI_VISION_MODEL`
+| Variable               | Required               | Purpose                                                        |
+| ---------------------- | ---------------------- | -------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET` | Yes, for Slack traffic | Verifies Slack requests.                                       |
+| `SLACK_BOT_TOKEN`      | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                     |
+| `REDIS_URL`            | Yes                    | Queue and runtime state storage.                               |
+| `JUNIOR_SECRET`        | Yes                    | Signs internal resume callbacks and sandbox requester context. |
+| `JUNIOR_BOT_NAME`      | No                     | Bot display/config name.                                       |
+| `AI_MODEL`             | No                     | Primary assistant model override.                              |
+| `AI_FAST_MODEL`        | No                     | Lightweight routing/classification model override.             |
+| `AI_VISION_MODEL`      | No                     | Enables image understanding when set.                          |
+| `AI_WEB_SEARCH_MODEL`  | No                     | Search model override.                                         |
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
 
 ## Run locally
 
+Start the local dev server:
+
 ```bash
 pnpm dev
 ```
 
-This starts the local app on `http://localhost:3000` by default.
+The app listens on `http://localhost:3000` by default.
 
 ## Verify locally
 
-Check the health route first, then verify a real Slack thread.
-
-- `GET http://localhost:3000/health` returns JSON with `status: "ok"`.
-- Set your Slack Event Subscriptions and Interactivity URLs to `http://<your-tunnel-or-dev-host>/api/webhooks/slack`.
-- Mention the bot in Slack and confirm it replies in the same thread.
-
-## Add plugins
-
-The initializer creates local `app/plugins` and `app/skills` directories, so you can start there without extra runtime config.
-
-If you want to use npm-distributed plugins, install them explicitly:
+Check the health route before wiring Slack:
 
 ```bash
-pnpm add @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+curl http://localhost:3000/health
 ```
 
-List the plugin packages in `juniorNitro` so they are bundled and available at runtime:
+The response should include `status: "ok"`.
+
+After you complete [Slack App Setup](/start-here/slack-app-setup/), point Slack at your tunnel URL and mention the bot in a thread. The reply should appear in the same thread.
+
+## Add packaged plugins
+
+Packaged plugins must be installed and listed in `juniorNitro` so Nitro bundles their manifests, skills, and runtime dependencies.
+
+Install only the plugins you plan to enable:
+
+```bash
+pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+```
+
+Then list them in `nitro.config.ts`:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
@@ -105,6 +114,7 @@ export default defineConfig({
     juniorNitro({
       plugins: {
         packages: [
+          "@sentry/junior-agent-browser",
           "@sentry/junior-datadog",
           "@sentry/junior-github",
           "@sentry/junior-hex",
@@ -121,43 +131,15 @@ export default defineConfig({
 });
 ```
 
-See [Plugins](/extend/) for the local-vs-package model.
-
-## What `junior init` created
-
-If you need to wire Junior into an existing app, this is what `junior init` creates.
-
-### Server entry point
-
-```ts title="server.ts"
-import { initSentry } from "@sentry/junior/instrumentation";
-initSentry();
-
-import { createApp } from "@sentry/junior";
-
-const app = await createApp();
-
-export default app;
-```
-
-### Vercel config
-
-`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. The `juniorNitro()` module copies `app/**/*` and any declared plugin package content into the Vercel function bundle at build time.
-
-## Deploy to Vercel
-
-`junior init` does not configure your Vercel project. You still need to add the deploy-specific pieces below.
-
-### Link the project
+Run the app check after changing plugins or skills:
 
 ```bash
-pnpm dlx vercel@latest login
-pnpm dlx vercel@latest link
+pnpm check
 ```
 
-### Configure build command
+## Verify plugin content
 
-The scaffold includes a build script that runs snapshot warmup:
+When enabled plugins declare sandbox runtime dependencies, the scaffolded build runs snapshot warmup:
 
 ```json title="package.json"
 {
@@ -169,63 +151,8 @@ The scaffold includes a build script that runs snapshot warmup:
 }
 ```
 
-Run `pnpm check` after updating Junior or plugin packages to validate local app files and installed plugin content.
-
-### Configure production environment
-
-Use the same `JUNIOR_SECRET` generation command if you have not already created one:
-
-```bash
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
-```
-
-Required:
-
-- `SLACK_SIGNING_SECRET`
-- `SLACK_BOT_TOKEN` (or `SLACK_BOT_USER_TOKEN`)
-- `REDIS_URL`
-- `JUNIOR_SECRET`
-
-Also required for build-time snapshot warmup:
-
-- Vercel OIDC enabled so `VERCEL_OIDC_TOKEN` is available during build
-
-Recommended:
-
-- `JUNIOR_BOT_NAME`
-- `AI_MODEL`
-- `AI_FAST_MODEL`
-- `AI_VISION_MODEL`
-- `AI_WEB_SEARCH_MODEL`
-
-Optional:
-
-- `JUNIOR_BASE_URL`
-- `AI_GATEWAY_API_KEY`
-
-### Configure Slack request URL
-
-Set Event Subscriptions and Interactivity URLs to:
-
-```text
-https://<your-domain>/api/webhooks/slack
-```
-
-### Verify in production
-
-- `GET https://<your-domain>/health` succeeds.
-- A Slack mention produces a thread reply.
-- Queue callback logs show successful processing.
-
-## Common failures
-
-- `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
-- No thread processing: confirm the API handler and queue trigger are configured.
-- No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check Vercel config `maxDuration` and function deployment.
-- OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
-- Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
+Run `pnpm check` before `pnpm build` so manifest and skill issues fail early.
 
 ## Next step
 
-Now that the scaffold is running, move to [Plugins](/extend/) to add packaged or local extensions, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for post-deploy checks.
+Finish [Slack App Setup](/start-here/slack-app-setup/) so the bot can receive events, then follow [Deploy to Vercel](/start-here/deploy-to-vercel/) for production.

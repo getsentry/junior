@@ -2,12 +2,14 @@
 title: "junior snapshot create"
 description: "Resolve or rebuild the Junior sandbox snapshot used for runtime dependencies."
 type: reference
+summary: Resolve the sandbox snapshot profile before deploys that need plugin runtime dependencies.
 prerequisites:
   - /start-here/quickstart/
 related:
   - /reference/config-and-env/
   - /start-here/quickstart/
   - /cli/check/
+  - /operate/sandbox-snapshots/
   - /operate/observability/
 ---
 
@@ -57,7 +59,7 @@ The common case is a Vercel build command:
 ```json title="package.json"
 {
   "scripts": {
-    "build": "junior snapshot create"
+    "build": "junior snapshot create && vite build"
   }
 }
 ```

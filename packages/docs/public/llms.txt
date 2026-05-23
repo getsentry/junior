@@ -1,0 +1,51 @@
+# Junior
+
+> Slack bot runtime for Hono and Nitro apps.
+
+Junior runs as a Hono app, receives Slack events, processes turns through queue-backed runtime work, and posts finalized replies back to Slack threads. Plugins add provider capabilities, credentials, MCP surfaces, runtime dependencies, and bundled skills.
+
+- Docs: https://junior.sentry.dev/
+- GitHub: https://github.com/getsentry/junior
+- npm: https://www.npmjs.com/package/@sentry/junior
+
+## Start Here
+
+- Overview: https://junior.sentry.dev/start-here/overview/
+- Quickstart: https://junior.sentry.dev/start-here/quickstart/
+- Slack App Setup: https://junior.sentry.dev/start-here/slack-app-setup/
+- Deploy to Vercel: https://junior.sentry.dev/start-here/deploy-to-vercel/
+- Existing App: https://junior.sentry.dev/start-here/existing-app/
+- Verify & Troubleshoot: https://junior.sentry.dev/start-here/verify-and-troubleshoot/
+
+## Core Concepts
+
+- Execution Model: https://junior.sentry.dev/concepts/execution-model/
+- Thread Routing: https://junior.sentry.dev/concepts/thread-routing/
+- Skills & Plugins: https://junior.sentry.dev/concepts/skills-and-plugins/
+- Credentials & OAuth: https://junior.sentry.dev/concepts/credentials-and-oauth/
+
+## Plugins
+
+- Plugin Overview: https://junior.sentry.dev/extend/
+- Build a Plugin: https://junior.sentry.dev/extend/build-a-plugin/
+- Agent Browser: https://junior.sentry.dev/extend/agent-browser-plugin/
+- Datadog: https://junior.sentry.dev/extend/datadog-plugin/
+- GitHub: https://junior.sentry.dev/extend/github-plugin/
+- Hex: https://junior.sentry.dev/extend/hex-plugin/
+- Linear: https://junior.sentry.dev/extend/linear-plugin/
+- Notion: https://junior.sentry.dev/extend/notion-plugin/
+- Sentry: https://junior.sentry.dev/extend/sentry-plugin/
+
+## Operate
+
+- Observability: https://junior.sentry.dev/operate/observability/
+- Reliability Runbooks: https://junior.sentry.dev/operate/reliability-runbooks/
+- Security Hardening: https://junior.sentry.dev/operate/security-hardening/
+- Sandbox Snapshots: https://junior.sentry.dev/operate/sandbox-snapshots/
+
+## Reference
+
+- Config & Environment: https://junior.sentry.dev/reference/config-and-env/
+- Route & Handler Surface: https://junior.sentry.dev/reference/handler-surface/
+- Plugin Auth & Context: https://junior.sentry.dev/reference/runtime-commands/
+- API Reference: https://junior.sentry.dev/reference/api/
