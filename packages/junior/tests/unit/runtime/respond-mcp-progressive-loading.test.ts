@@ -97,7 +97,7 @@ function makeReplyContext(args: {
   };
 }
 
-vi.mock("@mariozechner/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
     state: {
       messages: unknown[];

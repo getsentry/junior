@@ -38,7 +38,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 
 ### Loop model
 
-- Use `Agent` from `@mariozechner/pi-agent-core` for reply generation.
+- Use `Agent` from `@earendil-works/pi-agent-core` for reply generation.
 - For normal turns, instantiate a fresh Pi agent with the static system prompt, restore durable conversation-level Pi message history, then prompt only the current turn.
 - Persist updated conversation-level Pi message history only after the final visible reply is delivered by the runtime.
 - Per-turn runtime context may be included in the current user prompt for generation, but it must not be stored in durable conversation-level Pi history after completion.

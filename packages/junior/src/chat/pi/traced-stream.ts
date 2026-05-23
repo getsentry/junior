@@ -1,11 +1,11 @@
-import type { StreamFn } from "@mariozechner/pi-agent-core";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
   type Context,
   type Model,
   streamSimple,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import * as Sentry from "@/chat/sentry";
 import {
   extractGenAiUsageAttributes,

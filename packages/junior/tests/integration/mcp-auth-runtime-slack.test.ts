@@ -89,7 +89,7 @@ vi.mock("@/chat/services/turn-thinking-level", async () => {
   };
 });
 
-vi.mock("@mariozechner/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", () => {
   class FakeAgent {
     state: {
       messages: unknown[];

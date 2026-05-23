@@ -6,11 +6,11 @@ import {
   type Message,
   type Model,
   type ThinkingLevel,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import {
   streamAnthropic,
   streamSimpleAnthropic,
-} from "@mariozechner/pi-ai/anthropic";
+} from "@earendil-works/pi-ai/anthropic";
 
 // Directly register the anthropic provider at import time. pi-ai's built-in
 // registration relies on opaque dynamic import() calls that break under

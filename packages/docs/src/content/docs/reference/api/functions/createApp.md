@@ -7,7 +7,7 @@ title: "createApp"
 
 > **createApp**(`options?`): `Promise`\<`Hono`\<`BlankEnv`, `BlankSchema`, `"/"`\>\>
 
-Defined in: [app.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L64)
+Defined in: [app.ts:118](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L118)
 
 Create a Hono app with all Junior routes.
 

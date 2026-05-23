@@ -2,7 +2,7 @@ import {
   Agent,
   type AgentTool,
   type StreamFn,
-} from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import {

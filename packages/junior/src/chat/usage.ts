@@ -2,7 +2,7 @@
  * Structured token usage captured for a single agent turn.
  *
  * Mirrors the fields pi-ai emits on `AssistantMessage.usage` (see
- * `@mariozechner/pi-ai` `Usage`) so diagnostics carry every counter the
+ * `@earendil-works/pi-ai` `Usage`) so diagnostics carry every counter the
  * provider normalizes into the pi-ai shape as its own item. Renderers decide
  * whether to display a breakdown or a single aggregate.
  */

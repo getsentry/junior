@@ -17,7 +17,7 @@ export interface JuniorNitroOptions {
    * Extra file patterns to copy into the server output for files that the
    * bundler cannot trace (e.g. dynamically imported providers).
    * Each entry is `"<package-name>/<subpath-glob>"`, resolved via Node
-   * module resolution. Example: `"@mariozechner/pi-ai/dist/providers/*.js"`
+   * module resolution. Example: `"@earendil-works/pi-ai/dist/providers/*.js"`
    */
   includeFiles?: string[];
 }

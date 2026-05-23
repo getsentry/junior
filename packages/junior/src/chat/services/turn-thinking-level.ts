@@ -1,5 +1,5 @@
-import type { ThinkingLevel as AgentThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { ThinkingLevel as ProviderThinkingLevel } from "@mariozechner/pi-ai";
+import type { ThinkingLevel as AgentThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel as ProviderThinkingLevel } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 

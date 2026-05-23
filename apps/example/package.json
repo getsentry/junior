@@ -17,13 +17,13 @@
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
-    "@sentry/node": "10.50.0-alpha.0",
-    "hono": "^4.12.6"
+    "@sentry/node": "10.53.1",
+    "hono": "^4.12.22"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.9.1",
     "jiti": "^2.7.0",
-    "nitro": "3.0.260429-beta",
-    "typescript": "^5.9.3"
+    "nitro": "3.0.260522-beta",
+    "typescript": "^6.0.3"
   }
 }

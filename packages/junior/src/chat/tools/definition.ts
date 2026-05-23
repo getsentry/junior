@@ -1,6 +1,6 @@
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { Static, TSchema } from "@sinclair/typebox";
-import type { ToolExecutionMode } from "@mariozechner/pi-agent-core";
+import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 
 export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   description: string;

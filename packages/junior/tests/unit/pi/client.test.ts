@@ -21,14 +21,14 @@ const mocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
   completeSimple: mocks.completeSimple,
   getEnvApiKey: mocks.getEnvApiKey,
   getModels: mocks.getModels,
   registerApiProvider: mocks.registerApiProvider,
 }));
 
-vi.mock("@mariozechner/pi-ai/anthropic", () => ({
+vi.mock("@earendil-works/pi-ai/anthropic", () => ({
   streamAnthropic: mocks.streamAnthropic,
   streamSimpleAnthropic: mocks.streamSimpleAnthropic,
 }));

@@ -11,7 +11,6 @@
     "isolatedModules": true,
     "allowJs": false,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
@@ -20,6 +19,7 @@
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": [
+    "dist",
     "node_modules",
     "tests/unit/workflow/**/*.test.ts",
     "tests/integration/workflow/**/*.test.ts"

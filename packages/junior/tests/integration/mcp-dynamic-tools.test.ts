@@ -4,7 +4,7 @@ import {
   Agent,
   type AgentTool,
   type StreamFn,
-} from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-agent-core";
 import {
   createEchoMcpTestServer,
   type EchoMcpTestServer,

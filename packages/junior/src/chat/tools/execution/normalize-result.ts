@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 
 function isStructuredToolExecutionResult(value: unknown): value is {
   content: Array<TextContent | ImageContent>;

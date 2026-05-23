@@ -4,7 +4,10 @@
  * These are extracted to reduce the size of the main orchestration module and
  * make individual helpers independently testable.
  */
-import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Skill } from "@/chat/skills";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentTool, StreamFn } from "@mariozechner/pi-agent-core";
+import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
