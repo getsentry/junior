@@ -217,6 +217,22 @@ describe("behavior harness", () => {
     ]);
   });
 
+  it("restores cwd when setup fails after creating a plugin fixture", async () => {
+    const cwd = process.cwd();
+
+    await expect(
+      runEvalScenario({
+        events: [],
+        overrides: {
+          plugin_dirs: ["evals/fixtures/plugins"],
+          plugin_packages: ["../bad-package"],
+        },
+      }),
+    ).rejects.toThrow("Plugin package names must be valid npm package names");
+
+    expect(process.cwd()).toBe(cwd);
+  });
+
   it("collects created canvas metadata from captured Slack API calls", () => {
     const artifacts = collectSlackArtifactsFromCapturedCalls([
       {

@@ -920,76 +920,90 @@ async function setupHarnessEnvironment(
   scenario: EvalScenario,
 ): Promise<HarnessEnvironment> {
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
+  let pluginApp: PluginAppFixture | undefined;
 
-  const configuredSkillDirs =
-    scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
-  const configuredPluginDirs =
-    scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
-  const autoCompleteMcpOauthProviders = new Set(
-    scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
-  );
-  const autoCompleteOauthProviders = new Set(
-    scenario.overrides?.auto_complete_oauth?.map((p) => p.trim()) ?? [],
-  );
-  const authRequesterUsers = new Set(
-    scenario.events.flatMap((event) =>
-      "message" in event
-        ? [event.message.author?.user_id?.trim() || "U-test"]
-        : event.user_id
-          ? [event.user_id]
-          : [],
-    ),
-  );
-  if (authRequesterUsers.size === 0) {
-    authRequesterUsers.add("U-test");
-  }
-
-  if (scenario.overrides?.enable_test_credentials) {
-    process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-    if (scenario.overrides.test_credential_token) {
-      process.env.EVAL_TEST_CREDENTIAL_TOKEN =
-        scenario.overrides.test_credential_token;
-    }
-  }
-  const sandboxBashStreamInterrupts =
-    scenario.overrides?.faults?.sandbox_bash_stream_interrupts;
-  if (
-    typeof sandboxBashStreamInterrupts === "number" &&
-    Number.isFinite(sandboxBashStreamInterrupts) &&
-    sandboxBashStreamInterrupts > 0
-  ) {
-    process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
-    process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = String(
-      Math.floor(sandboxBashStreamInterrupts),
+  try {
+    const configuredSkillDirs =
+      scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
+    const configuredPluginDirs =
+      scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
+    const autoCompleteMcpOauthProviders = new Set(
+      scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
     );
+    const autoCompleteOauthProviders = new Set(
+      scenario.overrides?.auto_complete_oauth?.map((p) => p.trim()) ?? [],
+    );
+    const authRequesterUsers = new Set(
+      scenario.events.flatMap((event) =>
+        "message" in event
+          ? [event.message.author?.user_id?.trim() || "U-test"]
+          : event.user_id
+            ? [event.user_id]
+            : [],
+      ),
+    );
+    if (authRequesterUsers.size === 0) {
+      authRequesterUsers.add("U-test");
+    }
+
+    if (scenario.overrides?.enable_test_credentials) {
+      process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
+      if (scenario.overrides.test_credential_token) {
+        process.env.EVAL_TEST_CREDENTIAL_TOKEN =
+          scenario.overrides.test_credential_token;
+      }
+    }
+    const sandboxBashStreamInterrupts =
+      scenario.overrides?.faults?.sandbox_bash_stream_interrupts;
+    if (
+      typeof sandboxBashStreamInterrupts === "number" &&
+      Number.isFinite(sandboxBashStreamInterrupts) &&
+      sandboxBashStreamInterrupts > 0
+    ) {
+      process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
+      process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = String(
+        Math.floor(sandboxBashStreamInterrupts),
+      );
+    }
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    pluginApp =
+      configuredPluginDirs.length > 0
+        ? await createPluginAppFixture(configuredPluginDirs, {
+            linkNodeModules: Boolean(
+              scenario.overrides?.plugin_packages?.length,
+            ),
+          })
+        : undefined;
+    setPluginPackages(scenario.overrides?.plugin_packages ?? []);
+
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    resetSkillDiscoveryCache();
+    await cleanupHarnessThreadState(stateAdapter, scenario.events);
+    await cleanupMcpAuthState(
+      authRequesterUsers,
+      autoCompleteMcpOauthProviders,
+    );
+    await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
+
+    return {
+      authRequesterUsers,
+      autoCompleteMcpOauthProviders,
+      autoCompleteOauthProviders,
+      configuredPluginDirs,
+      configuredSkillDirs,
+      envSnapshot,
+      ...(pluginApp ? { pluginApp } : {}),
+      stateAdapter,
+    };
+  } catch (error) {
+    resetSkillDiscoveryCache();
+    setPluginPackages(undefined);
+    envSnapshot.restore();
+    await pluginApp?.cleanup();
+    throw error;
   }
-  process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  const pluginApp =
-    configuredPluginDirs.length > 0
-      ? await createPluginAppFixture(configuredPluginDirs, {
-          linkNodeModules: Boolean(scenario.overrides?.plugin_packages?.length),
-        })
-      : undefined;
-  setPluginPackages(scenario.overrides?.plugin_packages ?? []);
-
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  resetSkillDiscoveryCache();
-  await cleanupHarnessThreadState(stateAdapter, scenario.events);
-  await cleanupMcpAuthState(authRequesterUsers, autoCompleteMcpOauthProviders);
-  await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
-
-  return {
-    authRequesterUsers,
-    autoCompleteMcpOauthProviders,
-    autoCompleteOauthProviders,
-    configuredPluginDirs,
-    configuredSkillDirs,
-    envSnapshot,
-    ...(pluginApp ? { pluginApp } : {}),
-    stateAdapter,
-  };
 }
 
 async function teardownHarnessEnvironment(
