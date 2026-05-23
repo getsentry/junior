@@ -156,16 +156,10 @@ export function summarizeMessageText(text: string): string {
 export function buildUserTurnText(
   userInput: string,
   conversationContext?: string,
-  metadata?: {
-    sessionContext?: { conversationId?: string };
-    turnContext?: { traceId?: string };
-  },
 ): string {
   const trimmedContext = conversationContext?.trim();
-  const conversationId = metadata?.sessionContext?.conversationId;
-  const traceId = metadata?.turnContext?.traceId;
 
-  if (!trimmedContext && !conversationId && !traceId) {
+  if (!trimmedContext) {
     return userInput;
   }
 
@@ -180,29 +174,7 @@ export function buildUserTurnText(
     );
   }
 
-  if (conversationId) {
-    sections.push(
-      "<session-context>",
-      `- gen_ai.conversation.id: ${conversationId}`,
-      "</session-context>",
-      "",
-    );
-  }
-
-  if (traceId) {
-    sections.push(
-      "<turn-context>",
-      `- trace_id: ${traceId}`,
-      "</turn-context>",
-      "",
-    );
-  }
-
-  sections.push(
-    '<current-instruction priority="highest">',
-    userInput,
-    "</current-instruction>",
-  );
+  sections.push("<current-instruction>", userInput, "</current-instruction>");
 
   return sections.join("\n");
 }

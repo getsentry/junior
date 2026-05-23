@@ -4,7 +4,6 @@ import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
   extractGenAiUsageSummary,
-  getActiveTraceId,
   logException,
   logInfo,
   logWarn,
@@ -556,10 +555,6 @@ export async function generateAssistantReply(
     const userTurnText = buildUserTurnText(
       userInput,
       promptConversationContext,
-      {
-        sessionContext: { conversationId: sessionConversationId },
-        turnContext: { traceId: getActiveTraceId() },
-      },
     );
     const { routerBlocks, userContentParts } = buildUserTurnInput({
       omittedImageAttachmentCount: context.omittedImageAttachmentCount ?? 0,

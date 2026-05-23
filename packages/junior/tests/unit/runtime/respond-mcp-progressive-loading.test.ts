@@ -17,6 +17,7 @@ const {
   omitFinalAssistantAfterTool,
   pushPreToolAssistantMessage,
   promptCallCount,
+  promptMessages,
   promptSeedMessages,
   recordToolResultMessage,
   resumeTurnContextCounts,
@@ -42,6 +43,7 @@ const {
   loadSkillsByNameMock: vi.fn(),
   omitFinalAssistantAfterTool: { value: false },
   promptCallCount: { value: 0 },
+  promptMessages: [] as unknown[],
   promptSeedMessages: [] as unknown[][],
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
@@ -143,6 +145,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       promptCallCount.value += 1;
       this.aborted = false;
+      promptMessages.push(message);
       promptSeedMessages.push([...this.state.messages]);
       this.state.messages.push(message);
 
@@ -564,6 +567,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     loadSkillsByNameMock.mockReset();
     omitFinalAssistantAfterTool.value = false;
     promptCallCount.value = 0;
+    promptMessages.length = 0;
     promptSeedMessages.length = 0;
     pushPreToolAssistantMessage.value = false;
     recordToolResultMessage.value = false;
@@ -759,6 +763,12 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
+    expect(JSON.stringify(promptMessages[0])).not.toContain(
+      "duplicated prior transcript",
+    );
+    expect(JSON.stringify(promptMessages[0])).not.toContain(
+      "<thread-background>",
+    );
   });
 
   it("parks for auth when MCP auth is requested during a tool call", async () => {

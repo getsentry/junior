@@ -116,6 +116,54 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
+  it("serializes the actual chat input messages without text normalization", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const userText = [
+      "<thread-background>",
+      "prior user message",
+      "</thread-background>",
+      "",
+      "<current-instruction>",
+      "what is sentry?",
+      "</current-instruction>",
+    ].join("\n");
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      {
+        systemPrompt: "you are junior",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<runtime-turn-context>\nskills and config\n</runtime-turn-context>",
+              },
+              { type: "text", text: userText },
+            ],
+            timestamp: 0,
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      attributes: Record<string, unknown>;
+    };
+    const inputMessages = opts.attributes["gen_ai.input.messages"] as string;
+    expect(inputMessages).toContain("runtime-turn-context");
+    expect(inputMessages).toContain("thread-background");
+    expect(inputMessages).toContain("current-instruction");
+    expect(inputMessages).toContain("prior user message");
+    expect(inputMessages).toContain("what is sentry?");
+  });
+
   it("sets output.messages, usage tokens, finish_reasons, response.model after stream completion", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
