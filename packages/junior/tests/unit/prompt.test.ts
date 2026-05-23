@@ -21,6 +21,7 @@ describe("prompt builders", () => {
         channelId: "C_ALPHA",
         modelId: "model-alpha",
         thinkingLevel: "medium",
+        traceId: "trace-alpha",
       },
       turnState: "fresh",
     });
@@ -55,6 +56,8 @@ describe("prompt builders", () => {
     expect(firstTurnContext).not.toContain("<assistant>");
     expect(firstTurnContext).not.toContain("<thread-participants>");
     expect(firstTurnContext).toContain("<requester>");
+    expect(firstTurnContext).toContain("- trace_id: trace-alpha");
+    expect(firstSystemPrompt).not.toContain("trace-alpha");
     expect(buildSystemPrompt()).toBe(firstSystemPrompt);
   });
 

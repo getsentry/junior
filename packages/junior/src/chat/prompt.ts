@@ -509,9 +509,11 @@ function buildRuntimeSection(params: {
     canPostToChannel?: boolean;
   };
   thinkingLevel?: string;
+  traceId?: string;
 }): string {
   const lines = [
     `- version: ${escapeXml(getRuntimeMetadata().version ?? "unknown")}`,
+    params.traceId ? `- trace_id: ${escapeXml(params.traceId)}` : "",
     params.modelId ? `- model: ${escapeXml(params.modelId)}` : "",
     params.fastModelId ? `- fast_model: ${escapeXml(params.fastModelId)}` : "",
     params.thinkingLevel
@@ -644,6 +646,7 @@ type TurnContextPromptInput = {
       canPostToChannel?: boolean;
     };
     thinkingLevel?: string;
+    traceId?: string;
   };
   invocation: SkillInvocation | null;
   requester?: {
