@@ -170,6 +170,21 @@ function normalizePluginConfig(
   };
 }
 
+function clonePluginConfig(
+  config: PluginConfig | undefined,
+): PluginConfig | undefined {
+  if (!config) {
+    return undefined;
+  }
+
+  return {
+    packages: [...(config.packages ?? [])],
+    ...(config.manifests
+      ? { manifests: structuredClone(config.manifests) }
+      : {}),
+  };
+}
+
 function discoverConfiguredPluginPackageContent(): InstalledPluginPackageContent {
   return discoverInstalledPluginPackageContent(process.cwd(), {
     packageNames: pluginConfig?.packages,
@@ -305,9 +320,13 @@ function ensurePluginsLoaded(): LoadedPluginState {
 
 // --- Sync exports ---
 
-/** Set install-wide plugin configuration before plugin discovery. */
-export function setPluginConfig(config: PluginConfig | undefined): void {
+/** Set install-wide plugin configuration and return the previous value for rollback. */
+export function setPluginConfig(
+  config: PluginConfig | undefined,
+): PluginConfig | undefined {
+  const previousConfig = clonePluginConfig(pluginConfig);
   pluginConfig = normalizePluginConfig(config);
+  return previousConfig;
 }
 
 /** Return installed plugin package content from the active plugin configuration. */

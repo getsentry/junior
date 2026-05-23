@@ -101,8 +101,13 @@ function readEnvPluginPackages(): string[] | undefined {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const pluginConfig = options?.plugins ?? (await resolveBuildPluginConfig());
-  setPluginConfig(pluginConfig);
-  setConfigDefaults(options?.configDefaults);
+  const previousPluginConfig = setPluginConfig(pluginConfig);
+  try {
+    setConfigDefaults(options?.configDefaults);
+  } catch (error) {
+    setPluginConfig(previousPluginConfig);
+    throw error;
+  }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 
