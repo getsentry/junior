@@ -47,17 +47,56 @@ async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
   try {
     const mod: { plugins?: PluginConfig } = await import("#junior/config");
     return mod.plugins;
-  } catch {
-    // Virtual module unavailable (not running in Nitro context).
-    // Fall back to env var for dev mode and tests.
-    const env = process.env.JUNIOR_PLUGIN_PACKAGES;
-    if (env) {
-      try {
-        return { packages: JSON.parse(env) };
-      } catch {}
+  } catch (error) {
+    if (!isMissingVirtualConfig(error)) {
+      throw error;
+    }
+    const packages = readEnvPluginPackages();
+    if (packages) {
+      return { packages };
     }
     return undefined;
   }
+}
+
+function isMissingVirtualConfig(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = (error as { code?: string }).code;
+  return (
+    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
+      code === "ERR_MODULE_NOT_FOUND" ||
+      code === "MODULE_NOT_FOUND") &&
+    error.message.includes("#junior/config")
+  );
+}
+
+function readEnvPluginPackages(): string[] | undefined {
+  const env = process.env.JUNIOR_PLUGIN_PACKAGES;
+  if (!env) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(env);
+  } catch (error) {
+    throw new Error("JUNIOR_PLUGIN_PACKAGES must be valid JSON", {
+      cause: error,
+    });
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((value) => typeof value !== "string" || !value.trim())
+  ) {
+    throw new Error(
+      "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",
+    );
+  }
+
+  return parsed;
 }
 
 /** Create a Hono app with all Junior routes. */

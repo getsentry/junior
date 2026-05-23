@@ -4,6 +4,10 @@ import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
+import {
+  createPluginAppFixture,
+  type PluginAppFixture,
+} from "../fixtures/plugin-app";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -27,6 +31,7 @@ type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
 let stateAdapterModule: StateAdapterModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
+let pluginApp: PluginAppFixture | undefined;
 
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
@@ -43,8 +48,8 @@ describe("oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_OAUTH_PLUGIN_ROOT]),
     };
+    pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
     oauthCallbackHarnessModule =
@@ -55,7 +60,9 @@ describe("oauth callback slack integration", () => {
   });
 
   afterEach(async () => {
-    await stateAdapterModule.disconnectStateAdapter();
+    await stateAdapterModule?.disconnectStateAdapter();
+    await pluginApp?.cleanup();
+    pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
   });
 

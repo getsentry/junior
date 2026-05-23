@@ -9,6 +9,10 @@ import {
   getCapturedSlackFileUploadCalls,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
+import {
+  createPluginAppFixture,
+  type PluginAppFixture,
+} from "../fixtures/plugin-app";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -44,6 +48,7 @@ let mcpOauthCallbackHarnessModule: McpOauthCallbackHarnessModule;
 let pluginRegistryModule: PluginRegistryModule;
 let stateAdapterModule: StateAdapterModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
+let pluginApp: PluginAppFixture | undefined;
 
 async function createPendingAuthSession(args: {
   conversationId: string;
@@ -98,8 +103,8 @@ describe("mcp oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_MCP_PLUGIN_ROOT]),
     };
+    pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
     artifactStateModule = await import("@/chat/state/artifacts");
@@ -118,7 +123,9 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   afterEach(async () => {
-    await stateAdapterModule.disconnectStateAdapter();
+    await stateAdapterModule?.disconnectStateAdapter();
+    await pluginApp?.cleanup();
+    pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
   });
 

@@ -130,39 +130,9 @@ function normalizePluginRoots(roots: string[]): string[] {
   return resolved;
 }
 
-function getExtraPluginRoots(): string[] {
-  const raw = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS?.trim();
-  if (!raw) {
-    return [];
-  }
-
-  if (raw.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return normalizePluginRoots(
-          parsed.filter((value): value is string => typeof value === "string"),
-        );
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return normalizePluginRoots(
-    raw
-      .split(path.delimiter)
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0),
-  );
-}
-
 function getPluginCatalogSource(): PluginCatalogSource {
   const packagedContent = discoverInstalledPluginPackageContent();
-  const localRoots = normalizePluginRoots([
-    ...pluginRoots(),
-    ...getExtraPluginRoots(),
-  ]);
+  const localRoots = normalizePluginRoots(pluginRoots());
   const manifestRoots = normalizePluginRoots([
     ...localRoots,
     ...packagedContent.manifestRoots,

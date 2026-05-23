@@ -48,6 +48,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             options.plugins?.packages,
           );
           copyIncludedFiles(
+            cwd,
             nitro.options.output.serverDir,
             options.includeFiles,
           );

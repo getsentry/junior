@@ -38,7 +38,6 @@ function buildJuniorPackage(): void {
     CI: "true",
     JUNIOR_SKIP_SNAPSHOT: "1",
   };
-  delete env.JUNIOR_EXTRA_PLUGIN_ROOTS;
   delete env.SKILL_DIRS;
 
   execFileSync("pnpm", ["--filter", "@sentry/junior", "build"], {

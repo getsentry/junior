@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
 import { globToRegex } from "@/build/glob-to-regex";
@@ -17,13 +17,10 @@ export function copyAppAndPluginContent(
   });
   for (const root of packagedContent.manifestRoots) {
     if (existsSync(path.join(root, "plugin.yaml"))) {
-      const relative = path.relative(cwd, root);
-      if (!relative || path.isAbsolute(relative) || relative.startsWith("..")) {
-        continue;
-      }
+      const manifestPath = path.join(root, "plugin.yaml");
       copyIfExists(
-        path.join(root, "plugin.yaml"),
-        path.join(serverRoot, relative, "plugin.yaml"),
+        manifestPath,
+        resolveServerOutputPath(cwd, serverRoot, manifestPath),
       );
       continue;
     }
@@ -38,46 +35,106 @@ export function copyAppAndPluginContent(
 
 /** Copy extra file patterns into server output for files the bundler cannot trace. */
 export function copyIncludedFiles(
+  cwd: string,
   serverRoot: string,
   patterns?: string[],
 ): void {
   if (!patterns?.length) return;
   for (const pattern of patterns) {
-    const normalized = pattern.replace(/^node_modules\//, "");
-    const parts = normalized.split("/");
-    const pkgName = parts[0].startsWith("@")
-      ? `${parts[0]}/${parts[1]}`
-      : parts[0];
-    const subpath = parts.slice(pkgName.includes("/") ? 2 : 1).join("/");
-    const fileGlob = path.basename(subpath);
-    const subDir = path.dirname(subpath);
+    const { pkgName, subDir, fileGlob } = parseIncludePattern(pattern);
 
-    const pkgDir = resolvePackageDir(pkgName);
-    if (!pkgDir) continue;
+    const pkgDir = resolvePackageDir(cwd, pkgName);
+    if (!pkgDir) {
+      throw new Error(
+        `includeFiles entry "${pattern}" references package "${pkgName}", but it could not be resolved`,
+      );
+    }
 
     const sourceDir = path.join(pkgDir, subDir);
-    if (!existsSync(sourceDir)) continue;
+    if (!isDirectory(sourceDir)) {
+      throw new Error(
+        `includeFiles entry "${pattern}" references missing directory ${sourceDir}`,
+      );
+    }
 
     const entries = readdirSync(sourceDir);
     const re = fileGlob.includes("*") ? globToRegex(fileGlob) : null;
+    let matched = false;
+    let copied = false;
 
     for (const entry of entries) {
       if (re ? !re.test(entry) : entry !== fileGlob) continue;
-      copyIfExists(
-        path.join(sourceDir, entry),
-        path.join(serverRoot, "node_modules", pkgName, subDir, entry),
+      matched = true;
+      copied =
+        copyIfExists(
+          path.join(sourceDir, entry),
+          path.join(serverRoot, "node_modules", pkgName, subDir, entry),
+        ) || copied;
+    }
+
+    if (!matched) {
+      throw new Error(
+        `includeFiles entry "${pattern}" did not match any files in ${sourceDir}`,
+      );
+    }
+    if (!copied) {
+      throw new Error(
+        `includeFiles entry "${pattern}" matched files in ${sourceDir} but did not copy any existing files`,
       );
     }
   }
 }
 
-function copyIfExists(source: string, target: string): void {
+function parseIncludePattern(pattern: string): {
+  fileGlob: string;
+  pkgName: string;
+  subDir: string;
+} {
+  const normalized = pattern.trim().replace(/^node_modules\//, "");
+  const parts = normalized.split("/");
+  if (
+    !normalized ||
+    path.isAbsolute(normalized) ||
+    parts.some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error(
+      `includeFiles entry "${pattern}" must be a package subpath pattern`,
+    );
+  }
+
+  const isScopedPackage = parts[0].startsWith("@");
+  const packagePartCount = isScopedPackage ? 2 : 1;
+  const pkgName = parts.slice(0, packagePartCount).join("/");
+  const subpath = parts.slice(packagePartCount).join("/");
+  if (!pkgName || !subpath) {
+    throw new Error(
+      `includeFiles entry "${pattern}" must include a package subpath`,
+    );
+  }
+
+  return {
+    pkgName,
+    subDir: path.dirname(subpath),
+    fileGlob: path.basename(subpath),
+  };
+}
+
+function isDirectory(targetPath: string): boolean {
+  try {
+    return statSync(targetPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function copyIfExists(source: string, target: string): boolean {
   if (!existsSync(source)) {
-    return;
+    return false;
   }
 
   mkdirSync(path.dirname(target), { recursive: true });
   cpSync(source, target, { recursive: true });
+  return true;
 }
 
 function copyRootIntoServerOutput(
@@ -85,10 +142,44 @@ function copyRootIntoServerOutput(
   serverRoot: string,
   root: string,
 ): void {
-  const relative = path.relative(cwd, root);
-  if (!relative || path.isAbsolute(relative) || relative.startsWith("..")) {
-    return;
+  copyIfExists(root, resolveServerOutputPath(cwd, serverRoot, root));
+}
+
+function resolveServerOutputPath(
+  cwd: string,
+  serverRoot: string,
+  sourcePath: string,
+): string {
+  const relative = path.relative(cwd, sourcePath);
+  if (isLocalRelativePath(relative)) {
+    return path.join(serverRoot, relative);
   }
 
-  copyIfExists(root, path.join(serverRoot, relative));
+  const nodeModulesRelative = nodeModulesRelativePath(sourcePath);
+  if (nodeModulesRelative) {
+    return path.join(serverRoot, nodeModulesRelative);
+  }
+
+  throw new Error(
+    `Cannot copy configured plugin content outside the app root or node_modules: ${sourcePath}`,
+  );
+}
+
+function isLocalRelativePath(relativePath: string): boolean {
+  return (
+    Boolean(relativePath) &&
+    !path.isAbsolute(relativePath) &&
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${path.sep}`)
+  );
+}
+
+function nodeModulesRelativePath(sourcePath: string): string | null {
+  const parts = path.resolve(sourcePath).split(path.sep);
+  const nodeModulesIndex = parts.lastIndexOf("node_modules");
+  if (nodeModulesIndex === -1 || nodeModulesIndex === parts.length - 1) {
+    return null;
+  }
+
+  return path.join("node_modules", ...parts.slice(nodeModulesIndex + 1));
 }

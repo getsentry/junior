@@ -13,6 +13,10 @@ import {
   createTestThread,
   type TestThread,
 } from "../fixtures/slack-harness";
+import {
+  createPluginAppFixture,
+  type PluginAppFixture,
+} from "../fixtures/plugin-app";
 
 const {
   agentProbe,
@@ -264,16 +268,18 @@ function expectProcessingReactionLifecycles(args: {
 }
 
 describe("mcp auth runtime slack integration", () => {
+  let pluginApp: PluginAppFixture | undefined;
+
   beforeEach(async () => {
     resetAgentProbe();
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
       JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_MCP_PLUGIN_ROOT]),
       JUNIOR_STATE_ADAPTER: "memory",
       SLACK_BOT_TOKEN: "xoxb-test-token",
     };
+    pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
     chatRuntimeModule = await import("../fixtures/chat-runtime");
@@ -289,7 +295,9 @@ describe("mcp auth runtime slack integration", () => {
   });
 
   afterEach(async () => {
-    await stateAdapterModule.disconnectStateAdapter();
+    await stateAdapterModule?.disconnectStateAdapter();
+    await pluginApp?.cleanup();
+    pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
   });
 

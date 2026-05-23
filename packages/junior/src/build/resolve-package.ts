@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-/** Resolve a package to its root directory using import.meta.resolve. */
-export function resolvePackageDir(pkgName: string): string | undefined {
+/** Resolve a package to its root directory from the app project root. */
+export function resolvePackageDir(
+  cwd: string,
+  pkgName: string,
+): string | undefined {
   try {
-    const resolved = import.meta.resolve(pkgName);
-    const entry = resolved.startsWith("file://")
-      ? fileURLToPath(resolved)
-      : resolved;
+    const requireFromCwd = createRequire(path.join(cwd, "package.json"));
+    const resolved = requireFromCwd.resolve(pkgName);
     // Walk up from the resolved entry to find the package root (contains package.json).
-    let dir = path.dirname(entry);
+    let dir = path.dirname(resolved);
     while (dir !== path.dirname(dir)) {
       if (existsSync(path.join(dir, "package.json"))) return dir;
       dir = path.dirname(dir);

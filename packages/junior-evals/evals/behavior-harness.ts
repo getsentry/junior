@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
+import {
+  createPluginAppFixture,
+  type PluginAppFixture,
+} from "@junior-tests/fixtures/plugin-app";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
@@ -399,7 +403,6 @@ const HARNESS_ENV_KEYS = [
   "EVAL_ENABLE_TEST_CREDENTIALS",
   "EVAL_TEST_CREDENTIAL_TOKEN",
   "JUNIOR_BASE_URL",
-  "JUNIOR_EXTRA_PLUGIN_ROOTS",
   "JUNIOR_EVAL_ENABLE_FAULTS",
   "JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS",
   "JUNIOR_STATE_ADAPTER",
@@ -909,6 +912,7 @@ interface HarnessEnvironment {
   configuredPluginDirs: string[];
   configuredSkillDirs: string[];
   envSnapshot: EnvSnapshot;
+  pluginApp?: PluginAppFixture;
   stateAdapter: HarnessStateAdapter;
 }
 
@@ -961,7 +965,12 @@ async function setupHarnessEnvironment(
   }
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify(configuredPluginDirs);
+  const pluginApp =
+    configuredPluginDirs.length > 0
+      ? await createPluginAppFixture(configuredPluginDirs, {
+          linkNodeModules: Boolean(scenario.overrides?.plugin_packages?.length),
+        })
+      : undefined;
   setPluginPackages(scenario.overrides?.plugin_packages ?? []);
 
   const stateAdapter = getStateAdapter();
@@ -978,6 +987,7 @@ async function setupHarnessEnvironment(
     configuredPluginDirs,
     configuredSkillDirs,
     envSnapshot,
+    ...(pluginApp ? { pluginApp } : {}),
     stateAdapter,
   };
 }
@@ -998,6 +1008,7 @@ async function teardownHarnessEnvironment(
     env.autoCompleteOauthProviders,
   );
   env.envSnapshot.restore();
+  await env.pluginApp?.cleanup();
 }
 
 // ---------------------------------------------------------------------------

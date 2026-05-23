@@ -1,5 +1,9 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createPluginAppFixture,
+  type PluginAppFixture,
+} from "../fixtures/plugin-app";
 
 const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
@@ -72,6 +76,7 @@ function proxiedRequest(input: {
 
 describe("sandbox egress proxy integration", () => {
   let modules: LoadedModules;
+  let pluginApp: PluginAppFixture | undefined;
 
   beforeEach(async () => {
     process.env = {
@@ -79,15 +84,17 @@ describe("sandbox egress proxy integration", () => {
       EVAL_ENABLE_TEST_CREDENTIALS: "1",
       EVAL_TEST_CREDENTIAL_TOKEN: "integration-egress-token",
       JUNIOR_BASE_URL: BASE_URL,
-      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([FIXTURE_PLUGIN_ROOT]),
       JUNIOR_SECRET: "integration-secret",
       JUNIOR_STATE_ADAPTER: "memory",
     };
+    pluginApp = await createPluginAppFixture([FIXTURE_PLUGIN_ROOT]);
     modules = await loadModules();
   });
 
   afterEach(async () => {
-    await modules.state.disconnectStateAdapter();
+    await modules?.state.disconnectStateAdapter();
+    await pluginApp?.cleanup();
+    pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
   });
 
