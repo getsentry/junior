@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { setConfigDefaults } from "@/chat/configuration/defaults";
 import { logException } from "@/chat/logging";
-import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { setPluginConfig } from "@/chat/plugins/registry";
 import type { PluginConfig } from "@/chat/plugins/types";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
@@ -102,7 +101,6 @@ function readEnvPluginPackages(): string[] | undefined {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const pluginConfig = options?.plugins ?? (await resolveBuildPluginConfig());
-  setPluginPackages(pluginConfig?.packages);
   setPluginConfig(pluginConfig);
   setConfigDefaults(options?.configDefaults);
 

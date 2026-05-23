@@ -53,14 +53,10 @@ function pathForTracingInclude(cwd: string, targetPath: string): string | null {
   return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
-let configuredPluginPackages: string[] | undefined;
-
-/** Set the runtime plugin package allowlist. Called by `createApp()`. */
-export function setPluginPackages(packages: string[] | undefined): void {
-  configuredPluginPackages = normalizePackageNames(packages);
-}
-
-function normalizePackageNames(packageNames: string[] | undefined): string[] {
+/** Normalize and validate configured plugin package names. */
+export function normalizePluginPackageNames(
+  packageNames: string[] | undefined,
+): string[] {
   if (!packageNames) {
     return [];
   }
@@ -168,9 +164,7 @@ export function discoverInstalledPluginPackageContent(
   options?: DiscoverInstalledPluginPackageContentOptions,
 ): InstalledPluginPackageContent {
   const resolvedCwd = path.resolve(cwd);
-  const packageNames = normalizePackageNames(
-    options?.packageNames ?? configuredPluginPackages,
-  );
+  const packageNames = normalizePluginPackageNames(options?.packageNames);
   const nodeModulesDirs =
     options?.nodeModulesDirs ?? discoverNodeModulesDirs(resolvedCwd);
 

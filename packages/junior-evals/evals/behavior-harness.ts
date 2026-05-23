@@ -23,8 +23,7 @@ import {
   deleteMcpStoredOAuthCredentials,
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
-import { setPluginPackages } from "@/chat/plugins/package-discovery";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import { getPluginOAuthConfig, setPluginConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
@@ -975,7 +974,7 @@ async function setupHarnessEnvironment(
             ),
           })
         : undefined;
-    setPluginPackages(scenario.overrides?.plugin_packages ?? []);
+    setPluginConfig({ packages: scenario.overrides?.plugin_packages ?? [] });
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -999,7 +998,7 @@ async function setupHarnessEnvironment(
     };
   } catch (error) {
     resetSkillDiscoveryCache();
-    setPluginPackages(undefined);
+    setPluginConfig(undefined);
     envSnapshot.restore();
     await pluginApp?.cleanup();
     throw error;
@@ -1011,7 +1010,7 @@ async function teardownHarnessEnvironment(
   env: HarnessEnvironment,
 ): Promise<void> {
   resetSkillDiscoveryCache();
-  setPluginPackages(undefined);
+  setPluginConfig(undefined);
   await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
   await cleanupMcpAuthState(
     env.authRequesterUsers,

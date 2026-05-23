@@ -5,16 +5,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginConfig } from "@/chat/plugins/types";
 
 const originalCwd = process.cwd();
+let configuredPackageNames: string[] = [];
 
 async function setPackages(packageNames: string[]): Promise<void> {
-  const { setPluginPackages } =
-    await import("@/chat/plugins/package-discovery");
-  setPluginPackages(packageNames);
+  configuredPackageNames = packageNames;
+  await setConfig({ packages: packageNames });
 }
 
 async function setConfig(config: PluginConfig): Promise<void> {
   const { setPluginConfig } = await import("@/chat/plugins/registry");
-  setPluginConfig(config);
+  setPluginConfig({
+    ...config,
+    packages: config.packages ?? configuredPackageNames,
+  });
 }
 
 async function expectRegistryLoadFailure(
@@ -530,6 +533,7 @@ async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
 }
 
 afterEach(() => {
+  configuredPackageNames = [];
   process.chdir(originalCwd);
   vi.resetModules();
   vi.doUnmock("@/chat/discovery");

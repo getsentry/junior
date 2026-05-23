@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { homeDir } from "@/chat/discovery";
-import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
-import { getPluginProviders } from "@/chat/plugins/registry";
+import {
+  getPluginPackageContent,
+  getPluginProviders,
+} from "@/chat/plugins/registry";
 import { discoverSkills } from "@/chat/skills";
 
 function readDescriptionText(): string | undefined {
@@ -19,7 +21,7 @@ function readDescriptionText(): string | undefined {
 
 /** Return a runtime discovery snapshot for built-app diagnostics. */
 export async function GET(): Promise<Response> {
-  const packagedContent = discoverInstalledPluginPackageContent();
+  const packagedContent = getPluginPackageContent();
   const skills = await discoverSkills();
 
   return Response.json({
