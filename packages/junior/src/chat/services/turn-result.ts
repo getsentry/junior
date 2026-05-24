@@ -153,8 +153,20 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     !primaryText &&
     toolErrorCount === 0 &&
     (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
+  const lastAssistant = terminalAssistantMessages.at(-1) as
+    | { stopReason?: unknown; errorMessage?: unknown }
+    | undefined;
+  const stopReason =
+    typeof lastAssistant?.stopReason === "string"
+      ? lastAssistant.stopReason
+      : undefined;
+  const errorMessage =
+    typeof lastAssistant?.errorMessage === "string"
+      ? lastAssistant.errorMessage
+      : undefined;
+  const isProviderError = stopReason === "error";
 
-  if (!primaryText && !sideEffectOnlySuccess) {
+  if (!primaryText && !sideEffectOnlySuccess && !isProviderError) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -174,25 +186,15 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     );
   }
 
-  const lastAssistant = terminalAssistantMessages.at(-1) as
-    | { stopReason?: unknown; errorMessage?: unknown }
-    | undefined;
-  const stopReason =
-    typeof lastAssistant?.stopReason === "string"
-      ? lastAssistant.stopReason
-      : undefined;
-  const errorMessage =
-    typeof lastAssistant?.errorMessage === "string"
-      ? lastAssistant.errorMessage
-      : undefined;
   const usedPrimaryText = Boolean(primaryText);
-  const outcome: AgentTurnDiagnostics["outcome"] = primaryText
-    ? stopReason === "error"
-      ? "provider_error"
-      : "success"
-    : sideEffectOnlySuccess
-      ? "success"
-      : "execution_failure";
+  let outcome: AgentTurnDiagnostics["outcome"];
+  if (isProviderError) {
+    outcome = "provider_error";
+  } else if (primaryText || sideEffectOnlySuccess) {
+    outcome = "success";
+  } else {
+    outcome = "execution_failure";
+  }
   const suppressReactionOnlyText =
     reactionPerformed &&
     !channelPostPerformed &&

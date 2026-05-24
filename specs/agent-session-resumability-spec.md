@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-05-19
+- Last Edited: 2026-05-24
 
 ## Changelog
 
@@ -17,6 +17,7 @@
 - 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
 - 2026-05-19: Clarified that Slack auth pauses also post a visible URL-free acknowledgement owned by the Slack delivery contract.
 - 2026-05-21: Reframed Pi persistence as an incremental Redis-backed Pi session state store. Checkpoints store metadata and recoverable cursors; materialized `pi_messages` are a read view, not the primary write model.
+- 2026-05-24: Added bounded in-process provider retry for transient LLM stream failures before final Slack delivery.
 
 ## Status
 
@@ -177,6 +178,14 @@ If the previous slice timed out after producing uncommitted partial assistant te
 - If a later user message arrives while `activeTurnId` points at an awaiting automatic continuation checkpoint, the live runtime must treat that message as a retry signal for the existing session: reschedule the checkpoint callback, keep `activeTurnId` on the original session, and do not start a new agent turn.
 - In that case, the last safe checkpoint may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail only after automatic continuation is impossible or exhausted.
 
+### In-Process Provider Retry Contract
+
+- Transient provider failures reported as terminal assistant messages with `stopReason=error` may be retried inside the same running slice before final Slack delivery.
+- Provider retry must not replay the original user prompt. It must remove only the trailing failed assistant message(s), verify the remaining Pi history ends at a continuable boundary (`user` or `toolResult`), persist that safe boundary, then call `continue()`.
+- Provider retry is bounded and uses short exponential backoff. If the retry limit is reached, if the error is not classified as transient, or if no safe boundary remains after trimming, the normal provider-failure reply path owns user-visible recovery.
+- Provider retry does not create an `awaiting_resume` checkpoint and does not schedule a signed resume callback. If a retried slice later times out, the timeout continuation contract above applies.
+- Provider retry is only allowed before final Slack reply delivery. The runtime must not retry by rewriting or reconciling text already posted to Slack.
+
 ### Internal Timeout-Resume Callback Contract
 
 The timeout-resume callback payload is:
@@ -236,6 +245,7 @@ Required log events/diagnostics:
 - `agent_turn_timeout_resume_schedule_failed`
 - `agent_turn_continuation_retry_schedule_failed`
 - `agent_turn_timeout_resume_skipped_after_visible_output`
+- `agent_turn_provider_retry`
 - `timeout_resume_failed`
 - `timeout_resume_handler_failed`
 - `timeout_resume_lock_busy`
@@ -269,6 +279,7 @@ Required attributes when available:
 8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
 9. Unit/integration: fresh follow-up turns can recover Pi history from active/last Pi session state without depending on conversation-state Pi transcript mirroring.
 10. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
+11. Unit/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
 
 ## Related Specs
 

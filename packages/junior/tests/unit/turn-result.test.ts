@@ -110,6 +110,40 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("treats terminal provider errors without text as provider errors", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "bash",
+          isError: false,
+          stdout: "ok",
+        },
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          errorMessage: "Anthropic stream ended before message_stop",
+        },
+      ],
+      userInput: "Do the thing",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["bash"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.diagnostics.errorMessage).toBe(
+      "Anthropic stream ended before message_stop",
+    );
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
   it("treats reaction-only turns as successful without fallback text", () => {
     const reply = buildTurnResult({
       newMessages: [

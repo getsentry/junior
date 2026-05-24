@@ -79,11 +79,19 @@ import {
   type AgentTurnDiagnostics,
 } from "@/chat/services/turn-result";
 import {
+  isRetryableProviderError,
+  trimRetryableProviderErrorTail,
+} from "@/chat/services/provider-retry";
+import {
   selectTurnThinkingLevel,
   toAgentThinkingLevel,
   type TurnThinkingSelection,
 } from "@/chat/services/turn-thinking-level";
-import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
+import {
+  addAgentTurnUsage,
+  hasAgentTurnUsage,
+  type AgentTurnUsage,
+} from "@/chat/usage";
 import {
   loadTurnCheckpoint,
   persistCompletedCheckpoint,
@@ -97,6 +105,12 @@ import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
+
+const PROVIDER_RETRY_DELAYS_MS = [1_000, 2_000] as const;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -941,81 +955,119 @@ export async function generateAssistantReply(
               freshPromptMessage,
             ]);
           }
-          const promptPromise = resumedFromCheckpoint
+
+          const runAgentStep = async (
+            run: Promise<unknown>,
+          ): Promise<unknown> => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => {
+                timedOut = true;
+                agent.abort();
+                reject(
+                  new Error(
+                    `Agent turn timed out after ${botConfig.turnTimeoutMs}ms`,
+                  ),
+                );
+              }, botConfig.turnTimeoutMs);
+            });
+
+            try {
+              return await Promise.race([run, timeoutPromise]);
+            } catch (error) {
+              if (timedOut) {
+                logWarn(
+                  "agent_turn_timeout",
+                  {},
+                  {
+                    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                    "gen_ai.operation.name": "invoke_agent",
+                    "gen_ai.request.model": botConfig.modelId,
+                    ...(thinkingSelection
+                      ? {
+                          "app.ai.reasoning_effort":
+                            thinkingSelection.thinkingLevel,
+                        }
+                      : {}),
+                    "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
+                  },
+                  "Agent turn timed out and was aborted",
+                );
+                // Wait for the agent call to settle before snapshotting messages
+                // — the agent loop may still be mutating state.
+                await run.catch(() => {});
+                timeoutResumeMessages = [...agent.state.messages];
+              }
+              if (getPendingAuthPause()) {
+                timeoutResumeMessages = [...agent.state.messages];
+                throw getPendingAuthPause()!;
+              }
+              throw error;
+            } finally {
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+              }
+            }
+          };
+
+          let run = resumedFromCheckpoint
             ? agent.continue()
             : agent.prompt(freshPromptMessage);
+          let retryUsage: AgentTurnUsage | undefined;
+          for (let attempt = 0; ; attempt += 1) {
+            promptResult = await runAgentStep(run);
 
-          let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => {
-              timedOut = true;
-              agent.abort();
-              reject(
-                new Error(
-                  `Agent turn timed out after ${botConfig.turnTimeoutMs}ms`,
-                ),
-              );
-            }, botConfig.turnTimeoutMs);
-          });
-
-          try {
-            promptResult = await Promise.race([promptPromise, timeoutPromise]);
-          } catch (error) {
-            if (timedOut) {
-              logWarn(
-                "agent_turn_timeout",
-                {},
-                {
-                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                  "gen_ai.operation.name": "invoke_agent",
-                  "gen_ai.request.model": botConfig.modelId,
-                  ...(thinkingSelection
-                    ? {
-                        "app.ai.reasoning_effort":
-                          thinkingSelection.thinkingLevel,
-                      }
-                    : {}),
-                  "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
-                },
-                "Agent turn timed out and was aborted",
-              );
-              // Wait for promptPromise to settle before snapshotting messages
-              // — the agent loop may still be mutating state.
-              await promptPromise.catch(() => {});
-              timeoutResumeMessages = [...agent.state.messages];
-            }
+            newMessages = agent.state.messages.slice(beforeMessageCount);
+            const outputMessages = newMessages.filter(isAssistantMessage);
+            const outputMessagesAttribute =
+              serializeGenAiAttribute(outputMessages);
+            const usageSummary = extractGenAiUsageSummary(
+              promptResult,
+              agent.state,
+              ...outputMessages,
+            );
+            const currentUsage = hasAgentTurnUsage(usageSummary)
+              ? usageSummary
+              : undefined;
+            turnUsage = addAgentTurnUsage(retryUsage, currentUsage);
+            setSpanAttributes({
+              ...(outputMessagesAttribute
+                ? { "gen_ai.output.messages": outputMessagesAttribute }
+                : {}),
+              ...extractGenAiUsageAttributes(usageSummary),
+            });
             if (getPendingAuthPause()) {
               timeoutResumeMessages = [...agent.state.messages];
               throw getPendingAuthPause()!;
             }
-            throw error;
-          } finally {
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-            }
-          }
 
-          newMessages = agent.state.messages.slice(beforeMessageCount);
-          const outputMessages = newMessages.filter(isAssistantMessage);
-          const outputMessagesAttribute =
-            serializeGenAiAttribute(outputMessages);
-          const usageSummary = extractGenAiUsageSummary(
-            promptResult,
-            agent.state,
-            ...outputMessages,
-          );
-          turnUsage = hasAgentTurnUsage(usageSummary)
-            ? usageSummary
-            : undefined;
-          setSpanAttributes({
-            ...(outputMessagesAttribute
-              ? { "gen_ai.output.messages": outputMessagesAttribute }
-              : {}),
-            ...extractGenAiUsageAttributes(usageSummary),
-          });
-          if (getPendingAuthPause()) {
-            timeoutResumeMessages = [...agent.state.messages];
-            throw getPendingAuthPause()!;
+            const lastAssistant = outputMessages.at(-1);
+            const retryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt];
+            if (
+              retryDelayMs === undefined ||
+              !isRetryableProviderError(lastAssistant)
+            ) {
+              break;
+            }
+
+            retryUsage = turnUsage;
+            const retryMessages = trimRetryableProviderErrorTail(
+              agent.state.messages,
+            );
+            if (!retryMessages) {
+              break;
+            }
+
+            agent.state.messages = retryMessages;
+            await persistSafeBoundary(retryMessages);
+            logWarn(
+              "agent_turn_provider_retry",
+              spanContext,
+              {},
+              "Retrying transient provider failure",
+            );
+            await sleep(retryDelayMs);
+            run = agent.continue();
           }
         },
         {
