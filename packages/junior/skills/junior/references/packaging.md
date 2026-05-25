@@ -53,6 +53,21 @@ const app = await createApp({
 });
 ```
 
+Packages that export trusted runtime hooks must be registered from app code with
+their plugin factory instead of a plain package list:
+
+```ts
+import { createApp } from "@sentry/junior";
+import { myProviderPlugin } from "@acme/junior-my-provider";
+
+const app = await createApp({
+  plugins: [myProviderPlugin()],
+});
+```
+
+The trusted plugin's `pluginConfig.packages` should include the package that
+contains `plugin.yaml`. Nitro still owns build-time package copying.
+
 ## Monorepo package checklist
 
 When adding a new package under this repository's `packages/` directory:

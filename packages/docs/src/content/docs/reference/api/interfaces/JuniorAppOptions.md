@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [app.ts:25](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L25)
+Defined in: [app.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L30)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [app.ts:25](https://github.com/getsentry/junior/blob/main/packages/j
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [app.ts:27](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L27)
+Defined in: [app.ts:32](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L32)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
@@ -21,11 +21,15 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 ### plugins?
 
-> `optional` **plugins?**: `PluginConfig`
+> `optional` **plugins?**: `PluginConfig` \| `JuniorPlugin`[]
 
-Defined in: [app.ts:29](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L29)
+Defined in: [app.ts:40](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L40)
 
-Plugin packages and manifest overrides loaded by this app instance.
+Plugin packages/overrides, or trusted plugin instances loaded by this app.
+
+Use `PluginConfig` for declarative package lists and manifest overrides.
+Use `JuniorPlugin[]` for trusted plugin factories such as `githubPlugin()`;
+their package config is merged with the catalog bundled by `juniorNitro()`.
 
 ---
 
@@ -33,4 +37,4 @@ Plugin packages and manifest overrides loaded by this app instance.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [app.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L30)
+Defined in: [app.ts:41](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L41)

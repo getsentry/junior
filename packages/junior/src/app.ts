@@ -8,7 +8,12 @@ import {
   getPluginCatalogSignature,
   setPluginConfig,
 } from "@/chat/plugins/registry";
+import {
+  setAgentPlugins,
+  validateAgentPlugins,
+} from "@/chat/plugins/agent-hooks";
 import type { PluginConfig } from "@/chat/plugins/types";
+import type { JuniorPlugin } from "@sentry/junior-plugin-api";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
@@ -25,8 +30,14 @@ import type { WaitUntilFn } from "@/handlers/types";
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
-  /** Plugin packages and manifest overrides loaded by this app instance. */
-  plugins?: PluginConfig;
+  /**
+   * Plugin packages/overrides, or trusted plugin instances loaded by this app.
+   *
+   * Use `PluginConfig` for declarative package lists and manifest overrides.
+   * Use `JuniorPlugin[]` for trusted plugin factories such as `githubPlugin()`;
+   * their package config is merged with the catalog bundled by `juniorNitro()`.
+   */
+  plugins?: PluginConfig | JuniorPlugin[];
   waitUntil?: WaitUntilFn;
 }
 
@@ -48,7 +59,7 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
 }
 
 /** Resolve plugin configuration from the virtual module injected by juniorNitro(). */
-async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
+async function resolveVirtualPluginConfig(): Promise<PluginConfig | undefined> {
   try {
     const mod: { plugins?: PluginConfig } = await import("#junior/config");
     return mod.plugins;
@@ -56,12 +67,22 @@ async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
     if (!isMissingVirtualConfig(error)) {
       throw error;
     }
-    const packages = readEnvPluginPackages();
-    if (packages) {
-      return { packages };
-    }
     return undefined;
   }
+}
+
+/** Resolve plugin configuration from the virtual module, falling back to env. */
+async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
+  const virtualConfig = await resolveVirtualPluginConfig();
+  if (virtualConfig) {
+    return virtualConfig;
+  }
+
+  const packages = readEnvPluginPackages();
+  if (packages) {
+    return { packages };
+  }
+  return undefined;
 }
 
 function isMissingVirtualConfig(error: unknown): boolean {
@@ -114,13 +135,62 @@ function hasConfiguredPluginCatalog(config: PluginConfig | undefined): boolean {
   );
 }
 
+function isJuniorPluginArray(
+  plugins: JuniorAppOptions["plugins"],
+): plugins is JuniorPlugin[] {
+  return Array.isArray(plugins);
+}
+
+function mergePluginConfig(
+  base: PluginConfig | undefined,
+  next: PluginConfig | undefined,
+): PluginConfig | undefined {
+  if (!base) return next;
+  if (!next) return base;
+
+  return {
+    packages: [
+      ...new Set([...(base.packages ?? []), ...(next.packages ?? [])]),
+    ],
+    manifests:
+      base.manifests || next.manifests
+        ? {
+            ...(base.manifests ?? {}),
+            ...(next.manifests ?? {}),
+          }
+        : undefined,
+  };
+}
+
+function pluginConfigFromAgentPlugins(
+  plugins: JuniorPlugin[],
+): PluginConfig | undefined {
+  const packages = [
+    ...new Set(
+      plugins.flatMap((plugin) => plugin.pluginConfig?.packages ?? []),
+    ),
+  ];
+  return packages.length ? { packages } : undefined;
+}
+
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  const pluginConfig = options?.plugins ?? (await resolveBuildPluginConfig());
+  const configuredPlugins = options?.plugins;
+  const agentPlugins = isJuniorPluginArray(configuredPlugins)
+    ? configuredPlugins
+    : [];
+  const pluginConfig = isJuniorPluginArray(configuredPlugins)
+    ? mergePluginConfig(
+        await resolveVirtualPluginConfig(),
+        pluginConfigFromAgentPlugins(configuredPlugins),
+      )
+    : (configuredPlugins ?? (await resolveBuildPluginConfig()));
+  validateAgentPlugins(agentPlugins);
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
   const previousPluginConfig = setPluginConfig(pluginConfig);
+  const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
   try {
     setConfigDefaults(options?.configDefaults);
@@ -129,6 +199,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }
   } catch (error) {
     setPluginConfig(previousPluginConfig);
+    setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
     throw error;
   }

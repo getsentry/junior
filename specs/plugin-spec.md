@@ -25,6 +25,7 @@
 - 2026-05-08: Added plugin-level `command-env` for non-secret sandbox CLI placeholders, default-backed deployment values, and explicit public host env bindings.
 - 2026-05-12: Clarified that credentialed provider HTTP traffic is authenticated through the sandbox egress proxy.
 - 2026-05-20: Added `PluginConfig` manifests for install-level plugin configuration.
+- 2026-05-25: Added explicit trusted app plugin registration for deterministic agent behavior at Junior-owned lifecycle boundaries.
 
 ## Status
 
@@ -232,6 +233,49 @@ command-env:
 | `mcp.allowed-tools`                  | `string[]`               | Optional non-empty allowlist of raw MCP tool names to expose for this provider. Activation fails if any listed tool is missing from discovery.                                                                                                                                                                                                                           |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
+
+### Trusted app plugin registration
+
+Trusted agent behavior is initialized from app code, not `plugin.yaml`.
+Plugin packages that need deterministic runtime behavior export functions that
+return `JuniorPlugin` objects from `@sentry/junior-plugin-api`, and apps pass
+those objects to `createApp()`:
+
+```ts
+import { createApp } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+
+const app = await createApp({
+  plugins: [
+    githubPlugin({
+      botNameEnv: "GITHUB_APP_BOT_NAME",
+      botEmailEnv: "GITHUB_APP_BOT_EMAIL",
+    }),
+  ],
+});
+```
+
+`JuniorPlugin.pluginConfig` may contribute package names that would otherwise be
+passed through `PluginConfig.packages`; `JuniorPlugin.hooks` registers trusted
+lifecycle code. This keeps declarative plugin metadata inspectable in manifests
+while making trusted code execution an explicit app configuration decision. When
+deploying with Nitro, `juniorNitro({ plugins })` still owns build-time copying
+of package plugin content such as `plugin.yaml` and bundled skills;
+`createApp({ plugins: [...] })` owns runtime registration.
+
+Hook contexts expose narrow capabilities rather than raw Junior internals.
+The initial v1 runtime invokes:
+
+- `sandboxPrepare` after sandbox skill/runtime sync and before agent-visible
+  sandbox tools execute. Failures fail sandbox setup.
+- `beforeToolExecute` before a tool runs. Hooks may mutate tool env/input or
+  deny execution.
+
+For GitHub commit attribution, the GitHub plugin uses `sandboxPrepare` to
+install a `prepare-commit-msg` hook and configure global Git defaults for the
+sandbox, and `beforeToolExecute` injects the bot author and requester coauthor
+environment. Git's commit path adds and validates attribution before `git
+commit` completes.
 
 Install-level `PluginConfig` manifests apply before validation and registration. Manifest config uses the same logical field names as the public plugin config API, replaces arrays wholesale, merges objects by key, and allows `null` to delete optional fields or map entries. The merged manifest remains subject to the same validation rules as `plugin.yaml`, including unique effective provider domains.
 

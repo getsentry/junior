@@ -34,6 +34,7 @@
     "skills:check": "node scripts/check-skills.mjs"
   },
   "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
     "@ai-sdk/gateway": "^3.0.119",
     "@chat-adapter/slack": "4.29.0",
     "@chat-adapter/state-memory": "4.29.0",

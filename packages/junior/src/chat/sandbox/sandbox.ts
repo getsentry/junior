@@ -14,6 +14,7 @@ import { createSandboxEgressRequesterToken } from "@/chat/sandbox/egress-session
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
+import type { AgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   isHostFileMissingError,
   resolveHostDataPath,
@@ -108,6 +109,7 @@ export function createSandboxExecutor(options?: {
   credentialEgress?: {
     requesterId: string;
   };
+  agentHooks?: AgentPluginHookRunner;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -159,6 +161,9 @@ export function createSandboxExecutor(options?: {
             requesterToken: sandboxEgressRequesterTokenFor(egressId),
           })
       : undefined,
+    onSandboxPrepare: async (sandbox) => {
+      await options?.agentHooks?.prepareSandbox(sandbox);
+    },
     onSandboxAcquired: async (sandbox) => {
       await options?.onSandboxAcquired?.(sandbox);
     },

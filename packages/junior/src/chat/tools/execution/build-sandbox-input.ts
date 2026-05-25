@@ -9,6 +9,11 @@ export function buildSandboxInput(
   if (toolName === "bash") {
     return {
       command: String(params.command ?? ""),
+      ...(params.env &&
+      typeof params.env === "object" &&
+      !Array.isArray(params.env)
+        ? { env: params.env }
+        : {}),
       ...(optionalNumber(params.timeoutMs)
         ? { timeoutMs: optionalNumber(params.timeoutMs) }
         : {}),

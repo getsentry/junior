@@ -313,6 +313,27 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("prepares a cached sandbox only once", async () => {
+    const freshSandbox = makeSandbox("sbx_fresh");
+    const onSandboxPrepare = vi.fn();
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const manager = createSandboxSessionManager({
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    await manager.createSandbox();
+    await manager.createSandbox();
+
+    expect(onSandboxPrepare).toHaveBeenCalledTimes(1);
+    expect(onSandboxPrepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sandboxId: "sbx_fresh",
+      }),
+    );
+  });
+
   it("reports acquired sandbox metadata when restoring from a sandbox id hint", async () => {
     const restoredSandbox = makeSandbox("sbx_restored");
     const onSandboxAcquired = vi.fn();

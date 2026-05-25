@@ -7,6 +7,15 @@ describe("buildSandboxInput", () => {
       command: "ls -la",
     });
     expect(
+      buildSandboxInput("bash", {
+        command: "env",
+        env: { AGENT_PLUGIN: "1" },
+      }),
+    ).toEqual({
+      command: "env",
+      env: { AGENT_PLUGIN: "1" },
+    });
+    expect(
       buildSandboxInput("bash", { command: "sleep 10", timeoutMs: 1000 }),
     ).toEqual({
       command: "sleep 10",

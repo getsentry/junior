@@ -13,6 +13,7 @@ import type { ToolDefinition } from "@/chat/tools/definition";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import type { AgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
@@ -23,6 +24,7 @@ export function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
+  agentHooks?: AgentPluginHookRunner,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
@@ -50,7 +52,6 @@ export function createAgentTools(
         spanContext,
         async () => {
           const parsed = params as Record<string, unknown>;
-          onToolCall?.(toolName, parsed);
 
           try {
             if (typeof toolDef.execute !== "function") {
@@ -68,19 +69,27 @@ export function createAgentTools(
               };
             }
 
+            const beforeTool = agentHooks
+              ? await agentHooks.beforeToolExecute({
+                  name: toolName,
+                  input: parsed,
+                })
+              : { input: parsed, env: {} };
+            const toolInput = beforeTool.input;
+            onToolCall?.(toolName, toolInput);
             const bashCommand =
-              toolName === "bash" && typeof parsed.command === "string"
-                ? parsed.command.trim()
+              toolName === "bash" && typeof toolInput.command === "string"
+                ? toolInput.command.trim()
                 : "";
 
-            const sandboxInput = buildSandboxInput(toolName, parsed);
+            const sandboxInput = buildSandboxInput(toolName, toolInput);
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const result = isSandbox
               ? await sandboxExecutor!.execute({
                   toolName,
                   input: sandboxInput,
                 })
-              : await toolDef.execute(parsed as never, {
+              : await toolDef.execute(toolInput as never, {
                   experimental_context: sandbox,
                 });
 

@@ -4,6 +4,7 @@ import { logWarn } from "@/chat/logging";
 interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
+  email?: string;
 }
 
 const USER_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -78,6 +79,7 @@ export async function lookupSlackUser(
         profile?: {
           display_name?: string;
           real_name?: string;
+          email?: string;
         };
       };
     };
@@ -96,6 +98,7 @@ export async function lookupSlackUser(
     const result: SlackUserLookupResult = {
       userName,
       fullName,
+      email: payload.user.profile?.email?.trim() || undefined,
     };
     writeToCache(userId, result);
     return result;

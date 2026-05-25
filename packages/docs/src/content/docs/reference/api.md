@@ -25,7 +25,9 @@ The API reference is generated from public package entry points.
 1. Read [Route & Handler Surface](/reference/handler-surface/) first.
 2. Read `createApp` options to understand runtime route wiring.
 3. Read `juniorNitro` options before changing plugin package bundling.
-4. Read instrumentation exports for telemetry setup.
+4. For trusted plugin hooks, use `@sentry/junior-plugin-api` from a plugin
+   package and register the returned `JuniorPlugin` with `createApp()`.
+5. Read instrumentation exports for telemetry setup.
 
 ## Next step
 

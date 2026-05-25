@@ -44,7 +44,7 @@ export default defineConfig({
   modules: [
     juniorNitro({
       plugins: {
-        packages: ["@sentry/junior-github"],
+        packages: ["@sentry/junior-sentry"],
       },
     }),
   ],
@@ -55,6 +55,10 @@ export default defineConfig({
 ```
 
 If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/turn-resume`, `/api/info`, and `/health`. Do not split those routes across independent runtime instances.
+
+Some packages also export trusted runtime hooks. Register those in `createApp()`;
+do not rely on `juniorNitro()` alone. For example, see
+[GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` app-code setup.
 
 ## Add app files
 

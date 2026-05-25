@@ -1,12 +1,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "@/app";
 import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
+import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { getPluginProviders, setPluginConfig } from "@/chat/plugins/registry";
 
 const originalCwd = process.cwd();
@@ -46,6 +48,7 @@ async function writePluginPackage(
 
 afterEach(async () => {
   process.chdir(originalCwd);
+  setAgentPlugins([]);
   setPluginConfig(undefined);
   setConfigDefaults(undefined);
   if (originalPluginPackages === undefined) {
@@ -75,6 +78,17 @@ describe("createApp plugin config", () => {
     await expect(createApp()).rejects.toThrow(
       "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",
     );
+  });
+
+  it("does not read env plugin packages when trusted plugins are explicit", async () => {
+    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+
+    await createApp({
+      plugins: [],
+    });
+
+    expect(getPluginProviders()).toEqual([]);
+    expect(getAgentPlugins()).toEqual([]);
   });
 
   it("fails loudly when configured plugin package names are invalid", async () => {
@@ -168,5 +182,72 @@ describe("createApp plugin config", () => {
       "base",
     ]);
     expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
+  });
+
+  it("loads trusted plugin instances through createApp", async () => {
+    const tempRoot = await makeTempDir();
+    await writePluginPackage(tempRoot, "@acme/trusted-plugin", "trusted");
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/trusted-plugin": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    await createApp({
+      plugins: [
+        defineJuniorPlugin({
+          name: "trusted",
+          pluginConfig: { packages: ["@acme/trusted-plugin"] },
+        }),
+      ],
+      configDefaults: { "trusted.org": "sentry" },
+    });
+
+    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "trusted",
+    ]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+  });
+
+  it("rejects duplicate trusted plugin names before mutating app config", async () => {
+    await createApp({
+      plugins: [],
+    });
+
+    await expect(
+      createApp({
+        plugins: [
+          defineJuniorPlugin({ name: "dupe" }),
+          defineJuniorPlugin({ name: "dupe" }),
+        ],
+      }),
+    ).rejects.toThrow('Duplicate trusted plugin name "dupe"');
+
+    expect(getAgentPlugins()).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
+
+  it("rejects invalid trusted plugin names before mutating app config", async () => {
+    await createApp({
+      plugins: [],
+    });
+
+    await expect(
+      createApp({
+        plugins: [defineJuniorPlugin({ name: "GitHub" })],
+      }),
+    ).rejects.toThrow(
+      'Trusted plugin name "GitHub" must be a lowercase plugin identifier',
+    );
+
+    expect(getAgentPlugins()).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
   });
 });

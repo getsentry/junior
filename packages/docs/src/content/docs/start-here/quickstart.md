@@ -137,6 +137,11 @@ Run the app check after changing plugins or skills:
 pnpm check
 ```
 
+Plugins with trusted runtime hooks need one more app-code registration step.
+For example, `@sentry/junior-github` must be registered with `githubPlugin()`
+inside `createApp()` to enforce Git commit attribution. See
+[GitHub Plugin](/extend/github-plugin/) for that setup.
+
 ## Verify plugin content
 
 When enabled plugins declare sandbox runtime dependencies, the scaffolded build runs snapshot warmup:

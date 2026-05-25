@@ -21,7 +21,9 @@ pnpm add @sentry/junior @sentry/junior-github
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
+List the plugin in `juniorNitro({ plugins: { packages: [...] } })` so the
+manifest, runtime dependencies, and bundled skills are copied into the deployed
+function:
 
 ```ts title="nitro.config.ts"
 juniorNitro({
@@ -29,6 +31,25 @@ juniorNitro({
     packages: ["@sentry/junior-github"],
   },
 });
+```
+
+Register the trusted GitHub plugin in `createApp()` so Junior can enforce Git
+commit attribution at runtime:
+
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+
+const app = await createApp({
+  plugins: [
+    githubPlugin({
+      botNameEnv: "GITHUB_APP_BOT_NAME",
+      botEmailEnv: "GITHUB_APP_BOT_EMAIL",
+    }),
+  ],
+});
+
+export default app;
 ```
 
 ## Configure environment variables

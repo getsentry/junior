@@ -160,6 +160,7 @@ export function createSandboxSessionManager(options?: {
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
+  onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -171,6 +172,7 @@ export function createSandboxSessionManager(options?: {
   let availableReferenceFiles: string[] = [];
   let toolExecutors: SandboxToolExecutors | undefined;
   let appliedNetworkPolicyKey: string | undefined;
+  let preparedSandboxId: string | undefined;
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
@@ -191,6 +193,7 @@ export function createSandboxSessionManager(options?: {
     sandboxIdHint = undefined;
     toolExecutors = undefined;
     appliedNetworkPolicyKey = undefined;
+    preparedSandboxId = undefined;
   };
 
   const createSandboxName = (): string =>
@@ -232,6 +235,17 @@ export function createSandboxSessionManager(options?: {
       withSpan: withSandboxSpan,
       runtimeBinDir: SANDBOX_RUNTIME_BIN_DIR,
     });
+  };
+
+  const prepareSandbox = async (
+    targetSandbox: SandboxInstance,
+  ): Promise<void> => {
+    if (preparedSandboxId === targetSandbox.sandboxId) {
+      return;
+    }
+    await syncSkills(targetSandbox);
+    await options?.onSandboxPrepare?.(targetSandbox);
+    preparedSandboxId = targetSandbox.sandboxId;
   };
 
   const refreshNetworkPolicy = async (
@@ -445,7 +459,7 @@ export function createSandboxSessionManager(options?: {
 
     try {
       await refreshNetworkPolicy(createdSandbox);
-      await syncSkills(createdSandbox);
+      await prepareSandbox(createdSandbox);
     } catch (error) {
       return failSetup(error);
     }
@@ -487,6 +501,7 @@ export function createSandboxSessionManager(options?: {
     try {
       await ensureSandboxReachable(cachedSandbox, "memory");
       await refreshNetworkPolicy(cachedSandbox);
+      await prepareSandbox(cachedSandbox);
       return cachedSandbox;
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
@@ -526,7 +541,7 @@ export function createSandboxSessionManager(options?: {
 
     try {
       await refreshNetworkPolicy(hintedSandbox);
-      await syncSkills(hintedSandbox);
+      await prepareSandbox(hintedSandbox);
       return await rememberSandbox(hintedSandbox);
     } catch (error) {
       if (isSandboxUnavailableError(error)) {

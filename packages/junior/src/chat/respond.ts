@@ -31,6 +31,7 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
+import { createAgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
@@ -118,6 +119,7 @@ export interface ReplyRequestContext {
     userId?: string;
     userName?: string;
     fullName?: string;
+    email?: string;
   };
   correlation?: {
     conversationId?: string;
@@ -448,6 +450,9 @@ export async function generateAssistantReply(
     // ── Sandbox ──────────────────────────────────────────────────────
     const requesterId = context.requester?.userId;
     const userTokenStore = createUserTokenStore();
+    const agentPluginHooks = createAgentPluginHookRunner({
+      requester: context.requester,
+    });
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
@@ -458,6 +463,7 @@ export async function generateAssistantReply(
             requesterId,
           }
         : undefined,
+      agentHooks: agentPluginHooks,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -831,6 +837,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
+      agentPluginHooks,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -840,6 +847,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
+      agentPluginHooks,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic

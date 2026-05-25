@@ -6,9 +6,20 @@
     "access": "public"
   },
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
   "files": [
+    "index.d.ts",
+    "index.js",
     "plugin.yaml",
     "skills",
     "SETUP.md"
-  ]
+  ],
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*"
+  }
 }

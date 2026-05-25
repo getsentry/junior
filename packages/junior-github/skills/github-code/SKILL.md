@@ -10,10 +10,10 @@ Use `gh` and `git` for repository checkout, source investigation, code changes, 
 
 ## References
 
-| Need | Load |
-| ---- | ---- |
-| Command syntax, permissions, config | [references/api-surface.md](references/api-surface.md) |
-| Failed commands, auth errors | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                                | Load                                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| Command syntax, permissions, config | [references/api-surface.md](references/api-surface.md)                                 |
+| Failed commands, auth errors        | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Core rules
 
@@ -102,17 +102,7 @@ Types: `feat`, `fix`, `ref`, `docs`, `test`, `build`, `ci`, `chore`. Imperative 
 
 Body only when it helps reviewers understand _why_.
 
-Footer order: `Fixes`/`Refs` lines, then `Co-authored-by` trailers.
-
-#### On-behalf-of commits
-
-If the commit is authored by a bot and a human requested the work, add a trailer:
-
-```
-Co-authored-by: Full Name <email>
-```
-
-Resolve name and email from evidence — requester context, Slack profile (`slackUserLookup`), GitHub profile, or repo commit history. If email cannot be confirmed, use `Full Name <noreply>` and note the gap in the PR body.
+Footer order: `Fixes`/`Refs` lines.
 
 ### 6. Create or update PR
 

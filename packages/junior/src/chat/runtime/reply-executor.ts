@@ -510,6 +510,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               userId: message.author.userId,
               userName: message.author.userName ?? fallbackIdentity?.userName,
               fullName: message.author.fullName ?? fallbackIdentity?.fullName,
+              email: fallbackIdentity?.email,
             },
             conversationContext:
               preparedState.routingContext ?? preparedState.conversationContext,

@@ -1,0 +1,31 @@
+{
+  "name": "@sentry/junior-plugin-api",
+  "version": "0.53.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}

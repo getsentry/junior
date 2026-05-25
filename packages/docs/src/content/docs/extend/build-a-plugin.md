@@ -38,6 +38,26 @@ The package must include the manifest and skills in `package.json`:
 }
 ```
 
+If the package also exports trusted runtime hooks, include the entrypoint and
+depend on `@sentry/junior-plugin-api`:
+
+```json title="package.json"
+{
+  "name": "@acme/junior-my-provider",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": ["index.d.ts", "index.js", "plugin.yaml", "skills"],
+  "dependencies": {
+    "@sentry/junior-plugin-api": "^0.53.0"
+  }
+}
+```
+
 ## Minimal manifest
 
 A plugin can be manifest-only:
@@ -115,6 +135,63 @@ export default defineConfig({
 ```
 
 Do not use the removed `pluginPackages` option. `junior check` rejects it.
+
+## Add trusted runtime hooks
+
+Most plugins should stay manifest-only. Add trusted runtime hooks only when the
+plugin must force deterministic behavior at a Junior-owned boundary, such as
+installing sandbox helper files or mutating tool input/env before execution.
+Trusted hooks are backend code and must be registered explicitly from app code;
+Junior never loads them from `plugin.yaml`.
+
+Export a factory from the plugin package:
+
+```ts title="index.ts"
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+
+export function myProviderPlugin() {
+  return defineJuniorPlugin({
+    name: "my-provider",
+    pluginConfig: {
+      packages: ["@acme/junior-my-provider"],
+    },
+    hooks: {
+      async sandboxPrepare(ctx) {
+        await ctx.sandbox.writeFile({
+          path: `${ctx.sandbox.juniorRoot}/my-provider-ready`,
+          content: "ok\n",
+        });
+      },
+      beforeToolExecute(ctx) {
+        if (ctx.tool.name === "bash") {
+          ctx.env.set("MY_PROVIDER_NON_SECRET_FLAG", "1");
+        }
+      },
+    },
+  });
+}
+```
+
+Register the trusted plugin from the app:
+
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+import { myProviderPlugin } from "@acme/junior-my-provider";
+
+const app = await createApp({
+  plugins: [myProviderPlugin()],
+});
+
+export default app;
+```
+
+`pluginConfig.packages` should include the package that contains `plugin.yaml`
+so the trusted registration also loads the declarative provider metadata. Any
+packages declared through `juniorNitro({ plugins })` continue to load; trusted
+plugin package config is merged with the build-time plugin catalog.
+
+Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
+rejects non-object replacements before the tool runs.
 
 ## Validate
 

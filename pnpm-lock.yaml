@@ -132,6 +132,9 @@ importers:
       "@modelcontextprotocol/sdk":
         specifier: 1.29.0
         version: 1.29.0(zod@4.4.3)
+      "@sentry/junior-plugin-api":
+        specifier: workspace:*
+        version: link:../junior-plugin-api
       "@sinclair/typebox":
         specifier: ^0.34.49
         version: 0.34.49
@@ -203,6 +206,18 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
 
+  packages/junior-plugin-api:
+    devDependencies:
+      oxlint:
+        specifier: ^1.66.0
+        version: 1.66.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/junior-agent-browser: {}
 
   packages/junior-datadog: {}
@@ -231,7 +246,11 @@ importers:
         specifier: 0.11.0
         version: 0.11.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))(zod@4.4.3)
 
-  packages/junior-github: {}
+  packages/junior-github:
+    dependencies:
+      "@sentry/junior-plugin-api":
+        specifier: workspace:*
+        version: link:../junior-plugin-api
 
   packages/junior-hex: {}
 
