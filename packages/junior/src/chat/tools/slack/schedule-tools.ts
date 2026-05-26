@@ -22,6 +22,10 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const TASK_ID_PREFIX = "sched";
 const MAX_LISTED_TASKS = 50;
 const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
+const ACTIVE_DESTINATION_GUIDELINE =
+  "Only manage tasks for the active Slack DM or channel; never target an existing thread, another channel, or another user's DM.";
+const ACTIVE_TASK_ID_GUIDELINE =
+  "Use only task IDs returned from this active destination.";
 
 function requireActiveDestination(
   context: ToolRuntimeContext,
@@ -303,7 +307,15 @@ function hasConflictingNextRunInputs(input: {
 export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "Create a Junior scheduled task for the active Slack DM or channel. The destination is always the current Slack conversation, never an existing thread, and never an invented destination. Use only after the user has confirmed the normalized scheduled task contract. Provide either exact next_run_at_iso or supported relative next_run_at_text. For recurring work, provide a calendar recurrence_frequency.",
+      "Create a scheduled Junior task in the active Slack conversation.",
+    promptSnippet: "create future or recurring Junior work here",
+    promptGuidelines: [
+      "Use only when the user explicitly asks Junior to do work later or on a recurring cadence.",
+      ACTIVE_DESTINATION_GUIDELINE,
+      "Before calling, show the normalized task, cadence, timezone, destination, and next run; call only after explicit user confirmation.",
+      "Provide exactly one of next_run_at_iso or next_run_at_text; omit timezone to use the configured default.",
+      "Use recurrence_frequency only for recurring schedules.",
+    ],
     inputSchema: Type.Object({
       confirmed_by_user: Type.Boolean({
         description:
@@ -463,7 +475,12 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
 export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "List Junior scheduled tasks for the active Slack destination only. Use when the user asks what is scheduled here or wants task IDs before editing/removing schedules.",
+      "List scheduled Junior tasks for the active Slack conversation.",
+    promptSnippet: "list schedules for this Slack destination",
+    promptGuidelines: [
+      "Use when the user asks what is scheduled here or needs task IDs before editing, deleting, or running schedules.",
+      ACTIVE_DESTINATION_GUIDELINE,
+    ],
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({}),
     execute: async () => {
@@ -490,8 +507,15 @@ export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
 /** Create a tool that edits a scheduled task in the active Slack destination. */
 export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
   return tool({
-    description:
-      "Edit a Junior scheduled task in the active Slack DM or channel. Use only for task IDs returned from the active destination. Do not move tasks across conversations.",
+    description: "Edit, pause, resume, or reschedule a Junior scheduled task.",
+    promptSnippet: "edit/pause/resume one schedule in this Slack destination",
+    promptGuidelines: [
+      ACTIVE_TASK_ID_GUIDELINE,
+      ACTIVE_DESTINATION_GUIDELINE,
+      "Do not move scheduled tasks across conversations.",
+      "Provide exactly one of next_run_at_iso or next_run_at_text when changing the next run.",
+      "Set status to active, paused, or blocked when the user asks to resume, pause, or block a task.",
+    ],
     inputSchema: Type.Object({
       task_id: Type.String({ minLength: 1 }),
       title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
@@ -653,7 +677,9 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
 export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "Remove a Junior scheduled task from the active Slack destination. Use only for task IDs returned from this destination.",
+      "Delete a Junior scheduled task from the active Slack conversation.",
+    promptSnippet: "delete one schedule from this Slack destination",
+    promptGuidelines: [ACTIVE_TASK_ID_GUIDELINE, ACTIVE_DESTINATION_GUIDELINE],
     inputSchema: Type.Object({
       task_id: Type.String({ minLength: 1 }),
     }),
@@ -683,7 +709,13 @@ export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
 export function createSlackScheduleRunTaskNowTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "Run an existing Junior scheduled task as soon as the scheduler tick processes it. Use only for task IDs returned from this destination.",
+      "Queue an active Junior scheduled task to run as soon as possible.",
+    promptSnippet: "run one active schedule now without changing its cadence",
+    promptGuidelines: [
+      ACTIVE_TASK_ID_GUIDELINE,
+      ACTIVE_DESTINATION_GUIDELINE,
+      "Use when the user asks to run an existing scheduled task now; do not rewrite the stored calendar cadence.",
+    ],
     inputSchema: Type.Object({
       task_id: Type.String({ minLength: 1 }),
     }),
