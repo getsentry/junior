@@ -10,8 +10,10 @@ Good policy topics:
 - code comments and docstrings
 - testing expectations
 - naming conventions
+- interface design
 - migration hygiene
 - automation safety boundaries
+- serverless background work
 
 Keep policy docs small:
 

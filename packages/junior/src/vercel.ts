@@ -11,6 +11,10 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
     framework: "nitro",
     crons: [
       {
+        path: "/api/internal/heartbeat",
+        schedule: "* * * * *",
+      },
+      {
         path: "/api/internal/scheduler/tick",
         schedule: "* * * * *",
       },

@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import {
-  createStateSchedulerStore,
-  disconnectSchedulerStateAdapter,
-} from "@/chat/scheduler/store";
+import { createStateSchedulerStore } from "@/chat/scheduler/store";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
@@ -76,8 +73,6 @@ describe("Slack schedule tools", () => {
   afterEach(async () => {
     vi.useRealTimers();
     delete process.env.JUNIOR_TIMEZONE;
-    delete process.env.JUNIOR_SCHEDULER_REDIS_URL;
-    await disconnectSchedulerStateAdapter();
     await disconnectStateAdapter();
   });
 

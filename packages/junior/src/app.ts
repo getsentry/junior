@@ -17,6 +17,8 @@ import type { JuniorPlugin } from "@sentry/junior-plugin-api";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
+import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
+import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { GET as schedulerTickGET } from "@/handlers/scheduler-tick";
@@ -242,6 +244,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/turn-resume", (c) => {
     return turnResumePOST(c.req.raw, waitUntil);
+  });
+
+  app.post("/api/internal/agent-dispatch", (c) => {
+    return agentDispatchPOST(c.req.raw, waitUntil);
+  });
+
+  app.get("/api/internal/heartbeat", (c) => {
+    return heartbeatGET(c.req.raw, waitUntil);
   });
 
   app.get("/api/internal/scheduler/tick", (c) => {

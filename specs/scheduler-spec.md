@@ -129,7 +129,6 @@ The initial implementation may use the Chat SDK state adapter and a global task 
 - `junior:scheduler:claim:{task_id}:{scheduled_for_ms}` is the idempotency claim.
 
 A future Redis-native store may replace the scan index with a sorted due index without changing the runtime-facing scheduler store interface.
-Deployments may set `JUNIOR_SCHEDULER_REDIS_URL` to move scheduler persistence onto a dedicated Redis backend.
 
 ### Run Idempotency
 

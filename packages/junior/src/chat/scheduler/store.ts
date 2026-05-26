@@ -1,4 +1,3 @@
-import { createRedisState } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
 import { getNextRunAtMs } from "@/chat/scheduler/cadence";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -10,8 +9,6 @@ const SCHEDULED_RUN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
 const PENDING_CLAIM_STALE_MS = 60_000;
 const LOCK_TTL_MS = 10_000;
-
-let schedulerStateAdapter: StateAdapter | undefined;
 
 export interface SchedulerStore {
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
@@ -89,28 +86,6 @@ function indexLockKey(indexKey: string): string {
 
 function buildRunId(taskId: string, scheduledForMs: number): string {
   return `${taskId}:${scheduledForMs}`;
-}
-
-function shouldUseDedicatedSchedulerState(): boolean {
-  return Boolean(process.env.JUNIOR_SCHEDULER_REDIS_URL?.trim());
-}
-
-function createSchedulerStateAdapter(): StateAdapter {
-  const redisUrl = process.env.JUNIOR_SCHEDULER_REDIS_URL?.trim();
-  if (redisUrl) {
-    return createRedisState({ url: redisUrl });
-  }
-  return getStateAdapter();
-}
-
-function getSchedulerStateAdapter(): StateAdapter {
-  if (!shouldUseDedicatedSchedulerState()) {
-    return getStateAdapter();
-  }
-  if (!schedulerStateAdapter) {
-    schedulerStateAdapter = createSchedulerStateAdapter();
-  }
-  return schedulerStateAdapter;
 }
 
 function unique(values: string[]): string[] {
@@ -684,20 +659,7 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
 /** Create the production scheduler store backed by Junior's state adapter. */
 export function createStateSchedulerStore(
-  stateAdapter: StateAdapter = getSchedulerStateAdapter(),
+  stateAdapter: StateAdapter = getStateAdapter(),
 ): SchedulerStore {
   return new StateAdapterSchedulerStore(stateAdapter);
-}
-
-/** Disconnect the dedicated scheduler state adapter when one is configured. */
-export async function disconnectSchedulerStateAdapter(): Promise<void> {
-  if (!schedulerStateAdapter) {
-    return;
-  }
-
-  try {
-    await schedulerStateAdapter.disconnect();
-  } finally {
-    schedulerStateAdapter = undefined;
-  }
 }

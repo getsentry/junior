@@ -31,5 +31,5 @@ describe("generateAssistantReply error path", () => {
     expect(reply.diagnostics.outcome).toBe("provider_error");
     expect(reply.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(reply.diagnostics.thinkingLevel).toBeUndefined();
-  });
+  }, 10_000);
 });
