@@ -7,6 +7,7 @@
 
 ## Changelog
 
+- 2026-05-26: Clarified that trusted plugin tools own their model-facing descriptions/guidance and must not require plugin-specific core prompt rules.
 - 2026-05-26: Clarified heartbeat recovery budgets, dispatch callback path, retention constant, lease semantics, destination shape, and lookup verification.
 - 2026-05-26: Defined dispatch lookup retention and scheduler-owned terminal run history.
 - 2026-05-26: Added dispatch recovery, result lookup, serverless slice, lock ordering, and system-actor security invariants.
@@ -90,6 +91,14 @@ decide whether tools are available:
 
 Tools returned by this hook participate in the normal tool pipeline: schema
 validation, tool guidance, tracing, and plugin `beforeToolExecute` hooks.
+
+Each returned tool must carry a concise model-facing description that explains
+what the tool does and when it should be used. If correct use requires policy
+that is specific to the plugin domain, such as destination scoping, confirmation
+requirements, or recurrence semantics, that guidance belongs on the tool via
+its description, schema descriptions, `promptSnippet`, or `promptGuidelines`.
+Core prompt rules must stay plugin-agnostic and must not name scheduler tools or
+any other specific plugin tool.
 
 The built-in scheduler plugin uses this hook to register create/list/update/
 delete/run-now tools only when the active Slack conversation has enough context

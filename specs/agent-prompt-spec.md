@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-26
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-04-30: Reworked the core prompt contract around fixed operating sections, source hierarchy, explicit completion gates, OpenClaw-style tool-call/safety boundaries, and stable-before-volatile ordering.
 - 2026-05-06: Required the initial system prompt to be byte-stable across conversations and turns, with volatile runtime context moved into per-turn user-message context.
 - 2026-05-06: Clarified that deployment-stable assistant identity belongs in the system prompt while requester identity remains per-turn context.
+- 2026-05-26: Clarified that core prompt assembly must not contain plugin-specific knowledge; plugins express behavior through skills, tools, schemas, and tool guidance.
 
 ## Status
 
@@ -32,7 +33,7 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 - Defining Pi agent loop mechanics or terminal output assembly; see `./harness-agent-spec.md`.
 - Defining Slack delivery transport behavior; see `./slack-agent-delivery-spec.md` and `./slack-outbound-contract-spec.md`.
 - Defining test-layer taxonomy; see `./testing/index.md`.
-- Defining provider-specific prompt overlays unless this repository owns that overlay.
+- Defining plugin-specific prompt overlays or provider workflows. Plugins own that guidance through their skills, tools, schemas, and tool guidance.
 
 ## Contracts
 
@@ -41,12 +42,15 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 - The core prompt owns platform behavior: tool-use policy, execution bias, context boundaries, Slack output shape, and failure reporting expectations.
 - `SOUL.md` and other deployment-authored personality files are voice-only. Platform behavior must still work if those files are empty or heavily customized.
 - Skill files own domain-specific workflow mechanics. They must not duplicate generic harness behavior such as "use tools before answering" or "ask only when blocked."
+- The core prompt must not name or describe specific installed plugins, plugin providers, plugin-owned config keys, plugin-owned default targets, plugin-owned tools, or plugin-specific workflows. That knowledge belongs to dynamic capabilities.
 
 ### Section boundaries
 
 `buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. Deployment-stable assistant identity, such as the bot Slack username, belongs here. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
 
 `buildTurnContextPrompt(...)` owns volatile prompt context. It is attached to the current user turn, including requester identity and resumed-turn context, and may vary by conversation or turn. Completed turns must strip this context before storing durable Pi message history so prior turns are not replayed with stale runtime facts.
+
+Turn context may disclose dynamic capability surfaces that the model can act on, such as available skill names/descriptions, active MCP catalog summaries, and tool guidance attached to the current native tool set. It must not separately disclose plugin ownership or installed plugin/provider catalogs as prompt knowledge. If the model needs plugin-specific behavior, that behavior must arrive through the loaded skill body, tool description, tool schema, `promptSnippet`, or `promptGuidelines`.
 
 The combined prompt surface must keep these concerns distinct:
 
@@ -106,9 +110,10 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 
 - Tool schemas remain the source of truth for tool parameters. The prompt may state when to use tools, not re-document every tool schema.
 - The model should load the best-matching skill when relevant and avoid preloading unrelated skills.
-- After loading a plugin-backed skill, the prompt may describe the generic MCP lookup path, but provider-specific tool strategy belongs in the skill or plugin docs.
+- After loading a plugin-backed skill, the prompt may describe the generic MCP lookup path, but provider-specific tool strategy belongs in the skill, tool description, tool schema, or tool guidance.
 - Skill selection should be explicit: scan available skills, load one clearly matching skill, choose the most specific skill when several match, and avoid loading any skill when none clearly applies.
 - Tool-call style belongs in its own section: call routine tools directly, narrate only when it helps, and prefer first-class tools over asking the user to perform equivalent manual work.
+- Trusted plugin tools must carry concise descriptions and optional tool guidance that tell the agent when and how to use them. Do not compensate for weak plugin tool descriptions by adding plugin-specific bullets to the core prompt.
 
 ### Runtime and safety boundaries
 
@@ -139,8 +144,9 @@ Prompt changes are rejected or revised when they introduce:
 1. Duplicate rules across core prompt, skills, or personality files.
 2. Multiple adjacent bullets that all express the same ask/act/verify policy.
 3. Tool-schema restatement in prompt prose.
-4. Skill instructions that override generic harness behavior without a domain-specific reason.
-5. Static prompt tests that assert wording instead of behavior.
+4. Core prompt or turn-context code that exposes specific installed plugins, plugin providers, plugin-owned config keys, plugin-owned default targets, or plugin-specific workflows outside the dynamic skill/tool surfaces.
+5. Skill instructions that override generic harness behavior without a domain-specific reason.
+6. Static prompt tests that assert wording instead of behavior.
 
 ## Observability
 

@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-02-27
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-26
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-04-30: Added `github.org` to GitHub provider configKeys.
 - 2026-05-06: Clarified that provider catalog prompt disclosure belongs in per-turn context, not the static system prompt.
+- 2026-05-26: Marked provider catalog prompt disclosure as superseded; core prompt context must not expose installed plugin/provider catalogs.
 
 ## Status
 
@@ -22,7 +23,7 @@ Draft — largely superseded by `specs/plugin-spec.md` which now drives the prov
 
 ## Purpose
 
-Define the canonical provider catalog model used by runtime, skill validation, and prompts.
+Define the historical provider catalog model used by runtime and skill validation. Prompt disclosure rules in this draft are superseded by `../agent-prompt-spec.md` and `../plugin-spec.md`.
 
 This spec answers:
 
@@ -103,8 +104,7 @@ target:
 
 ## Prompt Contracts
 
-- Per-turn prompt context should include provider catalog summary so natural language requests can map to valid config/capability tokens without changing the static system prompt.
-- Prompt guidance must remain generic and provider-extensible.
+Superseded. Core prompt assembly must not expose installed provider/plugin catalogs, provider config keys, or default targets as standalone prompt knowledge. Provider-specific behavior should reach the model through dynamic skill/tool surfaces: available skill descriptions, loaded skill bodies, tool descriptions, schemas, tool guidance, and searched MCP descriptors.
 
 ## Observability
 
