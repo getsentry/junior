@@ -311,6 +311,9 @@ export function createPluginAuthOrchestration(
       }
 
       if (!deps.requesterId || !deps.userTokenStore) {
+        if (deps.authorizationFlowMode === "disabled") {
+          throw new AuthorizationFlowDisabledError("plugin", provider);
+        }
         throw buildCredentialFailureError(provider, input.command);
       }
 

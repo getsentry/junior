@@ -38,6 +38,8 @@ export interface LogContext {
   slackUserName?: string;
   slackChannelId?: string;
   runId?: string;
+  actorType?: string;
+  actorId?: string;
   assistantUserName?: string;
   modelId?: string;
   skillName?: string;
@@ -382,6 +384,8 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "enduser.id": context.slackUserId,
     "enduser.pseudo.id": context.slackUserName,
     "app.run.id": context.runId,
+    "app.actor.type": context.actorType,
+    "app.actor.id": context.actorId,
     "gen_ai.agent.name": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
     "app.skill.name": context.skillName,

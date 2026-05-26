@@ -192,7 +192,7 @@ export async function postSlackApiReplyPosts(args: {
     messageTs?: string;
     stage: PlannedSlackReplyStage;
   }) => Promise<void> | void;
-  threadTs: string;
+  threadTs?: string;
   posts: PlannedSlackReplyPost[];
 }): Promise<string | undefined> {
   const lastTextPostIndex = findLastTextPostIndex(args.posts);
@@ -224,10 +224,13 @@ export async function postSlackApiReplyPosts(args: {
         continue;
       }
 
+      if (!args.threadTs && !lastPostedMessageTs) {
+        throw new Error("Slack file delivery requires a posted message thread");
+      }
       await uploadReplyFiles({
         channelId: args.channelId,
         failureMode: args.fileUploadFailureMode ?? "best_effort",
-        threadTs: args.threadTs,
+        threadTs: args.threadTs ?? lastPostedMessageTs!,
         files: post.files,
       });
     } catch (error) {

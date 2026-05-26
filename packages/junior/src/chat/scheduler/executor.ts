@@ -21,6 +21,25 @@ export interface ScheduledTaskRunner {
   }): Promise<ScheduledTaskRunResult>;
 }
 
+function shouldSkipRun(
+  task: ScheduledTask,
+  run: ScheduledRun,
+): string | undefined {
+  if (task.status === "deleted") {
+    return `Scheduled task ${task.id} was deleted before the run started.`;
+  }
+  if (task.status !== "active") {
+    return `Scheduled task ${task.id} was ${task.status} before the run started.`;
+  }
+  if (
+    task.nextRunAtMs !== run.scheduledForMs &&
+    task.runNowAtMs !== run.scheduledForMs
+  ) {
+    return `Scheduled task ${task.id} no longer targets ${new Date(run.scheduledForMs).toISOString()}.`;
+  }
+  return undefined;
+}
+
 /** Execute one claimed scheduled run through the compiled task prompt. */
 export async function executeScheduledRun(args: {
   nowMs: number;
@@ -34,6 +53,15 @@ export async function executeScheduledRun(args: {
       runId: args.run.id,
       completedAtMs: args.nowMs,
       errorMessage: `Scheduled task ${args.run.taskId} was not found`,
+    });
+  }
+
+  const skippedReason = shouldSkipRun(task, args.run);
+  if (skippedReason) {
+    return await args.store.markRunSkipped({
+      runId: args.run.id,
+      completedAtMs: args.nowMs,
+      errorMessage: skippedReason,
     });
   }
 
@@ -141,13 +169,15 @@ export async function processDueScheduledRuns(args: {
   runner: ScheduledTaskRunner;
   store: SchedulerStore;
 }): Promise<ScheduledRun[]> {
-  const claimedRuns = await args.store.claimDueRuns({
-    limit: args.limit,
-    nowMs: args.nowMs,
-  });
   const completedRuns: ScheduledRun[] = [];
 
-  for (const run of claimedRuns) {
+  for (let index = 0; index < args.limit; index += 1) {
+    const run = await args.store.claimDueRun({
+      nowMs: args.nowMs,
+    });
+    if (!run) {
+      break;
+    }
     const completed = await executeScheduledRun({
       store: args.store,
       runner: args.runner,

@@ -18,6 +18,7 @@ import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
+  createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
 } from "@/chat/tools/slack/schedule-tools";
 import {
@@ -158,11 +159,17 @@ export function createTools(
     );
   }
 
-  if (context.channelId) {
+  if (
+    context.disableScheduleTools !== true &&
+    context.channelId &&
+    context.teamId &&
+    context.requester?.userId
+  ) {
     tools.slackScheduleCreateTask = createSlackScheduleCreateTaskTool(context);
     tools.slackScheduleListTasks = createSlackScheduleListTasksTool(context);
     tools.slackScheduleUpdateTask = createSlackScheduleUpdateTaskTool(context);
     tools.slackScheduleDeleteTask = createSlackScheduleDeleteTaskTool(context);
+    tools.slackScheduleRunTaskNow = createSlackScheduleRunTaskNowTool(context);
   }
 
   return tools;

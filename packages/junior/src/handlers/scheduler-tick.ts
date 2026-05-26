@@ -24,7 +24,7 @@ function verifySchedulerRequest(request: Request): boolean {
 }
 
 /** Handle the authenticated internal scheduler tick. */
-export async function ALL(
+export async function GET(
   request: Request,
   waitUntil: WaitUntilFn,
 ): Promise<Response> {

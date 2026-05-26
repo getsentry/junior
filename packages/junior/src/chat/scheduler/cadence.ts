@@ -7,7 +7,43 @@ import type {
 
 /** Parse an ISO timestamp into a finite Unix timestamp in milliseconds. */
 export function parseScheduleTimestamp(value: string): number | undefined {
-  const parsed = Date.parse(value);
+  const trimmed = value.trim();
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/.exec(
+      trimmed,
+    );
+  if (!match) {
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = match[6] ? Number(match[6]) : 0;
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    !Number.isInteger(second) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -194,6 +230,54 @@ function buildCandidate(args: {
   return localDateTimeToTimestampMs({
     date: args.date,
     time: args.recurrence.time,
+    timezone: args.timezone,
+  });
+}
+
+function parseLocalTime(value: string): ScheduledLocalTime | undefined {
+  const match = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const meridiem = match[3].toLowerCase();
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 1 ||
+    hour > 12 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return undefined;
+  }
+  if (meridiem === "am" && hour === 12) {
+    hour = 0;
+  } else if (meridiem === "pm" && hour !== 12) {
+    hour += 12;
+  }
+  return { hour, minute };
+}
+
+/** Parse supported relative one-off schedule text into a UTC timestamp. */
+export function parseRelativeScheduleTimestamp(args: {
+  nowMs: number;
+  text: string;
+  timezone: string;
+}): number | undefined {
+  const match = /^tomorrow(?:\s+at)?\s+(.+)$/i.exec(args.text.trim());
+  if (!match) {
+    return undefined;
+  }
+  const time = parseLocalTime(match[1]);
+  if (!time) {
+    return undefined;
+  }
+  return localDateTimeToTimestampMs({
+    date: addDays(getLocalDate(args.nowMs, args.timezone), 1),
+    time,
     timezone: args.timezone,
   });
 }

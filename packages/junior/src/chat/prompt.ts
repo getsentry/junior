@@ -426,7 +426,7 @@ const SLACK_ACTION_RULES = [
   "- Context-bound Slack tools use runtime-owned targets; do not invent channel, canvas, list, or message IDs.",
   "- Use first-class Slack tools for Slack side effects; do not use bash, curl, or provider APIs to bypass Slack tool targeting.",
   "- Use channel-post and emoji-reaction tools only when the user explicitly asks for that Slack side effect.",
-  "- Use Slack schedule tools only when the user explicitly asks to create, list, edit, pause, resume, remove, or run future/recurring Junior work; scheduled task destinations are always the active Slack context, and task creation needs an exact next-run ISO timestamp.",
+  "- Use Slack schedule tools only when the user explicitly asks to create, list, edit, pause, resume, remove, run now, or run future/recurring Junior work; scheduled task destinations are always the active Slack DM or channel, never an existing thread, and task creation needs an exact next-run ISO timestamp or supported relative next-run text. When no timezone is given, let the scheduler use its configured default timezone.",
   "- For explicit channel-post or emoji-reaction requests, skip a duplicate thread text reply when the tool result already satisfies the request.",
   "- Do not claim an attachment, canvas, channel post, list update, or reaction succeeded unless the tool returned success this turn; when it did, include any link the tool returned.",
   "- Do not use reactions as progress indicators.",

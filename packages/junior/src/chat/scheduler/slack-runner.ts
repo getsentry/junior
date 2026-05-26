@@ -1,9 +1,17 @@
 import { botConfig } from "@/chat/config";
-import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import {
+  generateAssistantReply as generateAssistantReplyImpl,
+  type AssistantReply,
+} from "@/chat/respond";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import type { ScheduledTaskRunner } from "@/chat/scheduler/executor";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
+import {
+  SCHEDULED_TASK_SYSTEM_ACTOR,
+  type ScheduledRun,
+  type ScheduledTask,
+} from "@/chat/scheduler/types";
 import { logException } from "@/chat/logging";
 import { deliverPrivateMessage } from "@/chat/oauth-flow";
 import {
@@ -39,7 +47,7 @@ export interface SlackScheduledTaskRunnerDeps {
 }
 
 function getConversationId(task: ScheduledTask): string {
-  return `slack:${task.destination.teamId}:${task.destination.channelId}:${task.destination.threadTs}`;
+  return `slack:${task.destination.teamId}:${task.destination.channelId}`;
 }
 
 function buildScheduledConversationText(task: ScheduledTask): string {
@@ -50,10 +58,25 @@ function getScheduledAssistantMessageId(run: ScheduledRun): string {
   return `scheduled-run:${run.id}:assistant`;
 }
 
+function getExecutionActor(task: ScheduledTask) {
+  return task.executionActor ?? SCHEDULED_TASK_SYSTEM_ACTOR;
+}
+
 function buildScheduledAuthError(
   error: AuthorizationFlowDisabledError,
 ): string {
   return `Scheduled task requires ${error.provider} authorization. Connect ${error.provider} in an interactive Slack message, then resume the task.`;
+}
+
+function ensureVisibleDeliveryText(reply: AssistantReply): AssistantReply {
+  if (reply.text.trim().length > 0 || !reply.files?.length) {
+    return reply;
+  }
+
+  return {
+    ...reply,
+    text: "Generated files are attached.",
+  };
 }
 
 async function notifyCreatorOfBlockedRun(args: {
@@ -62,7 +85,6 @@ async function notifyCreatorOfBlockedRun(args: {
 }): Promise<void> {
   await deliverPrivateMessage({
     channelId: args.task.destination.channelId,
-    threadTs: args.task.destination.threadTs,
     userId: args.task.createdBy.slackUserId,
     text: `Scheduled task "${args.task.task.title}" is blocked: ${args.errorMessage}`,
   });
@@ -73,16 +95,15 @@ function upsertScheduledUserMessage(args: {
   run: ScheduledRun;
   task: ScheduledTask;
 }): string {
+  const executionActor = getExecutionActor(args.task);
   return upsertConversationMessage(args.conversation, {
     id: `scheduled-run:${args.run.id}:user`,
     role: "user",
     text: normalizeConversationText(buildScheduledConversationText(args.task)),
     createdAtMs: args.run.scheduledForMs,
     author: {
-      userId: args.task.createdBy.slackUserId,
-      userName: args.task.createdBy.userName,
-      fullName: args.task.createdBy.fullName,
-      isBot: false,
+      userName: `system:${executionActor.id}`,
+      isBot: true,
     },
     meta: {
       explicitMention: true,
@@ -114,15 +135,8 @@ export function createSlackScheduledTaskRunner(
 
   return {
     run: async ({ prompt, run, task, nowMs }) => {
-      const threadTs = task.destination.threadTs;
-      if (!threadTs) {
-        return {
-          status: "blocked",
-          errorMessage: "Scheduled Slack task has no thread destination.",
-        };
-      }
-
       const conversationId = getConversationId(task);
+      const executionActor = getExecutionActor(task);
       const persisted = await getPersistedThreadState(conversationId);
       const conversation = coerceThreadConversationState(persisted);
       const deliveredMessage = conversation.messages.find(
@@ -165,11 +179,6 @@ export function createSlackScheduledTaskRunner(
 
       try {
         let reply = await generateAssistantReply(prompt, {
-          requester: {
-            userId: task.createdBy.slackUserId,
-            userName: task.createdBy.userName,
-            fullName: task.createdBy.fullName,
-          },
           conversationContext,
           artifactState: currentArtifacts,
           piMessages: conversation.piMessages,
@@ -183,10 +192,11 @@ export function createSlackScheduledTaskRunner(
             runId: run.id,
             channelId: task.destination.channelId,
             teamId: task.destination.teamId,
-            requesterId: task.createdBy.slackUserId,
-            threadTs,
+            actorType: executionActor.type,
+            actorId: executionActor.id,
           },
           toolChannelId: task.destination.channelId,
+          disableScheduleTools: true,
           sandbox: {
             sandboxId,
             sandboxDependencyProfileHash,
@@ -229,22 +239,24 @@ export function createSlackScheduledTaskRunner(
               slackChannelId: task.destination.channelId,
               slackUserId: task.createdBy.slackUserId,
               runId: run.id,
+              actorType: executionActor.type,
+              actorId: executionActor.id,
               assistantUserName: botConfig.userName,
               modelId: reply.diagnostics.modelId,
             },
           });
         }
 
-        const plannedPosts = planSlackReplyPosts({ reply });
+        const deliveryReply = ensureVisibleDeliveryText(reply);
+        const plannedPosts = planSlackReplyPosts({ reply: deliveryReply });
         const footer = buildSlackReplyFooter({
           conversationId,
-          durationMs: reply.diagnostics.durationMs,
-          thinkingLevel: reply.diagnostics.thinkingLevel,
-          usage: reply.diagnostics.usage,
+          durationMs: deliveryReply.diagnostics.durationMs,
+          thinkingLevel: deliveryReply.diagnostics.thinkingLevel,
+          usage: deliveryReply.diagnostics.usage,
         });
         const resultMessageTs = await postSlackApiReplyPosts({
           channelId: task.destination.channelId,
-          threadTs,
           posts: plannedPosts,
           footer,
           fileUploadFailureMode: "strict",
@@ -257,7 +269,8 @@ export function createSlackScheduledTaskRunner(
         upsertConversationMessage(conversation, {
           id: getScheduledAssistantMessageId(run),
           role: "assistant",
-          text: normalizeConversationText(reply.text) || "[empty response]",
+          text:
+            normalizeConversationText(deliveryReply.text) || "[empty response]",
           createdAtMs: nowMs,
           author: {
             userName: botConfig.userName,
@@ -268,9 +281,6 @@ export function createSlackScheduledTaskRunner(
             slackTs: resultMessageTs,
           },
         });
-        if (reply.piMessages) {
-          conversation.piMessages = reply.piMessages;
-        }
         updateConversationStats(conversation);
 
         const nextArtifacts = reply.artifactStatePatch
@@ -308,6 +318,16 @@ export function createSlackScheduledTaskRunner(
             errorMessage,
           };
         }
+        if (error instanceof PluginCredentialFailureError) {
+          await notifyCreatorOfBlockedRun({
+            task,
+            errorMessage: error.message,
+          });
+          return {
+            status: "blocked",
+            errorMessage: error.message,
+          };
+        }
         if (
           isRetryableTurnError(error, "mcp_auth_resume") ||
           isRetryableTurnError(error, "plugin_auth_resume")
@@ -333,6 +353,8 @@ export function createSlackScheduledTaskRunner(
             slackChannelId: task.destination.channelId,
             slackUserId: task.createdBy.slackUserId,
             runId: run.id,
+            actorType: executionActor.type,
+            actorId: executionActor.id,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId,
           },

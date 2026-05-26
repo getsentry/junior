@@ -14,11 +14,20 @@ export interface ScheduledTaskPrincipal {
   userName?: string;
 }
 
+export interface ScheduledTaskExecutionActor {
+  type: "system";
+  id: string;
+}
+
+export const SCHEDULED_TASK_SYSTEM_ACTOR = Object.freeze({
+  type: "system",
+  id: "scheduled-task",
+} satisfies ScheduledTaskExecutionActor);
+
 export interface ScheduledTaskDestination {
   platform: "slack";
   teamId: string;
   channelId: string;
-  threadTs?: string;
 }
 
 export type ScheduledCalendarFrequency =
@@ -63,9 +72,11 @@ export interface ScheduledTask {
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   destination: ScheduledTaskDestination;
+  executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;
   nextRunAtMs?: number;
   originalRequest?: string;
+  runNowAtMs?: number;
   schedule: ScheduledTaskSchedule;
   status: ScheduledTaskStatus;
   statusReason?: string;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { ALL as schedulerTick } from "@/handlers/scheduler-tick";
+import { GET as schedulerTick } from "@/handlers/scheduler-tick";
 import type { WaitUntilFn } from "@/handlers/types";
 
 vi.hoisted(() => {

@@ -54,6 +54,7 @@ export interface ToolRuntimeContext {
   teamId?: string;
   messageTs?: string;
   threadTs?: string;
+  disableScheduleTools?: boolean;
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;

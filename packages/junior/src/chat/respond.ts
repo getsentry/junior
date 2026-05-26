@@ -135,8 +135,11 @@ export interface ReplyRequestContext {
     messageTs?: string;
     threadTs?: string;
     requesterId?: string;
+    actorType?: string;
+    actorId?: string;
   };
   toolChannelId?: string;
+  disableScheduleTools?: boolean;
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
@@ -348,6 +351,8 @@ export async function generateAssistantReply(
     requesterId: context.correlation?.requesterId,
     channelId: context.correlation?.channelId,
     runId: context.correlation?.runId,
+    actorType: context.correlation?.actorType,
+    actorId: context.correlation?.actorId,
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
   };
@@ -375,6 +380,8 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
+      actorType: context.correlation?.actorType,
+      actorId: context.correlation?.actorId,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     };
@@ -675,6 +682,8 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
+      actorType: context.correlation?.actorType,
+      actorId: context.correlation?.actorId,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     });
@@ -750,6 +759,7 @@ export async function generateAssistantReply(
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
+        disableScheduleTools: context.disableScheduleTools,
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,
@@ -1225,6 +1235,8 @@ export async function generateAssistantReply(
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
         runId: context.correlation?.runId,
+        actorType: context.correlation?.actorType,
+        actorId: context.correlation?.actorId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId,
       },

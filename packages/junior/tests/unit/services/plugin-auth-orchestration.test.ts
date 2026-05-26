@@ -177,6 +177,30 @@ describe("createPluginAuthOrchestration", () => {
     expect(abortAgent).not.toHaveBeenCalled();
   });
 
+  it("blocks oauth recovery when authorization is disabled and no requester is present", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        userMessage: "<scheduled-task-run />",
+        authorizationFlowMode: "disabled",
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: sentrySkill,
+        command: "sentry issue list",
+        details: {
+          exit_code: 1,
+          stderr: "junior-auth-required provider=sentry",
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
   it("unlinks the stored token only after oauth restart is launched", async () => {
     const order: string[] = [];
     const userTokenStore = {} as any;

@@ -131,6 +131,7 @@ interface EvalReplyResultFixture {
 export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
+  disable_schedule_tools?: boolean;
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
   faults?: {
@@ -330,7 +331,9 @@ function toEvalToolInvocation(input: {
     invocation.arguments = Object.fromEntries(
       [
         "title",
+        "task_id",
         "objective",
+        "confirmed_by_user",
         "schedule_description",
         "timezone",
         "next_run_at_iso",
@@ -1183,6 +1186,9 @@ function buildRuntimeServices(
           reply = await Promise.race([
             generateAssistantReply(text, {
               ...context,
+              disableScheduleTools:
+                scenario.overrides?.disable_schedule_tools ??
+                context?.disableScheduleTools,
               onToolInvocation: (invocation) => {
                 observations.toolInvocations.push(
                   toEvalToolInvocation(invocation),

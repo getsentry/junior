@@ -47,15 +47,14 @@ This is an autonomous scheduled run. Treat the stored task contract as the user 
 </instructions>
 </scheduled-task>
 
-<execution-rules>
-- Execute the scheduled task described in <scheduled-task>; do not create, update, pause, delete, or list schedules.
-</execution-rules>
-
 <current-instruction priority="highest">
 Execute the scheduled task now and provide the final result for the configured destination.
 </current-instruction>
 </scheduled-task-run>`),
       ],
+      overrides: {
+        disable_schedule_tools: true,
+      },
       criteria: rubric({
         contract:
           "A scheduled-task execution prompt is treated as the task to run, not as a request to schedule something.",

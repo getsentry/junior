@@ -3,11 +3,14 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackScheduledTaskRunner } from "@/chat/scheduler/slack-runner";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import type { AssistantReply } from "@/chat/respond";
 import {
   chatPostEphemeralOk,
   chatPostMessageOk,
+  filesCompleteUploadOk,
+  filesGetUploadUrlOk,
 } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -29,11 +32,14 @@ function createTask(): ScheduledTask {
       userName: "dcramer",
       fullName: "David Cramer",
     },
+    executionActor: {
+      type: "system",
+      id: "scheduled-task",
+    },
     destination: {
       platform: "slack",
       teamId: "T123",
       channelId: "C123",
-      threadTs: "1700000000.000000",
     },
     nextRunAtMs: scheduledForMs,
     schedule: {
@@ -121,17 +127,15 @@ describe("scheduled Slack runner", () => {
         if (!context) {
           throw new Error("expected reply context");
         }
-        expect(context.requester).toMatchObject({
-          userId: "U123",
-          userName: "dcramer",
-          fullName: "David Cramer",
-        });
+        expect(context.requester).toBeUndefined();
         expect(context.correlation).toMatchObject({
           channelId: "C123",
           teamId: "T123",
-          threadTs: "1700000000.000000",
           runId: run.id,
+          actorType: "system",
+          actorId: "scheduled-task",
         });
+        expect(context.correlation?.requesterId).toBeUndefined();
         return createReply();
       },
     });
@@ -151,7 +155,6 @@ describe("scheduled Slack runner", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
-          thread_ts: "1700000000.000000",
           text: "Scheduled digest delivered.",
         }),
       }),
@@ -238,10 +241,17 @@ describe("scheduled Slack runner", () => {
     });
 
     await expect(
-      getPersistedThreadState("slack:T123:C123:1700000000.000000"),
+      getPersistedThreadState("slack:T123:C123"),
     ).resolves.toMatchObject({
       conversation: {
         messages: expect.arrayContaining([
+          expect.objectContaining({
+            id: `scheduled-run:${createRun(firstTask).id}:user`,
+            author: expect.objectContaining({
+              userName: "system:scheduled-task",
+              isBot: true,
+            }),
+          }),
           expect.objectContaining({
             id: `scheduled-run:${createRun(firstTask).id}:assistant`,
           }),
@@ -249,7 +259,7 @@ describe("scheduled Slack runner", () => {
       },
     });
     await expect(
-      getPersistedThreadState("slack:T999:C123:1700000000.000000"),
+      getPersistedThreadState("slack:T999:C123"),
     ).resolves.toMatchObject({
       conversation: {
         messages: expect.arrayContaining([
@@ -258,6 +268,72 @@ describe("scheduled Slack runner", () => {
           }),
         ]),
       },
+    });
+  });
+
+  it("posts file-only scheduled results under a top-level message", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000010",
+      }),
+    });
+    queueSlackApiResponse("files.getUploadURLExternal", {
+      body: filesGetUploadUrlOk({
+        fileId: "F_SCHEDULED",
+        uploadUrl: "https://files.slack.com/upload/v1/F_SCHEDULED",
+      }),
+    });
+    queueSlackApiResponse("files.completeUploadExternal", {
+      body: filesCompleteUploadOk({
+        files: [{ id: "F_SCHEDULED" }],
+      }),
+    });
+    const task = createTask();
+    const run = createRun(task);
+    const runner = createSlackScheduledTaskRunner({
+      generateAssistantReply: async () => ({
+        ...createReply(),
+        text: "",
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: true,
+          attachFiles: "inline",
+        },
+        files: [
+          {
+            data: Buffer.from("scheduled report"),
+            filename: "report.txt",
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      runner.run({
+        task,
+        run,
+        prompt: "<scheduled-task-run />",
+        nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+      }),
+    ).resolves.toEqual({
+      status: "completed",
+      resultMessageTs: "1700000000.000010",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: "Generated files are attached.",
+        }),
+      }),
+    ]);
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
+    ).toMatchObject({
+      channel_id: "C123",
+      thread_ts: "1700000000.000010",
     });
   });
 
@@ -296,7 +372,6 @@ describe("scheduled Slack runner", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
-          thread_ts: "1700000000.000000",
           user: "U123",
           text: expect.stringContaining(
             'Scheduled task "Issue digest" is blocked',
@@ -305,9 +380,48 @@ describe("scheduled Slack runner", () => {
       }),
     ]);
     await expect(
-      getPersistedThreadState("slack:T123:C123:1700000000.000000"),
+      getPersistedThreadState("slack:T123:C123"),
     ).resolves.not.toMatchObject({
       conversation: { processing: { pendingAuth: expect.anything() } },
     });
+  });
+
+  it("privately blocks scheduled runs on provider credential failures", async () => {
+    queueSlackApiResponse("chat.postEphemeral", {
+      body: chatPostEphemeralOk(),
+    });
+    const task = createTask();
+    const run = createRun(task);
+    const runner = createSlackScheduledTaskRunner({
+      generateAssistantReply: async () => {
+        throw new PluginCredentialFailureError(
+          "github",
+          "GitHub credentials were rejected while running `gh auth status`. Verify the GitHub App installation covers the target repository and the host GitHub App environment variables are current.",
+        );
+      },
+    });
+
+    await expect(
+      runner.run({
+        task,
+        run,
+        prompt: "<scheduled-task-run />",
+        nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      errorMessage: expect.stringContaining("GitHub credentials were rejected"),
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          user: "U123",
+          text: expect.stringContaining("GitHub credentials were rejected"),
+        }),
+      }),
+    ]);
   });
 });

@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createStateSchedulerStore } from "@/chat/scheduler/store";
+import {
+  createStateSchedulerStore,
+  disconnectSchedulerStateAdapter,
+} from "@/chat/scheduler/store";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
+  createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
 } from "@/chat/tools/slack/schedule-tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -21,7 +25,6 @@ function createContext(
   return {
     channelId: "C123",
     teamId: TEST_TEAM_ID,
-    threadTs: "1700000000.000000",
     requester: {
       userId: "U123",
       userName: "dcramer",
@@ -71,6 +74,10 @@ describe("Slack schedule tools", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
+    delete process.env.JUNIOR_TIMEZONE;
+    delete process.env.JUNIOR_SCHEDULER_REDIS_URL;
+    await disconnectSchedulerStateAdapter();
     await disconnectStateAdapter();
   });
 
@@ -104,15 +111,20 @@ describe("Slack schedule tools", () => {
       ],
     });
 
-    const wrongThread = await executeTool(
+    const sameChannelOtherThread = await executeTool(
       createSlackScheduleListTasksTool(
         createContext({ threadTs: "1700000999.000000" }),
       ),
       {},
     );
-    expect(wrongThread).toMatchObject({
+    expect(sameChannelOtherThread).toMatchObject({
       ok: true,
-      tasks: [],
+      tasks: [
+        {
+          title: "Weekly issue digest",
+          schedule: "Every Monday at 9am",
+        },
+      ],
     });
   });
 
@@ -141,8 +153,38 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
+  it("rejects parseable non-ISO next run timestamps", async () => {
+    const result = await createTask(createContext(), {
+      next_run_at_iso: "05/25/2026 09:00",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        'Provide next_run_at_iso as a valid ISO timestamp or next_run_at_text such as "tomorrow at 9am".',
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects conflicting exact and relative next run inputs", async () => {
+    const result = await createTask(createContext(), {
+      next_run_at_iso: "2026-05-25T16:00:00.000Z",
+      next_run_at_text: "tomorrow at 9am",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "Provide only one of next_run_at_iso or next_run_at_text.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
   it("edits and deletes a task from the same Slack destination", async () => {
-    const context = createContext({ threadTs: "1700000001.000000" });
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -189,7 +231,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("rejects edits from another active Slack destination", async () => {
-    const context = createContext({ threadTs: "1700000002.000000" });
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -209,13 +251,13 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("rejects edits and deletes from another requester in the same Slack destination", async () => {
-    const context = createContext({ threadTs: "1700000003.000000" });
+  it("allows another requester to manage tasks in the same Slack destination", async () => {
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
     const otherRequester = createContext({
-      threadTs: context.threadTs,
+      threadTs: "1700000003.000000",
       requester: {
         userId: "U999",
         userName: "alice",
@@ -227,7 +269,7 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(otherRequester),
       {
         task_id: created.task.id,
-        title: "Hijacked digest",
+        title: "Team-owned digest",
       },
     );
     const deleted = await executeTool(
@@ -238,28 +280,98 @@ describe("Slack schedule tools", () => {
     );
 
     expect(updated).toMatchObject({
-      ok: false,
-      error:
-        "Scheduled task can only be managed by the Slack user who created it.",
+      ok: true,
+      task: {
+        id: created.task.id,
+        title: "Team-owned digest",
+        version: 2,
+      },
     });
     expect(deleted).toMatchObject({
-      ok: false,
-      error:
-        "Scheduled task can only be managed by the Slack user who created it.",
+      ok: true,
+      task: {
+        id: created.task.id,
+        status: "deleted",
+      },
     });
     await expect(
       createStateSchedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
-      status: "active",
-      task: {
-        title: "Weekly issue digest",
+      status: "deleted",
+      executionActor: {
+        type: "system",
+        id: "scheduled-task",
       },
-      version: 1,
+      task: {
+        title: "Team-owned digest",
+      },
+      version: 3,
     });
   });
 
+  it("creates one-off tasks from tomorrow text using the default Pacific timezone", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
+
+    const created = await createTask(createContext(), {
+      next_run_at_iso: undefined,
+      next_run_at_text: "tomorrow at 9am",
+      recurrence_frequency: undefined,
+      recurrence_weekdays: undefined,
+      timezone: undefined,
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      task: {
+        next_run_at: "2026-05-26T16:00:00.000Z",
+        recurrence: null,
+        timezone: "America/Los_Angeles",
+      },
+    });
+  });
+
+  it("uses JUNIOR_TIMEZONE as the default schedule timezone", async () => {
+    process.env.JUNIOR_TIMEZONE = "America/New_York";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
+
+    const created = await createTask(createContext(), {
+      next_run_at_iso: undefined,
+      next_run_at_text: "tomorrow at 9am",
+      recurrence_frequency: undefined,
+      recurrence_weekdays: undefined,
+      timezone: undefined,
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      task: {
+        next_run_at: "2026-05-26T13:00:00.000Z",
+        recurrence: null,
+        timezone: "America/New_York",
+      },
+    });
+  });
+
+  it("rejects invalid default timezones", async () => {
+    process.env.JUNIOR_TIMEZONE = "not/a-zone";
+
+    const created = await createTask(createContext(), {
+      timezone: undefined,
+    });
+
+    expect(created).toMatchObject({
+      ok: false,
+      error: "timezone must be a valid IANA time zone.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
   it("preserves a recurring task calendar anchor on content-only edits", async () => {
-    const context = createContext({ threadTs: "1700000004.000000" });
+    const context = createContext();
     const created = (await createTask(context, {
       recurrence_interval: 2,
     })) as {
@@ -304,7 +416,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("clears stale block reasons when resuming a task", async () => {
-    const context = createContext({ threadTs: "1700000005.000000" });
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -341,8 +453,100 @@ describe("Slack schedule tools", () => {
     expect(resumed?.statusReason).toBeUndefined();
   });
 
+  it("marks an active task due immediately without changing its scheduled next run", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+    const store = createStateSchedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task).toBeDefined();
+    const scheduledNextRunAtMs = Date.parse("2026-06-01T16:00:00.000Z");
+    await store.saveTask({
+      ...task!,
+      nextRunAtMs: scheduledNextRunAtMs,
+      updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
+      version: task!.version + 1,
+    });
+
+    const beforeMs = Date.now();
+    const result = await executeTool(
+      createSlackScheduleRunTaskNowTool(context),
+      {
+        task_id: created.task.id,
+      },
+    );
+    const afterMs = Date.now();
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        id: created.task.id,
+        status: "active",
+        next_run_at: "2026-06-01T16:00:00.000Z",
+      },
+    });
+    const due = await store.getTask(created.task.id);
+    expect(due).toMatchObject({
+      status: "active",
+      nextRunAtMs: scheduledNextRunAtMs,
+      destination: {
+        teamId: context.teamId,
+        channelId: context.channelId,
+      },
+      createdBy: {
+        slackUserId: context.requester?.userId,
+      },
+    });
+    expect(due?.statusReason).toBeUndefined();
+    expect(due?.runNowAtMs).toBeGreaterThanOrEqual(beforeMs);
+    expect(due?.runNowAtMs).toBeLessThanOrEqual(afterMs);
+
+    await expect(store.claimDueRun({ nowMs: afterMs })).resolves.toMatchObject({
+      taskId: created.task.id,
+      scheduledForMs: due?.runNowAtMs,
+      status: "pending",
+    });
+  });
+
+  it("does not run-now a paused task without an explicit resume", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+    const store = createStateSchedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task).toBeDefined();
+    await store.saveTask({
+      ...task!,
+      status: "paused",
+      statusReason: "Paused by user.",
+      updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
+      version: task!.version + 1,
+    });
+
+    const result = await executeTool(
+      createSlackScheduleRunTaskNowTool(context),
+      {
+        task_id: created.task.id,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        "Scheduled task must be active before it can be run now. Resume the task first if you want it to run.",
+    });
+    const paused = await store.getTask(created.task.id);
+    expect(paused).toMatchObject({
+      status: "paused",
+      statusReason: "Paused by user.",
+    });
+    expect(paused?.runNowAtMs).toBeUndefined();
+  });
+
   it("removes deleted tasks from scheduler indexes", async () => {
-    const context = createContext({ threadTs: "1700000006.000000" });
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -362,7 +566,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("claims due runs idempotently", async () => {
-    const context = createContext({ threadTs: "1700000007.000000" });
+    const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -375,15 +579,14 @@ describe("Slack schedule tools", () => {
       updatedAtMs: 1000,
     });
 
-    const first = await store.claimDueRuns({ nowMs: 2000, limit: 10 });
-    const second = await store.claimDueRuns({ nowMs: 2000, limit: 10 });
+    const first = await store.claimDueRun({ nowMs: 2000 });
+    const second = await store.claimDueRun({ nowMs: 2000 });
 
-    expect(first).toHaveLength(1);
-    expect(first[0]).toMatchObject({
+    expect(first).toMatchObject({
       taskId: created.task.id,
       scheduledForMs: 1000,
       status: "pending",
     });
-    expect(second).toHaveLength(0);
+    expect(second).toBeUndefined();
   });
 });

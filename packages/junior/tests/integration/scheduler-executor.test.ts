@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   executeScheduledRun,
   processDueScheduledRuns,
   type ScheduledTaskRunner,
 } from "@/chat/scheduler/executor";
-import { createStateSchedulerStore } from "@/chat/scheduler/store";
+import {
+  createStateSchedulerStore,
+  type SchedulerStore,
+} from "@/chat/scheduler/store";
 import type { ScheduledTask } from "@/chat/scheduler/types";
 
 vi.hoisted(() => {
@@ -27,7 +30,6 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
       platform: "slack",
       teamId: "T_EXECUTOR",
       channelId: "C123",
-      threadTs: "1700000000.000000",
     },
     nextRunAtMs: firstRunAtMs,
     schedule: {
@@ -54,6 +56,15 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     version: 1,
     ...overrides,
   };
+}
+
+async function claimDueRun(
+  store: SchedulerStore,
+  nowMs = Date.parse("2026-03-02T17:00:00.000Z"),
+) {
+  const run = await store.claimDueRun({ nowMs });
+  expect(run).toBeDefined();
+  return run!;
 }
 
 describe("scheduler executor", () => {
@@ -144,14 +155,81 @@ describe("scheduler executor", () => {
     });
   });
 
+  it("executes a run-now request without shifting the recurring schedule", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledNextRunAtMs = Date.parse("2026-03-09T16:00:00.000Z");
+    const runNowAtMs = Date.parse("2026-03-04T18:00:00.000Z");
+    const task = createTask({
+      id: `sched_run_now_${Date.now()}`,
+      nextRunAtMs: scheduledNextRunAtMs,
+      runNowAtMs,
+    });
+    await store.saveTask(task);
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: Date.parse("2026-03-04T18:00:01.000Z"),
+      limit: 10,
+      runner: {
+        run: async () => ({ status: "completed" }),
+      },
+    });
+
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({
+      taskId: task.id,
+      scheduledForMs: runNowAtMs,
+      status: "completed",
+    });
+    const updated = await store.getTask(task.id);
+    expect(updated).toMatchObject({
+      status: "active",
+      lastRunAtMs: runNowAtMs,
+      nextRunAtMs: scheduledNextRunAtMs,
+    });
+    expect(updated?.runNowAtMs).toBeUndefined();
+  });
+
+  it("coalesces run-now with an overdue scheduled occurrence", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledNextRunAtMs = Date.parse("2026-03-02T17:00:00.000Z");
+    const runNowAtMs = Date.parse("2026-03-04T18:00:00.000Z");
+    const task = createTask({
+      id: `sched_run_now_overdue_${Date.now()}`,
+      nextRunAtMs: scheduledNextRunAtMs,
+      runNowAtMs,
+    });
+    await store.saveTask(task);
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: Date.parse("2026-03-04T18:00:01.000Z"),
+      limit: 10,
+      runner: {
+        run: async () => ({ status: "completed" }),
+      },
+    });
+
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({
+      taskId: task.id,
+      scheduledForMs: runNowAtMs,
+      status: "completed",
+    });
+    const updated = await store.getTask(task.id);
+    expect(updated).toMatchObject({
+      status: "active",
+      lastRunAtMs: runNowAtMs,
+      nextRunAtMs: Date.parse("2026-03-09T16:00:00.000Z"),
+    });
+    expect(updated?.runNowAtMs).toBeUndefined();
+  });
+
   it("blocks the task when the runner reports missing requirements", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_blocked_${Date.now()}` });
     await store.saveTask(task);
-    const [run] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const run = await claimDueRun(store);
 
     const completed = await executeScheduledRun({
       store,
@@ -181,10 +259,7 @@ describe("scheduler executor", () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_blocked_retry_${Date.now()}` });
     await store.saveTask(task);
-    const [run] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const run = await claimDueRun(store);
 
     await executeScheduledRun({
       store,
@@ -212,10 +287,10 @@ describe("scheduler executor", () => {
       version: blocked!.version + 1,
     });
 
-    const [retryRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:03.000Z"),
-      limit: 10,
-    });
+    const retryRun = await claimDueRun(
+      store,
+      Date.parse("2026-03-02T17:00:03.000Z"),
+    );
 
     expect(retryRun).toMatchObject({
       id: run.id,
@@ -229,10 +304,7 @@ describe("scheduler executor", () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_overlap_${Date.now()}` });
     await store.saveTask(task);
-    const [firstRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const firstRun = await claimDueRun(store);
     await store.markRunStarted({
       runId: firstRun.id,
       claimedAtMs: firstRun.claimedAtMs,
@@ -247,11 +319,10 @@ describe("scheduler executor", () => {
     });
 
     await expect(
-      store.claimDueRuns({
+      store.claimDueRun({
         nowMs: Date.parse("2026-03-09T16:00:01.000Z"),
-        limit: 10,
       }),
-    ).resolves.toHaveLength(0);
+    ).resolves.toBeUndefined();
 
     await store.markRunCompleted({
       runId: firstRun.id,
@@ -259,10 +330,10 @@ describe("scheduler executor", () => {
       startedAtMs: Date.parse("2026-03-02T17:00:01.000Z"),
     });
 
-    const [nextRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-09T16:00:01.000Z"),
-      limit: 10,
-    });
+    const nextRun = await claimDueRun(
+      store,
+      Date.parse("2026-03-09T16:00:01.000Z"),
+    );
     expect(nextRun).toMatchObject({
       taskId: task.id,
       scheduledForMs: editedNextRunAtMs,
@@ -279,10 +350,8 @@ describe("scheduler executor", () => {
     await store.saveTask(firstTask);
     await store.saveTask(secondTask);
 
-    const [firstRun, abandonedRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const firstRun = await claimDueRun(store);
+    const abandonedRun = await claimDueRun(store);
     expect(firstRun).toMatchObject({ taskId: firstTask.id });
     expect(abandonedRun).toMatchObject({
       taskId: secondTask.id,
@@ -298,10 +367,10 @@ describe("scheduler executor", () => {
       },
     });
 
-    const [retryRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:01:00.000Z"),
-      limit: 10,
-    });
+    const retryRun = await claimDueRun(
+      store,
+      Date.parse("2026-03-02T17:01:00.000Z"),
+    );
     expect(retryRun).toMatchObject({
       id: abandonedRun.id,
       taskId: secondTask.id,
@@ -314,14 +383,11 @@ describe("scheduler executor", () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_stale_claim_${Date.now()}` });
     await store.saveTask(task);
-    const [abandonedRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
-    const [reclaimedRun] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:01:00.000Z"),
-      limit: 10,
-    });
+    const abandonedRun = await claimDueRun(store);
+    const reclaimedRun = await claimDueRun(
+      store,
+      Date.parse("2026-03-02T17:01:00.000Z"),
+    );
 
     await expect(
       executeScheduledRun({
@@ -350,14 +416,67 @@ describe("scheduler executor", () => {
     });
   });
 
+  it("does not let a stale older claim block a retargeted due run", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_stale_retarget_${Date.now()}` });
+    await store.saveTask(task);
+    const abandonedRun = await claimDueRun(store);
+    const retargetedNextRunAtMs = Date.parse("2026-03-02T17:00:30.000Z");
+    await store.saveTask({
+      ...task,
+      nextRunAtMs: retargetedNextRunAtMs,
+      updatedAtMs: Date.parse("2026-03-02T17:00:10.000Z"),
+      version: task.version + 1,
+    });
+
+    const retargetedRun = await claimDueRun(
+      store,
+      Date.parse("2026-03-02T17:01:00.000Z"),
+    );
+
+    expect(retargetedRun).toMatchObject({
+      id: `${task.id}:${retargetedNextRunAtMs}`,
+      taskId: task.id,
+      scheduledForMs: retargetedNextRunAtMs,
+    });
+    expect(retargetedRun.id).not.toBe(abandonedRun.id);
+  });
+
+  it("reclaims a due run when an active marker was written without a run record", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_missing_run_${Date.now()}` });
+    await store.saveTask(task);
+    const scheduledForMs = task.nextRunAtMs!;
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:scheduler:active:${task.id}`,
+      {
+        claimedAtMs: Date.parse("2026-03-02T17:00:00.000Z"),
+        runId: `${task.id}:${scheduledForMs}`,
+        scheduledForMs,
+      },
+      6 * 60 * 60 * 1000,
+    );
+
+    const reclaimed = await claimDueRun(
+      store,
+      Date.parse("2026-03-02T17:01:00.000Z"),
+    );
+
+    expect(reclaimed).toMatchObject({
+      id: `${task.id}:${scheduledForMs}`,
+      taskId: task.id,
+      scheduledForMs,
+      status: "pending",
+    });
+  });
+
   it("does not restart a run another tick already completed", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_completed_claim_${Date.now()}` });
     await store.saveTask(task);
-    const [run] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const run = await claimDueRun(store);
 
     await executeScheduledRun({
       store,
@@ -386,10 +505,7 @@ describe("scheduler executor", () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_deleted_${Date.now()}` });
     await store.saveTask(task);
-    const [run] = await store.claimDueRuns({
-      nowMs: Date.parse("2026-03-02T17:00:00.000Z"),
-      limit: 10,
-    });
+    const run = await claimDueRun(store);
 
     await executeScheduledRun({
       store,
@@ -414,6 +530,38 @@ describe("scheduler executor", () => {
       status: "deleted",
       nextRunAtMs: undefined,
       version: 2,
+    });
+  });
+
+  it("skips a claimed run when the task is deleted before execution starts", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_deleted_before_start_${Date.now()}` });
+    await store.saveTask(task);
+    const run = await claimDueRun(store);
+    await store.saveTask({
+      ...task,
+      status: "deleted",
+      nextRunAtMs: undefined,
+      updatedAtMs: Date.parse("2026-03-02T17:00:00.500Z"),
+      version: task.version + 1,
+    });
+
+    await expect(
+      executeScheduledRun({
+        store,
+        run,
+        nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+        runner: {
+          run: async () => {
+            throw new Error("deleted task should not execute");
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      errorMessage: expect.stringContaining(
+        "was deleted before the run started",
+      ),
     });
   });
 });

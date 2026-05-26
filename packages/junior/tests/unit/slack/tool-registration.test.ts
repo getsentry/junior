@@ -31,6 +31,49 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
+  it("registers schedule tools only with complete Slack turn context", () => {
+    const incomplete = createTools([], {}, ctx("C12345"));
+    const complete = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        teamId: "T123",
+        requester: {
+          userId: "U123",
+        },
+      },
+    );
+
+    expect(incomplete).not.toHaveProperty("slackScheduleCreateTask");
+    expect(complete).toHaveProperty("slackScheduleCreateTask");
+    expect(complete).toHaveProperty("slackScheduleListTasks");
+    expect(complete).toHaveProperty("slackScheduleUpdateTask");
+    expect(complete).toHaveProperty("slackScheduleDeleteTask");
+    expect(complete).toHaveProperty("slackScheduleRunTaskNow");
+  });
+
+  it("does not register schedule tools when explicitly disabled", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        teamId: "T123",
+        requester: {
+          userId: "U123",
+        },
+        disableScheduleTools: true,
+      },
+    );
+
+    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
+    expect(tools).not.toHaveProperty("slackScheduleListTasks");
+    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
+    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
+    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
+  });
+
   it("does not register canvas create when channel context is unavailable", () => {
     const tools = createTools([], {}, ctx());
 

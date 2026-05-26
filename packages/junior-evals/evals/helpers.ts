@@ -1,5 +1,5 @@
 import {
-  namedJudge,
+  createJudge,
   type DescribeEvalOptions,
   type JudgeContext,
 } from "vitest-evals";
@@ -391,10 +391,10 @@ export const slackHarness: Harness<SlackEvalInput> = {
 };
 
 /** Scores Slack eval output against the case rubric. */
-export const RubricJudge = namedJudge(
+export const RubricJudge = createJudge(
   "RubricJudge",
   async ({
-    inputValue,
+    input,
     output,
     harness,
   }: JudgeContext<
@@ -404,7 +404,10 @@ export const RubricJudge = namedJudge(
   >) => {
     const object = parseJudgeResult(
       await harness.prompt(
-        formatJudgePrompt(output, formatRubric(inputValue.criteria)),
+        formatJudgePrompt(
+          serializeEvalOutput(output as Record<string, JsonValue>),
+          formatRubric(input.criteria),
+        ),
         {
           system: EVAL_SYSTEM,
           metadata: {

@@ -1,8 +1,12 @@
 import { escapeXml } from "@/chat/xml";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
+import {
+  SCHEDULED_TASK_SYSTEM_ACTOR,
+  type ScheduledRun,
+  type ScheduledTask,
+} from "@/chat/scheduler/types";
 
 const EXECUTION_RULES = [
-  "- Execute the scheduled task described in <scheduled-task>; do not create, update, pause, delete, or list schedules.",
+  "- Execute as the scheduled-task system actor; creator metadata is audit context, not an active user identity.",
   "- Complete the task without asking follow-up questions unless access, approval, or required input is missing.",
   "- Use the available tools and skills that are relevant to the task contract.",
   "- If blocked, report the specific missing provider, permission, configuration, or input.",
@@ -34,6 +38,7 @@ export function buildScheduledTaskRunPrompt(args: {
   const { run, task } = args;
   const destination = task.destination;
   const creator = task.createdBy;
+  const executionActor = task.executionActor ?? SCHEDULED_TASK_SYSTEM_ACTOR;
 
   return [
     "<scheduled-task-run>",
@@ -61,6 +66,8 @@ export function buildScheduledTaskRunPrompt(args: {
     `- schedule: ${escapeXml(task.schedule.description)}`,
     `- timezone: ${escapeXml(task.schedule.timezone)}`,
     `- schedule_kind: ${task.schedule.kind}`,
+    `- execution_actor_type: ${executionActor.type}`,
+    `- execution_actor_id: ${escapeXml(executionActor.id)}`,
     ...(task.schedule.recurrence
       ? [
           `- recurrence_frequency: ${task.schedule.recurrence.frequency}`,
@@ -74,7 +81,6 @@ export function buildScheduledTaskRunPrompt(args: {
     `- destination_platform: ${destination.platform}`,
     `- destination_team_id: ${escapeXml(destination.teamId)}`,
     `- destination_channel_id: ${escapeXml(destination.channelId)}`,
-    ...renderOptionalLine("destination_thread_ts", destination.threadTs),
     "</run-context>",
     "",
     "<execution-rules>",

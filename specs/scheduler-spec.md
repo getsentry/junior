@@ -3,10 +3,11 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-05-18
+- Last Edited: 2026-05-26
 
 ## Changelog
 
+- 2026-05-26: Reframed scheduled execution around system actors: creator is metadata/contact, scheduled runs execute as a system actor, and user-bound auth must not be borrowed implicitly.
 - 2026-05-18: Clarified V1 calendar model: exact next-run instants plus simple daily/weekly/monthly/yearly recurrence rules.
 - 2026-05-18: Initial draft contract for scheduled Junior tasks, prompt framing, no-SQL storage, run idempotency, and eval-first verification.
 
@@ -24,7 +25,7 @@ Define the first scheduler contract for Junior: users can create durable tasks t
 - Prompt envelope used when executing a scheduled task.
 - Storage and idempotency rules.
 - Slack authoring and management behavior.
-- Verification layer ownership.
+- Verification layer responsibilities.
 
 ## Non-Goals
 
@@ -46,7 +47,8 @@ The stored task must include:
 - objective
 - instructions
 - expected output
-- creator/requester identity
+- creator metadata
+- execution actor metadata
 - destination surface
 - schedule and timezone
 - current status
@@ -56,9 +58,16 @@ The stored task must include:
 
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
+Slack destinations are conversations, not existing threads. A scheduled task may target the active Slack DM or channel, and scheduled output posts as a new message in that conversation.
+
+Creator metadata records the user who confirmed the task so Junior can audit changes and privately notify someone when the task needs attention. The creator is not an owner, is not an authorization principal, and is not the actor for future scheduled runs.
+
+Task management is controlled only by access to the destination conversation window. If a user can post or trigger Junior in that Slack DM or channel context, they can manage scheduled tasks for that same context. The scheduler must not add creator-only, owner-only, workspace-admin-only, or channel-admin-only gates for V1 management.
+
 ### Calendar Model
 
 Every active task must have an exact `nextRunAtMs` instant. For one-off tasks, that instant is the complete schedule.
+Slack authoring may accept supported relative one-off phrases such as "tomorrow at 9am"; these must be resolved to an exact `nextRunAtMs` before storage. When a user does not provide a timezone, scheduler authoring defaults to `America/Los_Angeles` unless `JUNIOR_TIMEZONE` overrides it.
 
 Recurring tasks must also store a small calendar recurrence rule:
 
@@ -74,6 +83,16 @@ V1 recurrence is calendar-based, not fixed-duration. For example, "every Monday 
 
 The scheduler does not need advanced rules such as first business day, nearest weekday, holiday calendars, or arbitrary cron syntax.
 
+Run-now has a separate contract:
+
+1. Run-now applies only to active tasks.
+2. Run-now must not implicitly resume paused or blocked tasks.
+3. Run-now must not rewrite the task's stored calendar schedule.
+4. A task may store a separate immediate-run timestamp.
+5. When both the immediate-run timestamp and ordinary `nextRunAtMs` are due, the scheduler claims the immediate run first.
+6. After the manual run reaches a terminal state, clear the immediate-run timestamp.
+7. If the ordinary `nextRunAtMs` was already overdue when the manual run completed, consume that scheduled occurrence and advance recurrence once instead of running the same task twice in one tick.
+
 ### Prompt Framing
 
 Every scheduled run must compile the stored task into a marker-delimited prompt before entering the agent runtime.
@@ -81,8 +100,8 @@ Every scheduled run must compile the stored task into a marker-delimited prompt 
 The prompt must make these facts explicit:
 
 1. This is an autonomous scheduled run.
-2. This is not a request to create, update, pause, delete, or list schedules.
-3. The task contract is the source of truth for what to execute.
+2. The task contract is the source of truth for what to execute.
+3. The run executes as a Junior system actor, not as the user who created the task.
 4. The run should complete without asking follow-up questions unless access, approval, or required input is missing.
 5. If blocked, the result should identify the missing provider, permission, or input.
 
@@ -106,9 +125,11 @@ The initial implementation may use the Chat SDK state adapter and a global task 
 - `junior:scheduler:tasks` stores task ids for due scans.
 - `junior:scheduler:team:{team_id}:tasks` stores task ids for workspace management.
 - `junior:scheduler:run:{run_id}` stores run history.
+- `junior:scheduler:active:{task_id}` stores the currently active run marker for task-level overlap prevention.
 - `junior:scheduler:claim:{task_id}:{scheduled_for_ms}` is the idempotency claim.
 
 A future Redis-native store may replace the scan index with a sorted due index without changing the runtime-facing scheduler store interface.
+Deployments may set `JUNIOR_SCHEDULER_REDIS_URL` to move scheduler persistence onto a dedicated Redis backend.
 
 ### Run Idempotency
 
@@ -118,33 +139,61 @@ Rules:
 
 1. A run idempotency key is `task_id:scheduled_for_ms`.
 2. The scheduler must claim that key before dispatch.
-3. Duplicate ticks, retries, and overlapping invocations must return the existing run or skip dispatch.
+3. Duplicate ticks and retries must not dispatch the same scheduled run more than once.
 4. Run side effects must be keyed by the scheduled run id where possible.
-5. A task must not overlap with itself by default. If one run is active, a later due time should be skipped, coalesced, or blocked according to the task policy.
+5. V1 tasks do not overlap with themselves. If a task already has an active run, later due claims for that same task are not dispatched.
+6. Stale pending claims may be reclaimed after the scheduler's stale-claim timeout.
 
-### Auth Principal
+### Actor And Auth Model
 
-Scheduled runs execute as the task creator unless the task contract explicitly names a different supported service principal.
+Scheduled tasks must distinguish these V1 identities:
 
-Requester-bound provider credentials, OAuth state, sandbox egress, and audit metadata must use the scheduled task principal. If that principal lacks valid credentials, Junior must block the run and privately notify the creator when possible. Authorization links must not be posted publicly.
+- **Creator:** the human who confirmed the task. This is audit and notification metadata only.
+- **Conversation manager:** any user who can post or trigger Junior in the destination Slack conversation window. This controls who may list, pause, resume, delete, or run-now the task for that same conversation.
+- **Execution actor:** the actor used for the autonomous scheduled run. For scheduled tasks, this is a Junior system actor, not a Slack user.
+
+Scheduled runs must not pass the creator as the runtime requester or treat the creator as if they were present and acting during the run. Audit and correlation metadata should include both the system execution actor and creator metadata, but auth decisions must use the execution actor.
+
+V1 scheduled execution has no user requester. User OAuth tokens cannot be used merely because that user created the task. Authorization flows are disabled during scheduled runs, and authorization links must not be posted publicly. If no usable non-user credential exists, Junior must block the run and privately notify the creator when possible.
+
+Future actor-aware auth may add an explicit credential subject: an account, grant, or service principal whose provider credentials may be used by scheduled tools. Future credential subjects may include:
+
+- system-owned credentials available to the scheduled-run actor
+- an explicitly recorded delegated credential grant in the task contract
+- a supported service principal named by the task contract
+
+Those future credential subjects must be explicit and separate from creator metadata. Until that support exists, scheduled runs may use only credentials already available to the system execution actor.
+
+### Implementation Plan
+
+1. Introduce a small actor contract shared by runtime, scheduler, and auth boundaries. It should represent user actors, system actors, and future service actors without leaking Slack SDK types.
+2. Keep `createdBy` as creator metadata and add an execution actor field to scheduled tasks. New scheduled tasks should default to a system actor such as `scheduled-task`; existing tasks may be read with that default until migrated.
+3. Update the scheduled runner to enter the agent runtime with the system actor and no user requester. Creator details may remain in run context and notification metadata, but not in the actor slot.
+4. Update auth and credential resolution so V1 scheduled runs cannot use requester-scoped OAuth or start interactive auth flows. Missing non-user credentials should produce a blocked run plus private notification.
+5. Update telemetry, tests, and eval fixtures so scheduled execution assertions refer to creator metadata and execution actor separately.
 
 ### Slack UX
 
 Slack authoring should be confirm-first:
 
 1. User asks Junior to schedule work.
-2. Junior drafts the normalized task: title, cadence, timezone, destination, objective, expected output, and next run.
+2. Junior drafts the normalized task: title, objective, instructions, expected output, cadence, timezone, destination, and next run.
 3. User confirms before the task becomes active.
-4. Junior supports list, pause, resume, delete, and run-now commands.
+4. Junior creates the task only after confirmation and replies with the task id, destination, schedule, timezone, and next run.
+5. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
 
 Confirmation should show the executable task contract, not only echo the user's text.
+Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
+Task creation must use the current active Slack conversation as the destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
+List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.
+Blocked tasks must appear in list output with their blocked reason. After the missing requirement is fixed, a conversation manager can resume the task or run it now from the same destination conversation.
 
 ## Failure Model
 
 1. Tick delivery fails: the task remains due and a later tick may claim it.
 2. Duplicate tick delivery: the run claim suppresses duplicate dispatch.
 3. Run fails after claim: run record captures failure and retry policy decides whether to re-dispatch.
-4. Task credentials are missing: mark the run blocked and keep or pause the task according to policy.
+4. Required non-user credentials are missing: mark the run blocked, keep or pause the task according to policy, and privately notify the creator when possible.
 5. Prompt framing is ambiguous: evals must catch cases where the model creates/edits a schedule instead of executing the task.
 
 ## Observability
@@ -157,7 +206,8 @@ Scheduler execution should emit safe task/run metadata only:
 - task status
 - run status
 - destination platform and channel id
-- requester Slack user id
+- execution actor type and id
+- creator Slack user id, when available
 
 Logs and spans must not include OAuth tokens, provider credentials, raw authorization URLs, or private tool payloads.
 
@@ -174,9 +224,12 @@ Use evals for model-dependent behavior:
 Use integration tests for runtime/storage contracts that do not depend on model interpretation:
 
 - due claim idempotency
-- blocked auth path
+- blocked auth path for missing non-user credentials
+- scheduled runner passes a system actor rather than the creator as requester
+- user OAuth tokens are not used implicitly for scheduled tasks
 - dispatch to Slack delivery
-- pause/delete/list management surfaces
+- destination-scoped list output
+- conversation-access management for pause, resume, delete, and run-now
 
 Use unit tests only for small deterministic helpers when integration or eval coverage would be wasteful.
 

@@ -25,6 +25,8 @@ related:
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to a search-tuned model; does not fall through to `AI_MODEL`.                                      |
 | `JUNIOR_BASE_URL`                           | No          | Canonical base URL for callback/auth URL generation.                                                                                                 |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for `/api/internal/scheduler/tick`; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for an external scheduler.         |
+| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring and other timezone-sensitive behavior. Defaults to `America/Los_Angeles`.                              |
+| `JUNIOR_SCHEDULER_REDIS_URL`                | No          | Redis URL for dedicated scheduler persistence. When set, scheduler state uses this Redis instance instead of the shared runtime state adapter.       |
 | `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                               |
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:

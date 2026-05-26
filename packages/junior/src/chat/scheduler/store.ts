@@ -1,3 +1,4 @@
+import { createRedisState } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
 import { getNextRunAtMs } from "@/chat/scheduler/cadence";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -10,8 +11,10 @@ const CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
 const PENDING_CLAIM_STALE_MS = 60_000;
 const LOCK_TTL_MS = 10_000;
 
+let schedulerStateAdapter: StateAdapter | undefined;
+
 export interface SchedulerStore {
-  claimDueRuns(args: { limit: number; nowMs: number }): Promise<ScheduledRun[]>;
+  claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listTasksForTeam(teamId: string): Promise<ScheduledTask[]>;
@@ -31,6 +34,11 @@ export interface SchedulerStore {
     completedAtMs: number;
     errorMessage: string;
     startedAtMs?: number;
+    runId: string;
+  }): Promise<ScheduledRun | undefined>;
+  markRunSkipped(args: {
+    completedAtMs: number;
+    errorMessage: string;
     runId: string;
   }): Promise<ScheduledRun | undefined>;
   markRunStarted(args: {
@@ -81,6 +89,28 @@ function indexLockKey(indexKey: string): string {
 
 function buildRunId(taskId: string, scheduledForMs: number): string {
   return `${taskId}:${scheduledForMs}`;
+}
+
+function shouldUseDedicatedSchedulerState(): boolean {
+  return Boolean(process.env.JUNIOR_SCHEDULER_REDIS_URL?.trim());
+}
+
+function createSchedulerStateAdapter(): StateAdapter {
+  const redisUrl = process.env.JUNIOR_SCHEDULER_REDIS_URL?.trim();
+  if (redisUrl) {
+    return createRedisState({ url: redisUrl });
+  }
+  return getStateAdapter();
+}
+
+function getSchedulerStateAdapter(): StateAdapter {
+  if (!shouldUseDedicatedSchedulerState()) {
+    return getStateAdapter();
+  }
+  if (!schedulerStateAdapter) {
+    schedulerStateAdapter = createSchedulerStateAdapter();
+  }
+  return schedulerStateAdapter;
 }
 
 function unique(values: string[]): string[] {
@@ -160,6 +190,58 @@ async function clearActiveRun(
   });
 }
 
+async function clearStaleActiveRun(
+  state: StateAdapter,
+  taskId: string,
+  nowMs: number,
+): Promise<boolean> {
+  const active = await state.get<{
+    claimedAtMs?: unknown;
+    runId?: unknown;
+    scheduledForMs?: unknown;
+  }>(activeRunKey(taskId));
+  if (typeof active?.runId !== "string") {
+    await state.delete(activeRunKey(taskId));
+    return true;
+  }
+
+  const activeRun =
+    (await state.get<ScheduledRun>(runKey(active.runId))) ?? undefined;
+  if (!isStaleActiveRun(active, activeRun, nowMs)) {
+    return false;
+  }
+
+  await clearActiveRun(state, taskId, active.runId);
+  if (typeof active.scheduledForMs === "number") {
+    await state.delete(claimKey(taskId, active.scheduledForMs));
+  }
+  return true;
+}
+
+function isFinishedRun(run: ScheduledRun): boolean {
+  return (
+    run.status === "completed" ||
+    run.status === "failed" ||
+    run.status === "blocked" ||
+    run.status === "skipped"
+  );
+}
+
+function isStaleActiveRun(
+  active: { claimedAtMs?: unknown },
+  run: ScheduledRun | undefined,
+  nowMs: number,
+): boolean {
+  if (run) {
+    return isFinishedRun(run) || isStalePendingRun(run, nowMs);
+  }
+
+  return (
+    typeof active.claimedAtMs === "number" &&
+    active.claimedAtMs + PENDING_CLAIM_STALE_MS <= nowMs
+  );
+}
+
 function isStalePendingRun(
   run: ScheduledRun | undefined,
   nowMs: number,
@@ -174,14 +256,36 @@ function isDueTask(
   task: ScheduledTask,
   nowMs: number,
 ): task is ScheduledTask & {
-  nextRunAtMs: number;
+  nextRunAtMs?: number;
+  runNowAtMs?: number;
 } {
   return (
     task.status === "active" &&
+    ((typeof task.runNowAtMs === "number" &&
+      Number.isFinite(task.runNowAtMs) &&
+      task.runNowAtMs <= nowMs) ||
+      (typeof task.nextRunAtMs === "number" &&
+        Number.isFinite(task.nextRunAtMs) &&
+        task.nextRunAtMs <= nowMs))
+  );
+}
+
+function getDueRunAtMs(task: ScheduledTask, nowMs: number): number | undefined {
+  if (
+    typeof task.runNowAtMs === "number" &&
+    Number.isFinite(task.runNowAtMs) &&
+    task.runNowAtMs <= nowMs
+  ) {
+    return task.runNowAtMs;
+  }
+  if (
     typeof task.nextRunAtMs === "number" &&
     Number.isFinite(task.nextRunAtMs) &&
     task.nextRunAtMs <= nowMs
-  );
+  ) {
+    return task.nextRunAtMs;
+  }
+  return undefined;
 }
 
 function buildScheduledRun(args: {
@@ -289,25 +393,22 @@ class StateAdapterSchedulerStore implements SchedulerStore {
       .sort((a, b) => a.createdAtMs - b.createdAtMs);
   }
 
-  async claimDueRuns(args: {
-    limit: number;
+  async claimDueRun(args: {
     nowMs: number;
-  }): Promise<ScheduledRun[]> {
+  }): Promise<ScheduledRun | undefined> {
     await this.state.connect();
     const ids = await getIndex(this.state, globalTaskIndexKey());
-    const runs: ScheduledRun[] = [];
 
     for (const id of ids) {
-      if (runs.length >= args.limit) {
-        break;
-      }
-
       const task = await this.getTask(id);
       if (!task || !isDueTask(task, args.nowMs)) {
         continue;
       }
 
-      const scheduledForMs = task.nextRunAtMs;
+      const scheduledForMs = getDueRunAtMs(task, args.nowMs);
+      if (scheduledForMs === undefined) {
+        continue;
+      }
       const runId = buildRunId(task.id, scheduledForMs);
       const tryClaimActiveRun = async (): Promise<boolean> =>
         await this.state.setIfNotExists(
@@ -318,10 +419,7 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
       let activeClaimed = await tryClaimActiveRun();
       if (!activeClaimed) {
-        const activeRun = await this.getRun(runId);
-        if (isStalePendingRun(activeRun, args.nowMs)) {
-          await clearActiveRun(this.state, task.id, runId);
-          await this.state.delete(claimKey(task.id, scheduledForMs));
+        if (await clearStaleActiveRun(this.state, task.id, args.nowMs)) {
           activeClaimed = await tryClaimActiveRun();
         }
         if (!activeClaimed) {
@@ -357,10 +455,10 @@ class StateAdapterSchedulerStore implements SchedulerStore {
         task,
       });
       await this.state.set(runKey(run.id), run, SCHEDULED_RUN_TTL_MS);
-      runs.push(run);
+      return run;
     }
 
-    return runs;
+    return undefined;
   }
 
   async getRun(runId: string): Promise<ScheduledRun | undefined> {
@@ -428,6 +526,27 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     return next;
   }
 
+  async markRunSkipped(args: {
+    completedAtMs: number;
+    errorMessage: string;
+    runId: string;
+  }): Promise<ScheduledRun | undefined> {
+    const next = await this.updateRun(args.runId, (run) =>
+      run.status === "pending"
+        ? {
+            ...run,
+            completedAtMs: args.completedAtMs,
+            errorMessage: args.errorMessage,
+            status: "skipped",
+          }
+        : undefined,
+    );
+    if (next) {
+      await clearActiveRun(this.state, next.taskId, next.id);
+    }
+    return next;
+  }
+
   async markRunBlocked(args: {
     completedAtMs: number;
     errorMessage: string;
@@ -462,6 +581,42 @@ class StateAdapterSchedulerStore implements SchedulerStore {
         (await this.state.get<ScheduledTask>(taskKey(args.run.taskId))) ??
         undefined;
       if (!current || current.status === "deleted") {
+        return;
+      }
+
+      const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
+      if (isRunNow) {
+        let nextRunAtMs = current.nextRunAtMs;
+        if (
+          args.status !== "blocked" &&
+          typeof current.nextRunAtMs === "number" &&
+          current.nextRunAtMs <= args.run.scheduledForMs
+        ) {
+          nextRunAtMs = getNextRunAtMs(
+            current,
+            current.nextRunAtMs,
+            args.nowMs,
+          );
+        }
+        await this.saveTaskRecord(
+          {
+            ...current,
+            lastRunAtMs: args.run.scheduledForMs,
+            nextRunAtMs,
+            runNowAtMs: undefined,
+            status:
+              args.status === "blocked"
+                ? "blocked"
+                : nextRunAtMs
+                  ? current.status
+                  : "paused",
+            statusReason:
+              args.status === "blocked" ? args.errorMessage : undefined,
+            updatedAtMs: args.nowMs,
+            version: current.version + 1,
+          },
+          current,
+        );
         return;
       }
 
@@ -529,7 +684,20 @@ class StateAdapterSchedulerStore implements SchedulerStore {
 
 /** Create the production scheduler store backed by Junior's state adapter. */
 export function createStateSchedulerStore(
-  stateAdapter: StateAdapter = getStateAdapter(),
+  stateAdapter: StateAdapter = getSchedulerStateAdapter(),
 ): SchedulerStore {
   return new StateAdapterSchedulerStore(stateAdapter);
+}
+
+/** Disconnect the dedicated scheduler state adapter when one is configured. */
+export async function disconnectSchedulerStateAdapter(): Promise<void> {
+  if (!schedulerStateAdapter) {
+    return;
+  }
+
+  try {
+    await schedulerStateAdapter.disconnect();
+  } finally {
+    schedulerStateAdapter = undefined;
+  }
 }
