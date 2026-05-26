@@ -432,9 +432,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         );
         const resolvedUserName =
           message.author.userName ?? fallbackIdentity?.userName;
-        if (resolvedUserName) {
-          setTags({ slackUserName: resolvedUserName });
-        }
+        setTags({
+          slackUserId: message.author.userId,
+          slackUserName: resolvedUserName,
+          slackUserEmail: fallbackIdentity?.email,
+        });
         const userAttachments = await deps.resolveUserAttachments(
           message.attachments,
           {

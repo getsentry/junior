@@ -36,6 +36,7 @@ export interface LogContext {
   slackThreadId?: string;
   slackUserId?: string;
   slackUserName?: string;
+  slackUserEmail?: string;
   slackChannelId?: string;
   runId?: string;
   assistantUserName?: string;
@@ -1375,6 +1376,7 @@ export function setSentryTagsFromContext(context: LogContext): void {
     Sentry.setUser({
       id: context.slackUserId,
       username: context.slackUserName,
+      email: context.slackUserEmail,
     });
   }
 }
@@ -1390,7 +1392,11 @@ export function setSentryScopeContext(
     }
   }
   if (context.slackUserId) {
-    scope.setUser({ id: context.slackUserId, username: context.slackUserName });
+    scope.setUser({
+      id: context.slackUserId,
+      username: context.slackUserName,
+      email: context.slackUserEmail,
+    });
   }
   scope.setContext("app", attrs);
 }
