@@ -1,0 +1,225 @@
+import {
+  defineJuniorPlugin,
+  type Dispatch,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
+import { buildScheduledTaskRunPrompt } from "@/chat/scheduler/prompt";
+import { createStateSchedulerStore } from "@/chat/scheduler/store";
+import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
+import {
+  createSlackScheduleCreateTaskTool,
+  createSlackScheduleDeleteTaskTool,
+  createSlackScheduleListTasksTool,
+  createSlackScheduleRunTaskNowTool,
+  createSlackScheduleUpdateTaskTool,
+} from "@/chat/tools/slack/schedule-tools";
+import type { ToolDefinition } from "@/chat/tools/definition";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+const SCHEDULER_HEARTBEAT_LIMIT = 10;
+
+function shouldSkipRun(
+  task: ScheduledTask,
+  run: ScheduledRun,
+): string | undefined {
+  if (task.status === "deleted") {
+    return `Scheduled task ${task.id} was deleted before the run started.`;
+  }
+  if (task.status !== "active") {
+    return `Scheduled task ${task.id} was ${task.status} before the run started.`;
+  }
+  if (
+    task.nextRunAtMs !== run.scheduledForMs &&
+    task.runNowAtMs !== run.scheduledForMs
+  ) {
+    return `Scheduled task ${task.id} no longer targets ${new Date(run.scheduledForMs).toISOString()}.`;
+  }
+  return undefined;
+}
+
+function createSchedulerToolContext(
+  ctx: ToolRegistrationHookContext,
+): ToolRuntimeContext {
+  return {
+    channelCapabilities: ctx.channelCapabilities ?? {
+      canAddReactions: false,
+      canCreateCanvas: false,
+      canPostToChannel: false,
+    },
+    channelId: ctx.channelId,
+    messageTs: ctx.messageTs,
+    requester: ctx.requester,
+    sandbox: {} as ToolRuntimeContext["sandbox"],
+    teamId: ctx.teamId,
+    threadTs: ctx.threadTs,
+    userText: ctx.userText,
+  };
+}
+
+async function applyDispatchResult(args: {
+  dispatch: Dispatch;
+  nowMs: number;
+  run: ScheduledRun;
+  store: ReturnType<typeof createStateSchedulerStore>;
+}): Promise<boolean> {
+  if (args.dispatch.status === "completed") {
+    const completed = await args.store.markRunCompleted({
+      completedAtMs: args.nowMs,
+      resultMessageTs: args.dispatch.resultMessageTs,
+      runId: args.run.id,
+      startedAtMs: args.run.startedAtMs!,
+    });
+    if (!completed) {
+      return false;
+    }
+    await args.store.updateTaskAfterRun({
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "completed",
+    });
+    return true;
+  }
+
+  if (args.dispatch.status === "blocked") {
+    const blocked = await args.store.markRunBlocked({
+      completedAtMs: args.nowMs,
+      errorMessage: args.dispatch.errorMessage ?? "Dispatch blocked.",
+      runId: args.run.id,
+      startedAtMs: args.run.startedAtMs!,
+    });
+    if (!blocked) {
+      return false;
+    }
+    await args.store.updateTaskAfterRun({
+      errorMessage: blocked.errorMessage,
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "blocked",
+    });
+    return true;
+  }
+
+  if (args.dispatch.status === "failed") {
+    const failed = await args.store.markRunFailed({
+      completedAtMs: args.nowMs,
+      errorMessage: args.dispatch.errorMessage ?? "Dispatch failed.",
+      runId: args.run.id,
+      startedAtMs: args.run.startedAtMs,
+    });
+    if (!failed) {
+      return false;
+    }
+    await args.store.updateTaskAfterRun({
+      errorMessage: failed.errorMessage,
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "failed",
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/** Create Junior's built-in trusted scheduler plugin. */
+export function createSchedulerPlugin() {
+  return defineJuniorPlugin({
+    name: "scheduler",
+    hooks: {
+      tools(ctx) {
+        if (
+          ctx.disableScheduleTools ||
+          !ctx.channelId ||
+          !ctx.teamId ||
+          !ctx.requester?.userId
+        ) {
+          return {} as Record<string, ToolDefinition<any>>;
+        }
+        const context = createSchedulerToolContext(ctx);
+        return {
+          slackScheduleCreateTask: createSlackScheduleCreateTaskTool(context),
+          slackScheduleListTasks: createSlackScheduleListTasksTool(context),
+          slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(context),
+          slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(context),
+          slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(context),
+        } satisfies Record<string, ToolDefinition<any>>;
+      },
+      async heartbeat(ctx) {
+        const store = createStateSchedulerStore();
+        let dispatchCount = 0;
+        for (const run of await store.listIncompleteRuns()) {
+          if (!run.dispatchId) {
+            continue;
+          }
+          const dispatch = await ctx.agent.get(run.dispatchId);
+          if (!dispatch) {
+            continue;
+          }
+          if (
+            await applyDispatchResult({
+              dispatch,
+              nowMs: ctx.nowMs,
+              run,
+              store,
+            })
+          ) {
+            dispatchCount += 1;
+          }
+        }
+
+        for (
+          let index = dispatchCount;
+          index < SCHEDULER_HEARTBEAT_LIMIT;
+          index += 1
+        ) {
+          const run = await store.claimDueRun({ nowMs: ctx.nowMs });
+          if (!run) {
+            break;
+          }
+          const task = await store.getTask(run.taskId);
+          if (!task) {
+            await store.markRunFailed({
+              completedAtMs: ctx.nowMs,
+              errorMessage: `Scheduled task ${run.taskId} was not found`,
+              runId: run.id,
+            });
+            continue;
+          }
+          const skippedReason = shouldSkipRun(task, run);
+          if (skippedReason) {
+            await store.markRunSkipped({
+              completedAtMs: ctx.nowMs,
+              errorMessage: skippedReason,
+              runId: run.id,
+            });
+            continue;
+          }
+
+          const prompt = buildScheduledTaskRunPrompt({
+            nowMs: ctx.nowMs,
+            run,
+            task,
+          });
+          const dispatch = await ctx.agent.dispatch({
+            idempotencyKey: run.id,
+            destination: task.destination,
+            input: prompt,
+            metadata: {
+              runId: run.id,
+              taskId: task.id,
+            },
+          });
+          await store.markRunDispatched({
+            claimedAtMs: run.claimedAtMs,
+            dispatchId: dispatch.id,
+            nowMs: ctx.nowMs,
+            runId: run.id,
+          });
+          dispatchCount += 1;
+        }
+
+        return { dispatchCount };
+      },
+    },
+  });
+}

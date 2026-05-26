@@ -14,6 +14,7 @@ export interface SchedulerStore {
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
+  listIncompleteRuns(): Promise<ScheduledRun[]>;
   listTasksForTeam(teamId: string): Promise<ScheduledTask[]>;
   markRunBlocked(args: {
     completedAtMs: number;
@@ -40,6 +41,12 @@ export interface SchedulerStore {
   }): Promise<ScheduledRun | undefined>;
   markRunStarted(args: {
     claimedAtMs: number;
+    nowMs: number;
+    runId: string;
+  }): Promise<ScheduledRun | undefined>;
+  markRunDispatched(args: {
+    claimedAtMs: number;
+    dispatchId: string;
     nowMs: number;
     runId: string;
   }): Promise<ScheduledRun | undefined>;
@@ -441,6 +448,25 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     return (await this.state.get<ScheduledRun>(runKey(runId))) ?? undefined;
   }
 
+  async listIncompleteRuns(): Promise<ScheduledRun[]> {
+    await this.state.connect();
+    const ids = await getIndex(this.state, globalTaskIndexKey());
+    const runs: ScheduledRun[] = [];
+    for (const taskId of ids) {
+      const active = await this.state.get<{ runId?: unknown }>(
+        activeRunKey(taskId),
+      );
+      if (typeof active?.runId !== "string") {
+        continue;
+      }
+      const run = await this.getRun(active.runId);
+      if (run && !isFinishedRun(run)) {
+        runs.push(run);
+      }
+    }
+    return runs;
+  }
+
   async markRunStarted(args: {
     claimedAtMs: number;
     nowMs: number;
@@ -450,6 +476,24 @@ class StateAdapterSchedulerStore implements SchedulerStore {
       run.status === "pending" && run.claimedAtMs === args.claimedAtMs
         ? {
             ...run,
+            startedAtMs: args.nowMs,
+            status: "running",
+          }
+        : undefined,
+    );
+  }
+
+  async markRunDispatched(args: {
+    claimedAtMs: number;
+    dispatchId: string;
+    nowMs: number;
+    runId: string;
+  }): Promise<ScheduledRun | undefined> {
+    return await this.updateRun(args.runId, (run) =>
+      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
+        ? {
+            ...run,
+            dispatchId: args.dispatchId,
             startedAtMs: args.nowMs,
             status: "running",
           }

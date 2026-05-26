@@ -4,7 +4,10 @@ import type {
   JuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
+import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import type { ToolDefinition } from "@/chat/tools/definition";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
   SandboxInstance,
@@ -35,6 +38,7 @@ export interface AgentPluginHookRunner {
 
 let agentPlugins: JuniorPlugin[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 
 /** Validate trusted plugin identity before it can affect process-wide hooks. */
 export function validateAgentPlugins(plugins: JuniorPlugin[]): void {
@@ -65,6 +69,45 @@ export function setAgentPlugins(plugins: JuniorPlugin[]): JuniorPlugin[] {
 /** Return the current trusted agent plugins without exposing mutable state. */
 export function getAgentPlugins(): JuniorPlugin[] {
   return [...agentPlugins];
+}
+
+/** Collect turn-scoped tools exposed by trusted plugins. */
+export function getAgentPluginTools(
+  context: ToolRuntimeContext,
+): Record<string, ToolDefinition<any>> {
+  const tools: Record<string, ToolDefinition<any>> = {};
+  for (const plugin of getAgentPlugins()) {
+    const hook = plugin.hooks?.tools;
+    if (!hook) {
+      continue;
+    }
+    const pluginTools = hook({
+      plugin: { name: plugin.name },
+      requester: context.requester,
+      channelCapabilities: context.channelCapabilities,
+      channelId: context.channelId,
+      disableScheduleTools: context.disableScheduleTools,
+      teamId: context.teamId,
+      messageTs: context.messageTs,
+      threadTs: context.threadTs,
+      userText: context.userText,
+      state: createPluginState(plugin.name),
+    });
+    for (const [name, tool] of Object.entries(pluginTools)) {
+      if (!AGENT_PLUGIN_TOOL_NAME_RE.test(name)) {
+        throw new Error(
+          `Trusted plugin tool "${name}" from plugin "${plugin.name}" must be a camelCase identifier`,
+        );
+      }
+      if (tools[name]) {
+        throw new Error(
+          `Duplicate trusted plugin tool "${name}" from plugin "${plugin.name}"`,
+        );
+      }
+      tools[name] = tool as unknown as ToolDefinition<any>;
+    }
+  }
+  return tools;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

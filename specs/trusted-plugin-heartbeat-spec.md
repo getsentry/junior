@@ -26,6 +26,7 @@ The motivating consumer is a scheduler plugin that lets users create scheduled t
 ## Scope
 
 - Trusted plugin heartbeat hook.
+- Trusted plugin tool registration hook.
 - Core-owned internal heartbeat endpoint.
 - Core-owned durable agent dispatch primitive.
 - Serverless continuation model for plugin-claimed work.
@@ -42,13 +43,12 @@ The motivating consumer is a scheduler plugin that lets users create scheduled t
 - Raw Slack Web API access from plugins.
 - Raw agent runtime or `generateAssistantReply` access from plugins.
 - Raw state adapter or Redis access from plugins.
-- New interactive tool registration API.
 
 ## Contracts
 
 ### Trust Boundary
 
-Heartbeat and agent dispatch are trusted plugin capabilities. They are available only to plugins explicitly passed to `createApp({ plugins: [...] })` as trusted runtime plugins.
+Heartbeat and agent dispatch are trusted plugin capabilities. They are available only to Junior-owned built-in trusted plugins and plugins explicitly passed to `createApp({ plugins: [...] })` as trusted runtime plugins.
 
 Declarative `plugin.yaml` manifests must not register heartbeat handlers, internal routes, or agent dispatch behavior.
 
@@ -69,14 +69,31 @@ Plugins own only their domain logic: tools, heartbeat work discovery, durable pl
 
 ### Interactive Tool Registration
 
-This spec does not introduce a new interactive tool registration hook. The
-heartbeat/dispatch substrate is intentionally separate from how scheduler
-management tools are exposed during an interactive turn.
+Trusted plugins may register turn-scoped tools through a narrow hook:
 
-When scheduler management moves behind a plugin boundary, it must use a narrow
-tool-registration surface that preserves the existing tool pipeline: schema
-validation, tool guidance, tracing, and plugin `beforeToolExecute` hooks. That
-surface is a separate contract from `heartbeat(ctx)` and `ctx.agent.dispatch`.
+```ts
+interface TrustedPluginHooks {
+  tools?(ctx: ToolRegistrationContext): Record<string, ToolDefinition>;
+}
+```
+
+`ToolRegistrationContext` exposes only the current turn context needed to
+decide whether tools are available:
+
+- active conversation destination, when present
+- requester, when present
+- channel/team identifiers, when present
+- thread/message timestamps, when present
+- namespaced plugin state
+- current user text
+- schedule-tool suppression for system dispatches
+
+Tools returned by this hook participate in the normal tool pipeline: schema
+validation, tool guidance, tracing, and plugin `beforeToolExecute` hooks.
+
+The built-in scheduler plugin uses this hook to register create/list/update/
+delete/run-now tools only when the active Slack conversation has enough context
+to manage scheduled tasks.
 
 ### Core Heartbeat Endpoint
 
@@ -465,12 +482,10 @@ Core enforces reliability limits even for trusted plugin code:
 
 ### Scheduler Plugin Flow
 
-The scheduler plugin uses this trusted hook for background work:
+The scheduler plugin uses two trusted hooks:
 
-1. `heartbeat(ctx)` for due-run discovery and dispatch.
-
-Interactive schedule management tools are a separate migration concern and must
-continue deriving their destination from the active conversation context.
+1. `tools(ctx)` for interactive schedule management.
+2. `heartbeat(ctx)` for due-run discovery and dispatch.
 
 Heartbeat flow:
 
@@ -544,6 +559,7 @@ Core may expose narrow capabilities:
 
 - namespaced state
 - plugin logger
+- active turn context for tool registration
 - `agent.dispatch`
 - `agent.get`
 

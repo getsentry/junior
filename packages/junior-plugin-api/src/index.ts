@@ -58,6 +58,41 @@ export interface BeforeToolExecuteHookContext {
   };
 }
 
+export type AgentPluginToolExecute<TInput = unknown> = {
+  bivarianceHack(
+    input: TInput,
+    options: { experimental_context?: unknown },
+  ): Promise<unknown> | unknown;
+}["bivarianceHack"];
+
+export interface AgentPluginToolDefinition<TInput = unknown> {
+  annotations?: unknown;
+  description: string;
+  executionMode?: unknown;
+  inputSchema: unknown;
+  prepareArguments?: (args: unknown) => unknown;
+  promptGuidelines?: string[];
+  promptSnippet?: string;
+  execute?: AgentPluginToolExecute<TInput>;
+}
+
+export interface ToolRegistrationHookContext {
+  channelCapabilities?: {
+    canAddReactions: boolean;
+    canCreateCanvas: boolean;
+    canPostToChannel: boolean;
+  };
+  channelId?: string;
+  disableScheduleTools?: boolean;
+  messageTs?: string;
+  plugin: AgentPluginMetadata;
+  requester?: AgentPluginRequester;
+  state: AgentPluginState;
+  teamId?: string;
+  threadTs?: string;
+  userText?: string;
+}
+
 export interface DispatchOptions {
   destination: {
     platform: "slack";
@@ -116,6 +151,9 @@ export interface HeartbeatResult {
 export interface AgentPluginHooks {
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  tools?(
+    ctx: ToolRegistrationHookContext,
+  ): Record<string, AgentPluginToolDefinition>;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;

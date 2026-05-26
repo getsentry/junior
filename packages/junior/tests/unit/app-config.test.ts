@@ -88,7 +88,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(getPluginProviders()).toEqual([]);
-    expect(getAgentPlugins()).toEqual([]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([
+      "scheduler",
+    ]);
   });
 
   it("fails loudly when configured plugin package names are invalid", async () => {
@@ -213,7 +215,10 @@ describe("createApp plugin config", () => {
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
       "trusted",
     ]);
-    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([
+      "scheduler",
+      "trusted",
+    ]);
   });
 
   it("rejects duplicate trusted plugin names before mutating app config", async () => {
@@ -230,7 +235,9 @@ describe("createApp plugin config", () => {
       }),
     ).rejects.toThrow('Duplicate trusted plugin name "dupe"');
 
-    expect(getAgentPlugins()).toEqual([]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([
+      "scheduler",
+    ]);
     expect(getPluginProviders()).toEqual([]);
   });
 
@@ -247,7 +254,9 @@ describe("createApp plugin config", () => {
       'Trusted plugin name "GitHub" must be a lowercase plugin identifier',
     );
 
-    expect(getAgentPlugins()).toEqual([]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([
+      "scheduler",
+    ]);
     expect(getPluginProviders()).toEqual([]);
   });
 });

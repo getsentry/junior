@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type {
   AgentPluginLogger,
   AgentPluginState,
@@ -7,7 +6,7 @@ import type {
   DispatchResult,
 } from "@sentry/junior-plugin-api";
 import { logException, logInfo, logWarn } from "@/chat/logging";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { createPluginState } from "@/chat/plugins/state";
 import {
   createOrGetDispatch,
   getPluginDispatchProjection,
@@ -17,48 +16,7 @@ import { scheduleDispatchCallback } from "./signing";
 import type { DispatchRecord } from "./types";
 import { validateDispatchOptions } from "./validation";
 
-const MAX_PLUGIN_STATE_KEY_LENGTH = 512;
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
-
-function hashKeyPart(value: string): string {
-  return createHash("sha256").update(value).digest("hex").slice(0, 32);
-}
-
-function pluginStateKey(plugin: string, key: string): string {
-  return `junior:plugin_state:${hashKeyPart(plugin)}:${hashKeyPart(key)}`;
-}
-
-function validatePluginStateKey(key: string): void {
-  if (!key.trim()) {
-    throw new Error("Plugin state key is required");
-  }
-  if (key.length > MAX_PLUGIN_STATE_KEY_LENGTH) {
-    throw new Error("Plugin state key exceeds the maximum length");
-  }
-}
-
-function createPluginState(plugin: string): AgentPluginState {
-  return {
-    async delete(key) {
-      validatePluginStateKey(key);
-      const state = getStateAdapter();
-      await state.connect();
-      await state.delete(pluginStateKey(plugin, key));
-    },
-    async get(key) {
-      validatePluginStateKey(key);
-      const state = getStateAdapter();
-      await state.connect();
-      return (await state.get(pluginStateKey(plugin, key))) ?? undefined;
-    },
-    async set(key, value, ttlMs) {
-      validatePluginStateKey(key);
-      const state = getStateAdapter();
-      await state.connect();
-      await state.set(pluginStateKey(plugin, key), value, ttlMs);
-    },
-  };
-}
 
 function createPluginLogger(plugin: string): AgentPluginLogger {
   return {

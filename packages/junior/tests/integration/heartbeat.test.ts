@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
+import { createSchedulerPlugin } from "@/chat/scheduler/plugin";
+import { createStateSchedulerStore } from "@/chat/scheduler/store";
+import type { ScheduledTask } from "@/chat/scheduler/types";
 import {
   createOrGetDispatch,
   getDispatchRecord,
@@ -22,6 +25,34 @@ vi.hoisted(() => {
 function collectWaitUntil(tasks: Promise<unknown>[]): WaitUntilFn {
   return (task) => {
     tasks.push(typeof task === "function" ? task() : task);
+  };
+}
+
+function createTask(): ScheduledTask {
+  const nextRunAtMs = Date.parse("2026-05-26T12:00:00.000Z");
+  return {
+    id: "sched_plugin_1",
+    createdAtMs: nextRunAtMs,
+    createdBy: { slackUserId: "U123" },
+    destination: {
+      platform: "slack",
+      teamId: "T123",
+      channelId: "C123",
+    },
+    nextRunAtMs,
+    schedule: {
+      description: "Once at noon",
+      kind: "one_off",
+      timezone: "UTC",
+    },
+    status: "active",
+    task: {
+      title: "Digest",
+      objective: "Post a digest.",
+      instructions: ["Summarize the latest state."],
+    },
+    updatedAtMs: nextRunAtMs,
+    version: 1,
   };
 }
 
@@ -211,6 +242,68 @@ describe("trusted plugin heartbeat", () => {
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "failed",
       errorMessage: "Dispatch exceeded retry attempts.",
+    });
+  });
+
+  it("dispatches and reconciles scheduled runs from the scheduler plugin", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    await store.saveTask(createTask());
+
+    const firstWaitUntilTasks: Promise<unknown>[] = [];
+    const firstResponse = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(firstWaitUntilTasks),
+    );
+    expect(firstResponse.status).toBe(202);
+    await Promise.all(firstWaitUntilTasks);
+
+    const running = await store.getRun(
+      `sched_plugin_1:${Date.parse("2026-05-26T12:00:00.000Z")}`,
+    );
+    expect(running).toMatchObject({
+      status: "running",
+      dispatchId: expect.any(String),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await withDispatchLock(running!.dispatchId!, async (state) => {
+      const record = await state.get<DispatchRecord>(
+        getDispatchStorageKey(running!.dispatchId!),
+      );
+      if (!record) {
+        throw new Error("Expected dispatch record to exist");
+      }
+      await updateDispatchRecord(state, {
+        ...record,
+        resultMessageTs: "1700000000.000001",
+        status: "completed",
+      });
+    });
+
+    const secondWaitUntilTasks: Promise<unknown>[] = [];
+    const secondResponse = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(secondWaitUntilTasks),
+    );
+    expect(secondResponse.status).toBe(202);
+    await Promise.all(secondWaitUntilTasks);
+
+    await expect(store.getRun(running!.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000001",
+    });
+    await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
+      lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      status: "paused",
     });
   });
 });

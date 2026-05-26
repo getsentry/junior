@@ -15,13 +15,6 @@ import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-l
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
-  createSlackScheduleCreateTaskTool,
-  createSlackScheduleDeleteTaskTool,
-  createSlackScheduleListTasksTool,
-  createSlackScheduleRunTaskNowTool,
-  createSlackScheduleUpdateTaskTool,
-} from "@/chat/tools/slack/schedule-tools";
-import {
   createSlackCanvasCreateTool,
   createSlackCanvasEditTool,
   createSlackCanvasReadTool,
@@ -43,6 +36,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
+import { getAgentPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -159,17 +153,15 @@ export function createTools(
     );
   }
 
-  if (
-    context.disableScheduleTools !== true &&
-    context.channelId &&
-    context.teamId &&
-    context.requester?.userId
-  ) {
-    tools.slackScheduleCreateTask = createSlackScheduleCreateTaskTool(context);
-    tools.slackScheduleListTasks = createSlackScheduleListTasksTool(context);
-    tools.slackScheduleUpdateTask = createSlackScheduleUpdateTaskTool(context);
-    tools.slackScheduleDeleteTask = createSlackScheduleDeleteTaskTool(context);
-    tools.slackScheduleRunTaskNow = createSlackScheduleRunTaskNowTool(context);
+  for (const [name, pluginTool] of Object.entries(
+    getAgentPluginTools(context),
+  )) {
+    if (tools[name]) {
+      throw new Error(
+        `Trusted plugin tool "${name}" conflicts with a core tool`,
+      );
+    }
+    tools[name] = pluginTool;
   }
 
   return tools;

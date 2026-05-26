@@ -90,6 +90,7 @@ export interface ScheduledRun {
   attempt: number;
   claimedAtMs: number;
   completedAtMs?: number;
+  dispatchId?: string;
   errorMessage?: string;
   idempotencyKey: string;
   resultMessageTs?: string;
