@@ -104,4 +104,25 @@ describe("prompt builders", () => {
     expect(turnContext).toContain("- exact edits");
     expect(turnContext).toContain("- unique oldText");
   });
+
+  it("does not expose plugin ownership as prompt knowledge", () => {
+    const turnContext = buildTurnContextPrompt({
+      availableSkills: [
+        {
+          name: "demo-skill",
+          description: "Demo workflow",
+          pluginProvider: "demo-provider",
+          skillPath: "/tmp/skills/demo-skill",
+        },
+      ],
+      activeSkills: [],
+      activeMcpCatalogs: [],
+      invocation: null,
+      turnState: "fresh",
+    });
+
+    expect(turnContext).toContain("demo-skill");
+    expect(turnContext).not.toContain("demo-provider");
+    expect(turnContext).not.toContain("<providers>");
+  });
 });
