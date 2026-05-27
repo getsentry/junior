@@ -27,7 +27,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 2. Execute via CLI:
 
 - Use `sentry <command>` for structured queries.
-- The runtime injects `SENTRY_AUTH_TOKEN` automatically for authenticated `sentry` CLI commands in this skill.
+- The runtime authenticates Sentry HTTP traffic for this skill. Do not set or print token env vars.
 - Read [references/cli-commands.md](references/cli-commands.md) when choosing command shapes, target formats, flags, API fallback, or troubleshooting behavior.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
 - Prefer `--json` when parsing or summarizing results.

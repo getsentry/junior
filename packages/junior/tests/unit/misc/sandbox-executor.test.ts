@@ -251,9 +251,6 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
-    delete process.env.JUNIOR_EVAL_ENABLE_FAULTS;
-    delete process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS;
-    delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "test-secret";
   });
@@ -726,7 +723,7 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("sentry-cli issues list");
   });
 
-  it("makes registered provider credentials available to sandbox commands", async () => {
+  it("makes registered provider placeholders available to sandbox commands", async () => {
     const sandbox = makeSandbox("sbx_registered_credentials");
     sandboxGetMock.mockResolvedValue(sandbox);
     vi.mocked(createBashTool).mockResolvedValue({
@@ -799,52 +796,6 @@ describe("createSandboxExecutor", () => {
       stderr:
         "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
     });
-  });
-
-  it("supports eval-only bash stream interruption fault injection", async () => {
-    process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
-    process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = "1";
-    const sandbox = makeSandbox("sbx_fault_injection");
-    sandbox.runCommand.mockResolvedValueOnce({
-      exitCode: 0,
-      stdout: async () => "ok\n",
-      stderr: async () => "",
-    });
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-
-    const executor = createSandboxExecutor({
-      sandboxId: "sbx_fault_injection",
-    });
-    executor.configureSkills([]);
-
-    const interrupted = await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo first",
-      },
-    });
-    const recovered = await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo second",
-      },
-    });
-
-    expect(interrupted.result).toMatchObject({
-      ok: false,
-      exit_code: 125,
-    });
-    expect(recovered.result).toMatchObject({
-      ok: true,
-      stdout: "ok\n",
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
   });
 
   it("routes matching bash commands through custom command handler", async () => {
@@ -1275,38 +1226,6 @@ describe("createSandboxExecutor", () => {
       name: "sbx_existing",
       resume: true,
     });
-  });
-
-  it("installs the eval gh shim when test credentials are enabled", async () => {
-    process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-    const sandbox = makeSandbox("sbx_eval_gh");
-    sandboxCreateMock.mockResolvedValue(sandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await executor.createSandbox();
-
-    const syncedFiles = sandbox.writeFiles.mock.calls[0]?.[0] as Array<{
-      path: string;
-      content: Buffer;
-    }>;
-    expect(syncedFiles).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          path: "/vercel/sandbox/.junior/bin/gh",
-        }),
-      ]),
-    );
-    const chmodCall = sandbox.runCommand.mock.calls.find(
-      (call) =>
-        call[0]?.cmd === "bash" &&
-        typeof call[0]?.args?.[1] === "string" &&
-        call[0].args[1].includes(
-          "'chmod' '0755' '/vercel/sandbox/.junior/bin/gh'",
-        ),
-    );
-    expect(chmodCall).toBeDefined();
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {

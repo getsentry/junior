@@ -233,6 +233,9 @@ importers:
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../junior-sentry
+      "@sentry/junior-testing":
+        specifier: workspace:*
+        version: link:../junior-testing
       chat:
         specifier: 4.29.0
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
@@ -259,6 +262,12 @@ importers:
   packages/junior-notion: {}
 
   packages/junior-sentry: {}
+
+  packages/junior-testing:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
   "@ai-sdk/gateway@3.0.119":

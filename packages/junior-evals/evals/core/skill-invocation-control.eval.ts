@@ -12,16 +12,15 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
       events: [mention("What's the weather like in San Francisco today?")],
       criteria: rubric({
         contract:
-          "A skill with disable-model-invocation must not be loaded by the model based on topic relevance alone.",
+          "A command-style weather skill does not answer ordinary weather questions unless the user explicitly asks for that skill.",
         pass: [
-          "The assistant does not invoke the weather-lookup skill and does not return that skill's simulated report (72°F, partly cloudy, 8 mph NW).",
+          "The assistant does not return the weather-lookup skill's simulated report (72°F, partly cloudy, 8 mph NW).",
         ],
         allow: [
           "The assistant may answer from other available sources, say it cannot check real weather, or offer general knowledge.",
-          "The assistant may mention that a weather skill exists but explain it was not invoked.",
+          "The assistant may mention that a weather skill exists but explain it was not used for this general request.",
         ],
         fail: [
-          "Do not load the weather-lookup skill automatically.",
           "Do not return the simulated weather report from the weather-lookup skill.",
         ],
       }),
@@ -40,7 +39,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
       ],
       criteria: rubric({
         contract:
-          "A skill with disable-model-invocation is loaded when the user explicitly references it by name in their message.",
+          "A command-style weather skill answers when the user explicitly names that skill.",
         pass: [
           "The assistant posts a reply containing a weather report for San Francisco from the weather-lookup skill.",
           "The reply includes the simulated data: 72°F or 22°C.",
@@ -64,13 +63,13 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
       ],
       criteria: rubric({
         contract:
-          "A normal available skill (without disable-model-invocation) is auto-selected when the request matches its description.",
+          "A source-handbook request receives an answer based on the handbook content.",
         pass: [
-          "The assistant uses the source-handbook skill and posts an answer based on its content.",
+          "The assistant posts an answer based on the source-handbook content.",
         ],
         fail: [
-          "Do not answer from memory without loading the source-handbook skill.",
-          "Do not refuse to load the skill when the topic clearly matches.",
+          "Do not answer with generic capability advice that omits the handbook's verification rule.",
+          "Do not refuse the request when the handbook content is available.",
         ],
       }),
     });

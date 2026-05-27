@@ -31,6 +31,18 @@ import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
 
+/** Request data passed to sandbox egress HTTP interceptors. */
+export interface SandboxEgressHttpInterceptorInput {
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}
+
+/** Hook for replacing a credential-injected sandbox HTTP request with a test response. */
+export type SandboxEgressHttpInterceptor = (
+  input: SandboxEgressHttpInterceptorInput,
+) => Promise<Response | undefined>;
+
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
@@ -42,6 +54,8 @@ export interface JuniorAppOptions {
    * their package config is merged with the catalog bundled by `juniorNitro()`.
    */
   plugins?: PluginConfig | JuniorPlugin[];
+  /** Intercept credential-injected sandbox HTTP requests before live forwarding. */
+  httpInterceptor?: SandboxEgressHttpInterceptor;
   waitUntil?: WaitUntilFn;
 }
 
@@ -222,7 +236,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // Vercel Sandbox proxying preserves the original upstream path, so detect
     // authenticated proxy traffic before ordinary application routes claim it.
     if (isSandboxEgressRequest(c.req.raw)) {
-      return await sandboxEgressProxyALL(c.req.raw);
+      return await sandboxEgressProxyALL(c.req.raw, {
+        interceptHttp: options?.httpInterceptor,
+      });
     }
     await next();
   });

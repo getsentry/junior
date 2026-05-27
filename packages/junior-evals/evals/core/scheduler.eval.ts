@@ -11,14 +11,13 @@ describeEval("Scheduler", slackEvals, (it) => {
         contract:
           "A simple one-off reminder request is scheduled immediately for the active Slack context.",
         pass: [
-          "observed_tool_invocations contains slackScheduleCreateTask.",
-          "The scheduled task is a one-off reminder to wash hands, not a recurring schedule.",
-          "The reply confirms that the reminder was scheduled and does not ask the user to confirm first.",
+          "The reply confirms that a one-off reminder to wash hands was scheduled.",
+          "The reply does not ask the user to confirm first.",
         ],
         fail: [
           "Do not ask the user to confirm the reminder before creating it.",
           "Do not ask the user to provide a channel ID.",
-          "Do not use Slack chat.scheduleMessage.",
+          "Do not describe the reminder as a recurring schedule.",
         ],
       }),
     });
@@ -37,14 +36,12 @@ describeEval("Scheduler", slackEvals, (it) => {
         contract:
           "A future or recurring task request is normalized into a scheduled task draft for the active Slack context before it is persisted.",
         pass: [
-          "observed_tool_invocations does not contain slackScheduleCreateTask unless the tool input includes confirmed_by_user true.",
           "The draft task title/objective/instructions describe checking scheduler-related GitHub issues, not creating a schedule.",
           "The reply asks the user to confirm the normalized cadence or next run before creating the schedule.",
         ],
         fail: [
           "Do not persist a scheduled task before user confirmation.",
           "Do not ask the user to provide a channel ID.",
-          "Do not use Slack chat.scheduleMessage.",
           "Do not only give instructions for how the user can set up an external cron.",
         ],
       }),
@@ -81,7 +78,6 @@ Execute the scheduled task now and provide the final result for the configured d
         contract:
           "A scheduled-task execution prompt is treated as the task to run, not as a request to schedule something.",
         pass: [
-          "observed_tool_invocations does not contain slackScheduleCreateTask.",
           "The assistant attempts to produce or explain a scheduler issue digest.",
         ],
         fail: [

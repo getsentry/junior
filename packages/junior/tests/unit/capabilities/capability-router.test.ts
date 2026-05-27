@@ -8,7 +8,7 @@ describe("provider credential router", () => {
       issue: vi.fn(async () => ({
         id: "lease-1",
         provider: "github",
-        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
+        env: {},
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       })),
     };
@@ -36,7 +36,7 @@ describe("provider credential router", () => {
       issue: vi.fn(async () => ({
         id: "lease-1",
         provider: "github",
-        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
+        env: {},
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       })),
     };

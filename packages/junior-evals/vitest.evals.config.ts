@@ -22,6 +22,8 @@ for (const envRoot of [workspaceRoot, juniorPackageRoot]) {
   }
 }
 
+process.env.JUNIOR_SECRET = "junior-test-secret";
+process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${process.pid}`;
 
 export default defineConfig({
@@ -33,7 +35,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    fileParallelism: false,
     include: ["evals/**/*.eval.ts"],
+    maxWorkers: 1,
     setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
     reporters: [new DefaultEvalReporter()],
     testTimeout: 300_000,

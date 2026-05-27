@@ -52,8 +52,11 @@ function forwardUrlFor(policy: unknown, host: string): string {
 }
 
 function proxiedRequest(input: {
+  body?: BodyInit;
   forwardURL: string;
   headers?: Record<string, string>;
+  method?: string;
+  upstreamHost?: string;
   upstreamPath?: string;
 }): Request {
   const url = new URL(input.forwardURL);
@@ -64,11 +67,16 @@ function proxiedRequest(input: {
     : "";
 
   return new Request(url, {
+    method: input.method ?? "GET",
+    ...(input.body !== undefined ? { body: input.body } : {}),
     headers: {
-      "vercel-forwarded-host": PROVIDER_HOST,
+      "vercel-forwarded-host": input.upstreamHost ?? PROVIDER_HOST,
       "vercel-forwarded-path": upstreamPath,
       "vercel-forwarded-scheme": "https",
       "vercel-sandbox-oidc-token": "signed-vercel-token",
+      ...(input.body !== undefined
+        ? { "content-type": "application/json" }
+        : {}),
       ...(input.headers ?? {}),
     },
   });
@@ -81,11 +89,10 @@ describe("sandbox egress proxy integration", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
-      EVAL_ENABLE_TEST_CREDENTIALS: "1",
-      EVAL_TEST_CREDENTIAL_TOKEN: "integration-egress-token",
       JUNIOR_BASE_URL: BASE_URL,
       JUNIOR_SECRET: "integration-secret",
       JUNIOR_STATE_ADAPTER: "memory",
+      SANDBOX_EGRESS_TEST_TOKEN: "integration-egress-token",
     };
     pluginApp = await createPluginAppFixture([FIXTURE_PLUGIN_ROOT]);
     modules = await loadModules();
@@ -138,5 +145,41 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("intercepts credential-injected provider traffic before live forwarding", async () => {
+    const requesterToken = modules.session.createSandboxEgressRequesterToken({
+      requesterId: REQUESTER_ID,
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      requesterToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
+    const upstreamFetch = vi.fn();
+    const interceptHttp = vi.fn(async (_input: { request: Request }) => {
+      return Response.json({ ok: true });
+    });
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        upstreamPath: "/v1/repos?query=first",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        interceptHttp,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(interceptHttp).toHaveBeenCalledTimes(1);
+    expect(
+      interceptHttp.mock.calls[0]?.[0].request.headers.get("authorization"),
+    ).toBe("Bearer integration-egress-token");
   });
 });

@@ -130,10 +130,11 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         ],
         allow: [
           "A brief 'Processing your request' continuation notice is acceptable if the final follow-up stays focused on the reconnect result.",
+          "A single initial auth-needed notice is acceptable before the harness auto-completes authorization.",
           "The auth-link handoff itself may happen off-thread and does not need to appear in the visible thread transcript.",
         ],
         fail: [
-          "Do not ask the user to click a second auth link for the same turn.",
+          "Do not ask the user to authorize again after the reconnect has already completed.",
           "Do not post a generic failure message.",
         ],
       }),

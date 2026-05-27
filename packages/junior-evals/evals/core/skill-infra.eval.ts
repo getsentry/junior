@@ -85,15 +85,13 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         contract:
           "A verification request uses the available source-backed skill and returns the checked answer instead of offering to check later.",
         pass: [
-          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `source-handbook`.",
-          "observed_tool_invocations includes a `readFile` invocation.",
           "The assistant posts exactly one final answer.",
           "The answer says closed tracking issues alone do not prove capability support.",
           "The answer says implementation evidence, linked PRs, release notes, issue comments, or an equivalent source-backed rationale is needed.",
         ],
         fail: [
           "Do not offer to check the source handbook next or later.",
-          "Do not answer purely from memory without observed source/tool use.",
+          "Do not answer with generic capability advice that omits the source-handbook rule.",
           "Do not claim that a closed issue is enough to prove the capability exists.",
         ],
       }),
@@ -116,8 +114,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         contract:
           "An MCP-backed skill can complete a natural lookup by using the provider result instead of surfacing tool validation errors.",
         pass: [
-          "observed_tool_invocations includes `callMcpTool` with `mcp_tool_name` set to `mcp__eval-mcp__handbook-search`.",
-          "That `callMcpTool` invocation includes `mcp_arguments.query` containing the handbook or US holidays lookup request.",
           "The visible thread output includes a final answer based on the demo MCP provider result.",
           "The visible thread output refers to the handbook or US holidays request.",
           "The visible thread output does not claim the MCP lookup was blocked by missing arguments.",

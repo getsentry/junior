@@ -10,6 +10,7 @@ const {
   const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   const observedRuntimeIds = {
+    juniorBaseUrl: undefined as string | undefined,
     messageThreadId: undefined as string | undefined,
     threadId: undefined as string | undefined,
   };
@@ -23,6 +24,7 @@ const {
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
       ) => {
+        observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
         await thread.post("observed");
@@ -33,6 +35,7 @@ const {
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
       ) => {
+        observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
         await thread.post("observed");
@@ -65,6 +68,7 @@ describe("behavior harness", () => {
   });
 
   afterEach(() => {
+    observedRuntimeIds.juniorBaseUrl = undefined;
     observedRuntimeIds.threadId = undefined;
     observedRuntimeIds.messageThreadId = undefined;
     handleNewMentionMock.mockClear();
@@ -107,6 +111,59 @@ describe("behavior harness", () => {
         thread_ts: "1700000000.0001",
       },
     ]);
+  });
+
+  it("rejects sandbox HTTP interception evals without a tunnel token", async () => {
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    const previousTunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
+    process.env.JUNIOR_BASE_URL = "https://junior-eval.example.dev";
+    delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
+    try {
+      await expect(
+        runEvalScenario({
+          overrides: {
+            credential_providers: ["github"],
+          },
+          events: [],
+        }),
+      ).rejects.toThrow(
+        "Eval sandbox HTTP interception requires CLOUDFLARE_TUNNEL_TOKEN",
+      );
+    } finally {
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+      if (previousTunnelToken === undefined) {
+        delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
+      } else {
+        process.env.CLOUDFLARE_TUNNEL_TOKEN = previousTunnelToken;
+      }
+    }
+  });
+
+  it("rejects sandbox HTTP interception evals without a sandbox-reachable base URL", async () => {
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    delete process.env.JUNIOR_BASE_URL;
+    try {
+      await expect(
+        runEvalScenario({
+          overrides: {
+            credential_providers: ["github"],
+          },
+          events: [],
+        }),
+      ).rejects.toThrow(
+        "Eval sandbox HTTP interception requires JUNIOR_BASE_URL",
+      );
+    } finally {
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+    }
   });
 
   it("routes two same-thread mention-shaped events through the queued runtime in order", async () => {

@@ -3,6 +3,8 @@ import {
   EVAL_MCP_AUTH_ORIGIN,
   evalMcpAuthHandlers,
 } from "./handlers/eval-mcp-auth";
+import { allowsLiveTestHttpHost } from "../../../junior-testing/src/http";
+import { githubApiHandlers } from "./handlers/github-api";
 import { setupServer } from "msw/node";
 import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
@@ -10,26 +12,26 @@ import { slackWebhookHandlers } from "./handlers/slack-webhooks";
 const EVAL_MCP_AUTH_HOSTNAME = new URL(EVAL_MCP_AUTH_ORIGIN).hostname;
 const EVAL_OAUTH_HOSTNAME = new URL(EVAL_OAUTH_ORIGIN).hostname;
 
-function isSlackHost(hostname: string): boolean {
-  return hostname === "slack.com" || hostname === "files.slack.com";
-}
+const HOST_HTTP_FIXTURE_ALLOWLIST = new Set([
+  "files.slack.com",
+  "slack.com",
+  EVAL_MCP_AUTH_HOSTNAME,
+  EVAL_OAUTH_HOSTNAME,
+]);
 
-function requiresMockedHandling(hostname: string): boolean {
-  return (
-    isSlackHost(hostname) ||
-    hostname === EVAL_MCP_AUTH_HOSTNAME ||
-    hostname === EVAL_OAUTH_HOSTNAME
-  );
-}
-
-export function enforceUnhandledSlackRequestFailure(request: Request): void {
+export function enforceUnhandledExternalRequestFailure(request: Request): void {
   const url = new URL(request.url);
-  if (!requiresMockedHandling(url.hostname)) {
+  if (
+    allowsLiveTestHttpHost(url.hostname, {
+      juniorBaseUrl: process.env.JUNIOR_BASE_URL,
+    }) &&
+    !HOST_HTTP_FIXTURE_ALLOWLIST.has(url.hostname)
+  ) {
     return;
   }
 
   throw new Error(
-    `[MSW] Unhandled mocked request: ${request.method} ${request.url}`,
+    `[HTTP MOCK] Unhandled external request: ${request.method} ${request.url}`,
   );
 }
 
@@ -38,4 +40,5 @@ export const mswServer = setupServer(
   ...slackWebhookHandlers,
   ...evalMcpAuthHandlers,
   ...evalOAuthHandlers,
+  ...githubApiHandlers,
 );

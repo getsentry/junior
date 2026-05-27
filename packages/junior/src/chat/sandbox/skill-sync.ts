@@ -1,9 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { buildEvalGitHubCliStub } from "@/chat/sandbox/eval-gh-stub";
-import { buildEvalOauthCliStub } from "@/chat/sandbox/eval-oauth-stub";
-import { buildEvalSentryCliStub } from "@/chat/sandbox/eval-sentry-stub";
-import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import {
   SANDBOX_DATA_ROOT,
   SANDBOX_SKILLS_ROOT,
@@ -50,7 +46,6 @@ async function listFilesRecursive(root: string): Promise<string[]> {
 
 async function buildSkillSyncFiles(
   availableSkills: SkillMetadata[],
-  runtimeBinDir: string,
   referenceFiles?: string[],
 ): Promise<SkillSyncFile[]> {
   const filesToWrite: SkillSyncFile[] = [];
@@ -95,24 +90,6 @@ async function buildSkillSyncFiles(
         content: await fs.readFile(absoluteFile),
       });
     }
-  }
-
-  if (process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1") {
-    filesToWrite.push({
-      path: `${runtimeBinDir}/gh`,
-      content: Buffer.from(buildEvalGitHubCliStub(), "utf8"),
-    });
-    filesToWrite.push({
-      path: `${runtimeBinDir}/sentry`,
-      content: Buffer.from(buildEvalSentryCliStub(), "utf8"),
-    });
-  }
-
-  if (availableSkills.some((skill) => skill.name === "eval-oauth")) {
-    filesToWrite.push({
-      path: `${runtimeBinDir}/eval-oauth`,
-      content: Buffer.from(buildEvalOauthCliStub(), "utf8"),
-    });
   }
 
   return filesToWrite;
@@ -229,7 +206,6 @@ export async function syncSkillsToSandbox(params: {
     attributes: Record<string, unknown>,
     callback: () => Promise<T>,
   ) => Promise<T>;
-  runtimeBinDir: string;
   workspaceRoot?: string;
 }): Promise<void> {
   const workspaceRoot = params.workspaceRoot ?? SANDBOX_WORKSPACE_ROOT;
@@ -243,7 +219,6 @@ export async function syncSkillsToSandbox(params: {
     async () => {
       const filesToWrite = await buildSkillSyncFiles(
         params.skills,
-        params.runtimeBinDir,
         params.referenceFiles,
       );
       const bytesWritten = filesToWrite.reduce(
@@ -273,23 +248,6 @@ export async function syncSkillsToSandbox(params: {
             }
 
             await params.sandbox.writeFiles(filesToWrite);
-            const executableFiles = filesToWrite
-              .map((file) => file.path)
-              .filter((filePath) =>
-                filePath.startsWith(`${params.runtimeBinDir}/`),
-              );
-            for (const filePath of executableFiles) {
-              const chmod = await runNonInteractiveCommand(params.sandbox, {
-                cmd: "chmod",
-                args: ["0755", filePath],
-                cwd: workspaceRoot,
-              });
-              if (chmod.exitCode !== 0) {
-                throw new Error(
-                  `sandbox chmod failed for ${filePath}: ${(await chmod.stderr()) || (await chmod.stdout()) || `exit ${chmod.exitCode}`}`,
-                );
-              }
-            }
           } catch (error) {
             throwSandboxOperationError("sandbox writeFiles", error, true);
           }

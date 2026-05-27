@@ -45,8 +45,17 @@ const DECODED_RESPONSE_HEADERS = new Set([
   "content-length",
 ]);
 const AUTH_REJECTION_STATUS = new Set([401, 403]);
+
+/** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
+export type SandboxEgressHttpInterceptor = (input: {
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}) => Promise<Response | undefined>;
+
 interface ProxyDeps {
   fetch?: typeof fetch;
+  interceptHttp?: SandboxEgressHttpInterceptor;
   verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 
@@ -358,7 +367,7 @@ export function isSandboxEgressForwardedRequest(request: Request): boolean {
   );
 }
 
-/** Proxy one Vercel Sandbox firewall egress request through lazy credential injection. */
+/** Proxy one Vercel Sandbox firewall egress request through lazy credential headers. */
 export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},
@@ -527,6 +536,19 @@ export async function proxySandboxEgressRequest(
   const body = await requestBodyBytes(request);
   const fetchImpl = deps.fetch ?? fetch;
   const headers = requestHeaders(request, lease, upstreamUrl.hostname);
+  const intercepted = await deps.interceptHttp?.({
+    provider,
+    request: new Request(upstreamUrl, {
+      method: request.method,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+    }),
+    upstreamUrl,
+  });
+  if (intercepted) {
+    return intercepted;
+  }
+
   const upstream = await fetchImpl(upstreamUrl, {
     method: request.method,
     headers,

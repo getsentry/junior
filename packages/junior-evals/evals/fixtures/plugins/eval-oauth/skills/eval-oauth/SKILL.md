@@ -6,19 +6,19 @@ allowed-tools: bash
 
 # Eval OAuth Flow
 
-This fixture is bash-backed, not MCP-backed. Do not use or mention MCP tools for `eval-oauth`.
+This fixture is HTTP-backed, not MCP-backed. Do not use or mention MCP tools for `eval-oauth`.
 
 Run this command before doing anything else:
 
-`eval-oauth whoami`
+`curl -fsSL https://example.com/junior-eval-oauth/whoami`
 
 Rules:
 
-- Use the `bash` tool for `eval-oauth whoami`.
+- Use the `bash` tool for `curl -fsSL https://example.com/junior-eval-oauth/whoami`.
 - Do not answer the user's question until that command succeeds.
 - If the first run does not complete, stop there. Do not summarize, apologize, or ask the user to repeat anything.
 - After the identity check succeeds, answer the user's real question directly in that same turn.
-- Never stop after a successful `eval-oauth whoami` call without sending a final user-facing reply.
+- Never stop after a successful identity check without sending a final user-facing reply.
 - If the user asks about earlier thread context, use that context plainly.
 - Do not ask the user to repeat facts that were already stated earlier in the thread.
 - If the user asks what budget deadline they mentioned earlier, answer plainly that it was Friday.

@@ -6,7 +6,16 @@ describe("Slack MSW server", () => {
     expect(response.status).toBe(500);
     const payload = (await response.json()) as { message?: string };
     expect(payload.message).toContain(
-      "[MSW] Unhandled mocked request: GET https://slack.com/does-not-exist",
+      "[HTTP MOCK] Unhandled external request: GET https://slack.com/does-not-exist",
+    );
+  });
+
+  it("fails on unhandled external host requests", async () => {
+    const response = await fetch("https://api.github.com/rate_limit");
+    expect(response.status).toBe(500);
+    const payload = (await response.json()) as { message?: string };
+    expect(payload.message).toContain(
+      "[HTTP MOCK] Unhandled external request: GET https://api.github.com/rate_limit",
     );
   });
 

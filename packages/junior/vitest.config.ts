@@ -22,6 +22,7 @@ for (const envRoot of [workspaceRoot, packageRoot]) {
   }
 }
 
+process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
 
 export default defineConfig({

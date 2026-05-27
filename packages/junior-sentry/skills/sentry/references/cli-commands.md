@@ -2,8 +2,8 @@
 
 Open this file when selecting a Sentry CLI command, checking target syntax, or diagnosing an unknown-command failure.
 
-All commands use `sentry` and read `SENTRY_AUTH_TOKEN` from environment.
-The npm `sentry` package is intentionally installed at runtime from the plugin manifest, so verify live help before blocking on a missing command.
+All commands use `sentry`; authenticated Sentry HTTP traffic is supplied by the runtime.
+The npm `sentry` package is intentionally installed at runtime from the plugin manifest, so verify live help before blocking on a missing command. Do not configure or print token env vars.
 
 ## Command selection rules
 

@@ -7,12 +7,12 @@ capabilities:
 credentials:
   type: oauth-bearer
   domains:
-    - eval-oauth.example.test
+    - example.com
   auth-token-env: EVAL_OAUTH_ACCESS_TOKEN
 
 oauth:
   client-id-env: EVAL_OAUTH_CLIENT_ID
   client-secret-env: EVAL_OAUTH_CLIENT_SECRET
-  authorize-endpoint: https://eval-oauth.example.test/oauth/authorize
-  token-endpoint: https://eval-oauth.example.test/oauth/token
+  authorize-endpoint: https://example.com/junior-eval-oauth/oauth/authorize
+  token-endpoint: https://example.com/junior-eval-oauth/oauth/token
   scope: read

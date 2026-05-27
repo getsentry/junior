@@ -2,8 +2,8 @@ import { http, HttpResponse } from "msw";
 
 export const EVAL_OAUTH_PROVIDER = "eval-oauth";
 export const EVAL_OAUTH_CODE = "eval-oauth-code";
-export const EVAL_OAUTH_ORIGIN = "https://eval-oauth.example.test";
-const EVAL_OAUTH_TOKEN_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/oauth/token`;
+export const EVAL_OAUTH_ORIGIN = "https://example.com";
+const EVAL_OAUTH_TOKEN_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/token`;
 const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
 
 export function resetEvalOAuthMockState(): void {}

@@ -7,6 +7,7 @@
 
 ## Changelog
 
+- 2026-05-27: Added fail-closed external HTTP isolation for tests/evals with explicit local, model, and sandbox control-plane exceptions.
 - 2026-04-21: Replaced the old layer ordering with a simpler decision rule: integration by default for product/runtime changes, evals as the integration-style layer for agent behavior, unit only for local deterministic logic.
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated test fixture path references to repo-root paths under `packages/junior/`.
@@ -53,17 +54,18 @@ Do not default to unit tests for runtime behavior just because they are easier t
 Layer selection is mandatory: classify the test contract first and choose `unit` vs `integration` vs `eval` before writing assertions.
 
 1. Tests must be deterministic and isolated.
-2. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
-3. Use centralized fixtures/factories (`packages/junior/tests/fixtures/slack/*`) over ad-hoc payload literals when available.
-4. Prefer asserting user-visible behavior and external contracts over implementation details.
-5. Keep test names descriptive of outcomes, not implementation mechanics.
-6. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
-7. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
-8. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary.
-9. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
-10. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
-11. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
-12. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
+2. External HTTP is blocked by default in tests and evals; use MSW or the shared HTTP interceptor fixtures. Local URLs, model endpoints, and Vercel sandbox/OIDC control-plane traffic are the only live exceptions.
+3. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
+4. Use centralized fixtures/factories (`packages/junior/tests/fixtures/slack/*`) over ad-hoc payload literals when available.
+5. Prefer asserting user-visible behavior and external contracts over implementation details.
+6. Keep test names descriptive of outcomes, not implementation mechanics.
+7. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
+8. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
+9. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary.
+10. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
+11. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
+12. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
+13. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
 
 ## Coverage Budget (Avoid Over-Testing)
 

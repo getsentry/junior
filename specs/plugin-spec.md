@@ -482,13 +482,7 @@ All existing functions (`getCapabilityProvider`, `isKnownCapability`, etc.) work
 for (const plugin of getPluginProviders()) {
   const { apiHeaders, commandEnv, credentials, name } = plugin.manifest;
   if (!credentials && !apiHeaders) continue;
-  brokersByProvider[name] = useTestBroker
-    ? new TestCredentialBroker({
-        provider: name,
-        // token-backed credentials add domains/env placeholder; header-only
-        // plugins add header transforms and optional command env.
-      })
-    : createPluginBroker(name, { userTokenStore });
+  brokersByProvider[name] = createPluginBroker(name, { userTokenStore });
 }
 ```
 
@@ -506,9 +500,12 @@ export function getOAuthProviderConfig(
 
 The OAuth callback route uses `getOAuthProviderConfig()` instead of accessing `OAUTH_PROVIDERS` directly.
 
-### Test credential override
+### Test and eval credentials
 
-`TestCredentialBroker` substitution in eval mode works the same — `factory.ts` checks `EVAL_ENABLE_TEST_CREDENTIALS=1` and substitutes regardless of source. For plugin-level `api-headers`, eval mode injects deterministic dummy header values instead of resolving deployment env vars. Plugin-level `command-env` resolves through the same non-secret command env path as production.
+Tests and evals seed credentials through the same stores and plugin env vars used
+by production paths. Sandbox HTTP fixtures may intercept credential-injected
+requests at the egress proxy boundary, but core broker selection does not switch
+to test-only credential behavior.
 
 ### Install-wide config defaults
 
@@ -597,7 +594,6 @@ All existing security invariants from `security-policy.md` are preserved:
 | `CredentialBroker` interface and `CredentialLease` type | Shared contract                                |
 | `ProviderCredentialRouter`                              | Generic router                                 |
 | OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                            |
-| `TestCredentialBroker`                                  | Eval infrastructure, not a plugin              |
 
 ## Example: adding a new provider (Linear)
 

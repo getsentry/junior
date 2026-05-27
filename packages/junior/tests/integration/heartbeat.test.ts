@@ -22,6 +22,9 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
+const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
+const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
+
 function collectWaitUntil(tasks: Promise<unknown>[]): WaitUntilFn {
   return (task) => {
     tasks.push(typeof task === "function" ? task() : task);
@@ -29,7 +32,7 @@ function collectWaitUntil(tasks: Promise<unknown>[]): WaitUntilFn {
 }
 
 function createTask(): ScheduledTask {
-  const nextRunAtMs = Date.parse("2026-05-26T12:00:00.000Z");
+  const nextRunAtMs = TEST_RUN_AT_MS;
   return {
     id: "sched_plugin_1",
     createdAtMs: nextRunAtMs,
@@ -60,6 +63,7 @@ describe("trusted plugin heartbeat", () => {
   const originalFetch = global.fetch;
 
   beforeEach(async () => {
+    vi.useFakeTimers({ now: TEST_NOW_MS });
     process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "dispatch-secret";
@@ -76,6 +80,7 @@ describe("trusted plugin heartbeat", () => {
     delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("rejects unauthenticated heartbeat requests", async () => {
@@ -305,9 +310,7 @@ describe("trusted plugin heartbeat", () => {
     expect(firstResponse.status).toBe(202);
     await Promise.all(firstWaitUntilTasks);
 
-    const running = await store.getRun(
-      `sched_plugin_1:${Date.parse("2026-05-26T12:00:00.000Z")}`,
-    );
+    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
     expect(running).toMatchObject({
       status: "running",
       dispatchId: expect.any(String),
@@ -367,9 +370,7 @@ describe("trusted plugin heartbeat", () => {
     expect(firstResponse.status).toBe(202);
     await Promise.all(firstWaitUntilTasks);
 
-    const running = await store.getRun(
-      `sched_plugin_1:${Date.parse("2026-05-26T12:00:00.000Z")}`,
-    );
+    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
     expect(running).toMatchObject({
       status: "running",
       dispatchId: expect.any(String),
@@ -425,9 +426,7 @@ describe("trusted plugin heartbeat", () => {
     await Promise.all(waitUntilTasks);
 
     await expect(
-      store.getRun(
-        `sched_plugin_malformed:${Date.parse("2026-05-26T12:00:00.000Z")}`,
-      ),
+      store.getRun(`sched_plugin_malformed:${TEST_RUN_AT_MS}`),
     ).resolves.toMatchObject({
       status: "blocked",
       errorMessage: expect.stringContaining(
@@ -473,9 +472,7 @@ describe("trusted plugin heartbeat", () => {
     await Promise.all(waitUntilTasks);
 
     await expect(
-      store.getRun(
-        `sched_plugin_bad_destination:${Date.parse("2026-05-26T12:00:00.000Z")}`,
-      ),
+      store.getRun(`sched_plugin_bad_destination:${TEST_RUN_AT_MS}`),
     ).resolves.toMatchObject({
       status: "blocked",
       errorMessage: expect.stringContaining(

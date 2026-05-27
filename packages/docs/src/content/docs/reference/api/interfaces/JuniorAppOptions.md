@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [app.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L30)
+Defined in: [app.ts:46](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L46)
 
 ## Properties
 
@@ -13,9 +13,19 @@ Defined in: [app.ts:30](https://github.com/getsentry/junior/blob/main/packages/j
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [app.ts:32](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L32)
+Defined in: [app.ts:48](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L48)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
+
+---
+
+### httpInterceptor?
+
+> `optional` **httpInterceptor?**: `SandboxEgressHttpInterceptor`
+
+Defined in: [app.ts:58](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L58)
+
+Intercept credential-injected sandbox HTTP requests before live forwarding.
 
 ---
 
@@ -23,7 +33,7 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 > `optional` **plugins?**: `PluginConfig` \| `JuniorPlugin`[]
 
-Defined in: [app.ts:40](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L40)
+Defined in: [app.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L56)
 
 Plugin packages/overrides, or trusted plugin instances loaded by this app.
 
@@ -37,4 +47,4 @@ their package config is merged with the catalog bundled by `juniorNitro()`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [app.ts:41](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L41)
+Defined in: [app.ts:59](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L59)

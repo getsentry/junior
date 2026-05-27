@@ -13,6 +13,7 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
+    "@sentry/junior-testing": "workspace:*",
     "chat": "4.29.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",

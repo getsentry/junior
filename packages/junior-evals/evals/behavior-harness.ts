@@ -1,6 +1,10 @@
 import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
+import { interceptTestHttp } from "@sentry/junior-testing/http";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
 import {
@@ -55,6 +59,7 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
+import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 
 // ---------------------------------------------------------------------------
@@ -133,12 +138,9 @@ interface EvalReplyResultFixture {
 export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
+  credential_providers?: Array<"github" | "sentry">;
   disable_schedule_tools?: boolean;
-  enable_test_credentials?: boolean;
   fail_reply_call?: number;
-  faults?: {
-    sandbox_bash_stream_interrupts?: number;
-  };
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -147,7 +149,6 @@ export interface EvalOverrides {
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
-  test_credential_token?: string;
   unset_gateway_api_key?: boolean;
 }
 
@@ -423,14 +424,23 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
 // ---------------------------------------------------------------------------
 
 const HARNESS_ENV_KEYS = [
-  "EVAL_ENABLE_TEST_CREDENTIALS",
-  "EVAL_TEST_CREDENTIAL_TOKEN",
+  "GITHUB_APP_BOT_EMAIL",
+  "GITHUB_APP_BOT_NAME",
+  "GITHUB_APP_ID",
+  "GITHUB_APP_PRIVATE_KEY",
+  "GITHUB_INSTALLATION_ID",
   "JUNIOR_BASE_URL",
-  "JUNIOR_EVAL_ENABLE_FAULTS",
-  "JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS",
+  "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
   "SLACK_BOT_TOKEN",
 ] as const;
+const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
+const SENTRY_EVAL_SCOPE = "event:read org:read project:read team:read";
+const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+})
+  .privateKey.export({ format: "pem", type: "pkcs8" })
+  .toString();
 
 interface EnvSnapshot {
   restore(): void;
@@ -450,6 +460,214 @@ function snapshotEnv(keys: readonly string[]): EnvSnapshot {
           process.env[key] = value;
         }
       }
+    },
+  };
+}
+
+function isSandboxReachableBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      url.protocol === "https:" &&
+      hostname !== "localhost" &&
+      hostname !== "127.0.0.1" &&
+      hostname !== "::1" &&
+      !hostname.endsWith(".example.com") &&
+      !hostname.endsWith(".example.test") &&
+      hostname !== "example.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function scenarioNeedsEvalEgress(scenario: EvalScenario): boolean {
+  return Boolean(
+    scenario.overrides?.credential_providers?.length ||
+    scenario.overrides?.auto_complete_oauth?.length,
+  );
+}
+
+function configureHarnessBaseUrl(scenario: EvalScenario): void {
+  const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
+  if (scenarioNeedsEvalEgress(scenario)) {
+    if (!baseUrl || !isSandboxReachableBaseUrl(baseUrl)) {
+      throw new Error(
+        "Eval sandbox HTTP interception requires JUNIOR_BASE_URL to point at a public HTTPS Junior app URL reachable from Vercel Sandbox so sandbox egress can reach the test egress proxy.",
+      );
+    }
+    return;
+  }
+
+  if (!baseUrl) {
+    process.env.JUNIOR_BASE_URL = DEFAULT_EVAL_BASE_URL;
+  }
+}
+
+function requestHeadersFromNode(
+  headers: Record<string, string | string[] | undefined>,
+): Headers {
+  const result = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) result.append(key, item);
+    } else {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
+function listen(server: Server): Promise<number> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Eval egress server did not bind to a TCP port"));
+        return;
+      }
+      resolve(address.port);
+    });
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+async function writeResponse(
+  target: import("node:http").ServerResponse,
+  response: Response,
+): Promise<void> {
+  target.statusCode = response.status;
+  target.statusMessage = response.statusText;
+  response.headers.forEach((value, key) => {
+    target.setHeader(key, value);
+  });
+
+  if (!response.body) {
+    target.end();
+    return;
+  }
+
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      target.write(next.value);
+    }
+    target.end();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function waitForPublicEgressUrl(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(new URL("/health", baseUrl));
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    `Eval egress server was not reachable at ${baseUrl}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+async function startEvalEgressServer(): Promise<EvalEgressServer> {
+  const baseUrl = process.env.JUNIOR_BASE_URL?.trim() ?? "";
+  const token = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
+  if (!token) {
+    throw new Error(
+      "Eval sandbox HTTP interception requires CLOUDFLARE_TUNNEL_TOKEN so Vercel Sandbox can reach the eval egress proxy.",
+    );
+  }
+
+  const server = createServer((incoming, outgoing) => {
+    void (async () => {
+      try {
+        if (incoming.url === "/health") {
+          outgoing.setHeader("content-type", "application/json");
+          outgoing.end(JSON.stringify({ ok: true }));
+          return;
+        }
+
+        const request = new Request(
+          new URL(incoming.url ?? "/", `http://${incoming.headers.host}`).href,
+          {
+            method: incoming.method,
+            headers: requestHeadersFromNode(incoming.headers),
+            ...(incoming.method === "GET" || incoming.method === "HEAD"
+              ? {}
+              : {
+                  body: incoming as unknown as BodyInit,
+                  duplex: "half",
+                }),
+          } as RequestInit,
+        );
+        await writeResponse(
+          outgoing,
+          await sandboxEgressProxyALL(request, {
+            interceptHttp: interceptTestHttp,
+          }),
+        );
+      } catch (error) {
+        outgoing.statusCode = 500;
+        outgoing.end(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  });
+
+  const port = await listen(server);
+  let tunnel: ChildProcess | undefined;
+  tunnel = spawn(
+    "cloudflared",
+    [
+      "tunnel",
+      "--no-autoupdate",
+      "--loglevel",
+      "warn",
+      "--transport-loglevel",
+      "error",
+      "run",
+      "--token",
+      token,
+      "--url",
+      `http://127.0.0.1:${port}`,
+    ],
+    { stdio: "ignore" },
+  );
+
+  try {
+    await waitForPublicEgressUrl(baseUrl);
+  } catch (error) {
+    tunnel.kill("SIGTERM");
+    await closeServer(server);
+    throw error;
+  }
+
+  return {
+    async close() {
+      tunnel?.kill("SIGTERM");
+      await closeServer(server);
     },
   };
 }
@@ -802,6 +1020,37 @@ async function cleanupOAuthTokens(
   }
 }
 
+function configureCredentialProviderEnv(
+  providers: Set<"github" | "sentry">,
+): void {
+  if (providers.has("github")) {
+    process.env.GITHUB_APP_ID = "12345";
+    process.env.GITHUB_INSTALLATION_ID = "67890";
+    process.env.GITHUB_APP_PRIVATE_KEY = DUMMY_GITHUB_APP_PRIVATE_KEY;
+    process.env.GITHUB_APP_BOT_NAME = "junior-eval";
+    process.env.GITHUB_APP_BOT_EMAIL = "junior-eval@example.com";
+  }
+}
+
+async function seedCredentialProviderTokens(input: {
+  providers: Set<"github" | "sentry">;
+  userIds: Iterable<string>;
+}): Promise<void> {
+  if (!input.providers.has("sentry")) {
+    return;
+  }
+
+  const userTokenStore = createUserTokenStore();
+  for (const userId of input.userIds) {
+    await userTokenStore.set(userId, "sentry", {
+      accessToken: "eval-sentry-access-token",
+      refreshToken: "eval-sentry-refresh-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      scope: SENTRY_EVAL_SCOPE,
+    });
+  }
+}
+
 function getDefaultAuthCode(
   type: "mcp-oauth" | "oauth",
   provider: string,
@@ -933,17 +1182,24 @@ interface HarnessEnvironment {
   authRequesterUsers: Set<string>;
   autoCompleteMcpOauthProviders: Set<string>;
   autoCompleteOauthProviders: Set<string>;
+  credentialProviders: Set<"github" | "sentry">;
   configuredPluginDirs: string[];
   configuredSkillDirs: string[];
   envSnapshot: EnvSnapshot;
+  egressServer?: EvalEgressServer;
   pluginApp?: PluginAppFixture;
   stateAdapter: HarnessStateAdapter;
+}
+
+interface EvalEgressServer {
+  close(): Promise<void>;
 }
 
 async function setupHarnessEnvironment(
   scenario: EvalScenario,
 ): Promise<HarnessEnvironment> {
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
+  let egressServer: EvalEgressServer | undefined;
   let pluginApp: PluginAppFixture | undefined;
 
   try {
@@ -956,6 +1212,9 @@ async function setupHarnessEnvironment(
     );
     const autoCompleteOauthProviders = new Set(
       scenario.overrides?.auto_complete_oauth?.map((p) => p.trim()) ?? [],
+    );
+    const credentialProviders = new Set(
+      scenario.overrides?.credential_providers ?? [],
     );
     const authRequesterUsers = new Set(
       scenario.events.flatMap((event) =>
@@ -970,26 +1229,9 @@ async function setupHarnessEnvironment(
       authRequesterUsers.add("U-test");
     }
 
-    if (scenario.overrides?.enable_test_credentials) {
-      process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-      if (scenario.overrides.test_credential_token) {
-        process.env.EVAL_TEST_CREDENTIAL_TOKEN =
-          scenario.overrides.test_credential_token;
-      }
-    }
-    const sandboxBashStreamInterrupts =
-      scenario.overrides?.faults?.sandbox_bash_stream_interrupts;
-    if (
-      typeof sandboxBashStreamInterrupts === "number" &&
-      Number.isFinite(sandboxBashStreamInterrupts) &&
-      sandboxBashStreamInterrupts > 0
-    ) {
-      process.env.JUNIOR_EVAL_ENABLE_FAULTS = "1";
-      process.env.JUNIOR_EVAL_FAULT_SANDBOX_BASH_STREAM_INTERRUPTS = String(
-        Math.floor(sandboxBashStreamInterrupts),
-      );
-    }
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    configureCredentialProviderEnv(credentialProviders);
+    configureHarnessBaseUrl(scenario);
+    process.env.JUNIOR_SECRET = "junior-test-secret";
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     pluginApp =
       configuredPluginDirs.length > 0
@@ -1003,6 +1245,9 @@ async function setupHarnessEnvironment(
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
+    egressServer = scenarioNeedsEvalEgress(scenario)
+      ? await startEvalEgressServer()
+      : undefined;
     resetSkillDiscoveryCache();
     await cleanupHarnessThreadState(stateAdapter, scenario.events);
     await cleanupMcpAuthState(
@@ -1010,14 +1255,21 @@ async function setupHarnessEnvironment(
       autoCompleteMcpOauthProviders,
     );
     await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
+    await cleanupOAuthTokens(authRequesterUsers, credentialProviders);
+    await seedCredentialProviderTokens({
+      providers: credentialProviders,
+      userIds: authRequesterUsers,
+    });
 
     return {
       authRequesterUsers,
       autoCompleteMcpOauthProviders,
       autoCompleteOauthProviders,
+      credentialProviders,
       configuredPluginDirs,
       configuredSkillDirs,
       envSnapshot,
+      ...(egressServer ? { egressServer } : {}),
       ...(pluginApp ? { pluginApp } : {}),
       stateAdapter,
     };
@@ -1025,6 +1277,7 @@ async function setupHarnessEnvironment(
     resetSkillDiscoveryCache();
     setPluginConfig(undefined);
     envSnapshot.restore();
+    await egressServer?.close();
     await pluginApp?.cleanup();
     throw error;
   }
@@ -1045,6 +1298,8 @@ async function teardownHarnessEnvironment(
     env.authRequesterUsers,
     env.autoCompleteOauthProviders,
   );
+  await cleanupOAuthTokens(env.authRequesterUsers, env.credentialProviders);
+  await env.egressServer?.close();
   env.envSnapshot.restore();
   await env.pluginApp?.cleanup();
 }
@@ -1066,7 +1321,11 @@ function buildRuntimeServices(
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
       ? scenario.overrides.reply_timeout_ms
-      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "30000", 10);
+      : Number.parseInt(
+          process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ??
+            (scenarioNeedsEvalEgress(scenario) ? "60000" : "30000"),
+          10,
+        );
   let replyCallCount = 0;
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };

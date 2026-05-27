@@ -27,17 +27,21 @@ vi.mock("@/chat/state/adapter", () => ({
 
 describe("capability factory", () => {
   afterEach(() => {
-    delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     createPluginBrokerMock.mockReset();
     getPluginProvidersMock.mockReset();
     vi.resetModules();
   });
 
-  it("uses test header transforms for header-only plugins in eval mode", async () => {
-    process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-    createPluginBrokerMock.mockImplementation(() => {
-      throw new Error("should not create real plugin broker");
-    });
+  it("uses normal plugin brokers for credential providers", async () => {
+    const broker = {
+      issue: vi.fn(async () => ({
+        id: "lease-1",
+        provider: "example",
+        env: {},
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })),
+    };
+    createPluginBrokerMock.mockReturnValue(broker);
     getPluginProvidersMock.mockReturnValue([
       {
         manifest: {
@@ -67,18 +71,13 @@ describe("capability factory", () => {
       reason: "test:api-headers",
     });
 
-    expect(createPluginBrokerMock).not.toHaveBeenCalled();
-    expect(lease.env).toEqual({
-      EXAMPLE_API_KEY: "host_managed_credential",
+    expect(createPluginBrokerMock).toHaveBeenCalledWith("example", {
+      userTokenStore: expect.any(Object),
     });
-    expect(lease.headerTransforms).toEqual([
-      {
-        domain: "api.example.com",
-        headers: {
-          Authorization: "Bearer eval-test-example-api-header",
-          "X-Api-Version": "2026-01-01",
-        },
-      },
-    ]);
+    expect(broker.issue).toHaveBeenCalledWith({
+      requesterId: "U123",
+      reason: "test:api-headers",
+    });
+    expect(lease.provider).toBe("example");
   });
 });

@@ -66,8 +66,8 @@ Harness override knobs (in `EvalOverrides`):
 
 - `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
+- `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
 - `fail_reply_call`: force a non-retryable reply failure on a specific call.
-- `faults.sandbox_bash_stream_interrupts`: inject a fixed number of eval-only sandbox bash stream interruptions so the real agent must recover from failed command results.
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: override returned reply text per call.

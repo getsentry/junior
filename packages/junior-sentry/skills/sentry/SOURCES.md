@@ -16,7 +16,6 @@ Last updated: 2026-04-30
 | `pnpm view sentry version dist-tags description bin repository` | canonical  | high       | Confirmed npm package `sentry` latest is `0.30.0` and exposes `sentry` binary.                                        | Package metadata only; command behavior still comes from help/docs. |
 | `pnpm dlx sentry@latest --help` and subcommand help             | canonical  | high       | Confirmed executable help lists org list/view, issue list/events/view, log list/view, trace list/view/logs, and api.  | Re-run when updating for a newer CLI.                               |
 | `packages/junior-sentry/plugin.yaml`                            | canonical  | high       | Confirms runtime dependency is the npm `sentry` package and auth token env is `SENTRY_AUTH_TOKEN`.                    | Local repo contract.                                                |
-| `packages/junior/src/chat/sandbox/eval-sentry-stub.ts`          | canonical  | medium     | Eval-only shim needed to avoid preserving stale command forms in tests.                                               | Not a production CLI source.                                        |
 
 ## Decisions
 

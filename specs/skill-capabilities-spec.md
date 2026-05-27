@@ -37,7 +37,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 2. Skills do not declare capabilities or config keys.
 3. Registered providers are always available to sandbox commands.
 4. The agent runs the real provider command.
-5. The runtime resolves the provider from the outgoing request host, lazily issues a requester-bound provider lease, and injects credentials for that forwarded request.
+5. The runtime resolves the provider from the outgoing request host, lazily issues a requester-bound provider lease, and applies credential headers to that forwarded request.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
 7. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 

@@ -10,7 +10,6 @@ import {
   isSnapshottingError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
-import { consumeSandboxBashStreamInterruptFault } from "@/chat/sandbox/fault-injection";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
@@ -233,7 +232,6 @@ export function createSandboxSessionManager(options?: {
       skills: availableSkills,
       referenceFiles: availableReferenceFiles,
       withSpan: withSandboxSpan,
-      runtimeBinDir: SANDBOX_RUNTIME_BIN_DIR,
     });
   };
 
@@ -680,10 +678,6 @@ export function createSandboxSessionManager(options?: {
                 controller.abort();
               }, input.timeoutMs)
             : undefined;
-          const streamInterruptFault = consumeSandboxBashStreamInterruptFault();
-          if (streamInterruptFault) {
-            throw streamInterruptFault;
-          }
           const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
