@@ -1,0 +1,79 @@
+---
+title: Scheduler Plugin
+description: Enable and verify Junior's built-in scheduled task support.
+type: tutorial
+summary: Configure the built-in scheduler plugin so Slack users can create reminders and recurring tasks.
+prerequisites:
+  - /start-here/quickstart/
+  - /start-here/slack-app-setup/
+related:
+  - /reference/config-and-env/
+  - /extend/build-a-plugin/
+  - /operate/reliability-runbooks/
+---
+
+The scheduler plugin is built into `@sentry/junior`. It registers Slack tools for creating, listing, updating, deleting, and running scheduled tasks, then uses Junior's internal heartbeat to dispatch due work back to the configured Slack conversation.
+
+## Runtime setup
+
+No plugin package install is required. `createApp()` registers the trusted scheduler plugin automatically:
+
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
+```
+
+The Vercel helper includes the internal heartbeat and scheduler tick routes:
+
+```ts title="vercel.config.ts"
+import { juniorVercelConfig } from "@sentry/junior/vercel";
+
+export default juniorVercelConfig();
+```
+
+If you manage routes manually, call both routes on a one-minute cadence:
+
+| Route                          | Purpose                                     |
+| ------------------------------ | ------------------------------------------- |
+| `/api/internal/heartbeat`      | Runs trusted plugin heartbeats.             |
+| `/api/internal/scheduler/tick` | Claims due scheduled runs for legacy ticks. |
+
+## Configure environment variables
+
+Set one scheduler route secret:
+
+| Variable                                   | Required   | Purpose                                                                                       |
+| ------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------- |
+| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET` | Production | Bearer token for internal scheduler and heartbeat routes. Use `CRON_SECRET` with Vercel Cron. |
+| `JUNIOR_TIMEZONE`                          | No         | Default IANA timezone for schedule authoring. Defaults to `America/Los_Angeles`.              |
+
+Local development can run without a scheduler route secret when you call the dev server directly. Production deployments should set `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`.
+
+## Verify
+
+Run the workflow in Slack where users will schedule work:
+
+```text
+remind me in 1 minute to stretch
+```
+
+Then confirm:
+
+1. Junior acknowledges the scheduled task without asking for confirmation for the simple one-off reminder.
+2. `what scheduled tasks do i have` lists the task in the same Slack conversation.
+3. The reminder posts back to that conversation after the due time.
+
+For recurring or non-reminder scheduled work, Junior should show the proposed task details and wait for confirmation before creating the task.
+
+## Failure modes
+
+- No due tasks run: confirm `/api/internal/heartbeat` is called every minute and the route secret matches the configured bearer token.
+- Tasks list but never complete: check scheduler and dispatch logs for missing Slack destination fields or stale dispatch recovery errors.
+- Unexpected timezone: set `JUNIOR_TIMEZONE` to the deployment default, or include the timezone in the user's schedule request.
+
+## Next step
+
+Read [Build a Plugin](/extend/build-a-plugin/) for the trusted `tools(ctx)` and `heartbeat(ctx)` APIs that the built-in scheduler uses.

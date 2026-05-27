@@ -13,6 +13,7 @@ related:
   - /extend/hex-plugin/
   - /extend/linear-plugin/
   - /extend/notion-plugin/
+  - /extend/scheduler-plugin/
   - /extend/sentry-plugin/
 ---
 
@@ -55,6 +56,9 @@ For reuse across apps or teams, package plugin manifests and any bundled skills 
 ```bash
 pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
+
+Junior also includes the built-in [Scheduler Plugin](/extend/scheduler-plugin/)
+for reminders and recurring Slack tasks. It does not require a separate package.
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
 
