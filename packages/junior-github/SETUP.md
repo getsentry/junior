@@ -14,7 +14,7 @@ In GitHub:
 - Contents: Read and write
 - Pull requests: Read and write
 - Actions: Read and write
-- Workflows: Read and write
+- Workflows: Write
 - Metadata: Read
 
 4. Create the app and generate a private key.

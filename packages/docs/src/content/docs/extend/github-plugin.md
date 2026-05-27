@@ -90,7 +90,7 @@ Create and install a GitHub App before you verify GitHub workflows:
    - Issues: Read and write
    - Contents: Read and write
    - Pull requests: Read and write
-   - Workflows: Read and write
+   - Workflows: Write
    - Metadata: Read
 4. Install the app on the repository or organization Junior should access.
 5. Copy the App ID, installation ID, bot name, and bot noreply email into your deployment environment.

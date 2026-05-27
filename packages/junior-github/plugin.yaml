@@ -10,7 +10,6 @@ capabilities:
   - contents.write
   - pull-requests.read
   - pull-requests.write
-  - workflows.read
   - workflows.write
 
 config-keys:
