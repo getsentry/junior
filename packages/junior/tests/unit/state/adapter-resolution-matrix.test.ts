@@ -51,4 +51,11 @@ describe("state adapter resolution decision matrix", () => {
       expect(readChatConfig(process.env).state.adapter).toBe(expectedAdapter);
     },
   );
+
+  it("reads the optional state key prefix", async () => {
+    setOrDelete("JUNIOR_STATE_KEY_PREFIX", "junior:test:123");
+    vi.resetModules();
+    const { readChatConfig } = await import("@/chat/config");
+    expect(readChatConfig(process.env).state.keyPrefix).toBe("junior:test:123");
+  });
 });

@@ -22,6 +22,8 @@ for (const envRoot of [workspaceRoot, juniorPackageRoot]) {
   }
 }
 
+process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${process.pid}`;
+
 export default defineConfig({
   resolve: {
     alias: {

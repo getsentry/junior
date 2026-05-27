@@ -1,18 +1,11 @@
 import type { DispatchOptions } from "./types";
+import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
 
 const MAX_DISPATCH_INPUT_LENGTH = 32_000;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_METADATA_KEYS = 20;
 const MAX_METADATA_KEY_LENGTH = 128;
 const MAX_METADATA_VALUE_LENGTH = 512;
-
-function isSlackChannelId(value: string): boolean {
-  return /^(C|G|D)[A-Z0-9]+$/.test(value);
-}
-
-function isSlackTeamId(value: string): boolean {
-  return /^T[A-Z0-9]+$/.test(value);
-}
 
 /** Validate plugin-provided dispatch options before core persists them. */
 export function validateDispatchOptions(options: DispatchOptions): void {
@@ -28,7 +21,7 @@ export function validateDispatchOptions(options: DispatchOptions): void {
   if (!isSlackTeamId(options.destination.teamId)) {
     throw new Error("Dispatch destination teamId must be a Slack team id");
   }
-  if (!isSlackChannelId(options.destination.channelId)) {
+  if (!isSlackConversationId(options.destination.channelId)) {
     throw new Error(
       "Dispatch destination channelId must be a Slack channel id",
     );

@@ -3,11 +3,17 @@ import { botConfig } from "@/chat/config";
 import { toOptionalString } from "@/chat/coerce";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import { isSlackTeamId } from "@/chat/slack/ids";
 import {
   parseSlackThreadId,
   resolveSlackChannelIdFromThreadId,
   resolveSlackChannelIdFromMessage,
 } from "@/chat/slack/context";
+
+function toSlackTeamId(value: unknown): string | undefined {
+  const candidate = toOptionalString(value);
+  return candidate && isSlackTeamId(candidate) ? candidate : undefined;
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -138,9 +144,9 @@ export function getTeamId(message: Message): string | undefined {
 
   const rawRecord = raw as Record<string, unknown>;
   return (
-    toOptionalString(rawRecord.team_id) ??
-    toOptionalString(rawRecord.team) ??
-    getWorkspaceTeamId() ??
-    toOptionalString(rawRecord.user_team)
+    toSlackTeamId(rawRecord.team_id) ??
+    toSlackTeamId(rawRecord.team) ??
+    toSlackTeamId(getWorkspaceTeamId()) ??
+    toSlackTeamId(rawRecord.user_team)
   );
 }

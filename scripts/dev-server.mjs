@@ -115,6 +115,64 @@ function syncInjectedJuniorDist(options = {}) {
 const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
 const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
+const localInternalSecret = "junior-local-dev-internal";
+const heartbeatSecret =
+  process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
+  process.env.CRON_SECRET?.trim() ||
+  "junior-local-dev-heartbeat";
+const heartbeatUrl =
+  process.env.JUNIOR_DEV_HEARTBEAT_URL?.trim() ||
+  `http://localhost:${devPort}/api/internal/heartbeat`;
+const heartbeatIntervalMs = 60_000;
+
+if (
+  !process.env.JUNIOR_SCHEDULER_SECRET?.trim() &&
+  !process.env.CRON_SECRET?.trim()
+) {
+  process.env.JUNIOR_SCHEDULER_SECRET = heartbeatSecret;
+}
+if (!process.env.JUNIOR_SECRET?.trim()) {
+  process.env.JUNIOR_SECRET = localInternalSecret;
+}
+if (!process.env.JUNIOR_BASE_URL?.trim()) {
+  process.env.JUNIOR_BASE_URL = `http://localhost:${devPort}`;
+}
+
+async function pulseHeartbeat() {
+  try {
+    const response = await fetch(heartbeatUrl, {
+      headers: { authorization: `Bearer ${heartbeatSecret}` },
+    });
+    if (!response.ok) {
+      console.error(
+        `Local heartbeat returned ${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      `Local heartbeat failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function startLocalHeartbeat() {
+  const initialDelayMs = 5_000;
+  const initialTimer = setTimeout(() => {
+    void pulseHeartbeat();
+  }, initialDelayMs);
+  const interval = setInterval(() => {
+    void pulseHeartbeat();
+  }, heartbeatIntervalMs);
+
+  children.add({
+    killed: false,
+    kill() {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+      this.killed = true;
+    },
+  });
+}
 
 runRequiredChild("pnpm", ["build"], {
   cwd: juniorPackageDir,
@@ -142,6 +200,7 @@ if (tunnelToken) {
 }
 
 const child = spawnChild("pnpm", ["dev"], { cwd: exampleDir });
+startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

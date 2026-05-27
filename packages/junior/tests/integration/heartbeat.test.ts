@@ -306,4 +306,100 @@ describe("trusted plugin heartbeat", () => {
       status: "paused",
     });
   });
+
+  it("blocks malformed scheduled tasks without stopping the scheduler plugin heartbeat", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    await store.saveTask({
+      ...createTask(),
+      id: "sched_plugin_malformed",
+      task: {
+        title: "Digest",
+        objective: undefined,
+        instructions: ["Summarize the latest state."],
+      } as unknown as ScheduledTask["task"],
+    });
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+    );
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+
+    await expect(
+      store.getRun(
+        `sched_plugin_malformed:${Date.parse("2026-05-26T12:00:00.000Z")}`,
+      ),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      errorMessage: expect.stringContaining(
+        "Scheduled task prompt could not be built",
+      ),
+    });
+    await expect(
+      store.getTask("sched_plugin_malformed"),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      statusReason: expect.stringContaining(
+        "Scheduled task prompt could not be built",
+      ),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks scheduled runs with invalid dispatch destinations without stopping the heartbeat", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    await store.saveTask({
+      ...createTask(),
+      id: "sched_plugin_bad_destination",
+      destination: {
+        platform: "slack",
+        teamId: "D_BAD_TEAM",
+        channelId: "D123",
+      },
+    });
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+    );
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+
+    await expect(
+      store.getRun(
+        `sched_plugin_bad_destination:${Date.parse("2026-05-26T12:00:00.000Z")}`,
+      ),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      errorMessage: expect.stringContaining(
+        "Scheduled task dispatch could not be created",
+      ),
+    });
+    await expect(
+      store.getTask("sched_plugin_bad_destination"),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      statusReason: expect.stringContaining(
+        "Scheduled task dispatch could not be created",
+      ),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

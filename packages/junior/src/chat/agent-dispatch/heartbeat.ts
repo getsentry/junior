@@ -165,17 +165,20 @@ export async function runTrustedPluginHeartbeats(args: {
         ),
         PLUGIN_HEARTBEAT_TIMEOUT_MS,
       );
-      logInfo(
-        "trusted_plugin_heartbeat_completed",
-        {},
-        {
-          "app.plugin.name": plugin.name,
-          ...(typeof result?.dispatchCount === "number"
-            ? { "app.dispatch.count": result.dispatchCount }
-            : {}),
-        },
-        "Trusted plugin heartbeat completed",
-      );
+      if (
+        typeof result?.dispatchCount === "number" &&
+        result.dispatchCount > 0
+      ) {
+        logInfo(
+          "trusted_plugin_heartbeat_dispatched",
+          {},
+          {
+            "app.dispatch.count": result.dispatchCount,
+            "app.plugin.name": plugin.name,
+          },
+          "Trusted plugin heartbeat dispatched work",
+        );
+      }
     } catch (error) {
       logException(
         error,

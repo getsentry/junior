@@ -225,6 +225,181 @@ describe("scheduler executor", () => {
     expect(updated?.runNowAtMs).toBeUndefined();
   });
 
+  it("skips a stale one-off occurrence instead of dispatching it", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledForMs = Date.parse("2026-03-02T17:00:00.000Z");
+    const task = createTask({
+      id: `sched_stale_one_off_${Date.now()}`,
+      nextRunAtMs: scheduledForMs,
+      schedule: {
+        description: "Once on March 2 at 9am Pacific",
+        timezone: "America/Los_Angeles",
+        kind: "one_off",
+      },
+    });
+    await store.saveTask(task);
+    const runner = vi.fn<ScheduledTaskRunner["run"]>(async () => {
+      throw new Error("stale one-off should not dispatch");
+    });
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: scheduledForMs + 24 * 60 * 60 * 1000 + 1,
+      limit: 10,
+      runner: { run: runner },
+    });
+
+    expect(completed).toHaveLength(0);
+    expect(runner).not.toHaveBeenCalled();
+    await expect(
+      store.getRun(`${task.id}:${scheduledForMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      scheduledForMs,
+      errorMessage: expect.stringContaining("more than 24 hours late"),
+    });
+    const updated = await store.getTask(task.id);
+    expect(updated).toMatchObject({
+      status: "paused",
+      nextRunAtMs: undefined,
+      statusReason: expect.stringContaining("more than 24 hours late"),
+      version: 2,
+    });
+    expect(updated?.lastRunAtMs).toBeUndefined();
+  });
+
+  it("skips stale recurring occurrences and advances to the next future run", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledForMs = Date.parse("2026-03-02T17:00:00.000Z");
+    const task = createTask({
+      id: `sched_stale_recurring_${Date.now()}`,
+      nextRunAtMs: scheduledForMs,
+    });
+    await store.saveTask(task);
+    const runner = vi.fn<ScheduledTaskRunner["run"]>(async () => {
+      throw new Error("stale recurring occurrence should not dispatch");
+    });
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: Date.parse("2026-03-10T18:00:00.000Z"),
+      limit: 10,
+      runner: { run: runner },
+    });
+
+    expect(completed).toHaveLength(0);
+    expect(runner).not.toHaveBeenCalled();
+    await expect(
+      store.getRun(`${task.id}:${scheduledForMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      scheduledForMs,
+    });
+    const updated = await store.getTask(task.id);
+    expect(updated).toMatchObject({
+      status: "active",
+      nextRunAtMs: Date.parse("2026-03-16T16:00:00.000Z"),
+      statusReason: undefined,
+      version: 2,
+    });
+    expect(updated?.lastRunAtMs).toBeUndefined();
+  });
+
+  it("dedupes equivalent stale recurring tasks during recovery", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledForMs = Date.parse("2026-03-02T17:00:00.000Z");
+    const canonical = createTask({
+      id: "sched_stale_duplicate_a",
+      createdAtMs: Date.parse("2026-03-01T17:00:00.000Z"),
+      nextRunAtMs: scheduledForMs,
+    });
+    const duplicate = createTask({
+      ...canonical,
+      id: "sched_stale_duplicate_b",
+      createdAtMs: Date.parse("2026-03-01T17:00:01.000Z"),
+      updatedAtMs: Date.parse("2026-03-01T17:00:01.000Z"),
+      nextRunAtMs: scheduledForMs,
+    });
+    await store.saveTask(canonical);
+    await store.saveTask(duplicate);
+    const runner = vi.fn<ScheduledTaskRunner["run"]>(async () => {
+      throw new Error("stale duplicates should not dispatch");
+    });
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: Date.parse("2026-03-10T18:00:00.000Z"),
+      limit: 10,
+      runner: { run: runner },
+    });
+
+    expect(completed).toHaveLength(0);
+    expect(runner).not.toHaveBeenCalled();
+    await expect(
+      store.getRun(`${canonical.id}:${scheduledForMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      scheduledForMs,
+    });
+    await expect(
+      store.getRun(`${duplicate.id}:${scheduledForMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      scheduledForMs,
+      errorMessage: expect.stringContaining(canonical.id),
+    });
+    await expect(store.getTask(canonical.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: Date.parse("2026-03-16T16:00:00.000Z"),
+      statusReason: undefined,
+    });
+    await expect(store.getTask(duplicate.id)).resolves.toMatchObject({
+      status: "paused",
+      nextRunAtMs: undefined,
+      statusReason: expect.stringContaining(canonical.id),
+    });
+  });
+
+  it("skips stale run-now requests without shifting the stored schedule", async () => {
+    const store = createStateSchedulerStore();
+    const scheduledNextRunAtMs = Date.parse("2026-03-09T16:00:00.000Z");
+    const runNowAtMs = Date.parse("2026-03-04T18:00:00.000Z");
+    const task = createTask({
+      id: `sched_stale_run_now_${Date.now()}`,
+      nextRunAtMs: scheduledNextRunAtMs,
+      runNowAtMs,
+    });
+    await store.saveTask(task);
+    const runner = vi.fn<ScheduledTaskRunner["run"]>(async () => {
+      throw new Error("stale run-now should not dispatch");
+    });
+
+    const completed = await processDueScheduledRuns({
+      store,
+      nowMs: Date.parse("2026-03-05T18:00:01.000Z"),
+      limit: 10,
+      runner: { run: runner },
+    });
+
+    expect(completed).toHaveLength(0);
+    expect(runner).not.toHaveBeenCalled();
+    await expect(
+      store.getRun(`${task.id}:${runNowAtMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      scheduledForMs: runNowAtMs,
+    });
+    const updated = await store.getTask(task.id);
+    expect(updated).toMatchObject({
+      status: "active",
+      nextRunAtMs: scheduledNextRunAtMs,
+      statusReason: undefined,
+      version: 2,
+    });
+    expect(updated?.runNowAtMs).toBeUndefined();
+    expect(updated?.lastRunAtMs).toBeUndefined();
+  });
+
   it("blocks the task when the runner reports missing requirements", async () => {
     const store = createStateSchedulerStore();
     const task = createTask({ id: `sched_blocked_${Date.now()}` });
@@ -338,6 +513,40 @@ describe("scheduler executor", () => {
       taskId: task.id,
       scheduledForMs: editedNextRunAtMs,
       status: "pending",
+    });
+  });
+
+  it("does not skip a stale occurrence while the same task is running", async () => {
+    const store = createStateSchedulerStore();
+    const task = createTask({ id: `sched_stale_overlap_${Date.now()}` });
+    await store.saveTask(task);
+    const firstRun = await claimDueRun(store);
+    await store.markRunStarted({
+      runId: firstRun.id,
+      claimedAtMs: firstRun.claimedAtMs,
+      nowMs: Date.parse("2026-03-02T17:00:01.000Z"),
+    });
+    const staleNextRunAtMs = Date.parse("2026-03-03T17:00:00.000Z");
+    await store.saveTask({
+      ...task,
+      nextRunAtMs: staleNextRunAtMs,
+      updatedAtMs: Date.parse("2026-03-02T17:00:02.000Z"),
+      version: task.version + 1,
+    });
+
+    await expect(
+      store.claimDueRun({
+        nowMs: Date.parse("2026-03-05T17:00:01.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      store.getRun(`${task.id}:${staleNextRunAtMs}`),
+    ).resolves.toBeUndefined();
+    await expect(store.getTask(task.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: staleNextRunAtMs,
+      version: 2,
     });
   });
 

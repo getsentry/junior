@@ -3,10 +3,12 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-05-26
+- Last Edited: 2026-05-27
 
 ## Changelog
 
+- 2026-05-27: Added stale missed-run policy: old occurrences are skipped and consumed or advanced, not dispatched late and not blocked for human review.
+- 2026-05-27: Added the simple one-off reminder exception to Slack schedule confirmation.
 - 2026-05-26: Reframed scheduled execution around system actors: creator is metadata/contact, scheduled runs execute as a system actor, and user-bound auth must not be borrowed implicitly.
 - 2026-05-18: Clarified V1 calendar model: exact next-run instants plus simple daily/weekly/monthly/yearly recurrence rules.
 - 2026-05-18: Initial draft contract for scheduled Junior tasks, prompt framing, no-SQL storage, run idempotency, and eval-first verification.
@@ -93,6 +95,21 @@ Run-now has a separate contract:
 6. After the manual run reaches a terminal state, clear the immediate-run timestamp.
 7. If the ordinary `nextRunAtMs` was already overdue when the manual run completed, consume that scheduled occurrence and advance recurrence once instead of running the same task twice in one tick.
 
+### Missed Run Policy
+
+The scheduler must not execute arbitrarily old work just because heartbeat delivery or dispatch recovery was broken. At claim time, any scheduled occurrence more than 24 hours older than the scheduler's current clock is stale.
+
+Stale occurrences are terminal skipped runs:
+
+1. The scheduler records a run for the missed `task_id:scheduled_for_ms` with `status: skipped`.
+2. The scheduler must not dispatch the agent for that occurrence.
+3. A skipped stale occurrence does not update `lastRunAtMs`, because no task execution happened.
+4. A one-off stale occurrence is consumed: the task becomes `paused` with no `nextRunAtMs`.
+5. A recurring stale occurrence is consumed and the task advances directly to the next future recurrence. The scheduler must not run catch-up loops for every missed recurrence.
+6. A stale run-now request is cleared without shifting the stored ordinary schedule.
+7. During stale recovery, an equivalent newer active task in the same destination should be skipped and paused when an older active task with the same schedule and task contract remains canonical.
+8. Staleness is not a blocked or missing-input state and must not require human review. A user can still run the task manually if the missed work is still useful.
+
 ### Prompt Framing
 
 Every scheduled run must compile the stored task into a marker-delimited prompt before entering the agent runtime.
@@ -173,7 +190,7 @@ Those future credential subjects must be explicit and separate from creator meta
 
 ### Slack UX
 
-Slack authoring should be confirm-first:
+Slack authoring is confirm-first for recurring schedules and non-reminder scheduled work:
 
 1. User asks Junior to schedule work.
 2. Junior drafts the normalized task: title, objective, instructions, expected output, cadence, timezone, destination, and next run.
@@ -182,6 +199,7 @@ Slack authoring should be confirm-first:
 5. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
 
 Confirmation should show the executable task contract, not only echo the user's text.
+Explicit simple one-off reminder requests, such as "remind me in 10 minutes to stretch", may be created immediately without a second confirmation when the request targets the active Slack destination and has no recurrence, extra constraints, or source context.
 Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
 Task creation must use the current active Slack conversation as the destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
 List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.
@@ -193,7 +211,8 @@ Blocked tasks must appear in list output with their blocked reason. After the mi
 2. Duplicate tick delivery: the run claim suppresses duplicate dispatch.
 3. Run fails after claim: run record captures failure and retry policy decides whether to re-dispatch.
 4. Required non-user credentials are missing: mark the run blocked, keep or pause the task according to policy, and privately notify the creator when possible.
-5. Prompt framing is ambiguous: evals must catch cases where the model creates/edits a schedule instead of executing the task.
+5. A task remains due for more than 24 hours: mark that occurrence skipped, then consume or advance the task according to the missed-run policy.
+6. Prompt framing is ambiguous: evals must catch cases where the model creates/edits a schedule instead of executing the task.
 
 ## Observability
 
@@ -223,6 +242,8 @@ Use evals for model-dependent behavior:
 Use integration tests for runtime/storage contracts that do not depend on model interpretation:
 
 - due claim idempotency
+- stale one-off, recurring, and run-now occurrences skip without dispatch
+- stale recovery dedupes equivalent active tasks in the same destination
 - blocked auth path for missing non-user credentials
 - scheduled runner passes a system actor rather than the creator as requester
 - user OAuth tokens are not used implicitly for scheduled tasks

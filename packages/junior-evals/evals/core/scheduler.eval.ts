@@ -2,6 +2,28 @@ import { describeEval } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../helpers";
 
 describeEval("Scheduler", slackEvals, (it) => {
+  it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
+    run,
+  }) => {
+    await run({
+      events: [mention("@bot remind me in 1 minute to wash my hands")],
+      criteria: rubric({
+        contract:
+          "A simple one-off reminder request is scheduled immediately for the active Slack context.",
+        pass: [
+          "observed_tool_invocations contains slackScheduleCreateTask.",
+          "The scheduled task is a one-off reminder to wash hands, not a recurring schedule.",
+          "The reply confirms that the reminder was scheduled and does not ask the user to confirm first.",
+        ],
+        fail: [
+          "Do not ask the user to confirm the reminder before creating it.",
+          "Do not ask the user to provide a channel ID.",
+          "Do not use Slack chat.scheduleMessage.",
+        ],
+      }),
+    });
+  });
+
   it("when asked to schedule recurring work, draft the task for confirmation before creating it", async ({
     run,
   }) => {

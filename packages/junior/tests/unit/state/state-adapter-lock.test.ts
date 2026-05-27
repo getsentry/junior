@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTestMessage } from "../../fixtures/slack-harness";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -115,5 +116,33 @@ describe("state adapter lock lease", () => {
     if (lock) {
       await adapter.releaseLock(lock);
     }
+  });
+
+  it("keeps caller-facing lock and queue identifiers unprefixed", async () => {
+    const { getStateAdapter } = await loadMemoryStateAdapter({
+      JUNIOR_STATE_KEY_PREFIX: "junior:test:state-adapter-lock",
+    });
+    const adapter = getStateAdapter();
+    await adapter.connect();
+
+    await adapter.set("logical-key", "stored");
+    await expect(adapter.get("logical-key")).resolves.toBe("stored");
+
+    const lock = await adapter.acquireLock("thread-1", 10 * 60 * 1000);
+    expect(lock).toMatchObject({ threadId: "thread-1" });
+    if (lock) {
+      await adapter.releaseLock(lock);
+    }
+
+    const entry: Parameters<typeof adapter.enqueue>[1] = {
+      enqueuedAt: 0,
+      expiresAt: 60_000,
+      message: createTestMessage({ id: "entry-1" }),
+    };
+    await adapter.enqueue("thread-1", entry, 10);
+    await expect(adapter.queueDepth("thread-1")).resolves.toBe(1);
+    await expect(adapter.dequeue("thread-1")).resolves.toMatchObject({
+      message: { id: "entry-1" },
+    });
   });
 });

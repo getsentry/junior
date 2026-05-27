@@ -4,7 +4,10 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { buildScheduledTaskRunPrompt } from "@/chat/scheduler/prompt";
-import { createStateSchedulerStore } from "@/chat/scheduler/store";
+import {
+  createStateSchedulerStore,
+  type SchedulerStore,
+} from "@/chat/scheduler/store";
 import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
 import {
   createSlackScheduleCreateTaskTool,
@@ -121,6 +124,28 @@ async function applyDispatchResult(args: {
   return false;
 }
 
+async function blockClaimedRun(args: {
+  errorMessage: string;
+  nowMs: number;
+  run: ScheduledRun;
+  store: SchedulerStore;
+}): Promise<void> {
+  const blocked = await args.store.markRunBlocked({
+    completedAtMs: args.nowMs,
+    errorMessage: args.errorMessage,
+    runId: args.run.id,
+  });
+  if (!blocked) {
+    return;
+  }
+  await args.store.updateTaskAfterRun({
+    errorMessage: args.errorMessage,
+    nowMs: args.nowMs,
+    run: args.run,
+    status: "blocked",
+  });
+}
+
 /** Create Junior's built-in trusted scheduler plugin. */
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
@@ -195,20 +220,50 @@ export function createSchedulerPlugin() {
             continue;
           }
 
-          const prompt = buildScheduledTaskRunPrompt({
-            nowMs: ctx.nowMs,
-            run,
-            task,
-          });
-          const dispatch = await ctx.agent.dispatch({
-            idempotencyKey: run.id,
-            destination: task.destination,
-            input: prompt,
-            metadata: {
-              runId: run.id,
-              taskId: task.id,
-            },
-          });
+          let prompt: string;
+          try {
+            prompt = buildScheduledTaskRunPrompt({
+              nowMs: ctx.nowMs,
+              run,
+              task,
+            });
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error
+                ? `Scheduled task prompt could not be built: ${error.message}`
+                : "Scheduled task prompt could not be built.";
+            await blockClaimedRun({
+              errorMessage,
+              nowMs: ctx.nowMs,
+              run,
+              store,
+            });
+            continue;
+          }
+          let dispatch: Awaited<ReturnType<typeof ctx.agent.dispatch>>;
+          try {
+            dispatch = await ctx.agent.dispatch({
+              idempotencyKey: run.id,
+              destination: task.destination,
+              input: prompt,
+              metadata: {
+                runId: run.id,
+                taskId: task.id,
+              },
+            });
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error
+                ? `Scheduled task dispatch could not be created: ${error.message}`
+                : "Scheduled task dispatch could not be created.";
+            await blockClaimedRun({
+              errorMessage,
+              nowMs: ctx.nowMs,
+              run,
+              store,
+            });
+            continue;
+          }
           await store.markRunDispatched({
             claimedAtMs: run.claimedAtMs,
             dispatchId: dispatch.id,

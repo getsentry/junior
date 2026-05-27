@@ -267,11 +267,24 @@ export function parseRelativeScheduleTimestamp(args: {
   text: string;
   timezone: string;
 }): number | undefined {
-  const match = /^tomorrow(?:\s+at)?\s+(.+)$/i.exec(args.text.trim());
-  if (!match) {
+  const text = args.text.trim();
+  const offsetMatch = /^in\s+(\d+)\s+(minute|minutes|hour|hours)$/i.exec(text);
+  if (offsetMatch) {
+    const amount = Number(offsetMatch[1]);
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 24 * 60) {
+      return undefined;
+    }
+    const unitMs = offsetMatch[2].toLowerCase().startsWith("hour")
+      ? 60 * 60 * 1000
+      : 60 * 1000;
+    return args.nowMs + amount * unitMs;
+  }
+
+  const tomorrowMatch = /^tomorrow(?:\s+at)?\s+(.+)$/i.exec(text);
+  if (!tomorrowMatch) {
     return undefined;
   }
-  const time = parseLocalTime(match[1]);
+  const time = parseLocalTime(tomorrowMatch[1]);
   if (!time) {
     return undefined;
   }

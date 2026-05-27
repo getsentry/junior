@@ -8,6 +8,7 @@ const SCHEDULER_RECORD_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 const SCHEDULED_RUN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
 const PENDING_CLAIM_STALE_MS = 60_000;
+const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const LOCK_TTL_MS = 10_000;
 
 export interface SchedulerStore {
@@ -20,7 +21,7 @@ export interface SchedulerStore {
     completedAtMs: number;
     errorMessage: string;
     runId: string;
-    startedAtMs: number;
+    startedAtMs?: number;
   }): Promise<ScheduledRun | undefined>;
   markRunCompleted(args: {
     completedAtMs: number;
@@ -288,6 +289,76 @@ function buildScheduledRun(args: {
   };
 }
 
+function buildSkippedScheduledRun(args: {
+  completedAtMs: number;
+  errorMessage: string;
+  scheduledForMs: number;
+  task: ScheduledTask;
+}): ScheduledRun {
+  return {
+    ...buildScheduledRun({
+      claimedAtMs: args.completedAtMs,
+      scheduledForMs: args.scheduledForMs,
+      task: args.task,
+    }),
+    completedAtMs: args.completedAtMs,
+    errorMessage: args.errorMessage,
+    status: "skipped",
+  };
+}
+
+function isMissedRunTooOld(args: {
+  nowMs: number;
+  scheduledForMs: number;
+}): boolean {
+  return args.scheduledForMs + MISSED_RUN_MAX_AGE_MS < args.nowMs;
+}
+
+function normalizedText(value: string | undefined): string {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
+function normalizedTexts(values: string[] | undefined): string[] {
+  return (values ?? []).map(normalizedText);
+}
+
+function taskDedupeFingerprint(task: ScheduledTask): string {
+  return JSON.stringify({
+    destination: task.destination,
+    schedule: {
+      kind: task.schedule.kind,
+      oneOffAtMs: task.schedule.kind === "one_off" ? task.nextRunAtMs : null,
+      recurrence: task.schedule.recurrence
+        ? {
+            dayOfMonth: task.schedule.recurrence.dayOfMonth ?? null,
+            frequency: task.schedule.recurrence.frequency,
+            interval: task.schedule.recurrence.interval,
+            month: task.schedule.recurrence.month ?? null,
+            startDate: task.schedule.recurrence.startDate,
+            time: task.schedule.recurrence.time,
+            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(),
+          }
+        : null,
+      timezone: task.schedule.timezone,
+    },
+    task: {
+      constraints: normalizedTexts(task.task.constraints),
+      expectedOutput: normalizedText(task.task.expectedOutput),
+      instructions: normalizedTexts(task.task.instructions),
+      objective: normalizedText(task.task.objective),
+      sourceContext: normalizedTexts(task.task.sourceContext),
+      title: normalizedText(task.task.title),
+    },
+  });
+}
+
+function isEarlierTask(left: ScheduledTask, right: ScheduledTask): boolean {
+  return (
+    left.createdAtMs < right.createdAtMs ||
+    (left.createdAtMs === right.createdAtMs && left.id < right.id)
+  );
+}
+
 function canFinishRun(
   run: ScheduledRun,
   startedAtMs: number | undefined,
@@ -409,6 +480,12 @@ class StateAdapterSchedulerStore implements SchedulerStore {
         }
       }
 
+      if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {
+        await this.skipMissedRun({ nowMs: args.nowMs, scheduledForMs, task });
+        await clearActiveRun(this.state, task.id, runId);
+        continue;
+      }
+
       const tryClaimScheduledSlot = async (): Promise<boolean> =>
         await this.state.setIfNotExists(
           claimKey(task.id, scheduledForMs),
@@ -441,6 +518,88 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     }
 
     return undefined;
+  }
+
+  private async skipMissedRun(args: {
+    nowMs: number;
+    scheduledForMs: number;
+    task: ScheduledTask;
+  }): Promise<void> {
+    await withLock(this.state, taskLockKey(args.task.id), async () => {
+      const current =
+        (await this.state.get<ScheduledTask>(taskKey(args.task.id))) ??
+        undefined;
+      if (
+        !current ||
+        current.status !== "active" ||
+        getDueRunAtMs(current, args.nowMs) !== args.scheduledForMs
+      ) {
+        return;
+      }
+
+      const duplicateOf = await this.findStaleRecoveryCanonicalTask(current);
+      const errorMessage = duplicateOf
+        ? `Duplicate stale scheduled task was skipped without dispatch. Canonical task: ${duplicateOf.id}.`
+        : "Scheduled occurrence was more than 24 hours late and was skipped without dispatch.";
+      await this.state.set(
+        runKey(buildRunId(current.id, args.scheduledForMs)),
+        buildSkippedScheduledRun({
+          completedAtMs: args.nowMs,
+          errorMessage,
+          scheduledForMs: args.scheduledForMs,
+          task: current,
+        }),
+        SCHEDULED_RUN_TTL_MS,
+      );
+
+      const isRunNow = current.runNowAtMs === args.scheduledForMs;
+      let nextRunAtMs: number | undefined;
+      if (!duplicateOf) {
+        nextRunAtMs =
+          isRunNow && current.nextRunAtMs !== args.scheduledForMs
+            ? current.nextRunAtMs
+            : current.schedule.kind === "recurring"
+              ? getNextRunAtMs(current, args.scheduledForMs, args.nowMs)
+              : undefined;
+      }
+      const nextStatus = nextRunAtMs ? "active" : "paused";
+
+      await this.saveTaskRecord(
+        {
+          ...current,
+          nextRunAtMs,
+          runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
+          status: nextStatus,
+          statusReason: nextStatus === "paused" ? errorMessage : undefined,
+          updatedAtMs: args.nowMs,
+          version: current.version + 1,
+        },
+        current,
+      );
+    });
+  }
+
+  private async findStaleRecoveryCanonicalTask(
+    task: ScheduledTask,
+  ): Promise<ScheduledTask | undefined> {
+    const fingerprint = taskDedupeFingerprint(task);
+    const ids = await getIndex(
+      this.state,
+      teamTaskIndexKey(task.destination.teamId),
+    );
+    const tasks = await Promise.all(
+      ids.filter((id) => id !== task.id).map((id) => this.getTask(id)),
+    );
+    return tasks
+      .filter((candidate): candidate is ScheduledTask => Boolean(candidate))
+      .filter(
+        (candidate) =>
+          candidate.status === "active" &&
+          isEarlierTask(candidate, task) &&
+          taskDedupeFingerprint(candidate) === fingerprint,
+      )
+      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id))
+      .at(0);
   }
 
   async getRun(runId: string): Promise<ScheduledRun | undefined> {
@@ -570,7 +729,7 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     completedAtMs: number;
     errorMessage: string;
     runId: string;
-    startedAtMs: number;
+    startedAtMs?: number;
   }): Promise<ScheduledRun | undefined> {
     const next = await this.updateRun(args.runId, (run) =>
       canFinishRun(run, args.startedAtMs)

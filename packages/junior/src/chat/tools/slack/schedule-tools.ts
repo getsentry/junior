@@ -16,6 +16,7 @@ import type {
   ScheduledTaskStatus,
 } from "@/chat/scheduler/types";
 import { normalizeSlackConversationId } from "@/chat/slack/client";
+import { isSlackTeamId } from "@/chat/slack/ids";
 import { tool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -43,6 +44,12 @@ function requireActiveDestination(
     return {
       ok: false,
       error: "No active Slack workspace context is available.",
+    };
+  }
+  if (!isSlackTeamId(context.teamId)) {
+    return {
+      ok: false,
+      error: "Active Slack workspace context is invalid.",
     };
   }
 
@@ -303,6 +310,38 @@ function hasConflictingNextRunInputs(input: {
   return Boolean(input.next_run_at_iso && input.next_run_at_text);
 }
 
+function canCreateUnconfirmedSimpleReminder(args: {
+  context: ToolRuntimeContext;
+  input: {
+    constraints?: string[];
+    next_run_at_iso?: string;
+    next_run_at_text?: string;
+    recurrence_frequency?: unknown;
+    recurrence_interval?: number;
+    recurrence_weekdays?: number[];
+    source_context?: string[];
+  };
+}): boolean {
+  const userText = args.context.userText;
+  if (
+    !userText ||
+    !/\bremind\s+(me|us|this channel|the channel)\b/i.test(userText)
+  ) {
+    return false;
+  }
+  if (/\b(every|daily|weekly|monthly|yearly|each)\b/i.test(userText)) {
+    return false;
+  }
+  return (
+    Boolean(args.input.next_run_at_iso || args.input.next_run_at_text) &&
+    args.input.recurrence_frequency === undefined &&
+    args.input.recurrence_interval === undefined &&
+    args.input.recurrence_weekdays === undefined &&
+    (args.input.constraints?.length ?? 0) === 0 &&
+    (args.input.source_context?.length ?? 0) === 0
+  );
+}
+
 /** Create a tool that stores a scheduled task for the active Slack context. */
 export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
   return tool({
@@ -312,15 +351,18 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
     promptGuidelines: [
       "Use only when the user explicitly asks Junior to do work later or on a recurring cadence.",
       ACTIVE_DESTINATION_GUIDELINE,
-      "Before calling, show the normalized task, cadence, timezone, destination, and next run; call only after explicit user confirmation.",
+      'For an explicit simple one-off reminder request such as "remind me in 10 minutes to stretch", call immediately without asking for confirmation.',
+      "For recurring schedules or non-reminder scheduled work, show the normalized task, cadence, timezone, destination, and next run; call only after explicit user confirmation.",
       "Provide exactly one of next_run_at_iso or next_run_at_text; omit timezone to use the configured default.",
       "Use recurrence_frequency only for recurring schedules.",
     ],
     inputSchema: Type.Object({
-      confirmed_by_user: Type.Boolean({
-        description:
-          "Must be true only after the user explicitly confirms the normalized task, cadence, timezone, destination, and next run.",
-      }),
+      confirmed_by_user: Type.Optional(
+        Type.Boolean({
+          description:
+            "Set true only after the user explicitly confirms the normalized task, cadence, timezone, destination, and next run. Omit or set false for explicit simple one-off reminders.",
+        }),
+      ),
       title: Type.String({ minLength: 1, maxLength: 120 }),
       objective: Type.String({ minLength: 1, maxLength: 1000 }),
       instructions: Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
@@ -392,11 +434,14 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       if (!destination.ok) return destination;
       const requester = requireRequester(context);
       if (!requester.ok) return requester;
-      if (input.confirmed_by_user !== true) {
+      if (
+        input.confirmed_by_user !== true &&
+        !canCreateUnconfirmedSimpleReminder({ context, input })
+      ) {
         return {
           ok: false,
           error:
-            "Scheduled tasks require explicit user confirmation before they are created. Draft the task contract for the user to confirm.",
+            "Scheduled tasks require explicit user confirmation before they are created, except simple one-off reminders requested directly by the user. Draft the task contract for the user to confirm.",
         };
       }
 

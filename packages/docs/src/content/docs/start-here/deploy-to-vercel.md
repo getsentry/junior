@@ -52,6 +52,7 @@ Set the core runtime variables in Vercel:
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox requester context.                        |
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
+| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.       |
 | `AI_GATEWAY_API_KEY`                        | Optional    | AI Gateway auth when your setup requires it.                                   |
 
 Use one stable `JUNIOR_SECRET` per deployment:

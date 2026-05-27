@@ -60,6 +60,7 @@ export interface ChatConfig {
   };
   state: {
     adapter: "memory" | "redis";
+    keyPrefix?: string;
     redisUrl?: string;
   };
 }
@@ -204,6 +205,7 @@ export function readChatConfig(
         env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
           ? "memory"
           : "redis",
+      keyPrefix: toOptionalTrimmed(env.JUNIOR_STATE_KEY_PREFIX),
       redisUrl: toOptionalTrimmed(env.REDIS_URL),
     },
   };

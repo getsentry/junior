@@ -14,7 +14,7 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
-const TEST_TEAM_ID = `T_SCHEDULE_${Date.now()}`;
+const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
 
 function createContext(
   overrides: Partial<ToolRuntimeContext> = {},
@@ -141,11 +141,73 @@ describe("Slack schedule tools", () => {
     expect(result).toMatchObject({
       ok: false,
       error:
-        "Scheduled tasks require explicit user confirmation before they are created. Draft the task contract for the user to confirm.",
+        "Scheduled tasks require explicit user confirmation before they are created, except simple one-off reminders requested directly by the user. Draft the task contract for the user to confirm.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
+  });
+
+  it("rejects invalid Slack workspace context before creating a task", async () => {
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),
+      {
+        confirmed_by_user: true,
+        title: "Reminder",
+        objective: "Remind David to wash his hands.",
+        instructions: ["Remind David to wash his hands."],
+        schedule_description: "In 1 minute",
+        next_run_at_text: "in 1 minute",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "Active Slack workspace context is invalid.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("creates explicit one-off reminders without a second confirmation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
+
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(
+        createContext({
+          channelId: "D123",
+          userText: "remind me in 1 minute to wash my hands",
+        }),
+      ),
+      {
+        title: "Wash hands reminder",
+        objective: "Remind David to wash his hands.",
+        instructions: ["Remind David to wash his hands."],
+        schedule_description: "In 1 minute",
+        next_run_at_text: "in 1 minute",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        next_run_at: "2026-05-27T00:25:23.000Z",
+        schedule: "In 1 minute",
+        status: "active",
+        title: "Wash hands reminder",
+      },
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toMatchObject([
+      {
+        destination: { channelId: "D123" },
+        nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
+        status: "active",
+      },
+    ]);
   });
 
   it("rejects parseable non-ISO next run timestamps", async () => {

@@ -10,6 +10,57 @@ const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
 let stateAdapter: StateAdapter | undefined;
 let redisStateAdapter: RedisStateAdapter | undefined;
 
+function createPrefixedStateAdapter(
+  base: StateAdapter,
+  prefix: string,
+): StateAdapter {
+  const prefixed = (value: string): string => `${prefix}:${value}`;
+  const unprefixed = (value: string): string =>
+    value.startsWith(`${prefix}:`) ? value.slice(prefix.length + 1) : value;
+  const prefixLock = (lock: Lock): Lock => ({
+    ...lock,
+    threadId: prefixed(lock.threadId),
+  });
+  const unprefixLock = (lock: Lock): Lock => ({
+    ...lock,
+    threadId: unprefixed(lock.threadId),
+  });
+
+  return {
+    appendToList: (key, value, options) =>
+      base.appendToList(prefixed(key), value, options),
+    connect: () => base.connect(),
+    disconnect: () => base.disconnect(),
+    subscribe: (threadId) => base.subscribe(prefixed(threadId)),
+    unsubscribe: (threadId) => base.unsubscribe(prefixed(threadId)),
+    isSubscribed: (threadId) => base.isSubscribed(prefixed(threadId)),
+    acquireLock: async (threadId, ttlMs) => {
+      const lock = await base.acquireLock(prefixed(threadId), ttlMs);
+      return lock ? unprefixLock(lock) : null;
+    },
+    releaseLock: (lock) => base.releaseLock(prefixLock(lock)),
+    extendLock: async (lock, ttlMs) => {
+      const prefixedLock = prefixLock(lock);
+      const extended = await base.extendLock(prefixedLock, ttlMs);
+      if (extended) {
+        lock.expiresAt = prefixedLock.expiresAt;
+      }
+      return extended;
+    },
+    forceReleaseLock: (threadId) => base.forceReleaseLock(prefixed(threadId)),
+    enqueue: (threadId, entry, maxSize) =>
+      base.enqueue(prefixed(threadId), entry, maxSize),
+    dequeue: (threadId) => base.dequeue(prefixed(threadId)),
+    queueDepth: (threadId) => base.queueDepth(prefixed(threadId)),
+    get: (key) => base.get(prefixed(key)),
+    getList: (key) => base.getList(prefixed(key)),
+    set: (key, value, ttlMs) => base.set(prefixed(key), value, ttlMs),
+    setIfNotExists: (key, value, ttlMs) =>
+      base.setIfNotExists(prefixed(key), value, ttlMs),
+    delete: (key) => base.delete(prefixed(key)),
+  };
+}
+
 function createQueuedStateAdapter(
   base: StateAdapter,
   options: { activeLockMaxAgeMs: number },
@@ -169,15 +220,20 @@ function createQueuedStateAdapter(
   };
 }
 
+function withOptionalPrefix(base: StateAdapter, prefix: string | undefined) {
+  return prefix ? createPrefixedStateAdapter(base, prefix) : base;
+}
+
 function createStateAdapter(): StateAdapter {
   const config = getChatConfig();
   const activeLockMaxAgeMs = config.bot.turnTimeoutMs + ACTIVE_LOCK_TTL_MS;
 
   if (config.state.adapter === "memory") {
     redisStateAdapter = undefined;
-    return createQueuedStateAdapter(createMemoryState(), {
-      activeLockMaxAgeMs,
-    });
+    return createQueuedStateAdapter(
+      withOptionalPrefix(createMemoryState(), config.state.keyPrefix),
+      { activeLockMaxAgeMs },
+    );
   }
 
   if (!config.state.redisUrl) {
@@ -188,9 +244,10 @@ function createStateAdapter(): StateAdapter {
     url: config.state.redisUrl,
   });
   redisStateAdapter = redisState;
-  return createQueuedStateAdapter(redisState, {
-    activeLockMaxAgeMs,
-  });
+  return createQueuedStateAdapter(
+    withOptionalPrefix(redisState, config.state.keyPrefix),
+    { activeLockMaxAgeMs },
+  );
 }
 
 function getOptionalRedisStateAdapter(): RedisStateAdapter | undefined {

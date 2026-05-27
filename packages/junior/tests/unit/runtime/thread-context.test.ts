@@ -71,14 +71,14 @@ describe("getTeamId", () => {
     expect(
       getTeamId({
         raw: {
-          team_id: "T_RAW",
+          team_id: "TRAW",
         },
       } as any),
-    ).toBe("T_RAW");
+    ).toBe("TRAW");
   });
 
   it("falls back to the inbound webhook workspace team", async () => {
-    await runWithWorkspaceTeamId("T_WORKSPACE", async () => {
+    await runWithWorkspaceTeamId("TWORKSPACE", async () => {
       await Promise.resolve();
       expect(
         getTeamId({
@@ -87,19 +87,32 @@ describe("getTeamId", () => {
             ts: "1700000000.200",
           },
         } as any),
-      ).toBe("T_WORKSPACE");
+      ).toBe("TWORKSPACE");
     });
   });
 
   it("prefers the inbound workspace over a Slack Connect author team", () => {
-    runWithWorkspaceTeamId("T_WORKSPACE", () => {
+    runWithWorkspaceTeamId("TWORKSPACE", () => {
       expect(
         getTeamId({
           raw: {
-            user_team: "T_EXTERNAL",
+            user_team: "TEXTERNAL",
           },
         } as any),
-      ).toBe("T_WORKSPACE");
+      ).toBe("TWORKSPACE");
+    });
+  });
+
+  it("ignores non-team raw team values from DM payloads", () => {
+    runWithWorkspaceTeamId("TWORKSPACE", () => {
+      expect(
+        getTeamId({
+          raw: {
+            channel: "D12345",
+            team: "D12345",
+          },
+        } as any),
+      ).toBe("TWORKSPACE");
     });
   });
 });

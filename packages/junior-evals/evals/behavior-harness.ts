@@ -23,8 +23,10 @@ import {
   deleteMcpStoredOAuthCredentials,
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
+import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { getPluginOAuthConfig, setPluginConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
+import { createSchedulerPlugin } from "@/chat/scheduler/plugin";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -730,7 +732,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     runId: event.thread.run_id,
     raw: {
       channel: event.thread.channel_id,
-      team_id: "T_EVAL",
+      team_id: "TEVAL",
       ts: messageTs,
       thread_ts: event.thread.thread_ts,
     },
@@ -1412,62 +1414,69 @@ export async function runEvalScenario(
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
   const env = await setupHarnessEnvironment(scenario);
-
-  const slackAdapter = new FakeSlackAdapter();
-  const threadRecordsById = new Map<string, EvalThreadRecord>();
-  const readyQueueDeliveries: QueueDelivery[] = [];
-  const observations: RuntimeObservations = {
-    toolInvocations: [],
-  };
-  const channelStateById = new Map<
-    string,
-    { value: Record<string, unknown> }
-  >();
-
-  const getChannelStateRef = (
-    channelId: string | undefined,
-  ): { value: Record<string, unknown> } | undefined => {
-    const normalized = channelId?.trim();
-    if (!normalized) return undefined;
-    const existing = channelStateById.get(normalized);
-    if (existing) return existing;
-    const created = { value: {} };
-    channelStateById.set(normalized, created);
-    return created;
-  };
-
-  const getThreadRecord = (
-    fixture: EvalEventThreadFixture,
-  ): EvalThreadRecord => {
-    const runtimeThreadId = buildRuntimeThreadId(fixture);
-    const existing = threadRecordsById.get(runtimeThreadId);
-    if (existing) return existing;
-    const thread = createEvalThread({
-      fixture,
-      channelStateRef: getChannelStateRef(fixture.channel_id),
-      stateAdapter: env.stateAdapter,
-    });
-    const transcript: Message[] = [];
-    attachTranscriptAccessors(thread, transcript);
-    const record = { thread, transcript };
-    threadRecordsById.set(runtimeThreadId, record);
-    return record;
-  };
-
-  const services = buildRuntimeServices(
-    scenario,
-    env,
-    threadRecordsById,
-    observations,
-  );
-
-  const slackRuntime = createSlackRuntime({
-    getSlackAdapter: () => slackAdapter as any,
-    services,
-  });
-  const dispatch = createThreadMessageDispatcher({ runtime: slackRuntime });
+  let previousAgentPlugins: ReturnType<typeof setAgentPlugins> | undefined;
 
   try {
+    const currentAgentPlugins = getAgentPlugins();
+    previousAgentPlugins = setAgentPlugins([
+      createSchedulerPlugin(),
+      ...currentAgentPlugins.filter((plugin) => plugin.name !== "scheduler"),
+    ]);
+
+    const slackAdapter = new FakeSlackAdapter();
+    const threadRecordsById = new Map<string, EvalThreadRecord>();
+    const readyQueueDeliveries: QueueDelivery[] = [];
+    const observations: RuntimeObservations = {
+      toolInvocations: [],
+    };
+    const channelStateById = new Map<
+      string,
+      { value: Record<string, unknown> }
+    >();
+
+    const getChannelStateRef = (
+      channelId: string | undefined,
+    ): { value: Record<string, unknown> } | undefined => {
+      const normalized = channelId?.trim();
+      if (!normalized) return undefined;
+      const existing = channelStateById.get(normalized);
+      if (existing) return existing;
+      const created = { value: {} };
+      channelStateById.set(normalized, created);
+      return created;
+    };
+
+    const getThreadRecord = (
+      fixture: EvalEventThreadFixture,
+    ): EvalThreadRecord => {
+      const runtimeThreadId = buildRuntimeThreadId(fixture);
+      const existing = threadRecordsById.get(runtimeThreadId);
+      if (existing) return existing;
+      const thread = createEvalThread({
+        fixture,
+        channelStateRef: getChannelStateRef(fixture.channel_id),
+        stateAdapter: env.stateAdapter,
+      });
+      const transcript: Message[] = [];
+      attachTranscriptAccessors(thread, transcript);
+      const record = { thread, transcript };
+      threadRecordsById.set(runtimeThreadId, record);
+      return record;
+    };
+
+    const services = buildRuntimeServices(
+      scenario,
+      env,
+      threadRecordsById,
+      observations,
+    );
+
+    const slackRuntime = createSlackRuntime({
+      getSlackAdapter: () => slackAdapter as any,
+      services,
+    });
+    const dispatch = createThreadMessageDispatcher({ runtime: slackRuntime });
+
     await processEvents({
       scenario,
       env,
@@ -1476,16 +1485,19 @@ export async function runEvalScenario(
       getThreadRecord,
       readyQueueDeliveries,
     });
+
+    return collectResults(
+      threadRecordsById,
+      slackAdapter,
+      logRecords,
+      observations,
+    );
   } finally {
+    if (previousAgentPlugins) {
+      setAgentPlugins(previousAgentPlugins);
+    }
     await teardownHarnessEnvironment(scenario, env);
   }
-
-  return collectResults(
-    threadRecordsById,
-    slackAdapter,
-    logRecords,
-    observations,
-  );
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.

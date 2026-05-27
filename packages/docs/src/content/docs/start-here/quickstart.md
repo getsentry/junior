@@ -56,17 +56,18 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 Set these values before running real turns:
 
-| Variable               | Required               | Purpose                                                        |
-| ---------------------- | ---------------------- | -------------------------------------------------------------- |
-| `SLACK_SIGNING_SECRET` | Yes, for Slack traffic | Verifies Slack requests.                                       |
-| `SLACK_BOT_TOKEN`      | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                     |
-| `REDIS_URL`            | Yes                    | Queue and runtime state storage.                               |
-| `JUNIOR_SECRET`        | Yes                    | Signs internal resume callbacks and sandbox requester context. |
-| `JUNIOR_BOT_NAME`      | No                     | Bot display/config name.                                       |
-| `AI_MODEL`             | No                     | Primary assistant model override.                              |
-| `AI_FAST_MODEL`        | No                     | Lightweight routing/classification model override.             |
-| `AI_VISION_MODEL`      | No                     | Enables image understanding when set.                          |
-| `AI_WEB_SEARCH_MODEL`  | No                     | Search model override.                                         |
+| Variable                  | Required               | Purpose                                                        |
+| ------------------------- | ---------------------- | -------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`    | Yes, for Slack traffic | Verifies Slack requests.                                       |
+| `SLACK_BOT_TOKEN`         | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                     |
+| `REDIS_URL`               | Yes                    | Queue and runtime state storage.                               |
+| `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox requester context. |
+| `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                       |
+| `AI_MODEL`                | No                     | Primary assistant model override.                              |
+| `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.             |
+| `AI_VISION_MODEL`         | No                     | Enables image understanding when set.                          |
+| `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                         |
+| `JUNIOR_STATE_KEY_PREFIX` | No                     | Redis key namespace for this local app/environment.            |
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
 
