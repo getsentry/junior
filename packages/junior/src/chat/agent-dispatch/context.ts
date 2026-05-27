@@ -26,6 +26,7 @@ function shouldScheduleDispatch(
   );
 }
 
+/** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   nowMs: number;
   plugin: string;

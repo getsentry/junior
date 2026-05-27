@@ -194,6 +194,7 @@ export function createSchedulerPlugin() {
       },
       async heartbeat(ctx) {
         const store = createStateSchedulerStore();
+        let processedCount = 0;
         let dispatchCount = 0;
         for (const run of await store.listIncompleteRuns()) {
           if (!run.dispatchId) {
@@ -217,12 +218,12 @@ export function createSchedulerPlugin() {
               store,
             })
           ) {
-            dispatchCount += 1;
+            processedCount += 1;
           }
         }
 
         for (
-          let index = dispatchCount;
+          let index = processedCount;
           index < SCHEDULER_HEARTBEAT_LIMIT;
           index += 1
         ) {

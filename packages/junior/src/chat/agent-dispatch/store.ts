@@ -14,6 +14,7 @@ const DISPATCH_PREFIX = "junior:agent_dispatch";
 const DISPATCH_LOCK_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
+/** Keep dispatch persistence keys consistent across callback and recovery paths. */
 export function getDispatchStorageKey(id: string): string {
   return `${DISPATCH_PREFIX}:record:${id}`;
 }
@@ -39,10 +40,7 @@ function normalizeMetadata(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-export function buildDispatchId(
-  plugin: string,
-  idempotencyKey: string,
-): string {
+function buildDispatchId(plugin: string, idempotencyKey: string): string {
   const digest = createHash("sha256")
     .update(plugin)
     .update("\0")
@@ -52,19 +50,19 @@ export function buildDispatchId(
   return `dispatch_${digest}`;
 }
 
+/** Map a dispatch destination to the conversation lock and memory key it owns. */
 export function getDispatchConversationId(
   destination: DispatchRecord["destination"],
 ): string {
   return `slack:${destination.teamId}:${destination.channelId}`;
 }
 
+/** Give dispatch slices stable turn ids for resumability and trace correlation. */
 export function getDispatchTurnId(dispatchId: string): string {
   return `dispatch:${dispatchId}`;
 }
 
-export function toDispatchProjection(
-  record: DispatchRecord,
-): DispatchProjection {
+function toDispatchProjection(record: DispatchRecord): DispatchProjection {
   return {
     id: record.id,
     status: record.status,
@@ -75,10 +73,12 @@ export function toDispatchProjection(
   };
 }
 
+/** Gate recovery to dispatches that can still make progress. */
 export function isTerminalDispatchStatus(status: DispatchStatus): boolean {
   return status === "completed" || status === "failed" || status === "blocked";
 }
 
+/** Serialize mutations for a dispatch so callbacks and heartbeats stay idempotent. */
 export async function withDispatchLock<T>(
   dispatchId: string,
   callback: (state: StateAdapter) => Promise<T>,
@@ -117,6 +117,7 @@ async function putRecord(
   }
 }
 
+/** Load dispatch state for callback, recovery, and plugin projection paths. */
 export async function getDispatchRecord(
   id: string,
 ): Promise<DispatchRecord | undefined> {
@@ -127,6 +128,7 @@ export async function getDispatchRecord(
   );
 }
 
+/** Create a plugin dispatch idempotently from the plugin's idempotency key. */
 export async function createOrGetDispatch(args: {
   nowMs: number;
   options: DispatchOptions;
@@ -161,6 +163,7 @@ export async function createOrGetDispatch(args: {
   });
 }
 
+/** Advance dispatch versions so stale callbacks cannot overwrite newer state. */
 export async function updateDispatchRecord(
   state: StateAdapter,
   record: DispatchRecord,
@@ -174,6 +177,7 @@ export async function updateDispatchRecord(
   return next;
 }
 
+/** Feed heartbeat recovery from the durable incomplete-dispatch index. */
 export async function listIncompleteDispatchIds(): Promise<string[]> {
   const state = getStateAdapter();
   await state.connect();
@@ -181,6 +185,7 @@ export async function listIncompleteDispatchIds(): Promise<string[]> {
   return [...new Set(ids.filter((id): id is string => typeof id === "string"))];
 }
 
+/** Return a plugin-scoped dispatch projection without exposing raw runtime state. */
 export async function getPluginDispatchProjection(args: {
   id: string;
   plugin: string;
