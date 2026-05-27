@@ -178,7 +178,6 @@ export async function runAgentDispatchSlice(
     }
     return await updateDispatchRecord(state, {
       ...current,
-      attempt: current.attempt + 1,
       lastCallbackAtMs: nowMs,
       leaseExpiresAtMs: nowMs + DISPATCH_SLICE_LEASE_MS,
       status: "running",
@@ -204,6 +203,28 @@ export async function runAgentDispatchSlice(
     });
     return;
   }
+
+  const startedDispatch = await withDispatchLock(dispatch.id, async (state) => {
+    const current =
+      (await state.get<DispatchRecord>(getDispatchStorageKey(dispatch.id))) ??
+      dispatch;
+    if (
+      current.status !== "running" ||
+      current.version !== dispatch.version ||
+      current.attempt >= current.maxAttempts
+    ) {
+      return undefined;
+    }
+    return await updateDispatchRecord(state, {
+      ...current,
+      attempt: current.attempt + 1,
+    });
+  });
+  if (!startedDispatch) {
+    await stateAdapter.releaseLock(conversationLock);
+    return;
+  }
+  dispatch = startedDispatch;
 
   try {
     const persisted = await getPersistedThreadState(conversationId);

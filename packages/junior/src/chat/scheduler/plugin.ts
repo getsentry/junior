@@ -146,6 +146,29 @@ async function blockClaimedRun(args: {
   });
 }
 
+async function failClaimedRun(args: {
+  errorMessage: string;
+  nowMs: number;
+  run: ScheduledRun;
+  store: SchedulerStore;
+}): Promise<void> {
+  const failed = await args.store.markRunFailed({
+    completedAtMs: args.nowMs,
+    errorMessage: args.errorMessage,
+    runId: args.run.id,
+    startedAtMs: args.run.startedAtMs,
+  });
+  if (!failed) {
+    return;
+  }
+  await args.store.updateTaskAfterRun({
+    errorMessage: args.errorMessage,
+    nowMs: args.nowMs,
+    run: args.run,
+    status: "failed",
+  });
+}
+
 /** Create Junior's built-in trusted scheduler plugin. */
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
@@ -178,6 +201,12 @@ export function createSchedulerPlugin() {
           }
           const dispatch = await ctx.agent.get(run.dispatchId);
           if (!dispatch) {
+            await failClaimedRun({
+              errorMessage: "Scheduled task dispatch record is missing.",
+              nowMs: ctx.nowMs,
+              run,
+              store,
+            });
             continue;
           }
           if (

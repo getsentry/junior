@@ -103,6 +103,9 @@ export async function recoverStaleDispatches(args: {
       continue;
     }
     try {
+      if (!isStaleDispatch({ record, nowMs: args.nowMs })) {
+        continue;
+      }
       if (record.createdAtMs + DISPATCH_MAX_AGE_MS <= args.nowMs) {
         await failDispatch({
           record,
@@ -115,9 +118,6 @@ export async function recoverStaleDispatches(args: {
           record,
           errorMessage: "Dispatch exceeded retry attempts.",
         });
-        continue;
-      }
-      if (!isStaleDispatch({ record, nowMs: args.nowMs })) {
         continue;
       }
       await scheduleDispatchCallback({

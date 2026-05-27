@@ -6,7 +6,7 @@ import {
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { RetryableTurnError } from "@/chat/runtime/turn";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AssistantReply } from "@/chat/respond";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
@@ -164,6 +164,50 @@ describe("agent dispatch runner", () => {
     expect(scheduleCallback).toHaveBeenCalledWith({
       id: created.record.id,
       expectedVersion: expect.any(Number),
+    });
+  });
+
+  it("does not burn an attempt when the destination conversation is busy", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-busy",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+      },
+    });
+    const state = getStateAdapter();
+    await state.connect();
+    const lock = await state.acquireLock("slack:T123:C123", 5 * 60 * 1000);
+    expect(lock).toBeTruthy();
+
+    try {
+      await runAgentDispatchSlice(
+        {
+          id: created.record.id,
+          expectedVersion: created.record.version,
+        },
+        {
+          generateAssistantReply: async () => {
+            throw new Error("busy conversation should not run");
+          },
+        },
+      );
+    } finally {
+      if (lock) {
+        await state.releaseLock(lock);
+      }
+    }
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      attempt: 0,
+      errorMessage: "Destination conversation is busy",
+      status: "pending",
     });
   });
 });

@@ -13,7 +13,7 @@ import {
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -245,6 +245,47 @@ describe("trusted plugin heartbeat", () => {
     });
   });
 
+  it("does not fail an active leased dispatch that reached max attempts", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-active-max-attempts",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+      },
+    });
+    await withDispatchLock(created.record.id, async (state) => {
+      const record = await state.get<DispatchRecord>(
+        getDispatchStorageKey(created.record.id),
+      );
+      if (!record) {
+        throw new Error("Expected dispatch record to exist");
+      }
+      await updateDispatchRecord(state, {
+        ...record,
+        attempt: record.maxAttempts,
+        lastCallbackAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+        leaseExpiresAtMs: Date.parse("2026-05-26T12:10:00.000Z"),
+        status: "running",
+      });
+    });
+
+    await expect(
+      recoverStaleDispatches({
+        nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
+      }),
+    ).resolves.toBe(0);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "running",
+      attempt: created.record.maxAttempts,
+    });
+  });
+
   it("dispatches and reconciles scheduled runs from the scheduler plugin", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
@@ -303,6 +344,55 @@ describe("trusted plugin heartbeat", () => {
     });
     await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
       lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      status: "paused",
+    });
+  });
+
+  it("fails scheduled runs when their dispatch record disappeared", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    await store.saveTask(createTask());
+
+    const firstWaitUntilTasks: Promise<unknown>[] = [];
+    const firstResponse = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(firstWaitUntilTasks),
+    );
+    expect(firstResponse.status).toBe(202);
+    await Promise.all(firstWaitUntilTasks);
+
+    const running = await store.getRun(
+      `sched_plugin_1:${Date.parse("2026-05-26T12:00:00.000Z")}`,
+    );
+    expect(running).toMatchObject({
+      status: "running",
+      dispatchId: expect.any(String),
+    });
+    const state = getStateAdapter();
+    await state.connect();
+    await state.delete(getDispatchStorageKey(running!.dispatchId!));
+
+    const secondWaitUntilTasks: Promise<unknown>[] = [];
+    const secondResponse = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(secondWaitUntilTasks),
+    );
+    expect(secondResponse.status).toBe(202);
+    await Promise.all(secondWaitUntilTasks);
+
+    await expect(store.getRun(running!.id)).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "Scheduled task dispatch record is missing.",
+    });
+    await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
       status: "paused",
     });
   });
