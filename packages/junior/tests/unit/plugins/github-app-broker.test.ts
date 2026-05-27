@@ -21,7 +21,7 @@ const TEST_CREDENTIALS: GitHubAppCredentials = {
 const TEST_MANIFEST: PluginManifest = {
   name: "github",
   description: "GitHub issue management via GitHub App",
-
+  capabilities: [],
   configKeys: ["github.org", "github.repo"],
   credentials: TEST_CREDENTIALS,
   target: {
