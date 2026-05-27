@@ -4,6 +4,7 @@ import type {
   JuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
+import { createAgentPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -81,8 +82,10 @@ export function getAgentPluginTools(
     if (!hook) {
       continue;
     }
+    const log = createAgentPluginLogger(plugin.name);
     const pluginTools = hook({
       plugin: { name: plugin.name },
+      log,
       requester: context.requester,
       channelCapabilities: context.channelCapabilities,
       channelId: context.channelId,
@@ -182,6 +185,7 @@ export function createAgentPluginHookRunner(
         );
         await hook({
           plugin: { name: plugin.name },
+          log: createAgentPluginLogger(plugin.name),
           requester: input.requester,
           sandbox: sandboxCapability,
         });
@@ -200,6 +204,7 @@ export function createAgentPluginHookRunner(
         let denied: string | undefined;
         await hook({
           plugin: { name: plugin.name },
+          log: createAgentPluginLogger(plugin.name),
           requester: input.requester,
           tool: {
             name: tool.name,

@@ -19,6 +19,17 @@ export interface AgentPluginDecision {
   replaceInput(input: Record<string, unknown>): void;
 }
 
+export interface AgentPluginLogger {
+  error(message: string, metadata?: Record<string, unknown>): void;
+  info(message: string, metadata?: Record<string, unknown>): void;
+  warn(message: string, metadata?: Record<string, unknown>): void;
+}
+
+export interface AgentPluginContext {
+  log: AgentPluginLogger;
+  plugin: AgentPluginMetadata;
+}
+
 export interface AgentPluginSandbox {
   juniorRoot: string;
   root: string;
@@ -41,16 +52,14 @@ export interface AgentPluginSandbox {
   }): Promise<void>;
 }
 
-export interface SandboxPrepareHookContext {
-  plugin: AgentPluginMetadata;
+export interface SandboxPrepareHookContext extends AgentPluginContext {
   requester?: AgentPluginRequester;
   sandbox: AgentPluginSandbox;
 }
 
-export interface BeforeToolExecuteHookContext {
+export interface BeforeToolExecuteHookContext extends AgentPluginContext {
   decision: AgentPluginDecision;
   env: AgentPluginEnv;
-  plugin: AgentPluginMetadata;
   requester?: AgentPluginRequester;
   tool: {
     input: Record<string, unknown>;
@@ -76,7 +85,7 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
   execute?: AgentPluginToolExecute<TInput>;
 }
 
-export interface ToolRegistrationHookContext {
+export interface ToolRegistrationHookContext extends AgentPluginContext {
   channelCapabilities?: {
     canAddReactions: boolean;
     canCreateCanvas: boolean;
@@ -85,7 +94,6 @@ export interface ToolRegistrationHookContext {
   channelId?: string;
   disableScheduleTools?: boolean;
   messageTs?: string;
-  plugin: AgentPluginMetadata;
   requester?: AgentPluginRequester;
   state: AgentPluginState;
   teamId?: string;
@@ -128,18 +136,11 @@ export interface AgentPluginState {
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
 }
 
-export interface AgentPluginLogger {
-  error(message: string, metadata?: Record<string, unknown>): void;
-  info(message: string, metadata?: Record<string, unknown>): void;
-  warn(message: string, metadata?: Record<string, unknown>): void;
-}
-
-export interface HeartbeatHookContext {
+export interface HeartbeatHookContext extends AgentPluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
-  log: AgentPluginLogger;
   nowMs: number;
   state: AgentPluginState;
 }

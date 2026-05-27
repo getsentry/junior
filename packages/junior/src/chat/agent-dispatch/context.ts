@@ -1,11 +1,5 @@
-import type {
-  AgentPluginLogger,
-  AgentPluginState,
-  Dispatch,
-  DispatchOptions,
-  DispatchResult,
-} from "@sentry/junior-plugin-api";
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import type { HeartbeatHookContext } from "@sentry/junior-plugin-api";
+import { createAgentPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import {
   createOrGetDispatch,
@@ -17,36 +11,6 @@ import type { DispatchRecord } from "./types";
 import { validateDispatchOptions } from "./validation";
 
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
-
-function createPluginLogger(plugin: string): AgentPluginLogger {
-  return {
-    info(message, metadata) {
-      logInfo(
-        "trusted_plugin_heartbeat_info",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
-    },
-    warn(message, metadata) {
-      logWarn(
-        "trusted_plugin_heartbeat_warn",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
-    },
-    error(message, metadata) {
-      logException(
-        new Error(message),
-        "trusted_plugin_heartbeat_error",
-        {},
-        { "app.plugin.name": plugin, ...metadata },
-        message,
-      );
-    },
-  };
-}
 
 function shouldScheduleDispatch(
   record: DispatchRecord,
@@ -65,20 +29,13 @@ function shouldScheduleDispatch(
 export function createHeartbeatContext(args: {
   nowMs: number;
   plugin: string;
-}): {
-  agent: {
-    dispatch(options: DispatchOptions): Promise<DispatchResult>;
-    get(id: string): Promise<Dispatch | undefined>;
-  };
-  log: AgentPluginLogger;
-  nowMs: number;
-  state: AgentPluginState;
-} {
+}): HeartbeatHookContext {
   let dispatchCount = 0;
   return {
+    plugin: { name: args.plugin },
     nowMs: args.nowMs,
     state: createPluginState(args.plugin),
-    log: createPluginLogger(args.plugin),
+    log: createAgentPluginLogger(args.plugin),
     agent: {
       async dispatch(options) {
         if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {

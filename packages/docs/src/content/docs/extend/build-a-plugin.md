@@ -144,6 +144,9 @@ installing sandbox helper files or mutating tool input/env before execution.
 Trusted hooks are backend code and must be registered explicitly from app code;
 Junior never loads them from `plugin.yaml`.
 
+Trusted hook contexts include `ctx.plugin` and `ctx.log`. Use `ctx.log` for
+plugin-scoped structured logs instead of writing directly to stdout.
+
 Export a factory from the plugin package:
 
 ```ts title="index.ts"
@@ -157,6 +160,7 @@ export function myProviderPlugin() {
     },
     hooks: {
       async sandboxPrepare(ctx) {
+        ctx.log.info("Preparing my-provider sandbox helpers");
         await ctx.sandbox.writeFile({
           path: `${ctx.sandbox.juniorRoot}/my-provider-ready`,
           content: "ok\n",
@@ -192,6 +196,79 @@ plugin package config is merged with the build-time plugin catalog.
 
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
 rejects non-object replacements before the tool runs.
+
+### Trusted hook surfaces
+
+Use the smallest hook that matches the deterministic boundary your plugin needs:
+
+| Hook                     | Purpose                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                  |
+| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                               |
+| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be camelCase and cannot shadow core tools. |
+| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                        |
+
+`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`.
+Return tool definitions keyed by the public tool names your plugin owns:
+
+```ts title="index.ts"
+import { Type } from "@sinclair/typebox";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+
+export function myProviderPlugin() {
+  return defineJuniorPlugin({
+    name: "my-provider",
+    hooks: {
+      tools(ctx) {
+        return {
+          myProviderPing: {
+            description: "Check my-provider connectivity.",
+            inputSchema: Type.Object({}),
+            execute: async () => {
+              ctx.log.info("Running my-provider ping");
+              return { ok: true };
+            },
+          },
+        };
+      },
+    },
+  });
+}
+```
+
+`heartbeat(ctx)` is for trusted plugins that need server-side background work.
+Use `ctx.state` for plugin-namespaced durable state. Use
+`ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
+agent task, and `ctx.agent.get(...)` to reconcile that dispatch later.
+
+```ts title="index.ts"
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+
+export function myProviderPlugin() {
+  return defineJuniorPlugin({
+    name: "my-provider",
+    hooks: {
+      async heartbeat(ctx) {
+        const lastDispatch = await ctx.state.get<{ id: string }>(
+          "last-dispatch",
+        );
+        if (lastDispatch) {
+          const dispatch = await ctx.agent.get(lastDispatch.id);
+          ctx.log.info("Checked background dispatch", {
+            status: dispatch?.status ?? "missing",
+          });
+        }
+
+        return { dispatchCount: 0 };
+      },
+    },
+  });
+}
+```
+
+Heartbeat dispatches are durable, signed, bounded, and scoped to the plugin
+that created them. Plugins can dispatch only to validated Slack destinations
+and receive projection records, not raw runtime state.
 
 ## Validate
 
