@@ -12,10 +12,6 @@ describe("juniorVercelConfig", () => {
         path: "/api/internal/heartbeat",
         schedule: "* * * * *",
       },
-      {
-        path: "/api/internal/scheduler/tick",
-        schedule: "* * * * *",
-      },
     ]);
   });
 

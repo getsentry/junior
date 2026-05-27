@@ -31,7 +31,7 @@ function collectWaitUntil(tasks: Promise<unknown>[]): WaitUntilFn {
   };
 }
 
-function createTask(): ScheduledTask {
+function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
   const nextRunAtMs = TEST_RUN_AT_MS;
   return {
     id: "sched_plugin_1",
@@ -56,7 +56,35 @@ function createTask(): ScheduledTask {
     },
     updatedAtMs: nextRunAtMs,
     version: 1,
+    ...overrides,
   };
+}
+
+function createDailyTask(
+  overrides: Partial<ScheduledTask> = {},
+): ScheduledTask {
+  const nextRunAtMs = Date.parse("2026-05-24T12:00:00.000Z");
+  return createTask({
+    id: "sched_plugin_daily",
+    createdAtMs: nextRunAtMs,
+    nextRunAtMs,
+    schedule: {
+      description: "Daily at noon UTC",
+      kind: "recurring",
+      timezone: "UTC",
+      recurrence: {
+        frequency: "daily",
+        interval: 1,
+        startDate: "2026-05-24",
+        time: {
+          hour: 12,
+          minute: 0,
+        },
+      },
+    },
+    updatedAtMs: nextRunAtMs,
+    ...overrides,
+  });
 }
 
 describe("trusted plugin heartbeat", () => {
@@ -486,6 +514,87 @@ describe("trusted plugin heartbeat", () => {
       statusReason: expect.stringContaining(
         "Scheduled task dispatch could not be created",
       ),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("skips old recurring occurrences and advances to the next future run", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    const task = createDailyTask();
+    await store.saveTask(task);
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+    );
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+
+    await expect(
+      store.getRun(`${task.id}:${task.nextRunAtMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      errorMessage: expect.stringContaining("more than 24 hours late"),
+    });
+    await expect(store.getTask(task.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("dedupes equivalent old recurring tasks during heartbeat recovery", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    const first = createDailyTask({
+      id: "sched_plugin_duplicate_a",
+      createdAtMs: Date.parse("2026-05-24T12:00:00.000Z"),
+    });
+    const duplicate = createDailyTask({
+      id: "sched_plugin_duplicate_b",
+      createdAtMs: Date.parse("2026-05-24T12:00:01.000Z"),
+    });
+    await store.saveTask(first);
+    await store.saveTask(duplicate);
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+    );
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+
+    await expect(
+      store.getRun(`${duplicate.id}:${duplicate.nextRunAtMs}`),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      errorMessage: expect.stringContaining(
+        "Duplicate stale scheduled task was skipped",
+      ),
+    });
+    await expect(store.getTask(first.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
+    });
+    await expect(store.getTask(duplicate.id)).resolves.toMatchObject({
+      status: "paused",
+      nextRunAtMs: undefined,
+      statusReason: expect.stringContaining(first.id),
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

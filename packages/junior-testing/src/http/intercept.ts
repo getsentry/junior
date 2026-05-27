@@ -28,7 +28,7 @@ const TEST_HTTP_FIXTURES = [
 /** Intercept test-owned external HTTP traffic before live network forwarding. */
 export async function interceptTestHttp(
   input: HttpInterceptRequest,
-): Promise<Response | undefined> {
+): Promise<Response> {
   for (const fixture of TEST_HTTP_FIXTURES) {
     const response = await fixture(input);
     if (response) return response;

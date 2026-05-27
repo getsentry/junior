@@ -22,7 +22,6 @@ import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
-import { GET as schedulerTickGET } from "@/handlers/scheduler-tick";
 import {
   ALL as sandboxEgressProxyALL,
   isSandboxEgressRequest,
@@ -30,18 +29,6 @@ import {
 import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
-
-/** Request data passed to sandbox egress HTTP interceptors. */
-export interface SandboxEgressHttpInterceptorInput {
-  provider: string;
-  request: Request;
-  upstreamUrl: URL;
-}
-
-/** Hook for replacing a credential-injected sandbox HTTP request with a test response. */
-export type SandboxEgressHttpInterceptor = (
-  input: SandboxEgressHttpInterceptorInput,
-) => Promise<Response | undefined>;
 
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
@@ -54,8 +41,6 @@ export interface JuniorAppOptions {
    * their package config is merged with the catalog bundled by `juniorNitro()`.
    */
   plugins?: PluginConfig | JuniorPlugin[];
-  /** Intercept credential-injected sandbox HTTP requests before live forwarding. */
-  httpInterceptor?: SandboxEgressHttpInterceptor;
   waitUntil?: WaitUntilFn;
 }
 
@@ -236,9 +221,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // Vercel Sandbox proxying preserves the original upstream path, so detect
     // authenticated proxy traffic before ordinary application routes claim it.
     if (isSandboxEgressRequest(c.req.raw)) {
-      return await sandboxEgressProxyALL(c.req.raw, {
-        interceptHttp: options?.httpInterceptor,
-      });
+      return await sandboxEgressProxyALL(c.req.raw);
     }
     await next();
   });
@@ -270,10 +253,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/internal/heartbeat", (c) => {
     return heartbeatGET(c.req.raw, waitUntil);
-  });
-
-  app.get("/api/internal/scheduler/tick", (c) => {
-    return schedulerTickGET(c.req.raw, waitUntil);
   });
 
   app.post("/api/webhooks/:platform", (c) => {

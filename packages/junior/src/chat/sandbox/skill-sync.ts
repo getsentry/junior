@@ -195,7 +195,7 @@ export function isHostFileMissingError(error: unknown): boolean {
   );
 }
 
-/** Copy the current skill set and reference files into a sandbox and mark runtime shims executable. */
+/** Copy the current skill set and reference files into a sandbox. */
 export async function syncSkillsToSandbox(params: {
   sandbox: SandboxInstance;
   skills: SkillMetadata[];

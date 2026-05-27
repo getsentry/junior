@@ -128,7 +128,6 @@ export async function GET(): Promise<Response> {
     { method: "GET", path: "/api/oauth/callback/:provider" },
     { method: "POST", path: "/api/internal/agent-dispatch" },
     { method: "GET", path: "/api/internal/heartbeat" },
-    { method: "GET", path: "/api/internal/scheduler/tick" },
     { method: "POST", path: "/api/webhooks/:platform" },
   ];
   html += `\n  <div class="section">

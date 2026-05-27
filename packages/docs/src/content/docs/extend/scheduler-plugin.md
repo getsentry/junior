@@ -26,7 +26,7 @@ const app = await createApp();
 export default app;
 ```
 
-The Vercel helper includes the internal heartbeat and scheduler tick routes:
+The Vercel helper includes the internal heartbeat route:
 
 ```ts title="vercel.config.ts"
 import { juniorVercelConfig } from "@sentry/junior/vercel";
@@ -34,12 +34,11 @@ import { juniorVercelConfig } from "@sentry/junior/vercel";
 export default juniorVercelConfig();
 ```
 
-If you manage routes manually, call both routes on a one-minute cadence:
+If you manage routes manually, call the heartbeat route on a one-minute cadence:
 
-| Route                          | Purpose                                     |
-| ------------------------------ | ------------------------------------------- |
-| `/api/internal/heartbeat`      | Runs trusted plugin heartbeats.             |
-| `/api/internal/scheduler/tick` | Claims due scheduled runs for legacy ticks. |
+| Route                     | Purpose                         |
+| ------------------------- | ------------------------------- |
+| `/api/internal/heartbeat` | Runs trusted plugin heartbeats. |
 
 ## Configure environment variables
 

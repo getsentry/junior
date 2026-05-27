@@ -40,11 +40,6 @@ export interface SchedulerStore {
     errorMessage: string;
     runId: string;
   }): Promise<ScheduledRun | undefined>;
-  markRunStarted(args: {
-    claimedAtMs: number;
-    nowMs: number;
-    runId: string;
-  }): Promise<ScheduledRun | undefined>;
   markRunDispatched(args: {
     claimedAtMs: number;
     dispatchId: string;
@@ -624,22 +619,6 @@ class StateAdapterSchedulerStore implements SchedulerStore {
       }
     }
     return runs;
-  }
-
-  async markRunStarted(args: {
-    claimedAtMs: number;
-    nowMs: number;
-    runId: string;
-  }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) =>
-      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
-        ? {
-            ...run,
-            startedAtMs: args.nowMs,
-            status: "running",
-          }
-        : undefined,
-    );
   }
 
   async markRunDispatched(args: {

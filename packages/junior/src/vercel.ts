@@ -14,10 +14,6 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
         path: "/api/internal/heartbeat",
         schedule: "* * * * *",
       },
-      {
-        path: "/api/internal/scheduler/tick",
-        schedule: "* * * * *",
-      },
     ],
   };
 

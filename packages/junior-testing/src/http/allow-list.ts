@@ -1,6 +1,6 @@
 const LOCAL_TEST_HTTP_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
-export const LIVE_TEST_HTTP_HOST_ALLOWLIST = new Set([
+const LIVE_TEST_HTTP_HOST_ALLOWLIST = new Set([
   "oidc.vercel.com",
   "vercel.app",
   "vercel.com",
@@ -8,7 +8,7 @@ export const LIVE_TEST_HTTP_HOST_ALLOWLIST = new Set([
   "vercel.sh",
 ]);
 
-export const LIVE_TEST_HTTP_HOST_SUFFIX_ALLOWLIST = [
+const LIVE_TEST_HTTP_HOST_SUFFIX_ALLOWLIST = [
   ".vercel.app",
   ".vercel.com",
   ".vercel.run",
