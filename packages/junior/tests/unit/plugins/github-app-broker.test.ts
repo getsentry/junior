@@ -21,16 +21,7 @@ const TEST_CREDENTIALS: GitHubAppCredentials = {
 const TEST_MANIFEST: PluginManifest = {
   name: "github",
   description: "GitHub issue management via GitHub App",
-  capabilities: [
-    "github.actions.read",
-    "github.actions.write",
-    "github.issues.read",
-    "github.issues.write",
-    "github.contents.read",
-    "github.contents.write",
-    "github.pull-requests.read",
-    "github.pull-requests.write",
-  ],
+
   configKeys: ["github.org", "github.repo"],
   credentials: TEST_CREDENTIALS,
   target: {
@@ -293,7 +284,7 @@ describe("github app credential broker", () => {
     expect(accessTokenCalls).toHaveLength(2);
   });
 
-  it("requests the full plugin permission set when minting installation tokens", async () => {
+  it("omits permissions from token request when no capabilities are declared", async () => {
     setupValidEnv();
     mockGitHubApi();
 
@@ -304,12 +295,25 @@ describe("github app credential broker", () => {
 
     const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({
-      issues: "write",
-      contents: "write",
-      actions: "write",
-      pull_requests: "write",
-    });
+    expect(body.permissions).toBeUndefined();
     expect(body.repositories).toBeUndefined();
+  });
+
+  it("scopes token permissions from capabilities when declared", async () => {
+    setupValidEnv();
+    mockGitHubApi();
+
+    const manifestWithCaps: PluginManifest = {
+      ...TEST_MANIFEST,
+      capabilities: ["github.issues.read", "github.issues.write"],
+    };
+    const broker = createGitHubAppBroker(manifestWithCaps, TEST_CREDENTIALS);
+    await broker.issue({
+      reason: "test:scoped-permissions",
+    });
+
+    const fetchCall = findAccessTokenCall();
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ issues: "write" });
   });
 });

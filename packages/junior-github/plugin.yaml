@@ -1,17 +1,6 @@
 name: github
 description: GitHub issue, pull request, and repository workflows via GitHub App
 
-capabilities:
-  - actions.read
-  - actions.write
-  - issues.read
-  - issues.write
-  - contents.read
-  - contents.write
-  - pull-requests.read
-  - pull-requests.write
-  - workflows.write
-
 config-keys:
   - org
   - repo

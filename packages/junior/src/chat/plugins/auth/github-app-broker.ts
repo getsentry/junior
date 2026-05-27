@@ -268,10 +268,9 @@ export function createGitHubAppBroker(
     );
   }
 
-  const permissions = capabilitiesToPermissions(
-    manifest.capabilities,
-    provider,
-  );
+  const permissions = manifest.capabilities?.length
+    ? capabilitiesToPermissions(manifest.capabilities, provider)
+    : undefined;
 
   function createLease(params: {
     installationId: number;
@@ -319,11 +318,9 @@ export function createGitHubAppBroker(
   return {
     async issue(input: { reason: string }): Promise<CredentialLease> {
       const installationId = resolveInstallationId();
-      const tokenRequestBody: {
-        permissions: Record<string, "read" | "write">;
-      } = {
-        permissions,
-      };
+      const tokenRequestBody: Record<string, unknown> = permissions
+        ? { permissions }
+        : {};
 
       const appId = resolveAppId(appIdEnv);
       const appJwt = createAppJwt(appId, privateKeyEnv);
