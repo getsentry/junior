@@ -132,7 +132,7 @@ describe("context compaction checkpoint fork", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("internal compaction command creates a new checkpoint without rewriting the previous one", async () => {
+  it("automatic compaction creates a new checkpoint without rewriting the previous one", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
@@ -159,9 +159,10 @@ describe("context compaction checkpoint fork", () => {
         ({
           text: "Outstanding ask: continue tracking migration approval.",
         }) as never,
+      autoCompactionTriggerTokens: 0,
     });
 
-    const result = await compactor.compact({
+    const result = await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-1",
       previousSessionId: "turn-1",
@@ -222,9 +223,10 @@ describe("context compaction checkpoint fork", () => {
         capturedMessageAttributeMode = params.messageAttributeMode;
         return { text: "Summary keeps the rollback plan." } as never;
       },
+      autoCompactionTriggerTokens: 0,
     });
 
-    await compactor.compact({
+    await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-large",
       previousSessionId: "turn-large",
@@ -290,7 +292,7 @@ describe("context compaction checkpoint fork", () => {
         summarized = true;
         return { text: "Tool context was compacted." } as never;
       },
-      getAutoCompactionTriggerTokens: () => 1,
+      autoCompactionTriggerTokens: 1,
     });
 
     const result = await compactor.maybeCompact({
@@ -326,7 +328,7 @@ describe("context compaction checkpoint fork", () => {
     });
 
     await expect(
-      compactor.compact({
+      compactor.maybeCompact({
         conversation,
         conversationId: "conversation-2",
         previousSessionId: "turn-awaiting",
@@ -349,7 +351,7 @@ describe("context compaction checkpoint fork", () => {
     });
 
     await expect(
-      compactor.compact({
+      compactor.maybeCompact({
         conversation,
         conversationId: "conversation-missing",
         previousSessionId: "turn-missing",

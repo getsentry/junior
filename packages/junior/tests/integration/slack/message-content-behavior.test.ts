@@ -365,7 +365,7 @@ describe("Slack behavior: message content", () => {
             ({
               text: "Compacted summary: old context is still relevant.",
             }) as never,
-          getAutoCompactionTriggerTokens: () => 100,
+          autoCompactionTriggerTokens: 100,
         },
         replyExecutor: {
           generateAssistantReply: async (prompt, context) => {
@@ -459,7 +459,7 @@ describe("Slack behavior: message content", () => {
           completeText: async () => {
             throw new Error("active checkpoint history should not compact");
           },
-          getAutoCompactionTriggerTokens: () => 100,
+          autoCompactionTriggerTokens: 100,
         },
         replyExecutor: {
           generateAssistantReply: async (prompt, context) => {

@@ -155,7 +155,7 @@ async function loadPiMessagesForTurn(args: {
 }
 
 export interface ReplyExecutorServices {
-  contextCompactor: Pick<ContextCompactor, "maybeCompact">;
+  contextCompactor: ContextCompactor;
   generateAssistantReply: typeof generateAssistantReplyImpl;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getAwaitingTurnContinuationRequest: (args: {

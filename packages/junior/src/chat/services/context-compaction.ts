@@ -29,11 +29,10 @@ const OMITTED_OLDER_CONTEXT_NOTICE = "[older context omitted]";
 
 export interface ContextCompactorDeps {
   completeText: typeof completeText;
-  getAutoCompactionTriggerTokens?: () => number;
+  autoCompactionTriggerTokens?: number;
 }
 
 export interface ContextCompactor {
-  compact: (args: CompactContextArgs) => Promise<CompactContextResult>;
   maybeCompact: (args: CompactContextArgs) => Promise<CompactContextResult>;
 }
 
@@ -59,7 +58,6 @@ export interface CompactContextResult {
     | "not_completed"
     | "summary_failed";
   sessionId?: string;
-  summary?: string;
 }
 
 function estimateTokenCount(text: string): number {
@@ -293,13 +291,19 @@ function createCompactionSessionId(previousSessionId: string): string {
   return `compaction_${previousSessionId}`;
 }
 
-async function loadCompletedHistory(args: {
+type CompactionSource =
+  | {
+      estimatedTokens: number;
+      messages: PiMessage[];
+    }
+  | {
+      reason: "missing_context" | "not_completed";
+    };
+
+async function loadCompactionSource(args: {
   conversationId: string;
   previousSessionId: string;
-}): Promise<{
-  messages?: PiMessage[];
-  reason?: "missing_context" | "not_completed";
-}> {
+}): Promise<CompactionSource> {
   const checkpoint = await getAgentTurnSessionCheckpoint(
     args.conversationId,
     args.previousSessionId,
@@ -312,62 +316,30 @@ async function loadCompletedHistory(args: {
   }
   const messages = checkpoint.piMessages;
   if (messages.length) {
-    return { messages };
+    return {
+      estimatedTokens: estimateHistoryTokens(messages),
+      messages,
+    };
   }
   return { reason: "missing_context" };
-}
-
-async function compactWithDeps(
-  args: CompactContextArgs,
-  deps: ContextCompactorDeps,
-): Promise<CompactContextResult> {
-  const loaded = await loadCompletedHistory({
-    conversationId: args.conversationId,
-    previousSessionId: args.previousSessionId,
-  });
-  if (loaded.reason) {
-    return { compacted: false, reason: loaded.reason };
-  }
-  const sourceMessages = loaded.messages;
-  if (!sourceMessages?.length) {
-    return { compacted: false, reason: "missing_context" };
-  }
-
-  const estimatedTokens = estimateHistoryTokens(sourceMessages);
-  const summary = await summarizeContext(
-    {
-      conversationContext: args.conversationContext,
-      piMessages: sourceMessages,
-      metadata: args.metadata,
-    },
-    deps,
-  );
-  return await writeCompactedThreadContext(args, sourceMessages, summary, {
-    estimatedTokens,
-  });
 }
 
 async function maybeCompactWithDeps(
   args: CompactContextArgs,
   deps: ContextCompactorDeps,
 ): Promise<CompactContextResult> {
-  const loaded = await loadCompletedHistory({
+  const source = await loadCompactionSource({
     conversationId: args.conversationId,
     previousSessionId: args.previousSessionId,
   });
-  if (loaded.reason) {
-    return { compacted: false, reason: loaded.reason };
-  }
-  const sourceMessages = loaded.messages;
-  if (!sourceMessages?.length) {
-    return { compacted: false, reason: "missing_context" };
+  if ("reason" in source) {
+    return { compacted: false, reason: source.reason };
   }
 
-  const estimatedTokens = estimateHistoryTokens(sourceMessages);
   const triggerTokens =
-    deps.getAutoCompactionTriggerTokens?.() ??
+    deps.autoCompactionTriggerTokens ??
     getAgentContextCompactionTriggerTokens();
-  if (estimatedTokens <= triggerTokens) {
+  if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
 
@@ -376,7 +348,7 @@ async function maybeCompactWithDeps(
     summary = await summarizeContext(
       {
         conversationContext: args.conversationContext,
-        piMessages: sourceMessages,
+        piMessages: source.messages,
         metadata: args.metadata,
       },
       deps,
@@ -401,8 +373,8 @@ async function maybeCompactWithDeps(
     return { compacted: false, reason: "summary_failed" };
   }
 
-  return await writeCompactedThreadContext(args, sourceMessages, summary, {
-    estimatedTokens,
+  return await writeCompactedThreadContext(args, source.messages, summary, {
+    estimatedTokens: source.estimatedTokens,
     triggerTokens,
   });
 }
@@ -447,7 +419,6 @@ async function writeCompactedThreadContext(
     compacted: true,
     piMessages: replacement,
     sessionId: nextSessionId,
-    summary,
   };
 }
 
@@ -456,7 +427,6 @@ export function createContextCompactor(
   deps: ContextCompactorDeps,
 ): ContextCompactor {
   return {
-    compact: async (args) => await compactWithDeps(args, deps),
     maybeCompact: async (args) => await maybeCompactWithDeps(args, deps),
   };
 }

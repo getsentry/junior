@@ -12,7 +12,6 @@ Define how Junior bounds long-running conversation context by replacing reusable
 ## Scope
 
 - Pre-turn compaction of reusable Pi history loaded from completed turn checkpoints.
-- Internal compaction command that can fork reusable completed context for future orchestration flows.
 - Visible Slack conversation-state compaction used for routing, thinking selection, and no-Pi-history prompt background.
 - Summary shape, retained-message selection, persistence boundaries, and verification requirements.
 
@@ -20,6 +19,7 @@ Define how Junior bounds long-running conversation context by replacing reusable
 
 - Remote or server-side compaction endpoints. Junior owns all summarization, retained-message selection, replacement construction, persistence, and triggers locally.
 - User-facing compaction commands, slash commands, or model tools.
+- Manual or forced compaction APIs. Future model-handoff orchestration can add a small internal caller when that flow exists.
 - Mid-turn compaction while an agent turn is actively generating.
 - Compaction of `awaiting_resume` timeout or auth checkpoints.
 - Rewriting partially visible Slack assistant output.
@@ -77,16 +77,11 @@ Eligible retained messages must be user-authored semantic input. They must not i
 - tool results
 - assistant messages
 
-### Internal Context Fork
+### Compaction Checkpoints
 
-The internal compaction command creates a compacted checkpoint whenever an orchestration strategy calls it. No Slack message, slash command, or model tool currently invokes it. It must:
+Compaction persists replacement history as a new synthetic completed session. It must update `conversation.processing.lastSessionId` only after the replacement checkpoint is committed.
 
-1. Load the current reusable completed Pi history and persisted Slack conversation state.
-2. Summarize and compact them into replacement Pi history.
-3. Persist the replacement as a new synthetic completed compaction session.
-4. Update `conversation.processing.lastSessionId` to the new compaction session only after the replacement checkpoint is committed.
-
-The internal compaction command must not destructively rewrite the previous completed checkpoint. Keeping the pre-compaction checkpoint available preserves auditability and avoids corrupting any recovery path.
+Compaction must not destructively rewrite the previous completed checkpoint. Keeping the pre-compaction checkpoint available preserves auditability and avoids corrupting any recovery path.
 
 Compaction checkpoints must use a deterministic synthetic session id derived from the source checkpoint or an explicit idempotency key. Retried automatic compaction must not create an unbounded chain of duplicate compaction checkpoints for the same source session.
 
@@ -119,17 +114,16 @@ Cumulative turn token usage must not be the only trigger input because multi-ste
 
 ### Initial Context
 
-Pre-turn and internal compaction do not store current runtime context in compacted history. The next turn reinjects base instructions and volatile runtime context through the normal prompt path.
+Pre-turn compaction does not store current runtime context in compacted history. The next turn reinjects base instructions and volatile runtime context through the normal prompt path.
 
 If Junior later adds mid-turn compaction, that path must define a separate insertion rule for current runtime context before the last real user message and must prove Pi `continue()` still resumes correctly.
 
 ## Failure Model
 
 1. If summarization fails during automatic pre-turn compaction, Junior must continue with the prior reusable history unless the model provider has already rejected the prompt as too large.
-2. If internal compaction summarization fails, Junior must leave `lastSessionId` unchanged and return the error to the orchestration caller.
-3. If replacement checkpoint persistence fails, Junior must not update `lastSessionId`.
-4. If compaction is requested while `activeTurnId` points at an awaiting resume checkpoint, Junior must refuse or defer compaction rather than compacting the resumable checkpoint.
-5. If retained-message selection cannot parse a message shape, Junior must omit that message from retained verbatim history and rely on the handoff summary.
+2. If replacement checkpoint persistence fails, Junior must not update `lastSessionId`.
+3. If compaction is requested while `activeTurnId` points at an awaiting resume checkpoint, Junior must refuse or defer compaction rather than compacting the resumable checkpoint.
+4. If retained-message selection cannot parse a message shape, Junior must omit that message from retained verbatim history and rely on the handoff summary.
 
 ## Observability
 
@@ -155,7 +149,7 @@ Compaction model calls may send selected history to the model provider, but trac
 
 1. Unit: retained-message selection keeps newest eligible user messages within budget and preserves chronological order.
 2. Unit: replacement history excludes runtime context, assistant messages, tool results, image/base64 payloads, and existing compaction summaries.
-3. Unit: internal compaction creates a new completed checkpoint and does not rewrite the prior completed checkpoint.
+3. Unit: automatic compaction creates a new completed checkpoint and does not rewrite the prior completed checkpoint.
 4. Integration: a long Slack thread with reusable Pi history uses compacted Pi history on the next turn.
 5. Integration: compaction is skipped or rejected while an awaiting timeout/auth resume checkpoint is active.
 6. Eval: long-thread continuity after compaction when the expected outcome depends on model interpretation.

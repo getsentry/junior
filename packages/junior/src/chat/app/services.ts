@@ -53,8 +53,8 @@ export function createJuniorRuntimeServices(
   });
   const contextCompactor = createContextCompactor({
     completeText: overrides.contextCompactor?.completeText ?? completeText,
-    getAutoCompactionTriggerTokens:
-      overrides.contextCompactor?.getAutoCompactionTriggerTokens,
+    autoCompactionTriggerTokens:
+      overrides.contextCompactor?.autoCompactionTriggerTokens,
   });
   const visionContext = createVisionContextService({
     completeText: overrides.visionContext?.completeText ?? completeText,
