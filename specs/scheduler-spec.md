@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-05-27
+- Last Edited: 2026-05-28
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-05-27: Added stale missed-run policy: old occurrences are skipped and consumed or advanced, not dispatched late and not blocked for human review.
 - 2026-05-27: Added the recurring schedule frequency limit: at most once per day.
 - 2026-05-27: Changed Slack authoring to auto-create clear scheduled work and reserve confirmation for ambiguous requests.
+- 2026-05-28: Clarified model-facing scheduler tool inputs and standardized rejected schedules as tool errors.
 - 2026-05-26: Reframed scheduled execution around system actors: creator is metadata/contact, scheduled runs execute as a system actor, and user-bound auth must not be borrowed implicitly.
 - 2026-05-18: Clarified V1 calendar model: exact next-run instants plus simple daily/weekly/monthly/yearly recurrence rules.
 - 2026-05-18: Initial draft contract for scheduled Junior tasks, prompt framing, no-SQL storage, run idempotency, and eval-first verification.
@@ -75,6 +76,8 @@ Every active task must have an exact `nextRunAtMs` instant. For one-off tasks, t
 Slack authoring may accept supported relative one-off phrases such as "tomorrow at 9am"; these must be resolved to an exact `nextRunAtMs` before storage. When a user does not provide a timezone, scheduler authoring defaults to `America/Los_Angeles` unless `JUNIOR_TIMEZONE` overrides it.
 Scheduler tools accept exact ISO run timestamps only. Natural-language or relative time belongs in the agent's interpretation step before it calls the tool, not in the storage tool contract.
 
+Model-facing scheduler tools use a small recurrence input: omit recurrence for one-off tasks, pass `daily`, `weekly`, `monthly`, or `yearly` for recurring tasks, and pass `null` only when updating an existing task to one-off. The scheduler derives stored calendar fields such as local start date, local time, weekday, month, and day-of-month from `nextRunAtMs` and timezone.
+
 Recurring tasks must also store a small calendar recurrence rule:
 
 - frequency: `daily`, `weekly`, `monthly`, or `yearly`
@@ -87,7 +90,7 @@ Recurring tasks must also store a small calendar recurrence rule:
 
 V1 recurrence is calendar-based, not fixed-duration. For example, "every Monday at 9am America/Los_Angeles" should continue to run at 9am local time across daylight-saving changes. Monthly and yearly recurrences use exact calendar dates; unsupported dates are skipped rather than converted into "last day" or "business day" behavior.
 
-Recurring tasks must not run more than once per day. Slack authoring must reject hourly, twice-daily, or other sub-daily recurring schedules instead of storing a task contract that cannot execute as requested.
+Recurring tasks must not run more than once per day. Slack authoring must reject hourly, twice-daily, or other sub-daily recurring schedules instead of storing a task contract that cannot execute as requested. Rejected scheduler tool calls must throw a model-visible tool input error so the agent can repair arguments or explain the unsupported request after receiving an `isError=true` tool result.
 
 The scheduler does not need advanced rules such as first business day, nearest weekday, holiday calendars, or arbitrary cron syntax.
 

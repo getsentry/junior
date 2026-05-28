@@ -338,7 +338,6 @@ function toEvalToolInvocation(input: {
         "task_id",
         "task",
         "schedule",
-        "recurring",
         "timezone",
         "next_run_at",
         "recurrence",

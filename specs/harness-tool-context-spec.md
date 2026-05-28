@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-19
+- Last Edited: 2026-05-28
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-05-19: Reframed Slack Canvas follow-up tools as file-like document tools with explicit canvas handles.
+- 2026-05-28: Standardized context-bound tool failures on thrown tool errors instead of `ok: false` sentinel results.
 
 ## Status
 
@@ -48,7 +49,7 @@ Examples:
 ## Security Contract
 
 1. Tool schemas for context-bound tools must not expose destination override fields (for example `channel_id` or `list_id`) unless explicitly approved in a separate spec.
-2. Runtime must validate context before execution and return `ok: false` for missing/invalid context.
+2. Runtime must validate context before execution and throw a model-visible tool input error for missing/invalid context.
 3. Runtime must not silently fall back to broader/private scopes that change visibility semantics.
 4. Canvas creation must stay bound to the active assistant conversation context; runtime must not silently retarget to unrelated/private scopes.
 5. Canvas read/edit/write tools must validate that the handle parses as a Slack Canvas/file ID. Canvas reads must confirm Slack metadata describes a Canvas document before downloading content; writes still depend on Slack `canvases.edit` permission and type checks.
@@ -64,7 +65,7 @@ Examples:
 
 ## Error Behavior
 
-When required context is unavailable, tools should return actionable structured errors (`ok: false`) rather than attempting alternate targets.
+When required context is unavailable, tools must throw an actionable tool input error rather than attempting alternate targets. Tool failures intended for model repair must reach the Pi loop as `toolResult.isError=true`; returning a sentinel object such as `{ ok: false, error }` is not a tool failure.
 
 ## Testing Requirements
 

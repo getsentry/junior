@@ -19,6 +19,7 @@ import type {
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { isSlackTeamId } from "@/chat/slack/ids";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 const TASK_ID_PREFIX = "sched";
@@ -29,91 +30,54 @@ const ACTIVE_DESTINATION_GUIDELINE =
 const ACTIVE_TASK_ID_GUIDELINE =
   "Use only task IDs returned from this active destination.";
 const RECURRING_GUIDELINE =
-  "Set recurring=false for one-time requests like 'in 1 minute', 'tomorrow', or a specific date; set recurring=true only for requests that explicitly repeat.";
+  "Omit recurrence for one-time requests like 'in 1 minute', 'tomorrow', or a specific date; provide recurrence only for requests that explicitly repeat.";
 
-const recurrenceInputSchema = Type.Object({
-  frequency: Type.Union([
-    Type.Literal("daily"),
-    Type.Literal("weekly"),
-    Type.Literal("monthly"),
-    Type.Literal("yearly"),
-  ]),
-  interval: Type.Optional(
-    Type.Integer({
-      minimum: 1,
-      maximum: 100,
-      description:
-        "Calendar interval. For example, 2 with weekly means every two weeks.",
-    }),
-  ),
-  weekdays: Type.Optional(
-    Type.Array(Type.Integer({ minimum: 0, maximum: 6 }), {
-      maxItems: 7,
-      description:
-        "For weekly schedules only. Sunday is 0, Monday is 1, Saturday is 6.",
-    }),
-  ),
-});
+const recurrenceInputSchema = Type.Union([
+  Type.Literal("daily"),
+  Type.Literal("weekly"),
+  Type.Literal("monthly"),
+  Type.Literal("yearly"),
+]);
+
+function throwToolInputError(error: string): never {
+  throw new ToolInputError(error);
+}
 
 function requireActiveDestination(
   context: ToolRuntimeContext,
-):
-  | { ok: true; destination: ScheduledTaskDestination }
-  | { ok: false; error: string } {
+): ScheduledTaskDestination {
   const channelId = normalizeSlackConversationId(context.channelId);
   if (!channelId) {
-    return {
-      ok: false,
-      error: "No active Slack channel context is available.",
-    };
+    throwToolInputError("No active Slack channel context is available.");
   }
   if (!context.teamId) {
-    return {
-      ok: false,
-      error: "No active Slack workspace context is available.",
-    };
+    throwToolInputError("No active Slack workspace context is available.");
   }
   if (!isSlackTeamId(context.teamId)) {
-    return {
-      ok: false,
-      error: "Active Slack workspace context is invalid.",
-    };
+    throwToolInputError("Active Slack workspace context is invalid.");
   }
 
   return {
-    ok: true,
-    destination: {
-      platform: "slack",
-      teamId: context.teamId,
-      channelId,
-    },
+    platform: "slack",
+    teamId: context.teamId,
+    channelId,
   };
 }
 
-function requireRequester(
-  context: ToolRuntimeContext,
-):
-  | { ok: true; requester: ScheduledTaskPrincipal }
-  | { ok: false; error: string } {
+function requireRequester(context: ToolRuntimeContext): ScheduledTaskPrincipal {
   const userId = context.requester?.userId;
   if (!userId) {
-    return {
-      ok: false,
-      error: "No active Slack requester context is available.",
-    };
+    throwToolInputError("No active Slack requester context is available.");
   }
 
   return {
-    ok: true,
-    requester: {
-      slackUserId: userId,
-      ...(context.requester?.userName
-        ? { userName: context.requester.userName }
-        : {}),
-      ...(context.requester?.fullName
-        ? { fullName: context.requester.fullName }
-        : {}),
-    },
+    slackUserId: userId,
+    ...(context.requester?.userName
+      ? { userName: context.requester.userName }
+      : {}),
+    ...(context.requester?.fullName
+      ? { fullName: context.requester.fullName }
+      : {}),
   };
 }
 
@@ -163,31 +127,22 @@ function sameDestination(
 async function getWritableTask(args: {
   context: ToolRuntimeContext;
   taskId: string;
-}): Promise<{ ok: true; task: ScheduledTask } | { ok: false; error: string }> {
+}): Promise<ScheduledTask> {
   const destination = requireActiveDestination(args.context);
-  if (!destination.ok) {
-    return destination;
-  }
 
   const task = await createStateSchedulerStore().getTask(args.taskId);
   if (!task || task.status === "deleted") {
-    return {
-      ok: false,
-      error: "Scheduled task was not found in the active destination.",
-    };
+    throwToolInputError(
+      "Scheduled task was not found in the active destination.",
+    );
   }
 
-  if (!sameDestination(task, destination.destination)) {
-    return {
-      ok: false,
-      error:
-        "Scheduled task can only be managed from the Slack destination where it was created.",
-    };
+  if (!sameDestination(task, destination)) {
+    throwToolInputError(
+      "Scheduled task can only be managed from the Slack destination where it was created.",
+    );
   }
-  return {
-    ok: true,
-    task,
-  };
+  return task;
 }
 
 function compactTask(task: ScheduledTask): Record<string, unknown> {
@@ -258,124 +213,62 @@ function normalizeFrequency(
 function buildRecurrence(args: {
   existing?: ScheduledTaskRecurrence;
   input: {
-    recurrence?: {
-      frequency?: unknown;
-      interval?: number;
-      weekdays?: number[];
-    } | null;
+    recurrence?: unknown;
   };
   nextRunAtMs: number | undefined;
   timezone: string;
-}):
-  | { ok: true; recurrence?: ScheduledTaskRecurrence }
-  | { ok: false; error: string } {
+}): ScheduledTaskRecurrence | undefined {
   if (args.input.recurrence === null) {
-    return { ok: true, recurrence: undefined };
+    return undefined;
   }
 
   const frequency =
-    normalizeFrequency(args.input.recurrence?.frequency) ??
-    args.existing?.frequency;
+    normalizeFrequency(args.input.recurrence) ?? args.existing?.frequency;
   if (!frequency) {
-    return { ok: true, recurrence: undefined };
+    return undefined;
   }
   if (!args.nextRunAtMs) {
-    return {
-      ok: false,
-      error: "Recurring scheduled tasks require next_run_at.",
-    };
+    throwToolInputError("Recurring scheduled tasks require next_run_at.");
   }
 
   try {
-    return {
-      ok: true,
-      recurrence: buildCalendarRecurrence({
-        frequency,
-        interval: args.input.recurrence?.interval ?? args.existing?.interval,
-        nextRunAtMs: args.nextRunAtMs,
-        timezone: args.timezone,
-        weekdays:
-          frequency === "weekly"
-            ? (args.input.recurrence?.weekdays ?? args.existing?.weekdays)
-            : undefined,
-      }),
-    };
+    return buildCalendarRecurrence({
+      frequency,
+      interval: args.existing?.interval,
+      nextRunAtMs: args.nextRunAtMs,
+      timezone: args.timezone,
+      weekdays: frequency === "weekly" ? args.existing?.weekdays : undefined,
+    });
   } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof RangeError
-          ? "timezone must be a valid IANA time zone."
-          : error instanceof Error
-            ? error.message
-            : String(error),
-    };
+    throwToolInputError(
+      error instanceof RangeError
+        ? "timezone must be a valid IANA time zone."
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    );
   }
 }
 
-function validateRecurringFrequencyLimit(input: {
-  recurrence?: {
-    frequency?: unknown;
-  } | null;
-}): { ok: true } | { ok: false; error: string } {
+function validateRecurringFrequencyLimit(input: { recurrence?: unknown }) {
   if (
-    input.recurrence?.frequency !== undefined &&
-    !normalizeFrequency(input.recurrence.frequency)
-  ) {
-    return {
-      ok: false,
-      error: "Recurring scheduled tasks can run at most once per day.",
-    };
-  }
-
-  return { ok: true };
-}
-
-function validateRecurringIntent(input: {
-  recurring?: unknown;
-  recurrence?: unknown;
-  existingRecurrence?: ScheduledTaskRecurrence;
-}): { ok: true } | { ok: false; error: string } {
-  if (typeof input.recurring !== "boolean") {
-    return {
-      ok: false,
-      error: "recurring must be true or false.",
-    };
-  }
-  if (
-    !input.recurring &&
     input.recurrence !== undefined &&
-    input.recurrence !== null
+    input.recurrence !== null &&
+    !normalizeFrequency(input.recurrence)
   ) {
-    return {
-      ok: false,
-      error: "One-off scheduled tasks must not include recurrence fields.",
-    };
+    throwToolInputError(
+      "Recurring scheduled tasks can run at most once per day.",
+    );
   }
-  if (input.recurring && input.recurrence === null) {
-    return {
-      ok: false,
-      error: "Recurring scheduled tasks require recurrence.",
-    };
-  }
-  if (input.recurring && !input.recurrence && !input.existingRecurrence) {
-    return {
-      ok: false,
-      error: "Recurring scheduled tasks require recurrence.",
-    };
-  }
-  return { ok: true };
 }
 
 function shouldRebuildRecurrence(input: {
   next_run_at?: string;
-  recurring?: unknown;
   recurrence?: unknown;
   timezone?: string;
 }): boolean {
   return (
     input.next_run_at !== undefined ||
-    input.recurring !== undefined ||
     input.recurrence !== undefined ||
     input.timezone !== undefined
   );
@@ -421,12 +314,11 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       "Ask for confirmation only when the task contract, schedule, or active destination is ambiguous.",
       "Recurring tasks can run at most once per day; use only daily, weekly, monthly, or yearly recurrence frequencies.",
       "Provide next_run_at as an exact ISO timestamp computed from the user's requested schedule.",
-      "Provide recurrence only when recurring=true.",
+      "Provide recurrence only for repeating schedules.",
     ],
     inputSchema: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 4000 }),
       schedule: Type.String({ minLength: 1, maxLength: 300 }),
-      recurring: Type.Boolean(),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       next_run_at: Type.Optional(
         Type.String({
@@ -439,63 +331,45 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
     }),
     execute: async (input) => {
       const destination = requireActiveDestination(context);
-      if (!destination.ok) return destination;
       const requester = requireRequester(context);
-      if (!requester.ok) return requester;
 
       const nowMs = Date.now();
-      const recurring = validateRecurringIntent(input);
-      if (!recurring.ok) {
-        return recurring;
-      }
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
-      const frequencyLimit = validateRecurringFrequencyLimit(input);
-      if (!frequencyLimit.ok) {
-        return frequencyLimit;
-      }
+      validateRecurringFrequencyLimit(input);
       if (!isValidTimeZone(timezone)) {
-        return {
-          ok: false,
-          error: "timezone must be a valid IANA time zone.",
-        };
+        throwToolInputError("timezone must be a valid IANA time zone.");
       }
       const nextRunAtMs = parseNextRunAtMs(input.next_run_at);
       if (!nextRunAtMs) {
-        return {
-          ok: false,
-          error: "Provide next_run_at as a valid ISO timestamp.",
-        };
+        throwToolInputError("Provide next_run_at as a valid ISO timestamp.");
       }
       const recurrence = buildRecurrence({
         input,
         nextRunAtMs,
         timezone,
       });
-      if (!recurrence.ok) {
-        return recurrence;
-      }
-      const conversationAccess = getConversationAccess(destination.destination);
+      const conversationAccess = getConversationAccess(destination);
       const credentialSubject = getCredentialSubject({
         access: conversationAccess,
-        requester: requester.requester,
+        requester,
       });
 
       const task: ScheduledTask = {
         id: buildTaskId(),
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
-        createdBy: requester.requester,
+        createdBy: requester,
         conversationAccess,
         ...(credentialSubject ? { credentialSubject } : {}),
-        destination: destination.destination,
+        destination,
         executionActor: SCHEDULED_TASK_SYSTEM_ACTOR,
         nextRunAtMs,
         originalRequest: context.userText,
         schedule: {
           description: input.schedule,
           timezone,
-          kind: recurrence.recurrence ? "recurring" : "one_off",
-          recurrence: recurrence.recurrence,
+          kind: recurrence ? "recurring" : "one_off",
+          recurrence,
         },
         status: "active",
         task: {
@@ -527,13 +401,12 @@ export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
     inputSchema: Type.Object({}),
     execute: async () => {
       const destination = requireActiveDestination(context);
-      if (!destination.ok) return destination;
 
       const tasks = await createStateSchedulerStore().listTasksForTeam(
-        destination.destination.teamId,
+        destination.teamId,
       );
       const matching = tasks.filter((task) =>
-        sameDestination(task, destination.destination),
+        sameDestination(task, destination),
       );
       const visible = matching.slice(0, MAX_LISTED_TASKS).map(compactTask);
 
@@ -557,13 +430,13 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
       RECURRING_GUIDELINE,
       "Do not move scheduled tasks across conversations.",
       "Provide next_run_at as an exact ISO timestamp when changing the next run.",
+      "Set recurrence to null when converting a recurring task to one-time.",
       "Set status to active, paused, or blocked when the user asks to resume, pause, or block a task.",
     ],
     inputSchema: Type.Object({
       task_id: Type.String({ minLength: 1 }),
       task: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
       schedule: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
-      recurring: Type.Optional(Type.Boolean()),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       next_run_at: Type.Optional(Type.String({ minLength: 1 })),
       recurrence: Type.Optional(
@@ -582,95 +455,56 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
         context,
         taskId: input.task_id,
       });
-      if (!lookup.ok) return lookup;
 
-      const timezone = input.timezone ?? lookup.task.schedule.timezone;
-      const frequencyLimit = validateRecurringFrequencyLimit(input);
-      if (!frequencyLimit.ok) {
-        return frequencyLimit;
-      }
+      const timezone = input.timezone ?? lookup.schedule.timezone;
+      validateRecurringFrequencyLimit(input);
       if (!isValidTimeZone(timezone)) {
-        return {
-          ok: false,
-          error: "timezone must be a valid IANA time zone.",
-        };
+        throwToolInputError("timezone must be a valid IANA time zone.");
       }
       const parsedNextRunAtMs = parseNextRunAtMs(input.next_run_at);
       const nextRunAtMs = input.next_run_at
         ? parsedNextRunAtMs
-        : lookup.task.nextRunAtMs;
+        : lookup.nextRunAtMs;
       if (input.next_run_at && !nextRunAtMs) {
-        return {
-          ok: false,
-          error: "Provide next_run_at as a valid ISO timestamp.",
-        };
+        throwToolInputError("Provide next_run_at as a valid ISO timestamp.");
       }
 
       const status = normalizeStatus(input.status);
       if (input.status && !status) {
-        return {
-          ok: false,
-          error: "status must be active, paused, or blocked.",
-        };
+        throwToolInputError("status must be active, paused, or blocked.");
       }
       if (status === "active" && !nextRunAtMs) {
-        return {
-          ok: false,
-          error:
-            "Active scheduled tasks require next_run_at when no next run is stored.",
-        };
-      }
-      const recurringInput =
-        input.recurring ??
-        (shouldRebuildRecurrence(input)
-          ? lookup.task.schedule.kind === "recurring"
-          : undefined);
-      const recurring =
-        typeof recurringInput === "boolean"
-          ? validateRecurringIntent({
-              ...input,
-              existingRecurrence: lookup.task.schedule.recurrence,
-              recurring: recurringInput,
-            })
-          : { ok: true as const };
-      if (!recurring.ok) {
-        return recurring;
+        throwToolInputError(
+          "Active scheduled tasks require next_run_at when no next run is stored.",
+        );
       }
       const recurrence = shouldRebuildRecurrence(input)
         ? buildRecurrence({
-            existing:
-              recurringInput === false
-                ? undefined
-                : lookup.task.schedule.recurrence,
-            input:
-              recurringInput === false ? { ...input, recurrence: null } : input,
+            existing: lookup.schedule.recurrence,
+            input,
             nextRunAtMs,
             timezone,
           })
-        : { ok: true as const, recurrence: lookup.task.schedule.recurrence };
-      if (!recurrence.ok) {
-        return recurrence;
-      }
-      const nextStatus = status ?? lookup.task.status;
+        : lookup.schedule.recurrence;
+      const nextStatus = status ?? lookup.status;
 
       const next: ScheduledTask = {
-        ...lookup.task,
+        ...lookup,
         updatedAtMs: Date.now(),
         nextRunAtMs,
-        runNowAtMs:
-          nextStatus === "active" ? lookup.task.runNowAtMs : undefined,
+        runNowAtMs: nextStatus === "active" ? lookup.runNowAtMs : undefined,
         status: nextStatus,
         statusReason:
-          nextStatus === "blocked" ? lookup.task.statusReason : undefined,
+          nextStatus === "blocked" ? lookup.statusReason : undefined,
         schedule: {
-          ...lookup.task.schedule,
-          description: input.schedule ?? lookup.task.schedule.description,
+          ...lookup.schedule,
+          description: input.schedule ?? lookup.schedule.description,
           timezone,
-          kind: recurrence.recurrence ? "recurring" : "one_off",
-          recurrence: recurrence.recurrence,
+          kind: recurrence ? "recurring" : "one_off",
+          recurrence,
         },
-        task: input.task ? { text: input.task } : lookup.task.task,
-        version: lookup.task.version + 1,
+        task: input.task ? { text: input.task } : lookup.task,
+        version: lookup.version + 1,
       };
 
       await createStateSchedulerStore().saveTask(next);
@@ -694,15 +528,14 @@ export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
     }),
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });
-      if (!lookup.ok) return lookup;
 
       const next: ScheduledTask = {
-        ...lookup.task,
+        ...lookup,
         updatedAtMs: Date.now(),
         status: "deleted",
         nextRunAtMs: undefined,
         runNowAtMs: undefined,
-        version: lookup.task.version + 1,
+        version: lookup.version + 1,
       };
 
       await createStateSchedulerStore().saveTask(next);
@@ -730,21 +563,18 @@ export function createSlackScheduleRunTaskNowTool(context: ToolRuntimeContext) {
     }),
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });
-      if (!lookup.ok) return lookup;
-      if (lookup.task.status !== "active") {
-        return {
-          ok: false,
-          error:
-            "Scheduled task must be active before it can be run now. Resume the task first if you want it to run.",
-        };
+      if (lookup.status !== "active") {
+        throwToolInputError(
+          "Scheduled task must be active before it can be run now. Resume the task first if you want it to run.",
+        );
       }
 
       const nowMs = Date.now();
       const next: ScheduledTask = {
-        ...lookup.task,
+        ...lookup,
         updatedAtMs: nowMs,
         runNowAtMs: nowMs,
-        version: lookup.task.version + 1,
+        version: lookup.version + 1,
       };
 
       await createStateSchedulerStore().saveTask(next);
