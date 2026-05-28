@@ -66,14 +66,14 @@ If you manage routes manually, call the heartbeat route on a one-minute cadence:
 
 ## Configure environment variables
 
-Set one scheduler route secret:
+Set one heartbeat route secret:
 
-| Variable                                   | Required   | Purpose                                                                                       |
-| ------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------- |
-| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET` | Production | Bearer token for internal scheduler and heartbeat routes. Use `CRON_SECRET` with Vercel Cron. |
-| `JUNIOR_TIMEZONE`                          | No         | Default IANA timezone for schedule authoring. Defaults to `America/Los_Angeles`.              |
+| Variable                                   | Required   | Purpose                                                                            |
+| ------------------------------------------ | ---------- | ---------------------------------------------------------------------------------- |
+| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET` | Production | Bearer token for the internal heartbeat route. Use `CRON_SECRET` with Vercel Cron. |
+| `JUNIOR_TIMEZONE`                          | No         | Default IANA timezone for schedule authoring. Defaults to `America/Los_Angeles`.   |
 
-Local development can run without a scheduler route secret when you call the dev server directly. Production deployments should set `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`.
+Local development can run without a heartbeat route secret when you call the dev server directly. Production deployments should set `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`.
 
 ## Verify
 

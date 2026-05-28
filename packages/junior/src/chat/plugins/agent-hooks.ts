@@ -41,6 +41,33 @@ let agentPlugins: JuniorPlugin[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 
+function validateLegacyStatePrefixes(plugin: JuniorPlugin): void {
+  const prefixes = plugin.pluginConfig?.legacyStatePrefixes;
+  if (prefixes === undefined) {
+    return;
+  }
+  if (!Array.isArray(prefixes)) {
+    throw new Error(
+      `Trusted plugin "${plugin.name}" legacyStatePrefixes must be an array`,
+    );
+  }
+
+  const allowedPrefix = `junior:${plugin.name}`;
+  for (const rawPrefix of prefixes) {
+    const prefix = typeof rawPrefix === "string" ? rawPrefix.trim() : "";
+    if (!prefix) {
+      throw new Error(
+        `Trusted plugin "${plugin.name}" legacy state prefixes must be non-empty strings`,
+      );
+    }
+    if (prefix !== allowedPrefix && !prefix.startsWith(`${allowedPrefix}:`)) {
+      throw new Error(
+        `Trusted plugin "${plugin.name}" legacy state prefix "${prefix}" must stay under "${allowedPrefix}"`,
+      );
+    }
+  }
+}
+
 /** Validate trusted plugin identity before it can affect process-wide hooks. */
 export function validateAgentPlugins(plugins: JuniorPlugin[]): void {
   const seen = new Set<string>();
@@ -54,6 +81,7 @@ export function validateAgentPlugins(plugins: JuniorPlugin[]): void {
       throw new Error(`Duplicate trusted plugin name "${plugin.name}"`);
     }
     seen.add(plugin.name);
+    validateLegacyStatePrefixes(plugin);
   }
 }
 

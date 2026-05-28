@@ -43,7 +43,7 @@ Keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares
 
 ## Enable the heartbeat cron
 
-Junior uses a one-minute internal heartbeat to run scheduled tasks and recover stale agent dispatches. The scaffolded `vercel.json` should include this cron:
+Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. The scheduler plugin uses this heartbeat when scheduled tasks are enabled. The scaffolded `vercel.json` should include this cron:
 
 ```json title="vercel.json"
 {

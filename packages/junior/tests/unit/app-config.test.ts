@@ -250,4 +250,26 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
     expect(getPluginProviders()).toEqual([]);
   });
+
+  it("rejects legacy state prefixes outside the trusted plugin namespace", async () => {
+    await createApp({
+      plugins: [],
+    });
+
+    await expect(
+      createApp({
+        plugins: [
+          defineJuniorPlugin({
+            name: "trusted",
+            pluginConfig: { legacyStatePrefixes: ["junior:scheduler"] },
+          }),
+        ],
+      }),
+    ).rejects.toThrow(
+      'Trusted plugin "trusted" legacy state prefix "junior:scheduler" must stay under "junior:trusted"',
+    );
+
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
 });
