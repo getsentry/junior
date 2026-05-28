@@ -77,6 +77,16 @@ Rules:
 - Do not optimize only for passing tests; solve the requested behavior.
 - After meaningful edits, run the smallest relevant repo-real check.
 - On check failure, inspect root cause before patching again.
+- **Dependency manifest changes**: when editing a dependency spec file (`package.json`, `pnpm-workspace.yaml`, `pyproject.toml`, `Cargo.toml`, `go.mod`, or similar), always run the appropriate package-manager install command immediately after, then include the regenerated lockfile in the same commit. A manifest edit without a matching lockfile update has no effect at install/deploy time.
+
+  | Manifest | Command |
+  |---|---|
+  | `pnpm-workspace.yaml` / `package.json` (pnpm) | `pnpm install` |
+  | `package.json` (npm) | `npm install` |
+  | `package.json` (yarn) | `yarn install` |
+  | `pyproject.toml` / `requirements*.txt` | `pip install -r requirements.txt` or `pip-compile` |
+  | `Cargo.toml` | `cargo fetch` |
+  | `go.mod` | `go mod tidy` |
 
 For multi-step or risky work, keep a compact checklist of intent, touched files, verification state, next step, and blockers.
 
