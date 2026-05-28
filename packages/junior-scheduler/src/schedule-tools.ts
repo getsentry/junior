@@ -105,12 +105,17 @@ function tool<TInput = any>(
 function normalizeSlackConversationId(
   value: string | undefined,
 ): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.startsWith("slack:")) return trimmed;
+
+  const parts = trimmed.split(":");
+  return parts[1]?.trim() || undefined;
 }
 
 function isDmChannel(channelId: string): boolean {
-  return channelId.startsWith("D");
+  return normalizeSlackConversationId(channelId)?.startsWith("D") ?? false;
 }
 
 function isSlackTeamId(value: string): boolean {

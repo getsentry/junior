@@ -549,6 +549,34 @@ describe("Slack schedule tools", () => {
     expect(tasks[0]?.credentialSubject).toBeUndefined();
   });
 
+  it("normalizes Slack conversation ids before storing destinations", async () => {
+    const result = await createTask(
+      createContext({ channelId: "slack:D123:1700000000.000" }),
+      {
+        schedule: "In 1 minute",
+        next_run_at: "2026-05-27T00:25:23.000Z",
+        recurrence: undefined,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        conversation_access: {
+          audience: "direct",
+          visibility: "private",
+        },
+      },
+    });
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toMatchObject([
+      {
+        destination: { channelId: "D123" },
+      },
+    ]);
+  });
+
   it("creates one-off tasks with an exact timestamp using the default Pacific timezone", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
@@ -775,7 +803,7 @@ describe("Slack schedule tools", () => {
     expect(paused?.runNowAtMs).toBeUndefined();
   });
 
-  it("removes deleted tasks from scheduler indexes", async () => {
+  it("removes deleted tasks from scheduler listings", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
@@ -785,13 +813,9 @@ describe("Slack schedule tools", () => {
       task_id: created.task.id,
     });
 
-    const state = createPluginState("scheduler");
     await expect(
-      state.get<string[]>("junior:scheduler:tasks"),
-    ).resolves.toBeUndefined();
-    await expect(
-      state.get<string[]>(`junior:scheduler:team:${TEST_TEAM_ID}:tasks`),
-    ).resolves.toBeUndefined();
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
   });
 
   it("claims due runs idempotently", async () => {
