@@ -4,7 +4,10 @@ import { generateKeyPairSync } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
-import { interceptTestHttp } from "@sentry/junior-testing/http";
+import {
+  interceptTestHttp,
+  resetTestGitHubHttpFixtures,
+} from "@sentry/junior-testing/http";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
 import {
@@ -1253,6 +1256,7 @@ async function setupHarnessEnvironment(
       ? await startEvalEgressServer()
       : undefined;
     resetSkillDiscoveryCache();
+    resetTestGitHubHttpFixtures();
     await cleanupHarnessThreadState(stateAdapter, scenario.events);
     await cleanupMcpAuthState(
       authRequesterUsers,

@@ -19,6 +19,12 @@ let nextIssueNumber = 101;
 const issues = new Map<string, EvalIssue>();
 const textEncoder = new TextEncoder();
 
+/** Reset mutable GitHub HTTP fixture state between test scenarios. */
+export function resetTestGitHubHttpFixtures(): void {
+  nextIssueNumber = 101;
+  issues.clear();
+}
+
 function base64(input: string): string {
   const bytes = textEncoder.encode(input);
   let binary = "";
