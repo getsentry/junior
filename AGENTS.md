@@ -4,14 +4,6 @@
 
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
 
-## Commit Attribution
-
-AI commits MUST include:
-
-```
-Co-Authored-By: (agent model name) <email>
-```
-
 ## File-Scoped Commands
 
 | Task                  | Command                                                             |
