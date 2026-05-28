@@ -5,7 +5,10 @@ import {
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import {
+  estimateTextTokens,
+  getAgentContextCompactionTriggerTokens,
+} from "@/chat/services/context-budget";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint,
@@ -59,10 +62,6 @@ export interface CompactContextResult {
     | "not_completed"
     | "summary_failed";
   sessionId?: string;
-}
-
-function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function textPart(value: unknown): string | undefined {
@@ -144,7 +143,7 @@ export function selectRetainedUserMessages(
       continue;
     }
 
-    const tokens = estimateTokenCount(text);
+    const tokens = estimateTextTokens(text);
     if (tokens <= remaining) {
       selected.push(text);
       remaining -= tokens;

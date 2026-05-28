@@ -9,6 +9,7 @@ import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   calculateContextCompactionTargetTokens,
+  estimateTextTokens,
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
 import { escapeXml } from "@/chat/xml";
@@ -43,10 +44,6 @@ export function generateConversationId(
 
 export function normalizeConversationText(text: string): string {
   return text.trim().replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS);
-}
-
-function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function buildImageContextSuffix(
@@ -97,7 +94,7 @@ export function updateConversationStats(
   conversation: ThreadConversationState,
 ): void {
   const contextText = buildConversationContext(conversation);
-  conversation.stats.estimatedContextTokens = estimateTokenCount(
+  conversation.stats.estimatedContextTokens = estimateTextTokens(
     contextText ?? "",
   );
   conversation.stats.totalMessageCount = conversation.messages.length;

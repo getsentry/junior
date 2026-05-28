@@ -16,6 +16,11 @@ function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
+/** Estimate text tokens with the shared coarse heuristic used for local budgets. */
+export function estimateTextTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 /** Derive the automatic compaction threshold from model context capacity. */
 export function calculateContextCompactionTriggerTokens(
   model: ModelContextBudget,
