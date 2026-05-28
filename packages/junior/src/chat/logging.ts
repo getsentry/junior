@@ -801,6 +801,14 @@ function numericConsoleToken(
   return typeof value === "number" ? `${label}=${value}` : undefined;
 }
 
+function stringConsoleToken(
+  label: string,
+  value: AttributeValue | undefined,
+): string | undefined {
+  const normalized = toOptionalString(value);
+  return normalized ? `${label}=${normalized}` : undefined;
+}
+
 function booleanConsoleToken(
   label: string,
   value: AttributeValue | undefined,
@@ -831,7 +839,9 @@ function getPrettyConsoleSummaryTokens(
   );
   pushPrettyConsoleToken(
     tokens,
-    toOptionalString(attributes["app.plugin.name"]) ?? undefined,
+    eventName.startsWith("trusted_plugin_heartbeat")
+      ? stringConsoleToken("plugin", attributes["app.plugin.name"])
+      : (toOptionalString(attributes["app.plugin.name"]) ?? undefined),
   );
   pushPrettyConsoleToken(
     tokens,
@@ -848,6 +858,10 @@ function getPrettyConsoleSummaryTokens(
   pushPrettyConsoleToken(
     tokens,
     numericConsoleToken("plugins", attributes["app.plugin.count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("dispatches", attributes["app.dispatch.count"]),
   );
   pushPrettyConsoleToken(
     tokens,

@@ -176,7 +176,7 @@ export async function runTrustedPluginHeartbeats(args: {
             "app.dispatch.count": result.dispatchCount,
             "app.plugin.name": plugin.name,
           },
-          "Trusted plugin heartbeat dispatched work",
+          "Plugin heartbeat dispatched agent work",
         );
       }
     } catch (error) {

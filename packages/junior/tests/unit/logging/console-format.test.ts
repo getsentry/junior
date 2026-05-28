@@ -87,6 +87,35 @@ describe("console log formatting", () => {
     expect(line).not.toContain("file.directory=");
   });
 
+  it("labels plugin heartbeat summary fields", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.CI;
+    delete process.env.JUNIOR_LOG_FORMAT;
+    setStdoutIsTTY(false);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
+
+    const infoSpy = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
+    const { log } = await loadLoggingModule();
+
+    log.info(
+      "trusted_plugin_heartbeat_dispatched",
+      {
+        "app.dispatch.count": 1,
+        "app.plugin.name": "scheduler",
+      },
+      "Plugin heartbeat dispatched agent work",
+    );
+
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const line = stripAnsi(String(infoSpy.mock.calls[0]?.[0] ?? ""));
+    expect(line).toMatch(
+      /^\d{2}:\d{2}:\d{2} INF Plugin heartbeat dispatched agent work plugin=scheduler dispatches=1$/,
+    );
+  });
+
   it("keeps the structured formatter in production", async () => {
     process.env.NODE_ENV = "production";
     delete process.env.CI;
