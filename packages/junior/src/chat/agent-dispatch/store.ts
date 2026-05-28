@@ -12,6 +12,8 @@ import type {
 
 const DISPATCH_PREFIX = "junior:agent_dispatch";
 const DISPATCH_LOCK_TTL_MS = 10 * 60 * 1000;
+const DISPATCH_INDEX_LOCK_TTL_MS = 10_000;
+const DISPATCH_INDEX_MAX_LENGTH = 10_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 /** Keep dispatch persistence keys consistent across callback and recovery paths. */
@@ -21,6 +23,10 @@ export function getDispatchStorageKey(id: string): string {
 
 function incompleteDispatchIndexKey(): string {
   return `${DISPATCH_PREFIX}:incomplete`;
+}
+
+function incompleteDispatchIndexLockKey(): string {
+  return `${DISPATCH_PREFIX}:incomplete:lock`;
 }
 
 function dispatchLockKey(id: string): string {
@@ -100,6 +106,58 @@ export async function withDispatchLock<T>(
   }
 }
 
+async function withIncompleteDispatchIndexLock<T>(
+  state: StateAdapter,
+  callback: () => Promise<T>,
+): Promise<T | undefined> {
+  const lock: Lock | null = await state.acquireLock(
+    incompleteDispatchIndexLockKey(),
+    DISPATCH_INDEX_LOCK_TTL_MS,
+  );
+  if (!lock) {
+    return undefined;
+  }
+
+  try {
+    return await callback();
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+async function syncIncompleteDispatchIndex(
+  state: StateAdapter,
+  record: DispatchRecord,
+): Promise<void> {
+  await withIncompleteDispatchIndexLock(state, async () => {
+    const existing =
+      (await state.getList<string>(incompleteDispatchIndexKey())) ?? [];
+    const ids = [
+      ...new Set(existing.filter((id): id is string => typeof id === "string")),
+    ];
+    const next = isTerminalDispatchStatus(record.status)
+      ? ids.filter((id) => id !== record.id)
+      : ids.includes(record.id)
+        ? ids
+        : [...ids, record.id];
+
+    if (
+      next.length === ids.length &&
+      next.every((id, index) => id === ids[index])
+    ) {
+      return;
+    }
+
+    await state.delete(incompleteDispatchIndexKey());
+    for (const id of next.slice(-DISPATCH_INDEX_MAX_LENGTH)) {
+      await state.appendToList(incompleteDispatchIndexKey(), id, {
+        maxLength: DISPATCH_INDEX_MAX_LENGTH,
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
+    }
+  });
+}
+
 async function putRecord(
   state: StateAdapter,
   record: DispatchRecord,
@@ -109,12 +167,7 @@ async function putRecord(
     record,
     THREAD_STATE_TTL_MS,
   );
-  if (!isTerminalDispatchStatus(record.status)) {
-    await state.appendToList(incompleteDispatchIndexKey(), record.id, {
-      maxLength: 10_000,
-      ttlMs: THREAD_STATE_TTL_MS,
-    });
-  }
+  await syncIncompleteDispatchIndex(state, record);
 }
 
 /** Load dispatch state for callback, recovery, and plugin projection paths. */

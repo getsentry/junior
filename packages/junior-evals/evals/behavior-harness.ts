@@ -630,8 +630,13 @@ async function startEvalEgressServer(): Promise<EvalEgressServer> {
           }),
         );
       } catch (error) {
+        console.error(
+          "Eval egress server request failed",
+          error instanceof Error ? error.message : String(error),
+        );
         outgoing.statusCode = 500;
-        outgoing.end(error instanceof Error ? error.message : String(error));
+        outgoing.setHeader("content-type", "text/plain; charset=utf-8");
+        outgoing.end("Eval egress server error\n");
       }
     })();
   });

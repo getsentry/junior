@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { logException } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -16,7 +17,12 @@ function verifyHeartbeatRequest(request: Request): boolean {
   }
 
   const authorization = request.headers.get("authorization")?.trim();
-  return authorization === `Bearer ${secret}`;
+  if (!authorization?.startsWith("Bearer ")) {
+    return false;
+  }
+  const actual = Buffer.from(authorization.slice("Bearer ".length));
+  const expected = Buffer.from(secret);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 /** Handle the authenticated internal heartbeat. */

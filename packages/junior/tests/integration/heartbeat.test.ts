@@ -9,6 +9,7 @@ import {
   createOrGetDispatch,
   getDispatchRecord,
   getDispatchStorageKey,
+  listIncompleteDispatchIds,
   updateDispatchRecord,
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
@@ -239,6 +240,44 @@ describe("trusted plugin heartbeat", () => {
     ).rejects.toThrow("Plugin heartbeat exceeded the dispatch limit");
   });
 
+  it("does not count invalid dispatch requests against heartbeat fanout", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const ctx = createHeartbeatContext({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    });
+
+    for (let index = 0; index < 25; index += 1) {
+      await expect(
+        ctx.agent.dispatch({
+          idempotencyKey: `invalid-${index}`,
+          destination: {
+            platform: "slack",
+            teamId: "not-a-team",
+            channelId: "C123",
+          },
+          input: "Run the scheduled task.",
+        }),
+      ).rejects.toThrow("Dispatch destination teamId must be a Slack team id");
+    }
+
+    await expect(
+      ctx.agent.dispatch({
+        idempotencyKey: "valid-after-invalid",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+      }),
+    ).resolves.toMatchObject({ status: "created" });
+  });
+
   it("fails stale dispatches that exceed retry attempts", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
@@ -276,6 +315,43 @@ describe("trusted plugin heartbeat", () => {
       status: "failed",
       errorMessage: "Dispatch exceeded retry attempts.",
     });
+  });
+
+  it("removes terminal dispatches from the recovery index", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-terminal-index",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+      },
+    });
+
+    await expect(listIncompleteDispatchIds()).resolves.toContain(
+      created.record.id,
+    );
+
+    await withDispatchLock(created.record.id, async (state) => {
+      const record = await state.get<DispatchRecord>(
+        getDispatchStorageKey(created.record.id),
+      );
+      if (!record) {
+        throw new Error("missing dispatch record");
+      }
+      await updateDispatchRecord(state, {
+        ...record,
+        status: "completed",
+      });
+    });
+
+    await expect(listIncompleteDispatchIds()).resolves.not.toContain(
+      created.record.id,
+    );
   });
 
   it("does not fail an active leased dispatch that reached max attempts", async () => {

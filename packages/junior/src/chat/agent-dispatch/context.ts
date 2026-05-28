@@ -39,16 +39,16 @@ export function createHeartbeatContext(args: {
     log: createAgentPluginLogger(args.plugin),
     agent: {
       async dispatch(options) {
+        validateDispatchOptions(options);
         if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
           throw new Error("Plugin heartbeat exceeded the dispatch limit");
         }
-        dispatchCount += 1;
-        validateDispatchOptions(options);
         const result = await createOrGetDispatch({
           plugin: args.plugin,
           options,
           nowMs: args.nowMs,
         });
+        dispatchCount += 1;
         if (shouldScheduleDispatch(result.record, args.nowMs)) {
           await scheduleDispatchCallback({
             id: result.record.id,

@@ -204,29 +204,32 @@ export async function runAgentDispatchSlice(
     return;
   }
 
-  const startedDispatch = await withDispatchLock(dispatch.id, async (state) => {
-    const current =
-      (await state.get<DispatchRecord>(getDispatchStorageKey(dispatch.id))) ??
-      dispatch;
-    if (
-      current.status !== "running" ||
-      current.version !== dispatch.version ||
-      current.attempt >= current.maxAttempts
-    ) {
-      return undefined;
-    }
-    return await updateDispatchRecord(state, {
-      ...current,
-      attempt: current.attempt + 1,
-    });
-  });
-  if (!startedDispatch) {
-    await stateAdapter.releaseLock(conversationLock);
-    return;
-  }
-  dispatch = startedDispatch;
-
   try {
+    const startedDispatch = await withDispatchLock(
+      dispatch.id,
+      async (state) => {
+        const current =
+          (await state.get<DispatchRecord>(
+            getDispatchStorageKey(dispatch.id),
+          )) ?? dispatch;
+        if (
+          current.status !== "running" ||
+          current.version !== dispatch.version ||
+          current.attempt >= current.maxAttempts
+        ) {
+          return undefined;
+        }
+        return await updateDispatchRecord(state, {
+          ...current,
+          attempt: current.attempt + 1,
+        });
+      },
+    );
+    if (!startedDispatch) {
+      return;
+    }
+    dispatch = startedDispatch;
+
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
     const deliveredMessage = conversation.messages.find(
