@@ -3,19 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-05-11
-
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
-- 2026-03-18: Added console rendering policy for compact dev logs and clarified that tool success lifecycle uses spans instead of duplicate start/complete info logs.
-- 2026-04-06: Aligned GenAI semantic keys with official finish-reasons, system-instructions, and tool-description attributes.
-- 2026-05-11: Aligned exception details and GenAI cache token counters with OpenTelemetry 1.41.0.
-
-## Status
-
-Active
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -29,9 +17,9 @@ Define the canonical structured logging contract for application events, context
 
 ## Related Specs
 
-- [Instrumentation Specs](./index.md)
-- [OpenTelemetry Semantics Map](./semantics.md)
-- [Tracing Spec](./tracing-spec.md)
+- [Instrumentation Specs](./instrumentation.md)
+- [OpenTelemetry Semantics Map](./otel-semantics.md)
+- [Tracing Spec](./tracing.md)
 
 ## Goals
 
@@ -46,20 +34,6 @@ Define the canonical structured logging contract for application events, context
 - Replacing Sentry tracing setup.
 - Shipping a separate log backend in this phase.
 
-## Current State (Audit)
-
-- Core logging helper exists: `packages/junior/src/chat/logging.ts`.
-- Callsites are concentrated in:
-  - `packages/junior/src/chat/respond.ts`
-  - `packages/junior/src/chat/skills.ts`
-  - `packages/junior/src/chat/slack/output.ts`
-  - `packages/junior/src/chat/runtime/slack-runtime.ts`
-  - `packages/junior/src/handlers/webhooks.ts`
-- Key inconsistencies today:
-  - Mixed naming styles (`media_type`, `error`, `request.id`, `gen_ai.request.model`).
-  - Message text is often prose, not stable event names.
-  - Context is repeated manually instead of ambient propagation.
-
 ## Design Principles
 
 - Centralized API: no direct `console.*` for application logging.
@@ -67,7 +41,7 @@ Define the canonical structured logging contract for application events, context
 - Semantic-first attributes: use OTel keys first; app keys are namespaced as `app.*`.
 - Context propagation: request and workflow context auto-attached to child logs.
 - Safe by default: redact sensitive values, drop oversized payloads, and keep logs JSON-safe.
-- Canonical semantic key choices are documented in `specs/logging/semantics.md`.
+- Canonical semantic key choices are documented in `specs/otel-semantics.md`.
 
 ## Logging Contract
 
@@ -248,54 +222,6 @@ Only when no semantic key exists:
   - missing attributes that cannot be safely added to logs/spans,
   - or strict low-latency alert requirements.
 
-## Rollout Plan
-
-### Phase 0: Spec Alignment (current)
-
-- Define ambient context merge semantics and precedence.
-- Define compatibility API contract where explicit context remains optional.
-- Track concrete migration and hardening items in `Logging TODOs`.
-
-### Phase 1: Foundation
-
-- Add `packages/junior/src/chat/logging.ts` with:
-  - typed event names (string union + fallback string)
-  - semantic key helpers
-  - context propagation via `AsyncLocalStorage`
-  - Sentry logger transport adapter
-  - console JSON fallback
-- Add normalization utilities:
-  - key validator (`snake_case` event names, dotted attribute keys)
-  - attribute sanitizer/redactor
-
-### Phase 2: Context Wiring
-
-- Wire request context in `packages/junior/app/api/webhooks/[platform]/route.ts`.
-- Ensure `trace_id`/`span_id` are attached when spans are active.
-- Remove manual repeated context blocks in `bot.ts` and `respond.ts` by using `withLogContext`.
-
-### Phase 3: Callsite Migration
-
-- Replace all `logWarn/logError/logException` calls with event-based structured logs.
-- Standardize key names at each callsite using the semantic map above.
-- Keep `observability.ts` as passthrough wrappers to avoid large one-shot breaks.
-
-### Phase 4: Guardrails
-
-- Add tests for:
-  - redaction
-  - attribute sanitization
-  - context propagation
-  - event naming validation
-- Add lint/check script to block non-conformant keys in logging calls.
-- Update docs with examples and migration cheatsheet.
-
-### Phase 5: Hardening
-
-- Set severity guidance by domain (debug/info/warn/error).
-- Reduce noisy logs and promote high-value operational events.
-- Validate logs in Sentry queries and dashboards.
-
 ## Acceptance Criteria
 
 - 100% of application logs go through `packages/junior/src/chat/logging.ts`.
@@ -305,32 +231,6 @@ Only when no semantic key exists:
 - Request/thread/user/model context appears automatically in child logs.
 - Secret redaction tests pass.
 
-## Migration Matrix (Initial)
-
-- `packages/junior/src/handlers/webhooks.ts`
-  - unknown platform, handler failures, request lifecycle
-- `packages/junior/src/chat/runtime/slack-runtime.ts`
-  - attachment handling, thread lifecycle, handler failures
-- `packages/junior/src/chat/respond.ts`
-  - empty/fallback behaviors, retries, model/tool anomalies
-  - per-turn diagnostics are captured on turn spans (not required as info logs)
-- `packages/junior/src/chat/skills.ts`
-  - skill discovery/read/frontmatter parse issues
-- `packages/junior/src/chat/slack/output.ts`
-  - output normalization fallback
-
-## Logging TODOs
-
-- [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
-- [ ] Update `packages/junior/src/chat/runtime/slack-runtime.ts` logging call patterns to rely on ambient context by default.
-- [ ] Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*` and `packages/junior/src/chat/queue/*`.
-- [ ] Add unit tests for context merge precedence and async propagation in `packages/junior/src/chat/logging.ts`.
-- [ ] Add regression tests to verify optional context behavior for `logInfo`, `logWarn`, `logError`, and `logException`.
-- [ ] Add a lint/check rule that flags repeated baseline context keys when ambient context is already bound.
-- [ ] Audit noisy or low-value events after migration and reduce log volume where possible.
-- [ ] Validate Sentry dashboards/queries still group by `event.name` and retain correlation attributes after migration.
-- [ ] Investigate and fix duplicate Sentry emission in logger transport path (`emitSentry` currently invokes logger twice).
-
 ## Decision Record
 
 - Adopt LogTape as the internal logging backend in `packages/junior/src/chat/logging.ts`.
@@ -339,8 +239,3 @@ Only when no semantic key exists:
 - Configure the LogTape backend lazily from the facade on first use; importing Junior logging must not reset or eagerly reconfigure process-global LogTape state.
 - Keep a repo-local console formatter instead of LogTape's stock text formatters because Junior emits standalone structured properties (`event.name`, correlation ids, event-local attrs) that must remain visible without interpolating every property into the message template.
 - Keep Sentry exception/event-id behavior project-owned so `logException(...): eventId` and error-reference generation remain stable.
-
-## Open Questions
-
-- Should we emit logs to local JSONL in addition to Sentry in dev (ash-style local inspectability)?
-- Do we want strict compile-time enums for event names from day 1, or a soft migration with runtime validation first?

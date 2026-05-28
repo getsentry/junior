@@ -5,19 +5,9 @@
 - Created: 2026-03-03
 - Last Edited: 2026-05-28
 
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-05-19: Reframed Slack Canvas follow-up tools as file-like document tools with explicit canvas handles.
-- 2026-05-28: Standardized context-bound tool failures on thrown tool errors instead of `ok: false` sentinel results.
-
-## Status
-
-Active
-
 ## Related Specs
 
-- [Harness Agent Spec](./harness-agent-spec.md)
+- [Harness Agent Spec](./harness-agent.md)
 - [Security Policy](./security-policy.md)
 
 ## Purpose

@@ -5,21 +5,6 @@
 - Created: 2026-02-24
 - Last Edited: 2026-05-28
 
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-05: Linked to canonical session resumability contract for multi-slice timeout recovery.
-- 2026-04-06: Switched stop-reason observability to `gen_ai.response.finish_reasons`.
-- 2026-04-13: Clarified timeout behavior when turn-session checkpoints are available for resumable slices.
-- 2026-04-30: Added the thinking-level routing contract and normal-effort default.
-- 2026-05-06: Clarified that normal turns seed Pi from durable conversation message history instead of flattening prior turns into the current prompt.
-- 2026-05-11: Aligned agent telemetry fields with current OpenTelemetry GenAI and exception semantics.
-- 2026-05-28: Linked tool failure semantics to the canonical agent execution contract.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define the canonical runtime contract for assistant-turn execution and user-visible Slack replies.
@@ -62,7 +47,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - `generateAssistantReply(...)` aborts the Pi agent on timeout and waits for the in-flight prompt/continue call to settle before inspecting Pi messages.
 - When resumability context is available (`conversation_id` + `session_id`) and a safe-boundary checkpoint can be persisted, timeout throws `RetryableTurnError("turn_timeout_resume")` with checkpoint metadata instead of returning a normal reply payload.
 - When no resumable checkpoint can be persisted, timeout falls back to the standard provider-error reply path.
-- The harness does not decide whether timed-out work should be auto-resumed after user-visible output has started. Higher-level runtime code applies the visibility rules from [Agent Session Resumability Spec](./agent-session-resumability-spec.md).
+- The harness does not decide whether timed-out work should be auto-resumed after user-visible output has started. Higher-level runtime code applies the visibility rules from [Agent Session Resumability Spec](./agent-session-resumability.md).
 
 ### Terminal output contract
 
@@ -88,10 +73,10 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ### Tool semantics
 
 - Tools execute as intermediate actions (`bash`, `readFile`, `webSearch`, Slack tools, skill loading, etc.).
-- Model-repairable tool failures must follow the [Agent Execution Discipline Spec](./agent-execution-spec.md) tool-failure contract so Pi records them as `toolResult.isError=true`.
+- Model-repairable tool failures must follow the [Agent Execution Discipline Spec](./agent-execution.md) tool-failure contract so Pi records them as `toolResult.isError=true`.
 - The turn is successful when assistant text resolves to a non-empty, non-escape final response.
 - Slack runtimes refine that further: turn completion is only persisted after the final visible reply is delivered.
-- Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context-spec.md).
+- Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context.md).
 
 ## Failure Model
 
@@ -131,8 +116,8 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 
 ## Related Specs
 
-- [Harness Tool Context Spec](./harness-tool-context-spec.md)
-- [Agent Execution Discipline Spec](./agent-execution-spec.md)
-- [Agent Session Resumability Spec](./agent-session-resumability-spec.md)
+- [Harness Tool Context Spec](./harness-tool-context.md)
+- [Agent Execution Discipline Spec](./agent-execution.md)
+- [Agent Session Resumability Spec](./agent-session-resumability.md)
 - [Security Policy](./security-policy.md)
-- [Tracing Spec](./logging/tracing-spec.md)
+- [Tracing Spec](./tracing.md)

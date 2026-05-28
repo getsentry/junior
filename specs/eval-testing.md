@@ -3,17 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-03
-
-## Changelog
-
-- 2026-05-03: Updated authoring rules for the vitest-evals harness-first API: suites use `describeEval()` with shared Slack harness options, cases call `run(...)` directly, and LLM judges reuse the harness prompt seam.
-- 2026-04-21: Described evals as the integration-style layer for agent-facing behavior and clarified the boundary against ordinary runtime/product integration tests.
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
-- 2026-03-20: Added natural-prompt authoring rule and explicit ban on scripting internal commands/tools into eval prompts.
-- 2026-03-22: Clarified that evals are the preferred layer for end-to-end behavior when model behavior is part of the contract.
-- 2026-04-16: Standardized eval judge criteria on a structured rubric format so cases and failures stay human-readable for maintainers.
+- Last Edited: 2026-05-28
 
 ## Intent
 

@@ -12,9 +12,9 @@ Evals are end-to-end Slack conversation evaluations. They are the integration-st
 
 Testing taxonomy and layer contracts are defined in:
 
-- `specs/testing/index.md`
-- `specs/testing/evals-spec.md`
-- `specs/testing/integration-spec.md`
+- `specs/testing.md`
+- `specs/eval-testing.md`
+- `specs/integration-testing.md`
 - `policies/evals.md`
 
 Quick mapping:

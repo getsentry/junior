@@ -39,8 +39,8 @@ Do not use for: existing provider usage, generic code review, docs-only edits.
 Authoritative:
 
 - `PLUGIN.md`
-- `specs/plugin-spec.md`
-- `specs/skill-capabilities-spec.md`
+- `specs/plugin.md`
+- `specs/credential-injection.md`
 - `packages/docs/src/content/docs/extend/index.md`
 - `packages/docs/src/content/docs/cli/check.md`
 - `packages/junior/src/chat/skills.ts`

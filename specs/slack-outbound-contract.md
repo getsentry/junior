@@ -5,17 +5,6 @@
 - Created: 2026-04-16
 - Last Edited: 2026-04-30
 
-## Changelog
-
-- 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
-- 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
-- 2026-04-22: Clarified that finalized reply footers may include the selected thinking-level bucket as structured reply metadata.
-- 2026-04-30: Switched reply body rendering from section/mrkdwn blocks to Slack-flavored markdown blocks; raw markdown passed as notification text fallback.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define the canonical outbound contract for Slack in Junior so message posting, file uploads, reaction behavior, and reply-text translation are implemented once and verified once.
@@ -32,7 +21,7 @@ This spec exists to prevent Slack outbound behavior from being duplicated across
 ## Non-Goals
 
 - Re-specifying inbound Slack routing or assistant-thread lifecycle behavior
-- Replacing the user-visible delivery rules in `slack-agent-delivery-spec.md`
+- Replacing the user-visible delivery rules in `slack-agent-delivery.md`
 - Defining Chat SDK adapter internals
 - Converting arbitrary CommonMark into full-fidelity Slack rendering for every markdown feature
 
@@ -136,7 +125,7 @@ Required verification coverage for this contract:
 
 ## Related Specs
 
-- `./slack-agent-delivery-spec.md`
-- `./chat-architecture-spec.md`
-- `./oauth-flows-spec.md`
-- `./testing/index.md`
+- `./slack-agent-delivery.md`
+- `./chat-architecture.md`
+- `./oauth-flows.md`
+- `./testing.md`

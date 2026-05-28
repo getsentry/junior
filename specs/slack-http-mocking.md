@@ -3,17 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-02
-- Last Edited: 2026-03-04
-
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated MSW and fixture path references to repo-root paths under `packages/junior/`.
+- Last Edited: 2026-05-28
 
 ## Purpose
 
 Define the Slack HTTP contract testing model used by integration tests.
-This spec is subordinate to `specs/testing/integration-spec.md`.
+This spec is subordinate to `specs/integration-testing.md`.
 
 ## Summary
 
@@ -31,8 +26,8 @@ This spec is subordinate to `specs/testing/integration-spec.md`.
 ## Non-goals
 
 - Replacing live Slack transport/integration tests.
-- Defining unit-test mocking policy (see `unit-spec.md`).
-- Defining eval authoring policy (see `evals-spec.md`).
+- Defining unit-test mocking policy (see `unit.md`).
+- Defining eval authoring policy (see `evals.md`).
 
 ## Runtime and Compatibility
 

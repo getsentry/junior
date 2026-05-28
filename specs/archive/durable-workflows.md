@@ -21,11 +21,11 @@ Accepted
 
 ## Related Specs
 
-- [Harness Agent Spec](./harness-agent-spec.md)
-- [Agent Session Resumability Spec](./agent-session-resumability-spec.md)
-- [Logging Spec Index](./logging/index.md)
-- [Tracing Spec](./logging/tracing-spec.md)
-- [Security Policy](./security-policy.md)
+- [Harness Agent Spec](../harness-agent.md)
+- [Agent Session Resumability Spec](../agent-session-resumability.md)
+- [Instrumentation Spec](../instrumentation.md)
+- [Tracing Spec](../tracing.md)
+- [Security Policy](../security-policy.md)
 
 ## Context
 
@@ -263,7 +263,7 @@ Attachment rehydration contract:
 
 ## Observability Contract
 
-Use existing logging/tracing conventions from `specs/logging/*`.
+Use existing logging/tracing conventions from the active instrumentation specs.
 
 Required event names:
 

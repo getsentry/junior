@@ -8,43 +8,38 @@
 
 ## Naming Rules
 
-- Canonical specs: `*-spec.md`.
+- Canonical specs: concise kebab-case names. The `-spec` suffix is allowed but not required.
 - Policy specs: `*-policy.md`.
-- Domain indexes: `index.md`.
+- Spec indexes: `index.md`.
 - Historical/superseded docs: `specs/archive/**`.
 
 ## Required Metadata
 
-- Every non-policy spec must include these sections near the top:
+- Every non-policy spec must include this section near the top:
 
 ```md
 ## Metadata
 
 - Created: YYYY-MM-DD
 - Last Edited: YYYY-MM-DD
-
-## Changelog
-
-- YYYY-MM-DD: <what changed>
 ```
 
-- Update `Last Edited` and append a changelog entry for every spec edit.
+- Update `Last Edited` for every spec edit.
 - Keep dates absolute and ISO (`YYYY-MM-DD`).
-- Start new specs from `specs/templates/spec-template.md`.
+- Start new specs from `specs/spec-template.md`.
 
 ## Section Shape
 
 - Use this order for canonical specs:
 
-1. `Status`
-2. `Purpose` (or `Intent` for testing specs)
-3. `Scope`
-4. `Non-Goals`
-5. Contracts and behavior details
-6. Failure model / invariants
-7. Observability
-8. Verification
-9. Related specs
+1. `Purpose` (or `Intent` for testing specs)
+2. `Scope`
+3. `Non-Goals`
+4. Contracts and behavior details
+5. Failure model / invariants
+6. Observability
+7. Verification
+8. Related specs
 
 ## Canonical vs Archive
 

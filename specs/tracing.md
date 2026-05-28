@@ -3,24 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-21
-
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated logging/observability file references to repo-root paths under `packages/junior/`.
-- 2026-03-04: Normalized section shape with explicit `Status`, `Purpose`, and `Scope`.
-- 2026-03-06: Added snapshot lifecycle span requirements and aligned sandbox snapshot attributes.
-- 2026-04-06: Added official GenAI finish-reasons, system-instructions, and tool-description tracing attributes.
-- 2026-04-28: Added MCP tool-call span attributes from the OpenTelemetry MCP semantic conventions.
-- 2026-05-01: Added `gen_ai.conversation.id` as required correlation context for GenAI spans when available.
-- 2026-05-06: Documented the `gen_ai.invoke_agent` / `gen_ai.chat` span hierarchy rule.
-- 2026-05-11: Aligned exception details and GenAI cache token counters with OpenTelemetry 1.41.0.
-- 2026-05-21: Added error status rule for failed gen_ai.chat spans; extended traced streamFn coverage to the advisor agent loop.
-
-## Status
-
-Active
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -38,7 +21,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - Make span instrumentation consistent, queryable, and low-noise.
 - Define stable span names and operations for workflow and sandbox lifecycle visibility.
 - Preserve end-to-end correlation between spans, logs, and request/workflow context.
-- Keep semantic key selection centralized in `specs/logging/semantics.md`.
+- Keep semantic key selection centralized in `specs/otel-semantics.md`.
 
 ## Non-goals
 
@@ -194,12 +177,6 @@ semantic conventions:
 - The parent `gen_ai.invoke_agent` MAY also carry `gen_ai.input.messages` / `gen_ai.output.messages` as a high-level rollup; this is optional.
 - A `gen_ai.chat` span MUST have its status set to error (code 2) when the underlying LLM call fails — either because `streamFn` itself throws or because the returned stream rejects.
 - The per-iteration `gen_ai.chat` child span is created in `packages/junior/src/chat/pi/traced-stream.ts` via the `streamFn` injected into `pi-agent-core`'s `Agent`. This applies to both the main agent and the advisor agent.
-
-## Rollout Guidance
-
-- Start with lifecycle + I/O spans.
-- Avoid per-file child spans for skill synchronization in the initial rollout.
-- Expand only when a specific observability gap is identified and justified.
 
 ## Acceptance Criteria
 

@@ -5,15 +5,6 @@
 - Created: 2026-03-06
 - Last Edited: 2026-03-06
 
-## Changelog
-
-- 2026-03-06: Added canonical snapshot lifecycle contract for plugin runtime dependencies.
-- 2026-03-06: Added snapshot resolve outcome/rebuild reason telemetry and clarified cache-hit semantics.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define how Junior builds, caches, invalidates, and uses sandbox filesystem snapshots derived from plugin-declared runtime dependencies.
@@ -130,6 +121,6 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 
 ## Related
 
-- [Plugin Architecture Spec](./plugin-spec.md)
+- [Plugin Architecture Spec](./plugin.md)
 - [Security Policy](./security-policy.md)
-- [Tracing Spec](./logging/tracing-spec.md)
+- [Tracing Spec](./tracing.md)

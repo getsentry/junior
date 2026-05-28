@@ -3,33 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-20
-
-## Changelog
-
-- 2026-04-15: Initial canonical contract for Slack agent entry surfaces, reply delivery, continuation behavior, and convergence plan.
-- 2026-04-16: Removed streamed Slack text from the primary delivery contract. Standardized on assistant status for in-flight progress plus finalized thread replies for visible output.
-- 2026-04-16: Clarified that reply-text translation is owned by the shared Slack output module and direct outbound callers only deliver already-rendered Slack text.
-- 2026-04-16: Clarified that Chat SDK Slack `thread.channelId` values are adapter-scoped (`slack:<channel>`) and must be normalized before assistant status/title API calls.
-- 2026-04-16: Corrected the assistant-thread context rule to match Slack adapter behavior: non-DM message events use `channel + (thread_ts ?? ts)`, `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize DM roots from persisted state or generic message `ts`.
-- 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
-- 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
-- 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
-- 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
-- 2026-04-20: Clarified that only explicit `reportProgress` updates replace generic loading messages; ordinary tool calls must not synthesize progress phases.
-- 2026-04-22: Updated finalized reply footer metadata examples to reflect the displayed thinking-level bucket instead of the active trace ID.
-- 2026-04-22: Required explicit progress messages to be written as proper sentence fragments (capitalized first letter, present-participle verb).
-- 2026-04-22: Reframed auth-blocked requests as completed thread replies plus thread-local pending-auth state, and removed the public OAuth "connected, continuing..." preamble from automatic resumes.
-- 2026-05-06: Removed the public thread-visible auth-pause note; private auth-link delivery is the only immediate user-facing auth handoff before callback resume.
-- 2026-05-13: Added the turn-continuation acknowledgement and follow-up retry contract for awaiting continuation checkpoints.
-- 2026-05-16: Added automatic processing reactions for Slack messages Junior is handling or evaluating for handling.
-- 2026-05-19: Restored the visible URL-free auth-pause thread acknowledgement and required processing reaction restoration during auth resumes.
-- 2026-05-19: Deferred subscribed-thread processing reactions until after routing approves a reply.
-- 2026-05-20: Allowed timeout continuation acknowledgements to include correlation-only footer metadata for traceability.
-
-## Status
-
-Active
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -52,7 +26,7 @@ This spec exists so Slack behavior is described in one place instead of being in
 
 ## Non-Goals
 
-- Replacing the chat architecture contract in `chat-architecture-spec.md`
+- Replacing the chat architecture contract in `chat-architecture.md`
 - Re-specifying OAuth token security or MCP credential handling
 - Defining conversational quality criteria that belong to evals
 - Making Slack-native text streaming part of Junior's correctness contract
@@ -243,7 +217,7 @@ Current rules:
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already superseded the blocked request, Junior stores the credentials but does not post a stale resumed answer.
 9. When a turn checkpoint is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.
-10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Checkpoint rescheduling mechanics belong to `./agent-session-resumability-spec.md`.
+10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Checkpoint rescheduling mechanics belong to `./agent-session-resumability.md`.
 11. Turn-continuation acknowledgements are not final assistant replies. They do not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
 12. Turn-continuation acknowledgements may include a correlation-only footer with the conversation ID or trace link so operators can connect the durable notice to diagnostics. They must not include final-turn duration, token usage, or thinking-level metadata because those belong to the finalized reply.
 
@@ -296,44 +270,10 @@ Required verification coverage for this contract:
 6. Integration: assistant-thread lifecycle metadata initialization.
 7. Evals: realistic user-visible multi-turn Slack behaviors when model interpretation is part of the contract.
 
-## Convergence Plan
-
-This section is non-normative. It describes the intended cleanup sequence without changing the current contract above.
-
-### Phase 1: Lock the Finalized-Reply Contract
-
-1. Keep the shared Slack reply planner as the only authority for continuation markers, file delivery, and resumed post planning.
-2. Keep persisted thread conversation state as the primary context source.
-3. Keep the explicit separation between behavior integration tests and Slack transport-contract tests.
-
-Exit criteria:
-
-- No alternate resume-only or ingress-only reply formatting path remains.
-- Canonical specs and behavior tests describe the same continuation/file semantics.
-
-### Phase 2: Improve Progress Without Reintroducing Text Streaming Coupling
-
-1. Keep assistant status as the baseline progress affordance.
-2. If richer progress is needed later, prefer status/task-oriented surfaces over provisional assistant prose.
-3. Keep visible answer text tied to finalized reply delivery, not mid-generation transport state.
-
-Exit criteria:
-
-- Assistant-thread and long-running channel-thread experiences both surface observable progress without requiring provisional thread text.
-
-### Phase 3: Keep Adapter Dependencies on the Public Surface
-
-1. Prefer documented adapter and Slack API surfaces over monkey-patching private adapter internals.
-2. Keep reply correctness independent from optional adapter-level streaming behavior.
-
-Exit criteria:
-
-- A Slack adapter upgrade failure is caught at a narrow boundary instead of breaking reply delivery deep in production flow.
-
 ## Related Specs
 
-- `./chat-architecture-spec.md`
-- `./slack-outbound-contract-spec.md`
-- `./oauth-flows-spec.md`
-- `./agent-session-resumability-spec.md`
-- `./testing/index.md`
+- `./chat-architecture.md`
+- `./slack-outbound-contract.md`
+- `./oauth-flows.md`
+- `./agent-session-resumability.md`
+- `./testing.md`

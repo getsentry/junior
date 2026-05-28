@@ -5,20 +5,9 @@
 - Created: 2026-02-25
 - Last Edited: 2026-03-06
 
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-06: Added pointer to telemetry usage runbooks.
-
-## Status
-
-Active
-
 ## Purpose
 
-Index canonical logging/tracing instrumentation contracts and shared policy for this repository.
-
-This directory is the source of truth for application instrumentation.
+Define the canonical logging/tracing instrumentation contracts and shared policy for this repository.
 
 ## Scope
 
@@ -36,11 +25,11 @@ This directory is the source of truth for application instrumentation.
 
 ## Specs
 
-- [Structured Logging Spec](./logging-spec.md)
-- [Tracing Spec](./tracing-spec.md)
-- [Semantics Map](./semantics.md)
+- [Structured Logging Spec](./logging.md)
+- [Tracing Spec](./tracing.md)
+- [Semantics Map](./otel-semantics.md)
 
 ## Operational Guides (Non-Normative)
 
-- [Reliability Runbooks](../../packages/docs/src/content/docs/operate/reliability-runbooks.md)
-- [Observability](../../packages/docs/src/content/docs/operate/observability.md)
+- [Reliability Runbooks](../packages/docs/src/content/docs/operate/reliability-runbooks.md)
+- [Observability](../packages/docs/src/content/docs/operate/observability.md)

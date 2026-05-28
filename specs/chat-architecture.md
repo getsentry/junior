@@ -5,25 +5,6 @@
 - Created: 2026-03-21
 - Last Edited: 2026-05-28
 
-## Changelog
-
-- 2026-03-21: Defined the canonical chat architecture boundaries, service injection rules, and migration sequence away from runtime globals.
-- 2026-03-22: Expanded the core interface contracts, terminology rules, and remaining cutover requirements for ingress, queue dispatch, capabilities, plugins, and eval harnesses.
-- 2026-03-22: Cut queue processing over to an explicit injected dispatcher under `queue/` and moved production singleton assembly under `app/production.ts`.
-- 2026-03-22: Added engineering principles for naming, interface size, and local clarity.
-- 2026-03-22: Moved canonical ingress routing and chat bindings under `chat/ingress/*` and deleted the old `chat-background-patch.ts` module.
-- 2026-03-22: Removed test-only plugin registry mutation APIs and made plugin discovery reload from the current root signature instead of import-time state.
-- 2026-03-22: Replaced prototype-patch ingress with the explicit `JuniorChat` subclass, removed the OAuth resume post-message observer global, split queue transport from queue retry policy, and replaced the ambient user-token-store singleton with construction at the call site.
-- 2026-05-09: Added the enforced service-to-Slack boundary: domain services depend on injected Slack-backed ports instead of Slack infrastructure modules.
-- 2026-05-10: Added the enforced Slack-to-runtime boundary and moved resumed Slack turn orchestration under `runtime/`.
-- 2026-05-13: Added the agent turn data-flow diagram, data ownership table, and spec ownership boundaries for continuation recovery.
-- 2026-05-21: Clarified that Pi execution history is sourced from Redis-backed Pi session state, while thread state stores visible transcript plus session pointers.
-- 2026-05-28: Linked agent-loop tool failure handling to the canonical agent execution contract.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define the normative architecture contract for `packages/junior/src/chat` so new work converges on explicit composition, small service interfaces, and maintainable test seams.
@@ -98,7 +79,7 @@ Normative rules:
 2. The Chat SDK queue/lock layer handles transport-level concerns such as duplicate inbound delivery, ordering, and lock serialization. It is not the source of truth for agent recovery.
 3. Turn preparation is the only point that converts an inbound Slack message into persisted conversation context for an agent turn.
 4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary checkpoint creation.
-5. Tool calls and tool failures are internal agent-loop data until the assistant produces final turn diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution-spec.md).
+5. Tool calls and tool failures are internal agent-loop data until the assistant produces final turn diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
 6. User-visible assistant text is posted only after the reply is finalized and planned for Slack delivery.
 7. Final turn success is defined by Slack accepting the visible final reply, not by model generation completing.
 8. Agent recovery is session continuation: reload durable thread state plus the latest safe turn checkpoint, then continue the same session. It must not create a second active turn or re-run from transient process memory.
@@ -122,12 +103,12 @@ Data authority by stage:
 
 Related contract ownership:
 
-| Spec                                   | Owns                                                                                          |
-| -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `./chat-architecture-spec.md`          | End-to-end turn data flow, data authority, and module boundaries.                             |
-| `./agent-session-resumability-spec.md` | Checkpoint schema, Pi `continue()` semantics, timeout callback safety, and session lifecycle. |
-| `./slack-agent-delivery-spec.md`       | Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.   |
-| `./slack-outbound-contract-spec.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping.        |
+| Spec                              | Owns                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `./chat-architecture.md`          | End-to-end turn data flow, data authority, and module boundaries.                             |
+| `./agent-session-resumability.md` | Checkpoint schema, Pi `continue()` semantics, timeout callback safety, and session lifecycle. |
+| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.   |
+| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping.        |
 
 ### File Tree Responsibilities
 
@@ -304,26 +285,6 @@ Current names that should be treated as transitional:
 
 - None in the core runtime path. New runtime naming should follow the `slackRuntime` / `createSlackRuntime` / `SubscribedReplyDecision` / `AssistantLifecycleEvent` vocabulary now in the tree.
 
-### Remaining Cutover Requirements
-
-The following conditions are still architectural debt and should be treated as non-end-state:
-
-1. Plugin and capability discovery still flow through a default module-level catalog cache instead of fully injected catalogs.
-2. Eval harness still owns too many environment and runtime control knobs.
-3. Legacy compatibility exports like `botConfig` still exist; new code should prefer explicit config readers when it needs more than one value or subsystem.
-
-### Migration Sequence
-
-1. Document the contract in `AGENTS.md` and canonical specs.
-2. Replace runtime-global behavior seams with injected services.
-3. Split state into adapter + concern-specific stores.
-4. Remove singleton-only queue dispatch and move runtime assembly fully behind explicit factories.
-5. Replace prototype-patch ingress with an explicit ingress router boundary.
-6. Replace plugin/capability registries with composition-bound catalogs and factories.
-7. Shrink harness and remaining test hooks to local runtime fixtures or boundary spies.
-
-Legacy modules may remain during cutover, but new code must follow this contract and refactors should delete old seams rather than preserve them.
-
 ## Failure Model
 
 - Adding new mutable runtime test hooks, service locators, or broad deps bags is a contract violation.
@@ -336,7 +297,7 @@ Legacy modules may remain during cutover, but new code must follow this contract
 ## Observability
 
 - Observability ownership stays with the domain module doing the work; composition roots wire dependencies but should not add behavior-specific logging.
-- Logging and tracing conventions remain governed by `specs/logging/index.md`.
+- Logging and tracing conventions remain governed by `specs/instrumentation.md`.
 
 ## Verification
 
@@ -346,7 +307,7 @@ Legacy modules may remain during cutover, but new code must follow this contract
 
 ## Related Specs
 
-- `./agent-session-resumability-spec.md`
-- `./oauth-flows-spec.md`
-- `./plugin-spec.md`
-- `./testing/index.md`
+- `./agent-session-resumability.md`
+- `./oauth-flows.md`
+- `./plugin.md`
+- `./testing.md`

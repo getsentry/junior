@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-27
-- Last Edited: 2026-05-26
+- Last Edited: 2026-05-28
 
 ## Changelog
 
@@ -11,19 +11,20 @@
 - 2026-04-30: Added `github.org` to GitHub provider configKeys.
 - 2026-05-06: Clarified that provider catalog prompt disclosure belongs in per-turn context, not the static system prompt.
 - 2026-05-26: Marked provider catalog prompt disclosure as superseded; core prompt context must not expose installed plugin/provider catalogs.
+- 2026-05-28: Moved to archive because `specs/plugin.md` owns the active provider/plugin catalog model.
 
 ## Status
 
-Draft — largely superseded by `specs/plugin-spec.md` which now drives the provider catalog model.
+Archived — superseded by `../plugin.md`, which owns the active provider/plugin catalog model.
 
 ## Related
 
-- [Skill Capability and Credential Injection Spec](../skill-capabilities-spec.md)
+- [Credential Injection Spec](../credential-injection.md)
 - [Security Policy](../security-policy.md)
 
 ## Purpose
 
-Define the historical provider catalog model used by runtime and skill validation. Prompt disclosure rules in this draft are superseded by `../agent-prompt-spec.md` and `../plugin-spec.md`.
+Define the historical provider catalog model used by runtime and skill validation. Prompt disclosure rules in this archived document are superseded by `../agent-prompt.md` and `../plugin.md`.
 
 This spec answers:
 

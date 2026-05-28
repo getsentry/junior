@@ -1,31 +1,15 @@
-# Skill Capability and Credential Injection Spec
+# Credential Injection Spec
 
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-05-21
-
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated repo-root file paths and aligned OAuth URL visibility contract with security policy.
-- 2026-03-20: Documented prompt exposure of declared capabilities and clarified Sentry OAuth initiation paths.
-- 2026-04-17: Removed skill-level capability declarations and explicit model-facing auth commands in favor of plugin-owned permission manifests plus runtime-owned implicit auth.
-- 2026-04-26: Added the plugin-owned runtime setup boundary for packages, MCP endpoints, OAuth, and credentials.
-- 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
-- 2026-05-12: Added Vercel Sandbox egress proxy activation for request-time credential issuance.
-- 2026-05-13: Removed the old per-turn credential runtime in favor of egress proxy-only credential activation.
-- 2026-05-21: Clarified lazy sandbox egress auth: signed requester/sandbox context in the forwarding URL, request-time provider resolution, and no intent guessing.
-
-## Status
-
-Draft
+- Last Edited: 2026-05-28
 
 ## Related
 
 - [Security Policy](./security-policy.md)
-- [OAuth Flows Spec](./oauth-flows-spec.md)
-- Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
+- [OAuth Flows Spec](./oauth-flows.md)
+- [Plugin Architecture Spec](./plugin.md)
 
 ## Purpose
 
@@ -33,44 +17,11 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 ## Core model
 
-1. Plugins own provider permissions in `plugin.yaml`.
-2. Skills do not declare capabilities or config keys.
-3. Registered providers are always available to sandbox commands.
-4. The agent runs the real provider command.
-5. The runtime resolves the provider from the outgoing request host, lazily issues a requester-bound provider lease, and applies credential headers to that forwarded request.
-6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
-7. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
-
-## Plugin contract
-
-Plugins define:
-
-- `capabilities`: host-side permission manifest for the provider integration
-- `credentials`: how runtime leases are delivered to tools
-- `command-env`: non-secret env vars or placeholders needed by sandbox commands
-- `oauth`: optional per-user OAuth configuration
-- `target`: optional provider-default metadata such as a repo config key
-
-Capabilities remain a host-side permission description. They are not a model-facing command surface.
-
-## Skill contract
-
-Plugin-backed skills may declare normal skill metadata:
-
-```yaml
----
-name: github
-description: Create and update GitHub issues.
----
-```
-
-Rules:
-
-- `uses-config` is no longer supported. Config keys are owned by the parent plugin manifest and exposed through the provider catalog.
-- `requires-capabilities` is no longer supported.
-- Skills must never include secret values.
-- Skills should use provider defaults from the runtime provider catalog so repo/project commands stay deterministic.
-- Skills must treat plugin-provided commands, tools, and command env as already available. Missing CLIs, missing MCP tools, sandbox package failures, missing command env, or missing credentials are runtime/plugin setup failures to report or reconnect through runtime-owned flows, not problems for the skill to repair with package-manager or credential setup commands.
+1. Plugin manifests own provider domains, credentials, command env, OAuth config, and runtime setup. See [Plugin Architecture Spec](./plugin.md).
+2. Skills do not declare capabilities, config keys, credentials, provider domains, or runtime setup.
+3. The agent runs the real provider command. Runtime authentication is implicit and host-owned.
+4. The runtime resolves the provider from the outgoing request host, lazily issues a requester-bound provider lease, and applies credential headers to that forwarded request.
+5. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
 
 ## Runtime contract
 
@@ -101,18 +52,6 @@ Rules:
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
 - Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester context, and provider-domain ownership have been verified.
-
-### Runtime setup boundary
-
-- Loaded plugin-backed skills include a host-owned boundary derived from the plugin manifest before the skill body.
-- `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and builds loaded metadata from the current `SKILL.md` frontmatter.
-- Turn checkpoints persist loaded skill names for MCP resume; sandbox credential availability comes from registered providers, not checkpointed active-provider state.
-- CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
-- Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
-- MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.
-- CLI env placeholders, deployment defaults, and public host-env bindings belong in `plugin.yaml` `command-env`.
-- OAuth and static credential env names belong in `plugin.yaml` `oauth` and `credentials`.
-- Skill text may diagnose missing runtime surfaces, but must not tell the agent to install packages, run installer scripts, configure API keys, or repair sandbox package installation from inside a user workflow.
 
 ### Security goals
 
@@ -165,8 +104,3 @@ Emit events without secret material:
 - Model-visible auth-management commands.
 - Provider-specific policy engines beyond requester and turn scoping.
 - Using arbitrary skill prose as an authority source for runtime package installation, MCP setup, command env, or credential configuration.
-
-## Backward compatibility
-
-- Plugin-backed skills must migrate off `requires-capabilities`.
-- Authenticated provider work should run the real provider command and let the runtime handle auth implicitly.

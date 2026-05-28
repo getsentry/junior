@@ -29,7 +29,7 @@ Co-Authored-By: (agent model name) <email>
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
 - Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
 - If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
-- Use instrumentation conventions from `specs/logging/index.md`.
+- Use instrumentation conventions from `specs/instrumentation.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.
 - Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
@@ -71,7 +71,7 @@ Co-Authored-By: (agent model name) <email>
 - When changing a function signature, error contract, or shared pattern, grep for all consumers and verify each one still works. Do not assume fixing one call site is sufficient.
 - If a fix attempt fails, stop. Re-read the error, trace the full system from input to output, and identify the root cause before trying another fix. Do not commit progressive patches that address symptoms layer-by-layer.
 - When implementing message handling or Slack interactions, explicitly verify both DM and channel paths, and both first-delivery and retry paths.
-- Slack-specific runtime and contract rules live in `specs/slack-agent-delivery-spec.md`, `specs/slack-outbound-contract-spec.md`, and `.agents/skills/slack-development/SKILL.md`. Keep `AGENTS.md` as a pointer, not a duplicate.
+- Slack-specific runtime and contract rules live in `specs/slack-agent-delivery.md`, `specs/slack-outbound-contract.md`, and `.agents/skills/slack-development/SKILL.md`. Keep `AGENTS.md` as a pointer, not a duplicate.
 
 ## Architecture Discipline
 
@@ -93,7 +93,7 @@ Co-Authored-By: (agent model name) <email>
 ## Codex Execution Checklist
 
 - Read local contracts first: `AGENTS.md`, relevant `specs/*`, and required `SKILL.md` files.
-- For any test addition/update, you MUST read `specs/testing/index.md` first, then choose the layer with this rule: integration by default for product/runtime changes, evals for agent-facing/model-dependent behavior, unit only for local deterministic logic.
+- For any test addition/update, you MUST read `specs/testing.md` first, then choose the layer with this rule: integration by default for product/runtime changes, evals for agent-facing/model-dependent behavior, unit only for local deterministic logic.
 - Derive explicit invariants before editing and keep them stable through implementation.
 - Use an explicit sequence for non-trivial tasks: discover -> minimal vertical slice -> verify -> summarize.
 - Falsify risky assumptions early using the narrowest deterministic check.
@@ -106,18 +106,22 @@ Co-Authored-By: (agent model name) <email>
 - `TELEMETRY.spec.md` (format contract for repository-root telemetry maps)
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
-- `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
-- `specs/slack-agent-delivery-spec.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
-- `specs/slack-outbound-contract-spec.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
-- `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
-- `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
-- `specs/agent-prompt-spec.md` (core prompt ownership, execution-bias, and bloat-control contract)
-- `specs/advisor-tool-spec.md` (draft provider-agnostic advisor tool contract)
-- `specs/scheduler-spec.md` (draft scheduled Junior task contract)
-- `specs/harness-agent-spec.md` (agent loop and output contract)
-- `specs/agent-session-resumability-spec.md` (multi-slice turn resumability and timeout recovery contract)
-- `specs/agent-execution-spec.md` (agent execution rubric and completion gates)
-- `specs/logging/index.md` (logging/tracing spec index)
-- `specs/plugin-spec.md` (plugin architecture for self-contained provider integrations)
-- `specs/testing/index.md` (testing taxonomy and layer boundaries: unit/integration/eval)
+- `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
+- `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
+- `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
+- `specs/credential-injection.md` (requester-bound provider credential injection contract)
+- `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
+- `specs/agent-prompt.md` (core prompt ownership, execution-bias, and bloat-control contract)
+- `specs/advisor-tool.md` (provider-agnostic advisor tool contract)
+- `specs/scheduler.md` (scheduled Junior task contract)
+- `specs/trusted-plugin-heartbeat.md` (trusted plugin heartbeat and tool hook contract)
+- `specs/trusted-plugin-dispatch.md` (durable trusted plugin agent dispatch contract)
+- `specs/harness-agent.md` (agent loop and output contract)
+- `specs/agent-session-resumability.md` (multi-slice turn resumability and timeout recovery contract)
+- `specs/agent-execution.md` (agent execution rubric and completion gates)
+- `specs/instrumentation.md` (logging/tracing spec index)
+- `specs/plugin.md` (plugin architecture for self-contained provider integrations)
+- `specs/plugin-manifest.md` (plugin manifest fields and validation contract)
+- `specs/plugin-runtime.md` (plugin discovery, loading, skills, and MCP runtime contract)
+- `specs/testing.md` (testing taxonomy and layer boundaries: unit/integration/eval)
 - Historical evaluations and superseded trackers live under `specs/archive/`.

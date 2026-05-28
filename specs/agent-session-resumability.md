@@ -3,25 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-05-24
-
-## Changelog
-
-- 2026-03-05: Initial canonical contract for timeout-safe multi-slice assistant execution with Pi in serverless runtimes.
-- 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
-- 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
-- 2026-04-13: Aligned the spec with the current implementation: signed internal timeout-resume callbacks, eager thread-state persistence for sandbox/artifact state, and no automatic resume after visible assistant output has started.
-- 2026-04-16: Clarified that Slack delivery now waits for finalized replies, so timeout continuation remains eligible until final visible reply posting begins.
-- 2026-04-22: Added `superseded` checkpoint state and clarified that auth checkpoints do not keep `activeTurnId` alive; thread-local pending-auth state decides whether an auth-blocked request is still resumable.
-- 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
-- 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
-- 2026-05-19: Clarified that Slack auth pauses also post a visible URL-free acknowledgement owned by the Slack delivery contract.
-- 2026-05-21: Reframed Pi persistence as an incremental Redis-backed Pi session state store. Checkpoints store metadata and recoverable cursors; materialized `pi_messages` are a read view, not the primary write model.
-- 2026-05-24: Added bounded in-process provider retry for transient LLM stream failures before final Slack delivery.
-
-## Status
-
-Active
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -49,7 +31,7 @@ Define how a single assistant turn is split into resumable execution slices so s
 
 ### Spec Boundary
 
-This spec owns how one assistant turn is checkpointed and resumed across execution slices. The full Slack-event-to-agent-to-Slack data flow belongs to `./chat-architecture-spec.md`; user-visible Slack acknowledgements and final delivery belong to `./slack-agent-delivery-spec.md`.
+This spec owns how one assistant turn is checkpointed and resumed across execution slices. The full Slack-event-to-agent-to-Slack data flow belongs to `./chat-architecture.md`; user-visible Slack acknowledgements and final delivery belong to `./slack-agent-delivery.md`.
 
 ### Identity Model
 
@@ -283,24 +265,7 @@ Required attributes when available:
 
 ## Related Specs
 
-- [Harness Agent Spec](./harness-agent-spec.md)
-- [Durable Slack Thread Workflows Spec](./archive/durable-workflows-spec.md) (archived — unimplemented design)
-- [Agent Execution Spec](./agent-execution-spec.md)
-- [Logging Spec Index](./logging/index.md)
-
-## Prior Art
-
-- Pi ecosystem references:
-  - <https://pi.dev/>
-  - <https://github.com/badlogic/pi-mono>
-- LangGraph durable execution and checkpointing:
-  - <https://docs.langchain.com/oss/javascript/langgraph/durable-execution>
-- Inngest durable step execution and checkpointing:
-  - <https://www.inngest.com/docs/learn/how-functions-are-executed>
-  - <https://www.inngest.com/docs/setup/checkpointing>
-- Vercel Workflow durability model (`"use workflow"`/`"use step"`):
-  - <https://vercel.com/docs/workflow>
-- AWS SQS dead-letter and redrive policy patterns:
-  - <https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html>
-- Azure Durable Functions orchestration checkpoints and replay:
-  - <https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-orchestrations>
+- [Harness Agent Spec](./harness-agent.md)
+- [Durable Slack Thread Workflows Spec](./archive/durable-workflows.md) (archived — unimplemented design)
+- [Agent Execution Spec](./agent-execution.md)
+- [Instrumentation Spec](./instrumentation.md)

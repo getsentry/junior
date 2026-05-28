@@ -5,18 +5,6 @@
 - Created: 2026-04-28
 - Last Edited: 2026-05-26
 
-## Changelog
-
-- 2026-04-28: Initial spec defining ownership, structure, and bloat controls for the core agent prompt.
-- 2026-04-30: Reworked the core prompt contract around fixed operating sections, source hierarchy, explicit completion gates, OpenClaw-style tool-call/safety boundaries, and stable-before-volatile ordering.
-- 2026-05-06: Required the initial system prompt to be byte-stable across conversations and turns, with volatile runtime context moved into per-turn user-message context.
-- 2026-05-06: Clarified that deployment-stable assistant identity belongs in the system prompt while requester identity remains per-turn context.
-- 2026-05-26: Clarified that core prompt assembly must not contain plugin-specific knowledge; plugins express behavior through skills, tools, schemas, and tool guidance.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define the canonical contract for Junior's platform-owned agent prompt so prompt changes stay compact, non-duplicative, and measurable.
@@ -30,9 +18,9 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ## Non-Goals
 
-- Defining Pi agent loop mechanics or terminal output assembly; see `./harness-agent-spec.md`.
-- Defining Slack delivery transport behavior; see `./slack-agent-delivery-spec.md` and `./slack-outbound-contract-spec.md`.
-- Defining test-layer taxonomy; see `./testing/index.md`.
+- Defining Pi agent loop mechanics or terminal output assembly; see `./harness-agent.md`.
+- Defining Slack delivery transport behavior; see `./slack-agent-delivery.md` and `./slack-outbound-contract.md`.
+- Defining test-layer taxonomy; see `./testing.md`.
 - Defining plugin-specific prompt overlays or provider workflows. Plugins own that guidance through their skills, tools, schemas, and tool guidance.
 
 ## Contracts
@@ -163,8 +151,8 @@ When debugging prompt behavior, use existing turn diagnostics, observed tool inv
 
 ## Related Specs
 
-- `./harness-agent-spec.md`
-- `./harness-tool-context-spec.md`
-- `./slack-agent-delivery-spec.md`
-- `./slack-outbound-contract-spec.md`
-- `./testing/index.md`
+- `./harness-agent.md`
+- `./harness-tool-context.md`
+- `./slack-agent-delivery.md`
+- `./slack-outbound-contract.md`
+- `./testing.md`

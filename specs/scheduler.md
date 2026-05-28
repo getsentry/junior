@@ -5,21 +5,6 @@
 - Created: 2026-05-18
 - Last Edited: 2026-05-28
 
-## Changelog
-
-- 2026-05-27: Added the private direct conversation credential-subject exception for user-authenticated scheduled tools.
-- 2026-05-27: Added stale missed-run policy: old occurrences are skipped and consumed or advanced, not dispatched late and not blocked for human review.
-- 2026-05-27: Added the recurring schedule frequency limit: at most once per day.
-- 2026-05-27: Changed Slack authoring to auto-create clear scheduled work and reserve confirmation for ambiguous requests.
-- 2026-05-28: Clarified model-facing scheduler tool inputs and standardized rejected schedules as tool errors.
-- 2026-05-26: Reframed scheduled execution around system actors: creator is metadata/contact, scheduled runs execute as a system actor, and user-bound auth must not be borrowed implicitly.
-- 2026-05-18: Clarified V1 calendar model: exact next-run instants plus simple daily/weekly/monthly/yearly recurrence rules.
-- 2026-05-18: Initial draft contract for scheduled Junior tasks, prompt framing, no-SQL storage, run idempotency, and eval-first verification.
-
-## Status
-
-Draft
-
 ## Purpose
 
 Define the first scheduler contract for Junior: users can create durable tasks that Junior executes later or repeatedly, with explicit task framing and delivery back to the configured surface.
@@ -154,8 +139,6 @@ The initial implementation may use the Chat SDK state adapter and a global task 
 - `junior:scheduler:active:{task_id}` stores the currently active run marker for task-level overlap prevention.
 - `junior:scheduler:claim:{task_id}:{scheduled_for_ms}` is the idempotency claim.
 
-A future Redis-native store may replace the scan index with a sorted due index without changing the runtime-facing scheduler store interface.
-
 ### Run Idempotency
 
 Scheduled execution is at-least-once at the trigger layer and exactly-once-best-effort at Junior's run layer.
@@ -168,6 +151,64 @@ Rules:
 4. Run side effects must be keyed by the scheduled run id where possible.
 5. V1 tasks do not overlap with themselves. If a task already has an active run, later due claims for that same task are not dispatched.
 6. Stale pending claims may be reclaimed after the scheduler's stale-claim timeout.
+
+### Plugin Heartbeat Flow
+
+The scheduler plugin uses two trusted hooks:
+
+1. `tools(ctx)` for interactive schedule management.
+2. `heartbeat(ctx)` for due-run discovery and dispatch.
+
+Heartbeat flow:
+
+1. Load due tasks from the scheduler plugin's namespaced state.
+2. Reconcile previously dispatched runs with `ctx.agent.get(dispatchId)`.
+3. Claim up to a small limit of due runs.
+4. Mark each claimed run as pending dispatch.
+5. Call `ctx.agent.dispatch(...)` once per claimed run.
+6. Store the returned dispatch id on the run record.
+7. Leave remaining due work for a later heartbeat.
+
+The scheduler heartbeat must not execute scheduled tasks inline. It only claims and dispatches bounded work.
+
+If `ctx.agent.get(dispatchId)` returns `undefined` for a non-terminal scheduler run, the scheduler treats the core dispatch record as expired or missing. It may mark the run failed with an expiration error, or reclaim and redispatch only when its own run policy says that is safe. The scheduler must eventually transition the run to a terminal state or create a new redispatch attempt.
+
+Dispatch call for a scheduled run:
+
+```ts
+await ctx.agent.dispatch({
+  idempotencyKey: run.id,
+  destination: task.destination,
+  input: buildScheduledTaskRunPrompt({ task, run, nowMs }),
+  metadata: {
+    taskId: task.id,
+    runId: run.id,
+  },
+});
+```
+
+Scheduler run state must represent:
+
+- due task
+- claimed run
+- pending dispatch
+- dispatched
+- running
+- completed
+- failed
+- blocked
+- skipped
+
+Additional scheduler plugin invariants:
+
+1. Dispatch success records the core dispatch id.
+2. Duplicate dispatch attempts use the same idempotency key.
+3. Duplicate internal callbacks do not execute the same run twice.
+4. Stale pending-dispatch records are reclaimable by a later heartbeat.
+5. Stale running records are reclaimable according to scheduler policy.
+6. Scheduler tools derive destination from the active conversation context.
+7. Users cannot create scheduled DMs for other users.
+8. Existing Slack threads are never stored as task destinations.
 
 ### Actor And Auth Model
 
@@ -188,22 +229,13 @@ Exception: a scheduled task created in a private direct conversation may store a
 
 Private group conversations, private channels, public channels, and unknown conversation access must not store or use user credential subjects for scheduled runs.
 
-Future actor-aware auth may add an explicit credential subject: an account, grant, or service principal whose provider credentials may be used by scheduled tools. Future credential subjects may include:
+Credential subjects may include:
 
 - system-owned credentials available to the scheduled-run actor
 - an explicitly recorded delegated credential subject in the task contract
 - a supported service principal named by the task contract
 
 Credential subjects must be explicit and separate from creator metadata.
-
-### Implementation Plan
-
-1. Introduce a small actor contract shared by runtime, scheduler, and auth boundaries. It should represent user actors, system actors, and future service actors without leaking Slack SDK types.
-2. Keep `createdBy` as creator metadata and add an execution actor field to scheduled tasks. New scheduled tasks should default to a system actor such as `scheduled-task`; existing tasks may be read with that default until migrated.
-3. Add conversation access metadata with separate audience and visibility fields. Slack direct-message destinations populate `direct/private`; private channels or group conversations are not eligible for delegated user credentials.
-4. Update the scheduled runner to enter the agent runtime with the system actor and no user requester. Creator details may remain in run context and notification metadata, but not in the actor slot.
-5. Update auth and credential resolution so scheduled runs can use an explicit private-direct credential subject but cannot start interactive auth flows. Missing credentials should produce a blocked run plus private notification.
-6. Update telemetry, tests, and eval fixtures so scheduled execution assertions refer to creator metadata, execution actor, and credential subject separately.
 
 ### Slack UX
 
@@ -274,8 +306,10 @@ Use unit tests only for small deterministic helpers when integration or eval cov
 
 ## Related Specs
 
-- `./chat-architecture-spec.md`
-- `./agent-prompt-spec.md`
-- `./agent-session-resumability-spec.md`
-- `./slack-agent-delivery-spec.md`
-- `./testing/index.md`
+- `./chat-architecture.md`
+- `./agent-prompt.md`
+- `./agent-session-resumability.md`
+- `./trusted-plugin-heartbeat.md`
+- `./trusted-plugin-dispatch.md`
+- `./slack-agent-delivery.md`
+- `./testing.md`

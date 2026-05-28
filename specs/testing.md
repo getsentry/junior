@@ -3,20 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-21
-
-## Changelog
-
-- 2026-05-27: Added fail-closed external HTTP isolation for tests/evals with explicit local, model, and sandbox control-plane exceptions.
-- 2026-04-21: Replaced the old layer ordering with a simpler decision rule: integration by default for product/runtime changes, evals as the integration-style layer for agent behavior, unit only for local deterministic logic.
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated test fixture path references to repo-root paths under `packages/junior/`.
-- 2026-03-04: Clarified layering: baseline behavior coverage belongs in integration tests; unit tests are for local regressions and edge cases.
-- 2026-03-04: Elevated layer selection to mandatory policy before adding/updating tests.
-- 2026-03-17: Clarified that behavior tests should not assert internal logs or telemetry unless instrumentation is the contract under test.
-- 2026-03-22: Defined the default layer preference order: evals first for LLM-dependent behavior, integration next for real wiring without the LLM, unit last for local invariants only.
-- 2026-03-25: Banned prompt-prose substring assertions as a testing strategy; prompt wording changes must be validated through behavior contracts, not static string matching.
-- 2026-04-15: Clarified that Slack transport-contract assertions remain integration tests but should live in dedicated contract-oriented suites instead of general behavior files.
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -43,11 +30,11 @@ Do not default to unit tests for runtime behavior just because they are easier t
 
 ## Canonical Specs
 
-- Unit rules: `specs/testing/unit-spec.md`
-- Integration rules: `specs/testing/integration-spec.md`
-- Evals rules: `specs/testing/evals-spec.md`
-- Slack HTTP fixture/MSW details: `specs/testing/slack-mocking-spec.md`
-- Harness tool-targeting rules: `specs/harness-tool-context-spec.md`
+- Unit rules: `./unit-testing.md`
+- Integration rules: `./integration-testing.md`
+- Evals rules: `./eval-testing.md`
+- Slack HTTP fixture/MSW details: `./slack-http-mocking.md`
+- Harness tool-targeting rules: `./harness-tool-context.md`
 
 ## Shared Rules Across All Layers
 
@@ -108,18 +95,6 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 3. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
 4. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
 5. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.
-
-## Current Audit Checklist
-
-Use this list when touching adjacent suites. It records the main consolidation targets behind the policy update.
-
-1. `packages/junior/tests/unit/handlers/oauth-callback.test.ts` and `packages/junior/tests/integration/oauth-callback-slack.test.ts`: keep HTML sanitization, token-exchange parameter shaping, and invalid-state branches in unit; keep app-home publication and thread-resume behavior in integration; remove duplicated resume-path assertions from the unit suite when those flows are touched next.
-2. `packages/junior/tests/unit/handlers/mcp-oauth-callback.test.ts` and `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`: keep callback sanitization and local omitted-image/state reconstruction invariants in unit; keep resumed-thread delivery, file uploads, and Slack-side continuation behavior in integration.
-3. `packages/junior/tests/unit/handlers/turn-resume.test.ts` and `packages/junior/tests/integration/turn-resume-slack.test.ts`: keep auth rejection, timeout re-enqueue, and persistence-failure edge handling in unit; keep successful resumed delivery, exhausted-depth user messaging, and shared file-delivery path coverage in integration.
-4. `packages/junior/tests/unit/slack/slack-runtime.test.ts` together with `packages/junior/tests/integration/slack/new-mention-behavior.test.ts` and `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`: keep ordering, formatting, and local orchestration invariants in unit; keep scenario-level mention/subscribed-thread behavior in integration; split the unit file if scenario tests continue to grow.
-5. `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`, `packages/junior/tests/integration/slack/thread-continuity-behavior.test.ts`, `packages/junior-evals/evals/core/passive-behavior.eval.ts`, and `packages/junior-evals/evals/core/routing-and-continuity.eval.ts`: let integration own deterministic routing gates, subscription state, and Slack delivery contracts; let evals own ambiguous natural-language direction, passive-participation quality, and continuity recall; avoid duplicating the same human-language scenario in both layers.
-6. `packages/junior/tests/integration/oauth-callback-slack.test.ts`, `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`, and `packages/junior-evals/evals/core/oauth-workflows.eval.ts`: keep callback routing and Slack API effects in integration; keep user-visible continuation quality and context retention in evals; do not duplicate resume wiring assertions in evals.
-7. `packages/junior/tests/unit/runtime/respond-mcp-progressive-loading.test.ts` and `packages/junior/tests/integration/mcp-auth-runtime-slack.test.ts`: keep the unit suite for local MCP auth-pause edge cases and checkpoint invariants; keep the integration suite for the real Slack runtime plus OAuth callback happy path using the fake agent boundary only.
 
 ## Enforcement
 

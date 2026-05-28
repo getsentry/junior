@@ -3,17 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-21
-
-## Changelog
-
-- 2026-04-21: Made integration the default layer for most product/runtime changes and clarified that evals take this role only when the contract is agent-facing/model-dependent.
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-04: Updated integration fixture and MSW path references to repo-root paths under `packages/junior/`.
-- 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
-- 2026-03-21: Replaced runtime-global test mutation guidance with composition-bound runtime/service fixtures.
-- 2026-03-22: Clarified that integration is the default layer for real runtime behavior when the LLM does not need to be in the loop.
-- 2026-04-15: Clarified the split between behavior-oriented integration tests and dedicated Slack transport-contract integration tests.
+- Last Edited: 2026-05-28
 
 ## Intent
 

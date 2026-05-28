@@ -5,15 +5,6 @@
 - Created: 2026-03-04
 - Last Edited: 2026-05-28
 
-## Changelog
-
-- 2026-03-04: Initial spec defining the Codex execution rubric and completion gates.
-- 2026-05-28: Added the repository tool-failure contract for Pi agent execution.
-
-## Status
-
-Active
-
 ## Purpose
 
 Define a mandatory execution rubric for coding agents so implementation work is planned, contract-driven, and verifiable.
@@ -65,8 +56,8 @@ Before and during edits, the agent MUST test high-risk assumptions with the narr
 The agent MUST prefer established local patterns over novel abstractions when both satisfy requirements:
 
 - Existing architecture seams and naming patterns.
-- Existing logging/tracing semantics (`specs/logging/*`).
-- Existing testing layer boundaries (`specs/testing/*`).
+- Existing instrumentation docs (`specs/instrumentation.md`, `specs/logging.md`, `specs/tracing.md`, `specs/otel-semantics.md`).
+- Existing testing layer boundaries (`specs/testing.md`, `specs/unit-testing.md`, `specs/integration-testing.md`, `specs/eval-testing.md`).
 
 ### 6. Change Legibility
 
@@ -125,7 +116,7 @@ Compliance indicators:
 ## Related Specs
 
 - `./index.md`
-- `./harness-agent-spec.md`
-- `./harness-tool-context-spec.md`
-- `./testing/index.md`
-- `./logging/index.md`
+- `./harness-agent.md`
+- `./harness-tool-context.md`
+- `./testing.md`
+- `./instrumentation.md`

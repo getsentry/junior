@@ -1,9 +1,5 @@
 # Security Policy
 
-## Status
-
-Active policy for Junior runtime, sandbox execution, credential handling, and data protection.
-
 ## Scope
 
 This policy applies to:
@@ -42,7 +38,7 @@ This policy applies to:
 - Tool schemas must not expose destination override fields for context-bound operations unless explicitly approved by spec.
 - When required context is missing, tools must fail safely with structured errors; they must not silently choose alternate/private scopes.
 - Shared deliverables must not fall back to bot-private artifacts.
-- See [Harness Tool Context Spec](./harness-tool-context-spec.md).
+- See [Harness Tool Context Spec](./harness-tool-context.md).
 
 ## Credential and token policy
 
@@ -101,7 +97,7 @@ This policy applies to:
 - Fall back to static `SENTRY_AUTH_TOKEN` env var only for local/dev/test paths outside requester-bound turn execution.
 - Inject `Authorization` header transform for `sentry.io` domain.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
-- See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
+- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
 
 ## Logging and redaction policy
 

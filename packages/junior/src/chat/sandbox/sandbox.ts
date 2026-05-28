@@ -37,7 +37,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
-// Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
+// Spec: specs/tracing.md (required sandbox span semantics)
 interface SandboxExecutionInput {
   toolName: string;
   input: unknown;

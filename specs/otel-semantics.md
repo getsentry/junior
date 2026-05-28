@@ -5,19 +5,6 @@
 - Created: 2026-02-25
 - Last Edited: 2026-05-11
 
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-06: Added sandbox snapshot lifecycle attribute mappings.
-- 2026-04-06: Added official GenAI finish-reason, system-instructions, and tool-description semantics.
-- 2026-04-28: Added MCP tool-call semantic attribute mappings.
-- 2026-05-01: Added `gen_ai.conversation.id` to the canonical GenAI semantic map.
-- 2026-05-11: Aligned error details, cache token usage, and non-standard file fields with OpenTelemetry 1.41.0.
-
-## Status
-
-Active
-
 ## Purpose
 
 Provide the canonical semantic attribute and naming map used by logging and tracing specs.
@@ -30,9 +17,9 @@ Provide the canonical semantic attribute and naming map used by logging and trac
 
 ## Related Specs
 
-- [Instrumentation Specs](./index.md)
-- [Structured Logging Spec](./logging-spec.md)
-- [Tracing Spec](./tracing-spec.md)
+- [Instrumentation Specs](./instrumentation.md)
+- [Structured Logging Spec](./logging.md)
+- [Tracing Spec](./tracing.md)
 
 This file is the canonical attribute and naming map for instrumentation in this repo.
 

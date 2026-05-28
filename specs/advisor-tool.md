@@ -3,11 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-06
-- Last Edited: 2026-05-07
-
-## Status
-
-Draft
+- Last Edited: 2026-05-28
 
 ## Purpose
 
@@ -21,18 +17,13 @@ The core contract is intentionally small:
 - The advisor can use tools from the normal tool layer that are annotated read-only, but not recursive, write, or user-visible tools.
 - The advisor returns guidance; it does not own implementation.
 
-## Prior Art
-
-- Anthropic Advisor establishes the escalation pattern: a cheaper/faster executor calls a stronger advisor for strategic guidance and continues when the advisor fails. Junior keeps the escalation pattern but does not use Anthropic's server-side `advisor_20260301` API, full-transcript injection, or tool-less advisor run.
-- Claude Code subagents show the value of separate context, custom prompts, tool boundaries, and persistent memory. Junior uses those ideas for advisor continuity, but the advisor is a consultant, not a delegated worker.
-- Amp Oracle shows the coding-agent use case: expose a stronger model as a tool for review, debugging, analysis, and deciding what to do next without forcing it on routine work.
-
 ## Non-Goals
 
 - Forking the main transcript into a hidden advisor conversation.
 - Maintaining replay hashes, call records, idempotency bookkeeping, or per-turn call counters.
 - Building a general multi-agent orchestration framework.
 - Adding a separate read-only tool sandbox in V1. The advisor receives the host-filtered read-only tool subset; the executor remains responsible for side effects.
+- Exposing MCP tools to the advisor without a separate nested-agent auth and resume contract.
 
 ## Configuration
 
@@ -130,13 +121,8 @@ Coverage must prove:
 - advisor receives read-only tools while write and user-visible tools are excluded
 - advisor messages persist and restore across calls in the same parent conversation
 
-Future MCP advisor access needs a separate nested-agent auth and resume contract before `searchMcpTools` or `callMcpTool` can be exposed to the advisor.
-
 ## References
 
-- `./testing/index.md`
-- `./agent-execution-spec.md`
-- `./agent-session-resumability-spec.md`
-- Anthropic Advisor tool: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool>
-- Claude Code subagents: <https://code.claude.com/docs/en/sub-agents>
-- Amp Oracle: <https://ampcode.com/news/oracle>
+- `./testing.md`
+- `./agent-execution.md`
+- `./agent-session-resumability.md`

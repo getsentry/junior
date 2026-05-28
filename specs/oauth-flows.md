@@ -5,24 +5,10 @@
 - Created: 2026-03-03
 - Last Edited: 2026-05-19
 
-## Changelog
-
-- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-03-09: Added provider-configured token request auth/headers and optional token expiry semantics.
-- 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
-- 2026-04-17: Removed explicit model-facing auth commands and documented implicit runtime-owned OAuth initiation for plugin-backed commands.
-- 2026-04-22: Reframed auth-blocked work as completed Slack turns plus persisted thread-local `pendingAuth` state, documented deduped re-prompts, and limited auto-resume to the latest still-relevant blocked request.
-- 2026-05-06: Removed the public thread-visible auth-pause note; the private auth-link delivery is the only immediate auth handoff.
-- 2026-05-19: Restored a visible URL-free Slack thread acknowledgement for auth pauses while keeping authorization links private.
-
-## Status
-
-Active
-
 ## Related
 
 - [Security Policy](./security-policy.md)
-- [Skill Capabilities Spec](./skill-capabilities-spec.md)
+- [Credential Injection Spec](./credential-injection.md)
 
 ## Purpose
 

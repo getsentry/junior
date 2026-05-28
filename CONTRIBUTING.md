@@ -102,7 +102,7 @@ pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts
 
 Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting, tools, and expected outputs). Evals do not test live Slack transport.
 
-See `packages/junior-evals/README.md` and `specs/testing/evals-spec.md` for authoring details.
+See `packages/junior-evals/README.md` and `specs/eval-testing.md` for authoring details.
 
 ## Slack Tunnel (Cloudflare)
 

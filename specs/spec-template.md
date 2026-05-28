@@ -5,14 +5,6 @@
 - Created: YYYY-MM-DD
 - Last Edited: YYYY-MM-DD
 
-## Changelog
-
-- YYYY-MM-DD: Initial draft.
-
-## Status
-
-Draft | Active | Implemented | Archived
-
 ## Purpose
 
 Describe what this spec defines and why it exists.
@@ -45,4 +37,4 @@ List tests/checks required to validate compliance.
 
 ## Related Specs
 
-- `./other-spec.md`
+- `./other-doc.md`
