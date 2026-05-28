@@ -109,13 +109,13 @@ export async function withDispatchLock<T>(
 async function withIncompleteDispatchIndexLock<T>(
   state: StateAdapter,
   callback: () => Promise<T>,
-): Promise<T | undefined> {
+): Promise<T> {
   const lock: Lock | null = await state.acquireLock(
     incompleteDispatchIndexLockKey(),
     DISPATCH_INDEX_LOCK_TTL_MS,
   );
   if (!lock) {
-    return undefined;
+    throw new Error("Could not acquire incomplete dispatch index lock");
   }
 
   try {
@@ -131,7 +131,7 @@ async function syncIncompleteDispatchIndex(
 ): Promise<void> {
   await withIncompleteDispatchIndexLock(state, async () => {
     const existing =
-      (await state.getList<string>(incompleteDispatchIndexKey())) ?? [];
+      (await state.get<string[]>(incompleteDispatchIndexKey())) ?? [];
     const ids = [
       ...new Set(existing.filter((id): id is string => typeof id === "string")),
     ];
@@ -148,13 +148,11 @@ async function syncIncompleteDispatchIndex(
       return;
     }
 
-    await state.delete(incompleteDispatchIndexKey());
-    for (const id of next.slice(-DISPATCH_INDEX_MAX_LENGTH)) {
-      await state.appendToList(incompleteDispatchIndexKey(), id, {
-        maxLength: DISPATCH_INDEX_MAX_LENGTH,
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
-    }
+    await state.set(
+      incompleteDispatchIndexKey(),
+      next.slice(-DISPATCH_INDEX_MAX_LENGTH),
+      THREAD_STATE_TTL_MS,
+    );
   });
 }
 
@@ -234,7 +232,7 @@ export async function updateDispatchRecord(
 export async function listIncompleteDispatchIds(): Promise<string[]> {
   const state = getStateAdapter();
   await state.connect();
-  const ids = (await state.getList<string>(incompleteDispatchIndexKey())) ?? [];
+  const ids = (await state.get<string[]>(incompleteDispatchIndexKey())) ?? [];
   return [...new Set(ids.filter((id): id is string => typeof id === "string"))];
 }
 
