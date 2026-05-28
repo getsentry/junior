@@ -3,12 +3,19 @@ import type { AgentPluginState } from "@sentry/junior-plugin-api";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const MAX_PLUGIN_STATE_KEY_LENGTH = 512;
+const SCHEDULER_PLUGIN_NAME = "scheduler";
+const SCHEDULER_STATE_PREFIX = "junior:scheduler";
 
 function hashKeyPart(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
 function pluginStateKey(plugin: string, key: string): string {
+  if (plugin === SCHEDULER_PLUGIN_NAME) {
+    return key.startsWith(`${SCHEDULER_STATE_PREFIX}:`)
+      ? key
+      : `${SCHEDULER_STATE_PREFIX}:${key}`;
+  }
   return `junior:plugin_state:${hashKeyPart(plugin)}:${hashKeyPart(key)}`;
 }
 
@@ -41,6 +48,31 @@ export function createPluginState(plugin: string): AgentPluginState {
       const state = getStateAdapter();
       await state.connect();
       await state.set(pluginStateKey(plugin, key), value, ttlMs);
+    },
+    async setIfNotExists(key, value, ttlMs) {
+      validatePluginStateKey(key);
+      const state = getStateAdapter();
+      await state.connect();
+      return await state.setIfNotExists(
+        pluginStateKey(plugin, key),
+        value,
+        ttlMs,
+      );
+    },
+    async withLock(key, ttlMs, callback) {
+      validatePluginStateKey(key);
+      const state = getStateAdapter();
+      await state.connect();
+      const lock = await state.acquireLock(pluginStateKey(plugin, key), ttlMs);
+      if (!lock) {
+        throw new Error(`Could not acquire plugin state lock for ${key}`);
+      }
+
+      try {
+        return await callback();
+      } finally {
+        await state.releaseLock(lock);
+      }
     },
   };
 }

@@ -22,7 +22,7 @@
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
-    "typecheck": "pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
+    "typecheck": "pnpm --filter @sentry/junior-plugin-api typecheck && pnpm --filter @sentry/junior-scheduler typecheck && pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "simple-git-hooks": {

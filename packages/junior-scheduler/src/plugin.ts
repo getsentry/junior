@@ -1,23 +1,20 @@
 import {
   defineJuniorPlugin,
   type Dispatch,
+  type AgentPluginToolDefinition,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { buildScheduledTaskRunPrompt } from "@/chat/scheduler/prompt";
-import {
-  createStateSchedulerStore,
-  type SchedulerStore,
-} from "@/chat/scheduler/store";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
+import { buildScheduledTaskRunPrompt } from "./prompt";
+import { createSchedulerStore, type SchedulerStore } from "./store";
+import type { ScheduledRun, ScheduledTask } from "./types";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
-} from "@/chat/tools/slack/schedule-tools";
-import type { ToolDefinition } from "@/chat/tools/definition";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+  type SchedulerToolContext,
+} from "./schedule-tools";
 
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 
@@ -42,7 +39,7 @@ function shouldSkipRun(
 
 function createSchedulerToolContext(
   ctx: ToolRegistrationHookContext,
-): ToolRuntimeContext {
+): SchedulerToolContext {
   return {
     channelCapabilities: ctx.channelCapabilities ?? {
       canAddReactions: false,
@@ -52,7 +49,7 @@ function createSchedulerToolContext(
     channelId: ctx.channelId,
     messageTs: ctx.messageTs,
     requester: ctx.requester,
-    sandbox: {} as ToolRuntimeContext["sandbox"],
+    state: ctx.state,
     teamId: ctx.teamId,
     threadTs: ctx.threadTs,
     userText: ctx.userText,
@@ -63,7 +60,7 @@ async function applyDispatchResult(args: {
   dispatch: Dispatch;
   nowMs: number;
   run: ScheduledRun;
-  store: ReturnType<typeof createStateSchedulerStore>;
+  store: ReturnType<typeof createSchedulerStore>;
 }): Promise<boolean> {
   if (args.dispatch.status === "completed") {
     const completed = await args.store.markRunCompleted({
@@ -173,10 +170,13 @@ async function failClaimedRun(args: {
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
     name: "scheduler",
+    pluginConfig: {
+      packages: ["@sentry/junior-scheduler"],
+    },
     hooks: {
       tools(ctx) {
         if (!ctx.channelId || !ctx.teamId || !ctx.requester?.userId) {
-          return {} as Record<string, ToolDefinition<any>>;
+          return {} as Record<string, AgentPluginToolDefinition<any>>;
         }
         const context = createSchedulerToolContext(ctx);
         return {
@@ -185,10 +185,10 @@ export function createSchedulerPlugin() {
           slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(context),
           slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(context),
           slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(context),
-        } satisfies Record<string, ToolDefinition<any>>;
+        } satisfies Record<string, AgentPluginToolDefinition<any>>;
       },
       async heartbeat(ctx) {
-        const store = createStateSchedulerStore();
+        const store = createSchedulerStore(ctx.state);
         let processedCount = 0;
         let dispatchCount = 0;
         for (const run of await store.listIncompleteRuns()) {
@@ -306,3 +306,6 @@ export function createSchedulerPlugin() {
     },
   });
 }
+
+/** Register trusted scheduler runtime hooks for scheduled Junior tasks. */
+export const schedulerPlugin = createSchedulerPlugin;

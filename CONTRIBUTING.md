@@ -67,6 +67,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-notion`
+- `@sentry/junior-scheduler`
 - `@sentry/junior-sentry`
 
 Run `pnpm release:check` before changing release package lists so `.craft.yml`, CI,

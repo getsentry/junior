@@ -33,7 +33,7 @@ import {
 import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { getPluginOAuthConfig, setPluginConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
-import { createSchedulerPlugin } from "@/chat/scheduler/plugin";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -1679,7 +1679,7 @@ export async function runEvalScenario(
   try {
     const currentAgentPlugins = getAgentPlugins();
     previousAgentPlugins = setAgentPlugins([
-      createSchedulerPlugin(),
+      schedulerPlugin(),
       ...currentAgentPlugins.filter((plugin) => plugin.name !== "scheduler"),
     ]);
 

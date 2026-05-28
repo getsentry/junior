@@ -175,6 +175,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      "@sentry/junior-scheduler":
+        specifier: workspace:*
+        version: link:../junior-scheduler
       "@sentry/node":
         specifier: 10.53.1
         version: 10.53.1
@@ -206,18 +209,6 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
 
-  packages/junior-plugin-api:
-    devDependencies:
-      oxlint:
-        specifier: ^1.66.0
-        version: 1.66.0
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-
   packages/junior-agent-browser: {}
 
   packages/junior-datadog: {}
@@ -230,6 +221,9 @@ importers:
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../junior-github
+      "@sentry/junior-scheduler":
+        specifier: workspace:*
+        version: link:../junior-scheduler
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../junior-sentry
@@ -260,6 +254,37 @@ importers:
   packages/junior-linear: {}
 
   packages/junior-notion: {}
+
+  packages/junior-plugin-api:
+    devDependencies:
+      oxlint:
+        specifier: ^1.66.0
+        version: 1.66.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/junior-scheduler:
+    dependencies:
+      "@sentry/junior-plugin-api":
+        specifier: workspace:*
+        version: link:../junior-plugin-api
+      "@sinclair/typebox":
+        specifier: ^0.34.49
+        version: 0.34.49
+    devDependencies:
+      "@types/node":
+        specifier: ^25.9.1
+        version: 25.9.1
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/junior-sentry: {}
 
@@ -3408,6 +3433,9 @@ packages:
         integrity: sha512-XG4ezlkyuAPjBC5+9kXC94rXXuqYTw9NRhfaDHssbTFaGnqBR8vQX2UUgZfY7ucbeelRDGfBu1sywoU+mB04uA==,
       }
     engines: { node: ">=18" }
+
+  "@sentry/junior-plugin-api@file:packages/junior-plugin-api":
+    resolution: { directory: packages/junior-plugin-api, type: directory }
 
   "@sentry/junior@file:packages/junior":
     resolution: { directory: packages/junior, type: directory }
@@ -12389,6 +12417,8 @@ snapshots:
 
   "@sentry/core@10.53.1": {}
 
+  "@sentry/junior-plugin-api@file:packages/junior-plugin-api": {}
+
   "@sentry/junior@file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)(@sentry/node@10.53.1)":
     dependencies:
       "@ai-sdk/gateway": 3.0.119(zod@4.4.3)
@@ -12399,6 +12429,7 @@ snapshots:
       "@earendil-works/pi-ai": 0.74.2(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       "@logtape/logtape": 2.1.1
       "@modelcontextprotocol/sdk": 1.29.0(zod@4.4.3)
+      "@sentry/junior-plugin-api": file:packages/junior-plugin-api
       "@sentry/node": 10.53.1
       "@sinclair/typebox": 0.34.49
       "@slack/web-api": 7.16.0
@@ -12736,7 +12767,7 @@ snapshots:
 
   "@types/sax@1.2.7":
     dependencies:
-      "@types/node": 24.12.4
+      "@types/node": 25.9.1
 
   "@types/set-cookie-parser@2.4.10":
     dependencies:

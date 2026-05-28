@@ -30,4 +30,5 @@ Start here:
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
+| `@sentry/junior-scheduler`     | Scheduler plugin package for scheduled Junior tasks                          |
 | `@sentry/junior-sentry`        | Sentry plugin package for issue workflows                                    |

@@ -29,3 +29,6 @@ targets:
   - name: npm
     id: "@sentry/junior-sentry"
     includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-scheduler"
+    includeNames: /^sentry-junior-scheduler-\d.*\.tgz$/

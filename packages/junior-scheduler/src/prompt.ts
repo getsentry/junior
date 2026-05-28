@@ -1,9 +1,17 @@
-import { escapeXml } from "@/chat/xml";
 import {
   SCHEDULED_TASK_SYSTEM_ACTOR,
   type ScheduledRun,
   type ScheduledTask,
-} from "@/chat/scheduler/types";
+} from "./types";
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
 
 const EXECUTION_RULES = [
   "- Execute as the scheduled-task system actor; creator metadata is audit context, not an active user identity.",

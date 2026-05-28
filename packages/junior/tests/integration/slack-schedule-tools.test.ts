@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createStateSchedulerStore } from "@/chat/scheduler/store";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { AgentPluginToolInputError } from "@sentry/junior-plugin-api";
 import {
+  createSchedulerStore,
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
-} from "@/chat/tools/slack/schedule-tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+  type SchedulerToolContext,
+} from "@sentry/junior-scheduler";
+import { createPluginState } from "@/chat/plugins/state";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -18,8 +19,8 @@ vi.hoisted(() => {
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
 
 function createContext(
-  overrides: Partial<ToolRuntimeContext> = {},
-): ToolRuntimeContext {
+  overrides: Partial<SchedulerToolContext> = {},
+): SchedulerToolContext {
   return {
     channelId: "C123",
     teamId: TEST_TEAM_ID,
@@ -34,7 +35,7 @@ function createContext(
       canAddReactions: true,
     },
     userText: "schedule this weekly",
-    sandbox: {} as ToolRuntimeContext["sandbox"],
+    state: createPluginState("scheduler"),
     ...overrides,
   };
 }
@@ -44,6 +45,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
     throw new Error("tool execute function missing");
   }
   return await tool.execute(input, {} as any);
+}
+
+function schedulerStore() {
+  return createSchedulerStore(createPluginState("scheduler"));
 }
 
 async function createTask(
@@ -145,7 +150,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         destination: { channelId: "C123" },
@@ -164,12 +169,12 @@ describe("Slack schedule tools", () => {
       },
     );
 
-    await expect(rejected).rejects.toThrow(ToolInputError);
+    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
     await expect(rejected).rejects.toThrow(
       "Active Slack workspace context is invalid.",
     );
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
@@ -201,7 +206,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         conversationAccess: {
@@ -247,7 +252,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         destination: { channelId: "C123" },
@@ -285,7 +290,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         nextRunAtMs: Date.parse("2026-05-28T02:18:48.005Z"),
@@ -305,7 +310,7 @@ describe("Slack schedule tools", () => {
       }),
     ).rejects.toThrow("Provide next_run_at as a valid ISO timestamp.");
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
@@ -316,7 +321,7 @@ describe("Slack schedule tools", () => {
       }),
     ).rejects.toThrow("Provide next_run_at as a valid ISO timestamp.");
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
@@ -330,7 +335,7 @@ describe("Slack schedule tools", () => {
       "Recurring scheduled tasks can run at most once per day.",
     );
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
@@ -397,7 +402,7 @@ describe("Slack schedule tools", () => {
       "Recurring scheduled tasks can run at most once per day.",
     );
     await expect(
-      createStateSchedulerStore().getTask(created.task.id),
+      schedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
       schedule: {
         description: "Every Monday at 9am",
@@ -432,7 +437,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().getTask(created.task.id),
+      schedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
       schedule: {
         kind: "one_off",
@@ -504,7 +509,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      createStateSchedulerStore().getTask(created.task.id),
+      schedulerStore().getTask(created.task.id),
     ).resolves.toMatchObject({
       status: "deleted",
       executionActor: {
@@ -531,8 +536,7 @@ describe("Slack schedule tools", () => {
         credential_subject: null,
       },
     });
-    const tasks =
-      await createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID);
+    const tasks = await schedulerStore().listTasksForTeam(TEST_TEAM_ID);
     expect(tasks).toMatchObject([
       {
         conversationAccess: {
@@ -597,7 +601,7 @@ describe("Slack schedule tools", () => {
       }),
     ).rejects.toThrow("timezone must be a valid IANA time zone.");
     await expect(
-      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
@@ -608,7 +612,7 @@ describe("Slack schedule tools", () => {
     })) as {
       task: { id: string };
     };
-    const store = createStateSchedulerStore();
+    const store = schedulerStore();
     const task = await store.getTask(created.task.id);
     expect(task?.schedule.recurrence).toMatchObject({
       interval: 1,
@@ -651,7 +655,7 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = createStateSchedulerStore();
+    const store = schedulerStore();
     const task = await store.getTask(created.task.id);
     expect(task).toBeDefined();
     await store.saveTask({
@@ -689,7 +693,7 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = createStateSchedulerStore();
+    const store = schedulerStore();
     const task = await store.getTask(created.task.id);
     expect(task).toBeDefined();
     const scheduledNextRunAtMs = Date.parse("2026-06-01T16:00:00.000Z");
@@ -745,7 +749,7 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = createStateSchedulerStore();
+    const store = schedulerStore();
     const task = await store.getTask(created.task.id);
     expect(task).toBeDefined();
     await store.saveTask({
@@ -781,14 +785,13 @@ describe("Slack schedule tools", () => {
       task_id: created.task.id,
     });
 
-    const state = getStateAdapter();
-    await state.connect();
-    await expect(state.get<string[]>("junior:scheduler:tasks")).resolves.toBe(
-      null,
-    );
+    const state = createPluginState("scheduler");
+    await expect(
+      state.get<string[]>("junior:scheduler:tasks"),
+    ).resolves.toBeUndefined();
     await expect(
       state.get<string[]>(`junior:scheduler:team:${TEST_TEAM_ID}:tasks`),
-    ).resolves.toBe(null);
+    ).resolves.toBeUndefined();
   });
 
   it("claims due runs idempotently", async () => {
@@ -796,7 +799,7 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = createStateSchedulerStore();
+    const store = schedulerStore();
     const task = await store.getTask(created.task.id);
     expect(task).toBeDefined();
     await store.saveTask({

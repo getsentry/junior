@@ -12,7 +12,6 @@ import {
   setAgentPlugins,
   validateAgentPlugins,
 } from "@/chat/plugins/agent-hooks";
-import { createSchedulerPlugin } from "@/chat/scheduler/plugin";
 import type { PluginConfig } from "@/chat/plugins/types";
 import type { JuniorPlugin } from "@sentry/junior-plugin-api";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
@@ -179,10 +178,9 @@ function pluginConfigFromAgentPlugins(
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const configuredPlugins = options?.plugins;
-  const agentPlugins = [
-    createSchedulerPlugin(),
-    ...(isJuniorPluginArray(configuredPlugins) ? configuredPlugins : []),
-  ];
+  const agentPlugins = isJuniorPluginArray(configuredPlugins)
+    ? configuredPlugins
+    : [];
   const pluginConfig = isJuniorPluginArray(configuredPlugins)
     ? mergePluginConfig(
         await resolveVirtualPluginConfig(),

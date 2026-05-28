@@ -54,11 +54,8 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests and any bundled skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry
 ```
-
-Junior also includes the built-in [Scheduler Plugin](/extend/scheduler-plugin/)
-for reminders and recurring Slack tasks. It does not require a separate package.
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
 
@@ -78,6 +75,7 @@ export default defineConfig({
           "@sentry/junior-hex",
           "@sentry/junior-linear",
           "@sentry/junior-notion",
+          "@sentry/junior-scheduler",
           "@sentry/junior-sentry",
         ],
       },
@@ -115,18 +113,20 @@ If you publish your own package with bundled skills, include both `plugin.yaml` 
 
 Some packaged plugins also export trusted runtime hooks for deterministic
 behavior that cannot live in skill prose or `plugin.yaml`. For example, the
-GitHub plugin registers runtime code that installs a sandbox Git hook,
-configures global Git defaults, and injects commit attribution env before bash
-commands run.
+scheduler plugin registers schedule-management tools and heartbeat behavior, and
+the GitHub plugin installs a sandbox Git hook, configures global Git defaults,
+and injects commit attribution env before bash commands run.
 
 Trusted hooks are explicit app code:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
 
 const app = await createApp({
   plugins: [
+    schedulerPlugin(),
     githubPlugin({
       botNameEnv: "GITHUB_APP_BOT_NAME",
       botEmailEnv: "GITHUB_APP_BOT_EMAIL",
@@ -331,7 +331,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The `juniorNitro({ plugins: { packages: [...] } })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` for declarative manifest behavior. Plugins that export trusted runtime hooks, such as `@sentry/junior-github`, must also be registered from app code.
+The `juniorNitro({ plugins: { packages: [...] } })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` for declarative manifest behavior. Plugins that export trusted runtime hooks, such as `@sentry/junior-scheduler` and `@sentry/junior-github`, must also be registered from app code.
 
 ## Validate extensions
 

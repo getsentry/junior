@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import {
-  buildCalendarRecurrence,
-  parseScheduleTimestamp,
-} from "@/chat/scheduler/cadence";
-import { createStateSchedulerStore } from "@/chat/scheduler/store";
-import { SCHEDULED_TASK_SYSTEM_ACTOR } from "@/chat/scheduler/types";
+  AgentPluginToolInputError,
+  type AgentPluginRequester,
+  type AgentPluginState,
+  type AgentPluginToolDefinition,
+} from "@sentry/junior-plugin-api";
+import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
+import { createSchedulerStore } from "./store";
+import { SCHEDULED_TASK_SYSTEM_ACTOR } from "./types";
 import type {
   ScheduledCalendarFrequency,
   ScheduledTask,
@@ -15,12 +18,22 @@ import type {
   ScheduledTaskPrincipal,
   ScheduledTaskRecurrence,
   ScheduledTaskStatus,
-} from "@/chat/scheduler/types";
-import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
-import { isSlackTeamId } from "@/chat/slack/ids";
-import { tool } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+} from "./types";
+
+export interface SchedulerToolContext {
+  channelCapabilities: {
+    canAddReactions: boolean;
+    canCreateCanvas: boolean;
+    canPostToChannel: boolean;
+  };
+  channelId?: string;
+  messageTs?: string;
+  requester?: AgentPluginRequester;
+  state: AgentPluginState;
+  teamId?: string;
+  threadTs?: string;
+  userText?: string;
+}
 
 const TASK_ID_PREFIX = "sched";
 const MAX_LISTED_TASKS = 50;
@@ -40,11 +53,11 @@ const recurrenceInputSchema = Type.Union([
 ]);
 
 function throwToolInputError(error: string): never {
-  throw new ToolInputError(error);
+  throw new AgentPluginToolInputError(error);
 }
 
 function requireActiveDestination(
-  context: ToolRuntimeContext,
+  context: SchedulerToolContext,
 ): ScheduledTaskDestination {
   const channelId = normalizeSlackConversationId(context.channelId);
   if (!channelId) {
@@ -64,7 +77,9 @@ function requireActiveDestination(
   };
 }
 
-function requireRequester(context: ToolRuntimeContext): ScheduledTaskPrincipal {
+function requireRequester(
+  context: SchedulerToolContext,
+): ScheduledTaskPrincipal {
   const userId = context.requester?.userId;
   if (!userId) {
     throwToolInputError("No active Slack requester context is available.");
@@ -79,6 +94,27 @@ function requireRequester(context: ToolRuntimeContext): ScheduledTaskPrincipal {
       ? { fullName: context.requester.fullName }
       : {}),
   };
+}
+
+function tool<TInput = any>(
+  definition: AgentPluginToolDefinition<TInput>,
+): AgentPluginToolDefinition<TInput> {
+  return definition;
+}
+
+function normalizeSlackConversationId(
+  value: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function isDmChannel(channelId: string): boolean {
+  return channelId.startsWith("D");
+}
+
+function isSlackTeamId(value: string): boolean {
+  return /^T[A-Z0-9]+$/.test(value);
 }
 
 function getConversationAccess(
@@ -125,12 +161,14 @@ function sameDestination(
 }
 
 async function getWritableTask(args: {
-  context: ToolRuntimeContext;
+  context: SchedulerToolContext;
   taskId: string;
 }): Promise<ScheduledTask> {
   const destination = requireActiveDestination(args.context);
 
-  const task = await createStateSchedulerStore().getTask(args.taskId);
+  const task = await createSchedulerStore(args.context.state).getTask(
+    args.taskId,
+  );
   if (!task || task.status === "deleted") {
     throwToolInputError(
       "Scheduled task was not found in the active destination.",
@@ -301,7 +339,9 @@ function parseNextRunAtMs(
 }
 
 /** Create a tool that stores a scheduled task for the active Slack context. */
-export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
+export function createSlackScheduleCreateTaskTool(
+  context: SchedulerToolContext,
+) {
   return tool({
     description:
       "Create a scheduled Junior task in the active Slack conversation.",
@@ -378,7 +418,7 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
         version: 1,
       };
 
-      await createStateSchedulerStore().saveTask(task);
+      await createSchedulerStore(context.state).saveTask(task);
       return {
         ok: true,
         task: compactTask(task),
@@ -388,7 +428,9 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
 }
 
 /** Create a tool that lists scheduled tasks for the active Slack destination. */
-export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
+export function createSlackScheduleListTasksTool(
+  context: SchedulerToolContext,
+) {
   return tool({
     description:
       "List scheduled Junior tasks for the active Slack conversation.",
@@ -402,7 +444,7 @@ export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
     execute: async () => {
       const destination = requireActiveDestination(context);
 
-      const tasks = await createStateSchedulerStore().listTasksForTeam(
+      const tasks = await createSchedulerStore(context.state).listTasksForTeam(
         destination.teamId,
       );
       const matching = tasks.filter((task) =>
@@ -420,7 +462,9 @@ export function createSlackScheduleListTasksTool(context: ToolRuntimeContext) {
 }
 
 /** Create a tool that edits a scheduled task in the active Slack destination. */
-export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
+export function createSlackScheduleUpdateTaskTool(
+  context: SchedulerToolContext,
+) {
   return tool({
     description: "Edit, pause, resume, or reschedule a Junior scheduled task.",
     promptSnippet: "edit/pause/resume one schedule in this Slack destination",
@@ -507,7 +551,7 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
         version: lookup.version + 1,
       };
 
-      await createStateSchedulerStore().saveTask(next);
+      await createSchedulerStore(context.state).saveTask(next);
       return {
         ok: true,
         task: compactTask(next),
@@ -517,7 +561,9 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
 }
 
 /** Create a tool that removes a scheduled task from the active Slack destination. */
-export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
+export function createSlackScheduleDeleteTaskTool(
+  context: SchedulerToolContext,
+) {
   return tool({
     description:
       "Delete a Junior scheduled task from the active Slack conversation.",
@@ -538,7 +584,7 @@ export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
         version: lookup.version + 1,
       };
 
-      await createStateSchedulerStore().saveTask(next);
+      await createSchedulerStore(context.state).saveTask(next);
       return {
         ok: true,
         task: compactTask(next),
@@ -548,7 +594,9 @@ export function createSlackScheduleDeleteTaskTool(context: ToolRuntimeContext) {
 }
 
 /** Create a tool that marks an existing scheduled task due immediately. */
-export function createSlackScheduleRunTaskNowTool(context: ToolRuntimeContext) {
+export function createSlackScheduleRunTaskNowTool(
+  context: SchedulerToolContext,
+) {
   return tool({
     description:
       "Queue an active Junior scheduled task to run as soon as possible.",
@@ -577,7 +625,7 @@ export function createSlackScheduleRunTaskNowTool(context: ToolRuntimeContext) {
         version: lookup.version + 1,
       };
 
-      await createStateSchedulerStore().saveTask(next);
+      await createSchedulerStore(context.state).saveTask(next);
       return {
         ok: true,
         task: compactTask(next),

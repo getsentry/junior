@@ -58,6 +58,7 @@ If your existing app already owns routes, make sure the Junior Hono app still re
 
 Some packages also export trusted runtime hooks. Register those in `createApp()`;
 do not rely on `juniorNitro()` alone. For example, see
+[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled tasks and
 [GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` app-code setup.
 
 ## Add app files

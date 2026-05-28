@@ -100,7 +100,7 @@ Packaged plugins must be installed and listed in `juniorNitro` so Nitro bundles 
 Install only the plugins you plan to enable:
 
 ```bash
-pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry
 ```
 
 Then list them in `nitro.config.ts`:
@@ -121,6 +121,7 @@ export default defineConfig({
           "@sentry/junior-hex",
           "@sentry/junior-linear",
           "@sentry/junior-notion",
+          "@sentry/junior-scheduler",
           "@sentry/junior-sentry",
         ],
       },
@@ -139,9 +140,11 @@ pnpm check
 ```
 
 Plugins with trusted runtime hooks need one more app-code registration step.
-For example, `@sentry/junior-github` must be registered with `githubPlugin()`
-inside `createApp()` to enforce Git commit attribution. See
-[GitHub Plugin](/extend/github-plugin/) for that setup.
+For example, `@sentry/junior-scheduler` must be registered with
+`schedulerPlugin()` inside `createApp()` to enable scheduled tasks, and
+`@sentry/junior-github` must be registered with `githubPlugin()` to enforce Git
+commit attribution. See [Scheduler Plugin](/extend/scheduler-plugin/) and
+[GitHub Plugin](/extend/github-plugin/) for those setups.
 
 ## Verify plugin content
 

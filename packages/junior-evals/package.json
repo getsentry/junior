@@ -12,6 +12,7 @@
   "devDependencies": {
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "chat": "4.29.0",

@@ -1,7 +1,6 @@
-import type { Lock, StateAdapter } from "chat";
-import { getNextRunAtMs } from "@/chat/scheduler/cadence";
-import { getStateAdapter } from "@/chat/state/adapter";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduler/types";
+import type { AgentPluginState } from "@sentry/junior-plugin-api";
+import { getNextRunAtMs } from "./cadence";
+import type { ScheduledRun, ScheduledTask } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const SCHEDULER_RECORD_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -96,24 +95,15 @@ function unique(values: string[]): string[] {
 }
 
 async function withLock<T>(
-  state: StateAdapter,
+  state: AgentPluginState,
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock: Lock | null = await state.acquireLock(key, LOCK_TTL_MS);
-  if (!lock) {
-    throw new Error(`Could not acquire scheduler lock for ${key}`);
-  }
-
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
+  return await state.withLock(key, LOCK_TTL_MS, callback);
 }
 
 async function addToIndex(
-  state: StateAdapter,
+  state: AgentPluginState,
   key: string,
   taskId: string,
 ): Promise<void> {
@@ -126,7 +116,7 @@ async function addToIndex(
 }
 
 async function removeFromIndex(
-  state: StateAdapter,
+  state: AgentPluginState,
   key: string,
   taskId: string,
 ): Promise<void> {
@@ -148,7 +138,10 @@ async function removeFromIndex(
   });
 }
 
-async function getIndex(state: StateAdapter, key: string): Promise<string[]> {
+async function getIndex(
+  state: AgentPluginState,
+  key: string,
+): Promise<string[]> {
   const values = (await state.get<string[]>(key)) ?? [];
   return unique(
     values.filter((value): value is string => typeof value === "string"),
@@ -156,7 +149,7 @@ async function getIndex(state: StateAdapter, key: string): Promise<string[]> {
 }
 
 async function clearActiveRun(
-  state: StateAdapter,
+  state: AgentPluginState,
   taskId: string,
   runId: string,
 ): Promise<void> {
@@ -169,7 +162,7 @@ async function clearActiveRun(
 }
 
 async function clearStaleActiveRun(
-  state: StateAdapter,
+  state: AgentPluginState,
   taskId: string,
   nowMs: number,
 ): Promise<boolean> {
@@ -353,15 +346,14 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
-class StateAdapterSchedulerStore implements SchedulerStore {
-  private readonly state: StateAdapter;
+class PluginStateSchedulerStore implements SchedulerStore {
+  private readonly state: AgentPluginState;
 
-  constructor(state: StateAdapter) {
+  constructor(state: AgentPluginState) {
     this.state = state;
   }
 
   async saveTask(task: ScheduledTask): Promise<void> {
-    await this.state.connect();
     await withLock(this.state, taskLockKey(task.id), async () => {
       const current =
         (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
@@ -416,12 +408,10 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   }
 
   async getTask(taskId: string): Promise<ScheduledTask | undefined> {
-    await this.state.connect();
     return (await this.state.get<ScheduledTask>(taskKey(taskId))) ?? undefined;
   }
 
   async listTasksForTeam(teamId: string): Promise<ScheduledTask[]> {
-    await this.state.connect();
     const ids = await getIndex(this.state, teamTaskIndexKey(teamId));
     const tasks = await Promise.all(ids.map((id) => this.getTask(id)));
     return tasks
@@ -433,7 +423,6 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   async claimDueRun(args: {
     nowMs: number;
   }): Promise<ScheduledRun | undefined> {
-    await this.state.connect();
     const ids = await getIndex(this.state, globalTaskIndexKey());
 
     for (const id of ids) {
@@ -587,12 +576,10 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   }
 
   async getRun(runId: string): Promise<ScheduledRun | undefined> {
-    await this.state.connect();
     return (await this.state.get<ScheduledRun>(runKey(runId))) ?? undefined;
   }
 
   async listIncompleteRuns(): Promise<ScheduledRun[]> {
-    await this.state.connect();
     const ids = await getIndex(this.state, globalTaskIndexKey());
     const runs: ScheduledRun[] = [];
     for (const taskId of ids) {
@@ -721,7 +708,6 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";
   }): Promise<void> {
-    await this.state.connect();
     await withLock(this.state, taskLockKey(args.run.taskId), async () => {
       const current =
         (await this.state.get<ScheduledTask>(taskKey(args.run.taskId))) ??
@@ -812,7 +798,6 @@ class StateAdapterSchedulerStore implements SchedulerStore {
     runId: string,
     update: (run: ScheduledRun) => ScheduledRun | undefined,
   ): Promise<ScheduledRun | undefined> {
-    await this.state.connect();
     return await withLock(this.state, indexLockKey(runKey(runId)), async () => {
       const current = await this.getRun(runId);
       if (!current) {
@@ -828,9 +813,7 @@ class StateAdapterSchedulerStore implements SchedulerStore {
   }
 }
 
-/** Create the production scheduler store backed by Junior's state adapter. */
-export function createStateSchedulerStore(
-  stateAdapter: StateAdapter = getStateAdapter(),
-): SchedulerStore {
-  return new StateAdapterSchedulerStore(stateAdapter);
+/** Create a scheduler store backed by this plugin's durable state namespace. */
+export function createSchedulerStore(state: AgentPluginState): SchedulerStore {
+  return new PluginStateSchedulerStore(state);
 }

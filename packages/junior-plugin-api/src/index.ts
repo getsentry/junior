@@ -25,6 +25,14 @@ export interface AgentPluginLogger {
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
 
+/** Thrown when a trusted plugin tool rejects invalid model or user input. */
+export class AgentPluginToolInputError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AgentPluginToolInputError";
+  }
+}
+
 export interface AgentPluginContext {
   log: AgentPluginLogger;
   plugin: AgentPluginMetadata;
@@ -138,6 +146,12 @@ export interface AgentPluginState {
   delete(key: string): Promise<void>;
   get<T = unknown>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+  setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean>;
+  withLock<T>(
+    key: string,
+    ttlMs: number,
+    callback: () => Promise<T>,
+  ): Promise<T>;
 }
 
 export interface HeartbeatHookContext extends AgentPluginContext {

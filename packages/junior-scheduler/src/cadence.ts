@@ -3,7 +3,7 @@ import type {
   ScheduledLocalTime,
   ScheduledTask,
   ScheduledTaskRecurrence,
-} from "@/chat/scheduler/types";
+} from "./types";
 
 /** Parse an ISO timestamp into a finite Unix timestamp in milliseconds. */
 export function parseScheduleTimestamp(value: string): number | undefined {

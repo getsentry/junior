@@ -5,6 +5,7 @@ import {
   setSpanAttributes,
   type LogContext,
 } from "@/chat/logging";
+import { AgentPluginToolInputError } from "@sentry/junior-plugin-api";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { getMcpAwareErrorMessage, McpToolError } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -14,7 +15,12 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 /** Classify tool errors into stable observability types. */
 function getToolErrorType(error: unknown): string {
   if (error instanceof McpToolError) return "tool_error";
-  if (error instanceof ToolInputError) return "tool_input_error";
+  if (
+    error instanceof ToolInputError ||
+    error instanceof AgentPluginToolInputError
+  ) {
+    return "tool_input_error";
+  }
   return error instanceof Error ? error.name : "tool_execution_error";
 }
 
@@ -90,7 +96,9 @@ export function handleToolExecutionError(
 
   // Expected tool failures (MCP errors, model input errors) are not Sentry exceptions.
   const isExpectedToolFailure =
-    error instanceof McpToolError || error instanceof ToolInputError;
+    error instanceof McpToolError ||
+    error instanceof ToolInputError ||
+    error instanceof AgentPluginToolInputError;
   if (!isExpectedToolFailure) {
     logException(
       error,
