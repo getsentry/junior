@@ -106,15 +106,20 @@ function buildCanvasRecoveryReply(canvasUrl: string) {
   return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
 }
 
+interface LoadedPiMessagesForTurn {
+  compactionSessionId?: string;
+  piMessages?: PiMessage[];
+}
+
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
   activeTurnId?: string;
   lastSessionId?: string;
   fallback: PiMessage[];
-}): Promise<PiMessage[] | undefined> {
+}): Promise<LoadedPiMessagesForTurn> {
   const fallback = args.fallback.length > 0 ? [...args.fallback] : undefined;
   if (!args.conversationId) {
-    return fallback;
+    return { piMessages: fallback };
   }
 
   if (args.activeTurnId) {
@@ -123,23 +128,30 @@ async function loadPiMessagesForTurn(args: {
       args.activeTurnId,
     );
     if (checkpoint?.piMessages.length) {
-      return stripRuntimeTurnContext(
-        trimTrailingAssistantMessages(checkpoint.piMessages),
-      );
+      return {
+        piMessages: stripRuntimeTurnContext(
+          trimTrailingAssistantMessages(checkpoint.piMessages),
+        ),
+      };
     }
   }
 
   if (!args.lastSessionId) {
-    return fallback;
+    return { piMessages: fallback };
   }
 
   const checkpoint = await getAgentTurnSessionCheckpoint(
     args.conversationId,
     args.lastSessionId,
   );
-  return checkpoint?.state === "completed" && checkpoint.piMessages.length > 0
-    ? stripRuntimeTurnContext(checkpoint.piMessages)
-    : fallback;
+  if (checkpoint?.state === "completed" && checkpoint.piMessages.length > 0) {
+    return {
+      compactionSessionId: args.lastSessionId,
+      piMessages: stripRuntimeTurnContext(checkpoint.piMessages),
+    };
+  }
+
+  return { piMessages: fallback };
 }
 
 export interface ReplyExecutorServices {
@@ -454,13 +466,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
             ? countPotentialImageAttachments(message.attachments)
             : 0;
-        let piMessages = await loadPiMessagesForTurn({
+        const loadedPiMessages = await loadPiMessagesForTurn({
           conversationId,
           activeTurnId,
           lastSessionId: lastSessionIdForHistory,
           fallback: preparedState.conversation.piMessages,
         });
-        if (conversationId && lastSessionIdForHistory && piMessages?.length) {
+        let piMessages = loadedPiMessages.piMessages;
+        if (
+          conversationId &&
+          loadedPiMessages.compactionSessionId &&
+          piMessages?.length
+        ) {
           const compaction = await deps.services.contextCompactor.maybeCompact({
             conversation: preparedState.conversation,
             conversationContext:
@@ -472,7 +489,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               channelId,
               runId,
             },
-            previousSessionId: lastSessionIdForHistory,
+            previousSessionId: loadedPiMessages.compactionSessionId,
           });
           if (compaction.compacted) {
             piMessages = compaction.piMessages;

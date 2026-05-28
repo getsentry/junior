@@ -411,4 +411,92 @@ describe("Slack behavior: message content", () => {
       "old context is still relevant",
     );
   });
+
+  it("keeps active-turn Pi history instead of compacting older completed history", async () => {
+    const calls: CapturedCall[] = [];
+    const activeMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "active checkpoint tool context" }],
+        timestamp: 3,
+      },
+    ] as PiMessage[];
+    const priorMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "older context ".repeat(5_000) }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "older answer ".repeat(1_000) }],
+        timestamp: 2,
+      },
+    ] as PiMessage[];
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005006.000" });
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: thread.id,
+      sessionId: "turn-older-completed",
+      sliceId: 1,
+      state: "completed",
+      piMessages: priorMessages,
+    });
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: thread.id,
+      sessionId: "turn-active-crashed",
+      sliceId: 1,
+      state: "running",
+      piMessages: activeMessages,
+    });
+    const conversation = coerceThreadConversationState({});
+    conversation.processing.activeTurnId = "turn-active-crashed";
+    conversation.processing.lastSessionId = "turn-older-completed";
+    await persistThreadState(thread, { conversation });
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        contextCompactor: {
+          completeText: async () => {
+            throw new Error("active checkpoint history should not compact");
+          },
+          getAutoCompactionTriggerTokens: () => 100,
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt, context) => {
+            calls.push({
+              prompt,
+              contextConversation: context?.conversationContext,
+              piMessages: context?.piMessages,
+            });
+            return {
+              text: "Done.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-content-active-checkpoint",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.piMessages).toEqual(activeMessages);
+  });
 });
