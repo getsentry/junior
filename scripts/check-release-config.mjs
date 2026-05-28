@@ -32,6 +32,31 @@ function collectSectionPackages(relativePath, anchor) {
   return collectMatches(section, /`(@sentry\/[^`]+)`/g);
 }
 
+function collectPublishablePackages() {
+  return fs
+    .readdirSync(path.join(root, "packages"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `packages/${entry.name}/package.json`)
+    .filter((relativePath) => fs.existsSync(path.join(root, relativePath)))
+    .map((relativePath) => {
+      const packageJson = JSON.parse(readFile(relativePath));
+
+      if (packageJson.private === true) {
+        return null;
+      }
+
+      if (typeof packageJson.name !== "string" || packageJson.name.length === 0) {
+        throw new Error(
+          `${relativePath} is publishable but missing a package name.`,
+        );
+      }
+
+      return packageJson.name;
+    })
+    .filter((name) => name !== null)
+    .sort();
+}
+
 function collectCraftPackages() {
   return collectMatches(readFile(".craft.yml"), /^\s*id:\s*"([^"]+)"/gm);
 }
@@ -66,6 +91,10 @@ function describeMismatch(expected, actual) {
 }
 
 const sources = [
+  {
+    label: "packages/*/package.json",
+    packages: collectPublishablePackages(),
+  },
   {
     label: ".craft.yml",
     packages: collectCraftPackages(),
@@ -102,7 +131,7 @@ const [expectedSource, ...otherSources] = sources;
 
 if (expectedSource.packages.length === 0) {
   console.error(
-    "Release config check failed: .craft.yml does not define any publish targets.",
+    "Release config check failed: no publishable packages found in packages/*/package.json.",
   );
   process.exit(1);
 }
@@ -130,11 +159,11 @@ for (const source of otherSources) {
 
 if (hasMismatch) {
   console.error(
-    "Release config check failed. Align release package lists with .craft.yml.",
+    "Release config check failed. Align release package lists with packages/*/package.json.",
   );
   process.exit(1);
 }
 
 console.log(
-  `Release config OK: ${expectedSource.packages.length} packages aligned across ${sources.length} sources.`,
+  `Release config OK: ${expectedSource.packages.length} publishable packages aligned across ${sources.length} sources.`,
 );
