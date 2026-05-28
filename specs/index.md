@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-26
+- Last Edited: 2026-05-28
 
 ## Changelog
 
@@ -19,6 +19,7 @@
 - 2026-05-13: Added ownership map for chat, agent session, and Slack delivery specs.
 - 2026-05-18: Added draft scheduler spec for scheduled Junior tasks.
 - 2026-05-26: Added draft trusted plugin heartbeat spec for scheduler packaging.
+- 2026-05-28: Clarified ownership for Pi agent execution and tool failure semantics.
 
 ## Status
 
@@ -72,6 +73,9 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 For chat/agent/Slack turn behavior:
 
 - `specs/chat-architecture-spec.md` owns the end-to-end turn data flow, data authority map, and module boundaries.
+- `specs/agent-execution-spec.md` owns coding-agent execution discipline and the repository-wide model-repairable tool failure contract.
+- `specs/harness-agent-spec.md` owns the Pi agent turn runtime contract, final output resolution, and turn diagnostics.
+- `specs/harness-tool-context-spec.md` owns context-bound tool targeting and missing-context failure behavior.
 - `specs/agent-session-resumability-spec.md` owns checkpoint schema, Pi session continuation, timeout callbacks, and slice lifecycle.
 - `specs/slack-agent-delivery-spec.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract-spec.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.

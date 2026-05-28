@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-05-13
+- Last Edited: 2026-05-28
 
 ## Changelog
 
@@ -18,6 +18,7 @@
 - 2026-05-10: Added the enforced Slack-to-runtime boundary and moved resumed Slack turn orchestration under `runtime/`.
 - 2026-05-13: Added the agent turn data-flow diagram, data ownership table, and spec ownership boundaries for continuation recovery.
 - 2026-05-21: Clarified that Pi execution history is sourced from Redis-backed Pi session state, while thread state stores visible transcript plus session pointers.
+- 2026-05-28: Linked agent-loop tool failure handling to the canonical agent execution contract.
 
 ## Status
 
@@ -97,7 +98,7 @@ Normative rules:
 2. The Chat SDK queue/lock layer handles transport-level concerns such as duplicate inbound delivery, ordering, and lock serialization. It is not the source of truth for agent recovery.
 3. Turn preparation is the only point that converts an inbound Slack message into persisted conversation context for an agent turn.
 4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary checkpoint creation.
-5. Tool calls and tool failures are internal agent-loop data until the assistant produces final turn diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies.
+5. Tool calls and tool failures are internal agent-loop data until the assistant produces final turn diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution-spec.md).
 6. User-visible assistant text is posted only after the reply is finalized and planned for Slack delivery.
 7. Final turn success is defined by Slack accepting the visible final reply, not by model generation completing.
 8. Agent recovery is session continuation: reload durable thread state plus the latest safe turn checkpoint, then continue the same session. It must not create a second active turn or re-run from transient process memory.

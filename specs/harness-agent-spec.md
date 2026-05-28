@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-05-11
+- Last Edited: 2026-05-28
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-04-30: Added the thinking-level routing contract and normal-effort default.
 - 2026-05-06: Clarified that normal turns seed Pi from durable conversation message history instead of flattening prior turns into the current prompt.
 - 2026-05-11: Aligned agent telemetry fields with current OpenTelemetry GenAI and exception semantics.
+- 2026-05-28: Linked tool failure semantics to the canonical agent execution contract.
 
 ## Status
 
@@ -87,6 +88,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ### Tool semantics
 
 - Tools execute as intermediate actions (`bash`, `readFile`, `webSearch`, Slack tools, skill loading, etc.).
+- Model-repairable tool failures must follow the [Agent Execution Discipline Spec](./agent-execution-spec.md) tool-failure contract so Pi records them as `toolResult.isError=true`.
 - The turn is successful when assistant text resolves to a non-empty, non-escape final response.
 - Slack runtimes refine that further: turn completion is only persisted after the final visible reply is delivered.
 - Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context-spec.md).
@@ -130,6 +132,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ## Related Specs
 
 - [Harness Tool Context Spec](./harness-tool-context-spec.md)
+- [Agent Execution Discipline Spec](./agent-execution-spec.md)
 - [Agent Session Resumability Spec](./agent-session-resumability-spec.md)
 - [Security Policy](./security-policy.md)
 - [Tracing Spec](./logging/tracing-spec.md)
