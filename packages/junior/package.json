@@ -6,6 +6,11 @@
     "access": "public"
   },
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior"
+  },
   "packageManager": "pnpm@10.30.2",
   "bin": {
     "junior": "bin/junior.mjs"
