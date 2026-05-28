@@ -23,7 +23,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     });
   });
 
-  it("when asked to schedule recurring work, draft the task for confirmation before creating it", async ({
+  it("when asked to schedule clear recurring work, create it without confirmation", async ({
     run,
   }) => {
     await run({
@@ -34,13 +34,13 @@ describeEval("Scheduler", slackEvals, (it) => {
       ],
       criteria: rubric({
         contract:
-          "A future or recurring task request is normalized into a scheduled task draft for the active Slack context before it is persisted.",
+          "A clear future or recurring task request is normalized and scheduled immediately for the active Slack context.",
         pass: [
-          "The draft task title/objective/instructions describe checking scheduler-related GitHub issues, not creating a schedule.",
-          "The reply asks the user to confirm the normalized cadence or next run before creating the schedule.",
+          "The created task title/objective/instructions describe checking scheduler-related GitHub issues, not creating a schedule.",
+          "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
         ],
         fail: [
-          "Do not persist a scheduled task before user confirmation.",
+          "Do not ask the user to confirm before creating the clear recurring task.",
           "Do not ask the user to provide a channel ID.",
           "Do not only give instructions for how the user can set up an external cron.",
         ],

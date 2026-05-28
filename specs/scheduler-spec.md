@@ -8,7 +8,8 @@
 ## Changelog
 
 - 2026-05-27: Added stale missed-run policy: old occurrences are skipped and consumed or advanced, not dispatched late and not blocked for human review.
-- 2026-05-27: Added the simple one-off reminder exception to Slack schedule confirmation.
+- 2026-05-27: Added the recurring schedule frequency limit: at most once per day.
+- 2026-05-27: Changed Slack authoring to auto-create clear scheduled work and reserve confirmation for ambiguous requests.
 - 2026-05-26: Reframed scheduled execution around system actors: creator is metadata/contact, scheduled runs execute as a system actor, and user-bound auth must not be borrowed implicitly.
 - 2026-05-18: Clarified V1 calendar model: exact next-run instants plus simple daily/weekly/monthly/yearly recurrence rules.
 - 2026-05-18: Initial draft contract for scheduled Junior tasks, prompt framing, no-SQL storage, run idempotency, and eval-first verification.
@@ -82,6 +83,8 @@ Recurring tasks must also store a small calendar recurrence rule:
 - optional monthly/yearly exact day-of-month and month
 
 V1 recurrence is calendar-based, not fixed-duration. For example, "every Monday at 9am America/Los_Angeles" should continue to run at 9am local time across daylight-saving changes. Monthly and yearly recurrences use exact calendar dates; unsupported dates are skipped rather than converted into "last day" or "business day" behavior.
+
+Recurring tasks must not run more than once per day. Slack authoring must reject hourly, twice-daily, or other sub-daily recurring schedules instead of storing a task contract that cannot execute as requested.
 
 The scheduler does not need advanced rules such as first business day, nearest weekday, holiday calendars, or arbitrary cron syntax.
 
@@ -190,16 +193,16 @@ Those future credential subjects must be explicit and separate from creator meta
 
 ### Slack UX
 
-Slack authoring is confirm-first for recurring schedules and non-reminder scheduled work:
+Slack authoring creates clear scheduled-work requests immediately for the active destination:
 
 1. User asks Junior to schedule work.
-2. Junior drafts the normalized task: title, objective, instructions, expected output, cadence, timezone, destination, and next run.
-3. User confirms before the task becomes active.
-4. Junior creates the task only after confirmation and replies with the task id, destination, schedule, timezone, and next run.
-5. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
+2. Junior normalizes the task: title, objective, instructions, expected output, cadence, timezone, destination, and next run.
+3. If the task contract, schedule, and active destination are clear, Junior creates the task immediately.
+4. If the task contract, schedule, or active destination is ambiguous, Junior asks for confirmation or clarification before creating the task.
+5. Junior replies with the task id, destination, schedule, timezone, and next run after creation.
+6. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
 
 Confirmation should show the executable task contract, not only echo the user's text.
-Explicit simple one-off reminder requests, such as "remind me in 10 minutes to stretch", may be created immediately without a second confirmation when the request targets the active Slack destination and has no recurrence, extra constraints, or source context.
 Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
 Task creation must use the current active Slack conversation as the destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
 List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.

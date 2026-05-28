@@ -338,7 +338,6 @@ function toEvalToolInvocation(input: {
         "title",
         "task_id",
         "objective",
-        "confirmed_by_user",
         "schedule_description",
         "timezone",
         "next_run_at_iso",

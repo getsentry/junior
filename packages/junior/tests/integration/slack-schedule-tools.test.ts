@@ -51,7 +51,6 @@ async function createTask(
 ) {
   const tool = createSlackScheduleCreateTaskTool(context);
   return await executeTool(tool, {
-    confirmed_by_user: true,
     title: "Weekly issue digest",
     objective: "Summarize open scheduler issues.",
     instructions: ["Find open scheduler issues", "Post a concise summary"],
@@ -123,7 +122,7 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("requires explicit confirmation before creating a task", async () => {
+  it("creates clear recurring tasks without a second confirmation", async () => {
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(createContext()),
       {
@@ -139,20 +138,27 @@ describe("Slack schedule tools", () => {
     );
 
     expect(result).toMatchObject({
-      ok: false,
-      error:
-        "Scheduled tasks require explicit user confirmation before they are created, except simple one-off reminders requested directly by the user. Draft the task contract for the user to confirm.",
+      ok: true,
+      task: {
+        schedule: "Every Monday at 9am",
+        status: "active",
+        title: "Weekly issue digest",
+      },
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    ).resolves.toMatchObject([
+      {
+        destination: { channelId: "C123" },
+        status: "active",
+      },
+    ]);
   });
 
   it("rejects invalid Slack workspace context before creating a task", async () => {
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),
       {
-        confirmed_by_user: true,
         title: "Reminder",
         objective: "Remind David to wash his hands.",
         instructions: ["Remind David to wash his hands."],
@@ -210,6 +216,45 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
+  it("creates short imperative one-off reminders without channel confirmation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
+
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(
+        createContext({
+          userText: "drink water in 1 minute in this conversation",
+        }),
+      ),
+      {
+        title: "Drink water reminder",
+        objective: "Remind David to drink water.",
+        instructions: ["Remind David to drink water."],
+        schedule_description: "In 1 minute",
+        next_run_at_text: "in 1 minute",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        next_run_at: "2026-05-27T00:25:23.000Z",
+        schedule: "In 1 minute",
+        status: "active",
+        title: "Drink water reminder",
+      },
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toMatchObject([
+      {
+        destination: { channelId: "C123" },
+        nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
+        status: "active",
+      },
+    ]);
+  });
+
   it("rejects parseable non-ISO next run timestamps", async () => {
     const result = await createTask(createContext(), {
       next_run_at_iso: "05/25/2026 09:00",
@@ -234,6 +279,21 @@ describe("Slack schedule tools", () => {
     expect(result).toMatchObject({
       ok: false,
       error: "Provide only one of next_run_at_iso or next_run_at_text.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects recurring schedules that can run more than once per day", async () => {
+    const result = await createTask(createContext(), {
+      schedule_description: "Every hour",
+      recurrence_frequency: "hourly",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "Recurring scheduled tasks can run at most once per day.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -285,6 +345,35 @@ describe("Slack schedule tools", () => {
       {},
     );
     expect(listed).toMatchObject({ ok: true, tasks: [] });
+  });
+
+  it("rejects edits that make a recurring task run more than once per day", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(context),
+      {
+        task_id: created.task.id,
+        schedule_description: "Every hour",
+        recurrence_frequency: "hourly",
+      },
+    );
+
+    expect(updated).toMatchObject({
+      ok: false,
+      error: "Recurring scheduled tasks can run at most once per day.",
+    });
+    await expect(
+      createStateSchedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({
+      schedule: {
+        description: "Every Monday at 9am",
+      },
+      version: 1,
+    });
   });
 
   it("rejects edits from another active Slack destination", async () => {

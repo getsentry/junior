@@ -247,6 +247,23 @@ function buildRecurrence(args: {
   }
 }
 
+function validateRecurringFrequencyLimit(input: {
+  recurrence_frequency?: unknown;
+}): { ok: true } | { ok: false; error: string } {
+  if (
+    input.recurrence_frequency !== undefined &&
+    input.recurrence_frequency !== null &&
+    !normalizeFrequency(input.recurrence_frequency)
+  ) {
+    return {
+      ok: false,
+      error: "Recurring scheduled tasks can run at most once per day.",
+    };
+  }
+
+  return { ok: true };
+}
+
 function shouldRebuildRecurrence(input: {
   next_run_at_text?: string;
   next_run_at_iso?: string;
@@ -310,38 +327,6 @@ function hasConflictingNextRunInputs(input: {
   return Boolean(input.next_run_at_iso && input.next_run_at_text);
 }
 
-function canCreateUnconfirmedSimpleReminder(args: {
-  context: ToolRuntimeContext;
-  input: {
-    constraints?: string[];
-    next_run_at_iso?: string;
-    next_run_at_text?: string;
-    recurrence_frequency?: unknown;
-    recurrence_interval?: number;
-    recurrence_weekdays?: number[];
-    source_context?: string[];
-  };
-}): boolean {
-  const userText = args.context.userText;
-  if (
-    !userText ||
-    !/\bremind\s+(me|us|this channel|the channel)\b/i.test(userText)
-  ) {
-    return false;
-  }
-  if (/\b(every|daily|weekly|monthly|yearly|each)\b/i.test(userText)) {
-    return false;
-  }
-  return (
-    Boolean(args.input.next_run_at_iso || args.input.next_run_at_text) &&
-    args.input.recurrence_frequency === undefined &&
-    args.input.recurrence_interval === undefined &&
-    args.input.recurrence_weekdays === undefined &&
-    (args.input.constraints?.length ?? 0) === 0 &&
-    (args.input.source_context?.length ?? 0) === 0
-  );
-}
-
 /** Create a tool that stores a scheduled task for the active Slack context. */
 export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
   return tool({
@@ -351,18 +336,13 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
     promptGuidelines: [
       "Use only when the user explicitly asks Junior to do work later or on a recurring cadence.",
       ACTIVE_DESTINATION_GUIDELINE,
-      'For an explicit simple one-off reminder request such as "remind me in 10 minutes to stretch", call immediately without asking for confirmation.',
-      "For recurring schedules or non-reminder scheduled work, show the normalized task, cadence, timezone, destination, and next run; call only after explicit user confirmation.",
+      "When the user's scheduling intent is clear, create the task immediately without asking for confirmation.",
+      "Ask for confirmation only when the task contract, schedule, or active destination is ambiguous.",
+      "Recurring tasks can run at most once per day; use only daily, weekly, monthly, or yearly recurrence frequencies.",
       "Provide exactly one of next_run_at_iso or next_run_at_text; omit timezone to use the configured default.",
       "Use recurrence_frequency only for recurring schedules.",
     ],
     inputSchema: Type.Object({
-      confirmed_by_user: Type.Optional(
-        Type.Boolean({
-          description:
-            "Set true only after the user explicitly confirms the normalized task, cadence, timezone, destination, and next run. Omit or set false for explicit simple one-off reminders.",
-        }),
-      ),
       title: Type.String({ minLength: 1, maxLength: 120 }),
       objective: Type.String({ minLength: 1, maxLength: 1000 }),
       instructions: Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
@@ -434,16 +414,6 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       if (!destination.ok) return destination;
       const requester = requireRequester(context);
       if (!requester.ok) return requester;
-      if (
-        input.confirmed_by_user !== true &&
-        !canCreateUnconfirmedSimpleReminder({ context, input })
-      ) {
-        return {
-          ok: false,
-          error:
-            "Scheduled tasks require explicit user confirmation before they are created, except simple one-off reminders requested directly by the user. Draft the task contract for the user to confirm.",
-        };
-      }
 
       const nowMs = Date.now();
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
@@ -452,6 +422,10 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
           ok: false,
           error: "Provide only one of next_run_at_iso or next_run_at_text.",
         };
+      }
+      const frequencyLimit = validateRecurringFrequencyLimit(input);
+      if (!frequencyLimit.ok) {
+        return frequencyLimit;
       }
       if (!isValidTimeZone(timezone)) {
         return {
@@ -628,6 +602,10 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
           ok: false,
           error: "Provide only one of next_run_at_iso or next_run_at_text.",
         };
+      }
+      const frequencyLimit = validateRecurringFrequencyLimit(input);
+      if (!frequencyLimit.ok) {
+        return frequencyLimit;
       }
       if (!isValidTimeZone(timezone)) {
         return {
