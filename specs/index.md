@@ -35,6 +35,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/credential-injection.md`
 - `specs/oauth-flows.md`
 - `specs/agent-prompt.md`
+- `specs/context-compaction.md`
 - `specs/advisor-tool.md`
 - `specs/scheduler.md`
 - `specs/trusted-plugin-heartbeat.md`
@@ -66,6 +67,7 @@ For chat/agent/Slack turn behavior:
 - `specs/harness-agent.md` owns the Pi agent turn runtime contract, final output resolution, and turn diagnostics.
 - `specs/harness-tool-context.md` owns context-bound tool targeting and missing-context failure behavior.
 - `specs/agent-session-resumability.md` owns checkpoint schema, Pi session continuation, timeout callbacks, and slice lifecycle.
+- `specs/context-compaction.md` owns reusable Pi history compaction, internal context forks, and visible-thread compaction bounds.
 - `specs/slack-agent-delivery.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
 

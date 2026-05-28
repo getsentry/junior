@@ -1,0 +1,456 @@
+import { botConfig } from "@/chat/config";
+import type { completeText } from "@/chat/pi/client";
+import type { PiMessage } from "@/chat/pi/messages";
+import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import {
+  getAgentTurnSessionCheckpoint,
+  upsertAgentTurnSessionCheckpoint,
+} from "@/chat/state/turn-session-store";
+import type { ThreadConversationState } from "@/chat/state/conversation";
+import { logWarn, setSpanAttributes } from "@/chat/logging";
+import {
+  stripRuntimeTurnContext,
+  trimTrailingAssistantMessages,
+} from "@/chat/respond-helpers";
+import { updateConversationStats } from "@/chat/services/conversation-memory";
+
+const RETAINED_USER_MESSAGE_TOKENS = 20_000;
+const MAX_SUMMARY_INPUT_CHARS = 80_000;
+const MAX_VISIBLE_CONTEXT_CHARS = 20_000;
+const MAX_SUMMARY_CHARS = 6_000;
+const MAX_RENDERED_MESSAGE_CHARS = 4_000;
+const COMPACTION_SUMMARY_PREFIX =
+  "Context handoff summary for future Junior turns:";
+const OMITTED_OLDER_CONTEXT_NOTICE = "[older context omitted]";
+
+export interface ContextCompactorDeps {
+  completeText: typeof completeText;
+  getAutoCompactionTriggerTokens?: () => number;
+}
+
+export interface ContextCompactor {
+  compact: (args: CompactContextArgs) => Promise<CompactContextResult>;
+  maybeCompact: (args: CompactContextArgs) => Promise<CompactContextResult>;
+}
+
+export interface CompactContextArgs {
+  conversation: ThreadConversationState;
+  conversationContext?: string;
+  conversationId: string;
+  previousSessionId: string;
+  metadata?: {
+    channelId?: string;
+    requesterId?: string;
+    runId?: string;
+    threadId?: string;
+  };
+}
+
+export interface CompactContextResult {
+  compacted: boolean;
+  piMessages?: PiMessage[];
+  reason?:
+    | "below_threshold"
+    | "missing_context"
+    | "not_completed"
+    | "summary_failed";
+  sessionId?: string;
+  summary?: string;
+}
+
+function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function textPart(value: unknown): string | undefined {
+  if (
+    value &&
+    typeof value === "object" &&
+    (value as { type?: unknown }).type === "text" &&
+    typeof (value as { text?: unknown }).text === "string"
+  ) {
+    return (value as { text: string }).text;
+  }
+  return undefined;
+}
+
+function messageText(message: PiMessage): string {
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return typeof content === "string" ? content : "";
+  }
+  return content.map(textPart).filter(Boolean).join("\n").trim();
+}
+
+function sanitizeText(text: string): string {
+  return text
+    .replace(
+      /<data_base64>[\s\S]*?<\/data_base64>/g,
+      "<data_base64>[omitted]</data_base64>",
+    )
+    .replace(
+      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+      "[image data omitted]",
+    )
+    .replaceAll("\u0000", " ")
+    .trim();
+}
+
+function truncateToTokenBudget(text: string, maxTokens: number): string {
+  const maxChars = Math.max(0, maxTokens * 4);
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function isCompactionSummary(text: string): boolean {
+  return text.trimStart().startsWith(COMPACTION_SUMMARY_PREFIX);
+}
+
+function isPayloadHeavy(text: string): boolean {
+  return /<data_base64>[\s\S]*?<\/data_base64>|data:image\/[a-z0-9.+-]+;base64,/i.test(
+    text,
+  );
+}
+
+function userMessage(text: string): PiMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    timestamp: Date.now(),
+  } as PiMessage;
+}
+
+/** Build retained user messages for a compacted Pi replacement history. */
+export function selectRetainedUserMessages(
+  messages: PiMessage[],
+  maxTokens = RETAINED_USER_MESSAGE_TOKENS,
+): PiMessage[] {
+  const stripped = stripRuntimeTurnContext(messages);
+  const selected: string[] = [];
+  let remaining = maxTokens;
+
+  for (const message of [...stripped].reverse()) {
+    if ((message as { role?: unknown }).role !== "user" || remaining <= 0) {
+      continue;
+    }
+
+    const text = sanitizeText(messageText(message));
+    if (!text || isCompactionSummary(text) || isPayloadHeavy(text)) {
+      continue;
+    }
+
+    const tokens = estimateTokenCount(text);
+    if (tokens <= remaining) {
+      selected.push(text);
+      remaining -= tokens;
+      continue;
+    }
+
+    const truncated = truncateToTokenBudget(text, remaining);
+    if (truncated) {
+      selected.push(truncated);
+    }
+    break;
+  }
+
+  return selected.reverse().map(userMessage);
+}
+
+function renderMessageForSummary(message: PiMessage): string | undefined {
+  const role = (message as { role?: unknown }).role;
+  if (typeof role !== "string") {
+    return undefined;
+  }
+  const text = sanitizeText(messageText(message));
+  if (!text) {
+    return undefined;
+  }
+  const trimmed =
+    text.length > MAX_RENDERED_MESSAGE_CHARS
+      ? `${text.slice(0, MAX_RENDERED_MESSAGE_CHARS).trimEnd()}...`
+      : text;
+  return `[${role}] ${trimmed}`;
+}
+
+function keepTail(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const prefix = `${OMITTED_OLDER_CONTEXT_NOTICE}\n`;
+  return `${prefix}${text.slice(Math.max(0, text.length - maxChars + prefix.length))}`;
+}
+
+function renderSummaryInput(
+  piMessages: PiMessage[],
+  conversationContext?: string,
+): string {
+  const lines: string[] = [];
+  const visibleContext = conversationContext?.trim();
+  if (visibleContext) {
+    lines.push(
+      "<visible-thread-context>",
+      keepTail(visibleContext, MAX_VISIBLE_CONTEXT_CHARS),
+      "</visible-thread-context>",
+      "",
+    );
+  }
+
+  const renderedPiMessages = stripRuntimeTurnContext(piMessages)
+    .map(renderMessageForSummary)
+    .filter((line): line is string => Boolean(line));
+
+  if (renderedPiMessages.length > 0) {
+    const piEnvelopeChars = "<pi-history>\n</pi-history>".length + 2;
+    const piHistory = keepTail(
+      renderedPiMessages.join("\n"),
+      Math.max(
+        1,
+        MAX_SUMMARY_INPUT_CHARS - lines.join("\n").length - piEnvelopeChars,
+      ),
+    );
+    lines.push("<pi-history>", piHistory, "</pi-history>");
+  }
+
+  return keepTail(lines.join("\n"), MAX_SUMMARY_INPUT_CHARS);
+}
+
+async function summarizeContext(
+  args: {
+    conversationContext?: string;
+    piMessages: PiMessage[];
+    metadata?: CompactContextArgs["metadata"];
+  },
+  deps: ContextCompactorDeps,
+): Promise<string> {
+  const source = renderSummaryInput(args.piMessages, args.conversationContext);
+  const result = await deps.completeText({
+    modelId: botConfig.fastModelId,
+    messageAttributeMode: "metadata",
+    temperature: 0,
+    messages: [
+      {
+        role: "user",
+        content: [
+          "You are performing a CONTEXT CHECKPOINT COMPACTION for Junior.",
+          "Create a concise handoff summary for another model that will continue this Slack thread.",
+          "",
+          "Include:",
+          "- Current outstanding asks",
+          "- Key decisions, completed work, and outcomes",
+          "- Durable constraints, user preferences, IDs, URLs, artifacts, canvas links, sandbox references, and auth state",
+          "- Clear next steps and unresolved blockers",
+          "",
+          "Do not invent details. Do not include raw secrets or credentials.",
+          "",
+          source,
+        ].join("\n"),
+        timestamp: Date.now(),
+      },
+    ],
+    metadata: {
+      modelId: botConfig.fastModelId,
+      threadId: args.metadata?.threadId ?? "",
+      channelId: args.metadata?.channelId ?? "",
+      requesterId: args.metadata?.requesterId ?? "",
+      runId: args.metadata?.runId ?? "",
+    },
+  });
+
+  const summary = result.text.trim();
+  if (!summary) {
+    throw new Error("Compaction summary was empty");
+  }
+  return summary.slice(0, MAX_SUMMARY_CHARS);
+}
+
+function estimateHistoryTokens(messages: PiMessage[]): number {
+  return stripRuntimeTurnContext(messages).reduce(
+    (total, message) =>
+      total + estimateTokenCount(sanitizeText(messageText(message))),
+    0,
+  );
+}
+
+function buildReplacementHistory(args: {
+  messages: PiMessage[];
+  summary: string;
+}): PiMessage[] {
+  return [
+    ...selectRetainedUserMessages(args.messages),
+    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${args.summary}`),
+  ];
+}
+
+function createCompactionSessionId(previousSessionId: string): string {
+  return `compaction_${previousSessionId}`;
+}
+
+async function loadCompletedHistory(args: {
+  conversationId: string;
+  previousSessionId: string;
+}): Promise<{
+  messages?: PiMessage[];
+  reason?: "missing_context" | "not_completed";
+}> {
+  const checkpoint = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.previousSessionId,
+  );
+  if (!checkpoint) {
+    return { reason: "missing_context" };
+  }
+  if (checkpoint.state !== "completed") {
+    return { reason: "not_completed" };
+  }
+  const messages = checkpoint.piMessages;
+  if (messages.length) {
+    return { messages };
+  }
+  return { reason: "missing_context" };
+}
+
+async function compactWithDeps(
+  args: CompactContextArgs,
+  deps: ContextCompactorDeps,
+): Promise<CompactContextResult> {
+  const loaded = await loadCompletedHistory({
+    conversationId: args.conversationId,
+    previousSessionId: args.previousSessionId,
+  });
+  if (loaded.reason) {
+    return { compacted: false, reason: loaded.reason };
+  }
+  const sourceMessages = loaded.messages;
+  if (!sourceMessages?.length) {
+    return { compacted: false, reason: "missing_context" };
+  }
+
+  const estimatedTokens = estimateHistoryTokens(sourceMessages);
+  const summary = await summarizeContext(
+    {
+      conversationContext: args.conversationContext,
+      piMessages: sourceMessages,
+      metadata: args.metadata,
+    },
+    deps,
+  );
+  return await writeCompactedThreadContext(args, sourceMessages, summary, {
+    estimatedTokens,
+  });
+}
+
+async function maybeCompactWithDeps(
+  args: CompactContextArgs,
+  deps: ContextCompactorDeps,
+): Promise<CompactContextResult> {
+  const loaded = await loadCompletedHistory({
+    conversationId: args.conversationId,
+    previousSessionId: args.previousSessionId,
+  });
+  if (loaded.reason) {
+    return { compacted: false, reason: loaded.reason };
+  }
+  const sourceMessages = loaded.messages;
+  if (!sourceMessages?.length) {
+    return { compacted: false, reason: "missing_context" };
+  }
+
+  const estimatedTokens = estimateHistoryTokens(sourceMessages);
+  const triggerTokens =
+    deps.getAutoCompactionTriggerTokens?.() ??
+    getAgentContextCompactionTriggerTokens();
+  if (estimatedTokens <= triggerTokens) {
+    return { compacted: false, reason: "below_threshold" };
+  }
+
+  let summary: string;
+  try {
+    summary = await summarizeContext(
+      {
+        conversationContext: args.conversationContext,
+        piMessages: sourceMessages,
+        metadata: args.metadata,
+      },
+      deps,
+    );
+  } catch (error) {
+    logWarn(
+      "context_compaction_summary_failed",
+      {
+        slackThreadId: args.metadata?.threadId,
+        slackUserId: args.metadata?.requesterId,
+        slackChannelId: args.metadata?.channelId,
+        runId: args.metadata?.runId,
+        assistantUserName: botConfig.userName,
+        modelId: botConfig.fastModelId,
+      },
+      {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Context compaction failed; continuing with prior history",
+    );
+    return { compacted: false, reason: "summary_failed" };
+  }
+
+  return await writeCompactedThreadContext(args, sourceMessages, summary, {
+    estimatedTokens,
+    triggerTokens,
+  });
+}
+
+async function writeCompactedThreadContext(
+  args: CompactContextArgs,
+  sourceMessages: PiMessage[],
+  summary: string,
+  context: {
+    estimatedTokens: number;
+    triggerTokens?: number;
+  },
+): Promise<CompactContextResult> {
+  const replacement = buildReplacementHistory({
+    messages: trimTrailingAssistantMessages(sourceMessages),
+    summary,
+  });
+  const nextSessionId = createCompactionSessionId(args.previousSessionId);
+  await upsertAgentTurnSessionCheckpoint({
+    conversationId: args.conversationId,
+    sessionId: nextSessionId,
+    sliceId: 1,
+    state: "completed",
+    piMessages: replacement,
+  });
+
+  args.conversation.processing.lastSessionId = nextSessionId;
+  updateConversationStats(args.conversation);
+  setSpanAttributes({
+    "app.compaction.input_messages": sourceMessages.length,
+    "app.compaction.retained_messages": replacement.length - 1,
+    "app.compaction.summary_chars": summary.length,
+    "app.compaction.previous_session_id": args.previousSessionId,
+    "app.compaction.next_session_id": nextSessionId,
+    ...(context.triggerTokens !== undefined
+      ? { "app.compaction.trigger_tokens": context.triggerTokens }
+      : {}),
+    "app.context_tokens_estimated": context.estimatedTokens,
+  });
+
+  return {
+    compacted: true,
+    piMessages: replacement,
+    sessionId: nextSessionId,
+    summary,
+  };
+}
+
+/** Build the service that owns local context compaction and checkpoint forks. */
+export function createContextCompactor(
+  deps: ContextCompactorDeps,
+): ContextCompactor {
+  return {
+    compact: async (args) => await compactWithDeps(args, deps),
+    maybeCompact: async (args) => await maybeCompactWithDeps(args, deps),
+  };
+}

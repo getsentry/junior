@@ -112,6 +112,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/credential-injection.md` (requester-bound provider credential injection contract)
 - `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/agent-prompt.md` (core prompt ownership, execution-bias, and bloat-control contract)
+- `specs/context-compaction.md` (reusable Pi history compaction, internal context forks, and visible-thread compaction bounds)
 - `specs/advisor-tool.md` (provider-agnostic advisor tool contract)
 - `specs/scheduler.md` (scheduled Junior task contract)
 - `specs/trusted-plugin-heartbeat.md` (trusted plugin heartbeat and tool hook contract)

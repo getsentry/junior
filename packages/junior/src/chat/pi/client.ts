@@ -71,6 +71,43 @@ function extractText(message: {
     .trim();
 }
 
+function contentMetadata(content: unknown): unknown {
+  if (typeof content === "string") {
+    return [{ type: "text", chars: content.length }];
+  }
+  if (!Array.isArray(content)) {
+    return { type: typeof content };
+  }
+  return content.map((part) => {
+    if (!part || typeof part !== "object") {
+      return { type: typeof part };
+    }
+    const record = part as Record<string, unknown>;
+    const type = typeof record.type === "string" ? record.type : "unknown";
+    return {
+      type,
+      ...(typeof record.text === "string" ? { chars: record.text.length } : {}),
+      ...(typeof record.mimeType === "string"
+        ? { mimeType: record.mimeType }
+        : {}),
+      ...(typeof record.mediaType === "string"
+        ? { mediaType: record.mediaType }
+        : {}),
+      ...(typeof record.data === "string"
+        ? { dataChars: record.data.length }
+        : {}),
+    };
+  });
+}
+
+function toMessageMetadata(message: Message): Record<string, unknown> {
+  const record = message as unknown as Record<string, unknown>;
+  return {
+    role: record.role,
+    content: contentMetadata(record.content),
+  };
+}
+
 function parseJsonCandidate(text: string): unknown {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
@@ -154,6 +191,7 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  messageAttributeMode?: "content" | "metadata";
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
@@ -162,9 +200,18 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getPiGatewayApiKeyOverride();
-  const requestMessagesAttribute = serializeGenAiAttribute(params.messages);
+  const messageAttributeMode = params.messageAttributeMode ?? "content";
+  const requestMessagesAttribute = serializeGenAiAttribute(
+    messageAttributeMode === "metadata"
+      ? params.messages.map(toMessageMetadata)
+      : params.messages,
+  );
   const systemInstructionsAttribute = params.system
-    ? serializeGenAiAttribute([{ type: "text", content: params.system }])
+    ? serializeGenAiAttribute(
+        messageAttributeMode === "metadata"
+          ? [{ type: "text", chars: params.system.length }]
+          : [{ type: "text", content: params.system }],
+      )
     : undefined;
   const baseAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -205,12 +252,23 @@ export async function completeText(params: {
         },
       );
       const outputText = extractText(message);
-      const outputMessagesAttribute = serializeGenAiAttribute([
-        {
-          role: "assistant",
-          content: outputText ? [{ type: "text", text: outputText }] : [],
-        },
-      ]);
+      const outputMessagesAttribute = serializeGenAiAttribute(
+        messageAttributeMode === "metadata"
+          ? [
+              {
+                role: "assistant",
+                content: outputText
+                  ? [{ type: "text", chars: outputText.length }]
+                  : [],
+              },
+            ]
+          : [
+              {
+                role: "assistant",
+                content: outputText ? [{ type: "text", text: outputText }] : [],
+              },
+            ],
+      );
       const usageAttributes = extractGenAiUsageAttributes(message);
       const endAttributes = {
         ...baseAttributes,

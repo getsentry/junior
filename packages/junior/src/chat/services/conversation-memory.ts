@@ -7,10 +7,12 @@ import type {
 } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
+import {
+  calculateContextCompactionTargetTokens,
+  getConversationContextCompactionTriggerTokens,
+} from "@/chat/services/context-budget";
 import { escapeXml } from "@/chat/xml";
 
-const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
-const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const CONTEXT_COMPACTION_BATCH_SIZE = 24;
 const CONTEXT_MAX_COMPACTIONS = 16;
@@ -373,8 +375,10 @@ async function compactConversationIfNeededWithDeps(
     "app.context_tokens_estimated": estimatedTokens,
   });
 
+  const triggerTokens = getConversationContextCompactionTriggerTokens();
+  const targetTokens = calculateContextCompactionTargetTokens(triggerTokens);
   while (
-    estimatedTokens > CONTEXT_COMPACTION_TRIGGER_TOKENS &&
+    estimatedTokens > triggerTokens &&
     conversation.messages.length > CONTEXT_MIN_LIVE_MESSAGES
   ) {
     const compactCount = Math.min(
@@ -406,10 +410,12 @@ async function compactConversationIfNeededWithDeps(
     estimatedTokens = conversation.stats.estimatedContextTokens;
     setSpanAttributes({
       "app.compaction_messages_covered": compactCount,
+      "app.compaction.trigger_tokens": triggerTokens,
+      "app.compaction.target_tokens": targetTokens,
       "app.context_tokens_estimated": estimatedTokens,
     });
 
-    if (estimatedTokens <= CONTEXT_COMPACTION_TARGET_TOKENS) {
+    if (estimatedTokens <= targetTokens) {
       break;
     }
   }

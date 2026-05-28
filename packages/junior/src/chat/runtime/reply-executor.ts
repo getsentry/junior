@@ -41,6 +41,7 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
+import type { ContextCompactor } from "@/chat/services/context-compaction";
 import { applyPendingAuthUpdate } from "@/chat/services/pending-auth";
 import {
   countPotentialImageAttachments,
@@ -142,6 +143,7 @@ async function loadPiMessagesForTurn(args: {
 }
 
 export interface ReplyExecutorServices {
+  contextCompactor: Pick<ContextCompactor, "maybeCompact">;
   generateAssistantReply: typeof generateAssistantReplyImpl;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getAwaitingTurnContinuationRequest: (args: {
@@ -452,12 +454,33 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
             ? countPotentialImageAttachments(message.attachments)
             : 0;
-        const piMessages = await loadPiMessagesForTurn({
+        let piMessages = await loadPiMessagesForTurn({
           conversationId,
           activeTurnId,
           lastSessionId: lastSessionIdForHistory,
           fallback: preparedState.conversation.piMessages,
         });
+        if (conversationId && lastSessionIdForHistory && piMessages?.length) {
+          const compaction = await deps.services.contextCompactor.maybeCompact({
+            conversation: preparedState.conversation,
+            conversationContext:
+              preparedState.routingContext ?? preparedState.conversationContext,
+            conversationId,
+            metadata: {
+              threadId,
+              requesterId: message.author.userId,
+              channelId,
+              runId,
+            },
+            previousSessionId: lastSessionIdForHistory,
+          });
+          if (compaction.compacted) {
+            piMessages = compaction.piMessages;
+            await persistThreadState(thread, {
+              conversation: preparedState.conversation,
+            });
+          }
+        }
 
         const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
