@@ -63,17 +63,13 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("slackScheduleRunTaskNow");
   });
 
-  it("does not register schedule tools when explicitly disabled", () => {
+  it("does not register schedule tools without a requester", () => {
     const tools = createTools(
       [],
       {},
       {
         ...ctx("C12345"),
         teamId: "T123",
-        requester: {
-          userId: "U123",
-        },
-        disableScheduleTools: true,
       },
     );
 

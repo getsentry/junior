@@ -89,7 +89,6 @@ export function getAgentPluginTools(
       requester: context.requester,
       channelCapabilities: context.channelCapabilities,
       channelId: context.channelId,
-      disableScheduleTools: context.disableScheduleTools,
       teamId: context.teamId,
       messageTs: context.messageTs,
       threadTs: context.threadTs,

@@ -287,7 +287,6 @@ export async function runAgentDispatchSlice(
         actorId: dispatch.actor.id,
       },
       toolChannelId: dispatch.destination.channelId,
-      disableScheduleTools: true,
       sandbox: {
         sandboxId,
         sandboxDependencyProfileHash,

@@ -175,12 +175,7 @@ export function createSchedulerPlugin() {
     name: "scheduler",
     hooks: {
       tools(ctx) {
-        if (
-          ctx.disableScheduleTools ||
-          !ctx.channelId ||
-          !ctx.teamId ||
-          !ctx.requester?.userId
-        ) {
+        if (!ctx.channelId || !ctx.teamId || !ctx.requester?.userId) {
           return {} as Record<string, ToolDefinition<any>>;
         }
         const context = createSchedulerToolContext(ctx);

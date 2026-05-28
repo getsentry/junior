@@ -139,7 +139,6 @@ export interface ReplyRequestContext {
     actorId?: string;
   };
   toolChannelId?: string;
-  disableScheduleTools?: boolean;
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
@@ -759,7 +758,6 @@ export async function generateAssistantReply(
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
-        disableScheduleTools: context.disableScheduleTools,
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,

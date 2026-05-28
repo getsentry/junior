@@ -92,7 +92,6 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
     canPostToChannel: boolean;
   };
   channelId?: string;
-  disableScheduleTools?: boolean;
   messageTs?: string;
   requester?: AgentPluginRequester;
   state: AgentPluginState;
