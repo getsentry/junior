@@ -51,6 +51,7 @@ import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
+import { maybeRefetchSlackUnfurlAttachments } from "@/chat/slack/unfurl-fetch";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
@@ -233,9 +234,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           stripLeadingSlackMentionToken:
             options.explicitMention || Boolean(message.isMention),
         });
+        const enrichedRaw = await maybeRefetchSlackUnfurlAttachments({
+          channelId,
+          threadTs,
+          messageTs,
+          originalRaw: message.raw,
+          text: message.text,
+        });
         const userText = appendSlackLegacyAttachmentText(
           strippedUserText,
-          message.raw,
+          enrichedRaw,
         );
 
         const preparedState =
