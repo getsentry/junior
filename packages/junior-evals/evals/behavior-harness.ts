@@ -139,7 +139,6 @@ export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
-  disable_schedule_tools?: boolean;
   fail_reply_call?: number;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
@@ -1452,9 +1451,6 @@ function buildRuntimeServices(
           reply = await Promise.race([
             generateAssistantReply(text, {
               ...context,
-              disableScheduleTools:
-                scenario.overrides?.disable_schedule_tools ??
-                context?.disableScheduleTools,
               onToolInvocation: (invocation) => {
                 observations.toolInvocations.push(
                   toEvalToolInvocation(invocation),

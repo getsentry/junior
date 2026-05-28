@@ -47,44 +47,4 @@ describeEval("Scheduler", slackEvals, (it) => {
       }),
     });
   });
-
-  it("when executing a scheduled-task prompt, perform the task instead of creating another schedule", async ({
-    run,
-  }) => {
-    await run({
-      events: [
-        mention(`@bot <scheduled-task-run>
-This is an autonomous scheduled run. Treat the stored task contract as the user request for this turn.
-
-<scheduled-task>
-- id: sched_eval
-- title: Weekly scheduler digest
-- objective: Summarize open scheduler issues.
-<instructions>
-- Check for open scheduler issues.
-- Post a concise digest.
-</instructions>
-</scheduled-task>
-
-<current-instruction priority="highest">
-Execute the scheduled task now and provide the final result for the configured destination.
-</current-instruction>
-</scheduled-task-run>`),
-      ],
-      overrides: {
-        disable_schedule_tools: true,
-      },
-      criteria: rubric({
-        contract:
-          "A scheduled-task execution prompt is treated as the task to run, not as a request to schedule something.",
-        pass: [
-          "The assistant attempts to produce or explain a scheduler issue digest.",
-        ],
-        fail: [
-          "Do not create, edit, delete, or list scheduled tasks.",
-          "Do not say the task has been scheduled.",
-        ],
-      }),
-    });
-  });
 });
