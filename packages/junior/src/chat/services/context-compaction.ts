@@ -40,6 +40,7 @@ export interface CompactContextArgs {
   conversation: ThreadConversationState;
   conversationContext?: string;
   conversationId: string;
+  onCompactionStart?: () => void;
   previousSessionId: string;
   metadata?: {
     channelId?: string;
@@ -342,6 +343,8 @@ async function maybeCompactWithDeps(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
+
+  args.onCompactionStart?.();
 
   let summary: string;
   try {

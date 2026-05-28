@@ -93,8 +93,9 @@ Automatic pre-turn compaction may replace an oversized reusable completed checkp
 2. Finish before `generateAssistantReply(...)` receives `piMessages`.
 3. Use the compacted replacement history for the upcoming turn.
 4. Persist the compacted session and update `conversation.processing.lastSessionId` before final thread-state persistence for the turn.
+5. Start explicit assistant progress after the threshold decision and before summarization when a status surface is available, then return to the normal turn status before agent execution.
 
-Automatic compaction must not post Slack-visible progress by itself. Normal turn status and final reply delivery remain owned by the Slack runtime.
+Automatic compaction must not post Slack thread messages by itself. Assistant status and final reply delivery remain owned by the Slack runtime.
 
 ### Visible Conversation-State Compaction
 

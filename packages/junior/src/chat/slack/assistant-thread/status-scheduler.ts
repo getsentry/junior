@@ -12,7 +12,7 @@ const STATUS_ROTATION_INTERVAL_MS = 30_000;
 export type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface AssistantStatusSession {
-  start: () => void;
+  start: (status?: AssistantStatusSpec) => void;
   stop: () => Promise<void>;
   update: (status: AssistantStatusSpec) => void;
 }
@@ -172,9 +172,13 @@ export function createAssistantStatusScheduler(args: {
   };
 
   return {
-    start() {
+    start(status?: AssistantStatusSpec) {
       active = true;
       clearPending();
+      if (status) {
+        void postRenderedStatus(status);
+        return;
+      }
       currentKey = "initial";
       void postStatus(getInitialStatusText(), loadingMessages);
     },

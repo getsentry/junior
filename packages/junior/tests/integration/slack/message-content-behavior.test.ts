@@ -358,7 +358,7 @@ describe("Slack behavior: message content", () => {
     conversation.processing.lastSessionId = "turn-large-history";
     await persistThreadState(thread, { conversation });
 
-    const { slackRuntime } = createTestChatRuntime({
+    const { slackAdapter, slackRuntime } = createTestChatRuntime({
       services: {
         contextCompactor: {
           completeText: async () =>
@@ -403,6 +403,18 @@ describe("Slack behavior: message content", () => {
     );
 
     expect(calls).toHaveLength(1);
+    const compactingStatusIndex = slackAdapter.statusCalls.findIndex((call) =>
+      call.loadingMessages?.includes("Compacting context"),
+    );
+    expect(compactingStatusIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      slackAdapter.statusCalls.findIndex(
+        (call, index) =>
+          index > compactingStatusIndex &&
+          Boolean(call.text) &&
+          !call.loadingMessages?.includes("Compacting context"),
+      ),
+    ).toBeGreaterThan(compactingStatusIndex);
     expect(calls[0]?.piMessages?.length).toBeLessThan(priorMessages.length + 1);
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
       "Context handoff summary",

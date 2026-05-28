@@ -48,7 +48,10 @@ import {
   hasPotentialImageAttachment,
   isVisionEnabled,
 } from "@/chat/services/vision-context";
-import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
+import {
+  createSlackAdapterAssistantStatusSession,
+  type AssistantStatusSpec,
+} from "@/chat/slack/assistant-thread/status";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
@@ -466,44 +469,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
             ? countPotentialImageAttachments(message.attachments)
             : 0;
-        const loadedPiMessages = await loadPiMessagesForTurn({
-          conversationId,
-          activeTurnId,
-          lastSessionId: lastSessionIdForHistory,
-          fallback: preparedState.conversation.piMessages,
-        });
-        let piMessages = loadedPiMessages.piMessages;
-        if (
-          conversationId &&
-          loadedPiMessages.compactionSessionId &&
-          piMessages?.length
-        ) {
-          const compaction = await deps.services.contextCompactor.maybeCompact({
-            conversation: preparedState.conversation,
-            conversationContext:
-              preparedState.routingContext ?? preparedState.conversationContext,
-            conversationId,
-            metadata: {
-              threadId,
-              requesterId: message.author.userId,
-              channelId,
-              runId,
-            },
-            previousSessionId: loadedPiMessages.compactionSessionId,
-          });
-          if (compaction.compacted) {
-            piMessages = compaction.piMessages;
-            await persistThreadState(thread, {
-              conversation: preparedState.conversation,
-            });
-          }
-        }
-
         const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
           threadTs: assistantThreadContext?.threadTs,
           getSlackAdapter: deps.getSlackAdapter,
         });
+        const compactingStatus: AssistantStatusSpec = {
+          text: "Compacting context",
+        };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
           stage: PlannedSlackReplyStage,
@@ -526,25 +499,61 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
         };
-        status.start();
-        const assistantTitleTask = maybeUpdateAssistantTitle({
-          assistantThreadContext,
-          assistantUserName: botConfig.userName,
-          artifacts: preparedState.artifacts,
-          channelId,
-          conversation: preparedState.conversation,
-          generateThreadTitle: deps.services.generateThreadTitle,
-          getSlackAdapter: deps.getSlackAdapter,
-          modelId: botConfig.fastModelId,
-          requesterId: message.author.userId,
-          runId,
-          threadId,
-        });
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
         let latestArtifacts = preparedState.artifacts;
 
         try {
+          const loadedPiMessages = await loadPiMessagesForTurn({
+            conversationId,
+            activeTurnId,
+            lastSessionId: lastSessionIdForHistory,
+            fallback: preparedState.conversation.piMessages,
+          });
+          let piMessages = loadedPiMessages.piMessages;
+          if (
+            conversationId &&
+            loadedPiMessages.compactionSessionId &&
+            piMessages?.length
+          ) {
+            const compaction =
+              await deps.services.contextCompactor.maybeCompact({
+                conversation: preparedState.conversation,
+                conversationContext:
+                  preparedState.routingContext ??
+                  preparedState.conversationContext,
+                conversationId,
+                metadata: {
+                  threadId,
+                  requesterId: message.author.userId,
+                  channelId,
+                  runId,
+                },
+                onCompactionStart: () => status.start(compactingStatus),
+                previousSessionId: loadedPiMessages.compactionSessionId,
+              });
+            if (compaction.compacted) {
+              piMessages = compaction.piMessages;
+              await persistThreadState(thread, {
+                conversation: preparedState.conversation,
+              });
+            }
+          }
+
+          status.start();
+          const assistantTitleTask = maybeUpdateAssistantTitle({
+            assistantThreadContext,
+            assistantUserName: botConfig.userName,
+            artifacts: preparedState.artifacts,
+            channelId,
+            conversation: preparedState.conversation,
+            generateThreadTitle: deps.services.generateThreadTitle,
+            getSlackAdapter: deps.getSlackAdapter,
+            modelId: botConfig.fastModelId,
+            requesterId: message.author.userId,
+            runId,
+            threadId,
+          });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           let reply = await deps.services.generateAssistantReply(userText, {
