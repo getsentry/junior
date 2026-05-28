@@ -236,6 +236,73 @@ describe("context compaction checkpoint fork", () => {
     expect(capturedPrompt).toContain("recent-critical-marker");
   });
 
+  it("counts structured tool context when deciding whether to compact", async () => {
+    const { createContextCompactor } =
+      await import("@/chat/services/context-compaction");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    const { upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-tool-context",
+      sessionId: "turn-tool-context",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-call-1",
+              name: "readFile",
+              arguments: { path: "src/large-file.ts", limit: 10_000 },
+            },
+          ],
+          api: "openai-responses",
+          provider: "openai",
+          model: "test-model",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "toolUse",
+          timestamp: 1,
+        },
+      ] as PiMessage[],
+    });
+    const conversation = coerceThreadConversationState({});
+    conversation.processing.lastSessionId = "turn-tool-context";
+    let summarized = false;
+    const compactor = createContextCompactor({
+      completeText: async () => {
+        summarized = true;
+        return { text: "Tool context was compacted." } as never;
+      },
+      getAutoCompactionTriggerTokens: () => 1,
+    });
+
+    const result = await compactor.maybeCompact({
+      conversation,
+      conversationId: "conversation-tool-context",
+      previousSessionId: "turn-tool-context",
+    });
+
+    expect(result.compacted).toBe(true);
+    expect(summarized).toBe(true);
+  });
+
   it("does not compact checkpoints that are awaiting resume", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");

@@ -1,3 +1,7 @@
+import {
+  estimateContextTokens,
+  estimateTokens,
+} from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -266,11 +270,13 @@ async function summarizeContext(
 }
 
 function estimateHistoryTokens(messages: PiMessage[]): number {
-  return stripRuntimeTurnContext(messages).reduce(
-    (total, message) =>
-      total + estimateTokenCount(sanitizeText(messageText(message))),
+  const stripped = stripRuntimeTurnContext(messages);
+  const usageEstimate = estimateContextTokens(stripped).tokens;
+  const structuralEstimate = stripped.reduce(
+    (total, message) => total + estimateTokens(message),
     0,
   );
+  return Math.max(usageEstimate, structuralEstimate);
 }
 
 function buildReplacementHistory(args: {
