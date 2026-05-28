@@ -96,12 +96,10 @@ export function githubPlugin(options = {}) {
           mode: 0o755,
           content: prepareCommitMsgHook(),
         });
-        await Promise.all([
-          configureGit(ctx, "core.hooksPath", hooksPath),
-          configureGit(ctx, "commit.gpgsign", "false"),
-          configureGit(ctx, "credential.helper", ""),
-          configureGit(ctx, "http.emptyAuth", "true"),
-        ]);
+        await configureGit(ctx, "core.hooksPath", hooksPath);
+        await configureGit(ctx, "commit.gpgsign", "false");
+        await configureGit(ctx, "credential.helper", "");
+        await configureGit(ctx, "http.emptyAuth", "true");
       },
       beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {

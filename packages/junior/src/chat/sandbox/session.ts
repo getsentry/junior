@@ -170,8 +170,10 @@ export function createSandboxSessionManager(options?: {
   let availableSkills: SkillMetadata[] = [];
   let availableReferenceFiles: string[] = [];
   let toolExecutors: SandboxToolExecutors | undefined;
+  let loadingToolExecutors: Promise<SandboxToolExecutors> | undefined;
   let appliedNetworkPolicyKey: string | undefined;
   let preparedSandboxId: string | undefined;
+  let acquiringSandbox: Promise<SandboxInstance> | undefined;
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
@@ -191,6 +193,7 @@ export function createSandboxSessionManager(options?: {
     sandbox = null;
     sandboxIdHint = undefined;
     toolExecutors = undefined;
+    loadingToolExecutors = undefined;
     appliedNetworkPolicyKey = undefined;
     preparedSandboxId = undefined;
   };
@@ -212,6 +215,7 @@ export function createSandboxSessionManager(options?: {
     sandbox = nextSandbox;
     sandboxIdHint = nextSandbox.sandboxId;
     toolExecutors = undefined;
+    loadingToolExecutors = undefined;
     const acquired = {
       sandboxId: sandboxIdHint,
       ...(dependencyProfileHash
@@ -577,6 +581,22 @@ export function createSandboxSessionManager(options?: {
     );
   };
 
+  const getOrAcquireSandbox = async (): Promise<SandboxInstance> => {
+    if (acquiringSandbox) {
+      return await acquiringSandbox;
+    }
+
+    const nextSandbox = acquireSandbox();
+    acquiringSandbox = nextSandbox;
+    try {
+      return await nextSandbox;
+    } finally {
+      if (acquiringSandbox === nextSandbox) {
+        acquiringSandbox = undefined;
+      }
+    }
+  };
+
   const getMaxOutputLength = (): number => {
     const maxOutputLength = Number.parseInt(
       process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "",
@@ -721,7 +741,7 @@ export function createSandboxSessionManager(options?: {
   };
 
   const ensureReadySandbox = async (): Promise<SandboxInstance> => {
-    const activeSandbox = await acquireSandbox();
+    const activeSandbox = await getOrAcquireSandbox();
     await extendKeepAlive(activeSandbox);
     return activeSandbox;
   };
@@ -732,9 +752,24 @@ export function createSandboxSessionManager(options?: {
     if (toolExecutors) {
       return toolExecutors;
     }
+    if (loadingToolExecutors) {
+      return await loadingToolExecutors;
+    }
 
-    toolExecutors = await buildToolExecutors(activeSandbox);
-    return toolExecutors;
+    const nextToolExecutors = buildToolExecutors(activeSandbox).then(
+      (executors) => {
+        toolExecutors = executors;
+        return executors;
+      },
+    );
+    loadingToolExecutors = nextToolExecutors;
+    try {
+      return await nextToolExecutors;
+    } finally {
+      if (loadingToolExecutors === nextToolExecutors) {
+        loadingToolExecutors = undefined;
+      }
+    }
   };
 
   return {
@@ -751,7 +786,7 @@ export function createSandboxSessionManager(options?: {
       return dependencyProfileHash;
     },
     async createSandbox() {
-      return await acquireSandbox();
+      return await getOrAcquireSandbox();
     },
     async ensureToolExecutors() {
       return await loadToolExecutors(await ensureReadySandbox());
@@ -775,6 +810,7 @@ export function createSandboxSessionManager(options?: {
 
       sandbox = null;
       toolExecutors = undefined;
+      loadingToolExecutors = undefined;
     },
   };
 }

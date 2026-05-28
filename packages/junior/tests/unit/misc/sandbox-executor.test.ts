@@ -337,6 +337,51 @@ describe("createSandboxExecutor", () => {
     );
   });
 
+  it("shares in-flight sandbox setup across parallel executor initialization", async () => {
+    const freshSandbox = makeSandbox("sbx_parallel_boot");
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    let markPrepareStarted: () => void = () => {};
+    let releasePrepare: () => void = () => {};
+    const prepareStarted = new Promise<void>((resolve) => {
+      markPrepareStarted = resolve;
+    });
+    const prepareReleased = new Promise<void>((resolve) => {
+      releasePrepare = resolve;
+    });
+    const onSandboxPrepare = vi.fn(async () => {
+      markPrepareStarted();
+      await prepareReleased;
+    });
+    const manager = createSandboxSessionManager({
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    const first = manager.ensureToolExecutors();
+    await prepareStarted;
+    const second = manager.ensureToolExecutors();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(onSandboxPrepare).toHaveBeenCalledTimes(1);
+
+    releasePrepare();
+    const [firstExecutors, secondExecutors] = await Promise.all([
+      first,
+      second,
+    ]);
+
+    expect(firstExecutors).toBe(secondExecutors);
+    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+  });
+
   it("reports acquired sandbox metadata when restoring from a sandbox id hint", async () => {
     const restoredSandbox = makeSandbox("sbx_restored");
     const onSandboxAcquired = vi.fn();
