@@ -33,4 +33,34 @@ describe("agent dispatch validation", () => {
       }),
     ).toThrow("Dispatch metadata key exceeds the maximum length");
   });
+
+  it("requires delegated credential subjects to target direct Slack conversations", () => {
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      }),
+    ).toThrow(
+      "Dispatch credentialSubject requires a private direct Slack destination",
+    );
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        destination: {
+          ...validOptions.destination,
+          channelId: "D123",
+        },
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      }),
+    ).not.toThrow();
+  });
 });

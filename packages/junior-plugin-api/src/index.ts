@@ -101,6 +101,11 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
 }
 
 export interface DispatchOptions {
+  credentialSubject?: {
+    type: "user";
+    userId: string;
+    allowedWhen: "private-direct-conversation";
+  };
   destination: {
     platform: "slack";
     teamId: string;

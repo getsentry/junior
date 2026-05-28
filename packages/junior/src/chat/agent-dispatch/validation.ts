@@ -1,4 +1,5 @@
 import type { DispatchOptions } from "./types";
+import { isDmChannel } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
 
 const MAX_DISPATCH_INPUT_LENGTH = 32_000;
@@ -31,6 +32,26 @@ export function validateDispatchOptions(options: DispatchOptions): void {
   }
   if (options.input.length > MAX_DISPATCH_INPUT_LENGTH) {
     throw new Error("Dispatch input exceeds the maximum length");
+  }
+  if (options.credentialSubject) {
+    if (options.credentialSubject.type !== "user") {
+      throw new Error("Dispatch credentialSubject type must be user");
+    }
+    if (!options.credentialSubject.userId.trim()) {
+      throw new Error("Dispatch credentialSubject userId is required");
+    }
+    if (
+      options.credentialSubject.allowedWhen !== "private-direct-conversation"
+    ) {
+      throw new Error(
+        "Dispatch credentialSubject allowedWhen must be private-direct-conversation",
+      );
+    }
+    if (!isDmChannel(options.destination.channelId)) {
+      throw new Error(
+        "Dispatch credentialSubject requires a private direct Slack destination",
+      );
+    }
   }
   const metadata = options.metadata ?? {};
   const entries = Object.entries(metadata);

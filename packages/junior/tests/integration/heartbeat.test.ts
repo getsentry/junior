@@ -455,6 +455,51 @@ describe("trusted plugin heartbeat", () => {
     });
   });
 
+  it("carries scheduled task credential subjects into dispatch records", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setAgentPlugins([createSchedulerPlugin()]);
+    const store = createStateSchedulerStore();
+    await store.saveTask(
+      createTask({
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      }),
+    );
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+    );
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+
+    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
+    expect(running?.dispatchId).toEqual(expect.any(String));
+    await expect(
+      getDispatchRecord(running!.dispatchId!),
+    ).resolves.toMatchObject({
+      credentialSubject: {
+        type: "user",
+        userId: "U123",
+        allowedWhen: "private-direct-conversation",
+      },
+    });
+  });
+
   it("fails scheduled runs when their dispatch record disappeared", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });

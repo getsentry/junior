@@ -167,6 +167,60 @@ describe("agent dispatch runner", () => {
     });
   });
 
+  it("passes delegated credential subjects without changing the requester actor", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "D123",
+        ts: "1700000000.000002",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-delegated",
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        input: "Run the scheduled task.",
+      },
+    });
+    const generateAssistantReply = vi.fn(async (_input, context) => {
+      expect(context.requester).toBeUndefined();
+      expect(context.credentialSubject).toEqual({
+        type: "user",
+        userId: "U123",
+        allowedWhen: "private-direct-conversation",
+      });
+      expect(context.authorizationFlowMode).toBe("disabled");
+      expect(context.correlation).toMatchObject({
+        actorType: "system",
+        actorId: "scheduler",
+      });
+      return createReply();
+    });
+
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { generateAssistantReply },
+    );
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000002",
+    });
+  });
+
   it("does not burn an attempt when the destination conversation is busy", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",

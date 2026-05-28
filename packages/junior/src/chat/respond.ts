@@ -119,6 +119,11 @@ function sleep(ms: number): Promise<void> {
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
+  credentialSubject?: {
+    type: "user";
+    userId: string;
+    allowedWhen: "private-direct-conversation";
+  };
   requester?: {
     userId?: string;
     userName?: string;
@@ -460,7 +465,10 @@ export async function generateAssistantReply(
       ...persistedConfigurationValues,
     };
     // ── Sandbox ──────────────────────────────────────────────────────
-    const requesterId = context.requester?.userId;
+    const credentialRequesterId =
+      context.credentialSubject?.type === "user"
+        ? context.credentialSubject.userId
+        : context.requester?.userId;
     const userTokenStore = createUserTokenStore();
     const agentPluginHooks = createAgentPluginHookRunner({
       requester: context.requester,
@@ -470,9 +478,9 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      credentialEgress: requesterId
+      credentialEgress: credentialRequesterId
         ? {
-            requesterId,
+            requesterId: credentialRequesterId,
           }
         : undefined,
       agentHooks: agentPluginHooks,
@@ -633,7 +641,7 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: context.requester?.userId,
+        requesterId: credentialRequesterId,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
@@ -652,7 +660,7 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: context.requester?.userId,
+        requesterId: credentialRequesterId,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,

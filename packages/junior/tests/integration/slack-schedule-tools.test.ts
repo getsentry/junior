@@ -80,6 +80,11 @@ describe("Slack schedule tools", () => {
     expect(created).toMatchObject({
       ok: true,
       task: {
+        conversation_access: {
+          audience: "channel",
+          visibility: "public",
+        },
+        credential_subject: null,
         status: "active",
         title: "Weekly issue digest",
         recurrence: {
@@ -163,7 +168,7 @@ describe("Slack schedule tools", () => {
         objective: "Remind David to wash his hands.",
         instructions: ["Remind David to wash his hands."],
         schedule_description: "In 1 minute",
-        next_run_at_text: "in 1 minute",
+        next_run_at_iso: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -192,7 +197,7 @@ describe("Slack schedule tools", () => {
         objective: "Remind David to wash his hands.",
         instructions: ["Remind David to wash his hands."],
         schedule_description: "In 1 minute",
-        next_run_at_text: "in 1 minute",
+        next_run_at_iso: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -209,6 +214,15 @@ describe("Slack schedule tools", () => {
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
+        conversationAccess: {
+          audience: "direct",
+          visibility: "private",
+        },
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
         destination: { channelId: "D123" },
         nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
         status: "active",
@@ -231,7 +245,7 @@ describe("Slack schedule tools", () => {
         objective: "Remind David to drink water.",
         instructions: ["Remind David to drink water."],
         schedule_description: "In 1 minute",
-        next_run_at_text: "in 1 minute",
+        next_run_at_iso: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -262,23 +276,21 @@ describe("Slack schedule tools", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error:
-        'Provide next_run_at_iso as a valid ISO timestamp or next_run_at_text such as "tomorrow at 9am".',
+      error: "Provide next_run_at_iso as a valid ISO timestamp.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
-  it("rejects conflicting exact and relative next run inputs", async () => {
+  it("rejects missing next run timestamps with a tool error", async () => {
     const result = await createTask(createContext(), {
-      next_run_at_iso: "2026-05-25T16:00:00.000Z",
-      next_run_at_text: "tomorrow at 9am",
+      next_run_at_iso: undefined,
     });
 
     expect(result).toMatchObject({
       ok: false,
-      error: "Provide only one of next_run_at_iso or next_run_at_text.",
+      error: "Provide next_run_at_iso as a valid ISO timestamp.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -455,13 +467,39 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("creates one-off tasks from tomorrow text using the default Pacific timezone", async () => {
+  it("does not delegate user credentials in private group conversations", async () => {
+    const result = await createTask(createContext({ channelId: "G123" }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        conversation_access: {
+          audience: "group",
+          visibility: "private",
+        },
+        credential_subject: null,
+      },
+    });
+    const tasks =
+      await createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID);
+    expect(tasks).toMatchObject([
+      {
+        conversationAccess: {
+          audience: "group",
+          visibility: "private",
+        },
+        destination: { channelId: "G123" },
+      },
+    ]);
+    expect(tasks[0]?.credentialSubject).toBeUndefined();
+  });
+
+  it("creates one-off tasks with an exact timestamp using the default Pacific timezone", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      next_run_at_iso: undefined,
-      next_run_at_text: "tomorrow at 9am",
+      next_run_at_iso: "2026-05-26T16:00:00.000Z",
       recurrence_frequency: undefined,
       recurrence_weekdays: undefined,
       timezone: undefined,
@@ -483,8 +521,7 @@ describe("Slack schedule tools", () => {
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      next_run_at_iso: undefined,
-      next_run_at_text: "tomorrow at 9am",
+      next_run_at_iso: "2026-05-26T13:00:00.000Z",
       recurrence_frequency: undefined,
       recurrence_weekdays: undefined,
       timezone: undefined,

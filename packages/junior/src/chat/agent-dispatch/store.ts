@@ -198,6 +198,9 @@ export async function createOrGetDispatch(args: {
       actor: { type: "system", id: args.plugin },
       attempt: 0,
       createdAtMs: args.nowMs,
+      ...(args.options.credentialSubject
+        ? { credentialSubject: args.options.credentialSubject }
+        : {}),
       destination: args.options.destination,
       id,
       idempotencyKey: args.options.idempotencyKey,

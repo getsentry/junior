@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import {
   buildCalendarRecurrence,
-  parseRelativeScheduleTimestamp,
   parseScheduleTimestamp,
 } from "@/chat/scheduler/cadence";
 import { createStateSchedulerStore } from "@/chat/scheduler/store";
@@ -10,12 +9,14 @@ import { SCHEDULED_TASK_SYSTEM_ACTOR } from "@/chat/scheduler/types";
 import type {
   ScheduledCalendarFrequency,
   ScheduledTask,
+  ScheduledTaskConversationAccess,
+  ScheduledTaskCredentialSubject,
   ScheduledTaskDestination,
   ScheduledTaskPrincipal,
   ScheduledTaskRecurrence,
   ScheduledTaskStatus,
 } from "@/chat/scheduler/types";
-import { normalizeSlackConversationId } from "@/chat/slack/client";
+import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { isSlackTeamId } from "@/chat/slack/ids";
 import { tool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -90,6 +91,38 @@ function requireRequester(
   };
 }
 
+function getConversationAccess(
+  destination: ScheduledTaskDestination,
+): ScheduledTaskConversationAccess {
+  if (isDmChannel(destination.channelId)) {
+    return { audience: "direct", visibility: "private" };
+  }
+  if (destination.channelId.startsWith("G")) {
+    return { audience: "group", visibility: "private" };
+  }
+  if (destination.channelId.startsWith("C")) {
+    return { audience: "channel", visibility: "public" };
+  }
+  return { audience: "channel", visibility: "unknown" };
+}
+
+function getCredentialSubject(args: {
+  access: ScheduledTaskConversationAccess;
+  requester: ScheduledTaskPrincipal;
+}): ScheduledTaskCredentialSubject | undefined {
+  if (
+    args.access.audience !== "direct" ||
+    args.access.visibility !== "private"
+  ) {
+    return undefined;
+  }
+  return {
+    type: "user",
+    userId: args.requester.slackUserId,
+    allowedWhen: "private-direct-conversation",
+  };
+}
+
 function sameDestination(
   task: ScheduledTask,
   destination: ScheduledTaskDestination,
@@ -153,6 +186,13 @@ function compactTask(task: ScheduledTask): Record<string, unknown> {
     next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
+    conversation_access: task.conversationAccess ?? null,
+    credential_subject: task.credentialSubject
+      ? {
+          type: task.credentialSubject.type,
+          allowed_when: task.credentialSubject.allowedWhen,
+        }
+      : null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,
@@ -215,8 +255,7 @@ function buildRecurrence(args: {
   if (!args.nextRunAtMs) {
     return {
       ok: false,
-      error:
-        "Recurring scheduled tasks require next_run_at_iso or next_run_at_text.",
+      error: "Recurring scheduled tasks require next_run_at_iso.",
     };
   }
 
@@ -265,7 +304,6 @@ function validateRecurringFrequencyLimit(input: {
 }
 
 function shouldRebuildRecurrence(input: {
-  next_run_at_text?: string;
   next_run_at_iso?: string;
   recurrence_frequency?: unknown;
   recurrence_interval?: number;
@@ -273,7 +311,6 @@ function shouldRebuildRecurrence(input: {
   timezone?: string;
 }): boolean {
   return (
-    input.next_run_at_text !== undefined ||
     input.next_run_at_iso !== undefined ||
     input.recurrence_frequency !== undefined ||
     input.recurrence_interval !== undefined ||
@@ -295,36 +332,17 @@ function isValidTimeZone(timezone: string): boolean {
   }
 }
 
-function parseNextRunAtMs(args: {
-  input: {
-    next_run_at_iso?: string;
-    next_run_at_text?: string;
-  };
-  nowMs: number;
-  timezone: string;
-}): number | undefined {
+function parseNextRunAtMs(
+  nextRunAtIso: string | undefined,
+): number | undefined {
   try {
-    if (args.input.next_run_at_iso) {
-      return parseScheduleTimestamp(args.input.next_run_at_iso);
-    }
-    if (args.input.next_run_at_text) {
-      return parseRelativeScheduleTimestamp({
-        nowMs: args.nowMs,
-        text: args.input.next_run_at_text,
-        timezone: args.timezone,
-      });
+    if (nextRunAtIso) {
+      return parseScheduleTimestamp(nextRunAtIso);
     }
   } catch {
     return undefined;
   }
   return undefined;
-}
-
-function hasConflictingNextRunInputs(input: {
-  next_run_at_iso?: string;
-  next_run_at_text?: string;
-}): boolean {
-  return Boolean(input.next_run_at_iso && input.next_run_at_text);
 }
 
 /** Create a tool that stores a scheduled task for the active Slack context. */
@@ -339,7 +357,7 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       "When the user's scheduling intent is clear, create the task immediately without asking for confirmation.",
       "Ask for confirmation only when the task contract, schedule, or active destination is ambiguous.",
       "Recurring tasks can run at most once per day; use only daily, weekly, monthly, or yearly recurrence frequencies.",
-      "Provide exactly one of next_run_at_iso or next_run_at_text; omit timezone to use the configured default.",
+      "Provide next_run_at_iso as an exact ISO timestamp computed from the user's requested schedule.",
       "Use recurrence_frequency only for recurring schedules.",
     ],
     inputSchema: Type.Object({
@@ -359,14 +377,6 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
           minLength: 1,
           description:
             "Exact next run time as an ISO timestamp, computed from the user's requested schedule.",
-        }),
-      ),
-      next_run_at_text: Type.Optional(
-        Type.String({
-          minLength: 1,
-          maxLength: 120,
-          description:
-            'Supported relative one-off text such as "tomorrow at 9am" in the supplied timezone.',
         }),
       ),
       recurrence_frequency: Type.Optional(
@@ -417,12 +427,6 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
 
       const nowMs = Date.now();
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
-      if (hasConflictingNextRunInputs(input)) {
-        return {
-          ok: false,
-          error: "Provide only one of next_run_at_iso or next_run_at_text.",
-        };
-      }
       const frequencyLimit = validateRecurringFrequencyLimit(input);
       if (!frequencyLimit.ok) {
         return frequencyLimit;
@@ -433,16 +437,11 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
           error: "timezone must be a valid IANA time zone.",
         };
       }
-      const nextRunAtMs = parseNextRunAtMs({
-        input,
-        nowMs,
-        timezone,
-      });
+      const nextRunAtMs = parseNextRunAtMs(input.next_run_at_iso);
       if (!nextRunAtMs) {
         return {
           ok: false,
-          error:
-            'Provide next_run_at_iso as a valid ISO timestamp or next_run_at_text such as "tomorrow at 9am".',
+          error: "Provide next_run_at_iso as a valid ISO timestamp.",
         };
       }
       const recurrence = buildRecurrence({
@@ -453,12 +452,19 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       if (!recurrence.ok) {
         return recurrence;
       }
+      const conversationAccess = getConversationAccess(destination.destination);
+      const credentialSubject = getCredentialSubject({
+        access: conversationAccess,
+        requester: requester.requester,
+      });
 
       const task: ScheduledTask = {
         id: buildTaskId(),
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
         createdBy: requester.requester,
+        conversationAccess,
+        ...(credentialSubject ? { credentialSubject } : {}),
         destination: destination.destination,
         executionActor: SCHEDULED_TASK_SYSTEM_ACTOR,
         nextRunAtMs,
@@ -532,7 +538,7 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
       ACTIVE_TASK_ID_GUIDELINE,
       ACTIVE_DESTINATION_GUIDELINE,
       "Do not move scheduled tasks across conversations.",
-      "Provide exactly one of next_run_at_iso or next_run_at_text when changing the next run.",
+      "Provide next_run_at_iso as an exact ISO timestamp when changing the next run.",
       "Set status to active, paused, or blocked when the user asks to resume, pause, or block a task.",
     ],
     inputSchema: Type.Object({
@@ -553,9 +559,6 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
       ),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       next_run_at_iso: Type.Optional(Type.String({ minLength: 1 })),
-      next_run_at_text: Type.Optional(
-        Type.String({ minLength: 1, maxLength: 120 }),
-      ),
       recurrence_frequency: Type.Optional(
         Type.Union([
           Type.Literal("daily"),
@@ -597,12 +600,6 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
       if (!lookup.ok) return lookup;
 
       const timezone = input.timezone ?? lookup.task.schedule.timezone;
-      if (hasConflictingNextRunInputs(input)) {
-        return {
-          ok: false,
-          error: "Provide only one of next_run_at_iso or next_run_at_text.",
-        };
-      }
       const frequencyLimit = validateRecurringFrequencyLimit(input);
       if (!frequencyLimit.ok) {
         return frequencyLimit;
@@ -613,20 +610,14 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
           error: "timezone must be a valid IANA time zone.",
         };
       }
-      const parsedNextRunAtMs = parseNextRunAtMs({
-        input,
-        nowMs: Date.now(),
-        timezone,
-      });
-      const nextRunAtMs =
-        input.next_run_at_iso || input.next_run_at_text
-          ? parsedNextRunAtMs
-          : lookup.task.nextRunAtMs;
-      if ((input.next_run_at_iso || input.next_run_at_text) && !nextRunAtMs) {
+      const parsedNextRunAtMs = parseNextRunAtMs(input.next_run_at_iso);
+      const nextRunAtMs = input.next_run_at_iso
+        ? parsedNextRunAtMs
+        : lookup.task.nextRunAtMs;
+      if (input.next_run_at_iso && !nextRunAtMs) {
         return {
           ok: false,
-          error:
-            'Provide next_run_at_iso as a valid ISO timestamp or next_run_at_text such as "tomorrow at 9am".',
+          error: "Provide next_run_at_iso as a valid ISO timestamp.",
         };
       }
 
@@ -641,7 +632,7 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
         return {
           ok: false,
           error:
-            "Active scheduled tasks require next_run_at_iso or next_run_at_text when no next run is stored.",
+            "Active scheduled tasks require next_run_at_iso when no next run is stored.",
         };
       }
       const recurrence = shouldRebuildRecurrence(input)

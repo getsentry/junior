@@ -269,6 +269,9 @@ export function createSchedulerPlugin() {
           try {
             dispatch = await ctx.agent.dispatch({
               idempotencyKey: run.id,
+              ...(task.credentialSubject
+                ? { credentialSubject: task.credentialSubject }
+                : {}),
               destination: task.destination,
               input: prompt,
               metadata: {

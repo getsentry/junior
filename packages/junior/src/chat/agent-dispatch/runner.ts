@@ -271,6 +271,9 @@ export async function runAgentDispatchSlice(
 
     let reply = await generateAssistantReply(dispatch.input, {
       authorizationFlowMode: "disabled",
+      ...(dispatch.credentialSubject
+        ? { credentialSubject: dispatch.credentialSubject }
+        : {}),
       configuration,
       channelConfiguration,
       conversationContext,

@@ -7,6 +7,7 @@
 
 ## Changelog
 
+- 2026-05-27: Added the private direct conversation credential-subject exception for user-authenticated scheduled tools.
 - 2026-05-27: Added stale missed-run policy: old occurrences are skipped and consumed or advanced, not dispatched late and not blocked for human review.
 - 2026-05-27: Added the recurring schedule frequency limit: at most once per day.
 - 2026-05-27: Changed Slack authoring to auto-create clear scheduled work and reserve confirmation for ambiguous requests.
@@ -52,6 +53,8 @@ The stored task must include:
 - expected output
 - creator metadata
 - execution actor metadata
+- conversation access metadata
+- optional credential subject for private direct conversations
 - destination surface
 - schedule and timezone
 - current status
@@ -63,6 +66,8 @@ The original user utterance may be retained for audit/debugging, but it must not
 
 Slack destinations are conversations, not existing threads. A scheduled task may target the active Slack DM or channel, and scheduled output posts as a new message in that conversation.
 
+The scheduler must distinguish conversation audience from visibility. A private direct conversation may use explicit user-delegated credentials for scheduled tools; a private group conversation or private channel is still multi-user and must not implicitly use one user's credentials. Unknown privacy or audience must fail closed for delegated user credentials.
+
 Creator metadata records the user who confirmed the task so Junior can audit changes and privately notify someone when the task needs attention. The creator is not an owner, is not an authorization principal, and is not the actor for future scheduled runs.
 
 Task management is controlled only by access to the destination conversation window. If a user can post or trigger Junior in that Slack DM or channel context, they can manage scheduled tasks for that same context. The scheduler must not add creator-only, owner-only, workspace-admin-only, or channel-admin-only gates for V1 management.
@@ -71,6 +76,7 @@ Task management is controlled only by access to the destination conversation win
 
 Every active task must have an exact `nextRunAtMs` instant. For one-off tasks, that instant is the complete schedule.
 Slack authoring may accept supported relative one-off phrases such as "tomorrow at 9am"; these must be resolved to an exact `nextRunAtMs` before storage. When a user does not provide a timezone, scheduler authoring defaults to `America/Los_Angeles` unless `JUNIOR_TIMEZONE` overrides it.
+Scheduler tools accept exact ISO run timestamps only. Natural-language or relative time belongs in the agent's interpretation step before it calls the tool, not in the storage tool contract.
 
 Recurring tasks must also store a small calendar recurrence rule:
 
@@ -171,25 +177,33 @@ Scheduled tasks must distinguish these V1 identities:
 - **Conversation manager:** any user who can post or trigger Junior in the destination Slack conversation window. This controls who may list, pause, resume, delete, or run-now the task for that same conversation.
 - **Execution actor:** the actor used for the autonomous scheduled run. For scheduled tasks, this is a Junior system actor, not a Slack user.
 
-Scheduled runs must not pass the creator as the runtime requester or treat the creator as if they were present and acting during the run. Audit and correlation metadata should include both the system execution actor and creator metadata, but auth decisions must use the execution actor.
+Scheduled runs must not pass the creator as the runtime requester or treat the creator as if they were present and acting during the run. Audit and correlation metadata should include both the system execution actor and creator metadata. Auth decisions must use the execution actor unless the task stores an explicit credential subject allowed by the private direct conversation exception below.
 
-V1 scheduled execution has no user requester. User OAuth tokens cannot be used merely because that user created the task. Authorization flows are disabled during scheduled runs, and authorization links must not be posted publicly. If no usable non-user credential exists, Junior must block the run and privately notify the creator when possible.
+V1 scheduled execution has no user requester. User OAuth tokens cannot be used merely because that user created the task. Authorization flows are disabled during scheduled runs, and authorization links must not be posted publicly. If no usable system credential or explicit credential subject exists, Junior must block the run and privately notify the creator when possible.
+
+Exception: a scheduled task created in a private direct conversation may store an explicit credential subject for the requester who created the task. This subject is not the execution actor and does not make the creator the requester for the scheduled run. It is only an auth subject that lets credential resolution use that user's already-connected provider credentials during autonomous execution. The exception requires both:
+
+- `conversationAccess.audience = direct`
+- `conversationAccess.visibility = private`
+
+Private group conversations, private channels, public channels, and unknown conversation access must not store or use user credential subjects for scheduled runs.
 
 Future actor-aware auth may add an explicit credential subject: an account, grant, or service principal whose provider credentials may be used by scheduled tools. Future credential subjects may include:
 
 - system-owned credentials available to the scheduled-run actor
-- an explicitly recorded delegated credential grant in the task contract
+- an explicitly recorded delegated credential subject in the task contract
 - a supported service principal named by the task contract
 
-Those future credential subjects must be explicit and separate from creator metadata. Until that support exists, scheduled runs may use only credentials already available to the system execution actor.
+Credential subjects must be explicit and separate from creator metadata.
 
 ### Implementation Plan
 
 1. Introduce a small actor contract shared by runtime, scheduler, and auth boundaries. It should represent user actors, system actors, and future service actors without leaking Slack SDK types.
 2. Keep `createdBy` as creator metadata and add an execution actor field to scheduled tasks. New scheduled tasks should default to a system actor such as `scheduled-task`; existing tasks may be read with that default until migrated.
-3. Update the scheduled runner to enter the agent runtime with the system actor and no user requester. Creator details may remain in run context and notification metadata, but not in the actor slot.
-4. Update auth and credential resolution so V1 scheduled runs cannot use requester-scoped OAuth or start interactive auth flows. Missing non-user credentials should produce a blocked run plus private notification.
-5. Update telemetry, tests, and eval fixtures so scheduled execution assertions refer to creator metadata and execution actor separately.
+3. Add conversation access metadata with separate audience and visibility fields. Slack direct-message destinations populate `direct/private`; private channels or group conversations are not eligible for delegated user credentials.
+4. Update the scheduled runner to enter the agent runtime with the system actor and no user requester. Creator details may remain in run context and notification metadata, but not in the actor slot.
+5. Update auth and credential resolution so scheduled runs can use an explicit private-direct credential subject but cannot start interactive auth flows. Missing credentials should produce a blocked run plus private notification.
+6. Update telemetry, tests, and eval fixtures so scheduled execution assertions refer to creator metadata, execution actor, and credential subject separately.
 
 ### Slack UX
 
@@ -250,6 +264,8 @@ Use integration tests for runtime/storage contracts that do not depend on model 
 - blocked auth path for missing non-user credentials
 - scheduled runner passes a system actor rather than the creator as requester
 - user OAuth tokens are not used implicitly for scheduled tasks
+- private direct scheduled tasks may carry an explicit user credential subject
+- private group/channel scheduled tasks do not carry user credential subjects
 - dispatch to Slack delivery
 - destination-scoped list output
 - conversation-access management for pause, resume, delete, and run-now

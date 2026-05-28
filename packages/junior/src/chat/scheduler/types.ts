@@ -30,6 +30,17 @@ export interface ScheduledTaskDestination {
   channelId: string;
 }
 
+export interface ScheduledTaskConversationAccess {
+  audience: "direct" | "group" | "channel";
+  visibility: "private" | "public" | "unknown";
+}
+
+export interface ScheduledTaskCredentialSubject {
+  type: "user";
+  userId: string;
+  allowedWhen: "private-direct-conversation";
+}
+
 export type ScheduledCalendarFrequency =
   | "daily"
   | "weekly"
@@ -71,6 +82,8 @@ export interface ScheduledTask {
   id: string;
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
+  conversationAccess?: ScheduledTaskConversationAccess;
+  credentialSubject?: ScheduledTaskCredentialSubject;
   destination: ScheduledTaskDestination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;

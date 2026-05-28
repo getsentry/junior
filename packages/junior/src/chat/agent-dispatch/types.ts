@@ -17,7 +17,14 @@ export interface DispatchDestination {
   channelId: string;
 }
 
+export interface DispatchCredentialSubject {
+  type: "user";
+  userId: string;
+  allowedWhen: "private-direct-conversation";
+}
+
 export interface DispatchOptions {
+  credentialSubject?: DispatchCredentialSubject;
   destination: DispatchDestination;
   idempotencyKey: string;
   input: string;
@@ -28,6 +35,7 @@ export interface DispatchRecord {
   actor: DispatchActor;
   attempt: number;
   createdAtMs: number;
+  credentialSubject?: DispatchCredentialSubject;
   destination: DispatchDestination;
   errorMessage?: string;
   id: string;
