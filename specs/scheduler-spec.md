@@ -47,10 +47,7 @@ A scheduled task is not a stored Slack message. It is a normalized task contract
 
 The stored task must include:
 
-- task title
-- objective
-- instructions
-- expected output
+- task text
 - creator metadata
 - execution actor metadata
 - conversation access metadata
@@ -210,13 +207,13 @@ Credential subjects must be explicit and separate from creator metadata.
 Slack authoring creates clear scheduled-work requests immediately for the active destination:
 
 1. User asks Junior to schedule work.
-2. Junior normalizes the task: title, objective, instructions, expected output, cadence, timezone, destination, and next run.
-3. If the task contract, schedule, and active destination are clear, Junior creates the task immediately.
-4. If the task contract, schedule, or active destination is ambiguous, Junior asks for confirmation or clarification before creating the task.
+2. Junior normalizes the task text, cadence, timezone, destination, and next run.
+3. If the task text, schedule, and active destination are clear, Junior creates the task immediately.
+4. If the task text, schedule, or active destination is ambiguous, Junior asks for confirmation or clarification before creating the task.
 5. Junior replies with the task id, destination, schedule, timezone, and next run after creation.
 6. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
 
-Confirmation should show the executable task contract, not only echo the user's text.
+Confirmation should show the executable task text, not only echo the user's text.
 Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
 Task creation must use the current active Slack conversation as the destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
 List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.

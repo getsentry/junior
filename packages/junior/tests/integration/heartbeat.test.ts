@@ -51,9 +51,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     },
     status: "active",
     task: {
-      title: "Digest",
-      objective: "Post a digest.",
-      instructions: ["Summarize the latest state."],
+      text: "Post a digest. Summarize the latest state.",
     },
     updatedAtMs: nextRunAtMs,
     version: 1,
@@ -558,9 +556,7 @@ describe("trusted plugin heartbeat", () => {
       ...createTask(),
       id: "sched_plugin_malformed",
       task: {
-        title: "Digest",
-        objective: undefined,
-        instructions: ["Summarize the latest state."],
+        text: undefined,
       } as unknown as ScheduledTask["task"],
     });
 

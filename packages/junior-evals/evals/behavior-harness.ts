@@ -335,15 +335,13 @@ function toEvalToolInvocation(input: {
   if (input.toolName.startsWith("slackSchedule")) {
     invocation.arguments = Object.fromEntries(
       [
-        "title",
         "task_id",
-        "objective",
-        "schedule_description",
+        "task",
+        "schedule",
+        "recurring",
         "timezone",
-        "next_run_at_iso",
-        "recurrence_frequency",
-        "recurrence_interval",
-        "recurrence_weekdays",
+        "next_run_at",
+        "recurrence",
         "status",
       ]
         .filter((key) => key in input.params)

@@ -70,12 +70,7 @@ export interface ScheduledTaskSchedule {
 }
 
 export interface ScheduledTaskSpec {
-  title: string;
-  objective: string;
-  instructions: string[];
-  expectedOutput?: string;
-  constraints?: string[];
-  sourceContext?: string[];
+  text: string;
 }
 
 export interface ScheduledTask {

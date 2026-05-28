@@ -9,21 +9,11 @@ const EXECUTION_RULES = [
   "- Execute as the scheduled-task system actor; creator metadata is audit context, not an active user identity.",
   "- Complete the task without asking follow-up questions unless access, approval, or required input is missing.",
   "- Use the available tools and skills that are relevant to the task contract.",
+  "- Do not create, edit, or discuss scheduling during this run; the stored schedule already fired.",
+  "- For reminder tasks, deliver the reminder message now instead of explaining how reminders or delayed posts work.",
   "- If blocked, report the specific missing provider, permission, configuration, or input.",
   "- Keep the final result shaped for the configured destination audience.",
 ];
-
-function renderList(tag: string, values: string[] | undefined): string[] {
-  const entries = (values ?? []).map((value) => value.trim()).filter(Boolean);
-  if (entries.length === 0) {
-    return [`<${tag}>`, "</" + tag + ">"];
-  }
-  return [
-    `<${tag}>`,
-    ...entries.map((value) => `- ${escapeXml(value)}`),
-    `</${tag}>`,
-  ];
-}
 
 function renderOptionalLine(name: string, value: string | undefined): string[] {
   return value?.trim() ? [`- ${name}: ${escapeXml(value.trim())}`] : [];
@@ -39,6 +29,9 @@ export function buildScheduledTaskRunPrompt(args: {
   const destination = task.destination;
   const creator = task.createdBy;
   const executionActor = task.executionActor ?? SCHEDULED_TASK_SYSTEM_ACTOR;
+  if (!task.task.text?.trim()) {
+    throw new Error("Scheduled task text is required");
+  }
 
   return [
     "<scheduled-task-run>",
@@ -46,16 +39,9 @@ export function buildScheduledTaskRunPrompt(args: {
     "",
     "<scheduled-task>",
     `- id: ${escapeXml(task.id)}`,
-    `- title: ${escapeXml(task.task.title)}`,
-    `- objective: ${escapeXml(task.task.objective)}`,
-    ...renderOptionalLine("expected_output", task.task.expectedOutput),
-    "<instructions>",
-    ...task.task.instructions.map(
-      (instruction) => `- ${escapeXml(instruction)}`,
-    ),
-    "</instructions>",
-    ...renderList("constraints", task.task.constraints),
-    ...renderList("source-context", task.task.sourceContext),
+    "<task-text>",
+    escapeXml(task.task.text),
+    "</task-text>",
     "</scheduled-task>",
     "",
     "<run-context>",

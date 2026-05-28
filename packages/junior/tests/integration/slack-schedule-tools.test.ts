@@ -51,15 +51,12 @@ async function createTask(
 ) {
   const tool = createSlackScheduleCreateTaskTool(context);
   return await executeTool(tool, {
-    title: "Weekly issue digest",
-    objective: "Summarize open scheduler issues.",
-    instructions: ["Find open scheduler issues", "Post a concise summary"],
-    expected_output: "A short Slack digest",
-    schedule_description: "Every Monday at 9am",
+    task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+    schedule: "Every Monday at 9am",
+    recurring: true,
     timezone: "America/Los_Angeles",
-    next_run_at_iso: "2026-05-25T16:00:00.000Z",
-    recurrence_frequency: "weekly",
-    recurrence_weekdays: [1],
+    next_run_at: "2026-05-25T16:00:00.000Z",
+    recurrence: { frequency: "weekly", weekdays: [1] },
     ...overrides,
   });
 }
@@ -86,7 +83,7 @@ describe("Slack schedule tools", () => {
         },
         credential_subject: null,
         status: "active",
-        title: "Weekly issue digest",
+        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         recurrence: {
           frequency: "weekly",
           interval: 1,
@@ -104,7 +101,7 @@ describe("Slack schedule tools", () => {
       ok: true,
       tasks: [
         {
-          title: "Weekly issue digest",
+          task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
           schedule: "Every Monday at 9am",
         },
       ],
@@ -120,7 +117,7 @@ describe("Slack schedule tools", () => {
       ok: true,
       tasks: [
         {
-          title: "Weekly issue digest",
+          task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
           schedule: "Every Monday at 9am",
         },
       ],
@@ -131,14 +128,12 @@ describe("Slack schedule tools", () => {
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(createContext()),
       {
-        title: "Weekly issue digest",
-        objective: "Summarize open scheduler issues.",
-        instructions: ["Find open scheduler issues", "Post a concise summary"],
-        schedule_description: "Every Monday at 9am",
+        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        schedule: "Every Monday at 9am",
+        recurring: true,
         timezone: "America/Los_Angeles",
-        next_run_at_iso: "2026-05-25T16:00:00.000Z",
-        recurrence_frequency: "weekly",
-        recurrence_weekdays: [1],
+        next_run_at: "2026-05-25T16:00:00.000Z",
+        recurrence: { frequency: "weekly", weekdays: [1] },
       },
     );
 
@@ -147,7 +142,7 @@ describe("Slack schedule tools", () => {
       task: {
         schedule: "Every Monday at 9am",
         status: "active",
-        title: "Weekly issue digest",
+        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
       },
     });
     await expect(
@@ -164,11 +159,10 @@ describe("Slack schedule tools", () => {
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),
       {
-        title: "Reminder",
-        objective: "Remind David to wash his hands.",
-        instructions: ["Remind David to wash his hands."],
-        schedule_description: "In 1 minute",
-        next_run_at_iso: "2026-05-27T00:25:23.000Z",
+        task: "Reminder: Remind David to wash his hands.",
+        schedule: "In 1 minute",
+        recurring: false,
+        next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -193,11 +187,10 @@ describe("Slack schedule tools", () => {
         }),
       ),
       {
-        title: "Wash hands reminder",
-        objective: "Remind David to wash his hands.",
-        instructions: ["Remind David to wash his hands."],
-        schedule_description: "In 1 minute",
-        next_run_at_iso: "2026-05-27T00:25:23.000Z",
+        task: "Wash hands reminder: Remind David to wash his hands.",
+        schedule: "In 1 minute",
+        recurring: false,
+        next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -207,7 +200,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
-        title: "Wash hands reminder",
+        task: "Wash hands reminder: Remind David to wash his hands.",
       },
     });
     await expect(
@@ -241,11 +234,10 @@ describe("Slack schedule tools", () => {
         }),
       ),
       {
-        title: "Drink water reminder",
-        objective: "Remind David to drink water.",
-        instructions: ["Remind David to drink water."],
-        schedule_description: "In 1 minute",
-        next_run_at_iso: "2026-05-27T00:25:23.000Z",
+        task: "Drink water reminder: Remind David to drink water.",
+        schedule: "In 1 minute",
+        recurring: false,
+        next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
 
@@ -255,7 +247,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
-        title: "Drink water reminder",
+        task: "Drink water reminder: Remind David to drink water.",
       },
     });
     await expect(
@@ -269,14 +261,42 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
+  it("rejects structurally contradictory one-off recurrence arguments", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-28T02:17:48.005Z"));
+
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(
+        createContext({
+          userText: "remind greg to drink water in 1m",
+        }),
+      ),
+      {
+        task: "Remind Greg to drink water.",
+        schedule: "In 1 minute",
+        recurring: false,
+        next_run_at: "2026-05-28T02:18:48.005Z",
+        recurrence: { frequency: "daily" },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "One-off scheduled tasks must not include recurrence fields.",
+    });
+    await expect(
+      createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
   it("rejects parseable non-ISO next run timestamps", async () => {
     const result = await createTask(createContext(), {
-      next_run_at_iso: "05/25/2026 09:00",
+      next_run_at: "05/25/2026 09:00",
     });
 
     expect(result).toMatchObject({
       ok: false,
-      error: "Provide next_run_at_iso as a valid ISO timestamp.",
+      error: "Provide next_run_at as a valid ISO timestamp.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -285,12 +305,12 @@ describe("Slack schedule tools", () => {
 
   it("rejects missing next run timestamps with a tool error", async () => {
     const result = await createTask(createContext(), {
-      next_run_at_iso: undefined,
+      next_run_at: undefined,
     });
 
     expect(result).toMatchObject({
       ok: false,
-      error: "Provide next_run_at_iso as a valid ISO timestamp.",
+      error: "Provide next_run_at as a valid ISO timestamp.",
     });
     await expect(
       createStateSchedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -299,8 +319,8 @@ describe("Slack schedule tools", () => {
 
   it("rejects recurring schedules that can run more than once per day", async () => {
     const result = await createTask(createContext(), {
-      schedule_description: "Every hour",
-      recurrence_frequency: "hourly",
+      schedule: "Every hour",
+      recurrence: { frequency: "hourly" },
     });
 
     expect(result).toMatchObject({
@@ -323,16 +343,17 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(context),
       {
         task_id: taskId,
-        title: "Daily scheduler digest",
-        schedule_description: "Every day at 9am",
-        recurrence_frequency: "daily",
+        task: "Daily scheduler digest: Summarize open scheduler issues.",
+        schedule: "Every day at 9am",
+        recurring: true,
+        recurrence: { frequency: "daily" },
       },
     );
     expect(updated).toMatchObject({
       ok: true,
       task: {
         id: taskId,
-        title: "Daily scheduler digest",
+        task: "Daily scheduler digest: Summarize open scheduler issues.",
         schedule: "Every day at 9am",
         version: 2,
       },
@@ -369,8 +390,9 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(context),
       {
         task_id: created.task.id,
-        schedule_description: "Every hour",
-        recurrence_frequency: "hourly",
+        schedule: "Every hour",
+        recurring: true,
+        recurrence: { frequency: "hourly" },
       },
     );
 
@@ -398,7 +420,7 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(createContext({ channelId: "C999" })),
       {
         task_id: created.task.id,
-        title: "Wrong channel edit",
+        task: "Wrong channel edit.",
       },
     );
 
@@ -427,7 +449,7 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(otherRequester),
       {
         task_id: created.task.id,
-        title: "Team-owned digest",
+        task: "Team-owned digest: Summarize open scheduler issues.",
       },
     );
     const deleted = await executeTool(
@@ -441,7 +463,7 @@ describe("Slack schedule tools", () => {
       ok: true,
       task: {
         id: created.task.id,
-        title: "Team-owned digest",
+        task: "Team-owned digest: Summarize open scheduler issues.",
         version: 2,
       },
     });
@@ -461,7 +483,7 @@ describe("Slack schedule tools", () => {
         id: "scheduled-task",
       },
       task: {
-        title: "Team-owned digest",
+        text: "Team-owned digest: Summarize open scheduler issues.",
       },
       version: 3,
     });
@@ -499,9 +521,10 @@ describe("Slack schedule tools", () => {
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      next_run_at_iso: "2026-05-26T16:00:00.000Z",
-      recurrence_frequency: undefined,
-      recurrence_weekdays: undefined,
+      schedule: "On May 26 at 9am",
+      recurring: false,
+      next_run_at: "2026-05-26T16:00:00.000Z",
+      recurrence: undefined,
       timezone: undefined,
     });
 
@@ -521,9 +544,10 @@ describe("Slack schedule tools", () => {
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 
     const created = await createTask(createContext(), {
-      next_run_at_iso: "2026-05-26T13:00:00.000Z",
-      recurrence_frequency: undefined,
-      recurrence_weekdays: undefined,
+      schedule: "On May 26 at 9am",
+      recurring: false,
+      next_run_at: "2026-05-26T13:00:00.000Z",
+      recurrence: undefined,
       timezone: undefined,
     });
 
@@ -556,7 +580,7 @@ describe("Slack schedule tools", () => {
   it("preserves a recurring task calendar anchor on content-only edits", async () => {
     const context = createContext();
     const created = (await createTask(context, {
-      recurrence_interval: 2,
+      recurrence: { frequency: "weekly", interval: 2, weekdays: [1] },
     })) as {
       task: { id: string };
     };
@@ -577,14 +601,14 @@ describe("Slack schedule tools", () => {
       createSlackScheduleUpdateTaskTool(context),
       {
         task_id: created.task.id,
-        title: "Renamed issue digest",
+        task: "Renamed issue digest: Summarize open scheduler issues.",
       },
     );
 
     expect(updated).toMatchObject({
       ok: true,
       task: {
-        title: "Renamed issue digest",
+        task: "Renamed issue digest: Summarize open scheduler issues.",
       },
     });
     await expect(store.getTask(created.task.id)).resolves.toMatchObject({

@@ -313,10 +313,6 @@ function normalizedText(value: string | undefined): string {
   return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 }
 
-function normalizedTexts(values: string[] | undefined): string[] {
-  return (values ?? []).map(normalizedText);
-}
-
 function taskDedupeFingerprint(task: ScheduledTask): string {
   return JSON.stringify({
     destination: task.destination,
@@ -336,14 +332,7 @@ function taskDedupeFingerprint(task: ScheduledTask): string {
         : null,
       timezone: task.schedule.timezone,
     },
-    task: {
-      constraints: normalizedTexts(task.task.constraints),
-      expectedOutput: normalizedText(task.task.expectedOutput),
-      instructions: normalizedTexts(task.task.instructions),
-      objective: normalizedText(task.task.objective),
-      sourceContext: normalizedTexts(task.task.sourceContext),
-      title: normalizedText(task.task.title),
-    },
+    task: normalizedText(task.task.text),
   });
 }
 

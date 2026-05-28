@@ -28,6 +28,32 @@ const ACTIVE_DESTINATION_GUIDELINE =
   "Only manage tasks for the active Slack DM or channel; never target an existing thread, another channel, or another user's DM.";
 const ACTIVE_TASK_ID_GUIDELINE =
   "Use only task IDs returned from this active destination.";
+const RECURRING_GUIDELINE =
+  "Set recurring=false for one-time requests like 'in 1 minute', 'tomorrow', or a specific date; set recurring=true only for requests that explicitly repeat.";
+
+const recurrenceInputSchema = Type.Object({
+  frequency: Type.Union([
+    Type.Literal("daily"),
+    Type.Literal("weekly"),
+    Type.Literal("monthly"),
+    Type.Literal("yearly"),
+  ]),
+  interval: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: 100,
+      description:
+        "Calendar interval. For example, 2 with weekly means every two weeks.",
+    }),
+  ),
+  weekdays: Type.Optional(
+    Type.Array(Type.Integer({ minimum: 0, maximum: 6 }), {
+      maxItems: 7,
+      description:
+        "For weekly schedules only. Sunday is 0, Monday is 1, Saturday is 6.",
+    }),
+  ),
+});
 
 function requireActiveDestination(
   context: ToolRuntimeContext,
@@ -168,8 +194,7 @@ function compactTask(task: ScheduledTask): Record<string, unknown> {
   return {
     id: task.id,
     status: task.status,
-    title: task.task.title,
-    objective: task.task.objective,
+    task: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
     recurrence: task.schedule.recurrence
@@ -233,21 +258,23 @@ function normalizeFrequency(
 function buildRecurrence(args: {
   existing?: ScheduledTaskRecurrence;
   input: {
-    recurrence_frequency?: unknown;
-    recurrence_interval?: number;
-    recurrence_weekdays?: number[];
+    recurrence?: {
+      frequency?: unknown;
+      interval?: number;
+      weekdays?: number[];
+    } | null;
   };
   nextRunAtMs: number | undefined;
   timezone: string;
 }):
   | { ok: true; recurrence?: ScheduledTaskRecurrence }
   | { ok: false; error: string } {
-  if (args.input.recurrence_frequency === null) {
+  if (args.input.recurrence === null) {
     return { ok: true, recurrence: undefined };
   }
 
   const frequency =
-    normalizeFrequency(args.input.recurrence_frequency) ??
+    normalizeFrequency(args.input.recurrence?.frequency) ??
     args.existing?.frequency;
   if (!frequency) {
     return { ok: true, recurrence: undefined };
@@ -255,7 +282,7 @@ function buildRecurrence(args: {
   if (!args.nextRunAtMs) {
     return {
       ok: false,
-      error: "Recurring scheduled tasks require next_run_at_iso.",
+      error: "Recurring scheduled tasks require next_run_at.",
     };
   }
 
@@ -264,12 +291,12 @@ function buildRecurrence(args: {
       ok: true,
       recurrence: buildCalendarRecurrence({
         frequency,
-        interval: args.input.recurrence_interval ?? args.existing?.interval,
+        interval: args.input.recurrence?.interval ?? args.existing?.interval,
         nextRunAtMs: args.nextRunAtMs,
         timezone: args.timezone,
         weekdays:
           frequency === "weekly"
-            ? (args.input.recurrence_weekdays ?? args.existing?.weekdays)
+            ? (args.input.recurrence?.weekdays ?? args.existing?.weekdays)
             : undefined,
       }),
     };
@@ -287,12 +314,13 @@ function buildRecurrence(args: {
 }
 
 function validateRecurringFrequencyLimit(input: {
-  recurrence_frequency?: unknown;
+  recurrence?: {
+    frequency?: unknown;
+  } | null;
 }): { ok: true } | { ok: false; error: string } {
   if (
-    input.recurrence_frequency !== undefined &&
-    input.recurrence_frequency !== null &&
-    !normalizeFrequency(input.recurrence_frequency)
+    input.recurrence?.frequency !== undefined &&
+    !normalizeFrequency(input.recurrence.frequency)
   ) {
     return {
       ok: false,
@@ -303,18 +331,52 @@ function validateRecurringFrequencyLimit(input: {
   return { ok: true };
 }
 
+function validateRecurringIntent(input: {
+  recurring?: unknown;
+  recurrence?: unknown;
+  existingRecurrence?: ScheduledTaskRecurrence;
+}): { ok: true } | { ok: false; error: string } {
+  if (typeof input.recurring !== "boolean") {
+    return {
+      ok: false,
+      error: "recurring must be true or false.",
+    };
+  }
+  if (
+    !input.recurring &&
+    input.recurrence !== undefined &&
+    input.recurrence !== null
+  ) {
+    return {
+      ok: false,
+      error: "One-off scheduled tasks must not include recurrence fields.",
+    };
+  }
+  if (input.recurring && input.recurrence === null) {
+    return {
+      ok: false,
+      error: "Recurring scheduled tasks require recurrence.",
+    };
+  }
+  if (input.recurring && !input.recurrence && !input.existingRecurrence) {
+    return {
+      ok: false,
+      error: "Recurring scheduled tasks require recurrence.",
+    };
+  }
+  return { ok: true };
+}
+
 function shouldRebuildRecurrence(input: {
-  next_run_at_iso?: string;
-  recurrence_frequency?: unknown;
-  recurrence_interval?: number;
-  recurrence_weekdays?: number[];
+  next_run_at?: string;
+  recurring?: unknown;
+  recurrence?: unknown;
   timezone?: string;
 }): boolean {
   return (
-    input.next_run_at_iso !== undefined ||
-    input.recurrence_frequency !== undefined ||
-    input.recurrence_interval !== undefined ||
-    input.recurrence_weekdays !== undefined ||
+    input.next_run_at !== undefined ||
+    input.recurring !== undefined ||
+    input.recurrence !== undefined ||
     input.timezone !== undefined
   );
 }
@@ -354,70 +416,26 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
     promptGuidelines: [
       "Use only when the user explicitly asks Junior to do work later or on a recurring cadence.",
       ACTIVE_DESTINATION_GUIDELINE,
+      RECURRING_GUIDELINE,
       "When the user's scheduling intent is clear, create the task immediately without asking for confirmation.",
       "Ask for confirmation only when the task contract, schedule, or active destination is ambiguous.",
       "Recurring tasks can run at most once per day; use only daily, weekly, monthly, or yearly recurrence frequencies.",
-      "Provide next_run_at_iso as an exact ISO timestamp computed from the user's requested schedule.",
-      "Use recurrence_frequency only for recurring schedules.",
+      "Provide next_run_at as an exact ISO timestamp computed from the user's requested schedule.",
+      "Provide recurrence only when recurring=true.",
     ],
     inputSchema: Type.Object({
-      title: Type.String({ minLength: 1, maxLength: 120 }),
-      objective: Type.String({ minLength: 1, maxLength: 1000 }),
-      instructions: Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-        minItems: 1,
-        maxItems: 12,
-      }),
-      expected_output: Type.Optional(
-        Type.String({ minLength: 1, maxLength: 1000 }),
-      ),
-      schedule_description: Type.String({ minLength: 1, maxLength: 300 }),
+      task: Type.String({ minLength: 1, maxLength: 4000 }),
+      schedule: Type.String({ minLength: 1, maxLength: 300 }),
+      recurring: Type.Boolean(),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-      next_run_at_iso: Type.Optional(
+      next_run_at: Type.Optional(
         Type.String({
           minLength: 1,
           description:
             "Exact next run time as an ISO timestamp, computed from the user's requested schedule.",
         }),
       ),
-      recurrence_frequency: Type.Optional(
-        Type.Union(
-          [
-            Type.Literal("daily"),
-            Type.Literal("weekly"),
-            Type.Literal("monthly"),
-            Type.Literal("yearly"),
-          ],
-          {
-            description:
-              "Calendar recurrence for recurring tasks. Omit for exact one-off calendar dates.",
-          },
-        ),
-      ),
-      recurrence_interval: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 100,
-          description:
-            "Calendar interval. For example, 2 with weekly means every two weeks.",
-        }),
-      ),
-      recurrence_weekdays: Type.Optional(
-        Type.Array(Type.Integer({ minimum: 0, maximum: 6 }), {
-          maxItems: 7,
-          description:
-            "For weekly schedules only. Sunday is 0, Monday is 1, Saturday is 6.",
-        }),
-      ),
-      constraints: Type.Optional(
-        Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-          maxItems: 12,
-        }),
-      ),
-      source_context: Type.Optional(
-        Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-          maxItems: 12,
-        }),
-      ),
+      recurrence: Type.Optional(recurrenceInputSchema),
     }),
     execute: async (input) => {
       const destination = requireActiveDestination(context);
@@ -426,6 +444,10 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
       if (!requester.ok) return requester;
 
       const nowMs = Date.now();
+      const recurring = validateRecurringIntent(input);
+      if (!recurring.ok) {
+        return recurring;
+      }
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
       const frequencyLimit = validateRecurringFrequencyLimit(input);
       if (!frequencyLimit.ok) {
@@ -437,11 +459,11 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
           error: "timezone must be a valid IANA time zone.",
         };
       }
-      const nextRunAtMs = parseNextRunAtMs(input.next_run_at_iso);
+      const nextRunAtMs = parseNextRunAtMs(input.next_run_at);
       if (!nextRunAtMs) {
         return {
           ok: false,
-          error: "Provide next_run_at_iso as a valid ISO timestamp.",
+          error: "Provide next_run_at as a valid ISO timestamp.",
         };
       }
       const recurrence = buildRecurrence({
@@ -470,19 +492,14 @@ export function createSlackScheduleCreateTaskTool(context: ToolRuntimeContext) {
         nextRunAtMs,
         originalRequest: context.userText,
         schedule: {
-          description: input.schedule_description,
+          description: input.schedule,
           timezone,
           kind: recurrence.recurrence ? "recurring" : "one_off",
           recurrence: recurrence.recurrence,
         },
         status: "active",
         task: {
-          title: input.title,
-          objective: input.objective,
-          instructions: input.instructions,
-          expectedOutput: input.expected_output,
-          constraints: input.constraints,
-          sourceContext: input.source_context,
+          text: input.task,
         },
         version: 1,
       };
@@ -537,42 +554,20 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
     promptGuidelines: [
       ACTIVE_TASK_ID_GUIDELINE,
       ACTIVE_DESTINATION_GUIDELINE,
+      RECURRING_GUIDELINE,
       "Do not move scheduled tasks across conversations.",
-      "Provide next_run_at_iso as an exact ISO timestamp when changing the next run.",
+      "Provide next_run_at as an exact ISO timestamp when changing the next run.",
       "Set status to active, paused, or blocked when the user asks to resume, pause, or block a task.",
     ],
     inputSchema: Type.Object({
       task_id: Type.String({ minLength: 1 }),
-      title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-      objective: Type.Optional(Type.String({ minLength: 1, maxLength: 1000 })),
-      instructions: Type.Optional(
-        Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-          minItems: 1,
-          maxItems: 12,
-        }),
-      ),
-      expected_output: Type.Optional(
-        Type.String({ minLength: 1, maxLength: 1000 }),
-      ),
-      schedule_description: Type.Optional(
-        Type.String({ minLength: 1, maxLength: 300 }),
-      ),
+      task: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+      schedule: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+      recurring: Type.Optional(Type.Boolean()),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-      next_run_at_iso: Type.Optional(Type.String({ minLength: 1 })),
-      recurrence_frequency: Type.Optional(
-        Type.Union([
-          Type.Literal("daily"),
-          Type.Literal("weekly"),
-          Type.Literal("monthly"),
-          Type.Literal("yearly"),
-          Type.Null(),
-        ]),
-      ),
-      recurrence_interval: Type.Optional(
-        Type.Integer({ minimum: 1, maximum: 100 }),
-      ),
-      recurrence_weekdays: Type.Optional(
-        Type.Array(Type.Integer({ minimum: 0, maximum: 6 }), { maxItems: 7 }),
+      next_run_at: Type.Optional(Type.String({ minLength: 1 })),
+      recurrence: Type.Optional(
+        Type.Union([recurrenceInputSchema, Type.Null()]),
       ),
       status: Type.Optional(
         Type.Union([
@@ -580,16 +575,6 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
           Type.Literal("paused"),
           Type.Literal("blocked"),
         ]),
-      ),
-      constraints: Type.Optional(
-        Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-          maxItems: 12,
-        }),
-      ),
-      source_context: Type.Optional(
-        Type.Array(Type.String({ minLength: 1, maxLength: 1000 }), {
-          maxItems: 12,
-        }),
       ),
     }),
     execute: async (input) => {
@@ -610,14 +595,14 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
           error: "timezone must be a valid IANA time zone.",
         };
       }
-      const parsedNextRunAtMs = parseNextRunAtMs(input.next_run_at_iso);
-      const nextRunAtMs = input.next_run_at_iso
+      const parsedNextRunAtMs = parseNextRunAtMs(input.next_run_at);
+      const nextRunAtMs = input.next_run_at
         ? parsedNextRunAtMs
         : lookup.task.nextRunAtMs;
-      if (input.next_run_at_iso && !nextRunAtMs) {
+      if (input.next_run_at && !nextRunAtMs) {
         return {
           ok: false,
-          error: "Provide next_run_at_iso as a valid ISO timestamp.",
+          error: "Provide next_run_at as a valid ISO timestamp.",
         };
       }
 
@@ -632,13 +617,33 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
         return {
           ok: false,
           error:
-            "Active scheduled tasks require next_run_at_iso when no next run is stored.",
+            "Active scheduled tasks require next_run_at when no next run is stored.",
         };
+      }
+      const recurringInput =
+        input.recurring ??
+        (shouldRebuildRecurrence(input)
+          ? lookup.task.schedule.kind === "recurring"
+          : undefined);
+      const recurring =
+        typeof recurringInput === "boolean"
+          ? validateRecurringIntent({
+              ...input,
+              existingRecurrence: lookup.task.schedule.recurrence,
+              recurring: recurringInput,
+            })
+          : { ok: true as const };
+      if (!recurring.ok) {
+        return recurring;
       }
       const recurrence = shouldRebuildRecurrence(input)
         ? buildRecurrence({
-            existing: lookup.task.schedule.recurrence,
-            input,
+            existing:
+              recurringInput === false
+                ? undefined
+                : lookup.task.schedule.recurrence,
+            input:
+              recurringInput === false ? { ...input, recurrence: null } : input,
             nextRunAtMs,
             timezone,
           })
@@ -659,22 +664,12 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
           nextStatus === "blocked" ? lookup.task.statusReason : undefined,
         schedule: {
           ...lookup.task.schedule,
-          description:
-            input.schedule_description ?? lookup.task.schedule.description,
+          description: input.schedule ?? lookup.task.schedule.description,
           timezone,
           kind: recurrence.recurrence ? "recurring" : "one_off",
           recurrence: recurrence.recurrence,
         },
-        task: {
-          ...lookup.task.task,
-          title: input.title ?? lookup.task.task.title,
-          objective: input.objective ?? lookup.task.task.objective,
-          instructions: input.instructions ?? lookup.task.task.instructions,
-          expectedOutput:
-            input.expected_output ?? lookup.task.task.expectedOutput,
-          constraints: input.constraints ?? lookup.task.task.constraints,
-          sourceContext: input.source_context ?? lookup.task.task.sourceContext,
-        },
+        task: input.task ? { text: input.task } : lookup.task.task,
         version: lookup.task.version + 1,
       };
 

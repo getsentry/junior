@@ -12,6 +12,7 @@ describeEval("Scheduler", slackEvals, (it) => {
           "A simple one-off reminder request is scheduled immediately for the active Slack context.",
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
+          "The schedule creation uses recurring=false and does not set recurrence.",
           "The reply does not ask the user to confirm first.",
         ],
         fail: [
@@ -36,7 +37,8 @@ describeEval("Scheduler", slackEvals, (it) => {
         contract:
           "A clear future or recurring task request is normalized and scheduled immediately for the active Slack context.",
         pass: [
-          "The created task title/objective/instructions describe checking scheduler-related GitHub issues, not creating a schedule.",
+          "The created task describes checking scheduler-related GitHub issues, not creating a schedule.",
+          "The schedule creation uses recurring=true and recurrence.frequency=weekly.",
           "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
         ],
         fail: [
