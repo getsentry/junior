@@ -1,4 +1,10 @@
 {
   "framework": "nitro",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm build",
+  "crons": [
+    {
+      "path": "/api/internal/heartbeat",
+      "schedule": "* * * * *"
+    }
+  ]
 }

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { juniorVercelConfig } from "../vercel";
 
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
@@ -52,7 +53,7 @@ export default defineConfig({
 function writeVercelJson(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "vercel.json"),
-    `${JSON.stringify({ framework: "nitro", buildCommand: "pnpm build" }, null, 2)}\n`,
+    `${JSON.stringify(juniorVercelConfig(), null, 2)}\n`,
   );
 }
 
@@ -181,6 +182,7 @@ AI_FAST_MODEL=
 AI_VISION_MODEL=
 AI_WEB_SEARCH_MODEL=
 REDIS_URL=
+CRON_SECRET=
 SENTRY_DSN=
 SENTRY_ORG_SLUG=
 `,

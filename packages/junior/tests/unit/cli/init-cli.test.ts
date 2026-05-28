@@ -51,6 +51,12 @@ describe("init cli", () => {
     );
     expect(vercelConfig.framework).toBe("nitro");
     expect(vercelConfig.buildCommand).toBe("pnpm build");
+    expect(vercelConfig.crons).toEqual([
+      {
+        path: "/api/internal/heartbeat",
+        schedule: "* * * * *",
+      },
+    ]);
     expect(vercelConfig.functions).toBeUndefined();
 
     const pkg = JSON.parse(
@@ -62,6 +68,12 @@ describe("init cli", () => {
     expect(pkg.scripts.dev).toBe("vite dev");
     expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && vite build");
+
+    const envExample = fs.readFileSync(
+      path.join(target, ".env.example"),
+      "utf8",
+    );
+    expect(envExample).toContain("CRON_SECRET=");
   });
 
   it("refuses to initialize a non-empty directory", async () => {
