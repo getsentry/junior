@@ -55,12 +55,11 @@ export function getAgentContextCompactionTriggerTokens(): number {
   });
 }
 
-/** Resolve the visible conversation compaction threshold for the fast model. */
+/** Resolve the visible conversation compaction threshold for the auxiliary model. */
 export function getConversationContextCompactionTriggerTokens(): number {
   const model = resolveGatewayModel(botConfig.fastModelId);
   return calculateContextCompactionTriggerTokens({
-    contextWindow:
-      botConfig.fastModelContextWindowTokens ?? model.contextWindow,
+    contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
   });
 }

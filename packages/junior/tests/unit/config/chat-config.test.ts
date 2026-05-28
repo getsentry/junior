@@ -73,11 +73,9 @@ describe("chat config", () => {
 
   it("reads optional model context window overrides", async () => {
     process.env.AI_MODEL_CONTEXT_WINDOW_TOKENS = "200000";
-    process.env.AI_FAST_MODEL_CONTEXT_WINDOW_TOKENS = "100000";
 
     const { botConfig } = await loadConfig();
     expect(botConfig.modelContextWindowTokens).toBe(200000);
-    expect(botConfig.fastModelContextWindowTokens).toBe(100000);
   });
 
   it("throws when model context window overrides are invalid", async () => {

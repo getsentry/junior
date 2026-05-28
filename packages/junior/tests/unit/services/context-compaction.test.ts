@@ -52,17 +52,22 @@ describe("context compaction retained messages", () => {
       AI_MODEL: "openai/gpt-5.4",
       AI_FAST_MODEL: "openai/gpt-5.4-mini",
       AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000",
-      AI_FAST_MODEL_CONTEXT_WINDOW_TOKENS: "100000",
     };
     vi.resetModules();
     try {
       const {
+        calculateContextCompactionTriggerTokens,
         getAgentContextCompactionTriggerTokens,
         getConversationContextCompactionTriggerTokens,
       } = await import("@/chat/services/context-budget");
+      const { resolveGatewayModel } = await import("@/chat/pi/client");
 
       expect(getAgentContextCompactionTriggerTokens()).toBe(112_500);
-      expect(getConversationContextCompactionTriggerTokens()).toBe(56_250);
+      expect(getConversationContextCompactionTriggerTokens()).toBe(
+        calculateContextCompactionTriggerTokens(
+          resolveGatewayModel("openai/gpt-5.4-mini"),
+        ),
+      );
     } finally {
       process.env = { ...ORIGINAL_ENV };
       vi.resetModules();

@@ -37,7 +37,6 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 export interface BotConfig {
   advisor: AdvisorConfig;
   fastModelId: string;
-  fastModelContextWindowTokens?: number;
   loadingMessages: string[];
   modelId: string;
   modelContextWindowTokens?: number;
@@ -197,10 +196,6 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     fastModelId:
       validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
       DEFAULT_FAST_MODEL_ID,
-    fastModelContextWindowTokens: parseOptionalPositiveInteger(
-      "AI_FAST_MODEL_CONTEXT_WINDOW_TOKENS",
-      env.AI_FAST_MODEL_CONTEXT_WINDOW_TOKENS,
-    ),
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(

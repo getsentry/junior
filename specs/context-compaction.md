@@ -109,9 +109,9 @@ Visible conversation-state compaction must preserve image analysis summaries and
 
 ### Token Accounting
 
-Automatic Pi-history compaction must derive its threshold from the active agent model's advertised context window. Visible Slack conversation-state compaction must use the same budget rule against the fast model because routing and summary calls use that model family. Junior reserves output headroom, then triggers when estimated reusable history exceeds the configured share of the remaining input budget.
+Automatic Pi-history compaction must derive its threshold from the active agent model's advertised context window. Visible Slack conversation-state compaction must use the same budget rule against the auxiliary model because routing and summary calls use that model family. Junior reserves output headroom, then triggers when estimated reusable history exceeds the configured share of the remaining input budget.
 
-Pi model metadata is the default source of `contextWindow` and `maxTokens`. `AI_MODEL_CONTEXT_WINDOW_TOKENS` and `AI_FAST_MODEL_CONTEXT_WINDOW_TOKENS` may override the advertised context windows when provider metadata is missing, stale, or intentionally constrained for operations.
+Pi model metadata is the default source of `contextWindow` and `maxTokens`. `AI_MODEL_CONTEXT_WINDOW_TOKENS` may override the active agent model's advertised context window when provider metadata is missing, stale, or intentionally constrained for operations. The auxiliary model context window must come from model metadata.
 
 Compaction triggers should prefer server-reported input-token counts for the most recent or largest single model call when available. Character-based estimates are allowed only as a fallback.
 
