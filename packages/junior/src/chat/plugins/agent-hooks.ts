@@ -93,7 +93,9 @@ export function getAgentPluginTools(
       messageTs: context.messageTs,
       threadTs: context.threadTs,
       userText: context.userText,
-      state: createPluginState(plugin.name),
+      state: createPluginState(plugin.name, {
+        legacyStatePrefixes: plugin.pluginConfig?.legacyStatePrefixes,
+      }),
     });
     for (const [name, tool] of Object.entries(pluginTools)) {
       if (!AGENT_PLUGIN_TOOL_NAME_RE.test(name)) {

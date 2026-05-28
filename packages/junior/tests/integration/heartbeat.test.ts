@@ -209,6 +209,30 @@ describe("trusted plugin heartbeat", () => {
     await expect(second.state.get("1")).resolves.toBe("second");
   });
 
+  it("claims scheduled tasks from the scheduler legacy state namespace", async () => {
+    const task = createTask({ id: "sched_legacy" });
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set("junior:scheduler:tasks", [task.id]);
+    await state.set("junior:scheduler:team:T123:tasks", [task.id]);
+    await state.set("junior:scheduler:task:sched_legacy", task);
+
+    const store = createSchedulerStore(
+      createPluginState("scheduler", {
+        legacyStatePrefixes: ["junior:scheduler"],
+      }),
+    );
+
+    await expect(store.listTasksForTeam("T123")).resolves.toMatchObject([
+      { id: task.id },
+    ]);
+    await expect(
+      store.claimDueRun({ nowMs: TEST_NOW_MS }),
+    ).resolves.toMatchObject({
+      taskId: task.id,
+    });
+  });
+
   it("bounds dispatch fanout from one heartbeat context", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });

@@ -179,6 +179,7 @@ export interface AgentPluginHooks {
 }
 
 export interface JuniorPluginConfig {
+  legacyStatePrefixes?: string[];
   packages?: string[];
 }
 

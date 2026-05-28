@@ -171,6 +171,7 @@ export function createSchedulerPlugin() {
   return defineJuniorPlugin({
     name: "scheduler",
     pluginConfig: {
+      legacyStatePrefixes: ["junior:scheduler"],
       packages: ["@sentry/junior-scheduler"],
     },
     hooks: {
