@@ -11,7 +11,10 @@ import {
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import { createSandboxEgressRequesterToken } from "@/chat/sandbox/egress-session";
-import { throwSandboxOperationError } from "@/chat/sandbox/errors";
+import {
+  isSandboxCommandStreamInterruptedError,
+  throwSandboxOperationError,
+} from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import type { AgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
@@ -98,6 +101,22 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
       .filter(([, value]) => typeof value === "string")
       .map(([key, value]) => [key, value as string]),
   );
+}
+
+function sandboxStreamInterruptedResult(toolName: string) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Sandbox command stream was interrupted during ${toolName}. The operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
+      },
+    ],
+    details: {
+      ok: false,
+      error: "stream_interrupted",
+      tool: toolName,
+    },
+  };
 }
 
 /** Create one sandbox-backed tool executor facade for the current turn. */
@@ -538,28 +557,35 @@ export function createSandboxExecutor(options?: {
       return await executeBashTool(rawInput, bashCommand);
     }
 
-    if (params.toolName === "readFile") {
-      return await executeReadFileTool(rawInput);
-    }
+    try {
+      if (params.toolName === "readFile") {
+        return await executeReadFileTool(rawInput);
+      }
 
-    if (params.toolName === "editFile") {
-      return await executeEditFileTool(rawInput);
-    }
+      if (params.toolName === "editFile") {
+        return await executeEditFileTool(rawInput);
+      }
 
-    if (params.toolName === "grep") {
-      return await executeGrepTool(rawInput);
-    }
+      if (params.toolName === "grep") {
+        return await executeGrepTool(rawInput);
+      }
 
-    if (params.toolName === "findFiles") {
-      return await executeFindFilesTool(rawInput);
-    }
+      if (params.toolName === "findFiles") {
+        return await executeFindFilesTool(rawInput);
+      }
 
-    if (params.toolName === "listDir") {
-      return await executeListDirTool(rawInput);
-    }
+      if (params.toolName === "listDir") {
+        return await executeListDirTool(rawInput);
+      }
 
-    if (params.toolName === "writeFile") {
-      return await executeWriteFileTool(rawInput);
+      if (params.toolName === "writeFile") {
+        return await executeWriteFileTool(rawInput);
+      }
+    } catch (error) {
+      if (!isSandboxCommandStreamInterruptedError(error)) {
+        throw error;
+      }
+      return { result: sandboxStreamInterruptedResult(params.toolName) as T };
     }
 
     throw new Error(`unsupported sandbox tool: ${params.toolName}`);

@@ -199,6 +199,12 @@ function createApiError(
   });
 }
 
+function createStreamInterruptedError(): Error {
+  return Object.assign(new Error("Stream ended before command finished"), {
+    name: "StreamError",
+  });
+}
+
 async function expectWorkspaceToDelegate(
   workspace: SandboxInstance,
   sandbox: MockSandbox,
@@ -764,10 +770,7 @@ describe("createSandboxExecutor", () => {
   });
 
   it("returns a failed bash result when the command stream ends without a status", async () => {
-    const streamError = Object.assign(
-      new Error("Stream ended before command finished"),
-      { name: "StreamError" },
-    );
+    const streamError = createStreamInterruptedError();
     const sandbox = makeSandbox("sbx_stream_interrupted");
     sandbox.runCommand.mockRejectedValueOnce(streamError);
     sandboxGetMock.mockResolvedValue(sandbox);
@@ -795,6 +798,72 @@ describe("createSandboxExecutor", () => {
       exit_code: 125,
       stderr:
         "Command stream ended before the command finished. The command may still have produced side effects; inspect the workspace or rerun only if it is safe.",
+    });
+  });
+
+  it("returns structured file-tool results when sandbox command streams end", async () => {
+    const sandbox = makeSandbox("sbx_find_files_interrupted");
+    sandbox.fs.stat.mockRejectedValueOnce(createStreamInterruptedError());
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+    vi.mocked(createBashTool).mockResolvedValueOnce({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "findFiles",
+      input: { pattern: "*.ts" },
+    });
+
+    expect(response.result).toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: expect.stringContaining(
+            "Sandbox command stream was interrupted during findFiles",
+          ),
+        },
+      ],
+      details: {
+        ok: false,
+        error: "stream_interrupted",
+        tool: "findFiles",
+      },
+    });
+  });
+
+  it("recognizes stream interruptions wrapped by writeFile errors", async () => {
+    const sandbox = makeSandbox("sbx_write_file_interrupted");
+    const writeFileExecute = vi.fn(async () => {
+      throw createStreamInterruptedError();
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+    vi.mocked(createBashTool).mockResolvedValueOnce({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: writeFileExecute },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "writeFile",
+      input: { path: "file.ts", content: "new content" },
+    });
+
+    expect(response.result).toMatchObject({
+      details: {
+        ok: false,
+        error: "stream_interrupted",
+        tool: "writeFile",
+      },
     });
   });
 
