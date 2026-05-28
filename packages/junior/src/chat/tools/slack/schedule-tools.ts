@@ -101,7 +101,7 @@ function getConversationAccess(
     return { audience: "group", visibility: "private" };
   }
   if (destination.channelId.startsWith("C")) {
-    return { audience: "channel", visibility: "public" };
+    return { audience: "channel", visibility: "unknown" };
   }
   return { audience: "channel", visibility: "unknown" };
 }

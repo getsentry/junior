@@ -82,7 +82,7 @@ describe("Slack schedule tools", () => {
       task: {
         conversation_access: {
           audience: "channel",
-          visibility: "public",
+          visibility: "unknown",
         },
         credential_subject: null,
         status: "active",
