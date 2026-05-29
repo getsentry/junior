@@ -110,7 +110,7 @@ runtime-postinstall:
 
 ## Distribute Plugins as npm Packages
 
-You can publish plugin content as an npm package and Junior will auto-detect it.
+You can publish plugin content as an npm package. Plugin packages require explicit registration — Junior does not auto-discover packages from `node_modules`.
 
 ### Package Layout
 
@@ -133,15 +133,30 @@ You can publish plugin content as an npm package and Junior will auto-detect it.
 pnpm add @your-scope/junior-plugin-linear
 ```
 
-2. Deploy as normal. Junior auto-detects installed dependencies that contain:
+2. Register it in `nitro.config.ts` by adding the package name to `plugins.packages` inside `juniorNitro({...})`:
 
-- `plugin.yaml` at package root
-- `plugins/` directory
-- `skills/` directory
+```typescript
+import { juniorNitro } from "@sentry/junior/nitro";
+
+export default defineConfig({
+  modules: [
+    juniorNitro({
+      plugins: {
+        packages: [
+          "@your-scope/junior-plugin-linear",
+          // ... other packages
+        ],
+      },
+    }),
+  ],
+});
+```
+
+A package present in `dependencies` but missing from `plugins.packages` will not load — there is no auto-detection.
 
 ## Multiple Plugin Packages
 
-Install multiple packages with `pnpm add` and Junior will discover each one automatically.
+Install multiple packages with `pnpm add` and add each to the `plugins.packages` array in `nitro.config.ts`.
 
 ## Troubleshooting
 
