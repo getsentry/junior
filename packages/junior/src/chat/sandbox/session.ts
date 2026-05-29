@@ -311,7 +311,7 @@ export function createSandboxSessionManager(options?: {
     logWarn(
       "sandbox_unavailable_recreating",
       traceContext,
-      { "app.sandbox.recovery.source": source },
+      {},
       "Sandbox unavailable; recreating",
     );
     clearSession();
@@ -500,14 +500,7 @@ export function createSandboxSessionManager(options?: {
     logInfo(
       "sandbox_hint_discarded_profile_mismatch",
       traceContext,
-      {
-        ...(options?.sandboxDependencyProfileHash
-          ? { "app.sandbox.previous_profile_hash": options.sandboxDependencyProfileHash }
-          : {}),
-        ...(dependencyProfileHash
-          ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-          : {}),
-      },
+      {},
       "Dependency profile changed; discarding sandbox hint and creating fresh session",
     );
     sandboxIdHint = undefined;
