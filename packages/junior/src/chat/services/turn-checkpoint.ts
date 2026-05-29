@@ -112,6 +112,7 @@ export async function persistRunningCheckpoint(args: {
   sliceId: number;
   messages: PiMessage[];
   loadedSkillNames: string[];
+  activeMcpProviderNames: string[];
   logContext: CheckpointLogContext;
 }): Promise<void> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
@@ -132,6 +133,7 @@ export async function persistRunningCheckpoint(args: {
       state: "running",
       piMessages: args.messages,
       loadedSkillNames: args.loadedSkillNames,
+      activeMcpProviderNames: args.activeMcpProviderNames,
     });
   } catch (checkpointError) {
     logCheckpointError(
@@ -155,6 +157,7 @@ export async function persistCompletedCheckpoint(args: {
   sliceId: number;
   allMessages: PiMessage[];
   loadedSkillNames: string[];
+  activeMcpProviderNames: string[];
   logContext: CheckpointLogContext;
 }): Promise<void> {
   try {
@@ -177,6 +180,7 @@ export async function persistCompletedCheckpoint(args: {
       state: "completed",
       piMessages: args.allMessages,
       loadedSkillNames: args.loadedSkillNames,
+      activeMcpProviderNames: args.activeMcpProviderNames,
     });
   } catch (checkpointError) {
     logCheckpointError(
@@ -203,6 +207,7 @@ export async function persistAuthPauseCheckpoint(args: {
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
   loadedSkillNames: string[];
+  activeMcpProviderNames: string[];
   errorMessage: string;
   logContext: CheckpointLogContext;
 }): Promise<AgentTurnSessionCheckpoint | undefined> {
@@ -232,6 +237,7 @@ export async function persistAuthPauseCheckpoint(args: {
       state: "awaiting_resume",
       piMessages,
       loadedSkillNames: args.loadedSkillNames,
+      activeMcpProviderNames: args.activeMcpProviderNames,
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
@@ -263,6 +269,7 @@ export async function persistTimeoutCheckpoint(args: {
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
   loadedSkillNames: string[];
+  activeMcpProviderNames: string[];
   errorMessage: string;
   logContext: CheckpointLogContext;
 }): Promise<AgentTurnSessionCheckpoint | undefined> {
@@ -293,6 +300,7 @@ export async function persistTimeoutCheckpoint(args: {
       state: "awaiting_resume",
       piMessages,
       loadedSkillNames: args.loadedSkillNames,
+      activeMcpProviderNames: args.activeMcpProviderNames,
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,

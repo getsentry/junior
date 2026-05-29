@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
-import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
+
+/** Extract provider name from canonical MCP tool name (mcp__<provider>__<tool>). */
+function parseMcpProviderFromToolName(toolName: string): string | undefined {
+  const match = /^mcp__([^_][^_]*)__/.exec(toolName);
+  return match?.[1];
+}
 
 function resolveMcpArguments(
   input: Record<string, unknown>,
@@ -32,11 +37,11 @@ function resolveMcpArguments(
 /** Create the stable dispatcher for active MCP provider tools. */
 export function createCallMcpToolTool(
   mcpToolManager: McpToolManager,
-  getActiveSkills: () => Skill[],
+  onProviderActivated?: () => void,
 ) {
   return tool({
     description:
-      "Call an active MCP tool by exact tool_name. Use loadSkill to activate the provider, then searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
+      "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
     inputSchema: Type.Object(
       {
         tool_name: Type.String({
@@ -54,8 +59,13 @@ export function createCallMcpToolTool(
     ),
     execute: async (input) => {
       const { tool_name } = input;
+      const provider = parseMcpProviderFromToolName(tool_name);
+      if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
+        await mcpToolManager.activateProvider(provider);
+        onProviderActivated?.();
+      }
       const mcpTool = mcpToolManager
-        .getResolvedActiveTools(getActiveSkills())
+        .getResolvedActiveTools()
         .find((candidate) => candidate.name === tool_name);
       if (!mcpTool) {
         throw new Error(`MCP tool is not active for this turn: ${tool_name}`);

@@ -75,11 +75,13 @@ Install-wide config defaults use `createApp({ configDefaults })` and must refere
 ## MCP Activation
 
 - MCP tools are not sandbox dependencies and are not registered globally at startup.
-- Runtime activates a plugin's MCP tools only after a skill owned by that plugin is loaded in the current turn.
-- Explicit `/skill` invocations preload the skill first.
+- At turn setup, the runtime restores only providers that were active in the previous turn (from checkpoint). New providers connect lazily when the model first accesses them.
+- Calling `searchMcpTools({ provider })` or `callMcpTool` for a configured but inactive provider triggers connection and `listTools` on demand, surfacing the auth flow if credentials are missing or expired.
+- Explicit `/skill` invocations also activate the skill's associated MCP provider.
 - Remote MCP catalogs are authoritative only after connection and `listTools`.
 - Mid-turn `loadSkill` updates the host-managed MCP registry, but Junior does not mutate the Pi native tool list during the turn.
-- Stable native tools `searchMcpTools` and `callMcpTool` search and execute active-provider MCP tools.
+- `searchMcpTools` and `callMcpTool` search and execute active-provider tools. Both lazily connect a provider when given one that is configured but not active.
+- The prompt `<available-mcp-providers>` block shows configured-but-inactive providers cheaply (name + description, no network).
 - `loadSkill` returns provider/count metadata, not full tool descriptors.
 - `searchMcpTools` returns focused descriptors including canonical `tool_name`, upstream `mcp_tool_name`, schemas, and annotations.
 - Preloaded and resumed skills disclose provider/count summaries in `<active-mcp-catalogs>`.
@@ -126,8 +128,8 @@ Hook contexts expose narrow capabilities rather than raw Junior internals. Trust
 - Registry load order is deterministic.
 - Manifest validation fails before partial registration.
 - Plugin-backed skill loading rejects forged plugin metadata.
-- MCP tools activate only after same-plugin skill load.
-- `searchMcpTools` and `callMcpTool` cannot reach inactive provider tools.
+- No MCP connections are made at turn start unless restoring checkpoint providers or activating skills.
+- `searchMcpTools` and `callMcpTool` cannot reach tools from providers that are not configured or failed activation.
 
 ## Related Specs
 

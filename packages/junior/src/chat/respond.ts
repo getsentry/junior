@@ -345,6 +345,7 @@ export async function generateAssistantReply(
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
+  let activeMcpProviderNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
@@ -682,6 +683,8 @@ export async function generateAssistantReply(
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
+      activeMcpProviderNamesForResume =
+        turnMcpToolManager.getActiveProviderNames();
     };
     setTags({
       conversationId: spanContext.conversationId,
@@ -747,12 +750,9 @@ export async function generateAssistantReply(
           ) {
             return undefined;
           }
-          const availableToolCount = turnMcpToolManager.getActiveToolCatalog(
-            activeSkills,
-            {
-              provider: effective.pluginProvider,
-            },
-          ).length;
+          const availableToolCount = turnMcpToolManager.getActiveToolCatalog({
+            provider: effective.pluginProvider,
+          }).length;
           return {
             mcp_provider: effective.pluginProvider,
             available_tool_count: availableToolCount,
@@ -769,8 +769,8 @@ export async function generateAssistantReply(
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,
-        getActiveSkills: () => activeSkills,
         mcpToolManager: turnMcpToolManager,
+        onProviderActivated: syncResumeState,
         sandbox,
         advisor: {
           config: botConfig.advisor,
@@ -790,7 +790,18 @@ export async function generateAssistantReply(
       promptSnippet: definition.promptSnippet,
     }));
 
-    syncResumeState();
+    // ── MCP provider activation ──────────────────────────────────────
+    // Restore previously activated MCP providers from the checkpoint so
+    // providers connected in a prior turn are available immediately.
+    for (const provider of existingCheckpoint?.activeMcpProviderNames ?? []) {
+      await turnMcpToolManager.activateProvider(provider);
+      syncResumeState();
+      if (mcpAuth.getPendingPause()) {
+        timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
+        throw mcpAuth.getPendingPause()!;
+      }
+    }
+    // Activate MCP for checkpoint-preloaded skills (backward compat with loadSkill).
     for (const skill of activeSkills) {
       await turnMcpToolManager.activateForSkill(skill);
       syncResumeState();
@@ -803,13 +814,16 @@ export async function generateAssistantReply(
 
     // ── Prompt context ───────────────────────────────────────────────
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
-      turnMcpToolManager.getActiveToolCatalog(activeSkills),
+      turnMcpToolManager.getActiveToolCatalog(),
     );
+    const availableMcpProviders =
+      turnMcpToolManager.getAvailableProviderCatalog();
     baseInstructions = buildSystemPrompt();
     const turnContextPrompt = buildTurnContextPrompt({
       availableSkills,
       activeSkills,
       activeMcpCatalogs,
+      availableMcpProviders,
       toolGuidance,
       runtime: {
         conversationId: spanContext.conversationId,
@@ -912,6 +926,7 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         messages,
         loadedSkillNames: loadedSkillNamesForResume,
+        activeMcpProviderNames: activeMcpProviderNamesForResume,
         logContext: checkpointLogContext,
       });
     };
@@ -1131,6 +1146,8 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
         loadedSkillNames: activeSkills.map((skill) => skill.name),
+        activeMcpProviderNames:
+          turnMcpToolManager?.getActiveProviderNames() ?? [],
         logContext: checkpointLogContext,
       });
     }
@@ -1167,6 +1184,7 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         loadedSkillNames: loadedSkillNamesForResume,
+        activeMcpProviderNames: activeMcpProviderNamesForResume,
         errorMessage: error instanceof Error ? error.message : String(error),
         logContext: checkpointLogContext,
       });
@@ -1204,6 +1222,7 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         loadedSkillNames: loadedSkillNamesForResume,
+        activeMcpProviderNames: activeMcpProviderNamesForResume,
         errorMessage: error.message,
         logContext: checkpointLogContext,
       });

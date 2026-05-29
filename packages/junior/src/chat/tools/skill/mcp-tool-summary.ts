@@ -17,6 +17,12 @@ export interface ExposedToolSummary {
   annotations?: Record<string, unknown>;
 }
 
+export interface AvailableMcpProviderSummary {
+  provider: string;
+  description: string;
+  active: boolean;
+}
+
 export interface ActiveMcpCatalogSummary {
   provider: string;
   available_tool_count: number;

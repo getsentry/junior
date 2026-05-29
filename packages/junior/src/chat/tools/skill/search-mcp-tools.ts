@@ -3,7 +3,6 @@ import type {
   ManagedMcpToolDescriptor,
   McpToolManager,
 } from "@/chat/mcp/tool-manager";
-import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
@@ -111,11 +110,11 @@ function searchMcpCatalog(
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 export function createSearchMcpToolsTool(
   mcpToolManager: McpToolManager,
-  getActiveSkills: () => Skill[],
+  onProviderActivated?: () => void,
 ) {
   return tool({
     description:
-      "List or search active MCP tools and return full descriptors, including input/output schemas and annotations. Use after loadSkill when choosing a provider tool or when callMcpTool arguments are unclear.",
+      "List or search active MCP tools and return full descriptors, including input/output schemas and annotations. When provider is supplied and not yet active, Junior connects to it on demand. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     inputSchema: Type.Object(
       {
         query: Type.Optional(
@@ -128,7 +127,8 @@ export function createSearchMcpToolsTool(
         provider: Type.Optional(
           Type.String({
             minLength: 1,
-            description: "Optional provider name to list or search within.",
+            description:
+              "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
           }),
         ),
         max_results: Type.Optional(
@@ -142,8 +142,11 @@ export function createSearchMcpToolsTool(
       { additionalProperties: false },
     ),
     execute: async ({ query, provider, max_results }) => {
+      if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
+        await mcpToolManager.activateProvider(provider);
+        onProviderActivated?.();
+      }
       const catalog = mcpToolManager.getActiveToolCatalog(
-        getActiveSkills(),
         provider ? { provider } : {},
       );
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;

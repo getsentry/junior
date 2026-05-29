@@ -16,7 +16,10 @@ import {
 } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
-import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import type {
+  ActiveMcpCatalogSummary,
+  AvailableMcpProviderSummary,
+} from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
@@ -248,6 +251,25 @@ function formatActiveMcpCatalogsForPrompt(
       `    <available_tool_count>${catalog.available_tool_count}</available_tool_count>`,
     );
     lines.push("  </catalog>");
+  }
+  return lines.join("\n");
+}
+
+function formatAvailableMcpProvidersForPrompt(
+  providers: AvailableMcpProviderSummary[],
+): string | null {
+  const inactive = providers.filter((p) => !p.active);
+  if (inactive.length === 0) {
+    return null;
+  }
+  const lines = [
+    "These MCP providers are configured but not yet connected. Supply the provider name to `searchMcpTools` to connect and list its tools.",
+  ];
+  for (const p of inactive) {
+    lines.push("  <provider>");
+    lines.push(`    <name>${escapeXml(p.provider)}</name>`);
+    lines.push(`    <description>${escapeXml(p.description)}</description>`);
+    lines.push("  </provider>");
   }
   return lines.join("\n");
 }
@@ -538,6 +560,7 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
+  availableMcpProviders: AvailableMcpProviderSummary[];
   invocation: SkillInvocation | null;
   toolGuidance?: ToolPromptContext[];
 }): string | null {
@@ -562,6 +585,13 @@ function buildCapabilitiesSection(params: {
     blocks.push(renderTagBlock("active-mcp-catalogs", activeCatalogs));
   }
 
+  const availableProviders = formatAvailableMcpProvidersForPrompt(
+    params.availableMcpProviders,
+  );
+  if (availableProviders) {
+    blocks.push(renderTagBlock("available-mcp-providers", availableProviders));
+  }
+
   const toolGuidance = formatToolGuidanceForPrompt(params.toolGuidance ?? []);
   if (toolGuidance) {
     blocks.push(renderTagBlock("tool-guidance", toolGuidance));
@@ -578,6 +608,7 @@ type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
+  availableMcpProviders?: AvailableMcpProviderSummary[];
   toolGuidance?: ToolPromptContext[];
   runtime?: {
     conversationId?: string;
@@ -628,6 +659,7 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      availableMcpProviders: params.availableMcpProviders ?? [],
       invocation: params.invocation,
       toolGuidance: params.toolGuidance ?? [],
     }),

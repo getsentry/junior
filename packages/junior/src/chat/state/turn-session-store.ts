@@ -27,6 +27,7 @@ export interface AgentTurnSessionCheckpoint {
   cumulativeUsage?: AgentTurnUsage;
   errorMessage?: string;
   loadedSkillNames?: string[];
+  activeMcpProviderNames?: string[];
   piMessages: PiMessage[];
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
@@ -162,6 +163,13 @@ function parseAgentTurnSessionRecord(value: unknown):
             ),
           }
         : {}),
+      ...(Array.isArray(parsed.activeMcpProviderNames)
+        ? {
+            activeMcpProviderNames: parsed.activeMcpProviderNames.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          }
+        : {}),
       ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
         ? { resumeReason: parsed.resumeReason }
         : {}),
@@ -237,6 +245,7 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   state: AgentTurnSessionStatus;
   piMessages: PiMessage[];
   loadedSkillNames?: string[];
+  activeMcpProviderNames?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -279,6 +288,13 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        }
+      : {}),
+    ...(Array.isArray(args.activeMcpProviderNames)
+      ? {
+          activeMcpProviderNames: args.activeMcpProviderNames.filter(
             (value): value is string => typeof value === "string",
           ),
         }
@@ -329,6 +345,7 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     cumulativeDurationMs: existing.cumulativeDurationMs,
     cumulativeUsage: existing.cumulativeUsage,
     loadedSkillNames: existing.loadedSkillNames,
+    activeMcpProviderNames: existing.activeMcpProviderNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,
@@ -366,6 +383,7 @@ export async function failAgentTurnSessionCheckpoint(args: {
     cumulativeDurationMs: existing.cumulativeDurationMs,
     cumulativeUsage: existing.cumulativeUsage,
     loadedSkillNames: existing.loadedSkillNames,
+    activeMcpProviderNames: existing.activeMcpProviderNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,

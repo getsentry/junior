@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
-import type { Skill } from "@/chat/skills";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
-
-const activeSkill: Skill = {
-  name: "demo",
-  description: "Demo skill",
-  skillPath: "/tmp/demo",
-  pluginProvider: "demo",
-  body: "instructions",
-};
 
 describe("callMcpTool", () => {
   it("executes an active MCP tool by disclosed tool_name", async () => {
@@ -18,6 +9,8 @@ describe("callMcpTool", () => {
       details: { ok: true },
     }));
     const manager = {
+      hasConfiguredProvider: vi.fn(() => false),
+      activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
           name: "mcp__demo__ping",
@@ -29,7 +22,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -48,6 +41,8 @@ describe("callMcpTool", () => {
 
   it("rejects top-level MCP arguments instead of silently dropping them", async () => {
     const manager = {
+      hasConfiguredProvider: vi.fn(() => false),
+      activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
           name: "mcp__demo__ping",
@@ -59,7 +54,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -80,6 +75,8 @@ describe("callMcpTool", () => {
       details: { ok: true },
     }));
     const manager = {
+      hasConfiguredProvider: vi.fn(() => false),
+      activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
           name: "mcp__demo__ping",
@@ -91,7 +88,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -110,6 +107,8 @@ describe("callMcpTool", () => {
 
   it("rejects non-object nested MCP arguments", async () => {
     const manager = {
+      hasConfiguredProvider: vi.fn(() => false),
+      activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
         {
           name: "mcp__demo__ping",
@@ -121,7 +120,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -136,9 +135,11 @@ describe("callMcpTool", () => {
 
   it("rejects tools that are not active for the turn", async () => {
     const manager = {
+      hasConfiguredProvider: vi.fn(() => false),
+      activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => []),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(

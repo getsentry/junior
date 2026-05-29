@@ -77,6 +77,7 @@ describe("persistAuthPauseCheckpoint", () => {
       currentSliceId: 1,
       messages: [],
       loadedSkillNames: ["demo-skill"],
+      activeMcpProviderNames: [],
       errorMessage: "plugin auth pause",
       logContext: {
         modelId: "test-model",
@@ -130,6 +131,7 @@ describe("persistAuthPauseCheckpoint", () => {
         cachedInputTokens: 2,
       },
       messages: [],
+      activeMcpProviderNames: [],
       loadedSkillNames: [],
       errorMessage: "timed out again",
       logContext: {
@@ -170,6 +172,7 @@ describe("persistAuthPauseCheckpoint", () => {
         conversationId: "conversation-1",
         sessionId: "turn-1",
         sliceId: 1,
+        activeMcpProviderNames: [],
         allMessages: [
           {
             role: "user",
@@ -242,6 +245,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sliceId: 1,
       messages: userBoundary,
       loadedSkillNames: [],
+      activeMcpProviderNames: [],
       logContext: {
         modelId: "test-model",
       },
@@ -253,6 +257,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sliceId: 1,
       messages: unsafeAssistantBoundary,
       loadedSkillNames: [],
+      activeMcpProviderNames: [],
       logContext: {
         modelId: "test-model",
       },
@@ -273,6 +278,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sliceId: 1,
       messages: toolResultBoundary,
       loadedSkillNames: ["demo-skill"],
+      activeMcpProviderNames: [],
       logContext: {
         modelId: "test-model",
       },
@@ -308,6 +314,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sliceId: 1,
       messages,
       loadedSkillNames: ["demo-skill"],
+      activeMcpProviderNames: [],
       logContext: {
         modelId: "test-model",
       },
@@ -319,6 +326,7 @@ describe("persistAuthPauseCheckpoint", () => {
       currentSliceId: 1,
       messages: [],
       loadedSkillNames: ["demo-skill"],
+      activeMcpProviderNames: [],
       errorMessage: "provider stream interrupted",
       logContext: {
         modelId: "test-model",

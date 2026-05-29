@@ -57,8 +57,9 @@ export interface ToolRuntimeContext {
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  getActiveSkills?: () => Skill[];
   mcpToolManager?: McpToolManager;
+  /** Called after a provider is lazily activated so the turn checkpoint captures the new state. */
+  onProviderActivated?: () => void;
   sandbox: SandboxWorkspace;
 }
 
