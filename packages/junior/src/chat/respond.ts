@@ -684,7 +684,7 @@ export async function generateAssistantReply(
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
       activeMcpProviderNamesForResume =
-        turnMcpToolManager.getActiveProviderNames();
+        turnMcpToolManager.getActiveProviders();
     };
     setTags({
       conversationId: spanContext.conversationId,
@@ -1147,7 +1147,7 @@ export async function generateAssistantReply(
         allMessages: agent.state.messages,
         loadedSkillNames: activeSkills.map((skill) => skill.name),
         activeMcpProviderNames:
-          turnMcpToolManager?.getActiveProviderNames() ?? [],
+          turnMcpToolManager?.getActiveProviders() ?? [],
         logContext: checkpointLogContext,
       });
     }

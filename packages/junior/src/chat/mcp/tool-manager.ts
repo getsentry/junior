@@ -198,11 +198,6 @@ export class McpToolManager {
     );
   }
 
-  /** Return all active provider names, for checkpoint persistence. */
-  getActiveProviderNames(): string[] {
-    return this.getActiveProviders();
-  }
-
   /** Return all configured MCP providers with active/inactive state.
    * Never connects to any MCP server. */
   getAvailableProviderCatalog(): Array<{
