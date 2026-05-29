@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
+import { logInfo, logWarn, setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
@@ -308,6 +308,12 @@ export function createSandboxSessionManager(options?: {
       "app.sandbox.recovery.attempted": true,
       "app.sandbox.recovery.source": source,
     });
+    logWarn(
+      "sandbox_unavailable_recreating",
+      traceContext,
+      { "app.sandbox.recovery.source": source },
+      "Sandbox unavailable; recreating",
+    );
     clearSession();
     const replacement = await createFreshSandbox();
     setSpanAttributes({
@@ -491,6 +497,19 @@ export function createSandboxSessionManager(options?: {
         ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
         : {}),
     });
+    logInfo(
+      "sandbox_hint_discarded_profile_mismatch",
+      traceContext,
+      {
+        ...(options?.sandboxDependencyProfileHash
+          ? { "app.sandbox.previous_profile_hash": options.sandboxDependencyProfileHash }
+          : {}),
+        ...(dependencyProfileHash
+          ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
+          : {}),
+      },
+      "Dependency profile changed; discarding sandbox hint and creating fresh session",
+    );
     sandboxIdHint = undefined;
   };
 
@@ -537,7 +556,16 @@ export function createSandboxSessionManager(options?: {
             } as Parameters<typeof Sandbox.get>[0]),
           ),
       );
-    } catch {
+    } catch (error) {
+      logWarn(
+        "sandbox_restore_hint_failed",
+        traceContext,
+        {
+          "app.sandbox.hint_id": sandboxIdHint,
+          "app.sandbox.error": error instanceof Error ? error.message : String(error),
+        },
+        "Failed to restore sandbox from hint; will create fresh session",
+      );
       return null;
     }
 
