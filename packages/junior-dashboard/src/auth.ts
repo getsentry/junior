@@ -45,23 +45,31 @@ function withHttps(host: string): string {
   return /^https?:\/\//.test(host) ? host : `https://${host}`;
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function resolveBaseURL(config: DashboardAuthConfig): string {
   const explicit =
     config.baseURL ??
     process.env.BETTER_AUTH_URL ??
     process.env.JUNIOR_BASE_URL;
   if (explicit?.trim()) {
-    return withHttps(explicit.trim()).replace(/\/+$/, "");
+    return stripTrailingSlashes(withHttps(explicit.trim()));
   }
 
   const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (vercelProd) {
-    return withHttps(vercelProd).replace(/\/+$/, "");
+    return stripTrailingSlashes(withHttps(vercelProd));
   }
 
   const vercelUrl = process.env.VERCEL_URL?.trim();
   if (vercelUrl) {
-    return withHttps(vercelUrl).replace(/\/+$/, "");
+    return stripTrailingSlashes(withHttps(vercelUrl));
   }
 
   return "http://localhost:3000";

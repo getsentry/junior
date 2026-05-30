@@ -16,7 +16,15 @@ type NitroRouteConfig = NonNullable<Nitro["options"]["routes"]>;
 function normalizePath(path: string | undefined, fallback: string): string {
   const value = path?.trim() || fallback;
   const withSlash = value.startsWith("/") ? value : `/${value}`;
-  return withSlash.length > 1 ? withSlash.replace(/\/+$/, "") : withSlash;
+  return stripTrailingSlashes(withSlash);
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
 }
 
 function routeEntry(handler: string): { handler: string } {
