@@ -160,6 +160,27 @@ describe("dashboard routes", () => {
     );
   });
 
+  it("protects sub-routes at root basePath from unauthenticated access", async () => {
+    // app.use("/", ...) only matches the exact root in Hono; sub-routes like
+    // /conversations and /sessions must be covered by a wildcard middleware.
+    const app = dashboard(null);
+
+    for (const path of [
+      "/conversations",
+      "/conversations/slack%3AC1%3A123",
+      "/sessions",
+      "/sessions/some-session",
+    ]) {
+      const response = await app.fetch(
+        new Request(`http://localhost${path}`),
+      );
+      expect(response.status, path).toBe(302);
+      expect(response.headers.get("location"), path).toBe(
+        `http://localhost/api/dashboard/login`,
+      );
+    }
+  });
+
   it("can explicitly disable dashboard auth for local development", async () => {
     const app = createDashboardApp({
       authRequired: false,

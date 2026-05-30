@@ -200,7 +200,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
         ],
       };
       const advisorInputMessagesAttribute = serializeGenAiAttribute(
-        conversationPrivacy === "private"
+        conversationPrivacy !== "public"
           ? [toGenAiMessageMetadata(advisorInputMessage)]
           : [advisorInputMessage],
       );
@@ -256,7 +256,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             advisorAgent.state.messages.slice(beforeMessageCount);
           const outputMessages = newAdvisorMessages.filter(isAssistantMessage);
           const outputMessagesAttribute = serializeGenAiAttribute(
-            conversationPrivacy === "private"
+            conversationPrivacy !== "public"
               ? outputMessages.map(toGenAiMessageMetadata)
               : outputMessages,
           );
