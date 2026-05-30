@@ -243,7 +243,7 @@ function sessionReportFromSummary(
     conversationId: summary.conversationId,
   });
   const privateLabel =
-    privacy === "private" ? safePrivateLabel(summary) : undefined;
+    privacy !== "public" ? safePrivateLabel(summary) : undefined;
   const conversationTitle = privateLabel ?? summary.conversationTitle;
   const channelName = privateLabel ?? summary.channelName;
   const requester = requesterLabel(summary.requester);

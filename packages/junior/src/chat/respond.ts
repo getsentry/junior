@@ -955,7 +955,7 @@ export async function generateAssistantReply(
       },
     ];
     const inputMessagesAttribute = serializeGenAiAttribute(
-      conversationPrivacy === "private"
+      conversationPrivacy !== "public"
         ? inputMessages.map(toGenAiMessageMetadata)
         : inputMessages,
     );
@@ -1183,7 +1183,7 @@ export async function generateAssistantReply(
             newMessages = agent.state.messages.slice(beforeMessageCount);
             const outputMessages = newMessages.filter(isAssistantMessage);
             const outputMessagesAttribute = serializeGenAiAttribute(
-              conversationPrivacy === "private"
+              conversationPrivacy !== "public"
                 ? outputMessages.map(toGenAiMessageMetadata)
                 : outputMessages,
             );
