@@ -1920,8 +1920,13 @@ export function createDashboardApp(
     await next();
   };
 
-  app.use(basePath, requireDashboardSession);
-  if (basePath !== "/") {
+  if (basePath === "/") {
+    // When mounted at root, a wildcard is required to cover all sub-routes
+    // (e.g. /conversations, /sessions). `app.use("/", ...)` only matches
+    // the exact root path in Hono and leaves those routes unprotected.
+    app.use("/*", requireDashboardSession);
+  } else {
+    app.use(basePath, requireDashboardSession);
     app.use(`${basePath}/*`, requireDashboardSession);
   }
   app.use("/api/dashboard/*", requireDashboardSession);

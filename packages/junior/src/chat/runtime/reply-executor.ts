@@ -492,7 +492,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           updateConversationStats,
         });
         if (conversationId) {
-          await recordAgentTurnSessionSummary({
+          // Fire-and-forget: recording the "running" state is best-effort and
+          // must not delay reply generation.
+          void recordAgentTurnSessionSummary({
             channelName,
             conversationId,
             sessionId: turnId,

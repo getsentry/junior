@@ -219,6 +219,7 @@ vi.mock("@/chat/config", () => ({
 
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
+  GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   completeObject: async ({ prompt }: { prompt: string }) => {
     const instructionMatch = prompt.match(
       /<current-instruction>\n([\s\S]*?)\n<\/current-instruction>/,
