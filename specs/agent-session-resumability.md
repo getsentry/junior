@@ -84,6 +84,7 @@ events. Each pause event identifies one safe resume boundary inside that log.
   the predictable `conversation_id` already identifies the model history.
 - Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the session log.
 - Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful turn completion.
+- Thread state, channel state, turn-session checkpoints, and Pi session messages share Junior's one-week Redis retention window.
 
 ### Ingress Queue Contract
 

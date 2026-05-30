@@ -166,6 +166,12 @@ describe("createAgentTools", () => {
       },
       sandbox,
       {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
     );
 
     expect(editTool?.prepareArguments).toBe(prepareArguments);
@@ -222,6 +228,67 @@ describe("createAgentTools", () => {
     );
   });
 
+  it("records only tool payload metadata for private conversations", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({
+            ok: true,
+            stdout: "private result",
+          }),
+        },
+      },
+      sandbox,
+      {
+        conversationId: "slack:D123:123.456",
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+    );
+
+    await bashTool!.execute("tool-bash", {
+      command: "private command",
+    });
+
+    const spanAttributes = withSpanMock.mock.calls[0]?.[4] as Record<
+      string,
+      unknown
+    >;
+    const resultCall = setSpanAttributesMock.mock.calls.find(
+      (call) => call[0] && "gen_ai.tool.call.result" in call[0],
+    );
+    const resultAttribute = resultCall?.[0]?.[
+      "gen_ai.tool.call.result"
+    ] as string;
+
+    expect(spanAttributes["gen_ai.tool.call.arguments"]).toContain('"chars"');
+    expect(spanAttributes["gen_ai.tool.call.arguments"]).toContain(
+      '"keys":["command"]',
+    );
+    expect(spanAttributes["app.conversation.privacy"]).toBe("private");
+    expect(spanAttributes["app.ai.tool.call.arguments.type"]).toBe("object");
+    expect(spanAttributes["app.ai.tool.call.arguments.keys"]).toEqual([
+      "command",
+    ]);
+    expect(spanAttributes["gen_ai.tool.call.arguments"]).not.toContain(
+      "private command",
+    );
+    expect(resultAttribute).toContain('"chars"');
+    expect(resultAttribute).toContain('"keys":["ok","stdout"]');
+    expect(resultCall?.[0]).toMatchObject({
+      "app.ai.tool.call.result.type": "object",
+      "app.ai.tool.call.result.keys": ["ok", "stdout"],
+    });
+    expect(resultAttribute).not.toContain("private result");
+  });
+
   it("records the raw tool result instead of the MCP envelope", async () => {
     const sandbox = new SkillSandbox([], []);
     const [mcpTool] = createAgentTools(
@@ -244,6 +311,12 @@ describe("createAgentTools", () => {
       },
       sandbox,
       {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
     );
 
     await mcpTool!.execute("tool-mcp", { query: "hello" });

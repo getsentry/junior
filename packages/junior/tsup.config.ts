@@ -10,6 +10,7 @@ export default defineConfig({
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",
+    reporting: "src/reporting.ts",
     vercel: "src/vercel.ts",
   },
   format: "esm",

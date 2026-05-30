@@ -10,9 +10,29 @@ import * as Sentry from "@/chat/sentry";
 import {
   extractGenAiUsageAttributes,
   getLogContextAttributes,
+  normalizeGenAiFinishReason,
   serializeGenAiAttribute,
 } from "@/chat/logging";
-import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
+import {
+  GEN_AI_PROVIDER_NAME,
+  GEN_AI_SERVER_ADDRESS,
+  GEN_AI_SERVER_PORT,
+} from "@/chat/pi/client";
+import {
+  type ConversationPrivacy,
+  toGenAiMessageMetadata,
+  toGenAiMessagesTraceAttributes,
+  toGenAiTextMetadata,
+} from "@/chat/conversation-privacy";
+
+type GenAiAttributeMode = "content" | "metadata";
+type TraceAttributeValue = string | number | boolean | string[];
+
+function attributeModeForPrivacy(
+  conversationPrivacy: ConversationPrivacy | undefined,
+): GenAiAttributeMode {
+  return conversationPrivacy === "public" ? "content" : "metadata";
+}
 
 // Compose only the OTel GenAI attributes that are knowable at span start
 // (request-shape + system instructions). End-of-call attributes such as
@@ -20,40 +40,60 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
-): Record<string, string> {
-  const attributes: Record<string, string> = {
+  mode: GenAiAttributeMode,
+  conversationPrivacy: ConversationPrivacy | undefined,
+): Record<string, TraceAttributeValue> {
+  const attributes: Record<string, TraceAttributeValue> = {
     "gen_ai.operation.name": "chat",
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.request.model": model.id,
+    "gen_ai.request.stream": true,
+    "gen_ai.output.type": "text",
+    "server.address": GEN_AI_SERVER_ADDRESS,
+    "server.port": GEN_AI_SERVER_PORT,
+    ...(conversationPrivacy
+      ? { "app.conversation.privacy": conversationPrivacy }
+      : {}),
+    ...toGenAiMessagesTraceAttributes("app.ai.input", context.messages),
   };
 
-  const inputMessages = serializeGenAiAttribute(context.messages);
+  const inputMessages = serializeGenAiAttribute(
+    mode === "metadata"
+      ? context.messages.map(toGenAiMessageMetadata)
+      : context.messages,
+  );
   if (inputMessages) {
     attributes["gen_ai.input.messages"] = inputMessages;
   }
 
   if (context.systemPrompt) {
     const systemInstructions = serializeGenAiAttribute([
-      { type: "text", content: context.systemPrompt },
+      mode === "metadata"
+        ? toGenAiTextMetadata(context.systemPrompt)
+        : { type: "text", content: context.systemPrompt },
     ]);
     if (systemInstructions) {
       attributes["gen_ai.system_instructions"] = systemInstructions;
     }
+    attributes["app.ai.system_instructions.content_chars"] =
+      context.systemPrompt.length;
   }
 
   return attributes;
 }
 
 // Composes post-stream attributes for the chat span.
-// Known gap: `gen_ai.response.finish_reasons` emits pi-ai's raw StopReason
-// values (e.g. "toolUse", "aborted") instead of the OTel canonical set
-// ("tool_use", "max_tokens"). Tracked separately, out of scope here.
 function buildChatEndAttributes(
   message: AssistantMessage,
-): Record<string, string | string[] | number> {
-  const attributes: Record<string, string | string[] | number> = {};
+  mode: GenAiAttributeMode,
+): Record<string, TraceAttributeValue> {
+  const attributes: Record<string, TraceAttributeValue> = {
+    ...toGenAiMessagesTraceAttributes("app.ai.output", [message]),
+  };
 
-  const outputMessages = serializeGenAiAttribute([message]);
+  const outputMessages = serializeGenAiAttribute(
+    mode === "metadata" ? [toGenAiMessageMetadata(message)] : [message],
+  );
   if (outputMessages) {
     attributes["gen_ai.output.messages"] = outputMessages;
   }
@@ -61,7 +101,9 @@ function buildChatEndAttributes(
   Object.assign(attributes, extractGenAiUsageAttributes(message));
 
   if (message.stopReason) {
-    attributes["gen_ai.response.finish_reasons"] = [message.stopReason];
+    attributes["gen_ai.response.finish_reasons"] = [
+      normalizeGenAiFinishReason(message.stopReason),
+    ];
   }
 
   if (message.model) {
@@ -78,14 +120,35 @@ function buildChatEndAttributes(
  *
  * The base argument exists so tests can inject a stub stream function.
  */
-export function createTracedStreamFn(base: StreamFn = streamSimple): StreamFn {
+export function createTracedStreamFn(
+  baseOrOptions:
+    | StreamFn
+    | {
+        conversationPrivacy?: ConversationPrivacy;
+        base?: StreamFn;
+      } = streamSimple,
+): StreamFn {
+  const base =
+    typeof baseOrOptions === "function"
+      ? baseOrOptions
+      : (baseOrOptions.base ?? streamSimple);
+  const mode = attributeModeForPrivacy(
+    typeof baseOrOptions === "function"
+      ? undefined
+      : baseOrOptions.conversationPrivacy,
+  );
+  const conversationPrivacy =
+    typeof baseOrOptions === "function"
+      ? undefined
+      : baseOrOptions.conversationPrivacy;
+  const effectivePrivacy = conversationPrivacy ?? "private";
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
       op: "gen_ai.chat",
       attributes: {
         ...getLogContextAttributes(),
-        ...buildChatStartAttributes(model, context),
+        ...buildChatStartAttributes(model, context, mode, effectivePrivacy),
       },
     });
 
@@ -100,7 +163,7 @@ export function createTracedStreamFn(base: StreamFn = streamSimple): StreamFn {
           (finalMessage) => {
             try {
               for (const [key, value] of Object.entries(
-                buildChatEndAttributes(finalMessage),
+                buildChatEndAttributes(finalMessage, mode),
               )) {
                 span.setAttribute(key, value);
               }

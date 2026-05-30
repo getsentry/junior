@@ -1,0 +1,53 @@
+import { useSearchParams } from "react-router";
+
+import { ConversationList, FilterTabs } from "../components";
+import {
+  buildConversations,
+  filterConversations,
+  formatTime,
+  getFilter,
+} from "../format";
+import type { DashboardData, SessionFilter } from "../types";
+
+/** Render the searchable conversation index from recent turn summaries. */
+export function ConversationsPage(props: { data?: DashboardData }) {
+  const [params, setParams] = useSearchParams();
+  const filter = getFilter(params.get("filter"));
+  const sessions = props.data?.sessions.sessions ?? [];
+  const conversations = buildConversations(sessions);
+  const visibleConversations = filterConversations(conversations, filter);
+  const search = params.toString();
+  const feedMeta =
+    props.data?.sessions.source === "turn_session_checkpoints"
+      ? `${conversations.length} conversations / ${sessions.length} turns / ${formatTime(props.data.sessions.generatedAt)}`
+      : "waiting for run history feed";
+
+  function updateFilter(nextFilter: SessionFilter) {
+    const next = new URLSearchParams(params);
+    next.set("filter", nextFilter);
+    setParams(next);
+  }
+
+  return (
+    <div className="conversations-layout">
+      <section className="sessions-main">
+        <section className="section sessions-section">
+          <div className="section-header">
+            <div>
+              <div className="kicker">Flight Recorder</div>
+              <div className="section-title">Conversations</div>
+              <div className="pulse-meta">{feedMeta}</div>
+            </div>
+            <FilterTabs current={filter} onChange={updateFilter} />
+          </div>
+          <div className="conversation-list-shell">
+            <ConversationList
+              conversations={visibleConversations}
+              search={search ? `?${search}` : ""}
+            />
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}

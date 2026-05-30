@@ -99,6 +99,23 @@ const LEGACY_KEY_MAP: Record<string, string> = {
   inferredScore: "app.skill.score",
 };
 
+/** Normalize runtime finish reasons to the telemetry spelling we emit. */
+export function normalizeGenAiFinishReason(reason: string): string {
+  return reason === "toolUse" ? "tool_use" : reason;
+}
+
+function normalizeGenAiFinishReasons(value: unknown): unknown {
+  if (typeof value === "string" && value.trim()) {
+    return [normalizeGenAiFinishReason(value)];
+  }
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value.map((reason) =>
+    typeof reason === "string" ? normalizeGenAiFinishReason(reason) : reason,
+  );
+}
+
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
 type ConsoleTextStyle = Parameters<typeof styleText>[0];
@@ -434,10 +451,8 @@ function mergeAttributes(
     for (const [rawKey, rawValue] of Object.entries(map)) {
       const key = normalizeAttributeKey(rawKey);
       const value = sanitizeValue(
-        key === "gen_ai.response.finish_reasons" &&
-          typeof rawValue === "string" &&
-          rawValue.trim()
-          ? [rawValue]
+        key === "gen_ai.response.finish_reasons"
+          ? normalizeGenAiFinishReasons(rawValue)
           : rawValue,
       );
       if (value !== undefined) {
@@ -1444,9 +1459,14 @@ function normalizeSpanAttributes(
 ): Record<string, SpanAttributeValue> {
   const normalized: Record<string, SpanAttributeValue> = {};
   for (const [rawKey, value] of Object.entries(attributes)) {
-    const normalizedValue = toSpanAttributeValue(value);
+    const key = normalizeAttributeKey(rawKey);
+    const normalizedValue = toSpanAttributeValue(
+      key === "gen_ai.response.finish_reasons"
+        ? normalizeGenAiFinishReasons(value)
+        : value,
+    );
     if (normalizedValue !== undefined) {
-      normalized[normalizeAttributeKey(rawKey)] = normalizedValue;
+      normalized[key] = normalizedValue;
     }
   }
   return normalized;

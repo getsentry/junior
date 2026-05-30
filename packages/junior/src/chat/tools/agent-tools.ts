@@ -1,4 +1,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import {
+  toGenAiPayloadMetadata,
+  toGenAiPayloadTraceAttributes,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
 import { serializeGenAiAttribute } from "@/chat/logging";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -28,8 +33,16 @@ export function createAgentTools(
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
   agentHooks?: AgentPluginHookRunner,
+  conversationPrivacy?: ConversationPrivacy,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
+  const effectiveConversationPrivacy = conversationPrivacy ?? "private";
+  const serializeToolPayload = (payload: unknown) =>
+    serializeGenAiAttribute(
+      effectiveConversationPrivacy === "private"
+        ? toGenAiPayloadMetadata(payload)
+        : payload,
+    );
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -42,7 +55,11 @@ export function createAgentTools(
         typeof toolCallId === "string" && toolCallId.length > 0
           ? toolCallId
           : undefined;
-      const toolArgumentsAttribute = serializeGenAiAttribute(params);
+      const toolArgumentsAttribute = serializeToolPayload(params);
+      const toolArgumentsMetadata = toGenAiPayloadTraceAttributes(
+        "app.ai.tool.call.arguments",
+        params,
+      );
       if (toolName === "reportProgress") {
         const status = buildReportedProgressStatus(params);
         if (status) {
@@ -59,11 +76,14 @@ export function createAgentTools(
           try {
             if (typeof toolDef.execute !== "function") {
               const resultDetails = { ok: true };
-              const toolResultAttribute =
-                serializeGenAiAttribute(resultDetails);
+              const toolResultAttribute = serializeToolPayload(resultDetails);
               if (toolResultAttribute) {
                 setSpanAttributes({
                   "gen_ai.tool.call.result": toolResultAttribute,
+                  ...toGenAiPayloadTraceAttributes(
+                    "app.ai.tool.call.result",
+                    resultDetails,
+                  ),
                 });
               }
               return {
@@ -113,10 +133,14 @@ export function createAgentTools(
                 ? (normalized.details as { rawResult: unknown }).rawResult
                 : normalized.details;
             const toolResultAttribute =
-              serializeGenAiAttribute(resultAttributeValue);
+              serializeToolPayload(resultAttributeValue);
             if (toolResultAttribute) {
               setSpanAttributes({
                 "gen_ai.tool.call.result": toolResultAttribute,
+                ...toGenAiPayloadTraceAttributes(
+                  "app.ai.tool.call.result",
+                  resultAttributeValue,
+                ),
               });
             }
             return normalized;
@@ -139,8 +163,10 @@ export function createAgentTools(
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
+          "app.conversation.privacy": effectiveConversationPrivacy,
           "gen_ai.tool.name": toolName,
           "gen_ai.tool.description": toolDef.description,
+          ...toolArgumentsMetadata,
           ...(normalizedToolCallId
             ? { "gen_ai.tool.call.id": normalizedToolCallId }
             : {}),

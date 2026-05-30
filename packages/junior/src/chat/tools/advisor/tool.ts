@@ -6,13 +6,22 @@ import {
 import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import {
+  type ConversationPrivacy,
+  toGenAiMessageMetadata,
+  toGenAiMessagesTraceAttributes,
+} from "@/chat/conversation-privacy";
+import {
   extractGenAiUsageAttributes,
+  serializeGenAiAttribute,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
 import {
+  GEN_AI_PROVIDER_NAME,
+  GEN_AI_SERVER_ADDRESS,
+  GEN_AI_SERVER_PORT,
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
@@ -51,6 +60,7 @@ export interface AdvisorToolResult {
 export interface AdvisorToolRuntimeContext {
   config: AdvisorConfig;
   conversationId?: string;
+  conversationPrivacy?: ConversationPrivacy;
   getTools: () => AgentTool[];
   logContext?: LogContext;
   store?: AdvisorSessionStore;
@@ -170,22 +180,36 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
       }
 
       const conversationId = context.conversationId;
+      const conversationPrivacy = context.conversationPrivacy ?? "private";
+      const requestText = [
+        "<advisor-task>",
+        escapeXml(advisorQuestion),
+        "</advisor-task>",
+        "",
+        "<executor-context>",
+        escapeXml(advisorContext),
+        "</executor-context>",
+      ].join("\n");
+      const advisorInputMessage = {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: requestText,
+          },
+        ],
+      };
+      const advisorInputMessagesAttribute = serializeGenAiAttribute(
+        conversationPrivacy === "private"
+          ? [toGenAiMessageMetadata(advisorInputMessage)]
+          : [advisorInputMessage],
+      );
 
       return await withSpan(
-        "ai.invoke_advisor",
+        `invoke_agent ${context.config.modelId}`,
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
-          const requestText = [
-            "<advisor-task>",
-            escapeXml(advisorQuestion),
-            "</advisor-task>",
-            "",
-            "<executor-context>",
-            escapeXml(advisorContext),
-            "</executor-context>",
-          ].join("\n");
-
           const requestMessage: PiMessage = {
             role: "user",
             content: [{ type: "text", text: requestText }],
@@ -230,7 +254,19 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           const assistant = lastAssistantMessage(advisorAgent.state.messages);
           const newAdvisorMessages =
             advisorAgent.state.messages.slice(beforeMessageCount);
-          setSpanAttributes(extractGenAiUsageAttributes(...newAdvisorMessages));
+          const outputMessages = newAdvisorMessages.filter(isAssistantMessage);
+          const outputMessagesAttribute = serializeGenAiAttribute(
+            conversationPrivacy === "private"
+              ? outputMessages.map(toGenAiMessageMetadata)
+              : outputMessages,
+          );
+          setSpanAttributes({
+            ...(outputMessagesAttribute
+              ? { "gen_ai.output.messages": outputMessagesAttribute }
+              : {}),
+            ...toGenAiMessagesTraceAttributes("app.ai.output", outputMessages),
+            ...extractGenAiUsageAttributes(...newAdvisorMessages),
+          });
 
           if (
             !assistant ||
@@ -258,9 +294,19 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           return success(memo);
         },
         {
-          "gen_ai.provider.name": "vercel-ai-gateway",
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.request.model": context.config.modelId,
+          "gen_ai.output.type": "text",
+          "server.address": GEN_AI_SERVER_ADDRESS,
+          "server.port": GEN_AI_SERVER_PORT,
+          "app.conversation.privacy": conversationPrivacy,
+          ...toGenAiMessagesTraceAttributes("app.ai.input", [
+            advisorInputMessage,
+          ]),
+          ...(advisorInputMessagesAttribute
+            ? { "gen_ai.input.messages": advisorInputMessagesAttribute }
+            : {}),
         },
       );
     },

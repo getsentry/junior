@@ -1,4 +1,4 @@
-import * as Sentry from "@/chat/sentry";
+import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 
@@ -50,55 +50,6 @@ function escapeSlackLinkUrl(url: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "%3C")
     .replaceAll(">", "%3E");
-}
-
-function getSentryOrgSlug(): string | undefined {
-  const slug = process.env.SENTRY_ORG_SLUG?.trim();
-  return slug || undefined;
-}
-
-function isSentrySaasDsnHost(host: string): boolean {
-  return host === "sentry.io" || host.endsWith(".sentry.io");
-}
-
-function buildSentryWebBaseUrl(dsn: {
-  host: string;
-  path?: string;
-  port?: string;
-  protocol: string;
-}): string {
-  if (isSentrySaasDsnHost(dsn.host)) {
-    return "https://sentry.io";
-  }
-
-  const port = dsn.port ? `:${dsn.port}` : "";
-  const path = dsn.path ? `/${dsn.path}` : "";
-  return `${dsn.protocol}://${dsn.host}${port}${path}`;
-}
-
-function getSentryConversationUrl(conversationId: string): string | undefined {
-  const client = Sentry.getClient();
-  const dsn = client?.getDsn();
-  if (!dsn?.host || !dsn.projectId) {
-    return undefined;
-  }
-
-  const orgSlug = getSentryOrgSlug();
-  if (!orgSlug) {
-    return undefined;
-  }
-
-  const encodedId = encodeURIComponent(conversationId);
-  const params = new URLSearchParams();
-  params.set("project", dsn.projectId);
-
-  const path = `explore/conversations/${encodedId}/?${params.toString()}`;
-
-  if (isSentrySaasDsnHost(dsn.host)) {
-    return `https://${orgSlug}.sentry.io/${path}`;
-  }
-
-  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${path}`;
 }
 
 function formatSlackTokenCount(value: number): string {
@@ -182,7 +133,7 @@ export function buildSlackReplyFooter(args: {
       label: "ID",
       value: conversationId,
     };
-    const conversationUrl = getSentryConversationUrl(conversationId);
+    const conversationUrl = buildSentryConversationUrl(conversationId);
     if (conversationUrl) {
       idItem.url = conversationUrl;
     }

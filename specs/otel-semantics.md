@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-11
+- Last Edited: 2026-05-30
 
 ## Purpose
 
@@ -60,7 +60,11 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.provider.name`
 - `gen_ai.operation.name`
 - `gen_ai.request.model`
+- `gen_ai.output.type`
+- `gen_ai.request.stream`
 - `gen_ai.response.finish_reasons` (when available)
+- `server.address`
+- `server.port` when `server.address` is set
 - `gen_ai.system_instructions` (when captured and provided separately from chat history)
 - `gen_ai.input.messages` (when captured)
 - `gen_ai.output.messages` (when captured)
@@ -75,6 +79,31 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.tool.call.result` (when captured)
 - Prefer `gen_ai.input.messages` / `gen_ai.output.messages` over legacy names like `gen_ai.request.messages` / `gen_ai.response.text`.
 - Prefer `gen_ai.response.finish_reasons` over custom `app.ai.stop_reason`.
+  Normalize Pi's `toolUse` stop reason to `tool_use` at telemetry boundaries.
+
+### GenAI Custom Fallbacks
+
+Use `app.*` for bounded, non-content metadata with no current semantic key:
+
+- `app.conversation.privacy` (`public|private`)
+- `app.ai.input.message_count`
+- `app.ai.input.content_chars`
+- `app.ai.input.roles`
+- `app.ai.input.part_types`
+- `app.ai.output.message_count`
+- `app.ai.output.content_chars`
+- `app.ai.output.roles`
+- `app.ai.output.part_types`
+- `app.ai.system_instructions.content_chars`
+- `app.ai.tool.call.arguments.type`
+- `app.ai.tool.call.arguments.size_chars`
+- `app.ai.tool.call.arguments.keys`
+- `app.ai.tool.call.result.type`
+- `app.ai.tool.call.result.size_chars`
+- `app.ai.tool.call.result.keys`
+
+Raw GenAI payload attributes are governed by `./data-redaction-policy.md`.
+Private conversations must use metadata-only attributes.
 
 ## MCP Tool Calls
 

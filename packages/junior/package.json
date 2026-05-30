@@ -6,6 +6,7 @@
     "access": "public"
   },
   "type": "module",
+  "types": "./dist/app.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getsentry/junior.git",
@@ -16,10 +17,26 @@
     "junior": "bin/junior.mjs"
   },
   "exports": {
-    ".": "./dist/app.js",
-    "./instrumentation": "./dist/instrumentation.js",
-    "./nitro": "./dist/nitro.js",
-    "./vercel": "./dist/vercel.js"
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    },
+    "./instrumentation": {
+      "types": "./dist/instrumentation.d.ts",
+      "default": "./dist/instrumentation.js"
+    },
+    "./nitro": {
+      "types": "./dist/nitro.d.ts",
+      "default": "./dist/nitro.js"
+    },
+    "./reporting": {
+      "types": "./dist/reporting.d.ts",
+      "default": "./dist/reporting.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel.d.ts",
+      "default": "./dist/vercel.js"
+    }
   },
   "files": [
     "dist",
@@ -50,6 +67,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@sinclair/typebox": "^0.34.49",
     "@slack/web-api": "^7.16.0",
+    "@sentry/node": "catalog:",
     "@vercel/functions": "^3.6.0",
     "@vercel/sandbox": "2.0.0",
     "ai": "^6.0.190",
@@ -62,12 +80,8 @@
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
-  "peerDependencies": {
-    "@sentry/node": ">=10.0.0"
-  },
   "devDependencies": {
     "@sentry/junior-scheduler": "workspace:*",
-    "@sentry/node": "10.53.1",
     "@types/node": "^25.9.1",
     "dependency-cruiser": "^17.4.0",
     "msw": "^2.14.6",

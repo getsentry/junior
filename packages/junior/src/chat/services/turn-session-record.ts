@@ -2,8 +2,9 @@ import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
+  type AgentTurnRequester,
 } from "@/chat/state/turn-session";
-import { logException } from "@/chat/logging";
+import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
@@ -123,11 +124,14 @@ export async function loadTurnSessionRecord(
 
 /** Persist the latest safe in-progress boundary without scheduling continuation. */
 export async function persistRunningSessionRecord(args: {
+  channelName?: string;
   conversationId: string;
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
+  loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  requester?: AgentTurnRequester;
 }): Promise<void> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return;
@@ -139,6 +143,9 @@ export async function persistRunningSessionRecord(args: {
       args.sessionId,
     );
     await upsertAgentTurnSessionRecord({
+      ...((args.channelName ?? latestSessionRecord?.channelName)
+        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
@@ -146,6 +153,15 @@ export async function persistRunningSessionRecord(args: {
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
+      ...(args.loadedSkillNames
+        ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.requester ?? latestSessionRecord?.requester)
+        ? { requester: args.requester ?? latestSessionRecord?.requester }
+        : {}),
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(
@@ -162,13 +178,16 @@ export async function persistRunningSessionRecord(args: {
 
 /** Persist a completed turn session record. */
 export async function persistCompletedSessionRecord(args: {
+  channelName?: string;
   conversationId: string;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
+  loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  requester?: AgentTurnRequester;
 }): Promise<void> {
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
@@ -176,6 +195,9 @@ export async function persistCompletedSessionRecord(args: {
       args.sessionId,
     );
     await upsertAgentTurnSessionRecord({
+      ...((args.channelName ?? latestSessionRecord?.channelName)
+        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestSessionRecord?.cumulativeDurationMs,
@@ -189,6 +211,15 @@ export async function persistCompletedSessionRecord(args: {
       sliceId: args.sliceId,
       state: "completed",
       piMessages: args.allMessages,
+      ...(args.loadedSkillNames
+        ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.requester ?? latestSessionRecord?.requester)
+        ? { requester: args.requester ?? latestSessionRecord?.requester }
+        : {}),
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(
@@ -208,14 +239,17 @@ export async function persistCompletedSessionRecord(args: {
  * the caller can safely hand the user to an authorization resume flow.
  */
 export async function persistAuthPauseSessionRecord(args: {
+  channelName?: string;
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
+  loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
+  requester?: AgentTurnRequester;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
   try {
@@ -231,6 +265,9 @@ export async function persistAuthPauseSessionRecord(args: {
       return undefined;
     }
     return await upsertAgentTurnSessionRecord({
+      ...((args.channelName ?? latestSessionRecord?.channelName)
+        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestSessionRecord?.cumulativeDurationMs,
@@ -244,9 +281,18 @@ export async function persistAuthPauseSessionRecord(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
+      ...(args.loadedSkillNames
+        ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
+      ...((args.requester ?? latestSessionRecord?.requester)
+        ? { requester: args.requester ?? latestSessionRecord?.requester }
+        : {}),
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(
@@ -268,14 +314,17 @@ export async function persistAuthPauseSessionRecord(args: {
  * record when persistence succeeds so callers can enqueue a continuation.
  */
 export async function persistTimeoutSessionRecord(args: {
+  channelName?: string;
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
+  loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
+  requester?: AgentTurnRequester;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
 
@@ -292,6 +341,9 @@ export async function persistTimeoutSessionRecord(args: {
       return undefined;
     }
     return await upsertAgentTurnSessionRecord({
+      ...((args.channelName ?? latestSessionRecord?.channelName)
+        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestSessionRecord?.cumulativeDurationMs,
@@ -305,9 +357,18 @@ export async function persistTimeoutSessionRecord(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
+      ...(args.loadedSkillNames
+        ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
+      ...((args.requester ?? latestSessionRecord?.requester)
+        ? { requester: args.requester ?? latestSessionRecord?.requester }
+        : {}),
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(

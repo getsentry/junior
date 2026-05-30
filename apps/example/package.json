@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build",
     "dev": "nitro dev",
     "build": "junior snapshot create && nitro build",
     "preview": "nitro preview",
@@ -11,13 +12,13 @@
   "dependencies": {
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
+    "@sentry/junior-dashboard": "workspace:*",
     "@sentry/junior-datadog": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-hex": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
-    "@sentry/node": "10.53.1",
     "hono": "^4.12.22"
   },
   "devDependencies": {

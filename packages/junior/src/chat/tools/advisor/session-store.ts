@@ -1,8 +1,8 @@
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const ADVISOR_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
+const ADVISOR_SESSION_TTL_MS = JUNIOR_THREAD_STATE_TTL_MS;
 
 export interface AdvisorSessionStore {
   load: (conversationId: string) => Promise<PiMessage[]>;

@@ -14,6 +14,11 @@ const workspaceRoot = path.resolve(
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const devPort = process.env.PORT?.trim() || "3000";
 const juniorPackageDir = path.join(workspaceRoot, "packages", "junior");
+const dashboardPackageDir = path.join(
+  workspaceRoot,
+  "packages",
+  "junior-dashboard",
+);
 const exampleDir = path.join(workspaceRoot, "apps", "example");
 
 process.env.NODE_ENV = nodeEnv;
@@ -85,19 +90,18 @@ function runRequiredChild(command, args, options = {}) {
   }
 }
 
-function syncInjectedJuniorDist(options = {}) {
+function syncInjectedPackageDist(packageName, packageDir, options = {}) {
   // `inject-workspace-packages=true` makes the example app resolve
-  // `@sentry/junior` from pnpm's injected package copy under
-  // `node_modules/.pnpm/...`, not directly from `packages/junior`.
+  // workspace dependencies from pnpm's injected package copies under
+  // `node_modules/.pnpm/...`, not directly from `packages/*`.
   // Point the injected package `dist` at the live workspace build output so
   // `pnpm dev` executes the latest local build without recursive copy races.
-  const injectedPackageDir = resolveInjectedPackageDir(
-    "@sentry/junior",
-    exampleDir,
-  );
-  if (!injectedPackageDir) {
+  const injectedPackageDirs = [workspaceRoot, exampleDir]
+    .map((consumerDir) => resolveInjectedPackageDir(packageName, consumerDir))
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  if (injectedPackageDirs.length === 0) {
     const error = new Error(
-      "Unable to resolve injected @sentry/junior package for apps/example dev runtime",
+      `Unable to resolve injected ${packageName} package for apps/example dev runtime`,
     );
     if (options.strict ?? false) {
       throw error;
@@ -106,10 +110,12 @@ function syncInjectedJuniorDist(options = {}) {
     return;
   }
 
-  linkDirectory(
-    path.join(juniorPackageDir, "dist"),
-    path.join(injectedPackageDir, "dist"),
-  );
+  for (const injectedPackageDir of injectedPackageDirs) {
+    linkDirectory(
+      path.join(packageDir, "dist"),
+      path.join(injectedPackageDir, "dist"),
+    );
+  }
 }
 
 const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
@@ -174,13 +180,93 @@ function startLocalHeartbeat() {
   });
 }
 
+let nitroChild;
+let restartingNitro = false;
+
+function clearExampleVercelOutput() {
+  fs.rmSync(path.join(exampleDir, ".vercel", "output"), {
+    force: true,
+    recursive: true,
+  });
+}
+
+function startNitroDev() {
+  nitroChild = spawnChild("pnpm", ["exec", "nitro", "dev"], {
+    cwd: exampleDir,
+  });
+
+  nitroChild.on("exit", (code, signal) => {
+    if (restartingNitro) {
+      return;
+    }
+
+    terminateChildren(signal ?? "SIGTERM");
+
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+
+    process.exit(code ?? 1);
+  });
+}
+
+function restartNitroDev() {
+  if (!nitroChild || nitroChild.killed) {
+    clearExampleVercelOutput();
+    startNitroDev();
+    return;
+  }
+
+  restartingNitro = true;
+  nitroChild.once("exit", () => {
+    clearExampleVercelOutput();
+    restartingNitro = false;
+    startNitroDev();
+  });
+  nitroChild.kill("SIGTERM");
+}
+
+function watchDistForNitroRestart() {
+  let timer;
+  const scheduleRestart = () => {
+    clearTimeout(timer);
+    timer = setTimeout(restartNitroDev, 1500);
+  };
+
+  for (const distDir of [
+    path.join(juniorPackageDir, "dist"),
+    path.join(dashboardPackageDir, "dist"),
+  ]) {
+    const watcher = fs.watch(distDir, scheduleRestart);
+    children.add({
+      killed: false,
+      kill() {
+        clearTimeout(timer);
+        watcher.close();
+        this.killed = true;
+      },
+    });
+  }
+}
+
 runRequiredChild("pnpm", ["build"], {
   cwd: juniorPackageDir,
 });
-syncInjectedJuniorDist({ strict: true });
+runRequiredChild("pnpm", ["build"], {
+  cwd: dashboardPackageDir,
+});
+syncInjectedPackageDist("@sentry/junior", juniorPackageDir, { strict: true });
+syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
+  strict: true,
+});
+clearExampleVercelOutput();
 
 spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
   cwd: juniorPackageDir,
+});
+spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
+  cwd: dashboardPackageDir,
 });
 
 if (tunnelToken) {
@@ -199,7 +285,8 @@ if (tunnelToken) {
   ]);
 }
 
-const child = spawnChild("pnpm", ["dev"], { cwd: exampleDir });
+watchDistForNitroRestart();
+startNitroDev();
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -207,14 +294,3 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     terminateChildren(signal);
   });
 }
-
-child.on("exit", (code, signal) => {
-  terminateChildren(signal ?? "SIGTERM");
-
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-
-  process.exit(code ?? 1);
-});

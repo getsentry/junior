@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { Lock, StateAdapter } from "chat";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type {
   DispatchCreateResult,
   DispatchOptions,
@@ -151,7 +151,7 @@ async function syncIncompleteDispatchIndex(
     await state.set(
       incompleteDispatchIndexKey(),
       next.slice(-DISPATCH_INDEX_MAX_LENGTH),
-      THREAD_STATE_TTL_MS,
+      JUNIOR_THREAD_STATE_TTL_MS,
     );
   });
 }
@@ -163,7 +163,7 @@ async function putRecord(
   await state.set(
     getDispatchStorageKey(record.id),
     record,
-    THREAD_STATE_TTL_MS,
+    JUNIOR_THREAD_STATE_TTL_MS,
   );
   await syncIncompleteDispatchIndex(state, record);
 }

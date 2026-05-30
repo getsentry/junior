@@ -87,7 +87,7 @@ describe("createTracedStreamFn", () => {
     expect(opts.name).toBe("chat openai/gpt-5.4");
   });
 
-  it("sets gen_ai.input.messages and gen_ai.system_instructions on the chat span", async () => {
+  it("sets metadata-only input messages and system instructions when privacy is unknown", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
@@ -106,14 +106,77 @@ describe("createTracedStreamFn", () => {
       attributes: Record<string, unknown>;
     };
     expect(opts.attributes["gen_ai.provider.name"]).toBe("vercel-ai-gateway");
+    expect(opts.attributes["server.address"]).toBe("ai-gateway.vercel.sh");
+    expect(opts.attributes["server.port"]).toBe(443);
+    expect(opts.attributes["gen_ai.request.stream"]).toBe(true);
+    expect(opts.attributes["gen_ai.output.type"]).toBe("text");
+    expect(opts.attributes["app.ai.input.message_count"]).toBe(1);
+    expect(opts.attributes["app.ai.input.content_chars"]).toBe(5);
+    expect(opts.attributes["app.ai.input.roles"]).toEqual(["user"]);
+    expect(opts.attributes["app.ai.system_instructions.content_chars"]).toBe(
+      14,
+    );
     expect(typeof opts.attributes["gen_ai.input.messages"]).toBe("string");
-    expect(opts.attributes["gen_ai.input.messages"]).toContain("hello");
+    expect(opts.attributes["app.conversation.privacy"]).toBe("private");
+    expect(opts.attributes["gen_ai.input.messages"]).toContain('"chars"');
+    expect(opts.attributes["gen_ai.input.messages"]).not.toContain("hello");
     expect(typeof opts.attributes["gen_ai.system_instructions"]).toBe("string");
-    expect(opts.attributes["gen_ai.system_instructions"]).toContain(
+    expect(opts.attributes["gen_ai.system_instructions"]).toContain('"chars"');
+    expect(opts.attributes["gen_ai.system_instructions"]).not.toContain(
       "you are junior",
     );
     expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
+  });
+
+  it("uses message metadata for private conversation chat spans", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn({
+      base: base as unknown as StreamFn,
+      conversationPrivacy: "private",
+    });
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      {
+        systemPrompt: "private system",
+        messages: [{ role: "user", content: "private prompt", timestamp: 0 }],
+      },
+      undefined,
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      attributes: Record<string, unknown>;
+    };
+    expect(opts.attributes["app.conversation.privacy"]).toBe("private");
+    expect(opts.attributes["app.ai.input.message_count"]).toBe(1);
+    expect(opts.attributes["app.ai.input.content_chars"]).toBe(14);
+    expect(opts.attributes["gen_ai.input.messages"]).toContain('"chars"');
+    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
+      "private prompt",
+    );
+    expect(opts.attributes["gen_ai.system_instructions"]).toContain('"chars"');
+    expect(opts.attributes["gen_ai.system_instructions"]).not.toContain(
+      "private system",
+    );
+
+    stream.end({
+      ...fakeMessage(),
+      content: [{ type: "text", text: "secret" }],
+    });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["app.ai.output.message_count"]).toBe(1);
+    expect(endAttributes["app.ai.output.content_chars"]).toBe(6);
+    expect(endAttributes["gen_ai.output.messages"]).toContain('"chars"');
+    expect(endAttributes["gen_ai.output.messages"]).not.toContain("secret");
   });
 
   it("sets output.messages, usage tokens, finish_reasons, response.model after stream completion", async () => {
@@ -147,6 +210,31 @@ describe("createTracedStreamFn", () => {
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
     expect(span.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes Pi toolUse finish reasons for telemetry", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    stream.end({ ...fakeMessage(), stopReason: "toolUse" });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual([
+      "tool_use",
+    ]);
   });
 
   it("inherits LogContext attributes (e.g. gen_ai.conversation.id) onto the chat span", async () => {

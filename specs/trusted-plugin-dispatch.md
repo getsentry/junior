@@ -151,7 +151,7 @@ Plugin-visible `Dispatch` is a projection, not the stored record.
 
 Dispatch ids should be deterministic from plugin name and idempotency key. Duplicate calls return the existing dispatch id and may re-fire the callback only when the record is incomplete.
 
-Dispatch records use `THREAD_STATE_TTL_MS`. `ctx.agent.get(id)` is reconciliation, not permanent run history.
+Dispatch records use Junior's one-week thread-state TTL. `ctx.agent.get(id)` is reconciliation, not permanent run history.
 
 ## Recovery
 

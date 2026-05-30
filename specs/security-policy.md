@@ -103,6 +103,10 @@ This policy applies to:
 
 - Never log token values, private keys, or raw Authorization headers.
 - Log only safe metadata (skill, capability, target, outcome, expiry timestamp).
+- Conversation, model, and tool payload redaction is governed by
+  `./data-redaction-policy.md`; private conversations must not expose raw
+  message text, thinking output, tool arguments, or tool results in logs,
+  traces, or dashboard APIs.
 
 ## Verification requirements
 

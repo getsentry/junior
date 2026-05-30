@@ -107,6 +107,7 @@ Co-Authored-By: (agent model name) <email>
 - `TELEMETRY.spec.md` (format contract for repository-root telemetry maps)
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
+- `specs/data-redaction-policy.md` (conversation privacy classification and raw payload redaction policy)
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
 - `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed turns, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
@@ -126,5 +127,6 @@ Co-Authored-By: (agent model name) <email>
 - `specs/plugin.md` (plugin architecture for self-contained provider integrations)
 - `specs/plugin-manifest.md` (plugin manifest fields and validation contract)
 - `specs/plugin-runtime.md` (plugin discovery, loading, skills, and MCP runtime contract)
+- `specs/dashboard.md` (authenticated dashboard, stateless Better Auth, and reporting boundary contract)
 - `specs/testing.md` (testing taxonomy and layer boundaries: unit/integration/eval)
 - Historical evaluations and superseded trackers live under `specs/archive/`.

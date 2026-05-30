@@ -12,6 +12,7 @@ const files = [
   "packages/junior/package.json",
   "packages/junior-plugin-api/package.json",
   "packages/junior-agent-browser/package.json",
+  "packages/junior-dashboard/package.json",
   "packages/junior-datadog/package.json",
   "packages/junior-github/package.json",
   "packages/junior-hex/package.json",

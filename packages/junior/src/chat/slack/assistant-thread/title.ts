@@ -35,7 +35,7 @@ export function maybeUpdateAssistantTitle(args: {
   requesterId?: string;
   runId?: string;
   threadId?: string;
-}): Promise<string | undefined> {
+}): Promise<{ sourceMessageId: string; title?: string } | undefined> {
   const assistantThreadContext = args.assistantThreadContext;
   if (
     !assistantThreadContext?.channelId ||
@@ -63,7 +63,7 @@ export function maybeUpdateAssistantTitle(args: {
           assistantThreadContext.threadTs,
           title,
         );
-      return titleSourceMessage.id;
+      return { sourceMessageId: titleSourceMessage.id, title };
     } catch (error) {
       const slackErrorCode = getSlackApiErrorCode(error);
       const assistantTitleErrorAttributes = {
@@ -91,7 +91,7 @@ export function maybeUpdateAssistantTitle(args: {
           assistantTitleErrorAttributes,
           "Skipping thread title update due to Slack permission error",
         );
-        return titleSourceMessage.id;
+        return { sourceMessageId: titleSourceMessage.id };
       }
       logWarn(
         "thread_title_generation_failed",

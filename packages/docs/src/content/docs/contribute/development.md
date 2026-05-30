@@ -38,7 +38,7 @@ If your team account requires an explicit Vercel scope, add `--scope <team-slug>
 pnpm dev
 ```
 
-This starts the example app on `http://localhost:3000` by default.
+This starts the example app on `http://localhost:3000` by default. It also rebuilds and watches the workspace packages that the example app consumes, so dashboard and runtime package edits are reflected without manually rebuilding first.
 
 ## Common checks
 

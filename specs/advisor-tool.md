@@ -67,7 +67,7 @@ Advisor state is scoped to the parent conversation id and must survive process r
 
 - Store key: `junior:<conversationId>:advisor_session`
 - Stored value: the advisor agent's own `PiMessage[]`
-- TTL: same as parent thread state TTL
+- TTL: same as Junior's one-week thread-state TTL
 
 The main Pi transcript stores only the bounded tool result object from normal Pi tool execution, not the advisor's private history.
 

@@ -119,6 +119,7 @@ export default defineConfig({
               label: "Security Hardening",
               link: "/operate/security-hardening/",
             },
+            { label: "Dashboard", link: "/operate/dashboard/" },
             {
               label: "Sandbox Snapshots",
               link: "/operate/sandbox-snapshots/",

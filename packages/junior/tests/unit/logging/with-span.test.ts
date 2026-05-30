@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { startSpan } = vi.hoisted(() => ({
+const { activeSpan, startSpan } = vi.hoisted(() => ({
+  activeSpan: {
+    setAttribute: vi.fn(),
+  },
   startSpan: vi.fn(
     async (_options: unknown, callback: () => Promise<unknown>) => callback(),
   ),
 }));
 
 vi.mock("@/chat/sentry", () => ({
+  getActiveSpan: () => activeSpan,
   startSpan,
 }));
 
@@ -56,6 +60,26 @@ describe("withSpan", () => {
     expect(innerSpanOptions.attributes["app.run.id"]).toBe("run_123");
     expect(innerSpanOptions.attributes["gen_ai.request.model"]).toBe(
       "openai/gpt-4o-mini",
+    );
+  });
+
+  it("normalizes Pi toolUse finish reasons on span attributes", async () => {
+    const { setSpanAttributes, withSpan } = await import("@/chat/logging");
+
+    await withSpan("chat openai/gpt-5.4", "gen_ai.chat", {}, async () => {}, {
+      "gen_ai.response.finish_reasons": ["toolUse"],
+    });
+    setSpanAttributes({ finishReason: "toolUse" });
+
+    const spanOptions = startSpan.mock.calls[0]?.[0] as {
+      attributes: Record<string, unknown>;
+    };
+    expect(spanOptions.attributes["gen_ai.response.finish_reasons"]).toEqual([
+      "tool_use",
+    ]);
+    expect(activeSpan.setAttribute).toHaveBeenCalledWith(
+      "gen_ai.response.finish_reasons",
+      ["tool_use"],
     );
   });
 });

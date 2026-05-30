@@ -54,7 +54,7 @@ export default defineConfig({
 });
 ```
 
-If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/turn-resume`, `/api/info`, and `/health`. Do not split those routes across independent runtime instances.
+If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/turn-resume`, and `/health`. Do not split those routes across independent runtime instances. When mounted, `@sentry/junior-dashboard` owns `/`, `/api/dashboard/*`, and `/api/auth/*`.
 
 Some packages also export trusted runtime hooks. Register those in `createApp()`;
 do not rely on `juniorNitro()` alone. For example, see

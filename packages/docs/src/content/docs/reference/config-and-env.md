@@ -37,6 +37,25 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 Use one stable value per deployment. Rotating it invalidates pending internal resume callbacks and sandbox requester context signed with the previous value.
 
+## Dashboard auth
+
+If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
+
+| Variable               | Required | Purpose                                                                                           |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`     | Yes      | Google OAuth client ID.                                                                           |
+| `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                                                       |
+| `BETTER_AUTH_URL`      | No       | Optional dashboard callback origin. Defaults to `JUNIOR_BASE_URL`, Vercel URL envs, or local dev. |
+| `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`.                             |
+
+Configure allowed Google Workspace domains in `juniorDashboardNitro()` for normal Nitro deployments. If your deployment imports the dashboard handler before Nitro virtual modules are available, set these optional policy variables instead:
+
+| Variable                           | Required | Purpose                                                       |
+| ---------------------------------- | -------- | ------------------------------------------------------------- |
+| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | No       | Comma-separated or JSON array of allowed Google domains.      |
+| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | No       | Comma-separated or JSON array of explicit email allowlist.    |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | No       | Comma-separated or JSON array of Better Auth trusted origins. |
+
 ## Build-time snapshot warmup
 
 If your build command runs `junior snapshot create`:

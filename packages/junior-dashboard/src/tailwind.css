@@ -1,0 +1,4 @@
+@import "tailwindcss/utilities";
+
+@source "./client.tsx";
+@source "./client/**/*.{ts,tsx}";

@@ -12,6 +12,7 @@ import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
   logException,
+  getActiveTraceId,
   logInfo,
   logWarn,
   setSpanAttributes,
@@ -91,6 +92,8 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
+  recordAgentTurnSessionSummary,
+  type AgentTurnRequester,
 } from "@/chat/state/turn-session";
 import { loadProjection } from "@/chat/state/session-log";
 import {
@@ -105,6 +108,35 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
       ...(artifacts.recentCanvases?.map((canvas) => canvas.url) ?? []),
     ].filter((url): url is string => typeof url === "string" && url !== ""),
   );
+}
+
+function turnRequester(args: {
+  email?: string;
+  fullName?: string;
+  userId?: string;
+  userName?: string;
+}): AgentTurnRequester | undefined {
+  const requester: AgentTurnRequester = {
+    ...(args.email ? { email: args.email } : {}),
+    ...(args.fullName ? { fullName: args.fullName } : {}),
+    ...(args.userId ? { slackUserId: args.userId } : {}),
+    ...(args.userName ? { slackUserName: args.userName } : {}),
+  };
+  return Object.keys(requester).length > 0 ? requester : undefined;
+}
+
+async function resolveChannelName(thread: Thread): Promise<string | undefined> {
+  const existingName = thread.channel.name?.trim();
+  if (existingName) {
+    return existingName;
+  }
+
+  try {
+    const metadata = await thread.channel.fetchMetadata();
+    return metadata.name?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function getCurrentTurnCanvasUrl(args: {
@@ -239,6 +271,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(thread, message);
+    const channelName = channelId
+      ? await resolveChannelName(thread)
+      : undefined;
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
@@ -295,6 +330,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
         const slackMessageTs = getSlackMessageTs(message);
         const turnId = buildDeterministicTurnId(message.id);
+        const fallbackIdentity = await deps.services.lookupSlackUser(
+          message.author.userId,
+        );
+        const requester = turnRequester({
+          email: fallbackIdentity?.email,
+          fullName: message.author.fullName ?? fallbackIdentity?.fullName,
+          userId: message.author.userId,
+          userName: message.author.userName ?? fallbackIdentity?.userName,
+        });
         const turnTraceContext = {
           conversationId,
           slackThreadId: threadId,
@@ -447,6 +491,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           nextTurnId: turnId,
           updateConversationStats,
         });
+        if (conversationId) {
+          await recordAgentTurnSessionSummary({
+            channelName,
+            conversationId,
+            sessionId: turnId,
+            sliceId: 1,
+            startedAtMs: message.metadata.dateSent.getTime(),
+            state: "running",
+            requester,
+            traceId: getActiveTraceId(),
+          });
+        }
         setTags({
           conversationId,
         });
@@ -465,9 +521,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           conversation: preparedState.conversation,
         });
 
-        const fallbackIdentity = await deps.services.lookupSlackUser(
-          message.author.userId,
-        );
         const resolvedUserName =
           message.author.userName ?? fallbackIdentity?.userName;
         if (resolvedUserName) {
@@ -607,6 +660,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 teamId,
                 runId,
                 channelId,
+                channelName,
                 requesterId: message.author.userId,
               },
               toolChannelId,
@@ -753,7 +807,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const titleUpdateResult = await assistantTitleTask;
           if (titleUpdateResult) {
             artifactStatePatch.assistantTitleSourceMessageId =
-              titleUpdateResult;
+              titleUpdateResult.sourceMessageId;
+            if (titleUpdateResult.title) {
+              artifactStatePatch.assistantTitle = titleUpdateResult.title;
+            }
           }
 
           const completedState = buildDeliveredTurnStatePatch({
@@ -767,6 +824,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           await persistThreadState(thread, {
             ...completedState,
           });
+          if (conversationId) {
+            await recordAgentTurnSessionSummary({
+              channelName,
+              conversationId,
+              cumulativeDurationMs: reply.diagnostics.durationMs,
+              cumulativeUsage: reply.diagnostics.usage,
+              sessionId: turnId,
+              sliceId: 1,
+              startedAtMs: message.metadata.dateSent.getTime(),
+              state: "completed",
+              conversationTitle: titleUpdateResult?.title,
+              requester,
+              traceId: getActiveTraceId(),
+            });
+          }
           preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
           if (shouldEmitDevAgentTrace()) {
@@ -930,6 +1002,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             if (conversationId) {
               try {
+                await recordAgentTurnSessionSummary({
+                  channelName,
+                  conversationId,
+                  sessionId: turnId,
+                  sliceId: 1,
+                  startedAtMs: message.metadata.dateSent.getTime(),
+                  state: "failed",
+                  requester,
+                  traceId: getActiveTraceId(),
+                });
                 const sessionRecord = await getAgentTurnSessionRecord(
                   conversationId,
                   turnId,

@@ -64,6 +64,8 @@ import type {
 import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
 import {
   GEN_AI_PROVIDER_NAME,
+  GEN_AI_SERVER_ADDRESS,
+  GEN_AI_SERVER_PORT,
   completeObject,
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
@@ -118,6 +120,7 @@ import {
   persistRunningSessionRecord,
   persistTimeoutSessionRecord,
 } from "@/chat/services/turn-session-record";
+import type { AgentTurnRequester } from "@/chat/state/turn-session";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import {
@@ -125,6 +128,11 @@ import {
   AuthorizationPauseError,
   type AuthorizationFlowMode,
 } from "@/chat/services/auth-pause";
+import {
+  resolveConversationPrivacy,
+  toGenAiMessageMetadata,
+  toGenAiMessagesTraceAttributes,
+} from "@/chat/conversation-privacy";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
@@ -154,6 +162,7 @@ export interface ReplyRequestContext {
     turnId?: string;
     runId?: string;
     channelId?: string;
+    channelName?: string;
     teamId?: string;
     messageTs?: string;
     threadTs?: string;
@@ -243,6 +252,21 @@ function extractSliceUsage(
     ...messages.slice(beforeMessageCount).filter(isAssistantMessage),
   );
   return hasAgentTurnUsage(usage) ? usage : undefined;
+}
+
+function requesterFromContext(
+  requester: ReplyRequestContext["requester"],
+  requesterId: string | undefined,
+): AgentTurnRequester | undefined {
+  const identity: AgentTurnRequester = {
+    ...(requester?.email ? { email: requester.email } : {}),
+    ...(requester?.fullName ? { fullName: requester.fullName } : {}),
+    ...((requesterId ?? requester?.userId)
+      ? { slackUserId: requesterId ?? requester?.userId }
+      : {}),
+    ...(requester?.userName ? { slackUserName: requester.userName } : {}),
+  };
+  return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
 function supportsRouterTextPreview(mediaType: string): boolean {
@@ -369,6 +393,17 @@ export async function generateAssistantReply(
   let timedOut = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
+  const requester = requesterFromContext(
+    context.requester,
+    context.correlation?.requesterId,
+  );
+  const conversationPrivacy = resolveConversationPrivacy({
+    channelId: context.correlation?.channelId,
+    conversationId:
+      context.correlation?.conversationId ??
+      context.correlation?.threadId ??
+      context.correlation?.runId,
+  });
   const sessionRecordLogContext = {
     threadId: context.correlation?.threadId,
     requesterId: context.correlation?.requesterId,
@@ -836,9 +871,10 @@ export async function generateAssistantReply(
         advisor: {
           config: botConfig.advisor,
           conversationId: sessionConversationId,
+          conversationPrivacy,
           logContext: spanContext,
           getTools: () => advisorTools,
-          streamFn: createTracedStreamFn(),
+          streamFn: createTracedStreamFn({ conversationPrivacy }),
         },
       },
     );
@@ -908,7 +944,7 @@ export async function generateAssistantReply(
       ...userContentParts,
     ];
 
-    const inputMessagesAttribute = serializeGenAiAttribute([
+    const inputMessages = [
       {
         role: "system",
         content: [{ type: "text", text: baseInstructions }],
@@ -917,7 +953,12 @@ export async function generateAssistantReply(
         role: "user",
         content: promptContentParts.map((part) => toObservablePromptPart(part)),
       },
-    ]);
+    ];
+    const inputMessagesAttribute = serializeGenAiAttribute(
+      conversationPrivacy === "private"
+        ? inputMessages.map(toGenAiMessageMetadata)
+        : inputMessages,
+    );
 
     // ── Agent tools ──────────────────────────────────────────────────
     const onToolCall = (toolName: string, params: Record<string, unknown>) => {
@@ -946,6 +987,7 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
       agentPluginHooks,
+      conversationPrivacy,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -956,6 +998,7 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
       agentPluginHooks,
+      conversationPrivacy,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
@@ -967,7 +1010,7 @@ export async function generateAssistantReply(
     // ── Agent execution ──────────────────────────────────────────────
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
-      streamFn: createTracedStreamFn(),
+      streamFn: createTracedStreamFn({ conversationPrivacy }),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
@@ -989,11 +1032,14 @@ export async function generateAssistantReply(
       }
 
       await persistRunningSessionRecord({
+        channelName: context.correlation?.channelName,
         conversationId: sessionConversationId,
         sessionId,
         sliceId: currentSliceId,
         messages,
+        loadedSkillNames: activeSkills.map((skill) => skill.name),
         logContext: sessionRecordLogContext,
+        requester,
       });
     };
 
@@ -1056,7 +1102,7 @@ export async function generateAssistantReply(
       beforeMessageCount = agent.state.messages.length;
 
       await withSpan(
-        "ai.generate_assistant_reply",
+        `invoke_agent ${botConfig.modelId}`,
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
@@ -1136,8 +1182,11 @@ export async function generateAssistantReply(
 
             newMessages = agent.state.messages.slice(beforeMessageCount);
             const outputMessages = newMessages.filter(isAssistantMessage);
-            const outputMessagesAttribute =
-              serializeGenAiAttribute(outputMessages);
+            const outputMessagesAttribute = serializeGenAiAttribute(
+              conversationPrivacy === "private"
+                ? outputMessages.map(toGenAiMessageMetadata)
+                : outputMessages,
+            );
             const usageSummary = extractGenAiUsageSummary(
               promptResult,
               agent.state,
@@ -1151,6 +1200,10 @@ export async function generateAssistantReply(
               ...(outputMessagesAttribute
                 ? { "gen_ai.output.messages": outputMessagesAttribute }
                 : {}),
+              ...toGenAiMessagesTraceAttributes(
+                "app.ai.output",
+                outputMessages,
+              ),
               ...extractGenAiUsageAttributes(usageSummary),
             });
             if (getPendingAuthPause()) {
@@ -1191,7 +1244,21 @@ export async function generateAssistantReply(
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.request.model": botConfig.modelId,
+          "gen_ai.output.type": "text",
+          "server.address": GEN_AI_SERVER_ADDRESS,
+          "server.port": GEN_AI_SERVER_PORT,
+          ...(conversationPrivacy
+            ? { "app.conversation.privacy": conversationPrivacy }
+            : {}),
+          ...(sessionConversationId
+            ? { "app.ai.session.conversation_id": sessionConversationId }
+            : {}),
+          ...(sessionId ? { "app.ai.turn.session_id": sessionId } : {}),
+          ...(timeoutResumeSliceId
+            ? { "app.ai.turn.slice_id": timeoutResumeSliceId }
+            : {}),
           "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
+          ...toGenAiMessagesTraceAttributes("app.ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
             : {}),
@@ -1208,13 +1275,16 @@ export async function generateAssistantReply(
     ) {
       await recordActiveMcpProviders();
       await persistCompletedSessionRecord({
+        channelName: context.correlation?.channelName,
         conversationId: sessionConversationId,
         currentDurationMs: Date.now() - replyStartedAtMs,
         currentUsage: turnUsage,
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
+        loadedSkillNames: activeSkills.map((skill) => skill.name),
         logContext: sessionRecordLogContext,
+        requester,
       });
     }
 
@@ -1244,6 +1314,7 @@ export async function generateAssistantReply(
         extractSliceUsage(timeoutResumeMessages, beforeMessageCount);
       await recordActiveMcpProviders();
       const sessionRecord = await persistTimeoutSessionRecord({
+        channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
@@ -1251,7 +1322,9 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         errorMessage: error instanceof Error ? error.message : String(error),
+        loadedSkillNames: activeSkills.map((skill) => skill.name),
         logContext: sessionRecordLogContext,
+        requester,
       });
       if (sessionRecord) {
         throw new RetryableTurnError(
@@ -1281,6 +1354,7 @@ export async function generateAssistantReply(
       }
       await recordActiveMcpProviders();
       const sessionRecord = await persistAuthPauseSessionRecord({
+        channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
@@ -1288,7 +1362,9 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         errorMessage: error.message,
+        loadedSkillNames: activeSkills.map((skill) => skill.name),
         logContext: sessionRecordLogContext,
+        requester,
       });
       if (sessionRecord) {
         throw new RetryableTurnError(

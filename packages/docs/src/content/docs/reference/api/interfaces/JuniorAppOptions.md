@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [app.ts:32](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L32)
+Defined in: [app.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L30)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [app.ts:32](https://github.com/getsentry/junior/blob/main/packages/j
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [app.ts:34](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L34)
+Defined in: [app.ts:32](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L32)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
@@ -23,7 +23,7 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 > `optional` **plugins?**: `PluginConfig` \| `JuniorPlugin`[]
 
-Defined in: [app.ts:42](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L42)
+Defined in: [app.ts:40](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L40)
 
 Plugin packages/overrides, or trusted plugin instances loaded by this app.
 
@@ -37,4 +37,4 @@ their package config is merged with the catalog bundled by `juniorNitro()`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [app.ts:43](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L43)
+Defined in: [app.ts:41](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L41)

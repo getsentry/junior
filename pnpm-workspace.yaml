@@ -1,6 +1,11 @@
 packages:
   - "packages/*"
   - "apps/*"
+catalog:
+  "@sentry/node": 10.53.1
+  "@sentry/starlight-theme": ^0.7.0
+syncInjectedDepsAfterScripts:
+  - build
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"

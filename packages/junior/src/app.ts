@@ -14,8 +14,6 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import type { PluginConfig } from "@/chat/plugins/types";
 import type { JuniorPlugin } from "@sentry/junior-plugin-api";
-import { GET as diagnosticsGET } from "@/handlers/diagnostics";
-import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
@@ -224,12 +222,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     await next();
   });
 
-  app.get("/", () => dashboardGET());
+  app.get("/", () => healthGET());
   app.get("/health", () => healthGET());
-
-  // Public route — returns plugin/skill names, cwd, and DESCRIPTION.md text.
-  // No credentials or PII. Understand what this discloses before deploying.
-  app.get("/api/info", () => diagnosticsGET());
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.

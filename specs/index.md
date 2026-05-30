@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-30
 
 ## Purpose
 
@@ -29,6 +29,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 ## Available Docs
 
 - `specs/security-policy.md`
+- `specs/data-redaction-policy.md`
 - `specs/chat-architecture.md`
 - `specs/agent-turn-handling.md`
 - `specs/slack-agent-delivery.md`
@@ -49,6 +50,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/plugin-manifest.md`
 - `specs/plugin-runtime.md`
 - `specs/sandbox-snapshots.md`
+- `specs/dashboard.md`
 - `specs/instrumentation.md`
 - `specs/logging.md`
 - `specs/tracing.md`

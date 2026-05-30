@@ -102,7 +102,7 @@ describe.sequential("example build discovery integration", () => {
     expect(await oauth.text()).toContain("missing required parameters");
   }, 15_000);
 
-  it("reports discovery state from the example app", async () => {
+  it("does not expose discovery state from the public example app", async () => {
     const packageNames = getExamplePluginPackages();
     process.chdir(exampleRoot);
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
@@ -110,56 +110,6 @@ describe.sequential("example build discovery integration", () => {
     const app = await importExampleApp();
     const response = await app.fetch(new Request("http://localhost/api/info"));
 
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      descriptionText?: string;
-      homeDir: string;
-      packagedContent: {
-        packageNames: string[];
-        manifestRoots: string[];
-        skillRoots: string[];
-      };
-      providers: string[];
-      skills: Array<{ name: string }>;
-    };
-
-    expect(body.descriptionText).toBe(
-      "Junior helps your team make progress directly in Slack.",
-    );
-    expect(body.homeDir).toBe(path.join(exampleRoot, "app"));
-    expect(body.skills.map((skill) => skill.name)).toEqual(
-      expect.arrayContaining(["example-local", "example-bundle-help"]),
-    );
-    expect(body.providers).toEqual(
-      expect.arrayContaining([
-        "agent-browser",
-        "example-bundle",
-        "github",
-        "notion",
-        "sentry",
-      ]),
-    );
-    expect(body.packagedContent.packageNames).toEqual(
-      expect.arrayContaining(packageNames),
-    );
-    expect(body.packagedContent.manifestRoots).toEqual(
-      expect.arrayContaining(
-        packageNames.map((packageName) =>
-          path.join(exampleRoot, "node_modules", ...packageName.split("/")),
-        ),
-      ),
-    );
-    expect(body.packagedContent.skillRoots).toEqual(
-      expect.arrayContaining(
-        packageNames.map((packageName) =>
-          path.join(
-            exampleRoot,
-            "node_modules",
-            ...packageName.split("/"),
-            "skills",
-          ),
-        ),
-      ),
-    );
+    expect(response.status).toBe(404);
   }, 15_000);
 });

@@ -1,4 +1,4 @@
-import { THREAD_STATE_TTL_MS, type Thread } from "chat";
+import type { Thread } from "chat";
 import { toOptionalString } from "@/chat/coerce";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -9,6 +9,7 @@ import {
   type ThreadArtifactsState,
 } from "@/chat/state/artifacts";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 export interface ThreadStatePatch {
   artifacts?: ThreadArtifactsState;
@@ -132,7 +133,11 @@ export async function persistThreadStateById(
   await stateAdapter.connect();
   const key = threadStateKey(threadId);
   const existing = (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
-  await stateAdapter.set(key, { ...existing, ...payload }, THREAD_STATE_TTL_MS);
+  await stateAdapter.set(
+    key,
+    { ...existing, ...payload },
+    JUNIOR_THREAD_STATE_TTL_MS,
+  );
 }
 
 export function getChannelConfigurationService(
@@ -164,7 +169,7 @@ export function getChannelConfigurationServiceById(
       await stateAdapter.set(
         key,
         { ...existing, configuration: state },
-        THREAD_STATE_TTL_MS,
+        JUNIOR_THREAD_STATE_TTL_MS,
       );
     },
   });

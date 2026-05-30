@@ -123,7 +123,6 @@ export async function runInit(
     },
     dependencies: {
       "@sentry/junior": "latest",
-      "@sentry/node": "^10.0.0",
       hono: "^4.12.0",
     },
     devDependencies: {

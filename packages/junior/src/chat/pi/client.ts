@@ -31,11 +31,20 @@ import {
   logWarn,
   setSpanAttributes,
   withSpan,
+  type LogContext,
 } from "@/chat/logging";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import {
+  resolveConversationPrivacy,
+  toGenAiMessageMetadata,
+  toGenAiMessagesTraceAttributes,
+  toGenAiTextMetadata,
+} from "@/chat/conversation-privacy";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
+export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
+export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
@@ -69,43 +78,6 @@ function extractText(message: {
     .map((part) => part.text ?? "")
     .join("")
     .trim();
-}
-
-function contentMetadata(content: unknown): unknown {
-  if (typeof content === "string") {
-    return [{ type: "text", chars: content.length }];
-  }
-  if (!Array.isArray(content)) {
-    return { type: typeof content };
-  }
-  return content.map((part) => {
-    if (!part || typeof part !== "object") {
-      return { type: typeof part };
-    }
-    const record = part as Record<string, unknown>;
-    const type = typeof record.type === "string" ? record.type : "unknown";
-    return {
-      type,
-      ...(typeof record.text === "string" ? { chars: record.text.length } : {}),
-      ...(typeof record.mimeType === "string"
-        ? { mimeType: record.mimeType }
-        : {}),
-      ...(typeof record.mediaType === "string"
-        ? { mediaType: record.mediaType }
-        : {}),
-      ...(typeof record.data === "string"
-        ? { dataChars: record.data.length }
-        : {}),
-    };
-  });
-}
-
-function toMessageMetadata(message: Message): Record<string, unknown> {
-  const record = message as unknown as Record<string, unknown>;
-  return {
-    role: record.role,
-    content: contentMetadata(record.content),
-  };
 }
 
 function parseJsonCandidate(text: string): unknown {
@@ -200,16 +172,31 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getPiGatewayApiKeyOverride();
-  const messageAttributeMode = params.messageAttributeMode ?? "content";
+  const privacy = resolveConversationPrivacy({
+    channelId:
+      typeof params.metadata?.channelId === "string"
+        ? params.metadata.channelId
+        : undefined,
+    conversationId:
+      typeof params.metadata?.conversationId === "string"
+        ? params.metadata.conversationId
+        : typeof params.metadata?.threadId === "string"
+          ? params.metadata.threadId
+          : undefined,
+  });
+  const effectivePrivacy = privacy ?? "private";
+  const messageAttributeMode =
+    params.messageAttributeMode ??
+    (effectivePrivacy === "public" ? "content" : "metadata");
   const requestMessagesAttribute = serializeGenAiAttribute(
     messageAttributeMode === "metadata"
-      ? params.messages.map(toMessageMetadata)
+      ? params.messages.map(toGenAiMessageMetadata)
       : params.messages,
   );
   const systemInstructionsAttribute = params.system
     ? serializeGenAiAttribute(
         messageAttributeMode === "metadata"
-          ? [{ type: "text", chars: params.system.length }]
+          ? [toGenAiTextMetadata(params.system)]
           : [{ type: "text", content: params.system }],
       )
     : undefined;
@@ -217,12 +204,20 @@ export async function completeText(params: {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
+    "gen_ai.output.type": "text",
+    "server.address": GEN_AI_SERVER_ADDRESS,
+    "server.port": GEN_AI_SERVER_PORT,
+    "app.conversation.privacy": effectivePrivacy,
     ...(params.thinkingLevel
       ? { "app.ai.reasoning_effort": params.thinkingLevel }
       : {}),
   };
   const startAttributes = {
     ...baseAttributes,
+    ...toGenAiMessagesTraceAttributes("app.ai.input", params.messages),
+    ...(params.system
+      ? { "app.ai.system_instructions.content_chars": params.system.length }
+      : {}),
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
       : {}),
@@ -232,9 +227,9 @@ export async function completeText(params: {
     "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
   };
   return withSpan(
-    "ai.chat_completion",
+    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
     "gen_ai.chat",
-    { modelId: params.modelId },
+    logContextFromMetadata(params.modelId, params.metadata),
     async () => {
       const message = await completeSimple(
         model,
@@ -257,9 +252,7 @@ export async function completeText(params: {
           ? [
               {
                 role: "assistant",
-                content: outputText
-                  ? [{ type: "text", chars: outputText.length }]
-                  : [],
+                content: outputText ? [toGenAiTextMetadata(outputText)] : [],
               },
             ]
           : [
@@ -272,6 +265,12 @@ export async function completeText(params: {
       const usageAttributes = extractGenAiUsageAttributes(message);
       const endAttributes = {
         ...baseAttributes,
+        ...toGenAiMessagesTraceAttributes("app.ai.output", [
+          {
+            role: "assistant",
+            content: outputText ? [{ type: "text", text: outputText }] : [],
+          },
+        ]),
         ...(outputMessagesAttribute
           ? { "gen_ai.output.messages": outputMessagesAttribute }
           : {}),
@@ -303,6 +302,32 @@ export async function completeText(params: {
     },
     startAttributes,
   );
+}
+
+function logContextFromMetadata(
+  modelId: string,
+  metadata: Record<string, unknown> | undefined,
+): LogContext {
+  const conversationId =
+    typeof metadata?.conversationId === "string"
+      ? metadata.conversationId
+      : typeof metadata?.threadId === "string"
+        ? metadata.threadId
+        : undefined;
+  const slackThreadId =
+    typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+  const slackChannelId =
+    typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
+  const runId =
+    typeof metadata?.runId === "string" ? metadata.runId : undefined;
+
+  return {
+    modelId,
+    ...(conversationId ? { conversationId } : {}),
+    ...(slackThreadId ? { slackThreadId } : {}),
+    ...(slackChannelId ? { slackChannelId } : {}),
+    ...(runId ? { runId } : {}),
+  };
 }
 
 /** Execute a schema-constrained completion using the traced text path above. */

@@ -17,9 +17,10 @@ Handled `GET` routes:
 
 - `/`
 - `/health`
-- `/api/info`
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
+
+When `@sentry/junior-dashboard` is mounted, the dashboard package owns `/`, `/api/dashboard/*`, and `/api/auth/*`; use `/health` for unauthenticated health checks.
 
 Handled `POST` routes:
 

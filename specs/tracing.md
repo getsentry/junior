@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-30
 
 ## Purpose
 
@@ -57,13 +57,26 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `gen_ai.conversation.id` on GenAI spans when the conversation/thread identifier is known.
 - `messaging.destination.name` for channel context when available.
 - `gen_ai.request.model` for model-level tracing.
+- `gen_ai.output.type` for the requested response type when known.
+- `gen_ai.request.stream` on streaming model calls.
+- `server.address` for GenAI client/provider spans when known.
+- `server.port` when `server.address` is set.
 - `gen_ai.response.finish_reasons` when available from provider responses.
 - `gen_ai.system_instructions` when provided separately from chat history and safely captured.
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
+- `app.conversation.privacy` on GenAI spans.
+- `app.ai.input.*` / `app.ai.output.*` bounded message shape metadata
+  (`message_count`, `content_chars`, `roles`, `part_types`) for transcript
+  reconstruction without raw content.
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
 - `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` when available from provider responses.
 - `gen_ai.tool.description` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
+- `app.ai.tool.call.arguments.*` / `app.ai.tool.call.result.*` bounded tool
+  payload metadata (`type`, `size_chars`, `keys`) on tool execution spans.
+- Raw GenAI messages, system instructions, tool arguments, and tool results must
+  follow `./data-redaction-policy.md`; private conversations emit metadata-only
+  attributes.
 - Keep existing context keys aligned with `packages/junior/src/chat/logging.ts`.
 
 ### Error Attributes

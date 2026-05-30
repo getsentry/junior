@@ -16,6 +16,10 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
 
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
+  if (Sentry.getClient()) {
+    return;
+  }
+
   const dsn = process.env.SENTRY_DSN;
   const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
 
