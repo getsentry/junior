@@ -3,11 +3,18 @@ import { createDashboardApp } from "./app";
 import { resolveDashboardConfig } from "./config";
 
 let app: ReturnType<typeof createDashboardApp> | undefined;
+let appPromise: Promise<ReturnType<typeof createDashboardApp>> | undefined;
+
+async function resolveApp(): Promise<ReturnType<typeof createDashboardApp>> {
+  appPromise ??= resolveDashboardConfig().then((config) => {
+    app = createDashboardApp(config);
+    return app;
+  });
+  return app ?? appPromise;
+}
 
 const handler: unknown = defineHandler(async (event) => {
-  const dashboardApp =
-    app ?? createDashboardApp(await resolveDashboardConfig());
-  app = dashboardApp;
+  const dashboardApp = await resolveApp();
   return dashboardApp.fetch(event.req);
 });
 
