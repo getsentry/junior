@@ -421,7 +421,7 @@ If the previous slice timed out after producing uncommitted partial assistant te
   - `AGENT_TURN_TIMEOUT_MS` inside `generateAssistantReply(...)`
   - the platform/function max duration outside the agent loop
 - On timeout:
-  1. Abort the Pi agent and wait for the in-flight prompt/continue call to settle before snapshotting Pi messages.
+  1. Abort the Pi agent and wait only a short bounded grace period for the in-flight prompt/continue call to settle before snapshotting Pi messages. If the run does not settle, use the best available in-memory Pi state and the last durable boundary rules below; timeout recovery must not wait until the platform/function max duration kills the request.
   2. If session context exists and a safe boundary can be materialized, append a `timeout_paused` event with:
      - `pause_event_id`
      - current `slice_id`

@@ -262,6 +262,7 @@ describe("createSandboxExecutor", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
@@ -678,6 +679,88 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("export GIT_TERMINAL_PROMPT='0'");
     expect(invocation.args?.[1]).toContain("exec </dev/null");
     expect(invocation.args?.[1]).toContain("echo ok");
+  });
+
+  it("applies a host timeout to bash commands when the model omits one", async () => {
+    vi.useFakeTimers();
+    const sandbox = makeSandbox("sbx_bash_timeout");
+    sandbox.runCommand.mockImplementationOnce(
+      async (input) =>
+        await new Promise((_, reject) => {
+          input.signal?.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+    );
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_bash_timeout" });
+    executor.configureSkills([]);
+
+    const responsePromise = executor.execute({
+      toolName: "bash",
+      input: {
+        command: "sleep 999",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    const response = await responsePromise;
+
+    expect(response.result).toMatchObject({
+      ok: false,
+      exit_code: 124,
+      timed_out: true,
+      stderr: "Command timed out after 300000ms",
+    });
+  });
+
+  it("aborts bash commands when the agent turn is cancelled", async () => {
+    const sandbox = makeSandbox("sbx_bash_abort");
+    sandbox.runCommand.mockImplementationOnce(
+      async (input) =>
+        await new Promise((_, reject) => {
+          input.signal?.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+    );
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_bash_abort" });
+    executor.configureSkills([]);
+    const abortController = new AbortController();
+
+    const responsePromise = executor.execute({
+      toolName: "bash",
+      input: {
+        command: "sleep 999",
+      },
+      signal: abortController.signal,
+    });
+
+    await Promise.resolve();
+    abortController.abort();
+    const response = await responsePromise;
+
+    expect(response.result).toMatchObject({
+      ok: false,
+      exit_code: 130,
+      timed_out: false,
+      stderr: "Command aborted because the agent turn was cancelled.",
+    });
   });
 
   it("resolves sandbox command environment for each bash command", async () => {

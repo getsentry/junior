@@ -22,7 +22,7 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   executionMode?: ToolExecutionMode;
   execute?: (
     input: Static<TInputSchema>,
-    options: { experimental_context?: unknown },
+    options: { experimental_context?: unknown; signal?: AbortSignal },
   ) => Promise<unknown> | unknown;
 }
 

@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import { logInfo, logWarn, setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
+import {
+  logInfo,
+  logWarn,
+  setSpanAttributes,
+  withSpan,
+  type LogContext,
+} from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
@@ -28,6 +34,7 @@ import {
 import type { SkillMetadata } from "@/chat/skills";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
+const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const SANDBOX_RUNTIME = "node22";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
@@ -44,6 +51,7 @@ interface SandboxToolExecutors {
   bash: (input: {
     command: string;
     env?: Record<string, string>;
+    signal?: AbortSignal;
     timeoutMs?: number;
   }) => Promise<{
     stdout: string;
@@ -51,6 +59,7 @@ interface SandboxToolExecutors {
     exitCode: number;
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
+    aborted?: boolean;
     timedOut?: boolean;
   }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
@@ -148,6 +157,24 @@ function getCommandStreamInterruptedResult(): {
     exitCode: 125,
     stdoutTruncated: false,
     stderrTruncated: false,
+  };
+}
+
+function getCommandAbortedResult(): {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  aborted: true;
+} {
+  return {
+    stdout: "",
+    stderr: "Command aborted because the agent turn was cancelled.",
+    exitCode: 130,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+    aborted: true,
   };
 }
 
@@ -502,7 +529,10 @@ export function createSandboxSessionManager(options?: {
       traceContext,
       {
         ...(options?.sandboxDependencyProfileHash
-          ? { "app.sandbox.previous_profile_hash": options.sandboxDependencyProfileHash }
+          ? {
+              "app.sandbox.previous_profile_hash":
+                options.sandboxDependencyProfileHash,
+            }
           : {}),
         ...(dependencyProfileHash
           ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
@@ -562,7 +592,8 @@ export function createSandboxSessionManager(options?: {
         traceContext,
         {
           "app.sandbox.hint_id": sandboxIdHint,
-          "app.sandbox.error": error instanceof Error ? error.message : String(error),
+          "app.sandbox.error":
+            error instanceof Error ? error.message : String(error),
         },
         "Failed to restore sandbox from hint; will create fresh session",
       );
@@ -708,41 +739,69 @@ export function createSandboxSessionManager(options?: {
     return {
       bash: async (input) => {
         let timedOut = false;
+        let aborted = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let onAbort: (() => void) | undefined;
         try {
+          if (input.signal?.aborted) {
+            return getCommandAbortedResult();
+          }
           await refreshNetworkPolicy(sandboxInstance);
+          if (input.signal?.aborted) {
+            return getCommandAbortedResult();
+          }
           const sandboxCommandEnv = await resolveCommandEnv();
+          if (input.signal?.aborted) {
+            return getCommandAbortedResult();
+          }
           const script = buildNonInteractiveShellScript(input.command, {
             env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
             pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
           });
-          const controller =
+          const controller = new AbortController();
+          const timeoutMs =
             input.timeoutMs && input.timeoutMs > 0
-              ? new AbortController()
-              : undefined;
-          timeoutId = controller
-            ? setTimeout(() => {
-                timedOut = true;
-                controller.abort();
-              }, input.timeoutMs)
-            : undefined;
+              ? input.timeoutMs
+              : DEFAULT_BASH_COMMAND_TIMEOUT_MS;
+          onAbort = () => {
+            aborted = true;
+            controller.abort(input.signal?.reason);
+          };
+          if (input.signal) {
+            input.signal.addEventListener("abort", onAbort, { once: true });
+            if (input.signal.aborted) {
+              onAbort();
+            }
+          }
+          timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, timeoutMs);
+          timeoutId.unref?.();
           const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
             cwd: SANDBOX_WORKSPACE_ROOT,
-            ...(controller ? { signal: controller.signal } : {}),
+            signal: controller.signal,
           });
           return await readCommandOutput(commandResult);
         } catch (error) {
           if (timedOut) {
             return {
               stdout: "",
-              stderr: `Command timed out after ${input.timeoutMs}ms`,
+              stderr: `Command timed out after ${
+                input.timeoutMs && input.timeoutMs > 0
+                  ? input.timeoutMs
+                  : DEFAULT_BASH_COMMAND_TIMEOUT_MS
+              }ms`,
               exitCode: 124,
               stdoutTruncated: false,
               stderrTruncated: false,
               timedOut: true,
             };
+          }
+          if (aborted || input.signal?.aborted) {
+            return getCommandAbortedResult();
           }
           if (isSandboxCommandStreamInterruptedError(error)) {
             return getCommandStreamInterruptedResult();
@@ -751,6 +810,9 @@ export function createSandboxSessionManager(options?: {
         } finally {
           if (timeoutId) {
             clearTimeout(timeoutId);
+          }
+          if (input.signal && onAbort) {
+            input.signal.removeEventListener("abort", onAbort);
           }
         }
       },

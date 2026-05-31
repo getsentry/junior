@@ -138,9 +138,44 @@ import {
 export type { AssistantReply, AgentTurnDiagnostics };
 
 const PROVIDER_RETRY_DELAYS_MS = [1_000, 2_000] as const;
+const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Bound post-abort waiting so timeout recovery can persist before the host kills the slice. */
+function waitForAbortSettlement(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    const timeoutId = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(false);
+      }
+    }, timeoutMs);
+    timeoutId.unref?.();
+
+    promise.then(
+      () => {
+        if (!done) {
+          done = true;
+          clearTimeout(timeoutId);
+          resolve(true);
+        }
+      },
+      () => {
+        if (!done) {
+          done = true;
+          clearTimeout(timeoutId);
+          resolve(true);
+        }
+      },
+    );
+  });
 }
 
 export interface ReplyRequestContext {
@@ -1163,9 +1198,21 @@ export async function generateAssistantReply(
                   },
                   "Agent turn timed out and was aborted",
                 );
-                // Wait for the agent call to settle before snapshotting messages
-                // — the agent loop may still be mutating state.
-                await run.catch(() => {});
+                const settled = await waitForAbortSettlement(
+                  run,
+                  AGENT_ABORT_SETTLE_GRACE_MS,
+                );
+                if (!settled) {
+                  logWarn(
+                    "agent_turn_abort_settle_timeout",
+                    {},
+                    {
+                      "app.ai.abort_settle_grace_ms":
+                        AGENT_ABORT_SETTLE_GRACE_MS,
+                    },
+                    "Timed-out agent run did not settle after abort before resume snapshot",
+                  );
+                }
                 timeoutResumeMessages = [...agent.state.messages];
               }
               if (getPendingAuthPause()) {

@@ -44,6 +44,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 interface SandboxExecutionInput {
   toolName: string;
   input: unknown;
+  signal?: AbortSignal;
 }
 
 export interface SandboxExecutionEnvelope<T = unknown> {
@@ -217,6 +218,7 @@ export function createSandboxExecutor(options?: {
   const executeBashTool = async <T>(
     rawInput: Record<string, unknown>,
     command: string,
+    signal?: AbortSignal,
   ): Promise<SandboxExecutionEnvelope<T>> => {
     const env = parseEnv(rawInput.env);
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
@@ -236,6 +238,7 @@ export function createSandboxExecutor(options?: {
             command,
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
+            ...(signal ? { signal } : {}),
           });
           setSpanAttributes({
             "process.exit.code": response.exitCode,
@@ -554,7 +557,7 @@ export function createSandboxExecutor(options?: {
           return { result: custom.result as T };
         }
       }
-      return await executeBashTool(rawInput, bashCommand);
+      return await executeBashTool(rawInput, bashCommand, params.signal);
     }
 
     try {

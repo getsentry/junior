@@ -50,7 +50,11 @@ export function createAgentTools(
     parameters: toolDef.inputSchema,
     prepareArguments: toolDef.prepareArguments,
     executionMode: toolDef.executionMode,
-    execute: async (toolCallId: unknown, params: unknown) => {
+    execute: async (
+      toolCallId: unknown,
+      params: unknown,
+      signal?: AbortSignal,
+    ) => {
       const normalizedToolCallId =
         typeof toolCallId === "string" && toolCallId.length > 0
           ? toolCallId
@@ -111,9 +115,11 @@ export function createAgentTools(
               ? await sandboxExecutor!.execute({
                   toolName,
                   input: sandboxInput,
+                  ...(signal ? { signal } : {}),
                 })
               : await toolDef.execute(toolInput as never, {
                   experimental_context: sandbox,
+                  ...(signal ? { signal } : {}),
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);

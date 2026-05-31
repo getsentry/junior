@@ -1,8 +1,11 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { promptAborted } = vi.hoisted(() => ({
+const { promptAborted, promptMode } = vi.hoisted(() => ({
   promptAborted: { value: false },
+  promptMode: {
+    value: "settlesAfterAbort" as "settlesAfterAbort" | "hangsAfterAbort",
+  },
 }));
 
 vi.mock("@earendil-works/pi-agent-core", () => {
@@ -50,6 +53,10 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
+      if (promptMode.value === "hangsAfterAbort") {
+        await new Promise(() => undefined);
+        return {};
+      }
       await new Promise<void>((resolve) => {
         this.resolveAbort = resolve;
       });
@@ -162,6 +169,7 @@ import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 describe("generateAssistantReply timeout resume", () => {
   beforeEach(async () => {
     promptAborted.value = false;
+    promptMode.value = "settlesAfterAbort";
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
@@ -248,5 +256,46 @@ describe("generateAssistantReply timeout resume", () => {
         }),
       ]),
     );
+  });
+
+  it("persists timeout resume state when abort does not settle the agent run", async () => {
+    promptMode.value = "hangsAfterAbort";
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-hung",
+        turnId: "turn-hung",
+        channelId: "C123",
+        threadTs: "1712345.0003",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    const error = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(error.metadata).toMatchObject({
+      conversationId: "conversation-hung",
+      sessionId: "turn-hung",
+      version: expect.any(Number),
+      sliceId: 2,
+    });
+
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-hung",
+      "turn-hung",
+    );
+    expect(sessionRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      sliceId: 2,
+    });
+    expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+      }),
+    ]);
   });
 });

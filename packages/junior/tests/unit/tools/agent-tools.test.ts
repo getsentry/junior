@@ -127,6 +127,96 @@ describe("createAgentTools", () => {
     });
   });
 
+  it("passes Pi abort signals to sandbox execution", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: true,
+          command: "sleep 60",
+          cwd: "/vercel/sandbox",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+    );
+
+    await bashTool!.execute(
+      "tool-1",
+      {
+        command: "sleep 60",
+      },
+      abortController.signal,
+    );
+
+    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: {
+        command: "sleep 60",
+      },
+      signal: abortController.signal,
+    });
+  });
+
+  it("passes Pi abort signals to non-sandbox tools", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(async () => ({
+      ok: true,
+    }));
+
+    const [demoTool] = createAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+    );
+
+    await demoTool!.execute(
+      "tool-demo",
+      {
+        value: "input",
+      },
+      abortController.signal,
+    );
+
+    expect(execute).toHaveBeenCalledWith(
+      {
+        value: "input",
+      },
+      {
+        experimental_context: sandbox,
+        signal: abortController.signal,
+      },
+    );
+  });
+
   it("reports tool call parameters to the caller", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolCall = vi.fn();
