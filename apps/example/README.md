@@ -30,6 +30,7 @@ Copy `.env.example` and set:
 - `JUNIOR_SECRET` (required outside `pnpm dev`; the local wrapper supplies a dev-only secret when unset)
 - `JUNIOR_SCHEDULER_SECRET` or `CRON_SECRET` (optional for `pnpm dev`; the local wrapper supplies a dev-only heartbeat secret when both are unset)
 - `NOTION_TOKEN` (optional, enables the bundled Notion plugin)
+- Dashboard auth is enabled by default. `pnpm dev` disables dashboard auth only for local non-Vercel development.
 
 ## Wiring
 

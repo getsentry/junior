@@ -10,7 +10,14 @@ const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
+const exampleNitroConfig = path.join(exampleRoot, "nitro.config.ts");
 const exampleRequire = createRequire(exampleEntry);
+const vercelEnvNames = [
+  "VERCEL",
+  "VERCEL_ENV",
+  "VERCEL_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+];
 
 function isSamePath(left: string, right: string): boolean {
   try {
@@ -69,6 +76,19 @@ async function importExampleApp() {
   };
 }
 
+async function importExampleNitroConfig() {
+  const href = `${pathToFileURL(exampleNitroConfig).href}?t=${Date.now()}`;
+  return (await import(href)) as {
+    exampleDashboardAuthRequired: () => boolean;
+  };
+}
+
+function clearVercelEnv(): void {
+  for (const name of vercelEnvNames) {
+    delete process.env[name];
+  }
+}
+
 describe.sequential("example build discovery integration", () => {
   beforeAll(() => {
     buildJuniorPackage();
@@ -78,6 +98,30 @@ describe.sequential("example build discovery integration", () => {
     process.chdir(originalCwd);
     process.env = { ...originalEnv };
     vi.resetModules();
+  });
+
+  it("only disables dashboard auth for local development outside Vercel", async () => {
+    const config = await importExampleNitroConfig();
+
+    process.env = { ...originalEnv, NODE_ENV: "development" };
+    clearVercelEnv();
+    expect(config.exampleDashboardAuthRequired()).toBe(false);
+
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "development",
+      VERCEL: "1",
+    };
+    expect(config.exampleDashboardAuthRequired()).toBe(true);
+
+    process.env = { ...originalEnv, NODE_ENV: "production" };
+    clearVercelEnv();
+    expect(config.exampleDashboardAuthRequired()).toBe(true);
+
+    process.env = { ...originalEnv };
+    delete process.env.NODE_ENV;
+    clearVercelEnv();
+    expect(config.exampleDashboardAuthRequired()).toBe(true);
   });
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
