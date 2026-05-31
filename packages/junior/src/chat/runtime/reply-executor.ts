@@ -503,6 +503,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             state: "running",
             requester,
             traceId: getActiveTraceId(),
+          }).catch((error) => {
+            logException(
+              error,
+              "agent_turn_summary_record_failed",
+              turnTraceContext,
+              {
+                "app.agent.turn.state": "running",
+              },
+              "Failed to record running turn summary",
+            );
           });
         }
         setTags({
