@@ -104,8 +104,27 @@ describe("dashboard reporting", () => {
         },
         {
           role: "assistant",
-          content: [{ type: "text", text: "current answer" }],
+          content: [
+            { type: "thinking", text: "I should use a tool" },
+            {
+              type: "toolCall",
+              name: "search",
+              arguments: { query: "current question" },
+            },
+          ],
           timestamp: 4,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "search-1",
+          name: "search",
+          content: [{ type: "text", text: "tool result" }],
+          timestamp: 5,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "current answer" }],
+          timestamp: 6,
         },
       ] as PiMessage[],
     });
@@ -114,6 +133,9 @@ describe("dashboard reporting", () => {
       await createJuniorReporting().getConversation("slack:C1:222");
 
     expect(report.turns).toHaveLength(1);
+    expect(report.turns[0]).toMatchObject({
+      transcriptMessageCount: 2,
+    });
     expect(report.turns[0]!.transcript).toEqual([
       {
         role: "user",
@@ -123,6 +145,30 @@ describe("dashboard reporting", () => {
       {
         role: "assistant",
         timestamp: 4,
+        parts: [
+          { type: "thinking", output: "I should use a tool" },
+          {
+            type: "tool_call",
+            name: "search",
+            input: { query: "current question" },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        timestamp: 5,
+        parts: [
+          {
+            type: "tool_result",
+            id: "search-1",
+            name: "search",
+            output: "tool result",
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: 6,
         parts: [{ type: "text", text: "current answer" }],
       },
     ]);

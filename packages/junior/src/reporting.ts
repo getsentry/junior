@@ -485,6 +485,31 @@ function redactTranscriptMessage(
   };
 }
 
+function isConversationMessageRole(role: string): boolean {
+  const normalized = role.toLowerCase();
+  return normalized === "user" || normalized === "assistant";
+}
+
+function hasTextPart(message: DashboardTranscriptMessage): boolean {
+  return message.parts.some((part) => {
+    if (part.type !== "text") return false;
+    if (part.redacted) return true;
+    return typeof part.text === "string" && part.text.trim().length > 0;
+  });
+}
+
+function isConversationMessage(message: DashboardTranscriptMessage): boolean {
+  if (!isConversationMessageRole(message.role)) return false;
+  if (message.role.toLowerCase() === "assistant") return hasTextPart(message);
+  return message.parts.length > 0;
+}
+
+function countConversationMessages(
+  transcript: DashboardTranscriptMessage[],
+): number {
+  return transcript.filter(isConversationMessage).length;
+}
+
 function turnScopedMessages(messages: PiMessage[]): PiMessage[] {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index] as unknown as Record<string, unknown>;
@@ -552,6 +577,8 @@ async function readConversation(
       const normalizedTranscript = scopedMessages.map(
         normalizeTranscriptMessage,
       );
+      const transcriptMessageCount =
+        countConversationMessages(normalizedTranscript);
       const transcript = canExposeTranscript ? normalizedTranscript : [];
       const transcriptMetadata = canExposeTranscript
         ? undefined
@@ -566,8 +593,8 @@ async function readConversation(
         ...(traceId ? { traceId } : {}),
         ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
         transcriptAvailable: Boolean(sessionRecord) && canExposeTranscript,
-        ...(sessionRecord && scopedMessages.length > 0
-          ? { transcriptMessageCount: scopedMessages.length }
+        ...(sessionRecord && transcriptMessageCount > 0
+          ? { transcriptMessageCount }
           : {}),
         ...(!canExposeTranscript
           ? {

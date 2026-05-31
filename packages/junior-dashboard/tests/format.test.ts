@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTokenTotal, formatUsageTotal } from "../src/client/format";
+import {
+  formatDurationTotal,
+  formatTokenTotal,
+  formatUsageTotal,
+  turnMessageCount,
+} from "../src/client/format";
+import type { ConversationTurn } from "../src/client/types";
 
 describe("dashboard token formatting", () => {
   it("sums turn usage for conversation totals", () => {
@@ -27,5 +33,41 @@ describe("dashboard token formatting", () => {
         totalTokens: 999,
       }),
     ).toBe("60 tokens");
+  });
+
+  it("sums turn runtime when duration data exists", () => {
+    expect(formatDurationTotal([1_000, 2_500, undefined])).toBe("3.5s");
+  });
+
+  it("counts conversational transcript messages instead of tool events", () => {
+    const turn = {
+      id: "turn-1",
+      status: "completed",
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "user",
+          parts: [{ type: "text", text: "run the search" }],
+        },
+        {
+          role: "assistant",
+          parts: [{ type: "thinking", output: "I should search first" }],
+        },
+        {
+          role: "assistant",
+          parts: [{ type: "tool_call", name: "search", input: {} }],
+        },
+        {
+          role: "toolResult",
+          parts: [{ type: "tool_result", name: "search", output: [] }],
+        },
+        {
+          role: "assistant",
+          parts: [{ type: "text", text: "done" }],
+        },
+      ],
+    } as ConversationTurn;
+
+    expect(turnMessageCount(turn)).toBe(2);
   });
 });

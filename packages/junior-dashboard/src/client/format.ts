@@ -104,6 +104,17 @@ export function formatMs(value: number | undefined): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+/** Format aggregate runtime across turn summaries when duration data exists. */
+export function formatDurationTotal(
+  durations: Array<number | undefined>,
+): string {
+  const total = durations.reduce<number | undefined>((sum, value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return sum;
+    return (sum ?? 0) + Math.max(0, Math.floor(value));
+  }, undefined);
+  return total === undefined ? "" : formatMs(total);
+}
+
 /** Format transcript event timestamps independently from turn start offsets. */
 export function formatMessageTimestamp(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value))
@@ -193,9 +204,36 @@ function transcriptSource(turn: ConversationTurn) {
     : (turn.transcriptMetadata ?? []);
 }
 
+function isConversationMessageRole(role: string): boolean {
+  const normalized = role.toLowerCase();
+  return normalized === "user" || normalized === "assistant";
+}
+
+function hasTextPart(
+  message: Pick<ConversationTurn["transcript"][number], "parts" | "role">,
+): boolean {
+  return message.parts.some((part) => {
+    if (part.type !== "text") return false;
+    if (part.redacted) return true;
+    return typeof part.text === "string" && part.text.trim().length > 0;
+  });
+}
+
+function isConversationMessage(
+  message: Pick<ConversationTurn["transcript"][number], "parts" | "role">,
+): boolean {
+  if (!isConversationMessageRole(message.role)) return false;
+  if (message.role.toLowerCase() === "assistant") return hasTextPart(message);
+  return message.parts.length > 0;
+}
+
 /** Count visible or redacted message records for a turn. */
 export function turnMessageCount(turn: ConversationTurn): number {
-  return turn.transcriptMessageCount ?? transcriptSource(turn).length;
+  const source = transcriptSource(turn);
+  if (source.length > 0) {
+    return source.filter(isConversationMessage).length;
+  }
+  return turn.transcriptMessageCount ?? 0;
 }
 
 /** Count tool calls from visible transcripts or safe redacted metadata. */
