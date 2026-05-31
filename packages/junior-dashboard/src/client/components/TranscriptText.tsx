@@ -9,9 +9,10 @@ import { canRenderStructuredMarkup, parseMarkdownBlocks } from "../format";
 export function TranscriptText(props: {
   firstChildIndex: number;
   lastChildIndex: number;
+  role?: string;
   text: string;
 }) {
-  const blocks = parseMarkdownBlocks(props.text);
+  const blocks = parseMarkdownBlocks(props.text, { outputOnly: props.role === "assistant" });
   let seenChildren = props.firstChildIndex;
 
   return (

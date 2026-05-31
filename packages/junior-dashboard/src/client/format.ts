@@ -530,19 +530,29 @@ export function detectOutputLanguage(text: string): BundledLanguage {
 }
 
 /**
- * Decide whether a fenced block can use the interactive markup renderer.
- * Structured XML/HTML rendering is only enabled for explicitly-fenced blocks;
- * auto-detected prose is never eligible regardless of inferred language.
+ * Decide whether a block can use the interactive markup renderer.
+ * Only xml/html language blocks qualify; fenced is tracked as metadata but
+ * does not gate eligibility — caller controls whether XML detection runs.
  */
 export function canRenderStructuredMarkup(block: CodeBlock): boolean {
-  return (
-    block.fenced === true &&
-    (block.language === "xml" || block.language === "html")
-  );
+  return block.language === "xml" || block.language === "html";
 }
 
-/** Parse markdown into renderable code blocks while preserving plain text blocks. */
-export function parseMarkdownBlocks(text: string): CodeBlock[] {
+/**
+ * Parse markdown into renderable code blocks while preserving plain text blocks.
+ *
+ * `outputOnly` (default `false`): when `true`, prose sections use
+ * `detectOutputLanguage` (json or markdown only — no xml/html heuristics).
+ * Use `outputOnly: true` for LLM-generated text (assistant messages) to
+ * prevent Slack autolinks and HTML snippets from triggering the XML tree
+ * renderer. Leave `false` (default) for user/system messages that may
+ * contain genuine XML runtime context.
+ */
+export function parseMarkdownBlocks(
+  text: string,
+  opts: { outputOnly?: boolean } = {},
+): CodeBlock[] {
+  const detectProse = opts.outputOnly ? detectOutputLanguage : detectLanguage;
   const blocks: CodeBlock[] = [];
   const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
   let cursor = 0;
@@ -550,7 +560,7 @@ export function parseMarkdownBlocks(text: string): CodeBlock[] {
   while ((match = fence.exec(text))) {
     const prose = text.slice(cursor, match.index).trim();
     if (prose) {
-      const language = detectOutputLanguage(prose);
+      const language = detectProse(prose);
       blocks.push({ code: formatCodeBlock(prose, language), fenced: false, language });
     }
     const language = normalizeLanguage(match[1]);
@@ -563,11 +573,11 @@ export function parseMarkdownBlocks(text: string): CodeBlock[] {
   }
   const rest = text.slice(cursor).trim();
   if (rest) {
-    const language = detectOutputLanguage(rest);
+    const language = detectProse(rest);
     blocks.push({ code: formatCodeBlock(rest, language), fenced: false, language });
   }
   if (blocks.length > 0) return blocks;
-  const language = detectOutputLanguage(text);
+  const language = detectProse(text);
   return [{ code: formatCodeBlock(text, language), fenced: false, language }];
 }
 

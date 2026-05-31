@@ -175,8 +175,8 @@ export function messageRawText(message: TranscriptMessage): string {
     .join("\n\n");
 }
 
-function countTextRenderedChildren(text: string): number {
-  return parseMarkdownBlocks(text).reduce((count, block) => {
+function countTextRenderedChildren(text: string, outputOnly: boolean): number {
+  return parseMarkdownBlocks(text, { outputOnly }).reduce((count, block) => {
     return count + countStructuredBlockChildren(block);
   }, 0);
 }
@@ -184,10 +184,11 @@ function countTextRenderedChildren(text: string): number {
 /** Count rendered rows so structured transcript expansion opens the newest node. */
 export function countRenderedTranscriptChildren(
   part: RenderedTranscriptPart,
+  role?: string,
 ): number {
   if (part.kind === "tool") return 1;
   if (part.part.type === "text") {
-    return countTextRenderedChildren(part.part.text ?? "");
+    return countTextRenderedChildren(part.part.text ?? "", role === "assistant");
   }
   return 1;
 }
