@@ -1,0 +1,7 @@
+- [x] 1.1 Read public-docs skill guidance and docs app reference notes.
+- [x] 1.2 Inventory docs package scripts, Astro/Starlight config, content schema, sidebar, redirects, generated API configuration, and custom CSS.
+- [x] 1.3 Inspect representative docs pages, documentation guidelines, CI scripts, and root docs commands.
+- [x] 1.4 Review external Astro/Starlight/TypeDoc docs for sidebar, frontmatter schema, redirects, generated API docs, and validation commands.
+- [x] 1.5 Author OpenSpec requirements and scenarios for docs-site behavior.
+- [x] 1.6 Record undefined behavior and verification mapping.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-docs-site --strict`.

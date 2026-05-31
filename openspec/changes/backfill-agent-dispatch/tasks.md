@@ -1,0 +1,7 @@
+- [x] 1.1 Inspect existing `trusted-plugin-dispatch` prose and OpenSpec backfill for overlap.
+- [x] 1.2 Inspect `chat/agent-dispatch/*`, callback handler, queue thread dispatcher, and dispatch tests.
+- [x] 1.3 Review prior art for queue idempotency, Slack channel delivery, background continuation, and signed callbacks.
+- [x] 1.4 Decide whether to create a separate behavior spec or an ownership/non-overlap spec.
+- [x] 1.5 Author OpenSpec requirements and scenarios for the internal agent-dispatch boundary.
+- [x] 1.6 Record undefined behavior and verification mapping.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-agent-dispatch --strict`.

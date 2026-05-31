@@ -1,0 +1,15 @@
+# Logging Verification Map
+
+| Capability | Requirement             | Scenario                                    | Primary Layer | Current Coverage                                         | Action     | Gap / Notes                                            |
+| ---------- | ----------------------- | ------------------------------------------- | ------------- | -------------------------------------------------------- | ---------- | ------------------------------------------------------ |
+| Logging    | Central facade          | Application log through `logging.ts`        | Static/unit   | Import patterns, logging tests                           | keep       | No lint rule for direct console.                       |
+| Logging    | Record shape            | `event.name`, body, severity, attrs         | Unit          | `console-format.test.ts`, facade tests                   | keep       | More direct sink tests could improve shape coverage.   |
+| Logging    | Event naming            | snake_case normalization                    | Unit          | logging facade behavior                                  | keep       | Event registry deferred.                               |
+| Logging    | Ambient context         | Request/operation/event merge precedence    | Unit          | `with-span.test.ts`, `traced-stream.test.ts` inheritance | keep/split | More direct log context tests useful.                  |
+| Logging    | Trace correlation       | active span trace/span ids on logs          | Unit          | logging facade/Sentry mocks                              | keep       | Specific tests may live with tracing.                  |
+| Logging    | Attribute normalization | semantic keys and legacy key map            | Unit          | logging tests                                            | keep/split | Full key map owned by `otel-semantics`.                |
+| Logging    | Redaction/truncation    | secrets and large payloads sanitized        | Unit/security | logging code, security-policy                            | add later  | Current explicit redaction test coverage appears thin. |
+| Logging    | Console rendering       | compact dev, structured production/override | Unit          | `console-format.test.ts`                                 | keep       | Good coverage for summary behavior.                    |
+| Logging    | Tool lifecycle logging  | avoid duplicate success logs                | Unit/spec     | tool error handler tests, tracing spans                  | keep/split | Success path primarily tracing.                        |
+| Logging    | Exception capture       | error record plus Sentry event id           | Unit          | tool error handler tests, mocked logException callers    | keep       | Direct facade exception tests would help.              |
+| Logging    | Chat SDK bridge         | SDK logs converted to structured events     | Unit/manual   | `createChatSdkLogger` code                               | add later  | Coverage not obvious.                                  |

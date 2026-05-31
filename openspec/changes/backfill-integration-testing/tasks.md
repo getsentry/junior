@@ -1,0 +1,6 @@
+- [x] 1.1 Inspect integration-testing prose spec and top-level testing taxonomy.
+- [x] 1.2 Inventory integration test layout, Slack harnesses, MSW helpers, and boundary enforcement.
+- [x] 1.3 Review external Vitest/MSW/Slack docs relevant to integration testing.
+- [x] 1.4 Author OpenSpec requirements and scenarios for integration testing.
+- [x] 1.5 Record undefined behavior and verification mapping.
+- [x] 1.6 Validate the OpenSpec change with `openspec validate backfill-integration-testing --strict`.

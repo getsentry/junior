@@ -1,0 +1,7 @@
+- [x] 1.1 Inventory CLI source, package bin metadata, generated scaffold files, and public docs.
+- [x] 1.2 Inspect CLI tests for command dispatch, build contract, env loading, init, check, and snapshot warmup.
+- [x] 1.3 Review external primary docs for npm package bins, npm scripts, Node env loading, and CLI usage conventions.
+- [x] 1.4 Define stable versus unstable CLI compatibility boundaries.
+- [x] 1.5 Author OpenSpec requirements and scenarios for the CLI.
+- [x] 1.6 Record undefined behavior and verification mapping.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-cli --strict`.

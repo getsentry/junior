@@ -1,0 +1,7 @@
+- [x] 1.1 Read current testing, unit, integration, eval, and Slack HTTP mocking prose specs.
+- [x] 1.2 Inspect package test scripts, Vitest configs, MSW setup, Slack fixture paths, eval package scripts, and boundary enforcement script.
+- [x] 1.3 Review external primary docs for Vitest configuration/mocking, MSW Node interception, and AI Gateway-backed eval context.
+- [x] 1.4 Define the top-level layer-selection contract and defer layer-specific detail to narrower specs.
+- [x] 1.5 Author OpenSpec requirements and scenarios for testing governance.
+- [x] 1.6 Record undefined behavior and verification mapping.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-testing --strict`.

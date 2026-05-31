@@ -1,0 +1,11 @@
+# Docs Site Verification Map
+
+| Spec Area                     | Existing Coverage                                           | Layer                 | Files                                               | Status  | Notes                                                       |
+| ----------------------------- | ----------------------------------------------------------- | --------------------- | --------------------------------------------------- | ------- | ----------------------------------------------------------- |
+| Astro/Starlight build         | content schema, links/routes, generated pages, build output | Build                 | `pnpm docs:check`                                   | keep    | Runs `astro check && astro build`.                          |
+| Sidebar and redirects         | manual config compiles                                      | Build                 | `packages/docs/astro.config.mjs`, `pnpm docs:check` | keep    | Semantic IA still human-reviewed.                           |
+| Generated API reference       | TypeDoc entrypoint renders docs                             | Build                 | `starlight-typedoc` config, `reference/api`         | keep    | Generated file drift should be reviewed carefully.          |
+| Page metadata policy          | guidelines require fields                                   | Manual/partial schema | `content.config.ts`, documentation guidelines       | gap     | Schema is intentionally optional today.                     |
+| Package/plugin list alignment | docs mention package lists                                  | Manual                | quickstart, extend pages, release docs, README      | gap     | Better owned by release-packaging drift check.              |
+| Docs quality/audience fit     | task-oriented pages, next steps, verification sections      | Review                | documentation guidelines, public-docs skill         | manual  | Not fully automatable.                                      |
+| Custom CSS/homepage           | visual/theme overrides compile                              | Build/manual          | `index.mdx`, `custom.css`                           | partial | Screenshot QA only needed for substantial visual redesigns. |

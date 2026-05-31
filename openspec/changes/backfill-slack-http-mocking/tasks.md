@@ -1,0 +1,6 @@
+- [x] 1.1 Inspect Slack HTTP mocking prose spec and integration testing policy.
+- [x] 1.2 Inspect MSW setup/server, Slack handlers, Slack fixture factories, and representative contract tests.
+- [x] 1.3 Review external MSW, Slack Web API, and Vitest setup docs.
+- [x] 1.4 Author OpenSpec requirements and scenarios for Slack HTTP mocking.
+- [x] 1.5 Record undefined behavior and verification mapping.
+- [x] 1.6 Validate the OpenSpec change with `openspec validate backfill-slack-http-mocking --strict`.

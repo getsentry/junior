@@ -1,0 +1,5 @@
+- [x] 1.1 Inspect eval prose specs, eval policy, eval README, harness helpers, package scripts, and representative eval suites.
+- [x] 1.2 Review external Vitest/MSW/Vercel AI Gateway docs relevant to eval execution.
+- [x] 1.3 Author OpenSpec requirements and scenarios for eval testing.
+- [x] 1.4 Record undefined behavior and verification mapping.
+- [x] 1.5 Validate the OpenSpec change with `openspec validate backfill-eval-testing --strict`.

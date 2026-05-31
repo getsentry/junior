@@ -1,0 +1,7 @@
+- [x] 1.1 Inventory publishable and private packages from `packages/*/package.json`.
+- [x] 1.2 Inspect Craft configuration, release workflow, CI artifact packing, pre-release version bump script, and release drift check.
+- [x] 1.3 Inspect README, contributing docs, docs release page, and Junior packaging skill references.
+- [x] 1.4 Review external primary docs for npm package metadata/pack, pnpm filtering/pack, GitHub artifacts, and Craft release targets.
+- [x] 1.5 Author OpenSpec requirements and scenarios for release packaging.
+- [x] 1.6 Record undefined behavior and verification mapping.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-release-packaging --strict`.

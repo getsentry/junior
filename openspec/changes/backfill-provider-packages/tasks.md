@@ -1,0 +1,7 @@
+- [x] 1.1 Inventory first-party provider packages, manifests, package metadata, bundled skills, and public docs.
+- [x] 1.2 Review local runtime/test/eval coverage that exercises provider package discovery, manifest loading, runtime dependencies, trusted hooks, auth, and skill workflows.
+- [x] 1.3 Review external primary provider documentation for GitHub App auth, Sentry auth/scopes, hosted MCP providers, Datadog API/Pup, Hex MCP, and agent-browser installation.
+- [x] 1.4 Decide shared baseline scope versus per-provider workflow spec scope.
+- [x] 1.5 Author OpenSpec requirements and scenarios for provider package artifact, docs, manifest, auth, MCP, runtime dependency, skill, trusted hook, and verification contracts.
+- [x] 1.6 Record undefined behavior and follow-up workflow spec candidates.
+- [x] 1.7 Validate the OpenSpec change with `openspec validate backfill-provider-packages --strict`.

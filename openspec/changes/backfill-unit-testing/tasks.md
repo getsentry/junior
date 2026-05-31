@@ -1,0 +1,6 @@
+- [x] 1.1 Inspect current unit-testing prose spec and top-level testing taxonomy.
+- [x] 1.2 Inventory representative unit test directories and examples.
+- [x] 1.3 Review external Vitest docs for mocking and config behavior.
+- [x] 1.4 Author OpenSpec requirements and scenarios for unit testing.
+- [x] 1.5 Record undefined behavior and verification mapping.
+- [x] 1.6 Validate the OpenSpec change with `openspec validate backfill-unit-testing --strict`.
