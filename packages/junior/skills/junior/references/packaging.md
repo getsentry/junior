@@ -32,7 +32,7 @@ my-junior-plugin/
 
 ## Host app wiring
 
-Install next to `@sentry/junior`, then export a shared plugin set.
+Install next to `@sentry/junior`, then export a runtime-safe plugin set.
 
 ```ts
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -40,18 +40,18 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@acme/junior-my-provider"]);
 ```
 
-Pass the same set to `juniorNitro()` and `createApp()`.
+Point `juniorNitro()` at the plugin module. `createApp()` reads that enabled
+set from Nitro's virtual module.
 
 ```ts
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
-import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins,
+      plugins: "./plugins",
     }),
   ],
   routes: {
@@ -61,7 +61,7 @@ export default defineConfig({
 ```
 
 ```ts
-const app = await createApp({ plugins });
+const app = await createApp();
 ```
 
 Packages that export trusted runtime hooks must be registered from app code with

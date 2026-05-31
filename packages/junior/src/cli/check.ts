@@ -573,13 +573,13 @@ async function validateAppSourceFiles(
 
     if (/\bpluginPackages\s*:/.test(source)) {
       errors.push(
-        `${sourcePath}: pluginPackages is no longer supported. Export a defineJuniorPlugins(...) set and pass it to juniorNitro({ plugins }) and createApp({ plugins }).`,
+        `${sourcePath}: pluginPackages is no longer supported. Export a defineJuniorPlugins(...) set and point juniorNitro({ plugins: "./plugins" }) at it.`,
       );
     }
 
     if (/\bplugins\s*:\s*\{\s*packages\s*:/.test(source)) {
       errors.push(
-        `${sourcePath}: plugins.packages is no longer supported. Export a defineJuniorPlugins(...) set and pass it to juniorNitro({ plugins }) and createApp({ plugins }).`,
+        `${sourcePath}: plugins.packages is no longer supported. Export a defineJuniorPlugins(...) set and point juniorNitro({ plugins: "./plugins" }) at it.`,
       );
     }
 

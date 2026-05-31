@@ -23,8 +23,7 @@ pnpm add @sentry/junior @sentry/junior-linear
 
 ## Runtime setup
 
-Add the package name to the shared plugin set used by both `juniorNitro()`
-and `createApp()`:
+Add the package name to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";

@@ -3,7 +3,7 @@ import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 import { githubPlugin } from "@sentry/junior-github";
 import { exampleDashboardAuthRequired } from "./dashboard";
 
-export const examplePlugins = defineJuniorPlugins([
+export const plugins = defineJuniorPlugins([
   juniorDashboardPlugin({
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],

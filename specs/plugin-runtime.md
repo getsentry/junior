@@ -116,11 +116,13 @@ Plugin-backed skills may explain provider commands, MCP tools, command env, conf
 
 Trusted agent behavior is initialized from app code, not `plugin.yaml`.
 
-Apps pass one `defineJuniorPlugins(...)` set to `juniorNitro({ plugins })` and
-`createApp({ plugins })`. `juniorNitro()` extracts package names for build-time
-copying, while `createApp()` extracts trusted hooks and validates that every
-registration has a matching manifest. Trusted factories carry their manifest
-inline, so runtime code is not declared from `plugin.yaml`.
+Apps export one runtime-safe `defineJuniorPlugins(...)` set and point
+`juniorNitro({ plugins: "./plugins" })` at it. `juniorNitro()` extracts package
+names for build-time copying and emits a virtual module that imports the same
+set at runtime. `createApp()` extracts trusted hooks from that virtual module
+and validates that every registration has a matching manifest. Trusted
+factories carry their manifest inline, so runtime code is not declared from
+`plugin.yaml`.
 
 Hook contexts expose narrow capabilities rather than raw Junior internals. Trusted plugin hook contracts are defined in [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md) and [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
 

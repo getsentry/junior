@@ -25,10 +25,11 @@ export default app;
 
 Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 
-Use `defineJuniorPlugins([...])` to create one plugin set, then pass it to both
-`juniorNitro({ plugins })` and `createApp({ plugins })`. Manifest-only packages
-use package-name strings; trusted factories such as `githubPlugin()` register
-their manifest and in-process hooks together.
+Use `defineJuniorPlugins([...])` in a runtime-safe plugin module, then point
+`juniorNitro({ plugins: "./plugins" })` at that module. `createApp()` reads the
+same enabled set from Nitro's virtual module. Manifest-only packages use
+package-name strings; trusted factories such as `githubPlugin()` register their
+manifest and in-process hooks together.
 
 ## Full docs
 

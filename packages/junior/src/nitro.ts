@@ -1,22 +1,40 @@
 import path from "node:path";
+import { statSync } from "node:fs";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
   copyAppAndPluginContent,
   copyIncludedFiles,
 } from "@/build/copy-build-content";
-import { injectVirtualConfig } from "@/build/virtual-config";
+import {
+  injectVirtualConfig,
+  type RuntimePluginModule,
+} from "@/build/virtual-config";
 import {
   pluginCatalogConfigFromPluginSet,
   trustedPluginRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
 
+export interface JuniorPluginModuleReference {
+  /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */
+  module: string;
+  /** Named export to import from `module`. Defaults to `plugins`. */
+  exportName?: string;
+}
+
+export type JuniorNitroPluginSource =
+  | JuniorPluginModuleReference
+  | JuniorPluginSet
+  | string;
+
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
-  /** Plugin package names and JS definitions bundled into the app. Pass the same set to `createApp()`. */
-  plugins?: JuniorPluginSet;
+  /** Plugin set or runtime-safe plugin module bundled into the app. */
+  plugins?: JuniorNitroPluginSource;
   /**
    * Extra file patterns to copy into the server output for files that the
    * bundler cannot trace (e.g. dynamically imported providers).
@@ -24,6 +42,128 @@ export interface JuniorNitroOptions {
    * module resolution. Example: `"@earendil-works/pi-ai/dist/providers/*.js"`
    */
   includeFiles?: string[];
+}
+
+interface ResolvedPluginModuleReference {
+  exportName: string;
+  importUrl: string;
+  runtimeModule: RuntimePluginModule;
+}
+
+const PLUGIN_MODULE_EXTENSIONS = [
+  "",
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".mjs",
+  ".js",
+  ".cjs",
+];
+
+function isPluginModuleReference(
+  value: JuniorNitroPluginSource | undefined,
+): value is JuniorPluginModuleReference | string {
+  return typeof value === "string" || Boolean(value && "module" in value);
+}
+
+function isPluginSet(
+  value: JuniorNitroPluginSource | undefined,
+): value is JuniorPluginSet {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return "packageNames" in value && "registrations" in value;
+}
+
+function resolveRelativePluginModule(cwd: string, specifier: string): string {
+  const basePath = path.resolve(cwd, specifier);
+  for (const extension of PLUGIN_MODULE_EXTENSIONS) {
+    const candidate = `${basePath}${extension}`;
+    try {
+      if (statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Try the next extension.
+    }
+  }
+  for (const extension of PLUGIN_MODULE_EXTENSIONS) {
+    const candidate = path.join(basePath, `index${extension}`);
+    try {
+      if (statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Try the next extension.
+    }
+  }
+
+  throw new Error(`Plugin module "${specifier}" could not be resolved`);
+}
+
+function resolvePluginModule(
+  cwd: string,
+  input: JuniorPluginModuleReference | string,
+): ResolvedPluginModuleReference {
+  const moduleSpecifier = typeof input === "string" ? input : input.module;
+  const exportName =
+    typeof input === "string" ? "plugins" : (input.exportName ?? "plugins");
+  if (!moduleSpecifier.trim()) {
+    throw new Error("Plugin module specifier must not be empty");
+  }
+
+  if (moduleSpecifier.startsWith(".") || path.isAbsolute(moduleSpecifier)) {
+    const resolvedPath = resolveRelativePluginModule(cwd, moduleSpecifier);
+    return {
+      exportName,
+      importUrl: pathToFileURL(resolvedPath).href,
+      runtimeModule: {
+        exportName,
+        specifier: resolvedPath.split(path.sep).join("/"),
+      },
+    };
+  }
+
+  const requireFromApp = createRequire(path.join(cwd, "package.json"));
+  const resolvedPath = requireFromApp.resolve(moduleSpecifier);
+  return {
+    exportName,
+    importUrl: pathToFileURL(resolvedPath).href,
+    runtimeModule: {
+      exportName,
+      specifier: moduleSpecifier,
+    },
+  };
+}
+
+function assertPluginSet(value: unknown, source: string): JuniorPluginSet {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !Array.isArray((value as Partial<JuniorPluginSet>).packageNames) ||
+    !Array.isArray((value as Partial<JuniorPluginSet>).registrations)
+  ) {
+    throw new Error(
+      `Plugin module ${source} must export a defineJuniorPlugins(...) set`,
+    );
+  }
+
+  return value as JuniorPluginSet;
+}
+
+async function loadPluginSetFromModule(
+  moduleRef: ResolvedPluginModuleReference,
+): Promise<JuniorPluginSet> {
+  const mod = (await import(moduleRef.importUrl)) as Record<string, unknown>;
+  const value =
+    moduleRef.exportName === "default"
+      ? (mod.default as unknown)
+      : mod[moduleRef.exportName];
+  return assertPluginSet(
+    value,
+    `${moduleRef.importUrl}#${moduleRef.exportName}`,
+  );
 }
 
 /** Nitro module that copies app and plugin content into the Vercel build output. */
@@ -43,23 +183,42 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options.maxDuration ?? 800;
 
         applyRolldownTreeshakeWorkaround(nitro);
-        const pluginCatalogConfig = pluginCatalogConfigFromPluginSet(
-          options.plugins,
-        );
+        const pluginSource = options.plugins;
+        const pluginModule = isPluginModuleReference(pluginSource)
+          ? resolvePluginModule(cwd, pluginSource)
+          : undefined;
+        const directPluginSet = isPluginSet(pluginSource)
+          ? pluginSource
+          : undefined;
+        const pluginSetPromise: Promise<JuniorPluginSet | undefined> =
+          pluginModule
+            ? loadPluginSetFromModule(pluginModule)
+            : Promise.resolve(directPluginSet);
+        const pluginCatalogConfig =
+          pluginCatalogConfigFromPluginSet(directPluginSet);
         const trustedPluginRegistrations =
-          trustedPluginRegistrationsFromPluginSet(options.plugins).map(
+          trustedPluginRegistrationsFromPluginSet(directPluginSet).map(
             (plugin) => plugin.name,
           );
         injectVirtualConfig(nitro, {
+          ...(pluginModule
+            ? {
+                loadPluginSet: () => pluginSetPromise,
+                pluginModule: pluginModule.runtimeModule,
+              }
+            : {}),
           plugins: pluginCatalogConfig,
           trustedPluginRegistrations,
         });
 
-        nitro.hooks.hook("compiled", () => {
+        nitro.hooks.hook("compiled", async () => {
+          const pluginSet = await pluginSetPromise;
+          const compiledPluginCatalogConfig =
+            pluginCatalogConfigFromPluginSet(pluginSet);
           copyAppAndPluginContent(
             cwd,
             nitro.options.output.serverDir,
-            pluginCatalogConfig?.packages,
+            compiledPluginCatalogConfig?.packages,
           );
           copyIncludedFiles(
             cwd,

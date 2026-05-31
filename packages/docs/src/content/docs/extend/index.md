@@ -59,10 +59,11 @@ For reuse across apps or teams, package plugin manifests and any bundled skills 
 pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
-Create one shared plugin set and pass it to both `juniorNitro()` and
-`createApp()`. Manifest-only packages use package-name strings. Plugins that
-need trusted runtime hooks use JavaScript factories such as `githubPlugin()`
-and `schedulerPlugin()`.
+Create one runtime-safe plugin set and point `juniorNitro()` at that module.
+Manifest-only packages use package-name strings. Plugins that need trusted
+runtime hooks use JavaScript factories such as `githubPlugin()` and
+`schedulerPlugin()`. `createApp()` reads the same enabled plugin set from
+Nitro's virtual module at runtime.
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -87,13 +88,12 @@ export const plugins = defineJuniorPlugins([
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
-import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins,
+      plugins: "./plugins",
     }),
   ],
   routes: {
@@ -104,9 +104,8 @@ export default defineConfig({
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
-import { plugins } from "./plugins";
 
-const app = await createApp({ plugins });
+const app = await createApp();
 
 export default app;
 ```
@@ -344,8 +343,8 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-Add the package name to `defineJuniorPlugins(...)`, then pass the same plugin
-set to `juniorNitro({ plugins })` and `createApp({ plugins })`.
+Add the package name to `defineJuniorPlugins(...)`, then point
+`juniorNitro({ plugins: "./plugins" })` at that module.
 
 ## Validate extensions
 

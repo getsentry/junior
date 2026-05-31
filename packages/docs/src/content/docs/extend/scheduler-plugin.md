@@ -22,8 +22,7 @@ Install the package next to `@sentry/junior`:
 pnpm add @sentry/junior-scheduler
 ```
 
-Add the trusted plugin factory to the shared plugin set used by both
-`juniorNitro()` and `createApp()`. The factory registers the scheduler
+Add the trusted plugin factory to the plugin set exported from `plugins.ts`. The factory registers the scheduler
 manifest, schedule-management tools, and heartbeat behavior together.
 
 ```ts title="plugins.ts"

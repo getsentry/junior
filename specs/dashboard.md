@@ -251,13 +251,16 @@ The dashboard trusted plugin must:
 Apps should configure the dashboard explicitly:
 
 ```ts
-const app = await createApp({
-  plugins: [
-    juniorDashboardPlugin({
-      authPath: "/api/auth",
-      allowedGoogleDomains: ["sentry.io"],
-    }),
-  ],
+export const plugins = defineJuniorPlugins([
+  juniorDashboardPlugin({
+    authPath: "/api/auth",
+    allowedGoogleDomains: ["sentry.io"],
+  }),
+]);
+
+export default defineConfig({
+  preset: "vercel",
+  modules: [juniorNitro({ plugins: "./plugins" })],
 });
 ```
 

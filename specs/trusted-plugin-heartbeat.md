@@ -28,7 +28,10 @@ Define the trusted-plugin heartbeat and tool-registration surface needed to move
 
 ## Trust Boundary
 
-Heartbeat and agent dispatch are trusted plugin capabilities. They are available only to Junior-owned built-in trusted plugins and plugins explicitly passed to `createApp({ plugins })` as trusted runtime plugins.
+Heartbeat and agent dispatch are trusted plugin capabilities. They are
+available only to Junior-owned built-in trusted plugins and plugins explicitly
+enabled through the app's `defineJuniorPlugins(...)` set as trusted runtime
+plugins.
 
 Declarative `plugin.yaml` manifests must not register heartbeat handlers, internal routes, or agent dispatch behavior.
 

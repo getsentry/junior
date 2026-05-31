@@ -8,8 +8,7 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-sentry
 ```
 
-Add the package name to the shared plugin set passed to both `juniorNitro()`
-and `createApp()`:
+Add the package name to the plugin set exported from `plugins.ts`:
 
 ```ts
 import { defineJuniorPlugins } from "@sentry/junior";

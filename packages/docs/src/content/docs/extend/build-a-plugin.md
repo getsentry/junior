@@ -101,7 +101,7 @@ Junior merges runtime dependency declarations from all loaded plugins and prepar
 ## Register the package
 
 Install the plugin next to `@sentry/junior`, then add the package name to a
-shared plugin set:
+runtime-safe plugin set:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -109,9 +109,10 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@acme/junior-my-provider"]);
 ```
 
-Pass the same `plugins` value to `juniorNitro({ plugins })` and
-`createApp({ plugins })`. Do not use the removed `pluginPackages` or
-`plugins.packages` options; `junior check` rejects both.
+Point `juniorNitro({ plugins: "./plugins" })` at that module and let
+`createApp()` read the enabled set from Nitro's virtual module. Do not use the
+removed `pluginPackages` or `plugins.packages` options; `junior check` rejects
+both.
 
 ## Add trusted runtime hooks
 
@@ -159,17 +160,13 @@ both the manifest surface and the trusted hooks. If the same package also ships
 `skills/`, add `packageName: "@acme/junior-my-provider"` so Nitro copies those
 skills into the deployment bundle.
 
-Register the trusted plugin from the app:
+Enable the trusted plugin from the app plugin module:
 
-```ts title="server.ts"
-import { createApp } from "@sentry/junior";
-import { plugins } from "./plugins";
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+import { myProviderPlugin } from "@acme/junior-my-provider";
 
-const app = await createApp({
-  plugins,
-});
-
-export default app;
+export const plugins = defineJuniorPlugins([myProviderPlugin()]);
 ```
 
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior

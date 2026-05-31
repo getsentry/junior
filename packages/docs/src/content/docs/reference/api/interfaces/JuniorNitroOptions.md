@@ -5,7 +5,7 @@ prev: false
 title: "JuniorNitroOptions"
 ---
 
-Defined in: [nitro.ts:15](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L15)
+Defined in: [nitro.ts:33](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L33)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [nitro.ts:15](https://github.com/getsentry/junior/blob/main/packages
 
 > `optional` **cwd?**: `string`
 
-Defined in: [nitro.ts:16](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L16)
+Defined in: [nitro.ts:34](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L34)
 
 ***
 
@@ -21,7 +21,7 @@ Defined in: [nitro.ts:16](https://github.com/getsentry/junior/blob/main/packages
 
 > `optional` **includeFiles?**: `string`[]
 
-Defined in: [nitro.ts:26](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L26)
+Defined in: [nitro.ts:44](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L44)
 
 Extra file patterns to copy into the server output for files that the
 bundler cannot trace (e.g. dynamically imported providers).
@@ -34,14 +34,14 @@ module resolution. Example: `"@earendil-works/pi-ai/dist/providers/*.js"`
 
 > `optional` **maxDuration?**: `number`
 
-Defined in: [nitro.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L17)
+Defined in: [nitro.ts:35](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L35)
 
 ***
 
 ### plugins?
 
-> `optional` **plugins?**: [`JuniorPluginSet`](/reference/api/interfaces/juniorpluginset/)
+> `optional` **plugins?**: `JuniorNitroPluginSource`
 
-Defined in: [nitro.ts:19](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L19)
+Defined in: [nitro.ts:37](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L37)
 
-Plugin package names and JS definitions bundled into the app. Pass the same set to `createApp()`.
+Plugin set or runtime-safe plugin module bundled into the app.

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import {
   getConfigDefaults,
@@ -56,6 +56,7 @@ afterEach(async () => {
   setAgentPlugins([]);
   setPluginCatalogConfig(undefined);
   setConfigDefaults(undefined);
+  vi.doUnmock("#junior/config");
   if (originalPluginPackages === undefined) {
     delete process.env.JUNIOR_PLUGIN_PACKAGES;
   } else {
@@ -219,6 +220,43 @@ describe("createApp plugin config", () => {
           hooks: {},
         }),
       ]),
+      configDefaults: { "trusted.org": "sentry" },
+    });
+
+    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "trusted",
+    ]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+  });
+
+  it("loads trusted plugin instances from the Nitro virtual plugin set", async () => {
+    vi.doMock("#junior/config", () => ({
+      pluginSet: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "trusted",
+            description: "Trusted plugin",
+            configKeys: ["org"],
+          },
+          hooks: {},
+        }),
+      ]),
+      plugins: {
+        inlineManifests: [
+          {
+            manifest: {
+              name: "trusted",
+              description: "Trusted plugin",
+              capabilities: [],
+              configKeys: ["trusted.org"],
+            },
+          },
+        ],
+      },
+      trustedPluginRegistrations: ["trusted"],
+    }));
+
+    await createApp({
       configDefaults: { "trusted.org": "sentry" },
     });
 

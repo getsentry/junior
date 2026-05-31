@@ -95,7 +95,9 @@ After you complete [Slack App Setup](/start-here/slack-app-setup/), point Slack 
 
 ## Add packaged plugins
 
-Packaged plugins must be installed and listed in `juniorNitro` so Nitro bundles their manifests, skills, and runtime dependencies.
+Packaged plugins must be installed and explicitly listed in the plugin set
+referenced by `juniorNitro` so Nitro bundles their manifests, skills, hooks,
+and runtime dependencies.
 
 Install only the plugins you plan to enable:
 
@@ -103,7 +105,7 @@ Install only the plugins you plan to enable:
 pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
-Then create one shared plugin set:
+Then create one runtime-safe plugin set:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -125,18 +127,18 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-Pass that same `plugins` value to `juniorNitro()` and `createApp()`:
+Point `juniorNitro()` at that module. `createApp()` reads the same plugin set
+from Nitro's virtual module, so the server entry does not repeat it:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
-import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins,
+      plugins: "./plugins",
     }),
   ],
   routes: {
@@ -147,9 +149,8 @@ export default defineConfig({
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
-import { plugins } from "./plugins";
 
-const app = await createApp({ plugins });
+const app = await createApp();
 
 export default app;
 ```
@@ -160,7 +161,7 @@ Run the app check after changing plugins or skills:
 pnpm check
 ```
 
-The shared plugin set is also where trusted runtime hooks are registered.
+The runtime-safe plugin set is also where trusted runtime hooks are registered.
 `schedulerPlugin()` enables scheduled task tools and heartbeat behavior, and
 `githubPlugin()` enforces Git commit attribution. See
 [Scheduler Plugin](/extend/scheduler-plugin/) and

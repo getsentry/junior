@@ -24,9 +24,8 @@ import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
-import { plugins } from "./plugins";
 
-const app = await createApp({ plugins });
+const app = await createApp();
 
 export default app;
 ```
@@ -35,8 +34,8 @@ export default app;
 
 ## Add Nitro wiring
 
-Create a shared plugin set and register `juniorNitro()` so app files and
-declared plugin packages are copied into the deployment bundle:
+Create a runtime-safe plugin set and point `juniorNitro()` at it so app files
+and declared plugin packages are copied into the deployment bundle:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -47,12 +46,11 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
-import { plugins } from "./plugins";
 
 export default defineConfig({
   modules: [
     juniorNitro({
-      plugins,
+      plugins: "./plugins",
     }),
   ],
   routes: {

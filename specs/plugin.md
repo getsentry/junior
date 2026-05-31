@@ -30,7 +30,7 @@ Define the plugin model for provider integrations. Plugins package declarative r
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
 5. Credential delivery is host-owned and requester-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
-7. Trusted runtime behavior is app-code registration, not manifest registration. Apps pass one `defineJuniorPlugins(...)` set to both `juniorNitro({ plugins })` and `createApp({ plugins })`.
+7. Trusted runtime behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
 8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for trusted plugins. Do not split one plugin definition across both.
 9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
 

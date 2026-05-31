@@ -48,12 +48,13 @@ export type {
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
-  /** Plugin package names and JS definitions shared with `juniorNitro()`. */
+  /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   waitUntil?: WaitUntilFn;
 }
 
 interface JuniorVirtualConfig {
+  pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
   trustedPluginRegistrations: string[];
 }
@@ -81,10 +82,12 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
+      pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
       trustedPluginRegistrations?: string[];
     } = await import("#junior/config");
     return {
+      pluginSet: mod.pluginSet,
       plugins: mod.plugins,
       trustedPluginRegistrations: mod.trustedPluginRegistrations ?? [],
     };
@@ -96,15 +99,8 @@ async function resolveVirtualConfig(): Promise<
   }
 }
 
-/** Resolve plugin configuration from the virtual module, falling back to env. */
-async function resolveBuildPluginCatalogConfig(): Promise<
-  PluginCatalogConfig | undefined
-> {
-  const virtualConfig = await resolveVirtualConfig();
-  if (virtualConfig?.plugins) {
-    return virtualConfig.plugins;
-  }
-
+/** Resolve plugin configuration from the env fallback. */
+function resolveEnvPluginCatalogConfig(): PluginCatalogConfig | undefined {
   const packages = readEnvPluginPackages();
   if (packages) {
     return { packages };
@@ -185,7 +181,7 @@ function validateBuildIncludesPluginPackages(
     return;
   }
   throw new Error(
-    `createApp() registered plugin package(s) not bundled by juniorNitro(): ${missing.join(", ")}. Pass the same defineJuniorPlugins(...) set to juniorNitro({ plugins }) and createApp({ plugins }).`,
+    `createApp() registered plugin package(s) not bundled by juniorNitro(): ${missing.join(", ")}. Point juniorNitro({ plugins: "./plugins" }) at the runtime plugin module or pass the same defineJuniorPlugins(...) set to juniorNitro({ plugins }) and createApp({ plugins }).`,
   );
 }
 
@@ -208,7 +204,7 @@ function validateBuildIncludesTrustedRegistrations(
   }
 
   throw new Error(
-    `createApp() is missing trusted plugin registration(s) bundled by juniorNitro(): ${missing.join(", ")}. Pass the same defineJuniorPlugins(...) set to juniorNitro({ plugins }) and createApp({ plugins }).`,
+    `createApp() is missing trusted plugin registration(s) bundled by juniorNitro(): ${missing.join(", ")}. Pass a runtime-safe plugin module to juniorNitro({ plugins: "./plugins" }) or pass the same defineJuniorPlugins(...) set to createApp({ plugins }).`,
   );
 }
 
@@ -254,13 +250,13 @@ function mountAgentPluginRoutes(
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  const configuredPlugins = options?.plugins;
+  const virtualConfig = await resolveVirtualConfig();
+  const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const agentPlugins =
     trustedPluginRegistrationsFromPluginSet(configuredPlugins);
-  const virtualConfig = await resolveVirtualConfig();
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
-    : (virtualConfig?.plugins ?? (await resolveBuildPluginCatalogConfig()));
+    : (virtualConfig?.plugins ?? resolveEnvPluginCatalogConfig());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }

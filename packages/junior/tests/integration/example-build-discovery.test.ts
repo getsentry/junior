@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, realpathSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,6 +10,7 @@ const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
+const examplePluginsModule = path.join(exampleRoot, "plugins.ts");
 const exampleDashboardConfig = path.join(exampleRoot, "dashboard.ts");
 const exampleRequire = createRequire(exampleEntry);
 const vercelEnvNames = [
@@ -27,19 +28,21 @@ function isSamePath(left: string, right: string): boolean {
   }
 }
 
-function getExamplePluginPackages(): string[] {
-  const pkg = JSON.parse(
-    readFileSync(path.join(exampleRoot, "package.json"), "utf8"),
-  ) as {
-    dependencies?: Record<string, string>;
+async function getExamplePluginPackages(): Promise<string[]> {
+  const href = `${pathToFileURL(examplePluginsModule).href}?t=${Date.now()}`;
+  const { plugins } = (await import(href)) as {
+    plugins: {
+      packageNames: string[];
+      registrations: Array<{ packageName?: string }>;
+    };
   };
 
-  return Object.keys(pkg.dependencies ?? {}).filter(
-    (name) =>
-      name.startsWith("@sentry/junior-") &&
-      name !== "@sentry/junior" &&
-      name !== "@sentry/junior-dashboard",
-  );
+  return [
+    ...plugins.packageNames,
+    ...plugins.registrations.flatMap((plugin) =>
+      plugin.packageName ? [plugin.packageName] : [],
+    ),
+  ];
 }
 
 function buildJuniorPackage(): void {
@@ -130,7 +133,7 @@ describe.sequential("example build discovery integration", () => {
   it("serves built health and recognizes the sentry oauth callback route", async () => {
     process.chdir(exampleRoot);
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
-      getExamplePluginPackages(),
+      await getExamplePluginPackages(),
     );
 
     const app = await importExampleApp();
@@ -150,7 +153,7 @@ describe.sequential("example build discovery integration", () => {
   }, 15_000);
 
   it("does not expose discovery state from the public example app", async () => {
-    const packageNames = getExamplePluginPackages();
+    const packageNames = await getExamplePluginPackages();
     process.chdir(exampleRoot);
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
 

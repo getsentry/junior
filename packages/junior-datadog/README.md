@@ -8,8 +8,7 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-datadog
 ```
 
-Then add the package name to the shared plugin set passed to both
-`juniorNitro()` and `createApp()`:
+Then add the package name to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
