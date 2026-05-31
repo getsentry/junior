@@ -207,7 +207,7 @@ describe("bot image hydration", () => {
       thread,
       createTestMessage({
         id: "1700000001.200",
-        text: "what's in this screenshot?",
+        text: "",
         threadId: "slack:C_IMAGE:1700000001.000",
         isMention: true,
         author: {
@@ -232,8 +232,15 @@ describe("bot image hydration", () => {
     const persistedState = thread.getState() as {
       conversation: {
         messages: Array<{
+          author?: {
+            isBot?: boolean;
+          };
+          text: string;
           meta?: {
+            attachmentCount?: number;
+            imageAttachmentCount?: number;
             imagesHydrated?: boolean;
+            slackTs?: string;
           };
         }>;
         vision: {
@@ -244,9 +251,21 @@ describe("bot image hydration", () => {
     expect(
       persistedState.conversation.vision.backfillCompletedAtMs,
     ).toBeUndefined();
-    expect(
-      persistedState.conversation.messages.at(-1)?.meta?.imagesHydrated,
-    ).not.toBe(true);
+    const persistedMessage = persistedState.conversation.messages.find(
+      (entry) => entry.meta?.slackTs === "1700000001.200",
+    );
+    expect(persistedMessage).toMatchObject({
+      author: {
+        isBot: false,
+      },
+      text: "[non-text message]",
+      meta: {
+        attachmentCount: 1,
+        imageAttachmentCount: 1,
+        imagesHydrated: false,
+        slackTs: "1700000001.200",
+      },
+    });
   });
 
   it("backfills older image messages after vision is enabled later", async () => {

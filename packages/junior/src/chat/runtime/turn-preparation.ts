@@ -7,7 +7,6 @@ import type {
 import { toOptionalString } from "@/chat/coerce";
 import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
-import { getSlackMessageTs } from "@/chat/slack/message";
 import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState,
@@ -20,13 +19,17 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
-  countPotentialImageAttachments,
   hasPotentialImageAttachment,
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
+import type {
+  PrepareTurnStateInput,
+  TurnContext,
+} from "@/chat/runtime/turn-input";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
 
 const BACKFILL_MESSAGE_LIMIT = 80;
 
@@ -42,31 +45,14 @@ export interface PreparedTurnState {
   userMessageId?: string;
 }
 
-export interface QueuedTurnMessage {
-  explicitMention: boolean;
-  message: Message;
-  userText: string;
-}
-
 export interface PrepareTurnStateDeps {
   compactConversationIfNeeded: (
     conversation: ThreadConversationState,
-    context: {
-      threadId?: string;
-      channelId?: string;
-      requesterId?: string;
-      runId?: string;
-    },
+    context: TurnContext,
   ) => Promise<void>;
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
-    context: {
-      threadId?: string;
-      channelId?: string;
-      requesterId?: string;
-      runId?: string;
-      threadTs?: string;
-    },
+    context: TurnContext & { threadTs?: string },
   ) => Promise<void>;
 }
 
@@ -79,49 +65,11 @@ function hasPendingImageHydration(
   );
 }
 
-function createConversationMessageFromSdkMessage(args: {
-  entry: Message;
-  explicitMention?: boolean;
-  userText?: string;
-}): ConversationMessage | null {
-  const enrichedText = appendSlackLegacyAttachmentText(
-    args.userText ?? args.entry.text,
-    args.entry.raw,
+function getBackfillText(entry: Message): string | undefined {
+  const text = normalizeConversationText(
+    appendSlackLegacyAttachmentText(entry.text, entry.raw),
   );
-  const rawText = normalizeConversationText(enrichedText);
-  if (!rawText) {
-    return null;
-  }
-  const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
-    args.entry.attachments,
-  );
-  const imageAttachmentCount = messageHasPotentialImageAttachment
-    ? countPotentialImageAttachments(args.entry.attachments)
-    : 0;
-
-  return {
-    id: args.entry.id,
-    role: args.entry.author.isMe ? "assistant" : "user",
-    text: rawText,
-    createdAtMs: args.entry.metadata.dateSent.getTime(),
-    author: {
-      userId: args.entry.author.userId,
-      userName: args.entry.author.userName,
-      fullName: args.entry.author.fullName,
-      isBot:
-        typeof args.entry.author.isBot === "boolean"
-          ? args.entry.author.isBot
-          : undefined,
-    },
-    meta: {
-      attachmentCount: args.entry.attachments.length,
-      explicitMention: args.explicitMention,
-      imageAttachmentCount:
-        imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
-      imagesHydrated: !messageHasPotentialImageAttachment,
-      slackTs: getSlackMessageTs(args.entry),
-    },
-  };
+  return text || undefined;
 }
 
 async function seedConversationBackfill(
@@ -157,9 +105,9 @@ async function seedConversationBackfill(
     }
     fetchedNewestFirst.reverse();
     for (const entry of fetchedNewestFirst) {
-      const message = createConversationMessageFromSdkMessage({ entry });
-      if (message) {
-        seeded.push(message);
+      const text = getBackfillText(entry);
+      if (text) {
+        seeded.push(toConversationMessage({ entry, text }));
       }
     }
     if (seeded.length > 0) {
@@ -174,9 +122,9 @@ async function seedConversationBackfill(
 
     const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
     for (const entry of fromRecent) {
-      const message = createConversationMessageFromSdkMessage({ entry });
-      if (message) {
-        seeded.push(message);
+      const text = getBackfillText(entry);
+      if (text) {
+        seeded.push(toConversationMessage({ entry, text }));
       }
     }
     source = "recent_messages";
@@ -208,19 +156,9 @@ async function seedConversationBackfill(
 
 /** Build the turn-state preparer from injected conversation services. */
 export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
-  return async function prepareTurnState(args: {
-    explicitMention: boolean;
-    message: Message;
-    thread: Thread;
-    userText: string;
-    context: {
-      threadId?: string;
-      requesterId?: string;
-      channelId?: string;
-      runId?: string;
-    };
-    queuedMessages?: QueuedTurnMessage[];
-  }): Promise<PreparedTurnState> {
+  return async function prepareTurnState(
+    args: PrepareTurnStateInput,
+  ): Promise<PreparedTurnState> {
     const existingState = await args.thread.state;
     const existingSandboxId = existingState
       ? toOptionalString(
@@ -243,36 +181,23 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
     });
     for (const queued of args.queuedMessages ?? []) {
-      const queuedMessage = createConversationMessageFromSdkMessage({
+      const queuedMessage = toConversationMessage({
         entry: queued.message,
         explicitMention: queued.explicitMention,
-        userText: queued.userText,
+        text: queued.userText,
       });
-      if (queuedMessage) {
-        upsertConversationMessage(conversation, queuedMessage);
-      }
+      upsertConversationMessage(conversation, queuedMessage);
     }
 
-    const incomingUserMessage = createConversationMessageFromSdkMessage({
+    const incomingUserMessage = toConversationMessage({
       entry: args.message,
       explicitMention: args.explicitMention,
-      userText: args.userText,
+      text: args.text.userText,
     });
 
     const userMessageId = upsertConversationMessage(
       conversation,
-      incomingUserMessage ?? {
-        id: args.message.id,
-        role: "user",
-        text: "[non-text message]",
-        createdAtMs: args.message.metadata.dateSent.getTime(),
-        author: {
-          userId: args.message.author.userId,
-          userName: args.message.author.userName,
-          fullName: args.message.author.fullName,
-        },
-        meta: { explicitMention: args.explicitMention },
-      },
+      incomingUserMessage,
     );
 
     const messageHasPotentialImageAttachment =

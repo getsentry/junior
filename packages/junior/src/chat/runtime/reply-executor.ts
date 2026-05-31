@@ -33,7 +33,13 @@ import { persistThreadState } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
-import type { QueuedTurnMessage } from "@/chat/runtime/turn-preparation";
+import {
+  combineTurnText,
+  type PrepareTurnStateInput,
+  type QueuedTurnMessage,
+  type TurnMessageText,
+  type TurnToolInvocation,
+} from "@/chat/runtime/turn-input";
 import {
   type ConversationMemoryService,
   markConversationMessage,
@@ -57,7 +63,6 @@ import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
-import { combineQueuedUserText } from "@/chat/runtime/queued-user-text";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
@@ -198,19 +203,7 @@ interface ReplyExecutorDeps {
       promptText?: string;
     }>
   >;
-  prepareTurnState: (args: {
-    explicitMention: boolean;
-    message: Message;
-    queuedMessages?: QueuedTurnMessage[];
-    thread: Thread;
-    userText: string;
-    context: {
-      threadId?: string;
-      requesterId?: string;
-      channelId?: string;
-      runId?: string;
-    };
-  }) => Promise<PreparedTurnState>;
+  prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
 }
 
@@ -221,10 +214,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
-      onToolInvocation?: (invocation: {
-        params: Record<string, unknown>;
-        toolName: string;
-      }) => void;
+      onToolInvocation?: (invocation: TurnToolInvocation) => void;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
     } = {},
@@ -259,21 +249,24 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           stripLeadingSlackMentionToken:
             options.explicitMention || Boolean(message.isMention),
         });
-        const userText = appendSlackLegacyAttachmentText(
-          strippedUserText,
-          message.raw,
-        );
-        const effectiveUserText = combineQueuedUserText(
+        const currentText: TurnMessageText = {
+          rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+          userText: appendSlackLegacyAttachmentText(
+            strippedUserText,
+            message.raw,
+          ),
+        };
+        const effectiveUserText = combineTurnText(
           options.queuedMessages ?? [],
-          userText,
-        );
+          currentText,
+        ).userText;
 
         const preparedState =
           options.preparedState ??
           (await deps.prepareTurnState({
             thread,
             message,
-            userText,
+            text: currentText,
             explicitMention: Boolean(
               options.explicitMention || message.isMention,
             ),

@@ -1,6 +1,9 @@
 import { botConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
-import { decideSubscribedThreadReply } from "@/chat/services/subscribed-decision";
+import {
+  decideSubscribedThreadReply,
+  type SubscribedDecisionInput,
+} from "@/chat/services/subscribed-decision";
 import type { completeObject } from "@/chat/pi/client";
 
 export interface SubscribedReplyPolicyDeps {
@@ -13,19 +16,9 @@ export interface SubscribedReplyDecision {
   shouldUnsubscribe?: boolean;
 }
 
-export type SubscribedReplyPolicy = (args: {
-  rawText: string;
-  text: string;
-  conversationContext?: string;
-  hasAttachments?: boolean;
-  isExplicitMention?: boolean;
-  context: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-  };
-}) => Promise<SubscribedReplyDecision>;
+export type SubscribedReplyPolicy = (
+  args: SubscribedDecisionInput,
+) => Promise<SubscribedReplyDecision>;
 
 export function createSubscribedReplyPolicy(
   deps: SubscribedReplyPolicyDeps,

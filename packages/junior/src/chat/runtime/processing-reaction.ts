@@ -6,6 +6,7 @@ import {
   removeReactionFromMessage,
 } from "@/chat/slack/outbound";
 import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
+import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
 
 const PROCESSING_REACTION_EMOJI = "eyes";
 
@@ -28,10 +29,9 @@ function isProcessingReactionEmoji(value: unknown): boolean {
 }
 
 /** Return true when a Slack reaction tool call should leave the processing reaction in place. */
-export function shouldKeepProcessingReactionForToolInvocation(input: {
-  params: Record<string, unknown>;
-  toolName: string;
-}): boolean {
+export function shouldKeepProcessingReactionForToolInvocation(
+  input: TurnToolInvocation,
+): boolean {
   return (
     input.toolName === "slackMessageAddReaction" &&
     isProcessingReactionEmoji(input.params.emoji)

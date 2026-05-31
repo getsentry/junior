@@ -196,6 +196,74 @@ describe("Slack behavior: subscribed messages", () => {
     expect(toPostedText(thread.posts[0])).toContain("Shipping status is green");
   });
 
+  it("treats queued explicit mentions as part of the subscribed turn", async () => {
+    let classifierCalled = false;
+    const replyCalls: string[] = [];
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            throw new Error(
+              "classifier should be bypassed for queued explicit mentions",
+            );
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            replyCalls.push(prompt);
+            return {
+              text: "Handled queued subscribed turn.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: "slack:C_BEHAVIOR:1700002002.250",
+    });
+    const queued = createTestMessage({
+      id: "m-subscribed-queued-mention",
+      text: "<@U_APP> first queued request",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+    const latest = createTestMessage({
+      id: "m-subscribed-queued-latest",
+      text: "latest follow-up",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, latest, {
+      messageContext: {
+        skipped: [queued],
+        totalSinceLastHandler: 2,
+      },
+    });
+
+    expect(classifierCalled).toBe(false);
+    expect(replyCalls).toHaveLength(1);
+    expect(replyCalls[0]).toContain("first queued request");
+    expect(replyCalls[0]).toContain("latest follow-up");
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "Handled queued subscribed turn.",
+    );
+  });
+
   it("unsubscribes on explicit stop-thread instructions and only re-engages on a later direct mention", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];

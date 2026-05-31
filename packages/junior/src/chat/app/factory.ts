@@ -30,15 +30,13 @@ import {
   createPrepareTurnState,
   type PreparedTurnState,
 } from "@/chat/runtime/turn-preparation";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   markConversationMessage,
-  normalizeConversationText,
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
-import { getSlackMessageTs } from "@/chat/slack/message";
-import { hasPotentialImageAttachment } from "@/chat/services/vision-context";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -103,32 +101,20 @@ export function createSlackRuntime(
       message,
       decision,
       completedAtMs,
-      userText,
+      text,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
-      const normalizedUserText =
-        normalizeConversationText(userText) || "[non-text message]";
-      const slackTs = getSlackMessageTs(message);
+      const conversationMessage = toConversationMessage({
+        entry: message,
+        explicitMention: Boolean(message.isMention),
+        text: text.userText,
+      });
       upsertConversationMessage(conversation, {
-        id: message.id,
-        role: "user",
-        text: normalizedUserText,
-        createdAtMs: message.metadata.dateSent.getTime(),
-        author: {
-          userId: message.author.userId,
-          userName: message.author.userName,
-          fullName: message.author.fullName,
-          isBot:
-            typeof message.author.isBot === "boolean"
-              ? message.author.isBot
-              : undefined,
-        },
+        ...conversationMessage,
         meta: {
-          explicitMention: Boolean(message.isMention),
-          slackTs,
+          ...conversationMessage.meta,
           replied: false,
           skippedReason: decision.reason,
-          imagesHydrated: !hasPotentialImageAttachment(message.attachments),
         },
       });
       conversation.processing.activeTurnId = undefined;
