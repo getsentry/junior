@@ -58,7 +58,7 @@ function reporting(): JuniorReporting {
     },
     async getSessions() {
       return {
-        source: "turn_session_checkpoints",
+        source: "turn_session_records",
         generatedAt: "2026-05-29T00:00:00.000Z",
         sessions: [
           {
@@ -171,9 +171,7 @@ describe("dashboard routes", () => {
       "/sessions",
       "/sessions/some-session",
     ]) {
-      const response = await app.fetch(
-        new Request(`http://localhost${path}`),
-      );
+      const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status, path).toBe(302);
       expect(response.headers.get("location"), path).toBe(
         `http://localhost/api/dashboard/login`,
@@ -381,7 +379,7 @@ describe("dashboard routes", () => {
           status: "active",
         },
       ],
-      source: "turn_session_checkpoints",
+      source: "turn_session_records",
     });
   });
 

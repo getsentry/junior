@@ -1,6 +1,13 @@
 import { useSearchParams } from "react-router";
 
-import { ConversationList, FilterTabs } from "../components";
+import {
+  ConversationList,
+  FilterTabs,
+  Kicker,
+  Section,
+  SectionHeader,
+  SectionTitle,
+} from "../components";
 import {
   buildConversations,
   filterConversations,
@@ -18,7 +25,7 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   const visibleConversations = filterConversations(conversations, filter);
   const search = params.toString();
   const feedMeta =
-    props.data?.sessions.source === "turn_session_checkpoints"
+    props.data?.sessions.source === "turn_session_records"
       ? `${conversations.length} conversations / ${sessions.length} turns / ${formatTime(props.data.sessions.generatedAt)}`
       : "waiting for run history feed";
 
@@ -29,24 +36,27 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   }
 
   return (
-    <div className="conversations-layout">
-      <section className="sessions-main">
-        <section className="section sessions-section">
-          <div className="section-header">
+    <div className="min-w-0 px-4 py-4 md:px-8">
+      <section className="min-w-0">
+        <Section>
+          <SectionHeader
+            actions={<FilterTabs current={filter} onChange={updateFilter} />}
+          >
             <div>
-              <div className="kicker">Flight Recorder</div>
-              <div className="section-title">Conversations</div>
-              <div className="pulse-meta">{feedMeta}</div>
+              <Kicker>Flight Recorder</Kicker>
+              <SectionTitle>Conversations</SectionTitle>
+              <div className="mt-1 break-words font-mono text-[0.82rem] leading-relaxed text-slate-400">
+                {feedMeta}
+              </div>
             </div>
-            <FilterTabs current={filter} onChange={updateFilter} />
-          </div>
-          <div className="conversation-list-shell">
+          </SectionHeader>
+          <div className="min-h-[calc(100vh-15rem)]">
             <ConversationList
               conversations={visibleConversations}
               search={search ? `?${search}` : ""}
             />
           </div>
-        </section>
+        </Section>
       </section>
     </div>
   );

@@ -2,6 +2,7 @@ import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
 import { ActivityIndicator } from "../components";
+import { cn } from "../styles";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -35,25 +36,31 @@ export function ConversationPage(props: { data?: DashboardData }) {
     : undefined;
 
   return (
-    <div className="conversation-layout">
-      <section className="conversation-main">
+    <div className="min-w-0 px-4 py-4 md:px-8">
+      <section className="min-w-0">
         <div
-          className={`pulse-strip ${visualStatus ? `status-${visualStatus}` : ""}`}
+          className={cn(
+            "mb-4 grid items-stretch gap-3 border bg-neutral-900/70 p-4 md:grid-cols-[minmax(0,1fr)_auto]",
+            visualStatus === "active" && "border-emerald-400/70",
+            visualStatus === "hung" && "border-amber-400/70",
+            visualStatus === "failed" && "border-rose-400/70",
+            (!visualStatus || visualStatus === "idle") && "border-slate-700",
+          )}
         >
-          <div className="conversation-header-copy">
-            <div className="pulse-title">
+          <div className="grid min-w-0 content-between gap-1">
+            <div className="text-lg font-bold leading-tight">
               {conversationDisplayTitle(conversation)}
             </div>
-            <div className="pulse-meta">
+            <div className="break-words font-mono text-[0.82rem] leading-relaxed text-slate-400">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
               />
             </div>
           </div>
-          <div className="pulse-status-panel">
+          <div className="grid min-w-48 content-between justify-items-end gap-2 max-md:min-w-0 max-md:justify-items-stretch">
             <ActivityIndicator status={visualStatus} variant="full" />
-            <div className="pulse-meta">
+            <div className="break-words text-right font-mono text-[0.82rem] leading-relaxed text-slate-400 max-md:text-left">
               updated{" "}
               {formatRelativeTime(
                 conversation?.lastSeenAt ?? detail.data?.generatedAt,
@@ -66,7 +73,9 @@ export function ConversationPage(props: { data?: DashboardData }) {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error ? (
-          <div className="transcript-empty">{detail.error.message}</div>
+          <div className="border border-slate-800 bg-neutral-950/60 p-4 font-mono text-[0.88rem] leading-relaxed text-slate-400">
+            {detail.error.message}
+          </div>
         ) : (
           <Transcript turns={detail.data?.turns ?? []} />
         )}
@@ -92,7 +101,7 @@ function ConversationIdentity(props: {
         <>
           {" · "}
           <a
-            className="inline-link"
+            className="text-cyan-300 no-underline hover:text-white hover:underline"
             href={props.conversation.sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
@@ -132,7 +141,7 @@ function ConversationStats(props: {
   ].filter(Boolean);
 
   return (
-    <div className="conversation-stats break-words font-mono text-[0.72rem] leading-[1.45] text-[var(--muted)]">
+    <div className="col-span-full border-t border-slate-800 pt-3 break-words font-mono text-[0.72rem] leading-[1.45] text-slate-400">
       {stats.join(" · ")}
     </div>
   );

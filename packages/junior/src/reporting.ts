@@ -117,7 +117,7 @@ export interface DashboardConversationReport {
 
 export interface DashboardSessionFeed {
   sessions: DashboardSessionReport[];
-  source: "turn_session_checkpoints";
+  source: "turn_session_records";
   generatedAt: string;
 }
 
@@ -140,9 +140,9 @@ export interface JuniorReporting {
   /**
    * Read one conversation transcript for the dashboard.
    *
-   * The current implementation uses expiring Redis checkpoints, but the API
-   * should stay compatible with a future Sentry trace-history source. Avoid
-   * adding fields that require Redis-only transcript internals.
+   * The current implementation joins turn-session records with expiring session
+   * logs, but the API should stay compatible with a future Sentry trace-history
+   * source. Avoid adding fields that require Redis-only transcript internals.
    */
   getConversation(conversationId: string): Promise<DashboardConversationReport>;
 }
@@ -515,7 +515,7 @@ function traceIdFromTranscript(
 async function readSessions(): Promise<DashboardSessionFeed> {
   const summaries = await listAgentTurnSessionSummaries(50);
   return {
-    source: "turn_session_checkpoints",
+    source: "turn_session_records",
     generatedAt: new Date().toISOString(),
     sessions: summaries.map(sessionReportFromSummary),
   };

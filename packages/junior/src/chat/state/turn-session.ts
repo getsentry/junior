@@ -69,6 +69,11 @@ interface StoredAgentTurnSessionRecord extends Omit<
   logSessionId?: string;
 }
 
+type ParsedAgentTurnSessionFields = Omit<
+  StoredAgentTurnSessionRecord,
+  "committedMessageCount"
+>;
+
 function agentTurnSessionKey(
   conversationId: string,
   sessionId: string,
@@ -144,23 +149,27 @@ function parseStoredRecord(
   }
 }
 
-function parseAgentTurnSessionRecord(
-  value: unknown,
-): StoredAgentTurnSessionRecord | undefined {
-  const parsed = parseStoredRecord(value);
-  if (!parsed) {
-    return undefined;
-  }
-
+function parseAgentTurnSessionStatus(
+  parsed: Record<string, unknown>,
+): AgentTurnSessionStatus | undefined {
   const status = parsed.state;
   if (
-    status !== "running" &&
-    status !== "awaiting_resume" &&
-    status !== "completed" &&
-    status !== "failed" &&
-    status !== "abandoned" &&
-    status !== "superseded"
+    status === "running" ||
+    status === "awaiting_resume" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "abandoned"
   ) {
+    return status;
+  }
+  return undefined;
+}
+
+function parseAgentTurnSessionFields(
+  parsed: Record<string, unknown>,
+): ParsedAgentTurnSessionFields | undefined {
+  const status = parseAgentTurnSessionStatus(parsed);
+  if (!status) {
     return undefined;
   }
 
@@ -175,18 +184,9 @@ function parseAgentTurnSessionRecord(
       : undefined;
   const conversationId = parsed.conversationId;
   const sessionId = parsed.sessionId;
-  const sliceId = parsed.sliceId;
-  const version = toFiniteNonNegativeNumber(
-    parsed.version ?? parsed.checkpointVersion,
-  );
-  const updatedAtMs = parsed.updatedAtMs;
-  const legacyPiMessages = Array.isArray(parsed.piMessages)
-    ? (parsed.piMessages as PiMessage[])
-    : [];
-  const committedMessageCount =
-    toFiniteNonNegativeNumber(
-      parsed.committedMessageCount ?? parsed.messageCount,
-    ) ?? legacyPiMessages.length;
+  const sliceId = toFiniteNonNegativeNumber(parsed.sliceId);
+  const version = toFiniteNonNegativeNumber(parsed.version);
+  const updatedAtMs = toFiniteNonNegativeNumber(parsed.updatedAtMs);
   const cumulativeDurationMs = toFiniteNonNegativeNumber(
     parsed.cumulativeDurationMs,
   );
@@ -199,10 +199,9 @@ function parseAgentTurnSessionRecord(
   if (
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
-    typeof sliceId !== "number" ||
+    sliceId === undefined ||
     version === undefined ||
-    committedMessageCount === undefined ||
-    typeof updatedAtMs !== "number"
+    updatedAtMs === undefined
   ) {
     return undefined;
   }
@@ -214,11 +213,10 @@ function parseAgentTurnSessionRecord(
     conversationId,
     sessionId,
     sliceId,
-    state: status === "superseded" ? "abandoned" : status,
+    state: status,
     startedAtMs: startedAtMs ?? updatedAtMs,
     lastProgressAtMs: lastProgressAtMs ?? updatedAtMs,
     updatedAtMs,
-    committedMessageCount,
     ...(logSessionId ? { logSessionId } : {}),
     ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
@@ -243,16 +241,41 @@ function parseAgentTurnSessionRecord(
   };
 }
 
+function parseAgentTurnSessionRecord(
+  value: unknown,
+): StoredAgentTurnSessionRecord | undefined {
+  const parsed = parseStoredRecord(value);
+  if (!parsed) {
+    return undefined;
+  }
+
+  const fields = parseAgentTurnSessionFields(parsed);
+  const committedMessageCount = toFiniteNonNegativeNumber(
+    parsed.committedMessageCount,
+  );
+  if (!fields || committedMessageCount === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...fields,
+    committedMessageCount,
+  };
+}
+
 function parseAgentTurnSessionSummary(
   value: unknown,
 ): AgentTurnSessionSummary | undefined {
-  const parsed = parseAgentTurnSessionRecord(value);
+  const stored = parseStoredRecord(value);
+  if (!stored) {
+    return undefined;
+  }
+  const parsed = parseAgentTurnSessionFields(stored);
   if (!parsed) {
     return undefined;
   }
 
   const {
-    committedMessageCount: _committedMessageCount,
     errorMessage: _errorMessage,
     logSessionId: _logSessionId,
     ...summary
@@ -329,17 +352,28 @@ function materializeAgentTurnSessionRecord(
   };
 }
 
-/** Read a materialized turn session record for resume and history loading. */
-export async function getAgentTurnSessionRecord(
+/** Read only the stored metadata record without materializing transcript logs. */
+async function getStoredAgentTurnSessionRecord(
   conversationId: string,
   sessionId: string,
-): Promise<AgentTurnSessionRecord | undefined> {
+): Promise<StoredAgentTurnSessionRecord | undefined> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const value = await stateAdapter.get(
     agentTurnSessionKey(conversationId, sessionId),
   );
-  const parsed = parseAgentTurnSessionRecord(value);
+  return parseAgentTurnSessionRecord(value);
+}
+
+/** Read a materialized turn session record for resume and history loading. */
+export async function getAgentTurnSessionRecord(
+  conversationId: string,
+  sessionId: string,
+): Promise<AgentTurnSessionRecord | undefined> {
+  const parsed = await getStoredAgentTurnSessionRecord(
+    conversationId,
+    sessionId,
+  );
   if (!parsed) {
     return undefined;
   }
@@ -462,12 +496,10 @@ async function updateAgentTurnSessionState(args: {
   errorMessage?: string;
   state: "abandoned" | "failed";
 }): Promise<AgentTurnSessionRecord | undefined> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const existingValue = await stateAdapter.get(
-    agentTurnSessionKey(args.existing.conversationId, args.existing.sessionId),
+  const parsed = await getStoredAgentTurnSessionRecord(
+    args.existing.conversationId,
+    args.existing.sessionId,
   );
-  const parsed = parseAgentTurnSessionRecord(existingValue);
   if (!parsed || parsed.version !== args.existing.version) {
     return undefined;
   }
@@ -498,7 +530,9 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
-      ...(args.existing.requester ? { requester: args.existing.requester } : {}),
+      ...(args.existing.requester
+        ? { requester: args.existing.requester }
+        : {}),
       ...(args.existing.resumeReason
         ? { resumeReason: args.existing.resumeReason }
         : {}),
@@ -533,12 +567,10 @@ export async function upsertAgentTurnSessionRecord(args: {
   traceId?: string;
   ttlMs?: number;
 }): Promise<AgentTurnSessionRecord> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const existingValue = await stateAdapter.get(
-    agentTurnSessionKey(args.conversationId, args.sessionId),
+  const existingRecord = await getStoredAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionId,
   );
-  const existingRecord = parseAgentTurnSessionRecord(existingValue);
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
   const commit = await commitMessages({
     conversationId: args.conversationId,
@@ -589,7 +621,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.resumedFromSliceId !== undefined
         ? { resumedFromSliceId: args.resumedFromSliceId }
         : {}),
-      ...(args.traceId ?? existingRecord?.traceId
+      ...((args.traceId ?? existingRecord?.traceId)
         ? { traceId: args.traceId ?? existingRecord?.traceId }
         : {}),
     }),
@@ -614,7 +646,7 @@ export async function recordAgentTurnSessionSummary(args: {
   traceId?: string;
   ttlMs?: number;
 }): Promise<void> {
-  const existing = await getAgentTurnSessionRecord(
+  const existing = await getStoredAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -650,7 +682,7 @@ export async function recordAgentTurnSessionSummary(args: {
         : existing?.cumulativeDurationMs !== undefined
           ? { cumulativeDurationMs: existing.cumulativeDurationMs }
           : {}),
-      ...(args.cumulativeUsage ?? existing?.cumulativeUsage
+      ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
         ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
         : {}),
       ...((args.requester ?? existing?.requester)
@@ -666,7 +698,7 @@ export async function recordAgentTurnSessionSummary(args: {
           ? { loadedSkillNames: existing.loadedSkillNames }
           : {}),
       ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
-      ...(args.traceId ?? existing?.traceId
+      ...((args.traceId ?? existing?.traceId)
         ? { traceId: args.traceId ?? existing?.traceId }
         : {}),
     },

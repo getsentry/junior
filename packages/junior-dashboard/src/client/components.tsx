@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 import {
   CartesianGrid,
@@ -22,6 +23,7 @@ import {
   visualStatusForConversation,
   visualStatusForSession,
 } from "./format";
+import { cn } from "./styles";
 import type {
   Conversation,
   DashboardData,
@@ -30,15 +32,71 @@ import type {
   VisualStatus,
 } from "./types";
 
+/** Render the compact Junior wordmark used by the dashboard shell. */
+export function JuniorLogo() {
+  return (
+    <div className="grid size-9 shrink-0 place-items-center bg-black font-mono text-[0.82rem] font-black leading-none text-white">
+      Jr
+    </div>
+  );
+}
+
+/** Frame a dashboard content region without leaking CSS class contracts. */
+export function Section(props: { children: ReactNode; className?: string }) {
+  return (
+    <section
+      className={cn(
+        "mb-4 min-w-0 border border-slate-800 bg-neutral-900/80",
+        props.className,
+      )}
+    >
+      {props.children}
+    </section>
+  );
+}
+
+/** Render a dashboard section heading row with optional controls. */
+export function SectionHeader(props: {
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-neutral-950/60 px-4 py-3 max-md:flex-col max-md:items-stretch">
+      <div className="min-w-0">{props.children}</div>
+      {props.actions ? (
+        <div className="shrink-0 max-md:w-full">{props.actions}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Render small uppercase dashboard context labels consistently. */
+export function Kicker(props: { children: ReactNode }) {
+  return (
+    <div className="font-mono text-[0.78rem] uppercase leading-tight text-slate-400">
+      {props.children}
+    </div>
+  );
+}
+
+/** Render compact section titles that fit inside operational panels. */
+export function SectionTitle(props: { children: ReactNode }) {
+  return (
+    <div className="mt-1 text-[1.05rem] font-bold leading-tight tracking-normal">
+      {props.children}
+    </div>
+  );
+}
+
 /** Render the full-page loading treatment before the first dashboard payload lands. */
 export function LoadingView(props: { label: string }) {
   return (
-    <div className="loading-layout">
-      <section className="loading-panel">
-        <div className="loading-mark">Jr</div>
+    <div className="grid min-h-[calc(100vh-5rem)] place-items-center px-4 py-8 md:px-8">
+      <section className="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-slate-700 bg-neutral-900/80 p-4">
+        <JuniorLogo />
         <div>
-          <div className="loading-title">{props.label}</div>
-          <div className="loading-bar" />
+          <div className="font-bold">{props.label}</div>
+          <div className="mt-3 h-1.5 w-full animate-pulse bg-slate-600" />
         </div>
       </section>
     </div>
@@ -56,10 +114,25 @@ export function ActivityIndicator(props: {
   }
   return (
     <div
-      className={`activity-indicator ${activity} ${props.variant ?? "compact"}`}
+      className={cn(
+        "inline-flex items-center gap-1.5 font-mono text-[0.78rem] font-bold uppercase leading-none tracking-normal",
+        props.variant === "full" ? "w-full justify-end" : "",
+        activity === "active" && "text-emerald-400",
+        activity === "hung" && "text-amber-400",
+        activity === "failed" && "text-rose-400",
+        activity === "idle" && "text-slate-500",
+      )}
       aria-label={activity}
     >
-      <span className="activity-box" />
+      <span
+        className={cn(
+          "size-2.5 shrink-0 border",
+          activity === "active" && "border-emerald-400 bg-emerald-400",
+          activity === "hung" && "border-amber-400 bg-amber-400",
+          activity === "failed" && "border-rose-400 bg-rose-400",
+          activity === "idle" && "border-slate-500 bg-transparent",
+        )}
+      />
     </div>
   );
 }
@@ -79,24 +152,28 @@ export function CommandRail(props: {
   const failedSessions = sessions.filter(isFailedSession);
 
   return (
-    <aside className="rail">
-      <section className="section">
-        <div className="section-header">
-          <div>
-            <div className="kicker">Command Center</div>
-            <div className="section-title">Pulse</div>
-          </div>
-          <div className="live">
-            {props.error ? "degraded" : props.data ? "online" : "checking"}
-          </div>
-        </div>
-        <div className="meter">
-          <div className="status-word">
+    <aside className="min-w-0">
+      <Section>
+        <SectionHeader
+          actions={
+            <div className="inline-flex items-center gap-1.5 font-mono text-[0.82rem] leading-none text-emerald-400">
+              <span className="size-2 bg-emerald-400" />
+              <span>
+                {props.error ? "degraded" : props.data ? "online" : "checking"}
+              </span>
+            </div>
+          }
+        >
+          <Kicker>Command Center</Kicker>
+          <SectionTitle>Pulse</SectionTitle>
+        </SectionHeader>
+        <div className="px-4 py-4">
+          <div className="text-6xl font-black leading-none text-emerald-400 md:text-7xl">
             {props.error
               ? "ERR"
               : (props.data?.health.status.toUpperCase() ?? "...")}
           </div>
-          <div className="status-caption">
+          <div className="mt-3 break-words font-mono text-[0.84rem] leading-relaxed text-slate-400">
             {props.error
               ? props.error.message
               : props.data
@@ -104,23 +181,27 @@ export function CommandRail(props: {
                 : "Waiting for Junior telemetry."}
           </div>
         </div>
-        <div className="stats">
+        <div className="grid grid-cols-2 gap-px border-t border-slate-800 bg-slate-800">
           <Stat label="plugins" value={props.data?.plugins.length ?? 0} />
           <Stat label="skills" value={props.data?.skills.length ?? 0} />
           <Stat label="active" value={activeSessions.length} />
           <Stat label="hung" value={hungSessions.length} />
           <Stat label="failed" value={failedSessions.length} />
         </div>
-      </section>
+      </Section>
     </aside>
   );
 }
 
 function Stat(props: { label: string; value: number }) {
   return (
-    <div className="stat">
-      <div className="stat-value">{props.value}</div>
-      <div className="stat-label">{props.label}</div>
+    <div className="min-w-0 bg-neutral-950/80 px-3 py-3">
+      <div className="text-2xl font-extrabold leading-none text-slate-100">
+        {props.value}
+      </div>
+      <div className="mt-1 font-mono text-[0.78rem] uppercase leading-tight text-slate-400">
+        {props.label}
+      </div>
     </div>
   );
 }
@@ -155,20 +236,21 @@ export function TurnDurationChart(props: {
   };
 
   return (
-    <section className="section">
-      <div className="section-header">
-        <div>
-          <div className="kicker">7 Day Duration</div>
-          <div className="section-title">Turns</div>
-        </div>
-        <div className="chart-legend">
-          <span className="legend-complete">Complete</span>
-          <span className="legend-hung">Hung</span>
-          <span className="legend-error">Error</span>
-        </div>
-      </div>
+    <Section>
+      <SectionHeader
+        actions={
+          <div className="flex flex-wrap items-center gap-3 font-mono text-[0.78rem] uppercase leading-none text-slate-400">
+            <ChartLegendItem className="bg-slate-400" label="Complete" />
+            <ChartLegendItem className="bg-amber-400" label="Hung" />
+            <ChartLegendItem className="bg-rose-400" label="Error" />
+          </div>
+        }
+      >
+        <Kicker>7 Day Duration</Kicker>
+        <SectionTitle>Turns</SectionTitle>
+      </SectionHeader>
       <div
-        className="turn-chart"
+        className="min-h-48 px-3 pb-2 pt-4"
         aria-label="Turn duration over the last 7 days"
       >
         <ResponsiveContainer height={190} width="100%">
@@ -176,7 +258,7 @@ export function TurnDurationChart(props: {
             data={points}
             margin={{ bottom: 0, left: 0, right: 4, top: 14 }}
           >
-            <CartesianGrid stroke="rgba(64, 81, 107, 0.18)" vertical={false} />
+            <CartesianGrid stroke="rgba(71, 85, 105, 0.35)" vertical={false} />
             <XAxis
               axisLine={false}
               dataKey="x"
@@ -185,7 +267,7 @@ export function TurnDurationChart(props: {
                 bucketLabel(Number(value), props.timeZone)
               }
               tick={{
-                fill: "var(--dim)",
+                fill: "#94a3b8",
                 fontFamily: "ui-monospace",
                 fontSize: 12,
               }}
@@ -199,7 +281,7 @@ export function TurnDurationChart(props: {
               dataKey="durationMs"
               tickFormatter={(value) => formatMs(Number(value))}
               tick={{
-                fill: "var(--dim)",
+                fill: "#94a3b8",
                 fontFamily: "ui-monospace",
                 fontSize: 11,
               }}
@@ -208,7 +290,7 @@ export function TurnDurationChart(props: {
             />
             <Tooltip
               content={<TurnDurationTooltip />}
-              cursor={{ stroke: "rgba(64, 81, 107, 0.34)" }}
+              cursor={{ stroke: "rgba(71, 85, 105, 0.55)" }}
             />
             <Line
               activeDot={durationDot("rgba(203, 213, 225, 0.95)", 5, openPoint)}
@@ -234,10 +316,19 @@ export function TurnDurationChart(props: {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="chart-summary">
-        {totals.total} turns · {totals.hung} hung · {totals.failed} errors
+      <div className="border-t border-slate-800 px-4 py-3 font-mono text-[0.8rem] leading-tight text-slate-400">
+        {totals.total} turns / {totals.hung} hung / {totals.failed} errors
       </div>
-    </section>
+    </Section>
+  );
+}
+
+function ChartLegendItem(props: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("size-2 rounded-full", props.className)} />
+      {props.label}
+    </span>
   );
 }
 
@@ -312,7 +403,7 @@ function durationDot(
     return (
       <circle
         aria-label={`Open ${point.session.title ?? point.session.id}`}
-        className="turn-chart-dot"
+        className="cursor-pointer outline-none transition-[filter,stroke,stroke-width] hover:brightness-125 focus-visible:stroke-emerald-400 focus-visible:stroke-2"
         cx={props.cx}
         cy={props.cy}
         fill={fill}
@@ -342,9 +433,11 @@ function TurnDurationTooltip(props: {
     return null;
   }
   return (
-    <div className="chart-tooltip">
-      <div className="chart-tooltip-title">{point.tooltipLabel}</div>
-      <div className="chart-tooltip-primary">{formatMs(point.durationMs)}</div>
+    <div className="border border-slate-700 bg-neutral-950/95 px-3 py-2 font-mono text-[0.78rem] leading-relaxed text-slate-400 shadow-xl shadow-black/40">
+      <div className="mb-1 text-slate-100">{point.tooltipLabel}</div>
+      <div className="font-bold text-slate-100">
+        {formatMs(point.durationMs)}
+      </div>
       <div>{point.status}</div>
       <div>{point.session.title ?? point.session.id}</div>
     </div>
@@ -364,10 +457,15 @@ export function FilterTabs(props: {
     "all",
   ];
   return (
-    <div className="filters">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       {filters.map((filter) => (
         <button
-          className={`filter ${props.current === filter ? "active" : ""}`}
+          className={cn(
+            "cursor-pointer border px-2 py-1 font-mono text-[0.78rem] uppercase leading-tight transition-colors",
+            props.current === filter
+              ? "border-slate-500 bg-slate-800 text-white"
+              : "border-slate-800 bg-neutral-900 text-slate-400 hover:border-slate-600 hover:text-white",
+          )}
           key={filter}
           onClick={() => props.onChange(filter)}
           type="button"
@@ -387,19 +485,20 @@ export function ConversationList(props: {
 }) {
   if (props.conversations.length === 0) {
     return (
-      <div className="sessions">
-        <div className="session-row empty">
-          No matching conversation telemetry.
-        </div>
+      <div className="grid gap-2 p-3">
+        <EmptyTelemetry>No matching conversation telemetry.</EmptyTelemetry>
       </div>
     );
   }
 
   return (
-    <div className="session-table" role="table">
-      <div className="session-head conversation-head" role="row">
+    <div className="min-w-0 overflow-auto" role="table">
+      <div
+        className="sticky top-0 z-[1] grid min-w-[40rem] grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-slate-800 bg-neutral-950/95 px-3 py-2 font-mono text-[0.76rem] uppercase leading-none text-slate-500"
+        role="row"
+      >
         <div>Conversation</div>
-        <div>Stats</div>
+        <div className="justify-self-end">Stats</div>
       </div>
       {props.conversations.map((conversation) => (
         <ConversationTableRow
@@ -416,13 +515,11 @@ export function ConversationList(props: {
 /** Render the compact latest-conversation stack on the command center. */
 export function ConversationStack(props: { conversations: Conversation[] }) {
   if (props.conversations.length === 0) {
-    return (
-      <div className="session-row empty">No conversation telemetry yet.</div>
-    );
+    return <EmptyTelemetry>No conversation telemetry yet.</EmptyTelemetry>;
   }
 
   return (
-    <div className="conversation-stack">
+    <div className="grid gap-2 p-3">
       {props.conversations.map((conversation) => {
         return (
           <ConversationStackRow
@@ -431,6 +528,15 @@ export function ConversationStack(props: { conversations: Conversation[] }) {
           />
         );
       })}
+    </div>
+  );
+}
+
+function EmptyTelemetry(props: { children: ReactNode }) {
+  return (
+    <div className="relative min-w-0 border border-slate-800 bg-neutral-950/70 px-4 py-3 pl-5 font-mono text-[0.88rem] leading-relaxed text-slate-400">
+      <span className="absolute bottom-0 left-0 top-0 w-1 bg-amber-400" />
+      {props.children}
     </div>
   );
 }
@@ -449,9 +555,7 @@ function ConversationTableRow(props: {
   const openConversation = () => navigate(href);
   return (
     <div
-      className={`session-record conversation-record status-${visualStatus} ${
-        props.selected ? "selected" : ""
-      }`}
+      className={conversationRecordClass(visualStatus, props.selected)}
       onClick={openConversation}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -477,7 +581,7 @@ function ConversationStackRow(props: { conversation: Conversation }) {
   const href = conversationPath(props.conversation.id);
   return (
     <div
-      className={`session-row session-row-link conversation-stack-row status-${visualStatus}`}
+      className={conversationStackRowClass(visualStatus)}
       onClick={() => navigate(href)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -499,17 +603,17 @@ function ConversationStackRow(props: { conversation: Conversation }) {
 
 function ConversationSummary(props: { conversation: Conversation }) {
   return (
-    <div className="session-main">
-      <div className="session-title conversation-title conversation-title-link">
+    <div className="min-w-0">
+      <div className="truncate text-[1.04rem] font-bold leading-tight text-slate-100 group-hover:text-white">
         {conversationDisplayTitle(props.conversation)}
       </div>
-      <div className="session-meta conversation-subtext">
+      <div className="mt-1 truncate font-mono text-[0.82rem] leading-relaxed text-slate-400">
         {conversationIdentityMeta(props.conversation, props.conversation.id)}
         {props.conversation.sentryConversationUrl ? (
           <>
             {" · "}
             <a
-              className="session-link inline-sentry-link"
+              className="border-b border-cyan-400/40 font-mono text-[0.82rem] leading-relaxed text-cyan-300 no-underline hover:border-cyan-300"
               href={props.conversation.sentryConversationUrl}
               onClick={(event) => event.stopPropagation()}
               rel="noreferrer"
@@ -536,15 +640,42 @@ function ConversationRowStats(props: {
   timeLabel: string;
 }) {
   return (
-    <div className="conversation-row-stats">
-      <div className="session-time">
+    <div className="grid min-w-0 justify-items-end gap-1 text-right">
+      <div className="font-mono text-[0.82rem] leading-relaxed text-slate-400">
         {props.conversation.turns.length} turns · {props.timeLabel}
       </div>
       {props.conversation.channel ? (
-        <div className="session-meta conversation-location">
+        <div className="max-w-full truncate font-mono text-[0.82rem] leading-relaxed text-slate-400">
           {slackLocationLabel(props.conversation, { includeId: false })}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function statusBorderClass(status: VisualStatus): string {
+  if (status === "active") return "border-l-emerald-400";
+  if (status === "hung") return "border-l-amber-400";
+  if (status === "failed") return "border-l-rose-400";
+  return "border-l-slate-500";
+}
+
+function conversationRecordClass(
+  status: VisualStatus,
+  selected: boolean | undefined,
+): string {
+  return cn(
+    "group grid min-w-[40rem] cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-l-4 border-b-slate-800 bg-neutral-950/50 px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-neutral-900",
+    statusBorderClass(status),
+    status === "idle" && "saturate-50",
+    selected && "border-l-cyan-400 bg-neutral-900",
+  );
+}
+
+function conversationStackRowClass(status: VisualStatus): string {
+  return cn(
+    "group relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(12rem,max-content)] items-center gap-3 overflow-hidden border-y border-r border-l-4 border-y-slate-800 border-r-slate-800 bg-neutral-950/70 px-4 py-3 text-inherit no-underline transition-colors hover:border-y-slate-600 hover:border-r-slate-600 hover:bg-neutral-900 max-md:grid-cols-1",
+    statusBorderClass(status),
+    status === "idle" && "saturate-50",
   );
 }

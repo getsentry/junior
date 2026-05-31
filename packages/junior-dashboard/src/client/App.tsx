@@ -8,7 +8,7 @@ import {
 } from "react-router";
 
 import { useDashboardData } from "./api";
-import { LoadingView } from "./components";
+import { JuniorLogo, LoadingView } from "./components";
 import {
   conversationPath,
   setDashboardTimeZone,
@@ -17,6 +17,7 @@ import {
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
+import { cn } from "./styles";
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
@@ -45,29 +46,46 @@ export function DashboardShell() {
     window.location.assign("/");
   }
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "whitespace-nowrap border px-2.5 py-1.5 font-mono text-[0.82rem] leading-tight no-underline transition-colors",
+      isActive
+        ? "border-slate-500 bg-slate-800 text-white"
+        : "border-slate-800 bg-neutral-900 text-slate-400 hover:border-slate-600 hover:text-white",
+    );
+
   return (
-    <main className="deck">
-      <header className="topbar">
-        <Link className="brand brand-link" to="/">
-          <div className="mark">Jr</div>
-          <div className="title">
-            <h1>Junior</h1>
-            <div className="subtitle">{headerSummary}</div>
+    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-neutral-950 text-slate-100">
+      <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-800 bg-neutral-950/95 px-4 py-3 backdrop-blur md:px-8 max-md:grid-cols-1">
+        <Link
+          className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
+          to="/"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <JuniorLogo />
+            <div className="min-w-0">
+              <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
+                Junior
+              </h1>
+              <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-slate-400">
+                {headerSummary}
+              </div>
+            </div>
           </div>
         </Link>
-        <div className="top-actions">
-          <nav className="nav">
-            <NavLink className="nav-link" end to="/">
+        <div className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:justify-between">
+          <nav className="flex min-w-0 items-center gap-1">
+            <NavLink className={navLinkClass} end to="/">
               Command
             </NavLink>
-            <NavLink className="nav-link" to="/conversations">
+            <NavLink className={navLinkClass} to="/conversations">
               Conversations
             </NavLink>
           </nav>
           {loggedIn ? (
             <button
               aria-label="Log out"
-              className="icon-button"
+              className="grid size-9 cursor-pointer place-items-center border border-slate-700 bg-neutral-900 p-0 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
               type="button"
               title="Log out"
               onClick={() => void signOut()}

@@ -1,6 +1,10 @@
 import {
   CommandRail,
   ConversationStack,
+  Kicker,
+  Section,
+  SectionHeader,
+  SectionTitle,
   TurnDurationChart,
 } from "../components";
 import { buildConversations } from "../format";
@@ -15,24 +19,22 @@ export function CommandCenter(props: {
   const conversations = buildConversations(sessions);
 
   return (
-    <div className="layout command-layout">
+    <div className="grid min-w-0 gap-4 px-4 py-4 md:px-8 lg:grid-cols-[minmax(17rem,0.32fr)_minmax(0,1fr)]">
       <CommandRail data={props.data} error={props.queryError} />
 
-      <section className="stage">
+      <section className="min-w-0">
         <TurnDurationChart
           sessions={sessions}
           timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
         />
 
-        <section className="section">
-          <div className="section-header">
-            <div>
-              <div className="kicker">Recent</div>
-              <div className="section-title">Latest Conversations</div>
-            </div>
-          </div>
+        <Section>
+          <SectionHeader>
+            <Kicker>Recent</Kicker>
+            <SectionTitle>Latest Conversations</SectionTitle>
+          </SectionHeader>
           <ConversationStack conversations={conversations.slice(0, 4)} />
-        </section>
+        </Section>
       </section>
     </div>
   );

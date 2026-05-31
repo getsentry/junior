@@ -8,6 +8,7 @@ without turning it into a full architecture document or feature spec.
 Good policy topics:
 
 - code comments and docstrings
+- frontend component styling
 - testing expectations
 - naming conventions
 - interface design

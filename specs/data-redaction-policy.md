@@ -39,7 +39,7 @@ Raw payloads include:
 - model system instructions
 - tool call arguments
 - tool result payloads
-- raw Pi messages or checkpoint payloads
+- raw Pi messages or session-log payloads
 - generated conversation titles for private conversations
 - private Slack channel names or DM participant-derived titles
 
@@ -103,7 +103,7 @@ derive it.
 - Private dashboard conversation APIs return no raw message text, thinking text,
   tool arguments, or tool results.
 - Public dashboard conversation APIs may return raw transcript content while the
-  checkpoint is still present.
+  session-log entry is still present.
 - Private GenAI span tests assert metadata-only message attributes.
 - Tool span tests cover metadata-only argument/result attributes for private
   conversations.

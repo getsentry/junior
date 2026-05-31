@@ -103,16 +103,16 @@ The dashboard package owns browser-facing routes:
 
 Dashboard JSON APIs are split by view concern:
 
-| Route                                            | Contract                                                |
-| ------------------------------------------------ | ------------------------------------------------------- |
-| `GET /api/dashboard/health`                      | Command-center health pulse.                            |
-| `GET /api/dashboard/runtime`                     | Sanitized runtime paths, packages, and providers.       |
-| `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                                |
-| `GET /api/dashboard/skills`                      | Discovered skill inventory.                             |
-| `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session checkpoints. |
-| `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring checkpoints.      |
-| `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.      |
-| `GET /api/dashboard/me`                          | Signed-in dashboard identity.                           |
+| Route                                            | Contract                                            |
+| ------------------------------------------------ | --------------------------------------------------- |
+| `GET /api/dashboard/health`                      | Command-center health pulse.                        |
+| `GET /api/dashboard/runtime`                     | Sanitized runtime paths, packages, and providers.   |
+| `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                            |
+| `GET /api/dashboard/skills`                      | Discovered skill inventory.                         |
+| `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records. |
+| `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs. |
+| `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.  |
+| `GET /api/dashboard/me`                          | Signed-in dashboard identity.                       |
 
 The current public diagnostics surfaces must move behind dashboard auth:
 
@@ -193,14 +193,14 @@ Reporting data may include:
 - configured plugin names
 - skill names and owning plugin provider
 - conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
-- expiring raw conversation transcripts, including tool calls/results, only for public conversations while checkpoint messages are still present
+- expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links for conversation summaries when Sentry DSN and org slug configuration are present
 - trace IDs for turns when the runtime captured an active Sentry trace
 - packaged content summary
 - sanitized runtime paths only when explicitly needed by an authenticated dashboard view
 
-Session reporting must not include conversation text, Pi messages, tool results, raw checkpoint payloads, or checkpoint error messages.
+Session reporting must not include conversation text, Pi messages, tool results, raw session-log payloads, or turn-session error messages.
 
 Dashboard transcript and title redaction must follow `./data-redaction-policy.md`.
 

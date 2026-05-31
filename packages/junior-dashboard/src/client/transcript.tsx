@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { codeToHtml, type BundledLanguage } from "shiki/bundle/web";
 
+import {
+  countStructuredBlockChildren,
+  HighlightedCode,
+  StructuredMarkup,
+} from "./code";
 import {
   canRenderStructuredMarkup,
   detectLanguage,
@@ -11,7 +14,6 @@ import {
   formatMs,
   formatUsage,
   parseMarkdownBlocks,
-  parseMarkupNodes,
   requesterLabel,
   stringifyPartValue,
   turnMessageCount,
@@ -19,11 +21,10 @@ import {
   unavailableTranscriptLabel,
   visualStatusForSession,
 } from "./format";
-import { ActivityIndicator } from "./components";
+import { ActivityIndicator, SectionTitle } from "./components";
+import { cn } from "./styles";
 import type {
-  CodeBlock,
   ConversationTurn,
-  MarkupNode,
   TranscriptMessage,
   TranscriptPart,
 } from "./types";
@@ -46,13 +47,21 @@ type RenderedToolEntry = {
 
 type TranscriptViewMode = "raw" | "rich";
 
+function mutedMonoClass(size = "text-[0.84rem]"): string {
+  return cn("font-mono leading-relaxed text-slate-400", size);
+}
+
+function transcriptEmptyClass(): string {
+  return "border border-slate-800 bg-neutral-950/60 p-4 font-mono text-[0.88rem] leading-relaxed text-slate-400";
+}
+
 /** Render a transcript-shaped loading state for route transitions. */
 export function TranscriptLoading() {
   return (
-    <div className="transcript-loading">
-      <div className="transcript-skeleton" />
-      <div className="transcript-skeleton short" />
-      <div className="transcript-skeleton" />
+    <div className="grid gap-3">
+      <div className="min-h-28 animate-pulse border border-slate-800 bg-neutral-900/70" />
+      <div className="min-h-[4.5rem] animate-pulse border border-slate-800 bg-neutral-900/70" />
+      <div className="min-h-28 animate-pulse border border-slate-800 bg-neutral-900/70" />
     </div>
   );
 }
@@ -189,14 +198,14 @@ export function Transcript(props: { turns: ConversationTurn[] }) {
 
   if (props.turns.length === 0) {
     return (
-      <div className="transcript-empty">
+      <div className={transcriptEmptyClass()}>
         No transcript is available for this conversation.
       </div>
     );
   }
 
   return (
-    <div className="transcript">
+    <div className="grid gap-3">
       <TranscriptToolbar value={view} onChange={setView} />
       {hasRedactedTurns ? <TranscriptPrivacyNotice /> : null}
       {props.turns.map((turn) => (
@@ -208,7 +217,7 @@ export function Transcript(props: { turns: ConversationTurn[] }) {
 
 function TranscriptPrivacyNotice() {
   return (
-    <div className="transcript-privacy-notice">
+    <div className="border border-slate-800 bg-slate-800/20 px-3 py-2 font-mono text-[0.9rem] leading-relaxed text-slate-400">
       Transcript hidden because this conversation is not public.
     </div>
   );
@@ -220,7 +229,7 @@ function TurnTranscript(props: {
 }) {
   return (
     <section
-      className={`turn-transcript status-${visualStatusForSession(props.turn)}`}
+      className={turnTranscriptClass(visualStatusForSession(props.turn))}
     >
       <TurnHeader turn={props.turn} />
       <TurnEvents turn={props.turn} view={props.view} />
@@ -228,21 +237,60 @@ function TurnTranscript(props: {
   );
 }
 
+function turnTranscriptClass(
+  status: ReturnType<typeof visualStatusForSession>,
+) {
+  return cn(
+    "border bg-neutral-950/50",
+    status === "active" && "border-emerald-400/60",
+    status === "hung" && "border-amber-400/60",
+    status === "failed" && "border-rose-400/60",
+    status === "idle" && "border-slate-700 saturate-50",
+  );
+}
+
+function transcriptMessageClass(role: string): string {
+  return cn(
+    "grid min-w-0 gap-2",
+    role === "assistant" && "text-cyan-300",
+    role === "toolResult" && "text-violet-300",
+    role === "tool_result" && "text-violet-300",
+    role !== "assistant" &&
+      role !== "toolResult" &&
+      role !== "tool_result" &&
+      "text-amber-300",
+  );
+}
+
+function transcriptRoleClass(): string {
+  return "flex flex-wrap items-baseline gap-2 font-mono text-[0.88rem] uppercase leading-snug";
+}
+
+function toolFrameClass(): string {
+  return "border border-violet-400/40 bg-violet-400/10 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10";
+}
+
+function toolHeaderClass(): string {
+  return "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-slate-400 hover:bg-cyan-400/10";
+}
+
 function TurnHeader(props: { turn: ConversationTurn }) {
   return (
-    <div className="turn-transcript-header">
+    <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-neutral-900/70 px-4 py-3">
       <div>
-        <div className="section-title">
+        <SectionTitle>
           Turn {props.turn.traceId ?? "trace unavailable"}
+        </SectionTitle>
+        <div className="mt-1 font-mono text-[0.84rem] leading-relaxed text-slate-100">
+          {turnActorLabel(props.turn)}
         </div>
-        <div className="turn-actor">{turnActorLabel(props.turn)}</div>
-        <div className="turn-meta">
+        <div className={mutedMonoClass()}>
           {turnMeta(props.turn).join(" · ")}
           {props.turn.sentryTraceUrl ? (
             <>
               {" · "}
               <a
-                className="inline-link"
+                className="text-cyan-300 no-underline hover:text-white hover:underline"
                 href={props.turn.sentryTraceUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -263,7 +311,7 @@ function TurnEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="turn-events">
+    <div className="grid gap-3 p-3">
       {props.turn.transcriptAvailable ? (
         groupTranscriptMessages(props.turn.transcript).map((entry, index) =>
           entry.kind === "tool" ? (
@@ -288,7 +336,7 @@ function TurnEvents(props: {
         props.turn.transcriptMetadata?.length ? (
         <RedactedTranscriptView turn={props.turn} />
       ) : (
-        <div className="transcript-empty">
+        <div className={transcriptEmptyClass()}>
           {unavailableTranscriptLabel(props.turn)}
         </div>
       )}
@@ -333,16 +381,16 @@ function RedactedMessageView(props: {
   ].filter(isString);
 
   return (
-    <article className={`transcript-message ${props.message.role}`}>
-      <div className="transcript-role">
-        <span className="transcript-role-name">{props.message.role}</span>
+    <article className={transcriptMessageClass(props.message.role)}>
+      <div className={transcriptRoleClass()}>
+        <span className="font-extrabold">{props.message.role}</span>
         {meta.map((value) => (
-          <span className="transcript-meta" key={value}>
+          <span className="text-slate-400" key={value}>
             {value}
           </span>
         ))}
       </div>
-      <div className="redacted-parts">
+      <div className="grid min-w-0 gap-2 font-mono text-[0.9rem] leading-snug text-slate-400">
         {props.message.parts.map((part, index) => (
           <RedactedPartLine key={index} part={part} />
         ))}
@@ -368,10 +416,12 @@ function RedactedPartLine(props: { part: TranscriptPart }) {
 
 function RedactedMetadataRow(props: { label: string; meta?: string }) {
   return (
-    <div className="redacted-row">
-      <span className="redacted-row-label">{props.label}</span>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-slate-800 bg-slate-800/20 px-3 py-2 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10">
+      <span className="min-w-0 truncate text-slate-100">{props.label}</span>
       {props.meta ? (
-        <span className="redacted-row-meta">{props.meta}</span>
+        <span className="min-w-0 truncate text-right text-slate-500">
+          {props.meta}
+        </span>
       ) : null}
     </div>
   );
@@ -407,9 +457,13 @@ function RedactedToolView(props: {
       raw
       signature={
         <>
-          <strong>{toolName}</strong>
+          <strong className="min-w-0 truncate font-bold text-slate-100">
+            {toolName}
+          </strong>
           {props.call?.inputKeys?.length ? (
-            <code>({props.call.inputKeys.join(", ")})</code>
+            <code className="min-w-0 truncate font-[inherit] text-slate-400">
+              ({props.call.inputKeys.join(", ")})
+            </code>
           ) : null}
         </>
       }
@@ -444,15 +498,15 @@ function TranscriptViewToggle(props: {
   const options: TranscriptViewMode[] = ["rich", "raw"];
   return (
     <div
-      className="inline-flex items-center gap-1 text-[var(--muted)]"
+      className="inline-flex items-center gap-1 text-slate-400"
       aria-label="Transcript view"
     >
       {options.map((option) => (
         <button
           className={`cursor-pointer border-0 bg-transparent px-1.5 py-1 uppercase tracking-normal underline-offset-4 ${
             props.value === option
-              ? "text-[var(--green)] underline decoration-[var(--green)]"
-              : "text-[var(--muted)]"
+              ? "text-emerald-400 underline decoration-emerald-400"
+              : "text-slate-400"
           }`}
           key={option}
           onClick={() => props.onChange(option)}
@@ -494,19 +548,19 @@ function TranscriptMessageView(props: {
 
   return (
     <article
-      className={`transcript-message ${props.message.role}`}
+      className={transcriptMessageClass(props.message.role)}
       onCopy={(event) => {
         if (props.view !== "rich" || !rawText) return;
         event.clipboardData.setData("text/plain", rawText);
         event.preventDefault();
       }}
     >
-      <div className="transcript-role">
-        <span className="transcript-role-name">{props.message.role}</span>
-        <span className="transcript-meta">
+      <div className={transcriptRoleClass()}>
+        <span className="font-extrabold">{props.message.role}</span>
+        <span className="text-slate-400">
           {formatMessageTimestamp(props.message.timestamp)}
         </span>
-        {offset ? <span className="transcript-meta">{offset}</span> : null}
+        {offset ? <span className="text-slate-400">{offset}</span> : null}
       </div>
       {props.view === "raw" ? (
         <HighlightedCode
@@ -514,7 +568,7 @@ function TranscriptMessageView(props: {
           language={detectLanguage(rawText)}
         />
       ) : (
-        <div className="transcript-parts">
+        <div className="grid min-w-0 gap-2">
           {renderedParts.map((part, index) => {
             const firstChildIndex = seenRenderedChildren;
             seenRenderedChildren += countRenderedTranscriptChildren(part);
@@ -560,12 +614,6 @@ function messageRawText(message: TranscriptMessage): string {
     .join("\n\n");
 }
 
-function countStructuredBlockChildren(block: CodeBlock): number {
-  if (!canRenderStructuredMarkup(block.language)) return 1;
-  const rootCount = parseMarkupNodes(block.code, block.language).length;
-  return rootCount > 0 ? rootCount : 1;
-}
-
 function countTextRenderedChildren(text: string): number {
   return parseMarkdownBlocks(text).reduce((count, block) => {
     return count + countStructuredBlockChildren(block);
@@ -606,10 +654,10 @@ function TranscriptPartView(props: {
   if (part.type === "thinking") {
     const rendered = stringifyPartValue(value);
     return (
-      <details className="thinking-part">
-        <summary className="thinking-part-header">
-          <span>thinking</span>
-          <span>{previewToolValue(value)}</span>
+      <details className="border border-slate-700 bg-slate-800/20 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10">
+        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-slate-500 hover:bg-cyan-400/10">
+          <span className="uppercase text-violet-300">thinking</span>
+          <span className="min-w-0 truncate">{previewToolValue(value)}</span>
         </summary>
         <HighlightedCode
           code={rendered || "{}"}
@@ -621,11 +669,15 @@ function TranscriptPartView(props: {
 
   const rendered = stringifyPartValue(value);
   return (
-    <details className={`tool-part ${part.type}`}>
-      <summary className="tool-part-header">
-        <span>{part.type}</span>
-        <strong>{part.name ?? part.id ?? "unknown"}</strong>
-        <span>{previewToolValue(value)}</span>
+    <details className="border border-violet-400/40 bg-violet-400/10 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10">
+      <summary className={toolHeaderClass()}>
+        <span className="text-slate-500">{part.type}</span>
+        <strong className="min-w-0 truncate font-bold text-slate-100">
+          {part.name ?? part.id ?? "unknown"}
+        </strong>
+        <span className="min-w-0 truncate text-right">
+          {previewToolValue(value)}
+        </span>
       </summary>
       <HighlightedCode code={rendered || "{}"} language="json" />
     </details>
@@ -666,7 +718,15 @@ function TranscriptToolView(props: {
 
   if (props.view === "raw") {
     return (
-      <ToolFrame meta={meta} raw signature={<strong>{toolName}</strong>}>
+      <ToolFrame
+        meta={meta}
+        raw
+        signature={
+          <strong className="min-w-0 truncate font-bold text-slate-100">
+            {toolName}
+          </strong>
+        }
+      >
         <ToolBodySection>
           <HighlightedCode
             code={stringifyPartValue({
@@ -685,8 +745,14 @@ function TranscriptToolView(props: {
       meta={meta}
       signature={
         <>
-          <strong>{toolName}</strong>
-          {isPreviewableValue(input) ? <code>({args})</code> : null}
+          <strong className="min-w-0 truncate font-bold text-slate-100">
+            {toolName}
+          </strong>
+          {isPreviewableValue(input) ? (
+            <code className="min-w-0 truncate font-[inherit] text-slate-400">
+              ({args})
+            </code>
+          ) : null}
         </>
       }
     >
@@ -718,23 +784,27 @@ function ToolFrame(props: {
 }) {
   const header = (
     <>
-      <span className="tool-signature">{props.signature}</span>
-      <span className="tool-meta">{props.meta.join(" · ")}</span>
+      <span className="flex min-w-0 items-baseline gap-1 overflow-hidden whitespace-nowrap">
+        {props.signature}
+      </span>
+      <span className="min-w-0 truncate text-right text-slate-500">
+        {props.meta.join(" · ")}
+      </span>
     </>
   );
 
   if (props.raw) {
     return (
-      <div className="tool-part tool-invocation transcript-tool">
-        <div className="tool-part-header raw !cursor-default">{header}</div>
+      <div className={toolFrameClass()}>
+        <div className={cn(toolHeaderClass(), "cursor-default")}>{header}</div>
         {props.children}
       </div>
     );
   }
 
   return (
-    <details className="tool-part tool-invocation transcript-tool">
-      <summary className="tool-part-header">{header}</summary>
+    <details className={toolFrameClass()}>
+      <summary className={toolHeaderClass()}>{header}</summary>
       {props.children}
     </details>
   );
@@ -746,8 +816,17 @@ function ToolBodySection(props: {
   padded?: boolean;
 }) {
   return (
-    <div className={`tool-io ${props.padded === false ? "" : "!py-3"}`}>
-      {props.label ? <div className="tool-io-label">{props.label}</div> : null}
+    <div
+      className={cn(
+        "border-t border-slate-800 px-3",
+        props.padded === false ? "" : "py-3",
+      )}
+    >
+      {props.label ? (
+        <div className="pb-2 font-mono text-[0.78rem] uppercase leading-none text-slate-500">
+          {props.label}
+        </div>
+      ) : null}
       {props.children}
     </div>
   );
@@ -798,16 +877,16 @@ function ToolArgumentsPreview(props: { input: unknown }) {
 function ToolArgEntry(props: { index: number; name: string; value: string }) {
   return (
     <span>
-      {props.index > 0 ? <span className="text-[var(--dim)]">, </span> : null}
-      <span className="text-[var(--amber)]">{props.name}</span>
-      <span className="text-[var(--dim)]">: </span>
+      {props.index > 0 ? <span className="text-slate-500">, </span> : null}
+      <span className="text-amber-300">{props.name}</span>
+      <span className="text-slate-500">: </span>
       <ToolArgValue value={props.value} />
     </span>
   );
 }
 
 function ToolArgValue(props: { value: string }) {
-  return <span className="text-[var(--muted)]">{props.value}</span>;
+  return <span className="text-slate-400">{props.value}</span>;
 }
 
 function previewArgumentValue(value: unknown): string {
@@ -837,7 +916,7 @@ function TranscriptText(props: {
   let seenChildren = props.firstChildIndex;
 
   return (
-    <div className="transcript-text">
+    <div className="grid min-w-0 gap-2">
       {blocks.map((block, index) => {
         const firstChildIndex = seenChildren;
         const childCount = countStructuredBlockChildren(block);
@@ -866,87 +945,6 @@ function TranscriptText(props: {
   );
 }
 
-function StructuredMarkup(props: {
-  block: CodeBlock;
-  firstChildIndex: number;
-  lastChildIndex: number;
-}) {
-  const nodes = parseMarkupNodes(props.block.code, props.block.language);
-  if (nodes.length === 0) {
-    return (
-      <HighlightedCode
-        code={props.block.code}
-        language={props.block.language}
-      />
-    );
-  }
-
-  return (
-    <>
-      {nodes.map((node, index) => (
-        <div className="markup-tree" key={index}>
-          <MarkupNodeView
-            defaultOpen={props.firstChildIndex + index === props.lastChildIndex}
-            node={node}
-          />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
-  if (props.node.type === "text") {
-    return <div className="markup-text">{props.node.text.trim()}</div>;
-  }
-
-  const children = props.node.children;
-  const hasChildren = children.length > 0;
-  const attributes = props.node.attributes.map(([name, value]) => (
-    <span className="markup-attribute" key={name}>
-      {name}=<span className="markup-attribute-value">"{value}"</span>
-    </span>
-  ));
-
-  if (!hasChildren) {
-    return (
-      <div className="markup-leaf">
-        <span className="markup-bracket">&lt;</span>
-        <span className="markup-tag">{props.node.tagName}</span>
-        {attributes}
-        <span className="markup-bracket"> /&gt;</span>
-      </div>
-    );
-  }
-
-  return (
-    <details className="markup-node" open={props.defaultOpen ?? true}>
-      <summary className="markup-summary">
-        <span className="markup-toggle" aria-hidden="true" />
-        <span className="markup-bracket">&lt;</span>
-        <span className="markup-tag">{props.node.tagName}</span>
-        {attributes}
-        <span className="markup-open-bracket">&gt;</span>
-        <span className="markup-collapsed-bracket"> /&gt;</span>
-      </summary>
-      <div className="markup-children">
-        {children.map((child, index) => (
-          <MarkupNodeView
-            defaultOpen={index === children.length - 1}
-            key={index}
-            node={child}
-          />
-        ))}
-      </div>
-      <div className="markup-close" role="button" tabIndex={0}>
-        <span className="markup-bracket">&lt;/</span>
-        <span className="markup-tag">{props.node.tagName}</span>
-        <span className="markup-bracket">&gt;</span>
-      </div>
-    </details>
-  );
-}
-
 function previewToolValue(value: unknown): string {
   if (!isPreviewableValue(value)) return "no arguments";
   const source =
@@ -964,31 +962,4 @@ function isPreviewableValue(value: unknown): boolean {
   if (value == null || value === "") return false;
   if (typeof value === "string") return value.trim().length > 0;
   return true;
-}
-
-function HighlightedCode(props: { code: string; language: BundledLanguage }) {
-  const highlighted = useQuery({
-    queryKey: ["highlight", props.language, props.code],
-    queryFn: async () =>
-      codeToHtml(props.code, {
-        lang: props.language,
-        theme: "github-dark",
-      }),
-    staleTime: Infinity,
-  });
-
-  if (!highlighted.data) {
-    return (
-      <pre className="highlighted-code pending">
-        <code>{props.code}</code>
-      </pre>
-    );
-  }
-
-  return (
-    <div
-      className="highlighted-code"
-      dangerouslySetInnerHTML={{ __html: highlighted.data }}
-    />
-  );
 }
