@@ -556,8 +556,11 @@ export async function generateAssistantReply(
     const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
     sandboxExecutor.configureReferenceFiles(listReferenceFiles());
-    const priorPiMessages =
-      existingSessionRecord?.piMessages ?? context.piMessages;
+    // Match the history source the agent will actually receive so crash retries
+    // do not let an unstripped running record suppress fresh turn context.
+    const priorPiMessages = resumedFromSessionRecord
+      ? existingSessionRecord?.piMessages
+      : context.piMessages;
     connectedMcpProviders = new Set(
       turnSessionState.canUseTurnSession && sessionConversationId
         ? await loadConnectedMcpProviders({

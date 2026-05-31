@@ -897,6 +897,52 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
   });
 
+  it("injects session context for crash retries loaded from stripped running history", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    const storedRunningMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nstale bootstrap\n</runtime-turn-context>",
+          },
+          { type: "text", text: "prior interrupted request" },
+        ],
+        timestamp: 1,
+      },
+    ] as PiMessage[];
+    const strippedHistory: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior interrupted request" }],
+        timestamp: 1,
+      },
+    ] as PiMessage[];
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-crash-retry",
+      sessionId: "turn-crash-retry",
+      sliceId: 1,
+      state: "running",
+      piMessages: storedRunningMessages,
+    });
+
+    await generateAssistantReply("continue after crash", {
+      ...makeReplyContext({
+        conversationId: "conversation-crash-retry",
+        threadTs: "1712345.00032",
+        turnId: "turn-crash-retry",
+      }),
+      piMessages: strippedHistory,
+    });
+
+    expect(promptSeedMessages[0]).toEqual(strippedHistory);
+    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
+    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(JSON.stringify(promptMessages[0])).not.toContain("stale bootstrap");
+  });
+
   it("does not duplicate session context when persisted Pi history already has it", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
