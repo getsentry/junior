@@ -21,13 +21,13 @@ import {
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummaries,
-  listAgentTurnSessionSummariesForConversation,
   type AgentTurnRequester,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { GET as healthGET } from "@/handlers/health";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
+const DASHBOARD_CONVERSATION_SUMMARY_LIMIT = 5_000;
 
 export interface HealthReport {
   status: "ok";
@@ -525,9 +525,16 @@ async function readSessions(): Promise<DashboardSessionFeed> {
 async function readConversation(
   conversationId: string,
 ): Promise<DashboardConversationReport> {
-  const summaries =
-    await listAgentTurnSessionSummariesForConversation(conversationId);
-  summaries.sort((left, right) => left.startedAtMs - right.startedAtMs);
+  const summaries = (
+    await listAgentTurnSessionSummaries(DASHBOARD_CONVERSATION_SUMMARY_LIMIT)
+  )
+    .filter((summary) => summary.conversationId === conversationId)
+    .sort(
+      (left, right) =>
+        left.startedAtMs - right.startedAtMs ||
+        left.updatedAtMs - right.updatedAtMs ||
+        left.sessionId.localeCompare(right.sessionId),
+    );
 
   const turns = await Promise.all(
     summaries.map(async (summary): Promise<DashboardTurnReport> => {

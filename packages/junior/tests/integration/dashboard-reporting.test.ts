@@ -133,35 +133,27 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date("2026-05-29T00:00:00.000Z"));
-      await upsertAgentTurnSessionRecord({
-        conversationId: "slack:C1:999",
-        sessionId: "target-turn",
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:C1:999",
+      sessionId: "target-turn",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "target question" }],
+          timestamp: 1,
+        },
+      ] as PiMessage[],
+    });
+
+    for (let index = 0; index < 205; index += 1) {
+      await recordAgentTurnSessionSummary({
+        conversationId: `slack:C2:${index}`,
+        sessionId: `newer-turn-${index}`,
         sliceId: 1,
         state: "completed",
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "target question" }],
-            timestamp: 1,
-          },
-        ] as PiMessage[],
       });
-
-      const newerTurnStartMs = Date.parse("2026-05-29T00:10:00.000Z");
-      for (let index = 0; index < 205; index += 1) {
-        vi.setSystemTime(new Date(newerTurnStartMs + index));
-        await recordAgentTurnSessionSummary({
-          conversationId: `slack:C2:${index}`,
-          sessionId: `newer-turn-${index}`,
-          sliceId: 1,
-          state: "completed",
-        });
-      }
-    } finally {
-      vi.useRealTimers();
     }
 
     const report =

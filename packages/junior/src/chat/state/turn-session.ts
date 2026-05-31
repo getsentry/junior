@@ -300,10 +300,17 @@ async function appendAgentTurnSessionSummary(
  */
 function materializePiMessages(
   committedMessageCount: number,
+  includeProjectionTail: boolean,
   sessionMessages: PiMessage[] | undefined,
   sessionProjection: PiMessage[],
 ): PiMessage[] | undefined {
   if (committedMessageCount === 0) {
+    return sessionProjection;
+  }
+  if (
+    includeProjectionTail &&
+    sessionProjection.length >= committedMessageCount
+  ) {
     return sessionProjection;
   }
   if (sessionMessages) {
@@ -389,6 +396,7 @@ export async function getAgentTurnSessionRecord(
   });
   const piMessages = materializePiMessages(
     parsed.committedMessageCount,
+    parsed.state === "running" || parsed.state === "awaiting_resume",
     sessionMessages,
     sessionProjection,
   );
@@ -738,15 +746,6 @@ export async function listAgentTurnSessionSummaries(
   return (await readAgentTurnSessionSummaries()).slice(
     0,
     Math.max(0, Math.floor(limit)),
-  );
-}
-
-/** List known turn-session summaries for one authenticated dashboard conversation. */
-export async function listAgentTurnSessionSummariesForConversation(
-  conversationId: string,
-): Promise<AgentTurnSessionSummary[]> {
-  return (await readAgentTurnSessionSummaries()).filter(
-    (summary) => summary.conversationId === conversationId,
   );
 }
 
