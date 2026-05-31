@@ -479,6 +479,18 @@ export function detectLanguage(text: string): BundledLanguage {
   if (/^<[\s\S]+>$/.test(trimmed) && /<\/?[a-zA-Z][^>]*>/.test(trimmed)) {
     return "xml";
   }
+  // Mixed prose + block-level XML: detect when a complete open/close element pair
+  // appears on its own lines. Handles system prompts and runtime context blocks
+  // that start with plain text but contain structured XML sections.
+  const blockOpen = trimmed.match(
+    /(?:^|\n)[ \t]*<([A-Za-z_][\w:.-]*)(?:[ \t][^<>]*)?>[ \t]*(?=\n|$)/,
+  );
+  if (blockOpen?.[1]) {
+    const tag = blockOpen[1].replace(/[$()*+.?[\\^{|}]/g, "\\$&");
+    if (new RegExp(`(?:^|\\n)[ \\t]*</${tag}>[ \\t]*(?=\\n|$)`).test(trimmed)) {
+      return "xml";
+    }
+  }
   if (/```|^#{1,6}\s|\n[-*]\s|\n\d+\.\s|\[[^\]]+\]\([^)]+\)/m.test(trimmed)) {
     return "markdown";
   }
@@ -575,7 +587,11 @@ export function parseMarkdownBlocks(
     const prose = text.slice(cursor, match.index).trim();
     if (prose) {
       const language = detectProse(prose);
-      blocks.push({ code: formatCodeBlock(prose, language), fenced: false, language });
+      blocks.push({
+        code: formatCodeBlock(prose, language),
+        fenced: false,
+        language,
+      });
     }
     const language = normalizeLanguage(match[1]);
     blocks.push({
@@ -588,7 +604,11 @@ export function parseMarkdownBlocks(
   const rest = text.slice(cursor).trim();
   if (rest) {
     const language = detectProse(rest);
-    blocks.push({ code: formatCodeBlock(rest, language), fenced: false, language });
+    blocks.push({
+      code: formatCodeBlock(rest, language),
+      fenced: false,
+      language,
+    });
   }
   if (blocks.length > 0) return blocks;
   const language = detectProse(text);

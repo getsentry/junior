@@ -1,6 +1,6 @@
 import { useState, type ClipboardEventHandler, type ReactNode } from "react";
 
-import { HighlightedCode, StructuredMarkup } from "../code";
+import { HighlightedCode } from "../code";
 import {
   detectLanguage,
   detectOutputLanguage,
@@ -359,6 +359,13 @@ function turnMeta(turn: ConversationTurn): string[] {
   ].filter((value) => value && value !== "none");
 }
 
+/**
+ * Render the system prompt as a collapsed disclosure. Uses the same
+ * groupTranscriptParts → TranscriptPartView → TranscriptText pipeline as every
+ * other message so XML tag collapsing, syntax highlighting, and copy behaviour
+ * stay consistent. detectLanguage returns "xml" for the system prompt once the
+ * block-level XML heuristic in format.ts fires.
+ */
 function SystemMessageView(props: {
   message: TranscriptMessage;
   turn: ConversationTurn;
@@ -368,6 +375,12 @@ function SystemMessageView(props: {
   const rawText = messageRawText(props.message);
   const role = props.message.role;
   const byteCount = new TextEncoder().encode(rawText).byteLength;
+  const renderedParts = groupTranscriptParts(props.message.parts);
+  const totalRenderedChildren = renderedParts.reduce(
+    (count, part) => count + countRenderedTranscriptChildren(part, role),
+    0,
+  );
+  let seenRenderedChildren = 0;
 
   return (
     <details
@@ -396,11 +409,21 @@ function SystemMessageView(props: {
           language={detectLanguage(rawText)}
         />
       ) : (
-        <StructuredMarkup
-          block={{ code: rawText, language: "xml", fenced: false }}
-          firstChildIndex={0}
-          lastChildIndex={0}
-        />
+        <div className="grid min-w-0 gap-2">
+          {renderedParts.map((part, index) => {
+            const firstChildIndex = seenRenderedChildren;
+            seenRenderedChildren += countRenderedTranscriptChildren(part, role);
+            return (
+              <TranscriptPartView
+                firstChildIndex={firstChildIndex}
+                key={index}
+                lastChildIndex={totalRenderedChildren - 1}
+                part={part}
+                role={role}
+              />
+            );
+          })}
+        </div>
       )}
     </details>
   );

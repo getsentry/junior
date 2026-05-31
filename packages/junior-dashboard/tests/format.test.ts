@@ -87,6 +87,39 @@ describe("parseMarkdownBlocks prose language detection", () => {
       expect(["xml", "html"]).toContain(block?.language);
     });
 
+    it("detects mixed prose + block-level XML as xml (system prompt pattern)", () => {
+      const text = [
+        "You are a Slack-based helper assistant.",
+        "",
+        "<identity>",
+        "Your Slack username is `junior`.",
+        "</identity>",
+        "",
+        "<personality>",
+        "## core identity",
+        "- you are junior",
+        "</personality>",
+      ].join("\n");
+      const [block] = parseMarkdownBlocks(text);
+      expect(block?.language).toBe("xml");
+    });
+
+    it("does not detect an unclosed block tag as xml", () => {
+      const text = [
+        "Here is an example:",
+        "",
+        "<div>",
+        "## heading",
+        "- bullet",
+      ].join("\n");
+      expect(parseMarkdownBlocks(text)[0]?.language).not.toBe("xml");
+    });
+
+    it("keeps normal markdown without XML blocks as markdown", () => {
+      const text = ["Intro", "", "## heading", "- bullet"].join("\n");
+      expect(parseMarkdownBlocks(text)[0]?.language).toBe("markdown");
+    });
+
     it("detects valid JSON prose as json", () => {
       const [block] = parseMarkdownBlocks('{"a":1}');
       expect(block?.language).toBe("json");
@@ -107,18 +140,24 @@ describe("parseMarkdownBlocks prose language detection", () => {
 
   describe("outputOnly: true mode (detectOutputLanguage — for assistant messages)", () => {
     it("treats XML-looking prose as markdown, never auto-detects XML", () => {
-      const [block] = parseMarkdownBlocks("<foo>bar</foo>", { outputOnly: true });
+      const [block] = parseMarkdownBlocks("<foo>bar</foo>", {
+        outputOnly: true,
+      });
       expect(block?.language).toBe("markdown");
       expect(block?.fenced).toBe(false);
     });
 
     it("treats HTML-looking prose as markdown", () => {
-      const [block] = parseMarkdownBlocks("<div>Hello</div>", { outputOnly: true });
+      const [block] = parseMarkdownBlocks("<div>Hello</div>", {
+        outputOnly: true,
+      });
       expect(block?.language).toBe("markdown");
     });
 
     it("treats TypeScript-looking prose as markdown", () => {
-      const [block] = parseMarkdownBlocks("const value = 1;", { outputOnly: true });
+      const [block] = parseMarkdownBlocks("const value = 1;", {
+        outputOnly: true,
+      });
       expect(block?.language).toBe("markdown");
     });
 
@@ -135,7 +174,9 @@ describe("parseMarkdownBlocks prose language detection", () => {
     });
 
     it("keeps prose blocks as markdown even when fenced XML is present", () => {
-      const blocks = parseMarkdownBlocks("before\n```xml\n<foo/>\n```\nafter", { outputOnly: true });
+      const blocks = parseMarkdownBlocks("before\n```xml\n<foo/>\n```\nafter", {
+        outputOnly: true,
+      });
       expect(blocks[0]?.language).toBe("markdown");
       expect(blocks[0]?.fenced).toBe(false);
       expect(blocks[2]?.language).toBe("markdown");
@@ -143,7 +184,9 @@ describe("parseMarkdownBlocks prose language detection", () => {
     });
 
     it("still detects fenced xml blocks as xml", () => {
-      const blocks = parseMarkdownBlocks("before\n```xml\n<foo/>\n```\nafter", { outputOnly: true });
+      const blocks = parseMarkdownBlocks("before\n```xml\n<foo/>\n```\nafter", {
+        outputOnly: true,
+      });
       expect(blocks[1]?.language).toBe("xml");
       expect(blocks[1]?.fenced).toBe(true);
     });
@@ -153,19 +196,31 @@ describe("parseMarkdownBlocks prose language detection", () => {
 describe("canRenderStructuredMarkup", () => {
   it("returns true for xml blocks regardless of fenced status", () => {
     expect(
-      canRenderStructuredMarkup({ code: "<foo/>", language: "xml", fenced: false }),
+      canRenderStructuredMarkup({
+        code: "<foo/>",
+        language: "xml",
+        fenced: false,
+      }),
     ).toBe(true);
     expect(
-      canRenderStructuredMarkup({ code: "<foo/>", language: "xml", fenced: true }),
+      canRenderStructuredMarkup({
+        code: "<foo/>",
+        language: "xml",
+        fenced: true,
+      }),
     ).toBe(true);
-    expect(
-      canRenderStructuredMarkup({ code: "<foo/>", language: "xml" }),
-    ).toBe(true);
+    expect(canRenderStructuredMarkup({ code: "<foo/>", language: "xml" })).toBe(
+      true,
+    );
   });
 
   it("returns true for html blocks", () => {
     expect(
-      canRenderStructuredMarkup({ code: "<div/>", language: "html", fenced: true }),
+      canRenderStructuredMarkup({
+        code: "<div/>",
+        language: "html",
+        fenced: true,
+      }),
     ).toBe(true);
     expect(
       canRenderStructuredMarkup({ code: "<div/>", language: "html" }),
@@ -174,7 +229,11 @@ describe("canRenderStructuredMarkup", () => {
 
   it("returns false for non-xml/html blocks", () => {
     expect(
-      canRenderStructuredMarkup({ code: "const x = 1", language: "typescript", fenced: true }),
+      canRenderStructuredMarkup({
+        code: "const x = 1",
+        language: "typescript",
+        fenced: true,
+      }),
     ).toBe(false);
   });
 
