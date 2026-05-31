@@ -1,6 +1,6 @@
 import { useState, type ClipboardEventHandler, type ReactNode } from "react";
 
-import { HighlightedCode } from "../code";
+import { HighlightedCode, StructuredMarkup } from "../code";
 import {
   detectLanguage,
   detectOutputLanguage,
@@ -367,12 +367,7 @@ function SystemMessageView(props: {
   const [open, setOpen] = useState(false);
   const rawText = messageRawText(props.message);
   const role = props.message.role;
-  const renderedParts = groupTranscriptParts(props.message.parts);
-  const totalRenderedChildren = renderedParts.reduce(
-    (count, part) => count + countRenderedTranscriptChildren(part, role),
-    0,
-  );
-  let seenRenderedChildren = 0;
+  const byteCount = new TextEncoder().encode(rawText).byteLength;
 
   return (
     <details
@@ -390,7 +385,7 @@ function SystemMessageView(props: {
           </span>
           {open ? null : (
             <span className="font-mono text-[0.78rem] text-[#888]">
-              {rawText.length.toLocaleString()} chars
+              {formatBytes(byteCount)}
             </span>
           )}
         </div>
@@ -401,21 +396,11 @@ function SystemMessageView(props: {
           language={detectLanguage(rawText)}
         />
       ) : (
-        <div className="grid min-w-0 gap-2">
-          {renderedParts.map((part, index) => {
-            const firstChildIndex = seenRenderedChildren;
-            seenRenderedChildren += countRenderedTranscriptChildren(part, role);
-            return (
-              <TranscriptPartView
-                firstChildIndex={firstChildIndex}
-                key={index}
-                lastChildIndex={totalRenderedChildren - 1}
-                part={part}
-                role={role}
-              />
-            );
-          })}
-        </div>
+        <StructuredMarkup
+          block={{ code: rawText, language: "xml", fenced: false }}
+          firstChildIndex={0}
+          lastChildIndex={0}
+        />
       )}
     </details>
   );
