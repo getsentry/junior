@@ -555,6 +555,22 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
   });
 
+  it("requires verified email for explicitly configured email exceptions", async () => {
+    const app = dashboard({
+      user: {
+        email: "admin@example.com",
+        emailVerified: false,
+        hostedDomain: "example.com",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/dashboard/info"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
   it("does not intercept Junior runtime routes with route-scoped dispatch", async () => {
     const dashboardApp = dashboard(null);
     const juniorApp = await createApp();
