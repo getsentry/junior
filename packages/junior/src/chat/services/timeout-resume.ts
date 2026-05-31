@@ -88,7 +88,10 @@ function parseTurnTimeoutResumeRequest(
   }
 
   const record = value as Record<string, unknown>;
-  const expectedVersion = record.expectedVersion;
+  const expectedVersion =
+    typeof record.expectedVersion === "number"
+      ? record.expectedVersion
+      : record.expectedCheckpointVersion;
   if (
     typeof record.conversationId !== "string" ||
     typeof record.sessionId !== "string" ||
