@@ -111,11 +111,11 @@ function forbidden(request: Request): Response {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Junior access denied</title>
 </head>
-<body style="margin:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif">
-  <main style="min-height:100vh;display:grid;place-items:center;padding:2rem">
-    <section style="max-width:32rem;border-left:4px solid #f43f5e;padding-left:1rem">
-      <h1 style="margin:0 0 .75rem;font-size:1.75rem;line-height:1.1">Access denied</h1>
-      <p style="margin:0;color:#b8b8b8;line-height:1.5">Your Google account is authenticated, but it is not allowed to use this Junior dashboard.</p>
+<body class="m-0 bg-black font-sans text-white [color-scheme:dark]">
+  <main class="grid min-h-screen place-items-center p-8">
+    <section class="max-w-lg border-l-4 border-rose-400 pl-4">
+      <h1 class="m-0 mb-3 text-[1.75rem] font-bold leading-tight">Access denied</h1>
+      <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this Junior dashboard.</p>
     </section>
   </main>
 </body>
