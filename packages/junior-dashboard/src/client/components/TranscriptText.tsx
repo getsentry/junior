@@ -12,7 +12,9 @@ export function TranscriptText(props: {
   role?: string;
   text: string;
 }) {
-  const blocks = parseMarkdownBlocks(props.text, { outputOnly: props.role === "assistant" });
+  const blocks = parseMarkdownBlocks(props.text, {
+    outputOnly: props.role?.toLowerCase() === "assistant",
+  });
   let seenChildren = props.firstChildIndex;
 
   return (

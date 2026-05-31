@@ -188,7 +188,10 @@ export function countRenderedTranscriptChildren(
 ): number {
   if (part.kind === "tool") return 1;
   if (part.part.type === "text") {
-    return countTextRenderedChildren(part.part.text ?? "", role === "assistant");
+    return countTextRenderedChildren(
+      part.part.text ?? "",
+      role?.toLowerCase() === "assistant",
+    );
   }
   return 1;
 }
