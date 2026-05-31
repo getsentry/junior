@@ -1,3 +1,6 @@
+import { cpSync, existsSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Nitro } from "nitro/types";
 
 export interface JuniorDashboardNitroOptions {
@@ -12,6 +15,7 @@ export interface JuniorDashboardNitroOptions {
 }
 
 type NitroRouteConfig = NonNullable<Nitro["options"]["routes"]>;
+const dashboardAssetNames = ["client.js", "tailwind.css"] as const;
 
 function normalizePath(path: string | undefined, fallback: string): string {
   const value = path?.trim() || fallback;
@@ -29,6 +33,38 @@ function stripTrailingSlashes(value: string): string {
 
 function routeEntry(handler: string): { handler: string } {
   return { handler };
+}
+
+function dashboardAssetPath(fileName: string): string {
+  const candidates = [
+    fileURLToPath(new URL(`./${fileName}`, import.meta.url)),
+    fileURLToPath(new URL(`../dist/${fileName}`, import.meta.url)),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Junior dashboard asset ${fileName} was not built; run pnpm --filter @sentry/junior-dashboard build before building Nitro`,
+  );
+}
+
+function copyDashboardAssets(serverDir: string): void {
+  const targetDir = path.join(
+    serverDir,
+    "node_modules",
+    "@sentry",
+    "junior-dashboard",
+    "dist",
+  );
+  mkdirSync(targetDir, { recursive: true });
+
+  for (const fileName of dashboardAssetNames) {
+    cpSync(dashboardAssetPath(fileName), path.join(targetDir, fileName));
+  }
 }
 
 function virtualHandler(config: Record<string, unknown>): string {
@@ -92,6 +128,9 @@ export function juniorDashboardNitro(options: JuniorDashboardNitroOptions): {
         nitro.options.virtual[handler] = virtualHandler(dashboardConfig);
         nitro.options.virtual["#junior-dashboard/config"] =
           `export const dashboard = ${JSON.stringify(dashboardConfig)};`;
+        nitro.hooks.hook("compiled", () => {
+          copyDashboardAssets(nitro.options.output.serverDir);
+        });
 
         const dashboardRoutes: NitroRouteConfig = {
           ...dashboardPageRoutes(basePath, handler),

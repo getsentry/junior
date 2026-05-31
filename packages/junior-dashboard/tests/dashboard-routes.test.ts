@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "@sentry/junior";
 import type { JuniorReporting } from "@sentry/junior/reporting";
@@ -28,6 +31,35 @@ const dashboardEnvNames = [
   "SENTRY_DSN",
   "SENTRY_ORG_SLUG",
 ] as const;
+
+function nitroFixture(routes: Record<string, { handler: string }> = {}) {
+  const compiledHooks: Array<() => void> = [];
+  const serverDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "junior-dashboard-nitro-"),
+  );
+
+  return {
+    compiledHooks,
+    serverDir,
+    nitro: {
+      hooks: {
+        hook(name: string, hook: () => void) {
+          if (name === "compiled") {
+            compiledHooks.push(hook);
+          }
+        },
+      },
+      options: {
+        output: { serverDir },
+        routes,
+        virtual: {} as Record<string, string>,
+      },
+    },
+    [Symbol.dispose]() {
+      fs.rmSync(serverDir, { force: true, recursive: true });
+    },
+  };
+}
 
 function reporting(): JuniorReporting {
   return {
@@ -609,21 +641,16 @@ describe("dashboard routes", () => {
   });
 
   it("registers dashboard Nitro routes before an existing catch-all route", () => {
-    const nitro = {
-      options: {
-        routes: {
-          "/**": { handler: "./server.ts" },
-        },
-        virtual: {} as Record<string, string>,
-      },
-    };
+    using fixture = nitroFixture({
+      "/**": { handler: "./server.ts" },
+    });
 
     juniorDashboardNitro({
       allowedGoogleDomains: ["sentry.io"],
       trustedOrigins: ["https://junior.example.com"],
-    }).nitro.setup(nitro);
+    }).nitro.setup(fixture.nitro);
 
-    expect(Object.keys(nitro.options.routes).slice(0, 8)).toEqual([
+    expect(Object.keys(fixture.nitro.options.routes).slice(0, 8)).toEqual([
       "/",
       "/conversations",
       "/conversations/**",
@@ -633,13 +660,39 @@ describe("dashboard routes", () => {
       "/api/auth",
       "/api/auth/**",
     ]);
-    expect(nitro.options.routes["/**"]).toEqual({ handler: "./server.ts" });
-    expect(nitro.options.virtual["#junior-dashboard/config"]).toContain(
+    expect(fixture.nitro.options.routes["/**"]).toEqual({
+      handler: "./server.ts",
+    });
+    expect(fixture.nitro.options.virtual["#junior-dashboard/config"]).toContain(
       "sentry.io",
     );
-    expect(nitro.options.virtual["#junior-dashboard/handler"]).toContain(
-      "sentry.io",
-    );
+    expect(
+      fixture.nitro.options.virtual["#junior-dashboard/handler"],
+    ).toContain("sentry.io");
+  });
+
+  it("copies dashboard assets into Nitro server output", () => {
+    using fixture = nitroFixture();
+
+    juniorDashboardNitro({
+      allowedGoogleDomains: ["sentry.io"],
+      trustedOrigins: ["https://junior.example.com"],
+    }).nitro.setup(fixture.nitro);
+
+    expect(fixture.compiledHooks).toHaveLength(1);
+    fixture.compiledHooks[0]();
+
+    for (const fileName of ["client.js", "tailwind.css"]) {
+      const outputPath = path.join(
+        fixture.serverDir,
+        "node_modules",
+        "@sentry",
+        "junior-dashboard",
+        "dist",
+        fileName,
+      );
+      expect(fs.statSync(outputPath).size).toBeGreaterThan(0);
+    }
   });
 
   it("resolves auth policy from env when Nitro virtual config is unavailable", async () => {
