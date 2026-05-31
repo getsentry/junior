@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("dashboard auth config", () => {
   afterEach(() => {
-    vi.doUnmock("better-auth");
+    vi.doUnmock("better-auth/minimal");
     vi.resetModules();
   });
 
   it("keeps Google account tokens out of persistent dashboard cookies", async () => {
     let capturedOptions: unknown;
 
-    vi.doMock("better-auth", () => ({
+    vi.doMock("better-auth/minimal", () => ({
       betterAuth(options: unknown) {
         capturedOptions = options;
         return {
