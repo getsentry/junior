@@ -15,9 +15,33 @@ import type {
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
 
+class DashboardApiError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number) {
+    super(`${path} returned ${status}`);
+    this.status = status;
+  }
+}
+
+function restartDashboardSignIn(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const loginPath = "/api/dashboard/login";
+  if (window.location.pathname !== loginPath) {
+    window.location.assign(loginPath);
+  }
+}
+
 async function read<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin" });
-  if (!response.ok) throw new Error(`${path} returned ${response.status}`);
+  if (response.status === 401) {
+    restartDashboardSignIn();
+    throw new DashboardApiError(path, response.status);
+  }
+  if (!response.ok) throw new DashboardApiError(path, response.status);
   return (await response.json()) as T;
 }
 
