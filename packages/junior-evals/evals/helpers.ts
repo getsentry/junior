@@ -90,6 +90,15 @@ function toToolCallRecord(
   };
 }
 
+function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
+  return toJsonRecord({
+    eventName: record.eventName,
+    body: record.body,
+    level: record.level,
+    attributes: record.attributes,
+  });
+}
+
 function toHarnessRun(result: EvalResult): HarnessRun {
   const output = buildEvalOutput(result);
   const toolCalls = result.toolInvocations.map(toToolCallRecord);
@@ -122,6 +131,7 @@ function toHarnessRun(result: EvalResult): HarnessRun {
       outputText: serializeEvalOutput(output),
       metadata: toJsonRecord({
         slack_metadata: output.slack_metadata,
+        log_records: result.logRecords.map(toLogMetadata),
       }),
     },
     usage: {

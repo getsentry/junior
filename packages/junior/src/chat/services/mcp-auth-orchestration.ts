@@ -1,3 +1,4 @@
+import { THREAD_STATE_TTL_MS } from "chat";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/chat/services/auth-pause";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
+import { recordAuthorizationRequested } from "@/chat/state/session-log";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
@@ -49,6 +51,14 @@ export interface McpAuthOrchestration {
   ) => Promise<OAuthClientProvider | undefined>;
   onAuthorizationRequired: (provider: string) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
+}
+
+function authorizationId(args: {
+  kind: "mcp";
+  provider: string;
+  sessionId: string;
+}): string {
+  return `${args.sessionId}:${args.kind}:${args.provider}`;
 }
 
 /** Create MCP authorization orchestration for a single turn. */
@@ -150,6 +160,23 @@ export function createMcpAuthOrchestration(
         linkSentAtMs: reusingPendingLink
           ? deps.currentPendingAuth!.linkSentAtMs
           : Date.now(),
+      });
+    }
+    if (deps.conversationId && deps.sessionId && deps.requesterId) {
+      await recordAuthorizationRequested({
+        conversationId: deps.conversationId,
+        kind: "mcp",
+        provider,
+        requesterId: deps.requesterId,
+        authorizationId: authorizationId({
+          kind: "mcp",
+          provider,
+          sessionId: deps.sessionId,
+        }),
+        delivery: reusingPendingLink
+          ? "private_link_reused"
+          : "private_link_sent",
+        ttlMs: THREAD_STATE_TTL_MS,
       });
     }
     pendingPause = new McpAuthorizationPauseError(

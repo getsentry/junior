@@ -33,6 +33,7 @@ import { persistThreadState } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
+import type { QueuedTurnMessage } from "@/chat/runtime/turn-preparation";
 import {
   type ConversationMemoryService,
   markConversationMessage,
@@ -74,9 +75,10 @@ import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  failAgentTurnSessionCheckpoint,
-  getAgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
+import { loadProjection } from "@/chat/state/session-log";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -109,15 +111,24 @@ function buildCanvasRecoveryReply(canvasUrl: string) {
   return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
 }
 
+function collectTurnAttachments(
+  message: Message,
+  queuedMessages?: QueuedTurnMessage[],
+): Message["attachments"] {
+  return [
+    ...(queuedMessages ?? []).flatMap((queued) => queued.message.attachments),
+    ...message.attachments,
+  ];
+}
+
 interface LoadedPiMessagesForTurn {
-  compactionSessionId?: string;
+  canCompact?: boolean;
   piMessages?: PiMessage[];
 }
 
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
   activeTurnId?: string;
-  lastSessionId?: string;
   fallback: PiMessage[];
 }): Promise<LoadedPiMessagesForTurn> {
   const fallback = args.fallback.length > 0 ? [...args.fallback] : undefined;
@@ -126,31 +137,26 @@ async function loadPiMessagesForTurn(args: {
   }
 
   if (args.activeTurnId) {
-    const checkpoint = await getAgentTurnSessionCheckpoint(
+    const sessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.activeTurnId,
     );
-    if (checkpoint?.piMessages.length) {
+    if (sessionRecord?.piMessages.length) {
       return {
         piMessages: stripRuntimeTurnContext(
-          trimTrailingAssistantMessages(checkpoint.piMessages),
+          trimTrailingAssistantMessages(sessionRecord.piMessages),
         ),
       };
     }
   }
 
-  if (!args.lastSessionId) {
-    return { piMessages: fallback };
-  }
-
-  const checkpoint = await getAgentTurnSessionCheckpoint(
-    args.conversationId,
-    args.lastSessionId,
-  );
-  if (checkpoint?.state === "completed" && checkpoint.piMessages.length > 0) {
+  const projection = await loadProjection({
+    conversationId: args.conversationId,
+  });
+  if (projection.length > 0) {
     return {
-      compactionSessionId: args.lastSessionId,
-      piMessages: stripRuntimeTurnContext(checkpoint.piMessages),
+      canCompact: true,
+      piMessages: stripRuntimeTurnContext(projection),
     };
   }
 
@@ -194,6 +200,7 @@ interface ReplyExecutorDeps {
   prepareTurnState: (args: {
     explicitMention: boolean;
     message: Message;
+    queuedMessages?: QueuedTurnMessage[];
     thread: Thread;
     userText: string;
     context: {
@@ -218,6 +225,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         toolName: string;
       }) => void;
       preparedState?: PreparedTurnState;
+      queuedMessages?: QueuedTurnMessage[];
     } = {},
   ) {
     if (message.author.isMe) {
@@ -254,16 +262,26 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           strippedUserText,
           message.raw,
         );
+        const effectiveUserText =
+          options.queuedMessages && options.queuedMessages.length > 0
+            ? [
+                ...options.queuedMessages.map((queued) => queued.userText),
+                userText,
+              ]
+                .filter((part) => part.trim().length > 0)
+                .join("\n\n")
+            : userText;
 
         const preparedState =
           options.preparedState ??
           (await deps.prepareTurnState({
             thread,
             message,
-            userText,
+            userText: effectiveUserText,
             explicitMention: Boolean(
               options.explicitMention || message.isMention,
             ),
+            queuedMessages: options.queuedMessages,
             context: {
               threadId,
               requesterId: message.author.userId,
@@ -362,8 +380,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 "agent_turn_continuation_retry_schedule_failed",
                 turnTraceContext,
                 {
-                  "app.ai.resume_checkpoint_version":
-                    resumeRequest.expectedCheckpointVersion,
+                  "app.ai.resume_session_version":
+                    resumeRequest.expectedVersion,
                   "app.ai.resume_session_id": resumeRequest.sessionId,
                   ...(messageTs ? { "messaging.message.id": messageTs } : {}),
                 },
@@ -387,12 +405,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
         }
-        const lastSessionIdForHistory =
-          preparedState.conversation.processing.lastSessionId;
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,
           requesterId: message.author.userId,
-          text: userText,
+          text: effectiveUserText,
         });
         if (configReply) {
           await beforeFirstResponsePost();
@@ -454,8 +470,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (resolvedUserName) {
           setTags({ slackUserName: resolvedUserName });
         }
+        const turnAttachments = collectTurnAttachments(
+          message,
+          options.queuedMessages,
+        );
         const userAttachments = await deps.resolveUserAttachments(
-          message.attachments,
+          turnAttachments,
           {
             threadId,
             requesterId: message.author.userId,
@@ -466,8 +486,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           },
         );
         const omittedImageAttachmentCount =
-          !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
-            ? countPotentialImageAttachments(message.attachments)
+          !isVisionEnabled() && hasPotentialImageAttachment(turnAttachments)
+            ? countPotentialImageAttachments(turnAttachments)
             : 0;
         const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
@@ -507,13 +527,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const loadedPiMessages = await loadPiMessagesForTurn({
             conversationId,
             activeTurnId,
-            lastSessionId: lastSessionIdForHistory,
             fallback: preparedState.conversation.piMessages,
           });
           let piMessages = loadedPiMessages.piMessages;
           if (
             conversationId &&
-            loadedPiMessages.compactionSessionId &&
+            loadedPiMessages.canCompact &&
             piMessages?.length
           ) {
             const compaction =
@@ -530,7 +549,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   runId,
                 },
                 onCompactionStart: () => status.start(compactingStatus),
-                previousSessionId: loadedPiMessages.compactionSessionId,
+                piMessages,
               });
             if (compaction.compacted) {
               piMessages = compaction.piMessages;
@@ -556,64 +575,68 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          let reply = await deps.services.generateAssistantReply(userText, {
-            requester: {
-              userId: message.author.userId,
-              userName: message.author.userName ?? fallbackIdentity?.userName,
-              fullName: message.author.fullName ?? fallbackIdentity?.fullName,
-              email: fallbackIdentity?.email,
-            },
-            conversationContext:
-              preparedState.routingContext ?? preparedState.conversationContext,
-            artifactState: preparedState.artifacts,
-            piMessages,
-            pendingAuth: preparedState.conversation.processing.pendingAuth,
-            configuration: preparedState.configuration,
-            channelConfiguration: preparedState.channelConfiguration,
-            inboundAttachmentCount: message.attachments.length,
-            omittedImageAttachmentCount,
-            userAttachments,
-            correlation: {
-              conversationId,
-              threadId,
-              turnId,
-              threadTs,
-              messageTs,
-              teamId,
-              runId,
-              channelId,
-              requesterId: message.author.userId,
-            },
-            toolChannelId,
-            sandbox: {
-              sandboxId: preparedState.sandboxId,
-              sandboxDependencyProfileHash:
-                preparedState.sandboxDependencyProfileHash,
-            },
-            onSandboxAcquired: async (sandbox) => {
-              await persistThreadState(thread, {
-                sandboxId: sandbox.sandboxId,
-                sandboxDependencyProfileHash:
-                  sandbox.sandboxDependencyProfileHash,
-              });
-            },
-            onArtifactStateUpdated: async (artifacts) => {
-              latestArtifacts = artifacts;
-              await persistThreadState(thread, { artifacts });
-            },
-            onAuthPending: async (pendingAuth) => {
-              await applyPendingAuthUpdate({
-                conversation: preparedState.conversation,
+          let reply = await deps.services.generateAssistantReply(
+            effectiveUserText,
+            {
+              requester: {
+                userId: message.author.userId,
+                userName: message.author.userName ?? fallbackIdentity?.userName,
+                fullName: message.author.fullName ?? fallbackIdentity?.fullName,
+                email: fallbackIdentity?.email,
+              },
+              conversationContext:
+                preparedState.routingContext ??
+                preparedState.conversationContext,
+              artifactState: preparedState.artifacts,
+              piMessages,
+              pendingAuth: preparedState.conversation.processing.pendingAuth,
+              configuration: preparedState.configuration,
+              channelConfiguration: preparedState.channelConfiguration,
+              inboundAttachmentCount: turnAttachments.length,
+              omittedImageAttachmentCount,
+              userAttachments,
+              correlation: {
                 conversationId,
-                nextPendingAuth: pendingAuth,
-              });
-              await persistThreadState(thread, {
-                conversation: preparedState.conversation,
-              });
+                threadId,
+                turnId,
+                threadTs,
+                messageTs,
+                teamId,
+                runId,
+                channelId,
+                requesterId: message.author.userId,
+              },
+              toolChannelId,
+              sandbox: {
+                sandboxId: preparedState.sandboxId,
+                sandboxDependencyProfileHash:
+                  preparedState.sandboxDependencyProfileHash,
+              },
+              onSandboxAcquired: async (sandbox) => {
+                await persistThreadState(thread, {
+                  sandboxId: sandbox.sandboxId,
+                  sandboxDependencyProfileHash:
+                    sandbox.sandboxDependencyProfileHash,
+                });
+              },
+              onArtifactStateUpdated: async (artifacts) => {
+                latestArtifacts = artifacts;
+                await persistThreadState(thread, { artifacts });
+              },
+              onAuthPending: async (pendingAuth) => {
+                await applyPendingAuthUpdate({
+                  conversation: preparedState.conversation,
+                  conversationId,
+                  nextPendingAuth: pendingAuth,
+                });
+                await persistThreadState(thread, {
+                  conversation: preparedState.conversation,
+                });
+              },
+              onStatus: (nextStatus) => status.update(nextStatus),
+              onToolInvocation: options.onToolInvocation,
             },
-            onStatus: (nextStatus) => status.update(nextStatus),
-            onToolInvocation: options.onToolInvocation,
-          });
+          );
           const diagnosticsContext = {
             slackThreadId: threadId,
             slackUserId: message.author.userId,
@@ -776,19 +799,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (isRetryableTurnError(error, "turn_timeout_resume")) {
             const conversationIdForResume = error.metadata?.conversationId;
             const sessionIdForResume = error.metadata?.sessionId;
-            const checkpointVersion = error.metadata?.checkpointVersion;
+            const version = error.metadata?.version;
             const nextSliceId = error.metadata?.sliceId;
             if (
               conversationIdForResume &&
               sessionIdForResume &&
-              typeof checkpointVersion === "number" &&
+              typeof version === "number" &&
               canScheduleTurnTimeoutResume(nextSliceId)
             ) {
               try {
                 await deps.services.scheduleTurnTimeoutResume({
                   conversationId: conversationIdForResume,
                   sessionId: sessionIdForResume,
-                  expectedCheckpointVersion: checkpointVersion,
+                  expectedVersion: version,
                 });
                 shouldPersistFailureState = false;
               } catch (scheduleError) {
@@ -798,7 +821,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   turnTraceContext,
                   {
                     ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                    "app.ai.resume_checkpoint_version": checkpointVersion,
+                    "app.ai.resume_session_version": version,
                   },
                   "Failed to schedule timeout resume callback",
                 );
@@ -810,7 +833,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             } else if (
               conversationIdForResume &&
               sessionIdForResume &&
-              typeof checkpointVersion === "number"
+              typeof version === "number"
             ) {
               logWarn(
                 "agent_turn_timeout_resume_slice_limit_reached",
@@ -904,19 +927,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             if (conversationId) {
               try {
-                await failAgentTurnSessionCheckpoint({
+                await failAgentTurnSessionRecord({
                   conversationId,
                   sessionId: turnId,
                   errorMessage:
                     "Agent turn failed before final reply delivery completed",
                 });
-              } catch (checkpointError) {
+              } catch (recordError) {
                 logException(
-                  checkpointError,
-                  "agent_turn_failed_checkpoint_persist_failed",
+                  recordError,
+                  "agent_turn_failed_session_record_persist_failed",
                   turnTraceContext,
                   {},
-                  "Failed to mark failed turn checkpoint",
+                  "Failed to mark failed turn session record",
                 );
               }
             }

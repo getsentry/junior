@@ -45,8 +45,8 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ### Timeout behavior
 
 - `generateAssistantReply(...)` aborts the Pi agent on timeout and waits for the in-flight prompt/continue call to settle before inspecting Pi messages.
-- When resumability context is available (`conversation_id` + `session_id`) and a safe-boundary checkpoint can be persisted, timeout throws `RetryableTurnError("turn_timeout_resume")` with checkpoint metadata instead of returning a normal reply payload.
-- When no resumable checkpoint can be persisted, timeout falls back to the standard provider-error reply path.
+- When resumability context is available (`conversation_id` + `session_id`) and a safe-boundary session record can be persisted, timeout throws `RetryableTurnError("turn_timeout_resume")` with session record metadata instead of returning a normal reply payload.
+- When no resumable session record can be persisted, timeout falls back to the standard provider-error reply path.
 - The harness does not decide whether timed-out work should be auto-resumed after user-visible output has started. Higher-level runtime code applies the visibility rules from [Agent Session Resumability Spec](./agent-session-resumability.md).
 
 ### Terminal output contract
@@ -84,7 +84,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 2. Empty assistant text returns an explicit execution-failure fallback message.
 3. Tool-shaped or execution-deferral assistant text returns an explicit execution-failure fallback message.
 4. Timeout always aborts the turn and is logged with timeout diagnostics.
-5. Timeout may throw retryable resume metadata instead of returning a provider-error reply when a safe resumable checkpoint exists.
+5. Timeout may throw retryable resume metadata instead of returning a provider-error reply when a safe resumable session record exists.
 
 ## Observability
 
@@ -111,7 +111,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ## Verification
 
 1. Unit/integration tests verify newline-joined assistant output and empty-response fallback behavior.
-2. Timeout path emits `agent_turn_timeout` and either throws retryable timeout-resume metadata or returns provider-error diagnostics when checkpointing is unavailable.
+2. Timeout path emits `agent_turn_timeout` and either throws retryable timeout-resume metadata or returns provider-error diagnostics when no safe session record can be persisted.
 3. Eval and integration runs observe span diagnostics for each turn.
 
 ## Related Specs

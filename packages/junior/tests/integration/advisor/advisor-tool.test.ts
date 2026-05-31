@@ -132,7 +132,7 @@ describe("advisor tool", () => {
     const result = await executeAdvisor(advisor, {
       question: "What is the safest fix?",
       context:
-        "Observed race: two workers update the same Slack thread checkpoint. Proposed fix: per-thread mutex.",
+        "Observed race: two workers update the same Slack thread state. Proposed fix: per-thread mutex.",
     });
 
     expect(result.details).toMatchObject({
@@ -140,7 +140,7 @@ describe("advisor tool", () => {
     });
     expect(result.content[0].text).toBe("  Assessment\nUse a lock.\n");
     expect(JSON.stringify(contexts[0])).toContain(
-      "two workers update the same Slack thread checkpoint",
+      "two workers update the same Slack thread state",
     );
     expect(JSON.stringify(contexts[0])).toContain("What is the safest fix?");
     expect(JSON.stringify(contexts[0])).toContain("inspectEvidence");

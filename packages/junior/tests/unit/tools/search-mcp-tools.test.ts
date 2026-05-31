@@ -7,6 +7,18 @@ describe("searchMcpTools", () => {
     return {
       hasConfiguredProvider: vi.fn(() => false),
       activateProvider: vi.fn(async () => true),
+      getAvailableProviderCatalog: vi.fn(() => [
+        {
+          provider: "demo",
+          description: "Demo provider",
+          active: true,
+        },
+        {
+          provider: "linear",
+          description: "Linear issues",
+          active: false,
+        },
+      ]),
       getActiveToolCatalog: vi.fn((_options?: { provider?: string }) => [
         {
           name: "mcp__demo__create_issue",
@@ -130,5 +142,33 @@ describe("searchMcpTools", () => {
     expect(manager.getActiveToolCatalog).toHaveBeenCalledWith({
       provider: "demo",
     });
+    expect(manager.getAvailableProviderCatalog).not.toHaveBeenCalled();
+  });
+
+  it("returns configured provider matches without connecting when provider is omitted", async () => {
+    const manager = buildManager();
+    const searchMcpTools = createSearchMcpToolsTool(manager);
+
+    const result = (await searchMcpTools.execute!(
+      { query: "linear", max_results: 10 },
+      {},
+    )) as {
+      available_providers: Array<{
+        provider: string;
+        description: string;
+        active: boolean;
+      }>;
+      tools: Array<{ tool_name: string }>;
+    };
+
+    expect(result.available_providers).toEqual([
+      {
+        provider: "linear",
+        description: "Linear issues",
+        active: false,
+      },
+    ]);
+    expect(result.tools).toEqual([]);
+    expect(manager.activateProvider).not.toHaveBeenCalled();
   });
 });

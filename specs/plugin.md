@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-30
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Define the plugin model for provider integrations. Plugins package declarative r
 3. `plugin.yaml` owns runtime setup: provider domains, credentials, API headers, command env, runtime dependencies, postinstall commands, OAuth, MCP endpoints, config keys, and skill roots.
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
 5. Credential delivery is host-owned and requester-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
-6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
+6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
 7. Trusted runtime behavior is app-code registration, not manifest registration. Apps pass trusted `JuniorPlugin` objects to `createApp({ plugins })`.
 8. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
 

@@ -62,6 +62,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
 - `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
 - `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
+- `policies/interface-design.md` (naming, module paths, and minimal interface boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)
 
 ## Investigation-First Development
@@ -107,6 +108,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
+- `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed turns, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/credential-injection.md` (requester-bound provider credential injection contract)

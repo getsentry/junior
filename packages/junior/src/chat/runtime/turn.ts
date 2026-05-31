@@ -24,7 +24,7 @@ export interface RetryableTurnMetadata {
   authProvider?: string;
   authThinkingLevel?: TurnThinkingSelection["thinkingLevel"];
   authUsage?: AgentTurnUsage;
-  checkpointVersion?: number;
+  version?: number;
   conversationId?: string;
   sessionId?: string;
   sliceId?: number;
@@ -101,8 +101,7 @@ export function markTurnClosed(args: {
 }
 
 /**
- * Mark a turn as completed after final reply delivery succeeds and make its Pi
- * session the reusable history source for the next turn.
+ * Mark a turn as completed after final reply delivery succeeds.
  */
 export function markTurnCompleted(args: {
   conversation: ThreadConversationState;
@@ -111,7 +110,6 @@ export function markTurnCompleted(args: {
   updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
   clearActiveTurn(args.conversation, args.sessionId);
-  args.conversation.processing.lastSessionId = args.sessionId;
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
   args.updateConversationStats(args.conversation);
 }

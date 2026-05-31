@@ -7,6 +7,7 @@ import { createEnvFileLoader } from "../junior/src/env/files";
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const applyEnvFile = createEnvFileLoader();
+const EVAL_TEST_TIMEOUT_MS = 60_000;
 
 // Load workspace env first, then junior package env, with test env files last.
 for (const envRoot of [workspaceRoot, juniorPackageRoot]) {
@@ -40,6 +41,6 @@ export default defineConfig({
     maxWorkers: 1,
     setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
     reporters: [new DefaultEvalReporter()],
-    testTimeout: 300_000,
+    testTimeout: EVAL_TEST_TIMEOUT_MS,
   },
 });

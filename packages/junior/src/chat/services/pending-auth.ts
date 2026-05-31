@@ -4,7 +4,7 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { abandonAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 // A fresh private auth link is worth reissuing after ~10 minutes: long enough
 // to cover normal back-and-forth (read the prompt, check a password manager),
@@ -72,7 +72,7 @@ export function clearPendingAuth(
 
 /**
  * Apply a new pending-auth record to the conversation and, when replacing a
- * different session's pending-auth, mark the prior checkpoint as superseded.
+ * different session's pending-auth, mark the prior session record as abandoned.
  * Callers are responsible for persisting the mutated conversation afterwards.
  */
 export async function applyPendingAuthUpdate(args: {
@@ -87,11 +87,11 @@ export async function applyPendingAuthUpdate(args: {
     previousPendingAuth.sessionId !== args.nextPendingAuth.sessionId &&
     args.conversationId
   ) {
-    await supersedeAgentTurnSessionCheckpoint({
+    await abandonAgentTurnSessionRecord({
       conversationId: args.conversationId,
       sessionId: previousPendingAuth.sessionId,
       errorMessage:
-        "Superseded by a newer auth-blocked request in the same conversation.",
+        "Abandoned by a newer auth-blocked request in the same conversation.",
     });
   }
 }

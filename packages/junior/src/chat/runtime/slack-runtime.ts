@@ -1,4 +1,4 @@
-import type { Message, Thread } from "chat";
+import type { Message, MessageContext, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
@@ -33,6 +33,7 @@ export interface ThreadContext {
 
 export interface ReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
+  messageContext?: MessageContext;
   onToolInvocation?: (invocation: {
     params: Record<string, unknown>;
     toolName: string;
@@ -124,6 +125,11 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     context: ThreadContext;
     explicitMention: boolean;
     message: Message;
+    queuedMessages?: Array<{
+      explicitMention: boolean;
+      message: Message;
+      userText: string;
+    }>;
     thread: Thread;
     userText: string;
   }) => Promise<TPreparedState>;
@@ -138,6 +144,11 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
         toolName: string;
       }) => void;
       preparedState?: TPreparedState;
+      queuedMessages?: Array<{
+        explicitMention: boolean;
+        message: Message;
+        userText: string;
+      }>;
     },
   ) => Promise<void>;
   decideSubscribedReply: (args: {
@@ -160,6 +171,37 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     context: Record<string, unknown>,
     callback: () => Promise<void>,
   ) => Promise<void>;
+}
+
+function getQueuedMessages(
+  context: MessageContext | undefined,
+  options: {
+    explicitMention: boolean;
+    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
+  },
+): Array<{ explicitMention: boolean; message: Message; userText: string }> {
+  return (context?.skipped ?? []).map((message) => {
+    const stripped = options.stripLeadingBotMention(message.text, {
+      stripLeadingSlackMentionToken:
+        options.explicitMention || Boolean(message.isMention),
+    });
+    return {
+      explicitMention: options.explicitMention || Boolean(message.isMention),
+      message,
+      userText: appendSlackLegacyAttachmentText(stripped, message.raw),
+    };
+  });
+}
+
+function combineQueuedUserText(
+  queuedMessages: Array<{ userText: string }>,
+  latestUserText: string,
+): string {
+  const parts = [
+    ...queuedMessages.map((message) => message.userText),
+    latestUserText,
+  ].filter((part) => part.trim().length > 0);
+  return parts.length > 0 ? parts.join("\n\n") : latestUserText;
 }
 
 export interface SlackTurnRuntime<
@@ -331,9 +373,14 @@ export function createSlackTurnRuntime<
 
         await deps.withSpan("chat.turn", "chat.turn", context, async () => {
           await thread.subscribe();
+          const queuedMessages = getQueuedMessages(hooks?.messageContext, {
+            explicitMention: true,
+            stripLeadingBotMention: deps.stripLeadingBotMention,
+          });
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            queuedMessages,
             onToolInvocation: toolInvocationHook,
           });
         });
@@ -424,11 +471,23 @@ export function createSlackTurnRuntime<
             channelId,
             runId,
           };
+          const queuedMessages = getQueuedMessages(hooks?.messageContext, {
+            explicitMention: Boolean(message.isMention),
+            stripLeadingBotMention: deps.stripLeadingBotMention,
+          });
+          const combinedUserText = combineQueuedUserText(
+            queuedMessages,
+            userText,
+          );
+          const combinedRawUserText = combineQueuedUserText(
+            queuedMessages,
+            rawUserText,
+          );
 
           const preflightDecision = getSubscribedReplyPreflightDecision({
             botUserName: deps.assistantUserName,
-            rawText: rawUserText,
-            text: userText,
+            rawText: combinedRawUserText,
+            text: combinedUserText,
             isExplicitMention: Boolean(message.isMention),
           });
 
@@ -441,7 +500,7 @@ export function createSlackTurnRuntime<
               message,
               decision: { shouldReply: false, reason },
               context: threadContext,
-              userText,
+              userText: combinedUserText,
             });
             return;
           }
@@ -449,9 +508,10 @@ export function createSlackTurnRuntime<
           const preparedState = await deps.prepareTurnState({
             thread,
             message,
-            userText,
+            userText: combinedUserText,
             explicitMention: Boolean(message.isMention),
             context: threadContext,
+            queuedMessages,
           });
 
           await deps.persistPreparedState({
@@ -460,12 +520,16 @@ export function createSlackTurnRuntime<
           });
 
           const decision = await deps.decideSubscribedReply({
-            rawText: rawUserText,
-            text: userText,
+            rawText: combinedRawUserText,
+            text: combinedUserText,
             conversationContext:
               deps.getPreparedConversationContext(preparedState),
             hasAttachments:
-              message.attachments.length > 0 || legacyAttachmentText !== "",
+              message.attachments.length > 0 ||
+              queuedMessages.some(
+                (queued) => queued.message.attachments.length > 0,
+              ) ||
+              legacyAttachmentText !== "",
             isExplicitMention: Boolean(message.isMention),
             context: threadContext,
           });
@@ -483,7 +547,7 @@ export function createSlackTurnRuntime<
               decision,
               context: threadContext,
               preparedState,
-              userText,
+              userText: combinedUserText,
             });
             return;
           }
@@ -495,7 +559,7 @@ export function createSlackTurnRuntime<
               decision,
               context: threadContext,
               preparedState,
-              userText,
+              userText: combinedUserText,
             });
             return;
           }
@@ -515,6 +579,7 @@ export function createSlackTurnRuntime<
             explicitMention: Boolean(message.isMention),
             preparedState,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            queuedMessages,
             onToolInvocation: toolInvocationHook,
           });
         });

@@ -46,7 +46,6 @@ export interface ConversationBackfillState {
 export interface ConversationProcessingState {
   activeTurnId?: string;
   lastCompletedAtMs?: number;
-  lastSessionId?: string;
   pendingAuth?: ConversationPendingAuthState;
 }
 
@@ -298,7 +297,6 @@ export function coerceThreadConversationState(
   const processing: ConversationProcessingState = {
     activeTurnId: toOptionalString(rawProcessing.activeTurnId),
     lastCompletedAtMs: toOptionalNumber(rawProcessing.lastCompletedAtMs),
-    lastSessionId: toOptionalString(rawProcessing.lastSessionId),
     pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 

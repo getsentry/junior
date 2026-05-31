@@ -1,3 +1,4 @@
+import { THREAD_STATE_TTL_MS } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -43,10 +44,11 @@ import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  failAgentTurnSessionCheckpoint,
-  getAgentTurnSessionCheckpoint,
-  supersedeAgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+  abandonAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
+import { recordAuthorizationCompleted } from "@/chat/state/session-log";
 import {
   applyPendingAuthUpdate,
   clearPendingAuth,
@@ -98,13 +100,20 @@ async function persistCompletedOAuthReplyState(args: {
   });
 }
 
-async function failCheckpointBestEffort(args: {
+function pluginAuthorizationId(args: {
+  provider: string;
+  sessionId: string;
+}): string {
+  return `${args.sessionId}:plugin:${args.provider}`;
+}
+
+async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
   sessionId: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionCheckpoint({
+    await failAgentTurnSessionRecord({
       conversationId: args.conversationId,
       sessionId: args.sessionId,
       errorMessage: args.errorMessage,
@@ -112,13 +121,13 @@ async function failCheckpointBestEffort(args: {
   } catch (error) {
     logException(
       error,
-      "oauth_callback_checkpoint_fail_persist_failed",
+      "oauth_callback_session_record_fail_persist_failed",
       {},
       {
         "app.ai.conversation_id": args.conversationId,
         "app.ai.session_id": args.sessionId,
       },
-      "Failed to mark OAuth-resumed turn checkpoint failed",
+      "Failed to mark OAuth-resumed turn session record failed",
     );
   }
 }
@@ -140,7 +149,7 @@ async function persistFailedOAuthReplyState(args: {
     updateConversationStats,
   });
 
-  await failCheckpointBestEffort({
+  await failSessionRecordBestEffort({
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     errorMessage: "OAuth-resumed turn failed",
@@ -150,7 +159,7 @@ async function persistFailedOAuthReplyState(args: {
   });
 }
 
-async function resumeCheckpointedOAuthTurn(
+async function resumeOAuthSessionRecordTurn(
   stored: OAuthStatePayload,
 ): Promise<boolean> {
   if (
@@ -162,25 +171,25 @@ async function resumeCheckpointedOAuthTurn(
     return false;
   }
 
-  const checkpoint = await getAgentTurnSessionCheckpoint(
+  const sessionRecord = await getAgentTurnSessionRecord(
     stored.resumeConversationId,
     stored.resumeSessionId,
   );
-  if (!checkpoint) {
+  if (!sessionRecord) {
     return false;
   }
-  // Terminal checkpoint states are already handled — do not fall through to
+  // Terminal session record states are already handled; do not fall through to
   // the pending-message resume which would re-post the original request.
   if (
-    checkpoint.state === "completed" ||
-    checkpoint.state === "failed" ||
-    checkpoint.state === "superseded"
+    sessionRecord.state === "completed" ||
+    sessionRecord.state === "failed" ||
+    sessionRecord.state === "abandoned"
   ) {
     return true;
   }
   if (
-    checkpoint.state !== "awaiting_resume" ||
-    checkpoint.resumeReason !== "auth"
+    sessionRecord.state !== "awaiting_resume" ||
+    sessionRecord.resumeReason !== "auth"
   ) {
     return true;
   }
@@ -206,11 +215,11 @@ async function resumeCheckpointedOAuthTurn(
       await persistThreadStateById(stored.resumeConversationId, {
         conversation,
       });
-      await supersedeAgentTurnSessionCheckpoint({
+      await abandonAgentTurnSessionRecord({
         conversationId: stored.resumeConversationId,
         sessionId: pendingAuth.sessionId,
         errorMessage:
-          "Auth completed after a newer thread message superseded this blocked request.",
+          "Auth completed after a newer thread message abandoned this blocked request.",
       });
       return true;
     }
@@ -234,14 +243,14 @@ async function resumeCheckpointedOAuthTurn(
     lockKey: stored.resumeConversationId,
     initialText: "",
     beforeStart: async () => {
-      const lockedCheckpoint = await getAgentTurnSessionCheckpoint(
+      const lockedSessionRecord = await getAgentTurnSessionRecord(
         stored.resumeConversationId!,
         stored.resumeSessionId!,
       );
       if (
-        !lockedCheckpoint ||
-        lockedCheckpoint.state !== "awaiting_resume" ||
-        lockedCheckpoint.resumeReason !== "auth"
+        !lockedSessionRecord ||
+        lockedSessionRecord.state !== "awaiting_resume" ||
+        lockedSessionRecord.resumeReason !== "auth"
       ) {
         return false;
       }
@@ -270,11 +279,11 @@ async function resumeCheckpointedOAuthTurn(
           await persistThreadStateById(stored.resumeConversationId!, {
             conversation: lockedConversation,
           });
-          await supersedeAgentTurnSessionCheckpoint({
+          await abandonAgentTurnSessionRecord({
             conversationId: stored.resumeConversationId!,
             sessionId: lockedPendingAuth.sessionId,
             errorMessage:
-              "Auth completed after a newer thread message superseded this blocked request.",
+              "Auth completed after a newer thread message abandoned this blocked request.",
           });
           return false;
         }
@@ -301,6 +310,18 @@ async function resumeCheckpointedOAuthTurn(
       const lockedChannelConfiguration = getChannelConfigurationServiceById(
         stored.channelId!,
       );
+
+      await recordAuthorizationCompleted({
+        conversationId: stored.resumeConversationId!,
+        kind: "plugin",
+        provider: stored.provider,
+        requesterId: stored.userId,
+        authorizationId: pluginAuthorizationId({
+          provider: stored.provider,
+          sessionId: lockedSessionId,
+        }),
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
 
       return {
         messageText: stored.pendingMessage ?? lockedUserMessage.text,
@@ -347,7 +368,7 @@ async function resumeCheckpointedOAuthTurn(
               "app.ai.outcome": reply.diagnostics.outcome,
               "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
             },
-            "OAuth callback auto-resumed checkpoint finished replying",
+            "OAuth callback auto-resumed session record finished replying",
           );
           await persistCompletedOAuthReplyState({
             conversationId: stored.resumeConversationId!,
@@ -356,9 +377,9 @@ async function resumeCheckpointedOAuthTurn(
           });
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionCheckpoint({
+          await failAgentTurnSessionRecord({
             conversationId: stored.resumeConversationId!,
-            expectedCheckpointVersion: lockedCheckpoint.checkpointVersion,
+            expectedVersion: lockedSessionRecord.version,
             sessionId: lockedSessionId,
             errorMessage:
               "OAuth-resumed reply was delivered but completion state did not persist",
@@ -380,11 +401,11 @@ async function resumeCheckpointedOAuthTurn(
           if (!isRetryableTurnError(error, "turn_timeout_resume")) {
             throw error;
           }
-          const checkpointVersion = error.metadata?.checkpointVersion;
+          const version = error.metadata?.version;
           const nextSliceId = error.metadata?.sliceId;
-          if (typeof checkpointVersion !== "number") {
+          if (typeof version !== "number") {
             throw new Error(
-              "Timed-out OAuth resume did not include a checkpoint version",
+              "Timed-out OAuth resume did not include a session session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {
@@ -395,7 +416,7 @@ async function resumeCheckpointedOAuthTurn(
           await scheduleTurnTimeoutResume({
             conversationId: stored.resumeConversationId!,
             sessionId: lockedSessionId,
-            expectedCheckpointVersion: checkpointVersion,
+            expectedVersion: version,
           });
         },
       };
@@ -608,7 +629,7 @@ export async function GET(
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
     waitUntil(async () => {
       try {
-        const resumed = await resumeCheckpointedOAuthTurn(stored);
+        const resumed = await resumeOAuthSessionRecordTurn(stored);
         if (!resumed) {
           await resumePendingOAuthMessage(stored);
         }

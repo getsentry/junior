@@ -42,6 +42,12 @@ export interface PreparedTurnState {
   userMessageId?: string;
 }
 
+export interface QueuedTurnMessage {
+  explicitMention: boolean;
+  message: Message;
+  userText: string;
+}
+
 export interface PrepareTurnStateDeps {
   compactConversationIfNeeded: (
     conversation: ThreadConversationState,
@@ -73,31 +79,47 @@ function hasPendingImageHydration(
   );
 }
 
-function createConversationMessageFromSdkMessage(
-  entry: Message,
-): ConversationMessage | null {
-  const enrichedText = appendSlackLegacyAttachmentText(entry.text, entry.raw);
+function createConversationMessageFromSdkMessage(args: {
+  entry: Message;
+  explicitMention?: boolean;
+  userText?: string;
+}): ConversationMessage | null {
+  const enrichedText = appendSlackLegacyAttachmentText(
+    args.userText ?? args.entry.text,
+    args.entry.raw,
+  );
   const rawText = normalizeConversationText(enrichedText);
   if (!rawText) {
     return null;
   }
+  const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
+    args.entry.attachments,
+  );
+  const imageAttachmentCount = messageHasPotentialImageAttachment
+    ? countPotentialImageAttachments(args.entry.attachments)
+    : 0;
 
   return {
-    id: entry.id,
-    role: entry.author.isMe ? "assistant" : "user",
+    id: args.entry.id,
+    role: args.entry.author.isMe ? "assistant" : "user",
     text: rawText,
-    createdAtMs: entry.metadata.dateSent.getTime(),
+    createdAtMs: args.entry.metadata.dateSent.getTime(),
     author: {
-      userId: entry.author.userId,
-      userName: entry.author.userName,
-      fullName: entry.author.fullName,
+      userId: args.entry.author.userId,
+      userName: args.entry.author.userName,
+      fullName: args.entry.author.fullName,
       isBot:
-        typeof entry.author.isBot === "boolean"
-          ? entry.author.isBot
+        typeof args.entry.author.isBot === "boolean"
+          ? args.entry.author.isBot
           : undefined,
     },
     meta: {
-      slackTs: getSlackMessageTs(entry),
+      attachmentCount: args.entry.attachments.length,
+      explicitMention: args.explicitMention,
+      imageAttachmentCount:
+        imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
+      imagesHydrated: !messageHasPotentialImageAttachment,
+      slackTs: getSlackMessageTs(args.entry),
     },
   };
 }
@@ -135,7 +157,7 @@ async function seedConversationBackfill(
     }
     fetchedNewestFirst.reverse();
     for (const entry of fetchedNewestFirst) {
-      const message = createConversationMessageFromSdkMessage(entry);
+      const message = createConversationMessageFromSdkMessage({ entry });
       if (message) {
         seeded.push(message);
       }
@@ -152,7 +174,7 @@ async function seedConversationBackfill(
 
     const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
     for (const entry of fromRecent) {
-      const message = createConversationMessageFromSdkMessage(entry);
+      const message = createConversationMessageFromSdkMessage({ entry });
       if (message) {
         seeded.push(message);
       }
@@ -197,6 +219,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       channelId?: string;
       runId?: string;
     };
+    queuedMessages?: QueuedTurnMessage[];
   }): Promise<PreparedTurnState> {
     const existingState = await args.thread.state;
     const existingSandboxId = existingState
@@ -219,44 +242,44 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       messageId: args.message.id,
       messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
     });
-    const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
-      args.message.attachments,
-    );
-    const imageAttachmentCount = messageHasPotentialImageAttachment
-      ? countPotentialImageAttachments(args.message.attachments)
-      : 0;
+    for (const queued of args.queuedMessages ?? []) {
+      const queuedMessage = createConversationMessageFromSdkMessage({
+        entry: queued.message,
+        explicitMention: queued.explicitMention,
+        userText: queued.userText,
+      });
+      if (queuedMessage) {
+        upsertConversationMessage(conversation, queuedMessage);
+      }
+    }
 
-    const normalizedUserText =
-      normalizeConversationText(args.userText) || "[non-text message]";
-    const slackTs = getSlackMessageTs(args.message);
-    const incomingUserMessage: ConversationMessage = {
-      id: args.message.id,
-      role: "user",
-      text: normalizedUserText,
-      createdAtMs: args.message.metadata.dateSent.getTime(),
-      author: {
-        userId: args.message.author.userId,
-        userName: args.message.author.userName,
-        fullName: args.message.author.fullName,
-        isBot:
-          typeof args.message.author.isBot === "boolean"
-            ? args.message.author.isBot
-            : undefined,
-      },
-      meta: {
-        attachmentCount: args.message.attachments.length,
-        explicitMention: args.explicitMention,
-        imageAttachmentCount:
-          imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
-        slackTs,
-        imagesHydrated: !messageHasPotentialImageAttachment,
-      },
-    };
+    const incomingUserMessage = createConversationMessageFromSdkMessage({
+      entry: args.message,
+      explicitMention: args.explicitMention,
+      userText: args.userText,
+    });
 
     const userMessageId = upsertConversationMessage(
       conversation,
-      incomingUserMessage,
+      incomingUserMessage ?? {
+        id: args.message.id,
+        role: "user",
+        text: "[non-text message]",
+        createdAtMs: args.message.metadata.dateSent.getTime(),
+        author: {
+          userId: args.message.author.userId,
+          userName: args.message.author.userName,
+          fullName: args.message.author.fullName,
+        },
+        meta: { explicitMention: args.explicitMention },
+      },
     );
+
+    const messageHasPotentialImageAttachment =
+      hasPotentialImageAttachment(args.message.attachments) ||
+      (args.queuedMessages ?? []).some((queued) =>
+        hasPotentialImageAttachment(queued.message.attachments),
+      );
 
     const shouldHydrateVisionContext =
       !conversation.vision.backfillCompletedAtMs ||

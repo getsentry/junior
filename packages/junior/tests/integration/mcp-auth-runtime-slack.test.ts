@@ -28,6 +28,7 @@ const {
 } = vi.hoisted(() => ({
   agentProbe: {
     continueCallCount: 0,
+    directProviderSearch: false,
     promptCallCount: 0,
     searchToolNames: [] as string[][],
   },
@@ -42,6 +43,7 @@ const {
 function resetAgentProbe(): void {
   agentProbe.promptCallCount = 0;
   agentProbe.continueCallCount = 0;
+  agentProbe.directProviderSearch = false;
   agentProbe.searchToolNames.length = 0;
 }
 
@@ -133,6 +135,23 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       this.aborted = false;
       this.state.messages.push(message);
 
+      if (agentProbe.directProviderSearch) {
+        const searchMcpTools = this.state.tools.find(
+          (tool) => tool.name === "searchMcpTools",
+        );
+        if (!searchMcpTools) {
+          throw new Error("searchMcpTools missing");
+        }
+        await searchMcpTools.execute("tool-search-provider", {
+          provider: EVAL_MCP_AUTH_PROVIDER,
+          query: "budget echo query",
+        });
+        if (this.aborted) {
+          return {};
+        }
+        throw new Error("Expected MCP auth pause while searching eval-auth");
+      }
+
       const loadSkillTool = this.state.tools.find(
         (tool) => tool.name === "loadSkill",
       );
@@ -223,7 +242,7 @@ type McpOauthCallbackHarnessModule =
   typeof import("../fixtures/mcp-oauth-callback-harness");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
+type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 let chatRuntimeModule: ChatRuntimeModule;
 let mcpAuthStoreModule: McpAuthStoreModule;
@@ -288,7 +307,7 @@ describe("mcp auth runtime slack integration", () => {
       await import("../fixtures/mcp-oauth-callback-harness");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
-    turnSessionStoreModule = await import("@/chat/state/turn-session-store");
+    turnSessionStoreModule = await import("@/chat/state/turn-session");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -400,10 +419,7 @@ describe("mcp auth runtime slack integration", () => {
     const parkedAuthSessionId = pendingAuthSession!.authSessionId;
 
     const pendingCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionCheckpoint(
-        threadId,
-        turnId,
-      );
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
       sessionId: turnId,
@@ -411,7 +427,6 @@ describe("mcp auth runtime slack integration", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      loadedSkillNames: [SKILL_NAME],
     });
 
     const parkedState =
@@ -439,6 +454,21 @@ describe("mcp auth runtime slack integration", () => {
       });
 
     expect(response.status).toBe(200);
+    const sessionRecordAfterAuth =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    expect(sessionRecordAfterAuth?.piMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `MCP authorization completed for provider "${EVAL_MCP_AUTH_PROVIDER}". Continue the blocked request and retry the provider operation if needed.`,
+            },
+          ],
+        }),
+      ]),
+    );
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(1);
     expect(agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
@@ -471,16 +501,12 @@ describe("mcp auth runtime slack integration", () => {
     });
 
     const completedCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionCheckpoint(
-        threadId,
-        turnId,
-      );
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
     expect(completedCheckpoint).toMatchObject({
       conversationId: threadId,
       sessionId: turnId,
       sliceId: 2,
       state: "completed",
-      loadedSkillNames: [SKILL_NAME],
     });
 
     const resumedState =
@@ -590,10 +616,7 @@ describe("mcp auth runtime slack integration", () => {
     ]);
 
     const pendingCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionCheckpoint(
-        threadId,
-        turnId,
-      );
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
       sessionId: turnId,
@@ -601,7 +624,6 @@ describe("mcp auth runtime slack integration", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      loadedSkillNames: [SKILL_NAME],
     });
 
     const parkedState =
@@ -620,5 +642,111 @@ describe("mcp auth runtime slack integration", () => {
         },
       },
     });
+  });
+
+  it("parks and resumes an MCP auth challenge from direct provider activation", async () => {
+    agentProbe.directProviderSearch = true;
+    const threadId = "slack:C125:1700000000.003";
+    const turnId = "turn_user-3";
+    const { createTestChatRuntime } = chatRuntimeModule;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: async () => [],
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: threadId,
+      state: {
+        conversation: {
+          messages: [
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: priorBudgetContext,
+              createdAtMs: 1,
+              author: {
+                userName: "junior",
+                isBot: true,
+              },
+            },
+          ],
+        },
+      },
+    });
+    await mirrorThreadStateToAdapter(thread);
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "user-3",
+        threadId,
+        text: "use eval-auth directly for the budget answer",
+        isMention: true,
+        author: {
+          userId: "U123",
+          userName: "dcramer",
+        },
+        raw: {
+          channel: "C125",
+          ts: "1700000000.004",
+          thread_ts: "1700000000.003",
+        },
+      }),
+    );
+
+    const pendingCheckpoint =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    expect(pendingCheckpoint).toMatchObject({
+      conversationId: threadId,
+      sessionId: turnId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      resumeReason: "auth",
+    });
+
+    const pendingAuthSession =
+      await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(
+        "U123",
+        EVAL_MCP_AUTH_PROVIDER,
+      );
+    expect(pendingAuthSession).toMatchObject({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      conversationId: threadId,
+      sessionId: turnId,
+      userId: "U123",
+    });
+
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: pendingAuthSession!.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+      });
+
+    expect(response.status).toBe(200);
+    expect(agentProbe.promptCallCount).toBe(1);
+    expect(agentProbe.continueCallCount).toBe(1);
+    expect(agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
+
+    const completedCheckpoint =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    expect(completedCheckpoint).toMatchObject({
+      conversationId: threadId,
+      sessionId: turnId,
+      state: "completed",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C125",
+          thread_ts: "1700000000.003",
+          text: assistantReplyWithContext,
+        }),
+      }),
+    ]);
   });
 });

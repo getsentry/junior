@@ -58,8 +58,6 @@ export interface ToolRuntimeContext {
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   mcpToolManager?: McpToolManager;
-  /** Called after a provider is lazily activated so the turn checkpoint captures the new state. */
-  onProviderActivated?: () => void;
   sandbox: SandboxWorkspace;
 }
 

@@ -1,3 +1,4 @@
+import { THREAD_STATE_TTL_MS } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deleteMcpAuthSession,
@@ -34,9 +35,10 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
-  failAgentTurnSessionCheckpoint,
-  supersedeAgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+  failAgentTurnSessionRecord,
+  abandonAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
+import { recordAuthorizationCompleted } from "@/chat/state/session-log";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import {
   canScheduleTurnTimeoutResume,
@@ -75,6 +77,13 @@ const CALLBACK_PAGES = {
   },
 } as const;
 
+function mcpAuthorizationId(args: {
+  provider: string;
+  sessionId: string;
+}): string {
+  return `${args.sessionId}:mcp:${args.provider}`;
+}
+
 function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
   const page = CALLBACK_PAGES[kind];
   return htmlCallbackResponse(page.title, page.message, page.status);
@@ -104,13 +113,13 @@ async function persistCompletedReplyState(
   });
 }
 
-async function failCheckpointBestEffort(args: {
+async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
   sessionId: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionCheckpoint({
+    await failAgentTurnSessionRecord({
       conversationId: args.conversationId,
       sessionId: args.sessionId,
       errorMessage: args.errorMessage,
@@ -118,13 +127,13 @@ async function failCheckpointBestEffort(args: {
   } catch (error) {
     logException(
       error,
-      "mcp_oauth_callback_checkpoint_fail_persist_failed",
+      "mcp_oauth_callback_session_record_fail_persist_failed",
       {},
       {
         "app.ai.conversation_id": args.conversationId,
         "app.ai.session_id": args.sessionId,
       },
-      "Failed to mark MCP OAuth-resumed turn checkpoint failed",
+      "Failed to mark MCP OAuth-resumed turn session record failed",
     );
   }
 }
@@ -148,7 +157,7 @@ async function persistFailedReplyState(
     updateConversationStats,
   });
 
-  await failCheckpointBestEffort({
+  await failSessionRecordBestEffort({
     conversationId: threadId,
     sessionId,
     errorMessage: "OAuth-resumed MCP turn failed",
@@ -182,11 +191,11 @@ async function resumeAuthorizedMcpTurn(args: {
     if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
       clearPendingAuth(conversation, pendingAuth.sessionId);
       await persistThreadStateById(threadId, { conversation });
-      await supersedeAgentTurnSessionCheckpoint({
+      await abandonAgentTurnSessionRecord({
         conversationId: authSession.conversationId,
         sessionId: pendingAuth.sessionId,
         errorMessage:
-          "Auth completed after a newer thread message superseded this blocked request.",
+          "Auth completed after a newer thread message abandoned this blocked request.",
       });
       return;
     }
@@ -227,11 +236,11 @@ async function resumeAuthorizedMcpTurn(args: {
           await persistThreadStateById(threadId, {
             conversation: lockedConversation,
           });
-          await supersedeAgentTurnSessionCheckpoint({
+          await abandonAgentTurnSessionRecord({
             conversationId: authSession.conversationId,
             sessionId: lockedPendingAuth.sessionId,
             errorMessage:
-              "Auth completed after a newer thread message superseded this blocked request.",
+              "Auth completed after a newer thread message abandoned this blocked request.",
           });
           return false;
         }
@@ -258,6 +267,18 @@ async function resumeAuthorizedMcpTurn(args: {
       const lockedChannelConfiguration = getChannelConfigurationServiceById(
         authSession.channelId!,
       );
+
+      await recordAuthorizationCompleted({
+        conversationId: authSession.conversationId,
+        kind: "mcp",
+        provider,
+        requesterId: authSession.userId,
+        authorizationId: mcpAuthorizationId({
+          provider,
+          sessionId: lockedSessionId,
+        }),
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
 
       return {
         messageText: lockedUserMessage.text,
@@ -307,7 +328,7 @@ async function resumeAuthorizedMcpTurn(args: {
           );
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionCheckpoint({
+          await failAgentTurnSessionRecord({
             conversationId: authSession.conversationId,
             sessionId: lockedSessionId,
             errorMessage:
@@ -352,11 +373,11 @@ async function resumeAuthorizedMcpTurn(args: {
           if (!isRetryableTurnError(error, "turn_timeout_resume")) {
             throw error;
           }
-          const checkpointVersion = error.metadata?.checkpointVersion;
+          const version = error.metadata?.version;
           const nextSliceId = error.metadata?.sliceId;
-          if (typeof checkpointVersion !== "number") {
+          if (typeof version !== "number") {
             throw new Error(
-              "Timed-out MCP resume did not include a checkpoint version",
+              "Timed-out MCP resume did not include a session session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {
@@ -378,7 +399,7 @@ async function resumeAuthorizedMcpTurn(args: {
           await scheduleTurnTimeoutResume({
             conversationId: authSession.conversationId,
             sessionId: lockedSessionId,
-            expectedCheckpointVersion: checkpointVersion,
+            expectedVersion: version,
           });
         },
       };

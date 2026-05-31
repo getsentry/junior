@@ -124,13 +124,13 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
-  it("uses cumulative checkpoint diagnostics for resumed reply footers", async () => {
+  it("uses cumulative session diagnostics for resumed reply footers", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
-    const { upsertAgentTurnSessionCheckpoint } =
-      await import("@/chat/state/turn-session-store");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
 
-    await upsertAgentTurnSessionCheckpoint({
+    await upsertAgentTurnSessionRecord({
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 2,

@@ -89,9 +89,6 @@ describe("conversation state", () => {
     const conversation = coerceThreadConversationState({
       conversation: {
         messages: [],
-        processing: {
-          lastSessionId: "turn-1",
-        },
         piMessages: [
           {
             role: "user",
@@ -102,7 +99,6 @@ describe("conversation state", () => {
       },
     });
 
-    expect(conversation.processing.lastSessionId).toBe("turn-1");
     expect(conversation.piMessages).toEqual([
       {
         role: "user",

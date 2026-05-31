@@ -17,6 +17,22 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 
 const emptyThreadReplies = async () => [];
 
+function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
+  return thread.posts.some((post) => {
+    if (typeof post === "string") {
+      return post.includes(text);
+    }
+    if (
+      post &&
+      typeof post === "object" &&
+      "markdown" in (post as Record<string, unknown>)
+    ) {
+      return String((post as { markdown: string }).markdown).includes(text);
+    }
+    return false;
+  });
+}
+
 function createRuntime(
   args: {
     services?: JuniorRuntimeServiceOverrides;
@@ -593,7 +609,7 @@ describe("bot handlers (integration)", () => {
               {
                 conversationId,
                 sessionId,
-                checkpointVersion: 3,
+                version: 3,
                 sliceId: 2,
               },
             );
@@ -618,7 +634,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
     expect(thread.posts).toEqual([
       expect.objectContaining({
@@ -653,7 +669,7 @@ describe("bot handlers (integration)", () => {
               {
                 conversationId,
                 sessionId,
-                checkpointVersion: 3,
+                version: 3,
                 sliceId: 2,
               },
             );
@@ -680,7 +696,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
     expect(thread.posts).toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
@@ -716,7 +732,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createRuntime({
@@ -753,7 +769,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([
@@ -792,7 +808,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createRuntime({
@@ -826,7 +842,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
   });
@@ -838,7 +854,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createRuntime({
@@ -872,7 +888,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([
@@ -901,7 +917,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
       sessionId: activeSessionId,
-      expectedCheckpointVersion: 4,
+      expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createRuntime({
@@ -1094,9 +1110,10 @@ describe("bot handlers (integration)", () => {
         settled = true;
       });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      expect(replyStarted).toBe(true);
+    });
 
-    expect(replyStarted).toBe(true);
     expect(settled).toBe(false);
 
     releaseFirstStatus!();
@@ -1172,14 +1189,15 @@ describe("bot handlers (integration)", () => {
         settled = true;
       });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      expect(replyStarted).toBe(true);
+      expect(thread.posts).toEqual([
+        expect.objectContaining({
+          markdown: "Reply lands after the pending status is drained.",
+        }),
+      ]);
+    });
 
-    expect(replyStarted).toBe(true);
-    expect(thread.posts).toEqual([
-      expect.objectContaining({
-        markdown: "Reply lands after the pending status is drained.",
-      }),
-    ]);
     expect(settled).toBe(false);
 
     releaseFirstStatus!();
@@ -1417,24 +1435,9 @@ describe("bot handlers (integration)", () => {
         settled = true;
       });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const hasReply = thread.posts.some((post) => {
-      if (typeof post === "string") {
-        return post.includes("Today is April 16, 2026.");
-      }
-      if (
-        post &&
-        typeof post === "object" &&
-        "markdown" in (post as Record<string, unknown>)
-      ) {
-        return String((post as { markdown: string }).markdown).includes(
-          "Today is April 16, 2026.",
-        );
-      }
-      return false;
+    await vi.waitFor(() => {
+      expect(postIncludes(thread, "Today is April 16, 2026.")).toBe(true);
     });
-    expect(hasReply).toBe(true);
     expect(settled).toBe(false);
 
     resolveTitle!();

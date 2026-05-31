@@ -121,14 +121,8 @@ export function createTools(
   }
 
   if (context.mcpToolManager) {
-    tools.searchMcpTools = createSearchMcpToolsTool(
-      context.mcpToolManager,
-      context.onProviderActivated,
-    );
-    tools.callMcpTool = createCallMcpToolTool(
-      context.mcpToolManager,
-      context.onProviderActivated,
-    );
+    tools.searchMcpTools = createSearchMcpToolsTool(context.mcpToolManager);
+    tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
   const { channelCapabilities } = context;

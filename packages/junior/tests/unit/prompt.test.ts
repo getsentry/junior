@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
-  it("keeps system instructions independent from per-turn context", () => {
-    const firstSystemPrompt = buildSystemPrompt();
-
-    const firstTurnContext = buildTurnContextPrompt({
+  it("renders first-turn runtime context", () => {
+    const systemPrompt = buildSystemPrompt();
+    const turnContext = buildTurnContextPrompt({
       availableSkills: [
         {
           name: "alpha",
@@ -13,81 +12,15 @@ describe("prompt builders", () => {
           skillPath: "/tmp/skills/alpha",
         },
       ],
-      activeSkills: [],
-      activeMcpCatalogs: [],
+      activeMcpCatalogs: [
+        { provider: "alpha-provider", available_tool_count: 2 },
+      ],
       invocation: null,
       requester: { userId: "U_ALPHA" },
       runtime: {
         conversationId: "conversation-alpha",
         traceId: "trace-alpha",
       },
-      turnState: "fresh",
-    });
-
-    const secondTurnContext = buildTurnContextPrompt({
-      availableSkills: [
-        {
-          name: "beta",
-          description: "Beta workflow",
-          skillPath: "/tmp/skills/beta",
-        },
-      ],
-      activeSkills: [],
-      activeMcpCatalogs: [
-        { provider: "beta-provider", available_tool_count: 2 },
-      ],
-      invocation: null,
-      requester: { userId: "U_BETA" },
-      runtime: {
-        conversationId: "conversation-beta",
-      },
-      turnState: "resumed",
-    });
-
-    expect(buildSystemPrompt.length).toBe(0);
-    expect(firstSystemPrompt).toContain("<identity>");
-    expect(firstSystemPrompt).toContain("Your Slack username is");
-    expect(buildSystemPrompt()).toBe(firstSystemPrompt);
-    expect(firstTurnContext).not.toBe(secondTurnContext);
-    expect(firstTurnContext).not.toContain("<assistant>");
-    expect(firstTurnContext).not.toContain("<thread-participants>");
-    expect(firstTurnContext).toContain("<requester>");
-    expect(firstTurnContext).toContain(
-      "- gen_ai.conversation.id: conversation-alpha",
-    );
-    expect(firstTurnContext).toContain("- trace_id: trace-alpha");
-    expect(firstTurnContext).not.toContain("- model:");
-    expect(firstTurnContext).not.toContain("- fast_model:");
-    expect(firstTurnContext).not.toContain("- channel:");
-    expect(firstTurnContext).not.toContain("- slack_capabilities:");
-    expect(firstTurnContext).not.toContain("- thinking:");
-    expect(firstTurnContext).not.toContain("- sandbox_workspace:");
-    expect(firstSystemPrompt).not.toContain("trace-alpha");
-    expect(buildSystemPrompt()).toBe(firstSystemPrompt);
-  });
-
-  it("omits requester context when requester metadata is unavailable", () => {
-    const turnContext = buildTurnContextPrompt({
-      availableSkills: [],
-      activeSkills: [],
-      activeMcpCatalogs: [],
-      invocation: null,
-      turnState: "fresh",
-    });
-
-    expect(turnContext).not.toContain("<requester>");
-    expect(turnContext).not.toContain("<context>");
-    expect(turnContext).not.toContain("<capabilities>");
-    expect(turnContext).not.toContain("<runtime>");
-  });
-
-  it("puts tool guidance in turn context, not the static system prompt", () => {
-    const systemPrompt = buildSystemPrompt();
-    const turnContext = buildTurnContextPrompt({
-      availableSkills: [],
-      activeSkills: [],
-      activeMcpCatalogs: [],
-      invocation: null,
       toolGuidance: [
         {
           name: "editFile",
@@ -95,17 +28,69 @@ describe("prompt builders", () => {
           promptGuidelines: ["unique oldText"],
         },
       ],
-      turnState: "fresh",
     });
 
-    expect(systemPrompt).not.toContain("<tool-guidance>");
-    expect(turnContext).toContain("<tool-guidance>");
-    expect(turnContext).toContain('name="editFile"');
-    expect(turnContext).toContain("- exact edits");
-    expect(turnContext).toContain("- unique oldText");
+    expect(buildSystemPrompt.length).toBe(0);
+    expect(buildSystemPrompt()).toBe(systemPrompt);
+    expect(turnContext).toMatchInlineSnapshot(`
+      "<runtime-turn-context>
+
+      Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.
+
+      The current user instruction appears after this block in the same message.
+
+      <capabilities>
+      <available-skills>
+      Scan before answering. Load the most specific matching skill; do not answer from memory when a skill fits. A request that names a skill, plugin, provider, or account matching a skill name is a skill match. If none fits, do not load a skill.
+        <skill>
+          <name>alpha</name>
+          <description>Alpha workflow</description>
+          <location>/vercel/sandbox/skills/alpha/SKILL.md</location>
+        </skill>
+      </available-skills>
+
+      <active-mcp-catalogs>
+      Active MCP provider catalogs are available through \`searchMcpTools\`. Call it with provider to list descriptors or with query to narrow results, then pass the exact returned \`tool_name\` to \`callMcpTool\`. Put provider fields inside \`arguments\`.
+        <catalog>
+          <provider>alpha-provider</provider>
+          <available_tool_count>2</available_tool_count>
+        </catalog>
+      </active-mcp-catalogs>
+
+      <tool-guidance>
+        <tool name="editFile">
+          - exact edits
+          - unique oldText
+        </tool>
+      </tool-guidance>
+      </capabilities>
+
+      <context>
+      <requester>
+      - user_id: U_ALPHA
+      </requester>
+      </context>
+
+      <runtime>
+      - gen_ai.conversation.id: conversation-alpha
+      - trace_id: trace-alpha
+      </runtime>
+
+      </runtime-turn-context>"
+    `);
   });
 
-  it("does not expose plugin ownership as prompt knowledge", () => {
+  it("omits empty runtime context sections", () => {
+    expect(
+      buildTurnContextPrompt({
+        availableSkills: [],
+        activeMcpCatalogs: [],
+        invocation: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("renders skill availability without plugin metadata", () => {
     const turnContext = buildTurnContextPrompt({
       availableSkills: [
         {
@@ -115,14 +100,106 @@ describe("prompt builders", () => {
           skillPath: "/tmp/skills/demo-skill",
         },
       ],
-      activeSkills: [],
       activeMcpCatalogs: [],
       invocation: null,
-      turnState: "fresh",
     });
 
-    expect(turnContext).toContain("demo-skill");
-    expect(turnContext).not.toContain("demo-provider");
-    expect(turnContext).not.toContain("<providers>");
+    expect(turnContext).toMatchInlineSnapshot(`
+      "<runtime-turn-context>
+
+      Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.
+
+      The current user instruction appears after this block in the same message.
+
+      <capabilities>
+      <available-skills>
+      Scan before answering. Load the most specific matching skill; do not answer from memory when a skill fits. A request that names a skill, plugin, provider, or account matching a skill name is a skill match. If none fits, do not load a skill.
+        <skill>
+          <name>demo-skill</name>
+          <description>Demo workflow</description>
+          <location>/vercel/sandbox/skills/demo-skill/SKILL.md</location>
+        </skill>
+      </available-skills>
+      </capabilities>
+
+      </runtime-turn-context>"
+    `);
+  });
+
+  it("keeps follow-up context to current-turn facts", () => {
+    expect(
+      buildTurnContextPrompt({
+        availableSkills: [
+          {
+            name: "alpha",
+            description: "Alpha workflow",
+            skillPath: "/tmp/skills/alpha",
+          },
+        ],
+        activeMcpCatalogs: [
+          { provider: "alpha-provider", available_tool_count: 2 },
+        ],
+        artifactState: {
+          listColumnMap: {},
+          lastCanvasId: "canvas-1",
+          lastCanvasUrl: "https://example.com/canvas-1",
+        },
+        configuration: {
+          sentry_project: "junior",
+        },
+        includeSessionContext: false,
+        invocation: null,
+        requester: {
+          userId: "U_BETA",
+          userName: "dcramer",
+        },
+        runtime: {
+          conversationId: "conversation-alpha",
+          traceId: "trace-alpha",
+        },
+        toolGuidance: [
+          {
+            name: "editFile",
+            promptSnippet: "exact edits",
+          },
+        ],
+      }),
+    ).toMatchInlineSnapshot(`
+      "<runtime-turn-context>
+
+      Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.
+
+      The current user instruction appears after this block in the same message.
+
+      <context>
+      <requester>
+      - user_name: dcramer
+      - user_id: U_BETA
+      </requester>
+
+      <artifacts>
+      - last_canvas_id: canvas-1
+      - last_canvas_url: https://example.com/canvas-1
+      </artifacts>
+
+      <configuration>
+      Ambient provider defaults; explicit targets win. Run \`jr-rpc config get|set|unset|list\` as standalone bash commands; do not chain with \`cd\`, \`&&\`, pipes, or provider commands.
+      - sentry_project: junior
+      </configuration>
+      </context>
+
+      </runtime-turn-context>"
+    `);
+  });
+
+  it("omits empty follow-up runtime context", () => {
+    expect(
+      buildTurnContextPrompt({
+        availableSkills: [],
+        activeMcpCatalogs: [],
+        includeSessionContext: false,
+        invocation: null,
+      }),
+    ).toBeNull();
   });
 });

@@ -220,7 +220,7 @@ describe("resumeAuthorizedRequest", () => {
         throw new RetryableTurnError("turn_timeout_resume", "timed out again", {
           conversationId: "conversation-1",
           sessionId: "turn-1",
-          checkpointVersion: 3,
+          version: 3,
           sliceId: 3,
         });
       },
@@ -250,7 +250,7 @@ describe("resumeAuthorizedRequest", () => {
         throw new RetryableTurnError("turn_timeout_resume", "timed out again", {
           conversationId: "conversation-1",
           sessionId: "turn-1",
-          checkpointVersion: 3,
+          version: 3,
           sliceId: 6,
         });
       },

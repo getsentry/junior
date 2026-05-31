@@ -1,11 +1,12 @@
 import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { mention, rubric, slackEvals } from "../helpers";
 
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
   it("when listing Sentry organizations, report accessible organizations", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         credential_providers: ["sentry"],
         plugin_packages: ["@sentry/junior-sentry"],
@@ -24,5 +25,27 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         ],
       }),
     });
+    const output = (result.output ?? {}) as {
+      assistant_posts?: Array<{ text?: string }>;
+      observed_tool_invocations?: Array<{
+        tool?: string;
+        skill_name?: string;
+        bash_command?: string;
+      }>;
+    };
+    expect(output.observed_tool_invocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool: "loadSkill", skill_name: "sentry" }),
+        expect.objectContaining({
+          tool: "bash",
+          bash_command: expect.stringMatching(
+            /\bsentry\s+(org list|api organizations\/)/,
+          ),
+        }),
+      ]),
+    );
+    expect(
+      output.assistant_posts?.map((post) => post.text ?? "").join("\n") ?? "",
+    ).toMatch(/\bgetsentry\b/i);
   });
 });

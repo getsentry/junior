@@ -293,7 +293,7 @@ function replaceRuntimeTurnContext(
   } as PiMessage;
 }
 
-/** Refresh volatile runtime context in a checkpoint before continuing Pi. */
+/** Refresh volatile runtime context in session history before continuing Pi. */
 export function refreshRuntimeTurnContext(
   messages: PiMessage[],
   turnContextPrompt: string,
@@ -322,7 +322,7 @@ export function refreshRuntimeTurnContext(
   ];
 }
 
-/** Remove volatile runtime context before using checkpoint messages as history. */
+/** Remove volatile runtime context before reusing messages as history. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
   return messages.flatMap((message) => {
     const content = getUserMessageContent(message);
@@ -387,7 +387,7 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   activeSkills.push(next);
 }
 
-/** Remove trailing assistant messages before checkpointing. */
+/** Remove trailing assistant messages before committing a resumable boundary. */
 export function trimTrailingAssistantMessages(
   messages: PiMessage[],
 ): PiMessage[] {

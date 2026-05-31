@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 const TURN_TIMEOUT_RESUME_PATH = "/api/internal/turn-resume";
 const TURN_TIMEOUT_RESUME_HMAC_CONTEXT = "junior.turn_timeout_resume.v1";
@@ -12,7 +12,7 @@ const MAX_TURN_TIMEOUT_RESUME_SLICE_ID = 5;
 
 export interface TurnContinuationRequest {
   conversationId: string;
-  expectedCheckpointVersion: number;
+  expectedVersion: number;
   sessionId: string;
 }
 
@@ -34,15 +34,15 @@ export async function getAwaitingTurnContinuationRequest(args: {
   conversationId: string;
   sessionId: string;
 }): Promise<TurnContinuationRequest | undefined> {
-  const checkpoint = await getAgentTurnSessionCheckpoint(
+  const sessionRecord = await getAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
   if (
-    !checkpoint ||
-    checkpoint.state !== "awaiting_resume" ||
-    checkpoint.resumeReason !== "timeout" ||
-    !canScheduleTurnTimeoutResume(checkpoint.sliceId)
+    !sessionRecord ||
+    sessionRecord.state !== "awaiting_resume" ||
+    sessionRecord.resumeReason !== "timeout" ||
+    !canScheduleTurnTimeoutResume(sessionRecord.sliceId)
   ) {
     return undefined;
   }
@@ -50,7 +50,7 @@ export async function getAwaitingTurnContinuationRequest(args: {
   return {
     conversationId: args.conversationId,
     sessionId: args.sessionId,
-    expectedCheckpointVersion: checkpoint.checkpointVersion,
+    expectedVersion: sessionRecord.version,
   };
 }
 
@@ -90,10 +90,11 @@ function parseTurnTimeoutResumeRequest(
   }
 
   const record = value as Record<string, unknown>;
+  const expectedVersion = record.expectedVersion;
   if (
     typeof record.conversationId !== "string" ||
     typeof record.sessionId !== "string" ||
-    typeof record.expectedCheckpointVersion !== "number"
+    typeof expectedVersion !== "number"
   ) {
     return undefined;
   }
@@ -101,7 +102,7 @@ function parseTurnTimeoutResumeRequest(
   return {
     conversationId: record.conversationId,
     sessionId: record.sessionId,
-    expectedCheckpointVersion: record.expectedCheckpointVersion,
+    expectedVersion,
   };
 }
 

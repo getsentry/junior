@@ -37,7 +37,7 @@ type McpOauthCallbackHarnessModule =
   typeof import("../fixtures/mcp-oauth-callback-harness");
 type PluginRegistryModule = typeof import("@/chat/plugins/registry");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
+type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
@@ -116,7 +116,7 @@ describe("mcp oauth callback slack integration", () => {
       await import("../fixtures/mcp-oauth-callback-harness");
     pluginRegistryModule = await import("@/chat/plugins/registry");
     stateAdapterModule = await import("@/chat/state/adapter");
-    turnSessionStoreModule = await import("@/chat/state/turn-session-store");
+    turnSessionStoreModule = await import("@/chat/state/turn-session");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -505,7 +505,7 @@ describe("mcp oauth callback slack integration", () => {
 
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
-    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId: "conversation-4",
       sessionId,
       sliceId: 2,
@@ -579,12 +579,12 @@ describe("mcp oauth callback slack integration", () => {
       conversationStateModule.coerceThreadConversationState(persistedState);
     expect(conversation.processing.pendingAuth).toBeUndefined();
 
-    const checkpoint =
-      await turnSessionStoreModule.getAgentTurnSessionCheckpoint(
+    const sessionRecord =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(
         "conversation-4",
         sessionId,
       );
-    expect(checkpoint?.state).toBe("superseded");
+    expect(sessionRecord?.state).toBe("abandoned");
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {

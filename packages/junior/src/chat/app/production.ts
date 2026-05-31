@@ -59,16 +59,19 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-// Timeout turns checkpoint and schedule an internal continuation when
+// Timed-out turns commit a safe session boundary and schedule continuation when
 // they hit a safe boundary. MCP auth pauses remain retryable too,
 // resumed via the OAuth callback path.
 function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
-  bot.onNewMention((thread, message) => {
+  bot.onNewMention((thread, message, context) => {
     rehydrateAttachmentFetchers(message);
-    return slackRuntime.handleNewMention(thread, message);
+    context?.skipped.forEach((skipped) => rehydrateAttachmentFetchers(skipped));
+    return slackRuntime.handleNewMention(thread, message, {
+      messageContext: context,
+    });
   });
   // Route DMs through the mention handler so every DM gets a reply.
   // Without this, the SDK routes DMs in subscribed threads to
@@ -77,13 +80,19 @@ function registerProductionHandlers(
   // stay silent — wrong for 1:1 conversations. onDirectMessage is
   // checked first (Chat.dispatchToHandlers:3128), bypassing the
   // subscription branch entirely.
-  bot.onDirectMessage((thread, message) => {
+  bot.onDirectMessage((thread, message, _channel, context) => {
     rehydrateAttachmentFetchers(message);
-    return slackRuntime.handleNewMention(thread, message);
+    context?.skipped.forEach((skipped) => rehydrateAttachmentFetchers(skipped));
+    return slackRuntime.handleNewMention(thread, message, {
+      messageContext: context,
+    });
   });
-  bot.onSubscribedMessage((thread, message) => {
+  bot.onSubscribedMessage((thread, message, context) => {
     rehydrateAttachmentFetchers(message);
-    return slackRuntime.handleSubscribedMessage(thread, message);
+    context?.skipped.forEach((skipped) => rehydrateAttachmentFetchers(skipped));
+    return slackRuntime.handleSubscribedMessage(thread, message, {
+      messageContext: context,
+    });
   });
   bot.onAssistantThreadStarted((event) =>
     slackRuntime.handleAssistantThreadStarted(event),

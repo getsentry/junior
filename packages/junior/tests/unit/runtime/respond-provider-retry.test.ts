@@ -170,7 +170,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { generateAssistantReply } from "@/chat/respond";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
@@ -211,12 +211,12 @@ describe("generateAssistantReply provider retry", () => {
     expect(counters.promptCalls).toBe(1);
     expect(counters.continueCalls).toBe(1);
 
-    const checkpoint = await getAgentTurnSessionCheckpoint(
+    const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-1",
       "turn-1",
     );
-    expect(checkpoint?.state).toBe("completed");
-    expect(checkpoint?.piMessages.map((message) => message.role)).toEqual([
+    expect(sessionRecord?.state).toBe("completed");
+    expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "toolResult",
       "assistant",

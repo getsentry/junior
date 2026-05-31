@@ -21,7 +21,7 @@ const ORIGINAL_ENV = { ...process.env };
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type TurnResumeHandlerModule = typeof import("@/handlers/turn-resume");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
+type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
@@ -37,7 +37,7 @@ const testWaitUntil: WaitUntilFn = (task) => {
 async function buildSignedTurnResumeRequest(args: {
   conversationId: string;
   sessionId: string;
-  expectedCheckpointVersion: number;
+  expectedVersion: number;
 }): Promise<Request> {
   const originalFetch = global.fetch;
   const fetchMock = vi.fn(
@@ -89,7 +89,7 @@ describe("turn resume slack integration", () => {
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
     turnResumeHandlerModule = await import("@/handlers/turn-resume");
-    turnSessionStoreModule = await import("@/chat/state/turn-session-store");
+    turnSessionStoreModule = await import("@/chat/state/turn-session");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -104,8 +104,8 @@ describe("turn resume slack integration", () => {
   it("posts the resumed reply through the Slack MSW harness and persists completion", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
-    const checkpoint =
-      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
         conversationId,
         sessionId,
         sliceId: 2,
@@ -117,7 +117,6 @@ describe("turn resume slack integration", () => {
             timestamp: 1,
           },
         ],
-        loadedSkillNames: ["demo-skill"],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
@@ -174,7 +173,7 @@ describe("turn resume slack integration", () => {
       await buildSignedTurnResumeRequest({
         conversationId,
         sessionId,
-        expectedCheckpointVersion: checkpoint.checkpointVersion,
+        expectedVersion: sessionRecord.version,
       }),
       testWaitUntil,
     );
@@ -254,8 +253,8 @@ describe("turn resume slack integration", () => {
   it("posts the failure message when timeout resume depth is exhausted", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
-    const checkpoint =
-      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
         conversationId,
         sessionId,
         sliceId: 5,
@@ -267,7 +266,6 @@ describe("turn resume slack integration", () => {
             timestamp: 1,
           },
         ],
-        loadedSkillNames: ["demo-skill"],
         resumeReason: "timeout",
         resumedFromSliceId: 4,
         errorMessage: "Agent turn timed out",
@@ -313,7 +311,7 @@ describe("turn resume slack integration", () => {
       new RetryableTurnError("turn_timeout_resume", "timed out again", {
         conversationId,
         sessionId,
-        checkpointVersion: checkpoint.checkpointVersion + 1,
+        version: sessionRecord.version + 1,
         sliceId: 6,
       }),
     );
@@ -322,7 +320,7 @@ describe("turn resume slack integration", () => {
       await buildSignedTurnResumeRequest({
         conversationId,
         sessionId,
-        expectedCheckpointVersion: checkpoint.checkpointVersion,
+        expectedVersion: sessionRecord.version,
       }),
       testWaitUntil,
     );
@@ -355,8 +353,8 @@ describe("turn resume slack integration", () => {
   it("posts a continuation notice with a correlation footer when a resumed slice times out again", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
-    const checkpoint =
-      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
         conversationId,
         sessionId,
         sliceId: 2,
@@ -368,7 +366,6 @@ describe("turn resume slack integration", () => {
             timestamp: 1,
           },
         ],
-        loadedSkillNames: ["demo-skill"],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
@@ -414,7 +411,7 @@ describe("turn resume slack integration", () => {
       new RetryableTurnError("turn_timeout_resume", "timed out again", {
         conversationId,
         sessionId,
-        checkpointVersion: checkpoint.checkpointVersion + 1,
+        version: sessionRecord.version + 1,
         sliceId: 3,
       }),
     );
@@ -423,7 +420,7 @@ describe("turn resume slack integration", () => {
       await buildSignedTurnResumeRequest({
         conversationId,
         sessionId,
-        expectedCheckpointVersion: checkpoint.checkpointVersion,
+        expectedVersion: sessionRecord.version,
       }),
       testWaitUntil,
     );
@@ -473,8 +470,8 @@ describe("turn resume slack integration", () => {
   it("uploads resumed reply files through the shared delivery path", async () => {
     const conversationId = "slack:C123:1712345.0003";
     const sessionId = "turn_msg_3";
-    const checkpoint =
-      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
         conversationId,
         sessionId,
         sliceId: 2,
@@ -486,7 +483,6 @@ describe("turn resume slack integration", () => {
             timestamp: 1,
           },
         ],
-        loadedSkillNames: ["demo-skill"],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
@@ -547,7 +543,7 @@ describe("turn resume slack integration", () => {
       await buildSignedTurnResumeRequest({
         conversationId,
         sessionId,
-        expectedCheckpointVersion: checkpoint.checkpointVersion,
+        expectedVersion: sessionRecord.version,
       }),
       testWaitUntil,
     );

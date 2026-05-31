@@ -1,10 +1,7 @@
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  commitPiSessionMessages,
-  loadPiSessionMessages,
-} from "./pi-session-message-store";
+import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 
@@ -16,18 +13,16 @@ export type AgentTurnSessionStatus =
   | "awaiting_resume"
   | "completed"
   | "failed"
-  | "superseded";
+  | "abandoned";
 
 export type AgentTurnResumeReason = "timeout" | "auth";
 
-export interface AgentTurnSessionCheckpoint {
-  checkpointVersion: number;
+export interface AgentTurnSessionRecord {
+  version: number;
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   errorMessage?: string;
-  loadedSkillNames?: string[];
-  activeMcpProviderNames?: string[];
   piMessages: PiMessage[];
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
@@ -37,11 +32,11 @@ export interface AgentTurnSessionCheckpoint {
   updatedAtMs: number;
 }
 
-interface AgentTurnSessionRecord extends Omit<
-  AgentTurnSessionCheckpoint,
+interface StoredAgentTurnSessionRecord extends Omit<
+  AgentTurnSessionRecord,
   "piMessages"
 > {
-  messageCount: number;
+  committedMessageCount: number;
 }
 
 function agentTurnSessionKey(
@@ -100,7 +95,7 @@ function parseStoredRecord(
 function parseAgentTurnSessionRecord(value: unknown):
   | {
       legacyPiMessages: PiMessage[];
-      record: AgentTurnSessionRecord;
+      record: StoredAgentTurnSessionRecord;
     }
   | undefined {
   const parsed = parseStoredRecord(value);
@@ -108,13 +103,13 @@ function parseAgentTurnSessionRecord(value: unknown):
     return undefined;
   }
 
-  const status = parsed.state;
+  const status = parsed.state === "superseded" ? "abandoned" : parsed.state;
   if (
     status !== "running" &&
     status !== "awaiting_resume" &&
     status !== "completed" &&
     status !== "failed" &&
-    status !== "superseded"
+    status !== "abandoned"
   ) {
     return undefined;
   }
@@ -122,7 +117,9 @@ function parseAgentTurnSessionRecord(value: unknown):
   const conversationId = parsed.conversationId;
   const sessionId = parsed.sessionId;
   const sliceId = parsed.sliceId;
-  const checkpointVersion = parsed.checkpointVersion;
+  const version =
+    toFiniteNonNegativeNumber(parsed.version) ??
+    toFiniteNonNegativeNumber(parsed.checkpointVersion);
   const updatedAtMs = parsed.updatedAtMs;
   const cumulativeDurationMs = toFiniteNonNegativeNumber(
     parsed.cumulativeDurationMs,
@@ -132,7 +129,7 @@ function parseAgentTurnSessionRecord(value: unknown):
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
     typeof sliceId !== "number" ||
-    typeof checkpointVersion !== "number" ||
+    version === undefined ||
     typeof updatedAtMs !== "number"
   ) {
     return undefined;
@@ -141,35 +138,23 @@ function parseAgentTurnSessionRecord(value: unknown):
   const legacyPiMessages = Array.isArray(parsed.piMessages)
     ? (parsed.piMessages as PiMessage[])
     : [];
-  const messageCount =
-    toFiniteNonNegativeNumber(parsed.messageCount) ?? legacyPiMessages.length;
+  const committedMessageCount =
+    toFiniteNonNegativeNumber(parsed.committedMessageCount) ??
+    toFiniteNonNegativeNumber(parsed.messageCount) ??
+    legacyPiMessages.length;
 
   return {
     legacyPiMessages,
     record: {
-      checkpointVersion,
+      version,
       conversationId,
       sessionId,
       sliceId,
       state: status,
       updatedAtMs,
-      messageCount,
+      committedMessageCount,
       ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
       ...(cumulativeUsage ? { cumulativeUsage } : {}),
-      ...(Array.isArray(parsed.loadedSkillNames)
-        ? {
-            loadedSkillNames: parsed.loadedSkillNames.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : {}),
-      ...(Array.isArray(parsed.activeMcpProviderNames)
-        ? {
-            activeMcpProviderNames: parsed.activeMcpProviderNames.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : {}),
       ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
         ? { resumeReason: parsed.resumeReason }
         : {}),
@@ -185,26 +170,56 @@ function parseAgentTurnSessionRecord(value: unknown):
 
 function materializePiMessages(
   legacyPiMessages: PiMessage[],
-  messageCount: number,
-  sessionMessages?: PiMessage[],
+  committedMessageCount: number,
+  sessionMessages: PiMessage[] | undefined,
+  sessionProjection: PiMessage[],
 ): PiMessage[] | undefined {
-  if (messageCount === 0) {
-    return [];
+  if (committedMessageCount === 0) {
+    return sessionProjection;
+  }
+  if (sessionProjection.length >= committedMessageCount) {
+    return sessionProjection;
   }
   if (sessionMessages) {
     return sessionMessages;
   }
-  if (legacyPiMessages.length >= messageCount) {
-    return legacyPiMessages.slice(0, messageCount);
+  if (legacyPiMessages.length >= committedMessageCount) {
+    return legacyPiMessages.slice(0, committedMessageCount);
   }
   return undefined;
 }
 
-/** Read a materialized turn-session checkpoint for resume and history loading. */
-export async function getAgentTurnSessionCheckpoint(
+function materializeAgentTurnSessionRecord(
+  stored: StoredAgentTurnSessionRecord,
+  piMessages: PiMessage[],
+): AgentTurnSessionRecord {
+  return {
+    version: stored.version,
+    conversationId: stored.conversationId,
+    sessionId: stored.sessionId,
+    sliceId: stored.sliceId,
+    state: stored.state,
+    updatedAtMs: stored.updatedAtMs,
+    piMessages,
+    ...(stored.cumulativeDurationMs !== undefined
+      ? { cumulativeDurationMs: stored.cumulativeDurationMs }
+      : {}),
+    ...(stored.cumulativeUsage
+      ? { cumulativeUsage: stored.cumulativeUsage }
+      : {}),
+    ...(stored.resumeReason ? { resumeReason: stored.resumeReason } : {}),
+    ...(stored.errorMessage ? { errorMessage: stored.errorMessage } : {}),
+    ...(stored.resumedFromSliceId !== undefined
+      ? { resumedFromSliceId: stored.resumedFromSliceId }
+      : {}),
+  };
+}
+
+/** Read a materialized turn session record for resume and history loading. */
+export async function getAgentTurnSessionRecord(
   conversationId: string,
   sessionId: string,
-): Promise<AgentTurnSessionCheckpoint | undefined> {
+): Promise<AgentTurnSessionRecord | undefined> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const value = await stateAdapter.get(
@@ -215,28 +230,28 @@ export async function getAgentTurnSessionCheckpoint(
     return undefined;
   }
 
-  const sessionMessages = await loadPiSessionMessages({
+  const sessionMessages = await loadMessages({
     conversationId,
-    sessionId,
-    messageCount: parsed.record.messageCount,
+    messageCount: parsed.record.committedMessageCount,
+  });
+  const sessionProjection = await loadProjection({
+    conversationId,
   });
   const piMessages = materializePiMessages(
     parsed.legacyPiMessages,
-    parsed.record.messageCount,
+    parsed.record.committedMessageCount,
     sessionMessages,
+    sessionProjection,
   );
   if (!piMessages) {
     return undefined;
   }
 
-  return {
-    ...parsed.record,
-    piMessages,
-  };
+  return materializeAgentTurnSessionRecord(parsed.record, piMessages);
 }
 
-/** Commit stable Pi session state and advance the turn-session checkpoint cursor. */
-export async function upsertAgentTurnSessionCheckpoint(args: {
+/** Commit stable Pi session state and advance the turn session record. */
+export async function upsertAgentTurnSessionRecord(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -244,13 +259,11 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sliceId: number;
   state: AgentTurnSessionStatus;
   piMessages: PiMessage[];
-  loadedSkillNames?: string[];
-  activeMcpProviderNames?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
   ttlMs?: number;
-}): Promise<AgentTurnSessionCheckpoint> {
+}): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
@@ -259,22 +272,21 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   );
   const existingRecord = parseAgentTurnSessionRecord(existingValue);
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  await commitPiSessionMessages({
+  await commitMessages({
     conversationId: args.conversationId,
-    sessionId: args.sessionId,
     messages: args.piMessages,
     ttlMs,
   });
-  const storedMessageCount = args.piMessages.length;
+  const committedMessageCount = args.piMessages.length;
 
-  const checkpoint: AgentTurnSessionRecord = {
-    checkpointVersion: (existingRecord?.record.checkpointVersion ?? 0) + 1,
+  const record: StoredAgentTurnSessionRecord = {
+    version: (existingRecord?.record.version ?? 0) + 1,
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
     state: args.state,
     updatedAtMs: Date.now(),
-    messageCount: storedMessageCount,
+    committedMessageCount,
     ...(typeof args.cumulativeDurationMs === "number" &&
     Number.isFinite(args.cumulativeDurationMs)
       ? {
@@ -285,20 +297,6 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
         }
       : {}),
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
-    ...(Array.isArray(args.loadedSkillNames)
-      ? {
-          loadedSkillNames: args.loadedSkillNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
-      : {}),
-    ...(Array.isArray(args.activeMcpProviderNames)
-      ? {
-          activeMcpProviderNames: args.activeMcpProviderNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
-      : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
     ...(typeof args.resumedFromSliceId === "number"
@@ -308,22 +306,19 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
 
   await stateAdapter.set(
     agentTurnSessionKey(args.conversationId, args.sessionId),
-    checkpoint,
+    record,
     ttlMs,
   );
-  return {
-    ...checkpoint,
-    piMessages: [...args.piMessages],
-  };
+  return materializeAgentTurnSessionRecord(record, [...args.piMessages]);
 }
 
-/** Mark an unfinished turn-session checkpoint as superseded when a newer turn wins. */
-export async function supersedeAgentTurnSessionCheckpoint(args: {
+/** Mark an unfinished turn session record as abandoned when a newer turn wins. */
+export async function abandonAgentTurnSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   errorMessage?: string;
-}): Promise<AgentTurnSessionCheckpoint | undefined> {
-  const existing = await getAgentTurnSessionCheckpoint(
+}): Promise<AgentTurnSessionRecord | undefined> {
+  const existing = await getAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -331,35 +326,33 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     !existing ||
     existing.state === "completed" ||
     existing.state === "failed" ||
-    existing.state === "superseded"
+    existing.state === "abandoned"
   ) {
     return undefined;
   }
 
-  return await upsertAgentTurnSessionCheckpoint({
+  return await upsertAgentTurnSessionRecord({
     conversationId: existing.conversationId,
     sessionId: existing.sessionId,
     sliceId: existing.sliceId,
-    state: "superseded",
+    state: "abandoned",
     piMessages: existing.piMessages,
     cumulativeDurationMs: existing.cumulativeDurationMs,
     cumulativeUsage: existing.cumulativeUsage,
-    loadedSkillNames: existing.loadedSkillNames,
-    activeMcpProviderNames: existing.activeMcpProviderNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,
   });
 }
 
-/** Mark an unfinished turn-session checkpoint as failed so it cannot resume. */
-export async function failAgentTurnSessionCheckpoint(args: {
+/** Mark an unfinished turn session record as failed so it cannot resume. */
+export async function failAgentTurnSessionRecord(args: {
   conversationId: string;
-  expectedCheckpointVersion?: number;
+  expectedVersion?: number;
   sessionId: string;
   errorMessage?: string;
-}): Promise<AgentTurnSessionCheckpoint | undefined> {
-  const existing = await getAgentTurnSessionCheckpoint(
+}): Promise<AgentTurnSessionRecord | undefined> {
+  const existing = await getAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -367,14 +360,14 @@ export async function failAgentTurnSessionCheckpoint(args: {
     !existing ||
     existing.state === "completed" ||
     existing.state === "failed" ||
-    existing.state === "superseded" ||
-    (typeof args.expectedCheckpointVersion === "number" &&
-      existing.checkpointVersion !== args.expectedCheckpointVersion)
+    existing.state === "abandoned" ||
+    (typeof args.expectedVersion === "number" &&
+      existing.version !== args.expectedVersion)
   ) {
     return undefined;
   }
 
-  return await upsertAgentTurnSessionCheckpoint({
+  return await upsertAgentTurnSessionRecord({
     conversationId: existing.conversationId,
     sessionId: existing.sessionId,
     sliceId: existing.sliceId,
@@ -382,8 +375,6 @@ export async function failAgentTurnSessionCheckpoint(args: {
     piMessages: existing.piMessages,
     cumulativeDurationMs: existing.cumulativeDurationMs,
     cumulativeUsage: existing.cumulativeUsage,
-    loadedSkillNames: existing.loadedSkillNames,
-    activeMcpProviderNames: existing.activeMcpProviderNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,

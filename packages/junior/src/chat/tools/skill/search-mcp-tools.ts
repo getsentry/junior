@@ -14,6 +14,17 @@ interface RankedTool {
   score: number;
 }
 
+interface ProviderSummary {
+  provider: string;
+  description: string;
+  active: boolean;
+}
+
+interface RankedProvider {
+  provider: ProviderSummary;
+  score: number;
+}
+
 function normalize(value: string): string {
   return value
     .toLowerCase()
@@ -80,6 +91,38 @@ function scoreTool(toolDef: ManagedMcpToolDescriptor, query: string): number {
   return score;
 }
 
+function scoreProvider(provider: ProviderSummary, query: string): number {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  const normalizedName = normalize(provider.provider);
+  const text = normalize([provider.provider, provider.description].join(" "));
+  let score = 0;
+
+  if (normalizedName === normalizedQuery) {
+    score += 100;
+  }
+  if (normalizedName.includes(normalizedQuery)) {
+    score += 50;
+  }
+  if (text.includes(normalizedQuery)) {
+    score += 25;
+  }
+
+  for (const term of normalizedQuery.split(/\s+/).filter(Boolean)) {
+    if (normalizedName.includes(term)) {
+      score += 12;
+    }
+    if (text.includes(term)) {
+      score += 4;
+    }
+  }
+
+  return score;
+}
+
 function searchMcpCatalog(
   tools: ManagedMcpToolDescriptor[],
   query: string,
@@ -107,14 +150,39 @@ function searchMcpCatalog(
     .map((ranked) => ranked.tool);
 }
 
+function searchProviderCatalog(
+  providers: ProviderSummary[],
+  query: string,
+): ProviderSummary[] {
+  const sorted = [...providers].sort((left, right) =>
+    left.provider.localeCompare(right.provider),
+  );
+  if (!normalize(query)) {
+    return sorted;
+  }
+
+  return sorted
+    .map(
+      (provider): RankedProvider => ({
+        provider,
+        score: scoreProvider(provider, query),
+      }),
+    )
+    .filter((ranked) => ranked.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return left.provider.provider.localeCompare(right.provider.provider);
+    })
+    .map((ranked) => ranked.provider);
+}
+
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
-export function createSearchMcpToolsTool(
-  mcpToolManager: McpToolManager,
-  onProviderActivated?: () => void,
-) {
+export function createSearchMcpToolsTool(mcpToolManager: McpToolManager) {
   return tool({
     description:
-      "List or search active MCP tools and return full descriptors, including input/output schemas and annotations. When provider is supplied and not yet active, Junior connects to it on demand. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
+      "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     inputSchema: Type.Object(
       {
         query: Type.Optional(
@@ -144,7 +212,6 @@ export function createSearchMcpToolsTool(
     execute: async ({ query, provider, max_results }) => {
       if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
         await mcpToolManager.activateProvider(provider);
-        onProviderActivated?.();
       }
       const catalog = mcpToolManager.getActiveToolCatalog(
         provider ? { provider } : {},
@@ -154,11 +221,18 @@ export function createSearchMcpToolsTool(
         0,
         maxResults,
       );
+      const providers = provider
+        ? []
+        : searchProviderCatalog(
+            mcpToolManager.getAvailableProviderCatalog(),
+            query ?? "",
+          ).slice(0, maxResults);
       return {
         query: query ?? null,
         provider: provider ?? null,
         total_active_tools: catalog.length,
         returned_tools: matches.length,
+        available_providers: providers,
         tools: matches.map(toExposedToolSummary),
       };
     },

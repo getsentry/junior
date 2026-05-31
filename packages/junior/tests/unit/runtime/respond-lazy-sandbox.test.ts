@@ -5,7 +5,7 @@ const {
   createSandboxCallCount,
   activeSandboxVersion,
   attachFileReadVersions,
-  checkpointLoadedSkillNames,
+  sessionRecordPiMessages,
   pendingWorkspaceRelease,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
@@ -28,8 +28,8 @@ const {
   attachFileReadVersions: {
     value: [] as number[],
   },
-  checkpointLoadedSkillNames: {
-    value: [] as string[],
+  sessionRecordPiMessages: {
+    value: [] as unknown[],
   },
   pendingWorkspaceRelease: {
     value: undefined as (() => void) | undefined,
@@ -303,22 +303,21 @@ vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
 }));
 
-vi.mock("@/chat/services/turn-checkpoint", () => ({
-  loadTurnCheckpoint: async () => ({
-    resumedFromCheckpoint: false,
+vi.mock("@/chat/services/turn-session-record", () => ({
+  loadTurnSessionRecord: async () => ({
+    resumedFromSessionRecord: false,
     currentSliceId: 1,
-    existingCheckpoint:
-      checkpointLoadedSkillNames.value.length > 0
+    existingSessionRecord:
+      sessionRecordPiMessages.value.length > 0
         ? {
-            loadedSkillNames: [...checkpointLoadedSkillNames.value],
-            piMessages: [],
+            piMessages: [...sessionRecordPiMessages.value],
           }
         : undefined,
     canUseTurnSession: false,
   }),
-  persistCompletedCheckpoint: async () => undefined,
-  persistAuthPauseCheckpoint: async () => ({
-    checkpointVersion: 1,
+  persistCompletedSessionRecord: async () => undefined,
+  persistAuthPauseSessionRecord: async () => ({
+    version: 1,
     conversationId: "conversation-1",
     piMessages: [],
     sessionId: "turn-1",
@@ -515,7 +514,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
     attachFileReadVersions.value = [];
-    checkpointLoadedSkillNames.value = [];
+    sessionRecordPiMessages.value = [];
     pendingWorkspaceRelease.value = undefined;
     selectedThinkingLevels.value = [];
   });
@@ -542,8 +541,18 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
-  it("does not create a sandbox for checkpoint-loaded skills at turn start", async () => {
-    checkpointLoadedSkillNames.value = ["demo-skill"];
+  it("does not create a sandbox for restored skill history at turn start", async () => {
+    sessionRecordPiMessages.value = [
+      {
+        role: "toolResult",
+        toolName: "loadSkill",
+        isError: false,
+        details: {
+          skill_name: "demo-skill",
+        },
+        content: [{ type: "text", text: "loaded" }],
+      },
+    ];
 
     const reply = await generateAssistantReply("hello");
 

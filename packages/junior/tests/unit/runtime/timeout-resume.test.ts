@@ -35,7 +35,7 @@ describe("timeout resume callback signing", () => {
     await scheduleTurnTimeoutResume({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -50,7 +50,7 @@ describe("timeout resume callback signing", () => {
     await expect(verifyTurnTimeoutResumeRequest(request)).resolves.toEqual({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
   });
 
@@ -63,7 +63,7 @@ describe("timeout resume callback signing", () => {
     await scheduleTurnTimeoutResume({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -92,7 +92,7 @@ describe("timeout resume callback signing", () => {
       scheduleTurnTimeoutResume({
         conversationId: "slack:C123:1712345.0001",
         sessionId: "turn_msg_1",
-        expectedCheckpointVersion: 3,
+        expectedVersion: 3,
       }),
     ).rejects.toThrow("JUNIOR_SECRET");
     expect(fetchMock).not.toHaveBeenCalled();

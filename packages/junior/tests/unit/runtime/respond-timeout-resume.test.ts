@@ -155,7 +155,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 import { generateAssistantReply } from "@/chat/respond";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 describe("generateAssistantReply timeout resume", () => {
   beforeEach(async () => {
@@ -171,7 +171,7 @@ describe("generateAssistantReply timeout resume", () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
-  it("checkpoints the last safe boundary and throws a retryable timeout error", async () => {
+  it("stores the last safe boundary and throws a retryable timeout error", async () => {
     const replyPromise = generateAssistantReply("help me", {
       requester: { userId: "U123" },
       correlation: {
@@ -190,29 +190,28 @@ describe("generateAssistantReply timeout resume", () => {
     expect(error.metadata).toMatchObject({
       conversationId: "conversation-1",
       sessionId: "turn-1",
-      checkpointVersion: expect.any(Number),
+      version: expect.any(Number),
       sliceId: 2,
     });
 
-    const checkpoint = await getAgentTurnSessionCheckpoint(
+    const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-1",
       "turn-1",
     );
-    expect(checkpoint).toMatchObject({
+    expect(sessionRecord).toMatchObject({
       state: "awaiting_resume",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
-      loadedSkillNames: [],
     });
-    expect(checkpoint?.piMessages).toEqual([
+    expect(sessionRecord?.piMessages).toEqual([
       expect.objectContaining({
         role: "user",
       }),
     ]);
   });
 
-  it("persists omitted-image context in the checkpointed Pi user message", async () => {
+  it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = generateAssistantReply("what is in this image?", {
       requester: { userId: "U123" },
       omittedImageAttachmentCount: 1,
@@ -227,11 +226,11 @@ describe("generateAssistantReply timeout resume", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await replyPromise;
 
-    const checkpoint = await getAgentTurnSessionCheckpoint(
+    const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-2",
       "turn-2",
     );
-    const userMessage = checkpoint?.piMessages[0] as
+    const userMessage = sessionRecord?.piMessages[0] as
       | {
           role?: string;
           content?: Array<{ type?: string; text?: string }>;

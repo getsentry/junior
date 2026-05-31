@@ -5,10 +5,10 @@ import {
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
-  failAgentTurnSessionCheckpoint,
-  getAgentTurnSessionCheckpoint,
-  type AgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+  type AgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -50,77 +50,80 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function persistCompletedReplyState(args: {
-  checkpoint: AgentTurnSessionCheckpoint;
+  sessionRecord: AgentTurnSessionRecord;
   reply: AssistantReply;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(
-    args.checkpoint.conversationId,
+    args.sessionRecord.conversationId,
   );
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(
     conversation,
-    args.checkpoint.sessionId,
+    args.sessionRecord.sessionId,
   );
   const statePatch = buildDeliveredTurnStatePatch({
     artifacts,
     conversation,
     reply: args.reply,
-    sessionId: args.checkpoint.sessionId,
+    sessionId: args.sessionRecord.sessionId,
     userMessageId: userMessage?.id,
   });
 
-  await persistThreadStateById(args.checkpoint.conversationId, {
+  await persistThreadStateById(args.sessionRecord.conversationId, {
     ...statePatch,
   });
 }
 
-async function failCheckpointBestEffort(args: {
-  checkpoint: AgentTurnSessionCheckpoint;
+async function failSessionRecordBestEffort(args: {
+  sessionRecord: AgentTurnSessionRecord;
   errorMessage: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionCheckpoint({
-      conversationId: args.checkpoint.conversationId,
-      expectedCheckpointVersion: args.checkpoint.checkpointVersion,
-      sessionId: args.checkpoint.sessionId,
+    await failAgentTurnSessionRecord({
+      conversationId: args.sessionRecord.conversationId,
+      expectedVersion: args.sessionRecord.version,
+      sessionId: args.sessionRecord.sessionId,
       errorMessage: args.errorMessage,
     });
   } catch (error) {
     logException(
       error,
-      "timeout_resume_checkpoint_fail_persist_failed",
+      "timeout_resume_session_record_fail_persist_failed",
       {},
       {
-        "app.ai.conversation_id": args.checkpoint.conversationId,
-        "app.ai.session_id": args.checkpoint.sessionId,
+        "app.ai.conversation_id": args.sessionRecord.conversationId,
+        "app.ai.session_id": args.sessionRecord.sessionId,
       },
-      "Failed to mark timed-out turn checkpoint failed",
+      "Failed to mark timed-out turn session record failed",
     );
   }
 }
 
 async function persistFailedReplyState(
-  checkpoint: AgentTurnSessionCheckpoint,
+  sessionRecord: AgentTurnSessionRecord,
 ): Promise<void> {
-  const currentState = await getPersistedThreadState(checkpoint.conversationId);
+  const currentState = await getPersistedThreadState(
+    sessionRecord.conversationId,
+  );
   const conversation = coerceThreadConversationState(currentState);
-  clearPendingAuth(conversation, checkpoint.sessionId);
+  clearPendingAuth(conversation, sessionRecord.sessionId);
 
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    sessionId: checkpoint.sessionId,
-    userMessageId: getTurnUserMessage(conversation, checkpoint.sessionId)?.id,
+    sessionId: sessionRecord.sessionId,
+    userMessageId: getTurnUserMessage(conversation, sessionRecord.sessionId)
+      ?.id,
     markConversationMessage,
     updateConversationStats,
   });
 
-  await failCheckpointBestEffort({
-    checkpoint,
+  await failSessionRecordBestEffort({
+    sessionRecord,
     errorMessage: "Timed-out turn failed while resuming",
   });
-  await persistThreadStateById(checkpoint.conversationId, {
+  await persistThreadStateById(sessionRecord.conversationId, {
     conversation,
   });
 }
@@ -141,15 +144,15 @@ async function resumeTimedOutTurn(
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
     beforeStart: async () => {
-      const checkpoint = await getAgentTurnSessionCheckpoint(
+      const sessionRecord = await getAgentTurnSessionRecord(
         payload.conversationId,
         payload.sessionId,
       );
       if (
-        !checkpoint ||
-        checkpoint.state !== "awaiting_resume" ||
-        checkpoint.resumeReason !== "timeout" ||
-        checkpoint.checkpointVersion !== payload.expectedCheckpointVersion
+        !sessionRecord ||
+        sessionRecord.state !== "awaiting_resume" ||
+        sessionRecord.resumeReason !== "timeout" ||
+        sessionRecord.version !== payload.expectedVersion
       ) {
         return false;
       }
@@ -214,16 +217,16 @@ async function resumeTimedOutTurn(
           ...getTurnUserReplyAttachmentContext(userMessage),
         },
         onSuccess: async (reply: AssistantReply) => {
-          await persistCompletedReplyState({ checkpoint, reply });
+          await persistCompletedReplyState({ sessionRecord, reply });
         },
         onFailure: async () => {
-          await persistFailedReplyState(checkpoint);
+          await persistFailedReplyState(sessionRecord);
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionCheckpoint({
-            conversationId: checkpoint.conversationId,
-            expectedCheckpointVersion: checkpoint.checkpointVersion,
-            sessionId: checkpoint.sessionId,
+          await failAgentTurnSessionRecord({
+            conversationId: sessionRecord.conversationId,
+            expectedVersion: sessionRecord.version,
+            sessionId: sessionRecord.sessionId,
             errorMessage:
               "Timed-out turn reply was delivered but completion state did not persist",
           });
@@ -247,11 +250,11 @@ async function resumeTimedOutTurn(
           if (!isRetryableTurnError(error, "turn_timeout_resume")) {
             throw error;
           }
-          const checkpointVersion = error.metadata?.checkpointVersion;
+          const version = error.metadata?.version;
           const nextSliceId = error.metadata?.sliceId;
-          if (typeof checkpointVersion !== "number") {
+          if (typeof version !== "number") {
             throw new Error(
-              "Timed-out resume turn did not include a checkpoint version",
+              "Timed-out resume turn did not include a session session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {
@@ -275,7 +278,7 @@ async function resumeTimedOutTurn(
           await scheduleTurnTimeoutResume({
             conversationId: payload.conversationId,
             sessionId: payload.sessionId,
-            expectedCheckpointVersion: checkpointVersion,
+            expectedVersion: version,
           });
         },
       };

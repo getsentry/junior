@@ -114,7 +114,7 @@ describe("context compaction retained messages", () => {
   });
 });
 
-describe("context compaction checkpoint fork", () => {
+describe("context compaction projection reset", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
@@ -132,27 +132,24 @@ describe("context compaction checkpoint fork", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("automatic compaction creates a new checkpoint without rewriting the previous one", async () => {
+  it("automatic compaction replaces the conversation projection without a synthetic session", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
-      await import("@/chat/state/turn-session-store");
+    const { commitMessages, loadProjection } =
+      await import("@/chat/state/session-log");
 
     const priorMessages = [
       user("Please remember the deploy blocker.", 1),
       assistant("The blocker is missing migration approval.", 2),
     ];
-    await upsertAgentTurnSessionCheckpoint({
+    await commitMessages({
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      sliceId: 1,
-      state: "completed",
-      piMessages: priorMessages,
+      messages: priorMessages,
+      ttlMs: 60_000,
     });
     const conversation = coerceThreadConversationState({});
-    conversation.processing.lastSessionId = "turn-1";
 
     const compactor = createContextCompactor({
       completeText: async () =>
@@ -165,31 +162,20 @@ describe("context compaction checkpoint fork", () => {
     const result = await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-1",
-      previousSessionId: "turn-1",
-    });
-
-    expect(result.compacted).toBe(true);
-    expect(result.sessionId).toBe("compaction_turn-1");
-    expect(conversation.processing.lastSessionId).toBe(result.sessionId);
-
-    await expect(
-      getAgentTurnSessionCheckpoint("conversation-1", "turn-1"),
-    ).resolves.toMatchObject({
-      state: "completed",
       piMessages: priorMessages,
     });
 
-    const fork = await getAgentTurnSessionCheckpoint(
-      "conversation-1",
-      result.sessionId!,
-    );
-    expect(fork).toMatchObject({ state: "completed" });
-    expect(fork?.piMessages.map(textOf).join("\n")).toContain(
+    expect(result.compacted).toBe(true);
+    expect(result).not.toHaveProperty("sessionId");
+    expect(result.piMessages?.map(textOf).join("\n")).toContain(
       "Context handoff summary",
     );
-    expect(fork?.piMessages.map(textOf).join("\n")).toContain(
+    expect(result.piMessages?.map(textOf).join("\n")).toContain(
       "migration approval",
     );
+    await expect(
+      loadProjection({ conversationId: "conversation-1" }),
+    ).resolves.toEqual(result.piMessages);
   });
 
   it("summarizes recent history when compaction input is oversized", async () => {
@@ -197,8 +183,7 @@ describe("context compaction checkpoint fork", () => {
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { upsertAgentTurnSessionCheckpoint } =
-      await import("@/chat/state/turn-session-store");
+    const { commitMessages } = await import("@/chat/state/session-log");
 
     const priorMessages = [
       ...Array.from({ length: 35 }, (_, index) =>
@@ -206,15 +191,12 @@ describe("context compaction checkpoint fork", () => {
       ),
       user("recent-critical-marker keep the rollback plan"),
     ];
-    await upsertAgentTurnSessionCheckpoint({
+    await commitMessages({
       conversationId: "conversation-large",
-      sessionId: "turn-large",
-      sliceId: 1,
-      state: "completed",
-      piMessages: priorMessages,
+      messages: priorMessages,
+      ttlMs: 60_000,
     });
     const conversation = coerceThreadConversationState({});
-    conversation.processing.lastSessionId = "turn-large";
     let capturedPrompt = "";
     let capturedMessageAttributeMode: unknown;
     const compactor = createContextCompactor({
@@ -229,7 +211,7 @@ describe("context compaction checkpoint fork", () => {
     await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-large",
-      previousSessionId: "turn-large",
+      piMessages: priorMessages,
     });
 
     expect(capturedMessageAttributeMode).toBe("metadata");
@@ -243,49 +225,46 @@ describe("context compaction checkpoint fork", () => {
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { upsertAgentTurnSessionCheckpoint } =
-      await import("@/chat/state/turn-session-store");
+    const { commitMessages } = await import("@/chat/state/session-log");
 
-    await upsertAgentTurnSessionCheckpoint({
-      conversationId: "conversation-tool-context",
-      sessionId: "turn-tool-context",
-      sliceId: 1,
-      state: "completed",
-      piMessages: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-call-1",
-              name: "readFile",
-              arguments: { path: "src/large-file.ts", limit: 10_000 },
-            },
-          ],
-          api: "openai-responses",
-          provider: "openai",
-          model: "test-model",
-          usage: {
+    const priorMessages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool-call-1",
+            name: "readFile",
+            arguments: { path: "src/large-file.ts", limit: 10_000 },
+          },
+        ],
+        api: "openai-responses",
+        provider: "openai",
+        model: "test-model",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
             input: 0,
             output: 0,
             cacheRead: 0,
             cacheWrite: 0,
-            totalTokens: 0,
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              total: 0,
-            },
+            total: 0,
           },
-          stopReason: "toolUse",
-          timestamp: 1,
         },
-      ] as PiMessage[],
+        stopReason: "toolUse",
+        timestamp: 1,
+      },
+    ] as PiMessage[];
+    await commitMessages({
+      conversationId: "conversation-tool-context",
+      messages: priorMessages,
+      ttlMs: 60_000,
     });
     const conversation = coerceThreadConversationState({});
-    conversation.processing.lastSessionId = "turn-tool-context";
     let summarized = false;
     const compactor = createContextCompactor({
       completeText: async () => {
@@ -298,46 +277,14 @@ describe("context compaction checkpoint fork", () => {
     const result = await compactor.maybeCompact({
       conversation,
       conversationId: "conversation-tool-context",
-      previousSessionId: "turn-tool-context",
+      piMessages: priorMessages,
     });
 
     expect(result.compacted).toBe(true);
     expect(summarized).toBe(true);
   });
 
-  it("does not compact checkpoints that are awaiting resume", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const { upsertAgentTurnSessionCheckpoint } =
-      await import("@/chat/state/turn-session-store");
-
-    await upsertAgentTurnSessionCheckpoint({
-      conversationId: "conversation-2",
-      sessionId: "turn-awaiting",
-      sliceId: 2,
-      state: "awaiting_resume",
-      resumeReason: "timeout",
-      piMessages: [user("continue me")],
-    });
-    const conversation = coerceThreadConversationState({});
-    conversation.processing.lastSessionId = "turn-awaiting";
-    const compactor = createContextCompactor({
-      completeText: async () => ({ text: "should not run" }) as never,
-    });
-
-    await expect(
-      compactor.maybeCompact({
-        conversation,
-        conversationId: "conversation-2",
-        previousSessionId: "turn-awaiting",
-      }),
-    ).resolves.toEqual({ compacted: false, reason: "not_completed" });
-    expect(conversation.processing.lastSessionId).toBe("turn-awaiting");
-  });
-
-  it("does not compact when the checkpoint is missing", async () => {
+  it("does not compact when there is no reusable conversation projection", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
@@ -345,7 +292,6 @@ describe("context compaction checkpoint fork", () => {
 
     const completeText = vi.fn(async () => ({ text: "should not run" }));
     const conversation = coerceThreadConversationState({});
-    conversation.processing.lastSessionId = "turn-missing";
     const compactor = createContextCompactor({
       completeText: completeText as never,
     });
@@ -354,10 +300,9 @@ describe("context compaction checkpoint fork", () => {
       compactor.maybeCompact({
         conversation,
         conversationId: "conversation-missing",
-        previousSessionId: "turn-missing",
+        piMessages: [],
       }),
     ).resolves.toEqual({ compacted: false, reason: "missing_context" });
     expect(completeText).not.toHaveBeenCalled();
-    expect(conversation.processing.lastSessionId).toBe("turn-missing");
   });
 });

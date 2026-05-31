@@ -44,7 +44,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { POST } from "@/handlers/turn-resume";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -89,7 +89,7 @@ describe("turn resume handler", () => {
   it("drops stale callbacks after the resume lock is acquired", async () => {
     const conversationId = "slack:C123:1712345.0000";
     const sessionId = "turn_msg_0";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -101,7 +101,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
@@ -145,17 +144,16 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
-      await upsertAgentTurnSessionCheckpoint({
+      await upsertAgentTurnSessionRecord({
         conversationId,
         sessionId,
-        sliceId: checkpoint.sliceId,
+        sliceId: sessionRecord.sliceId,
         state: "completed",
-        piMessages: checkpoint.piMessages,
-        loadedSkillNames: checkpoint.loadedSkillNames,
+        piMessages: sessionRecord.piMessages,
       });
       expect(await args.beforeStart?.()).toBe(false);
     });
@@ -176,7 +174,7 @@ describe("turn resume handler", () => {
   it("re-enqueues the next slice when a resumed turn times out again", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -188,7 +186,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
@@ -232,7 +229,7 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
@@ -243,8 +240,8 @@ describe("turn resume handler", () => {
         new RetryableTurnError("turn_timeout_resume", "timed out again", {
           conversationId,
           sessionId,
-          checkpointVersion: checkpoint.checkpointVersion + 1,
-          sliceId: checkpoint.sliceId + 1,
+          version: sessionRecord.version + 1,
+          sliceId: sessionRecord.sliceId + 1,
         }),
       );
     });
@@ -262,7 +259,7 @@ describe("turn resume handler", () => {
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion + 1,
+      expectedVersion: sessionRecord.version + 1,
     });
   });
 
@@ -270,7 +267,7 @@ describe("turn resume handler", () => {
     vi.useFakeTimers();
     const conversationId = "slack:C123:1712345.0005";
     const sessionId = "turn_msg_5";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -282,7 +279,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
@@ -326,7 +322,7 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
     resumeSlackTurnMock
       .mockRejectedValueOnce(new ResumeTurnBusyError(conversationId))
@@ -351,7 +347,7 @@ describe("turn resume handler", () => {
     vi.useFakeTimers();
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -363,7 +359,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
@@ -407,7 +402,7 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
     resumeSlackTurnMock.mockRejectedValue(
       new ResumeTurnBusyError(conversationId),
@@ -429,14 +424,14 @@ describe("turn resume handler", () => {
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
   });
 
   it("leaves persisted state unchanged when completion persistence fails after delivery", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -448,7 +443,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
@@ -492,7 +486,7 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
 
     vi.spyOn(threadStateModule, "persistThreadStateById").mockRejectedValueOnce(
@@ -539,10 +533,10 @@ describe("turn resume handler", () => {
     expect(conversation.messages).toHaveLength(1);
   });
 
-  it("persists timeout-resume failure state when checkpoint terminalization fails", async () => {
+  it("persists timeout-resume failure state when terminalization fails", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
-    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+    const sessionRecord = await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 5,
@@ -554,7 +548,6 @@ describe("turn resume handler", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["demo-skill"],
       resumeReason: "timeout",
       resumedFromSliceId: 4,
       errorMessage: "Agent turn timed out",
@@ -598,7 +591,7 @@ describe("turn resume handler", () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
       sessionId,
-      expectedCheckpointVersion: checkpoint.checkpointVersion,
+      expectedVersion: sessionRecord.version,
     });
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
@@ -610,7 +603,7 @@ describe("turn resume handler", () => {
           new RetryableTurnError("turn_timeout_resume", "timed out again", {
             conversationId,
             sessionId,
-            checkpointVersion: checkpoint.checkpointVersion + 1,
+            version: sessionRecord.version + 1,
             sliceId: 6,
           }),
         );
@@ -619,7 +612,7 @@ describe("turn resume handler", () => {
         const originalGet = adapter.get.bind(adapter);
         vi.spyOn(adapter, "get").mockImplementation(async (key: string) => {
           if (key.startsWith("junior:agent_turn_session:")) {
-            throw new Error("checkpoint store unavailable");
+            throw new Error("session record store unavailable");
           }
           return await originalGet(key);
         });

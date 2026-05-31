@@ -144,7 +144,7 @@ Stored dispatch records include:
 - metadata
 - timestamps
 - attempt/max attempt fields
-- lease and checkpoint fields
+- lease and session continuation fields
 - result timestamp or error message
 
 Plugin-visible `Dispatch` is a projection, not the stored record.
@@ -214,9 +214,9 @@ Slack post and state commit are not atomic. If Slack accepts the post but persis
 
 Dispatched requests must not use the interactive Slack turn-resume route. Timeout continuation uses the dispatch callback path:
 
-1. `generateAssistantReply` persists a resumable checkpoint for the dispatch conversation and turn id.
+1. `generateAssistantReply` persists a resumable session record for the dispatch conversation and turn id.
 2. Runner catches `turn_timeout_resume`.
-3. Runner marks dispatch `awaiting_resume` with the next checkpoint version.
+3. Runner marks dispatch `awaiting_resume` with the next record version.
 4. Runner signs another callback for the same dispatch id.
 5. Next callback verifies expected state/version.
 6. Runner resumes with the same dispatch input, conversation id, turn id, actor, destination, and persisted Pi messages.

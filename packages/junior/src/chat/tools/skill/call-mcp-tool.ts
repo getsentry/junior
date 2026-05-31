@@ -38,10 +38,7 @@ function resolveMcpArguments(
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
-export function createCallMcpToolTool(
-  mcpToolManager: McpToolManager,
-  onProviderActivated?: () => void,
-) {
+export function createCallMcpToolTool(mcpToolManager: McpToolManager) {
   return tool({
     description:
       "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
@@ -65,7 +62,6 @@ export function createCallMcpToolTool(
       const provider = parseMcpProviderFromToolName(tool_name);
       if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
         await mcpToolManager.activateProvider(provider);
-        onProviderActivated?.();
       }
       const mcpTool = mcpToolManager
         .getResolvedActiveTools()

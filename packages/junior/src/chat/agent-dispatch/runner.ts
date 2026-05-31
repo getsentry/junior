@@ -116,7 +116,7 @@ async function persistRuntimePatch(args: {
 async function markDispatch(args: {
   dispatch: DispatchRecord;
   errorMessage?: string;
-  resumeCheckpointVersion?: number;
+  resumeRecordVersion?: number;
   resultMessageTs?: string;
   status: DispatchRecord["status"];
 }): Promise<DispatchRecord> {
@@ -129,8 +129,8 @@ async function markDispatch(args: {
       ...current,
       status: args.status,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-      ...(typeof args.resumeCheckpointVersion === "number"
-        ? { resumeCheckpointVersion: args.resumeCheckpointVersion }
+      ...(typeof args.resumeRecordVersion === "number"
+        ? { resumeRecordVersion: args.resumeRecordVersion }
         : {}),
       ...(args.resultMessageTs
         ? { resultMessageTs: args.resultMessageTs }
@@ -418,15 +418,15 @@ export async function runAgentDispatchSlice(
       return;
     }
     if (isRetryableTurnError(error, "turn_timeout_resume")) {
-      const checkpointVersion = error.metadata?.checkpointVersion;
+      const version = error.metadata?.version;
       const nextSliceId = error.metadata?.sliceId;
       if (
-        typeof checkpointVersion === "number" &&
+        typeof version === "number" &&
         canScheduleTurnTimeoutResume(nextSliceId)
       ) {
         const awaiting = await markDispatch({
           dispatch,
-          resumeCheckpointVersion: checkpointVersion,
+          resumeRecordVersion: version,
           status: "awaiting_resume",
         });
         await scheduleCallback({

@@ -1,5 +1,63 @@
 import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { rubric, slackEvals, threadMessage } from "../helpers";
+
+type EvalOutput = {
+  assistant_posts?: Array<{
+    text?: string;
+    channel?: string;
+    thread_ts?: string;
+  }>;
+  observed_tool_invocations?: Array<{
+    tool?: string;
+    skill_name?: string;
+    bash_command?: string;
+  }>;
+};
+
+function outputOf(result: { output?: unknown }): EvalOutput {
+  return (result.output ?? {}) as EvalOutput;
+}
+
+function postTexts(output: EvalOutput): string[] {
+  return output.assistant_posts?.map((post) => post.text ?? "") ?? [];
+}
+
+function expectNoPublicOAuthUrl(output: EvalOutput): void {
+  expect(postTexts(output).join("\n")).not.toMatch(
+    /https?:\/\/[^\s|>]*(oauth|authorize|callback)[^\s|>]*/i,
+  );
+}
+
+function expectEvalOauthIdentityCheck(output: EvalOutput): void {
+  expect(output.observed_tool_invocations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        tool: "loadSkill",
+        skill_name: "eval-oauth",
+      }),
+      expect.objectContaining({
+        tool: "bash",
+        bash_command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
+      }),
+    ]),
+  );
+}
+
+function expectFinalThreadReply(
+  output: EvalOutput,
+  thread: { channel_id: string; thread_ts: string },
+  pattern: RegExp,
+): void {
+  const matchingPosts =
+    output.assistant_posts?.filter(
+      (post) =>
+        post.channel === thread.channel_id &&
+        post.thread_ts === thread.thread_ts &&
+        pattern.test(post.text ?? ""),
+    ) ?? [];
+  expect(matchingPosts.length).toBeGreaterThan(0);
+}
 
 describeEval("OAuth Workflows", slackEvals, (it) => {
   const mcpAuthResumeThread = {
@@ -11,7 +69,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   it("when MCP auth pauses a turn, resume in the same thread with prior context intact", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         auto_complete_mcp_oauth: ["eval-auth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -38,18 +96,22 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
-          "The private auth-link handoff may happen off-thread and does not need to appear in assistant_posts.",
+          "A private auth-link handoff is expected and does not need to appear in assistant_posts.",
+          "A single URL-free public acknowledgement that authorization is needed, including a note to check the private link, is acceptable before the resumed answer.",
           "A concise resumed answer that only restates the budget deadline is acceptable.",
           "A brief connection or continuation notice is acceptable before the resumed answer.",
         ],
         fail: [
-          "Do not post a public thread note that only says a private auth link was sent.",
+          "Do not post the authorization URL in the public thread.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",
         ],
       }),
     });
+    const output = outputOf(result);
+    expectNoPublicOAuthUrl(output);
+    expectFinalThreadReply(output, mcpAuthResumeThread, /\bFriday\b/i);
   });
 
   const oauthResumeThread = {
@@ -61,7 +123,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   it("when generic OAuth pauses a turn, resume in the same thread with prior context intact", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -87,18 +149,23 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
-          "The private auth-link handoff may happen off-thread and does not need to appear in assistant_posts.",
+          "A private auth-link handoff is expected and does not need to appear in assistant_posts.",
+          "A single URL-free public acknowledgement that authorization is needed, including a note to check the private link, is acceptable before the resumed answer.",
           "A concise resumed answer that only restates the budget deadline is acceptable.",
           "A brief connection or continuation notice is acceptable before the resumed answer or in the same message as the resumed answer.",
         ],
         fail: [
-          "Do not post a public thread note that only says a private auth link was sent.",
+          "Do not post the authorization URL in the public thread.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",
         ],
       }),
     });
+    const output = outputOf(result);
+    expectNoPublicOAuthUrl(output);
+    expectEvalOauthIdentityCheck(output);
+    expectFinalThreadReply(output, oauthResumeThread, /\bFriday\b/i);
   });
 
   const oauthReconnectThread = {
@@ -110,7 +177,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   it("when the user explicitly asks to reconnect, confirm reconnection without auto-resuming another task", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -139,5 +206,13 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         ],
       }),
     });
+    const output = outputOf(result);
+    expectNoPublicOAuthUrl(output);
+    expectEvalOauthIdentityCheck(output);
+    expectFinalThreadReply(
+      output,
+      oauthReconnectThread,
+      /connected|reconnected/i,
+    );
   });
 });

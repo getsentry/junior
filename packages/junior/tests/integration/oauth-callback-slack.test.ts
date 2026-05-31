@@ -26,7 +26,7 @@ const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
+type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 let stateAdapterModule: StateAdapterModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
@@ -54,7 +54,7 @@ describe("oauth callback slack integration", () => {
     stateAdapterModule = await import("@/chat/state/adapter");
     oauthCallbackHarnessModule =
       await import("../fixtures/oauth-callback-harness");
-    turnSessionStoreModule = await import("@/chat/state/turn-session-store");
+    turnSessionStoreModule = await import("@/chat/state/turn-session");
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
   });
@@ -167,11 +167,11 @@ describe("oauth callback slack integration", () => {
     );
   });
 
-  it("resumes a checkpointed OAuth turn with persisted thread state", async () => {
+  it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
     const conversationId = "slack:C123:1700000000.009";
     const sessionId = "turn_msg_9";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
@@ -183,14 +183,13 @@ describe("oauth callback slack integration", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["eval-oauth"],
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
 
     await stateAdapterModule
       .getStateAdapter()
-      .set("oauth-state:eval-oauth-checkpoint-state", {
+      .set("oauth-state:eval-oauth-session-record-state", {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
@@ -247,11 +246,29 @@ describe("oauth callback slack integration", () => {
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
-      state: "eval-oauth-checkpoint-state",
+      state: "eval-oauth-session-record-state",
       code: "eval-oauth-code",
     });
 
     expect(response.status).toBe(200);
+    const sessionRecordAfterAuth =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      );
+    expect(sessionRecordAfterAuth?.piMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: 'Authorization completed for provider "eval-oauth". Continue the blocked request and retry the provider operation if needed.',
+            },
+          ],
+        }),
+      ]),
+    );
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "list my sentry issues",
       expect.objectContaining({
@@ -319,7 +336,7 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
-  it("rebuilds checkpointed OAuth resume context from state loaded under the thread lock", async () => {
+  it("rebuilds session-recorded OAuth resume context from state loaded under the thread lock", async () => {
     const conversationId = "slack:C123:1700000000.011";
     const sessionId = "turn_msg_11";
     const staleState = {
@@ -407,13 +424,12 @@ describe("oauth callback slack integration", () => {
       },
     };
 
-    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
       piMessages: [],
-      loadedSkillNames: ["eval-oauth"],
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -479,24 +495,23 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
-  it("does not re-post the pending message when the checkpoint is already superseded", async () => {
+  it("does not re-post the pending message when the session record is already abandoned", async () => {
     const conversationId = "slack:C123:1700000000.010";
     const sessionId = "turn_msg_10";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "superseded",
+      state: "abandoned",
       piMessages: [],
-      loadedSkillNames: ["eval-oauth"],
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
 
     await stateAdapterModule
       .getStateAdapter()
-      .set("oauth-state:eval-oauth-superseded-state", {
+      .set("oauth-state:eval-oauth-abandoned-state", {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
@@ -508,7 +523,7 @@ describe("oauth callback slack integration", () => {
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
-      state: "eval-oauth-superseded-state",
+      state: "eval-oauth-abandoned-state",
       code: "eval-oauth-code",
     });
 

@@ -28,7 +28,7 @@ import {
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation-notice";
 import { ACTIVE_LOCK_TTL_MS, getStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { addAgentTurnUsage } from "@/chat/usage";
 import {
   startSlackProcessingReactionForMessage,
@@ -327,10 +327,10 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
 
     const generateReply = runArgs.generateReply ?? generateAssistantReply;
     const replyContext = createResumeReplyContext(runArgs, status);
-    const priorCheckpoint =
+    const priorSessionRecord =
       replyContext.correlation?.conversationId &&
       replyContext.correlation?.turnId
-        ? await getAgentTurnSessionCheckpoint(
+        ? await getAgentTurnSessionRecord(
             replyContext.correlation.conversationId,
             replyContext.correlation.turnId,
           )
@@ -365,15 +365,15 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       conversationId:
         runArgs.replyContext?.correlation?.conversationId ?? lockKey,
       durationMs:
-        typeof priorCheckpoint?.cumulativeDurationMs === "number" ||
+        typeof priorSessionRecord?.cumulativeDurationMs === "number" ||
         typeof reply.diagnostics.durationMs === "number"
-          ? (priorCheckpoint?.cumulativeDurationMs ?? 0) +
+          ? (priorSessionRecord?.cumulativeDurationMs ?? 0) +
             (reply.diagnostics.durationMs ?? 0)
           : undefined,
       thinkingLevel: reply.diagnostics.thinkingLevel,
       usage:
         addAgentTurnUsage(
-          priorCheckpoint?.cumulativeUsage,
+          priorSessionRecord?.cumulativeUsage,
           reply.diagnostics.usage,
         ) ?? reply.diagnostics.usage,
     });

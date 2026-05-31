@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-05-26
+- Last Edited: 2026-05-30
 
 ## Purpose
 
@@ -40,6 +40,8 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 Turn context may disclose dynamic capability surfaces that the model can act on, such as available skill names/descriptions, active MCP catalog summaries, and tool guidance attached to the current native tool set. It must not separately disclose plugin ownership or installed plugin/provider catalogs as prompt knowledge. If the model needs plugin-specific behavior, that behavior must arrive through the loaded skill body, tool description, tool schema, `promptSnippet`, or `promptGuidelines`.
 
+Turn context is not a session-state cache. If prior tool use, loaded skills, MCP provider activation, or provider descriptors are already present in the agent session log, runtime must recover handles from that log and only disclose the currently actionable capability surface for this turn. Do not add prompt blocks whose purpose is to preserve or replay state that belongs in the session log.
+
 The combined prompt surface must keep these concerns distinct:
 
 1. Identity/personality.
@@ -51,6 +53,8 @@ The combined prompt surface must keep these concerns distinct:
 Context blocks describe facts. Behavior and output blocks carry instructions.
 
 Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile requester, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in per-turn context.
+
+The agent session log contract is defined in `./agent-session-resumability.md`. Prompt code must treat that log as the source of durable model history and must not introduce an alternate prompt-side history, provider catalog, loaded-skill list, or resume-state channel.
 
 The core operating rules must be split into fixed sections:
 
@@ -133,8 +137,9 @@ Prompt changes are rejected or revised when they introduce:
 2. Multiple adjacent bullets that all express the same ask/act/verify policy.
 3. Tool-schema restatement in prompt prose.
 4. Core prompt or turn-context code that exposes specific installed plugins, plugin providers, plugin-owned config keys, plugin-owned default targets, or plugin-specific workflows outside the dynamic skill/tool surfaces.
-5. Skill instructions that override generic harness behavior without a domain-specific reason.
-6. Static prompt tests that assert wording instead of behavior.
+5. Prompt blocks that duplicate durable session-log state instead of deriving runtime handles from the log.
+6. Skill instructions that override generic harness behavior without a domain-specific reason.
+7. Static prompt tests that assert wording instead of behavior.
 
 ## Observability
 

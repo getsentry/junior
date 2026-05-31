@@ -55,7 +55,8 @@ Agent: loads the matching plugin skill and runs the real provider command
   │    • runtime creates OAuth state
   │    • runtime privately delivers the authorization link
   │    • runtime posts a brief visible thread note that authorization is needed
-  │    • runtime checkpoints the turn as awaiting auth resume
+  │    • runtime appends `authorization_requested` to the agent session log
+  │    • runtime writes the turn session record as awaiting auth resume
   │    • runtime records thread-local `pendingAuth`
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
   │
@@ -68,6 +69,7 @@ Provider: redirects to /api/oauth/callback/<provider>?code=...&state=...
   ├─ Callback validates state and provider match
   ├─ Callback exchanges code for tokens
   ├─ Callback stores tokens by requester ID + provider
+  ├─ Callback appends `authorization_completed` to the agent session log
   ├─ Callback refreshes App Home connected-account state (best effort)
   └─ Callback resumes only if the blocked request is still the latest relevant thread request; otherwise it stores tokens and stays silent in Slack
   │
@@ -87,7 +89,8 @@ Agent: calls an MCP tool from the same plugin
   ├─ MCP OAuth provider persists auth session state
   ├─ Runtime privately delivers the authorization link to the requesting user
   ├─ Runtime posts a brief visible thread note that authorization is needed
-  ├─ Turn checkpoint is written as awaiting auth resume
+  ├─ Runtime appends `authorization_requested` to the agent session log
+  ├─ Turn session record is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
   │
@@ -99,6 +102,7 @@ Provider: redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
   │
   ├─ Callback loads MCP auth session by state
   ├─ SDK completes OAuth and persists tokens
+  ├─ Callback appends `authorization_completed` to the agent session log
   └─ Callback resumes only if the thread's current `pendingAuth` target is still the latest relevant request
 ```
 
@@ -137,6 +141,10 @@ Purpose:
   - remembers which blocked request is eligible for auto-resume
   - deduplicates repeated prompts while a fresh private link is already pending
   - lets callbacks suppress stale resumes after newer thread activity
+- This state is callback routing and dedupe state only. It must not be rendered
+  into the prompt as an auth-completion hint. Model-visible authorization
+  completion is represented by the agent session log's `authorization_completed`
+  event and its deterministic Pi projection.
 
 ### User tokens
 

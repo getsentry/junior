@@ -1,29 +1,30 @@
 import {
-  getAgentTurnSessionCheckpoint,
-  upsertAgentTurnSessionCheckpoint,
-  type AgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+  getAgentTurnSessionRecord,
+  upsertAgentTurnSessionRecord,
+  type AgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import { logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
+  stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
-export interface TurnCheckpointContext {
+export interface TurnSessionContext {
   conversationId?: string;
   sessionId?: string;
 }
 
-export interface TurnCheckpointState {
+export interface TurnSessionState {
   canUseTurnSession: boolean;
-  resumedFromCheckpoint: boolean;
+  resumedFromSessionRecord: boolean;
   currentSliceId: number;
-  existingCheckpoint?: AgentTurnSessionCheckpoint;
+  existingSessionRecord?: AgentTurnSessionRecord;
 }
 
-interface CheckpointLogContext {
+interface SessionRecordLogContext {
   threadId?: string;
   requesterId?: string;
   channelId?: string;
@@ -32,13 +33,13 @@ interface CheckpointLogContext {
   modelId: string;
 }
 
-function logCheckpointError(
+function logSessionRecordError(
   error: unknown,
   eventName: string,
   args: {
     conversationId: string;
     sessionId: string;
-    logContext: CheckpointLogContext;
+    logContext: SessionRecordLogContext;
   },
   attributes: Record<string, string | number>,
   message: string,
@@ -81,240 +82,239 @@ function isContinuableBoundary(messages: PiMessage[]): boolean {
   return lastRole === "user" || lastRole === "toolResult";
 }
 
-/** Load turn checkpoint state for a conversation/session pair. */
-export async function loadTurnCheckpoint(
-  ctx: TurnCheckpointContext,
-): Promise<TurnCheckpointState> {
+function resumableBoundary(
+  messages: PiMessage[],
+  fallbackMessages: PiMessage[] | undefined,
+): PiMessage[] {
+  const current = trimTrailingAssistantMessages(messages);
+  if (current.length > 0 && isContinuableBoundary(current)) {
+    return current;
+  }
+  return trimTrailingAssistantMessages(fallbackMessages ?? []);
+}
+
+/** Load turn session record state for a conversation/session pair. */
+export async function loadTurnSessionRecord(
+  ctx: TurnSessionContext,
+): Promise<TurnSessionState> {
   const canUseTurnSession = Boolean(ctx.conversationId && ctx.sessionId);
-  const existingCheckpoint =
+  const existingSessionRecord =
     canUseTurnSession && ctx.conversationId && ctx.sessionId
-      ? await getAgentTurnSessionCheckpoint(ctx.conversationId, ctx.sessionId)
+      ? await getAgentTurnSessionRecord(ctx.conversationId, ctx.sessionId)
       : undefined;
-  const hasAwaitingResumeCheckpoint = Boolean(
-    existingCheckpoint &&
-    existingCheckpoint.state === "awaiting_resume" &&
-    existingCheckpoint.piMessages.length > 0,
+  const hasAwaitingResumeRecord = Boolean(
+    existingSessionRecord &&
+    existingSessionRecord.state === "awaiting_resume" &&
+    existingSessionRecord.piMessages.length > 0,
   );
   return {
     canUseTurnSession,
-    resumedFromCheckpoint: hasAwaitingResumeCheckpoint,
-    currentSliceId: hasAwaitingResumeCheckpoint
-      ? existingCheckpoint!.sliceId
+    resumedFromSessionRecord: hasAwaitingResumeRecord,
+    currentSliceId: hasAwaitingResumeRecord
+      ? existingSessionRecord!.sliceId
       : 1,
-    existingCheckpoint,
+    existingSessionRecord,
   };
 }
 
 /** Persist the latest safe in-progress boundary without scheduling continuation. */
-export async function persistRunningCheckpoint(args: {
+export async function persistRunningSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
-  loadedSkillNames: string[];
-  activeMcpProviderNames: string[];
-  logContext: CheckpointLogContext;
+  logContext: SessionRecordLogContext;
 }): Promise<void> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return;
   }
 
   try {
-    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    await upsertAgentTurnSessionCheckpoint({
+    await upsertAgentTurnSessionRecord({
       conversationId: args.conversationId,
-      cumulativeDurationMs: latestCheckpoint?.cumulativeDurationMs,
-      cumulativeUsage: latestCheckpoint?.cumulativeUsage,
+      cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
+      cumulativeUsage: latestSessionRecord?.cumulativeUsage,
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
-      loadedSkillNames: args.loadedSkillNames,
-      activeMcpProviderNames: args.activeMcpProviderNames,
     });
-  } catch (checkpointError) {
-    logCheckpointError(
-      checkpointError,
-      "agent_turn_running_checkpoint_failed",
+  } catch (recordError) {
+    logSessionRecordError(
+      recordError,
+      "agent_turn_running_session_record_failed",
       args,
       {
         "app.ai.resume_slice_id": args.sliceId,
       },
-      "Failed to persist running turn checkpoint",
+      "Failed to persist running turn session record",
     );
   }
 }
 
-/** Persist a completed turn checkpoint. */
-export async function persistCompletedCheckpoint(args: {
+/** Persist a completed turn session record. */
+export async function persistCompletedSessionRecord(args: {
   conversationId: string;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
-  loadedSkillNames: string[];
-  activeMcpProviderNames: string[];
-  logContext: CheckpointLogContext;
+  logContext: SessionRecordLogContext;
 }): Promise<void> {
   try {
-    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    await upsertAgentTurnSessionCheckpoint({
+    await upsertAgentTurnSessionRecord({
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
-        latestCheckpoint?.cumulativeDurationMs,
+        latestSessionRecord?.cumulativeDurationMs,
         args.currentDurationMs,
       ),
       cumulativeUsage: addAgentTurnUsage(
-        latestCheckpoint?.cumulativeUsage,
+        latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "completed",
-      piMessages: args.allMessages,
-      loadedSkillNames: args.loadedSkillNames,
-      activeMcpProviderNames: args.activeMcpProviderNames,
+      piMessages: stripRuntimeTurnContext(args.allMessages),
     });
-  } catch (checkpointError) {
-    logCheckpointError(
-      checkpointError,
-      "agent_turn_completed_checkpoint_failed",
+  } catch (recordError) {
+    logSessionRecordError(
+      recordError,
+      "agent_turn_completed_session_record_failed",
       args,
       {
         "app.ai.resume_slice_id": args.sliceId,
       },
-      "Failed to persist completed turn checkpoint",
+      "Failed to persist completed turn session record",
     );
   }
 }
 
 /**
- * Persist an auth-pause checkpoint. Returns the durable checkpoint only when
+ * Persist an auth-pause session record. Returns the durable record only when
  * the caller can safely hand the user to an authorization resume flow.
  */
-export async function persistAuthPauseCheckpoint(args: {
+export async function persistAuthPauseSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
-  loadedSkillNames: string[];
-  activeMcpProviderNames: string[];
   errorMessage: string;
-  logContext: CheckpointLogContext;
-}): Promise<AgentTurnSessionCheckpoint | undefined> {
+  logContext: SessionRecordLogContext;
+}): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
   try {
-    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    const piMessages = trimTrailingAssistantMessages(
-      args.messages.length > 0
-        ? args.messages
-        : (latestCheckpoint?.piMessages ?? []),
+    const piMessages = resumableBoundary(
+      args.messages,
+      latestSessionRecord?.piMessages,
     );
-    return await upsertAgentTurnSessionCheckpoint({
+    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
+      return undefined;
+    }
+    return await upsertAgentTurnSessionRecord({
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
-        latestCheckpoint?.cumulativeDurationMs,
+        latestSessionRecord?.cumulativeDurationMs,
         args.currentDurationMs,
       ),
       cumulativeUsage: addAgentTurnUsage(
-        latestCheckpoint?.cumulativeUsage,
+        latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
-      loadedSkillNames: args.loadedSkillNames,
-      activeMcpProviderNames: args.activeMcpProviderNames,
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
     });
-  } catch (checkpointError) {
-    logCheckpointError(
-      checkpointError,
-      "agent_turn_auth_resume_checkpoint_failed",
+  } catch (recordError) {
+    logSessionRecordError(
+      recordError,
+      "agent_turn_auth_resume_session_record_failed",
       args,
       {
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },
-      "Failed to persist auth checkpoint before retry",
+      "Failed to persist auth session record before retry",
     );
   }
   return undefined;
 }
 
 /**
- * Persist a timeout checkpoint at the last safe boundary. Returns the durable
- * checkpoint when persistence succeeds so callers can enqueue a continuation.
+ * Persist a timeout session record at the last safe boundary. Returns the durable
+ * record when persistence succeeds so callers can enqueue a continuation.
  */
-export async function persistTimeoutCheckpoint(args: {
+export async function persistTimeoutSessionRecord(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   messages: PiMessage[];
-  loadedSkillNames: string[];
-  activeMcpProviderNames: string[];
   errorMessage: string;
-  logContext: CheckpointLogContext;
-}): Promise<AgentTurnSessionCheckpoint | undefined> {
+  logContext: SessionRecordLogContext;
+}): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
 
   try {
-    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    const piMessages = trimTrailingAssistantMessages(
-      args.messages.length > 0
-        ? args.messages
-        : (latestCheckpoint?.piMessages ?? []),
+    const piMessages = resumableBoundary(
+      args.messages,
+      latestSessionRecord?.piMessages,
     );
-    return await upsertAgentTurnSessionCheckpoint({
+    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
+      return undefined;
+    }
+    return await upsertAgentTurnSessionRecord({
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
-        latestCheckpoint?.cumulativeDurationMs,
+        latestSessionRecord?.cumulativeDurationMs,
         args.currentDurationMs,
       ),
       cumulativeUsage: addAgentTurnUsage(
-        latestCheckpoint?.cumulativeUsage,
+        latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
-      loadedSkillNames: args.loadedSkillNames,
-      activeMcpProviderNames: args.activeMcpProviderNames,
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
     });
-  } catch (checkpointError) {
-    logCheckpointError(
-      checkpointError,
-      "agent_turn_timeout_resume_checkpoint_failed",
+  } catch (recordError) {
+    logSessionRecordError(
+      recordError,
+      "agent_turn_timeout_resume_session_record_failed",
       args,
       {
         "app.ai.resume_from_slice_id": args.currentSliceId,
         "app.ai.resume_next_slice_id": nextSliceId,
       },
-      "Failed to persist timeout checkpoint before scheduling resume",
+      "Failed to persist timeout session record before scheduling resume",
     );
     return undefined;
   }
