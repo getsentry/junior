@@ -349,12 +349,16 @@ describe("dashboard routes", () => {
 
   it("returns the signed-in identity and session feed", async () => {
     const app = dashboard({
+      session: {
+        token: "secret-session-token",
+      },
       user: {
         email: "person@sentry.io",
         emailVerified: true,
         hostedDomain: "sentry.io",
+        name: "Dashboard User",
       },
-    });
+    } as DashboardSession);
 
     const me = await app.fetch(
       new Request("http://localhost/api/dashboard/me"),
@@ -365,6 +369,7 @@ describe("dashboard routes", () => {
         email: "person@sentry.io",
         emailVerified: true,
         hostedDomain: "sentry.io",
+        name: "Dashboard User",
       },
     });
 

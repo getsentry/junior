@@ -30,6 +30,21 @@ export interface DashboardAuth {
   signInWithGoogle(request: Request, callbackURL: string): Promise<Response>;
 }
 
+/** Keep dashboard identity responses limited to user display fields. */
+export function sanitizeDashboardSession(
+  session: DashboardSession,
+): DashboardSession {
+  const { email, emailVerified, hostedDomain, name } = session.user;
+  return {
+    user: {
+      email,
+      emailVerified,
+      hostedDomain,
+      name,
+    },
+  };
+}
+
 function required(value: string | undefined, name: string): string {
   if (!value?.trim()) {
     throw new Error(`${name} is required for Junior dashboard auth`);
@@ -154,7 +169,7 @@ export function createDashboardAuth(
       if (!session) {
         return null;
       }
-      return session as DashboardSession;
+      return sanitizeDashboardSession(session as DashboardSession);
     },
     async signInWithGoogle(request, callbackURL) {
       const result = await auth.api.signInSocial({

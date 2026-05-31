@@ -7,6 +7,7 @@ import { initSentry } from "@sentry/junior/instrumentation";
 import {
   createDashboardAuth,
   resolveGoogleHostedDomainHint,
+  sanitizeDashboardSession,
   type DashboardAuth,
   type DashboardSession,
 } from "./auth";
@@ -347,7 +348,7 @@ export function createDashboardApp(
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw);
     }
-    c.set("dashboardSession", session);
+    c.set("dashboardSession", sanitizeDashboardSession(session));
     await next();
   };
 
