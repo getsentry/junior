@@ -25,8 +25,8 @@ import {
   type AgentTurnRequester,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
-import { GET as healthGET } from "@/handlers/health";
 import { buildSystemPrompt } from "@/chat/prompt";
+import { GET as healthGET } from "@/handlers/health";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
