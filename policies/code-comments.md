@@ -17,7 +17,8 @@ They are not there to narrate obvious code.
   protects, and one or two invariants future changes must preserve.
 - Add comments when behavior is easy to misread, policy-driven, or coupled to a non-obvious invariant.
 - Exported functions must have a brief JSDoc comment explaining intent so future readers can change them safely.
-- Prefer inline docstrings on tricky local helpers when future readers will need context to change them safely.
+- Significant interface functions must have a brief JSDoc comment whether they are exported or private. A function is significant when it defines a module boundary, returns a handler/factory, parses or emits a wire/storage format, signs or verifies data, changes durable state, chooses session/projection boundaries, gates reply behavior, or encodes retry/resume/compaction policy.
+- Small local helpers can stay uncommented when their name and implementation are obvious and they do not encode a boundary or policy decision.
 - Keep comments short and concrete. Explain why the code exists or what boundary it is protecting.
 - Update the design comment when a module's ownership, lifecycle, or invariants
   change.

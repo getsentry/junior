@@ -146,6 +146,7 @@ function latestProjectionResetIndex(entries: SessionLogEntry[]): number {
   return -1;
 }
 
+/** Return the active projection session that new entries should join. */
 function currentSessionId(entries: SessionLogEntry[]): string {
   const resetIndex = latestProjectionResetIndex(entries);
   if (resetIndex < 0) {
@@ -154,6 +155,7 @@ function currentSessionId(entries: SessionLogEntry[]): string {
   return entrySessionId(entries[resetIndex]!);
 }
 
+/** Allocate the next projection session after a reset changes visible history. */
 function nextSessionId(entries: SessionLogEntry[]): string {
   const resetCount = entries.filter(
     (entry) => entry.type === "projection_reset",
@@ -161,6 +163,10 @@ function nextSessionId(entries: SessionLogEntry[]): string {
   return `${SESSION_ID_PREFIX}${resetCount + 1}`;
 }
 
+/**
+ * Select the visible log segment for a session. Without an explicit session,
+ * readers see only the latest projection reset and entries after it.
+ */
 function projectionEntries(
   entries: SessionLogEntry[],
   sessionId?: string,
@@ -298,6 +304,7 @@ function decode(value: unknown): SessionLogEntry {
   return piEntry(piMessageSchema.parse(value), INITIAL_SESSION_ID);
 }
 
+/** Materialize Pi messages from log entries for the selected projection. */
 function project(entries: SessionLogEntry[], sessionId?: string): PiMessage[] {
   let messages: PiMessage[] = [];
   for (const entry of projectionEntries(entries, sessionId)) {
@@ -333,6 +340,10 @@ function connectedMcpProviders(
   return [...providers].sort((left, right) => left.localeCompare(right));
 }
 
+/**
+ * Commit by appending when history advanced normally, or by writing an explicit
+ * projection reset when the runtime intentionally replaces visible history.
+ */
 function commitEntries(
   existingMessages: PiMessage[],
   nextMessages: PiMessage[],

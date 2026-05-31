@@ -1,3 +1,10 @@
+/**
+ * Timeout resume callback signing.
+ *
+ * This module owns the internal HTTP handoff used when a turn times out but has
+ * a safe Pi continuation boundary. It emits and verifies a small signed request
+ * so only current deployment code can resume the parked turn.
+ */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -80,6 +87,10 @@ function timingSafeMatch(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
+/**
+ * Parse the signed resume body, accepting the prior wire field for callbacks
+ * that were already in flight during deployment rollover.
+ */
 function parseTurnTimeoutResumeRequest(
   value: unknown,
 ): TurnContinuationRequest | undefined {

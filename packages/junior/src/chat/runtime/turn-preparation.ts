@@ -80,6 +80,10 @@ function getBackfillText(entry: Message): string | undefined {
   return text || undefined;
 }
 
+/**
+ * Seed durable conversation memory before the current turn so routing and
+ * compaction can reason over a thread even when no prior app state exists.
+ */
 async function seedConversationBackfill(
   thread: Thread,
   conversation: ThreadConversationState,

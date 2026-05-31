@@ -168,6 +168,10 @@ function parseAgentTurnSessionRecord(
   };
 }
 
+/**
+ * Rehydrate the continuable Pi boundary from the session log, tolerating a
+ * compacted projection when the exact historical prefix is no longer visible.
+ */
 function materializePiMessages(
   committedMessageCount: number,
   sessionMessages: PiMessage[] | undefined,
@@ -247,6 +251,7 @@ export async function getAgentTurnSessionRecord(
   return materializeAgentTurnSessionRecord(parsed, piMessages);
 }
 
+/** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
@@ -304,6 +309,10 @@ async function setStoredRecord(args: {
   return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
 }
 
+/**
+ * Transition an unfinished session record only if the caller still holds the
+ * version it loaded, preventing stale resume callbacks from winning.
+ */
 async function updateAgentTurnSessionState(args: {
   existing: AgentTurnSessionRecord;
   errorMessage?: string;

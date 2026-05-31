@@ -51,6 +51,7 @@ export interface ReplyHooks {
 
 const THREAD_OPTOUT_ACK =
   "Understood. I'll stay out of this thread unless someone @mentions me again.";
+/** Apply a subscribed-thread opt-out decision before any agent work runs. */
 async function maybeHandleThreadOptOutDecision(args: {
   beforeFirstResponsePost?: () => Promise<void>;
   decision?: { shouldUnsubscribe?: boolean };
@@ -157,6 +158,10 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => Promise<void>;
 }
 
+/**
+ * Convert skipped Slack messages into the same raw/user text pair as the active
+ * message so mention detection and prompt text see consistent inputs.
+ */
 function getQueuedMessages(
   context: MessageContext | undefined,
   options: {
@@ -221,6 +226,7 @@ function buildLogContext(
   };
 }
 
+/** Build the Slack event runtime that routes mentions and subscribed messages. */
 export function createSlackTurnRuntime<
   TPreparedState,
   TAssistantEvent extends AssistantLifecycleEvent = AssistantLifecycleEvent,
@@ -272,6 +278,7 @@ export function createSlackTurnRuntime<
     }
   };
 
+  /** Persist the skip decision at the same boundary that a reply would update. */
   const skipSubscribedMessage = async (args: {
     thread: Thread;
     message: Message;

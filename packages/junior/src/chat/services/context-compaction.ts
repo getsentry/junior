@@ -219,6 +219,7 @@ function renderSummaryInput(
   return keepTail(lines.join("\n"), MAX_SUMMARY_INPUT_CHARS);
 }
 
+/** Ask the fast model for a bounded handoff summary of durable thread context. */
 async function summarizeContext(
   args: {
     conversationContext?: string;
@@ -278,6 +279,7 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
   return Math.max(usageEstimate, structuralEstimate);
 }
 
+/** Build a compacted Pi projection from retained recent asks plus the summary. */
 function buildReplacementHistory(args: {
   messages: PiMessage[];
   summary: string;
@@ -307,6 +309,7 @@ function loadCompactionSource(messages: PiMessage[]): CompactionSource {
   return { reason: "missing_context" };
 }
 
+/** Decide whether this turn crosses the compaction threshold and perform it. */
 async function maybeCompactWithDeps(
   args: CompactContextArgs,
   deps: ContextCompactorDeps,
@@ -361,6 +364,10 @@ async function maybeCompactWithDeps(
   });
 }
 
+/**
+ * Commit the compacted projection reset so later turns read only the active
+ * session history, not the pre-compaction runtime transcript.
+ */
 async function writeCompactedThreadContext(
   args: CompactContextArgs,
   sourceMessages: PiMessage[],

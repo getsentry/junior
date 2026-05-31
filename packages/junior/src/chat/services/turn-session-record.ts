@@ -81,6 +81,11 @@ function isContinuableBoundary(messages: PiMessage[]): boolean {
   return lastRole === "user" || lastRole === "toolResult";
 }
 
+/**
+ * Choose the latest Pi boundary that can be continued safely after auth pause
+ * or timeout, falling back to the last durable record when the current slice
+ * ended mid-assistant response.
+ */
 function resumableBoundary(
   messages: PiMessage[],
   fallbackMessages: PiMessage[] | undefined,

@@ -140,6 +140,11 @@ interface LoadedPiMessagesForTurn {
   piMessages?: PiMessage[];
 }
 
+/**
+ * Resolve the Pi history for this Slack turn from the most precise durable
+ * boundary available: active turn record first, then compactable projection,
+ * then caller fallback.
+ */
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
   activeTurnId?: string;
@@ -215,6 +220,7 @@ interface ReplyExecutorDeps {
   services: ReplyExecutorServices;
 }
 
+/** Build the Slack reply handler that prepares state, runs Pi, and delivers replies. */
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
     thread: Thread,
