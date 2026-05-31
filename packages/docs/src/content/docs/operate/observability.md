@@ -6,6 +6,7 @@ prerequisites:
   - /start-here/verify-and-troubleshoot/
 related:
   - /operate/reliability-runbooks/
+  - /operate/vercel-log-drains/
   - /reference/handler-surface/
 ---
 
@@ -55,4 +56,4 @@ event.name:agent_tool_call_failed
 
 ## Next step
 
-Use symptom-driven playbooks in [Reliability Runbooks](/operate/reliability-runbooks/).
+Set up [Vercel Log Drains](/operate/vercel-log-drains/) to route runtime and build logs directly into Sentry, then use [Reliability Runbooks](/operate/reliability-runbooks/) for symptom-driven playbooks.
