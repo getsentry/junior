@@ -20,6 +20,7 @@ const {
   promptMessages,
   promptSeedMessages,
   recordToolResultMessage,
+  resumeMessages,
   resumeTurnContextCounts,
   searchMcpToolNames,
   turnContextInputs,
@@ -47,6 +48,7 @@ const {
   promptSeedMessages: [] as unknown[][],
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
+  resumeMessages: [] as unknown[][],
   resumeTurnContextCounts: [] as number[],
   searchMcpToolNames: [] as string[][],
   turnContextInputs: [] as Array<{
@@ -267,6 +269,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async continue() {
       continueCallCount.value += 1;
+      resumeMessages.push([...this.state.messages]);
       resumeTurnContextCounts.push(
         this.state.messages.filter((message) => {
           const candidate = message as { role?: unknown; content?: unknown };
@@ -586,6 +589,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     promptSeedMessages.length = 0;
     pushPreToolAssistantMessage.value = false;
     recordToolResultMessage.value = false;
+    resumeMessages.length = 0;
     resumeTurnContextCounts.length = 0;
     turnContextInputs.length = 0;
 
@@ -828,6 +832,29 @@ describe("generateAssistantReply progressive MCP loading", () => {
       role: "user",
       content: [{ type: "text", text: "current follow-up" }],
     });
+
+    const reply = await generateAssistantReply("current follow-up", {
+      ...makeReplyContext({
+        conversationId: "conversation-restore-auth",
+        threadTs: "1712345.0091",
+        turnId: "turn-restore-auth",
+      }),
+      piMessages: priorMessages,
+    });
+
+    expect(reply.text).toBe("resumed reply");
+    expect(resumeMessages).toHaveLength(1);
+    expect(resumeMessages[0]?.at(-1)).toMatchObject({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "<runtime-turn-context>\nTurn context\n</runtime-turn-context>",
+        },
+        { type: "text", text: "current follow-up" },
+      ],
+    });
+    expect(resumeTurnContextCounts).toEqual([1]);
   });
 
   it("injects session context when persisted Pi history has no runtime context", async () => {

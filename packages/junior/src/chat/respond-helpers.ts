@@ -312,6 +312,20 @@ export function refreshRuntimeTurnContext(
     return nextMessages;
   }
 
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const content = getUserMessageContent(messages[index]);
+    if (!content) {
+      continue;
+    }
+
+    const nextMessages = [...messages];
+    nextMessages[index] = {
+      ...messages[index],
+      content: [{ type: "text", text: turnContextPrompt }, ...content],
+    } as PiMessage;
+    return nextMessages;
+  }
+
   return [
     ...messages,
     {
