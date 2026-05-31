@@ -8,6 +8,15 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-sentry
 ```
 
+Add the package name to the shared plugin set passed to both `juniorNitro()`
+and `createApp()`:
+
+```ts
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
+```
+
 ## Sentry CLI Surface
 
 The plugin installs the npm `sentry` package as a runtime dependency and injects the current user's OAuth token as `SENTRY_AUTH_TOKEN` for Sentry skill commands.

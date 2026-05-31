@@ -4,7 +4,7 @@ import type {
   AgentPluginRouteMethod,
   AgentPluginSandbox,
   SlackConversationLink,
-  JuniorPlugin,
+  JuniorPluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
 import { createAgentPluginLogger } from "@/chat/plugins/logging";
@@ -44,7 +44,7 @@ export interface AgentPluginHookRunner {
   prepareSandbox(sandbox: SandboxInstance): Promise<void>;
 }
 
-let agentPlugins: JuniorPlugin[] = [];
+let agentPlugins: JuniorPluginRegistration[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
@@ -58,8 +58,8 @@ const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
   "ALL",
 ]);
 
-function validateLegacyStatePrefixes(plugin: JuniorPlugin): void {
-  const prefixes = plugin.pluginConfig?.legacyStatePrefixes;
+function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
+  const prefixes = plugin.legacyStatePrefixes;
   if (prefixes === undefined) {
     return;
   }
@@ -86,7 +86,9 @@ function validateLegacyStatePrefixes(plugin: JuniorPlugin): void {
 }
 
 /** Validate trusted plugin identity before it can affect process-wide hooks. */
-export function validateAgentPlugins(plugins: JuniorPlugin[]): void {
+export function validateAgentPlugins(
+  plugins: JuniorPluginRegistration[],
+): void {
   const seen = new Set<string>();
   for (const plugin of plugins) {
     if (!AGENT_PLUGIN_NAME_RE.test(plugin.name)) {
@@ -103,7 +105,9 @@ export function validateAgentPlugins(plugins: JuniorPlugin[]): void {
 }
 
 /** Replace trusted agent plugins and return the previous list for rollback. */
-export function setAgentPlugins(plugins: JuniorPlugin[]): JuniorPlugin[] {
+export function setAgentPlugins(
+  plugins: JuniorPluginRegistration[],
+): JuniorPluginRegistration[] {
   validateAgentPlugins(plugins);
   const previous = agentPlugins;
   agentPlugins = [...plugins].sort((left, right) =>
@@ -113,7 +117,7 @@ export function setAgentPlugins(plugins: JuniorPlugin[]): JuniorPlugin[] {
 }
 
 /** Return the current trusted agent plugins without exposing mutable state. */
-export function getAgentPlugins(): JuniorPlugin[] {
+export function getAgentPlugins(): JuniorPluginRegistration[] {
   return [...agentPlugins];
 }
 
@@ -139,7 +143,7 @@ export function getAgentPluginTools(
       threadTs: context.threadTs,
       userText: context.userText,
       state: createPluginState(plugin.name, {
-        legacyStatePrefixes: plugin.pluginConfig?.legacyStatePrefixes,
+        legacyStatePrefixes: plugin.legacyStatePrefixes,
       }),
     });
     for (const [name, tool] of Object.entries(pluginTools)) {

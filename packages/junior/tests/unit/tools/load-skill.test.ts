@@ -58,6 +58,7 @@ describe("loadSkill tool", () => {
     vi.doMock("@/chat/plugins/package-discovery", () => ({
       discoverInstalledPluginPackageContent: () => ({
         packageNames: [],
+        packages: [],
         manifestRoots: [],
         skillRoots: [],
         tracingIncludes: [],
@@ -116,6 +117,7 @@ describe("loadSkill tool", () => {
     vi.doMock("@/chat/plugins/package-discovery", () => ({
       discoverInstalledPluginPackageContent: () => ({
         packageNames: [],
+        packages: [],
         manifestRoots: [],
         skillRoots: [],
         tracingIncludes: [],

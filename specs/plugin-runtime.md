@@ -26,15 +26,16 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 ## Discovery And Loading
 
 1. Scan local plugin roots under `plugins/`.
-2. Scan explicitly declared package roots from `PluginConfig`.
-3. Apply `PluginConfig` manifest overrides.
-4. Parse and validate every effective manifest before registering any plugin.
-5. Register capabilities, config keys, OAuth config, provider domains, and skill roots.
-6. Discover plugin skills later through `getPluginSkillRoots()`.
+2. Scan manifest package roots declared by the shared `defineJuniorPlugins(...)` catalog.
+3. Register inline manifests from trusted JavaScript plugin definitions.
+4. Apply `PluginCatalogConfig` manifest overrides derived from that plugin set.
+5. Parse and validate every effective manifest before registering any plugin.
+6. Register capabilities, config keys, OAuth config, provider domains, and skill roots.
+7. Discover plugin skills later through `getPluginSkillRoots()`.
 
 Plugin registry initialization is synchronous at module load so `discoverSkills()` can associate plugin-backed skills with their parent plugin.
 
-Plugin packages must be explicitly declared in app `PluginConfig`. Runtime must never scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to auto-discover plugins.
+Plugin packages must be explicitly declared by plugin registrations. Runtime must never scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to auto-discover plugins.
 
 ## Registry Surface
 
@@ -115,7 +116,11 @@ Plugin-backed skills may explain provider commands, MCP tools, command env, conf
 
 Trusted agent behavior is initialized from app code, not `plugin.yaml`.
 
-Apps pass trusted plugin factories to `createApp({ plugins })`, and `juniorNitro({ plugins })` owns build-time copying of bundled plugin content.
+Apps pass one `defineJuniorPlugins(...)` set to `juniorNitro({ plugins })` and
+`createApp({ plugins })`. `juniorNitro()` extracts package names for build-time
+copying, while `createApp()` extracts trusted hooks and validates that every
+registration has a matching manifest. Trusted factories carry their manifest
+inline, so runtime code is not declared from `plugin.yaml`.
 
 Hook contexts expose narrow capabilities rather than raw Junior internals. Trusted plugin hook contracts are defined in [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md) and [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
 

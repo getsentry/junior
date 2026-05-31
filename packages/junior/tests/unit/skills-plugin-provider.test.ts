@@ -64,6 +64,7 @@ describe("discoverSkills plugin ownership", () => {
     vi.doMock("@/chat/plugins/package-discovery", () => ({
       discoverInstalledPluginPackageContent: () => ({
         packageNames: [],
+        packages: [],
         manifestRoots: [],
         skillRoots: [],
         tracingIncludes: [],

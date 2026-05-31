@@ -103,29 +103,40 @@ Install only the plugins you plan to enable:
 pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
-Then list them in `nitro.config.ts`:
+Then create one shared plugin set:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
+
+export const plugins = defineJuniorPlugins([
+  "@sentry/junior-agent-browser",
+  "@sentry/junior-datadog",
+  githubPlugin({
+    botNameEnv: "GITHUB_APP_BOT_NAME",
+    botEmailEnv: "GITHUB_APP_BOT_EMAIL",
+  }),
+  "@sentry/junior-hex",
+  "@sentry/junior-linear",
+  "@sentry/junior-notion",
+  schedulerPlugin(),
+  "@sentry/junior-sentry",
+]);
+```
+
+Pass that same `plugins` value to `juniorNitro()` and `createApp()`:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
+import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins: {
-        packages: [
-          "@sentry/junior-agent-browser",
-          "@sentry/junior-datadog",
-          "@sentry/junior-github",
-          "@sentry/junior-hex",
-          "@sentry/junior-linear",
-          "@sentry/junior-notion",
-          "@sentry/junior-scheduler",
-          "@sentry/junior-sentry",
-          "@sentry/junior-vercel",
-        ],
-      },
+      plugins,
     }),
   ],
   routes: {
@@ -134,17 +145,25 @@ export default defineConfig({
 });
 ```
 
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins";
+
+const app = await createApp({ plugins });
+
+export default app;
+```
+
 Run the app check after changing plugins or skills:
 
 ```bash
 pnpm check
 ```
 
-Plugins with trusted runtime hooks need one more app-code registration step.
-For example, `@sentry/junior-scheduler` must be registered with
-`schedulerPlugin()` inside `createApp()` to enable scheduled tasks, and
-`@sentry/junior-github` must be registered with `githubPlugin()` to enforce Git
-commit attribution. See [Scheduler Plugin](/extend/scheduler-plugin/) and
+The shared plugin set is also where trusted runtime hooks are registered.
+`schedulerPlugin()` enables scheduled task tools and heartbeat behavior, and
+`githubPlugin()` enforces Git commit attribution. See
+[Scheduler Plugin](/extend/scheduler-plugin/) and
 [GitHub Plugin](/extend/github-plugin/) for those setups.
 
 ## Verify plugin content

@@ -211,7 +211,45 @@ describe("check cli", () => {
     expect(
       lines.some((line) =>
         line.includes(
-          "pluginPackages is no longer supported. Use plugins: { packages: [...] }.",
+          "pluginPackages is no longer supported. Export a defineJuniorPlugins(...) set",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails when app source uses the removed plugins.packages option", async () => {
+    const repoRoot = makeTempDir("junior-validate-plugins-packages-option-");
+    writeFile(
+      path.join(repoRoot, "nitro.config.ts"),
+      [
+        'import { juniorNitro } from "@sentry/junior/nitro";',
+        "",
+        "export default {",
+        "  modules: [",
+        "    juniorNitro({",
+        "      plugins: { packages: ['@acme/junior-demo'] },",
+        "    }),",
+        "  ],",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 0 plugin manifests, 0 skill directories checked).",
+    );
+
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "plugins.packages is no longer supported. Export a defineJuniorPlugins(...) set",
         ),
       ),
     ).toBe(true);

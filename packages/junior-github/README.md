@@ -8,23 +8,19 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-github
 ```
 
-Register the trusted plugin from app code:
+Add the plugin factory to the shared plugin set passed to both `juniorNitro()`
+and `createApp()`:
 
 ```ts
-import { createApp } from "@sentry/junior";
+import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 
-const app = await createApp({
-  plugins: [
-    githubPlugin({
-      botNameEnv: "GITHUB_APP_BOT_NAME",
-      botEmailEnv: "GITHUB_APP_BOT_EMAIL",
-    }),
-  ],
-});
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    botNameEnv: "GITHUB_APP_BOT_NAME",
+    botEmailEnv: "GITHUB_APP_BOT_EMAIL",
+  }),
+]);
 ```
-
-Also list `@sentry/junior-github` in `juniorNitro({ plugins: { packages: [...] } })`
-so Nitro bundles the manifest and bundled GitHub skill.
 
 Full setup guide: https://junior.sentry.dev/extend/github-plugin/

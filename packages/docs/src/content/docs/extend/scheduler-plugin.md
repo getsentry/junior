@@ -22,27 +22,15 @@ Install the package next to `@sentry/junior`:
 pnpm add @sentry/junior-scheduler
 ```
 
-Register the trusted plugin in app code:
+Add the trusted plugin factory to the shared plugin set used by both
+`juniorNitro()` and `createApp()`. The factory registers the scheduler
+manifest, schedule-management tools, and heartbeat behavior together.
 
-```ts title="server.ts"
-import { createApp } from "@sentry/junior";
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 
-const app = await createApp({
-  plugins: [schedulerPlugin()],
-});
-
-export default app;
-```
-
-List the package in `juniorNitro()` as well so Nitro bundles the manifest:
-
-```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-scheduler"],
-  },
-});
+export const plugins = defineJuniorPlugins([schedulerPlugin()]);
 ```
 
 The scaffolded `vercel.json` includes the internal heartbeat route:

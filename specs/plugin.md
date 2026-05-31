@@ -24,14 +24,15 @@ Define the plugin model for provider integrations. Plugins package declarative r
 
 ## Core Model
 
-1. A plugin is either a local `plugins/<name>/plugin.yaml` directory or an explicitly declared package that contains `plugin.yaml`, `plugins/`, or `skills/`.
+1. A plugin is either a local `plugins/<name>/plugin.yaml` directory, an explicitly declared manifest package, or a JavaScript registration returned by `defineJuniorPlugin({ manifest, hooks })`.
 2. Plugin discovery is explicit. Runtime must not scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to find plugins.
 3. `plugin.yaml` owns runtime setup: provider domains, credentials, API headers, command env, runtime dependencies, postinstall commands, OAuth, MCP endpoints, config keys, and skill roots.
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
 5. Credential delivery is host-owned and requester-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
-7. Trusted runtime behavior is app-code registration, not manifest registration. Apps pass trusted `JuniorPlugin` objects to `createApp({ plugins })`.
-8. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
+7. Trusted runtime behavior is app-code registration, not manifest registration. Apps pass one `defineJuniorPlugins(...)` set to both `juniorNitro({ plugins })` and `createApp({ plugins })`.
+8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for trusted plugins. Do not split one plugin definition across both.
+9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
 
 ## File Shape
 

@@ -31,7 +31,10 @@ import {
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
 import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
-import { getPluginOAuthConfig, setPluginConfig } from "@/chat/plugins/registry";
+import {
+  getPluginOAuthConfig,
+  setPluginCatalogConfig,
+} from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -1244,7 +1247,9 @@ async function setupHarnessEnvironment(
             ),
           })
         : undefined;
-    setPluginConfig({ packages: scenario.overrides?.plugin_packages ?? [] });
+    setPluginCatalogConfig({
+      packages: scenario.overrides?.plugin_packages ?? [],
+    });
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -1279,7 +1284,7 @@ async function setupHarnessEnvironment(
     };
   } catch (error) {
     resetSkillDiscoveryCache();
-    setPluginConfig(undefined);
+    setPluginCatalogConfig(undefined);
     envSnapshot.restore();
     await egressServer?.close();
     await pluginApp?.cleanup();
@@ -1292,7 +1297,7 @@ async function teardownHarnessEnvironment(
   env: HarnessEnvironment,
 ): Promise<void> {
   resetSkillDiscoveryCache();
-  setPluginConfig(undefined);
+  setPluginCatalogConfig(undefined);
   await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
   await cleanupMcpAuthState(
     env.authRequesterUsers,

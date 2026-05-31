@@ -132,7 +132,10 @@ describe("trusted plugin heartbeat", () => {
     const seen: number[] = [];
     setAgentPlugins([
       defineJuniorPlugin({
-        name: "scheduler",
+        manifest: {
+          name: "scheduler",
+          description: "Scheduler test plugin",
+        },
         hooks: {
           heartbeat(ctx) {
             seen.push(ctx.nowMs);

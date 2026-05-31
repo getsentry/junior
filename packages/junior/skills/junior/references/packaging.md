@@ -5,6 +5,7 @@
 ```text
 my-junior-plugin/
 ├── package.json
+├── index.ts
 ├── plugin.yaml
 └── skills/
     └── my-provider/
@@ -16,25 +17,41 @@ my-junior-plugin/
   "name": "@acme/junior-my-provider",
   "private": false,
   "type": "module",
-  "files": ["plugin.yaml", "skills"]
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": ["index.d.ts", "index.js", "plugin.yaml", "skills"],
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*"
+  }
 }
 ```
 
 ## Host app wiring
 
-Install next to `@sentry/junior`, then list in `plugins.packages`.
+Install next to `@sentry/junior`, then export a shared plugin set.
+
+```ts
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@acme/junior-my-provider"]);
+```
+
+Pass the same set to `juniorNitro()` and `createApp()`.
 
 ```ts
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
+import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins: {
-        packages: ["@acme/junior-my-provider"],
-      },
+      plugins,
     }),
   ],
   routes: {
@@ -43,37 +60,31 @@ export default defineConfig({
 });
 ```
 
-For local dev paths that call `createApp()` directly, pass the same list there unless the app already centralizes it.
-
 ```ts
-const app = await createApp({
-  plugins: {
-    packages: ["@acme/junior-my-provider"],
-  },
-});
+const app = await createApp({ plugins });
 ```
 
 Packages that export trusted runtime hooks must be registered from app code with
-their plugin factory instead of a plain package list:
+their plugin factory in the same plugin set:
 
 ```ts
-import { createApp } from "@sentry/junior";
+import { defineJuniorPlugins } from "@sentry/junior";
 import { myProviderPlugin } from "@acme/junior-my-provider";
 
-const app = await createApp({
-  plugins: [myProviderPlugin()],
-});
+export const plugins = defineJuniorPlugins([myProviderPlugin()]);
 ```
 
-The trusted plugin's `pluginConfig.packages` should include the package that
-contains `plugin.yaml`. Nitro still owns build-time package copying.
+Each factory should return `defineJuniorPlugin({ manifest, hooks })`. Use
+package-name strings for packages that are only `plugin.yaml` plus optional
+skills.
 
 ## Monorepo package checklist
 
 When adding a new package under this repository's `packages/` directory:
 
 - Match naming such as `@sentry/junior-<provider>`.
-- Include `plugin.yaml` and `skills` in `package.json` `files`.
+- For manifest-only packages, include `plugin.yaml` and optional `skills` in `package.json` `files`.
+- For trusted JS packages, include the factory entrypoint and optional `skills` in `package.json` `files`.
 - Add a package README if users need setup or verification steps.
 - Keep package version aligned with the monorepo release process.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs.
@@ -92,5 +103,5 @@ When adding a new package under this repository's `packages/` directory:
 - Run package-local lint/type checks when package code changes.
 - Run `pnpm skills:check` in this repository after changing package skill files.
 - Run `pnpm exec junior check` in a consumer app for app-local files.
-- Validate the packaged root `plugin.yaml` by loading it through a configured host app/runtime or a targeted parser test.
+- Validate packaged manifests by loading them through a configured host app/runtime or a targeted parser test.
 - Run `junior snapshot create` when runtime dependencies or postinstall steps need sandbox snapshot warmup.

@@ -22,14 +22,13 @@ pnpm add @sentry/junior @sentry/junior-agent-browser
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
+Add the package name to the shared plugin set used by both `juniorNitro()`
+and `createApp()`:
 
-```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-agent-browser"],
-  },
-});
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-agent-browser"]);
 ```
 
 ## Configure environment variables

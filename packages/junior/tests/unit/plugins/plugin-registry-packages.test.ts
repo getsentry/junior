@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginConfig } from "@/chat/plugins/types";
+import type { PluginCatalogConfig } from "@/chat/plugins/types";
 
 const originalCwd = process.cwd();
 let configuredPackageNames: string[] = [];
@@ -12,9 +12,9 @@ async function setPackages(packageNames: string[]): Promise<void> {
   await setConfig({ packages: packageNames });
 }
 
-async function setConfig(config: PluginConfig): Promise<void> {
-  const { setPluginConfig } = await import("@/chat/plugins/registry");
-  setPluginConfig({
+async function setConfig(config: PluginCatalogConfig): Promise<void> {
+  const { setPluginCatalogConfig } = await import("@/chat/plugins/registry");
+  setPluginCatalogConfig({
     ...config,
     packages: config.packages ?? configuredPackageNames,
   });
@@ -794,7 +794,7 @@ describe("plugin registry package discovery", () => {
     );
   });
 
-  it("applies PluginConfig manifest overrides before duplicate domain validation", async () => {
+  it("applies PluginCatalogConfig manifest overrides before duplicate domain validation", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
@@ -844,7 +844,7 @@ describe("plugin registry package discovery", () => {
     ]);
   });
 
-  it("rejects PluginConfig manifest overrides for missing plugins", async () => {
+  it("rejects PluginCatalogConfig manifest overrides for missing plugins", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );

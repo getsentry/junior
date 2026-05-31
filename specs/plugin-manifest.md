@@ -160,7 +160,7 @@ Rules:
 - Fail startup on validation errors.
 - No duplicate plugin names.
 - No duplicate qualified capability tokens.
-- No duplicate effective provider egress domains after app-level `PluginConfig` merges.
+- No duplicate effective provider egress domains after app-level `PluginCatalogConfig` merges.
 - `command-env` requires credentials or API headers.
 - `plugin.yaml` is the enforceable runtime authority; skill prose cannot override it.
 

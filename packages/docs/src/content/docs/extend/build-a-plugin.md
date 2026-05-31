@@ -17,7 +17,7 @@ Use local `app/plugins` while iterating in one app. Publish an npm package when 
 
 ## Package layout
 
-Use the same shape locally and in packages:
+Manifest-only plugins use a data-only package:
 
 ```text title="Plugin package"
 my-junior-plugin/
@@ -38,25 +38,8 @@ The package must include the manifest and skills in `package.json`:
 }
 ```
 
-If the package also exports trusted runtime hooks, include the entrypoint and
-depend on `@sentry/junior-plugin-api`:
-
-```json title="package.json"
-{
-  "name": "@acme/junior-my-provider",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
-    }
-  },
-  "files": ["index.d.ts", "index.js", "plugin.yaml", "skills"],
-  "dependencies": {
-    "@sentry/junior-plugin-api": "^0.53.0"
-  }
-}
-```
+Use a JavaScript plugin factory instead of `plugin.yaml` when the package needs
+trusted runtime hooks.
 
 ## Minimal manifest
 
@@ -117,32 +100,26 @@ Junior merges runtime dependency declarations from all loaded plugins and prepar
 
 ## Register the package
 
-Install the plugin next to `@sentry/junior`, then list it in `juniorNitro`:
+Install the plugin next to `@sentry/junior`, then add the package name to a
+shared plugin set:
 
-```ts title="nitro.config.ts"
-import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
 
-export default defineConfig({
-  modules: [
-    juniorNitro({
-      plugins: {
-        packages: ["@acme/junior-my-provider"],
-      },
-    }),
-  ],
-});
+export const plugins = defineJuniorPlugins(["@acme/junior-my-provider"]);
 ```
 
-Do not use the removed `pluginPackages` option. `junior check` rejects it.
+Pass the same `plugins` value to `juniorNitro({ plugins })` and
+`createApp({ plugins })`. Do not use the removed `pluginPackages` or
+`plugins.packages` options; `junior check` rejects both.
 
 ## Add trusted runtime hooks
 
-Most plugins should stay manifest-only. Add trusted runtime hooks only when the
-plugin must force deterministic behavior at a Junior-owned boundary, such as
-installing sandbox helper files or mutating tool input/env before execution.
-Trusted hooks are backend code and must be registered explicitly from app code;
-Junior never loads them from `plugin.yaml`.
+Most plugins should stay manifest-only. Use a JavaScript plugin definition only
+when the plugin must force deterministic behavior at a Junior-owned boundary,
+such as installing sandbox helper files or mutating tool input/env before
+execution. Trusted hooks are backend code and must be registered explicitly from
+app code; Junior never loads them from `plugin.yaml`.
 
 Trusted hook contexts include `ctx.plugin` and `ctx.log`. Use `ctx.log` for
 plugin-scoped structured logs instead of writing directly to stdout.
@@ -154,9 +131,10 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 export function myProviderPlugin() {
   return defineJuniorPlugin({
-    name: "my-provider",
-    pluginConfig: {
-      packages: ["@acme/junior-my-provider"],
+    manifest: {
+      name: "my-provider",
+      description: "My provider integration",
+      configKeys: ["org"],
     },
     hooks: {
       async sandboxPrepare(ctx) {
@@ -176,23 +154,23 @@ export function myProviderPlugin() {
 }
 ```
 
+Do not ship `plugin.yaml` for the same plugin. The JavaScript definition owns
+both the manifest surface and the trusted hooks. If the same package also ships
+`skills/`, add `packageName: "@acme/junior-my-provider"` so Nitro copies those
+skills into the deployment bundle.
+
 Register the trusted plugin from the app:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
-import { myProviderPlugin } from "@acme/junior-my-provider";
+import { plugins } from "./plugins";
 
 const app = await createApp({
-  plugins: [myProviderPlugin()],
+  plugins,
 });
 
 export default app;
 ```
-
-`pluginConfig.packages` should include the package that contains `plugin.yaml`
-so the trusted registration also loads the declarative provider metadata. Any
-packages declared through `juniorNitro({ plugins })` continue to load; trusted
-plugin package config is merged with the build-time plugin catalog.
 
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
 rejects non-object replacements before the tool runs.
@@ -217,7 +195,10 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 export function myProviderPlugin() {
   return defineJuniorPlugin({
-    name: "my-provider",
+    manifest: {
+      name: "my-provider",
+      description: "My provider integration",
+    },
     hooks: {
       tools(ctx) {
         return {
@@ -246,7 +227,10 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 export function myProviderPlugin() {
   return defineJuniorPlugin({
-    name: "my-provider",
+    manifest: {
+      name: "my-provider",
+      description: "My provider integration",
+    },
     hooks: {
       async heartbeat(ctx) {
         const lastDispatch = await ctx.state.get<{ id: string }>(

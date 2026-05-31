@@ -20,7 +20,6 @@
   "files": [
     "index.d.ts",
     "index.js",
-    "plugin.yaml",
     "skills",
     "SETUP.md"
   ],

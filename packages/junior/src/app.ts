@@ -6,7 +6,8 @@ import {
 import { logException } from "@/chat/logging";
 import {
   getPluginCatalogSignature,
-  setPluginConfig,
+  getPluginProviders,
+  setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
 import {
   type AgentPluginRouteRegistration,
@@ -14,11 +15,16 @@ import {
   setAgentPlugins,
   validateAgentPlugins,
 } from "@/chat/plugins/agent-hooks";
-import type { PluginConfig } from "@/chat/plugins/types";
+import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type {
   AgentPluginRouteMethod,
-  JuniorPlugin,
+  JuniorPluginRegistration,
 } from "@sentry/junior-plugin-api";
+import {
+  pluginCatalogConfigFromPluginSet,
+  trustedPluginRegistrationsFromPluginSet,
+  type JuniorPluginSet,
+} from "@/plugins";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
@@ -32,18 +38,24 @@ import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
 
+export { defineJuniorPlugins } from "@/plugins";
+export type {
+  JuniorPluginInput,
+  JuniorPluginSet,
+  JuniorPluginSetOptions,
+} from "@/plugins";
+
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
-  /**
-   * Plugin packages/overrides, or trusted plugin instances loaded by this app.
-   *
-   * Use `PluginConfig` for declarative package lists and manifest overrides.
-   * Use `JuniorPlugin[]` for trusted plugin factories such as `githubPlugin()`;
-   * their package config is merged with the catalog bundled by `juniorNitro()`.
-   */
-  plugins?: PluginConfig | JuniorPlugin[];
+  /** Plugin package names and JS definitions shared with `juniorNitro()`. */
+  plugins?: JuniorPluginSet;
   waitUntil?: WaitUntilFn;
+}
+
+interface JuniorVirtualConfig {
+  plugins?: PluginCatalogConfig;
+  trustedPluginRegistrations: string[];
 }
 
 /** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
@@ -63,11 +75,19 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
   }
 }
 
-/** Resolve plugin configuration from the virtual module injected by juniorNitro(). */
-async function resolveVirtualPluginConfig(): Promise<PluginConfig | undefined> {
+/** Resolve build-time configuration from the virtual module injected by juniorNitro(). */
+async function resolveVirtualConfig(): Promise<
+  JuniorVirtualConfig | undefined
+> {
   try {
-    const mod: { plugins?: PluginConfig } = await import("#junior/config");
-    return mod.plugins;
+    const mod: {
+      plugins?: PluginCatalogConfig;
+      trustedPluginRegistrations?: string[];
+    } = await import("#junior/config");
+    return {
+      plugins: mod.plugins,
+      trustedPluginRegistrations: mod.trustedPluginRegistrations ?? [],
+    };
   } catch (error) {
     if (!isMissingVirtualConfig(error)) {
       throw error;
@@ -77,10 +97,12 @@ async function resolveVirtualPluginConfig(): Promise<PluginConfig | undefined> {
 }
 
 /** Resolve plugin configuration from the virtual module, falling back to env. */
-async function resolveBuildPluginConfig(): Promise<PluginConfig | undefined> {
-  const virtualConfig = await resolveVirtualPluginConfig();
-  if (virtualConfig) {
-    return virtualConfig;
+async function resolveBuildPluginCatalogConfig(): Promise<
+  PluginCatalogConfig | undefined
+> {
+  const virtualConfig = await resolveVirtualConfig();
+  if (virtualConfig?.plugins) {
+    return virtualConfig.plugins;
   }
 
   const packages = readEnvPluginPackages();
@@ -130,62 +152,81 @@ function readEnvPluginPackages(): string[] | undefined {
   return parsed;
 }
 
-function hasConfiguredPluginCatalog(config: PluginConfig | undefined): boolean {
+function hasConfiguredPluginCatalog(
+  config: PluginCatalogConfig | undefined,
+): boolean {
   if (!config) {
     return false;
   }
 
   return Boolean(
-    config.packages?.length || Object.keys(config.manifests ?? {}).length,
+    config.inlineManifests?.length ||
+    config.packages?.length ||
+    Object.keys(config.manifests ?? {}).length,
   );
 }
 
-function isJuniorPluginArray(
-  plugins: JuniorAppOptions["plugins"],
-): plugins is JuniorPlugin[] {
-  return Array.isArray(plugins);
+function pluginPackageNames(config: PluginCatalogConfig | undefined): string[] {
+  return config?.packages ?? [];
 }
 
-function mergePluginConfig(
-  base: PluginConfig | undefined,
-  next: PluginConfig | undefined,
-): PluginConfig | undefined {
-  if (!base) return next;
-  if (!next) return base;
-
-  return {
-    packages: [
-      ...new Set([...(base.packages ?? []), ...(next.packages ?? [])]),
-    ],
-    manifests:
-      base.manifests || next.manifests
-        ? {
-            ...(base.manifests ?? {}),
-            ...(next.manifests ?? {}),
-          }
-        : undefined,
-  };
-}
-
-function pluginConfigFromAgentPlugins(
-  plugins: JuniorPlugin[],
-): PluginConfig | undefined {
-  const packages = [
-    ...new Set(
-      plugins.flatMap((plugin) => plugin.pluginConfig?.packages ?? []),
-    ),
-  ];
-  return packages.length ? { packages } : undefined;
-}
-
-/** Resolve catalog config without letting an explicit empty trusted array read env fallbacks. */
-async function resolveAgentPluginBaseConfig(
-  plugins: JuniorPlugin[],
-): Promise<PluginConfig | undefined> {
-  if (plugins.length === 0) {
-    return resolveVirtualPluginConfig();
+function validateBuildIncludesPluginPackages(
+  pluginConfig: PluginCatalogConfig | undefined,
+  virtualConfig: JuniorVirtualConfig | undefined,
+): void {
+  if (!virtualConfig?.plugins) {
+    return;
   }
-  return resolveBuildPluginConfig();
+  const bundled = new Set(pluginPackageNames(virtualConfig.plugins));
+  const missing = pluginPackageNames(pluginConfig).filter(
+    (packageName) => !bundled.has(packageName),
+  );
+  if (missing.length === 0) {
+    return;
+  }
+  throw new Error(
+    `createApp() registered plugin package(s) not bundled by juniorNitro(): ${missing.join(", ")}. Pass the same defineJuniorPlugins(...) set to juniorNitro({ plugins }) and createApp({ plugins }).`,
+  );
+}
+
+function validateBuildIncludesTrustedRegistrations(
+  trustedRegistrations: JuniorPluginRegistration[],
+  virtualConfig: JuniorVirtualConfig | undefined,
+): void {
+  const bundledTrustedRegistrations =
+    virtualConfig?.trustedPluginRegistrations ?? [];
+  if (bundledTrustedRegistrations.length === 0) {
+    return;
+  }
+
+  const registered = new Set(trustedRegistrations.map((plugin) => plugin.name));
+  const missing = bundledTrustedRegistrations.filter(
+    (pluginName) => !registered.has(pluginName),
+  );
+  if (missing.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    `createApp() is missing trusted plugin registration(s) bundled by juniorNitro(): ${missing.join(", ")}. Pass the same defineJuniorPlugins(...) set to juniorNitro({ plugins }) and createApp({ plugins }).`,
+  );
+}
+
+function validatePluginRegistrations(
+  registrations: JuniorPluginRegistration[],
+): void {
+  const loadedPlugins = getPluginProviders();
+  const loadedNames = new Set(
+    loadedPlugins.map((plugin) => plugin.manifest.name),
+  );
+
+  for (const registration of registrations) {
+    if (!loadedNames.has(registration.name)) {
+      throw new Error(
+        `Plugin registration "${registration.name}" does not have a matching plugin manifest. Add an inline manifest, packageName, or app-local plugin.yaml with the same name.`,
+      );
+    }
+  }
 }
 
 /** Mount trusted plugin HTTP handlers before core routes claim those paths. */
@@ -214,20 +255,22 @@ function mountAgentPluginRoutes(
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const configuredPlugins = options?.plugins;
-  const agentPlugins = isJuniorPluginArray(configuredPlugins)
-    ? configuredPlugins
-    : [];
-  const pluginConfig = isJuniorPluginArray(configuredPlugins)
-    ? mergePluginConfig(
-        await resolveAgentPluginBaseConfig(configuredPlugins),
-        pluginConfigFromAgentPlugins(configuredPlugins),
-      )
-    : (configuredPlugins ?? (await resolveBuildPluginConfig()));
+  const agentPlugins =
+    trustedPluginRegistrationsFromPluginSet(configuredPlugins);
+  const virtualConfig = await resolveVirtualConfig();
+  const pluginConfig = configuredPlugins
+    ? pluginCatalogConfigFromPluginSet(configuredPlugins)
+    : (virtualConfig?.plugins ?? (await resolveBuildPluginCatalogConfig()));
+  if (configuredPlugins) {
+    validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
+  }
+  validateBuildIncludesTrustedRegistrations(agentPlugins, virtualConfig);
   validateAgentPlugins(agentPlugins);
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
+    Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousPluginConfig = setPluginConfig(pluginConfig);
+  const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
@@ -235,10 +278,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setConfigDefaults(options?.configDefaults);
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
+      validatePluginRegistrations(configuredPlugins?.registrations ?? []);
     }
     agentPluginRoutes = getAgentPluginRoutes();
   } catch (error) {
-    setPluginConfig(previousPluginConfig);
+    setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
     throw error;

@@ -22,7 +22,7 @@ Junior plugins are manifest-owned provider integrations. A plugin package can al
 
 ## Where plugins live
 
-A plugin declares:
+A declarative plugin declares:
 
 - A manifest (`plugin.yaml`) that declares optional capabilities, optional config keys, and optional credential behavior.
 - Optional skills (`SKILL.md`) that consume those capabilities at runtime.
@@ -39,7 +39,8 @@ app/plugins/<plugin-name>/
 
 Use this when you want fast iteration inside a single app without publishing packages.
 
-For shared integrations, publish the same shape as an npm package:
+For shared manifest-only integrations, publish the same shape as an npm
+package:
 
 ```text
 my-junior-plugin/
@@ -58,29 +59,41 @@ For reuse across apps or teams, package plugin manifests and any bundled skills 
 pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
-List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
+Create one shared plugin set and pass it to both `juniorNitro()` and
+`createApp()`. Manifest-only packages use package-name strings. Plugins that
+need trusted runtime hooks use JavaScript factories such as `githubPlugin()`
+and `schedulerPlugin()`.
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
+
+export const plugins = defineJuniorPlugins([
+  "@sentry/junior-agent-browser",
+  "@sentry/junior-datadog",
+  githubPlugin({
+    botNameEnv: "GITHUB_APP_BOT_NAME",
+    botEmailEnv: "GITHUB_APP_BOT_EMAIL",
+  }),
+  "@sentry/junior-hex",
+  "@sentry/junior-linear",
+  "@sentry/junior-notion",
+  schedulerPlugin(),
+  "@sentry/junior-sentry",
+]);
+```
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
+import { plugins } from "./plugins";
 
 export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins: {
-        packages: [
-          "@sentry/junior-agent-browser",
-          "@sentry/junior-datadog",
-          "@sentry/junior-github",
-          "@sentry/junior-hex",
-          "@sentry/junior-linear",
-          "@sentry/junior-notion",
-          "@sentry/junior-scheduler",
-          "@sentry/junior-sentry",
-          "@sentry/junior-vercel",
-        ],
-      },
+      plugins,
     }),
   ],
   routes: {
@@ -89,59 +102,53 @@ export default defineConfig({
 });
 ```
 
-Use the same `plugins` config to adjust packaged manifest defaults at install time:
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins";
 
-```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-github"],
-    manifests: {
-      github: {
-        credentials: {
-          domains: ["api.github.com", "github.com"],
-        },
-        oauth: {
-          scope: "repo read:org workflow",
-        },
+const app = await createApp({ plugins });
+
+export default app;
+```
+
+Use the second `defineJuniorPlugins` argument to adjust packaged manifest
+defaults at install time:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"], {
+  manifests: {
+    sentry: {
+      credentials: {
+        domains: ["sentry.io", "us.sentry.io"],
+      },
+      oauth: {
+        scope: "event:read org:read project:read",
       },
     },
   },
 });
 ```
 
-If you publish your own package with bundled skills, include both `plugin.yaml` and `skills` in package `files`. Manifest-only packages can include just `plugin.yaml`.
+If you publish a manifest-only package with bundled skills, include
+`plugin.yaml` and `skills` in package `files`. If the package needs trusted
+runtime hooks, export a JavaScript plugin factory instead of shipping
+`plugin.yaml`.
 
 ## Trusted runtime hooks
 
-Some packaged plugins also export trusted runtime hooks for deterministic
-behavior that cannot live in skill prose or `plugin.yaml`. For example, the
-scheduler plugin registers schedule-management tools and heartbeat behavior, and
-the GitHub plugin installs a sandbox Git hook, configures global Git defaults,
-and injects commit attribution env before bash commands run.
+Most plugins are manifest-only. Use a JavaScript plugin factory instead when a
+package needs deterministic host behavior that cannot live in skill prose or
+`plugin.yaml`. For example, the scheduler plugin registers schedule-management
+tools and heartbeat behavior, and the GitHub plugin installs a sandbox Git
+hook, configures global Git defaults, and injects commit attribution env before
+bash commands run.
 
-Trusted hooks are explicit app code:
-
-```ts title="server.ts"
-import { createApp } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
-import { schedulerPlugin } from "@sentry/junior-scheduler";
-
-const app = await createApp({
-  plugins: [
-    schedulerPlugin(),
-    githubPlugin({
-      botNameEnv: "GITHUB_APP_BOT_NAME",
-      botEmailEnv: "GITHUB_APP_BOT_EMAIL",
-    }),
-  ],
-});
-
-export default app;
-```
-
-Do not put trusted code entrypoints in `plugin.yaml`; manifests stay
-declarative. Use [Build a Plugin](/extend/build-a-plugin/) for the package
-authoring contract.
+Trusted hooks are explicit app code because the app imports the plugin factory
+into `plugins.ts`. A package should use either `plugin.yaml` or
+`defineJuniorPlugin({ manifest, hooks })`, not both. Use
+[Build a Plugin](/extend/build-a-plugin/) for the package authoring contract.
 
 ## Local skills vs plugin skills
 
@@ -154,7 +161,10 @@ Use `app/skills` for skills that do not belong to a plugin. Use plugin skills wh
 
 ## Build your own plugin
 
-Every custom plugin needs a `plugin.yaml`. Add bundled skills only when the package should also teach the agent provider-specific workflows.
+Most custom plugins should be declarative and use `plugin.yaml`. Add bundled
+skills only when the package should also teach the agent provider-specific
+workflows. Use a JavaScript plugin factory instead when the same package needs
+trusted runtime hooks.
 
 ### Minimal manifest
 
@@ -316,7 +326,8 @@ description: Work with My Provider resources.
 
 ### Package it for discovery
 
-Published plugin packages must include `plugin.yaml` and `skills` in `files`.
+Published manifest-only plugin packages must include `plugin.yaml` and any
+bundled `skills` in `files`.
 
 ```json
 {
@@ -333,7 +344,8 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The `juniorNitro({ plugins: { packages: [...] } })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` for declarative manifest behavior. Plugins that export trusted runtime hooks, such as `@sentry/junior-scheduler` and `@sentry/junior-github`, must also be registered from app code.
+Add the package name to `defineJuniorPlugins(...)`, then pass the same plugin
+set to `juniorNitro({ plugins })` and `createApp({ plugins })`.
 
 ## Validate extensions
 

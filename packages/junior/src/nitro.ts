@@ -6,13 +6,17 @@ import {
   copyIncludedFiles,
 } from "@/build/copy-build-content";
 import { injectVirtualConfig } from "@/build/virtual-config";
-import type { PluginConfig } from "@/chat/plugins/types";
+import {
+  pluginCatalogConfigFromPluginSet,
+  trustedPluginRegistrationsFromPluginSet,
+  type JuniorPluginSet,
+} from "@/plugins";
 
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
-  /** Plugin packages and manifest overrides bundled into the app. */
-  plugins?: PluginConfig;
+  /** Plugin package names and JS definitions bundled into the app. Pass the same set to `createApp()`. */
+  plugins?: JuniorPluginSet;
   /**
    * Extra file patterns to copy into the server output for files that the
    * bundler cannot trace (e.g. dynamically imported providers).
@@ -39,13 +43,23 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options.maxDuration ?? 800;
 
         applyRolldownTreeshakeWorkaround(nitro);
-        injectVirtualConfig(nitro, options.plugins);
+        const pluginCatalogConfig = pluginCatalogConfigFromPluginSet(
+          options.plugins,
+        );
+        const trustedPluginRegistrations =
+          trustedPluginRegistrationsFromPluginSet(options.plugins).map(
+            (plugin) => plugin.name,
+          );
+        injectVirtualConfig(nitro, {
+          plugins: pluginCatalogConfig,
+          trustedPluginRegistrations,
+        });
 
         nitro.hooks.hook("compiled", () => {
           copyAppAndPluginContent(
             cwd,
             nitro.options.output.serverDir,
-            options.plugins?.packages,
+            pluginCatalogConfig?.packages,
           );
           copyIncludedFiles(
             cwd,

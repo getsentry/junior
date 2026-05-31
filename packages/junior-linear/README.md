@@ -8,14 +8,13 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-linear
 ```
 
-Then register the plugin package in `juniorNitro(...)`:
+Then add the package name to the shared plugin set passed to both
+`juniorNitro()` and `createApp()`:
 
-```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-linear"],
-  },
-});
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-linear"]);
 ```
 
 This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app for the default setup. Each user connects their own Linear account the first time Junior calls a Linear MCP tool. Junior sends the authorization link privately and resumes the same Slack thread automatically after the user authorizes.

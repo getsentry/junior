@@ -66,7 +66,10 @@ describe("agent plugin hooks", () => {
   it("collects turn-scoped tools from configured plugins", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           tools(ctx) {
             expect(ctx.requester?.userId).toBe("U123");
@@ -101,7 +104,10 @@ describe("agent plugin hooks", () => {
   it("rejects plugin tools with invalid names", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           tools() {
             return {
@@ -134,7 +140,10 @@ describe("agent plugin hooks", () => {
   it("rejects plugin tools that conflict with core tools", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           tools() {
             return {
@@ -306,7 +315,10 @@ describe("agent plugin hooks", () => {
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];
     const previous = setAgentPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           async sandboxPrepare(ctx) {
             await ctx.sandbox.writeFile({

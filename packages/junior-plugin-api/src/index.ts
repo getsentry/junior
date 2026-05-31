@@ -222,18 +222,155 @@ export interface AgentPluginHooks {
   ): SlackConversationLink | undefined;
 }
 
-export interface JuniorPluginConfig {
-  legacyStatePrefixes?: string[];
-  packages?: string[];
+export interface JuniorPluginOAuthConfig {
+  authorizeEndpoint: string;
+  authorizeParams?: Record<string, string>;
+  clientIdEnv: string;
+  clientSecretEnv: string;
+  scope?: string;
+  tokenAuthMethod?: "body" | "basic";
+  tokenEndpoint: string;
+  tokenExtraHeaders?: Record<string, string>;
 }
 
-export interface JuniorPlugin {
-  hooks?: AgentPluginHooks;
+export interface JuniorPluginOAuthBearerCredentials {
+  apiHeaders?: Record<string, string>;
+  authTokenEnv: string;
+  authTokenPlaceholder?: string;
+  domains: string[];
+  type: "oauth-bearer";
+}
+
+export interface JuniorPluginGitHubAppCredentials {
+  apiHeaders?: Record<string, string>;
+  appIdEnv: string;
+  authTokenEnv: string;
+  authTokenPlaceholder?: string;
+  domains: string[];
+  installationIdEnv: string;
+  privateKeyEnv: string;
+  type: "github-app";
+}
+
+export type JuniorPluginCredentials =
+  | JuniorPluginOAuthBearerCredentials
+  | JuniorPluginGitHubAppCredentials;
+
+export interface JuniorPluginNpmRuntimeDependency {
+  package: string;
+  type: "npm";
+  version: string;
+}
+
+export interface JuniorPluginSystemRuntimeDependency {
+  package: string;
+  type: "system";
+}
+
+export interface JuniorPluginSystemRuntimeDependencyFromUrl {
+  sha256: string;
+  type: "system";
+  url: string;
+}
+
+export type JuniorPluginRuntimeDependency =
+  | JuniorPluginNpmRuntimeDependency
+  | JuniorPluginSystemRuntimeDependency
+  | JuniorPluginSystemRuntimeDependencyFromUrl;
+
+export interface JuniorPluginRuntimePostinstallCommand {
+  args?: string[];
+  cmd: string;
+  sudo?: boolean;
+}
+
+export interface JuniorPluginMcpConfig {
+  allowedTools?: string[];
+  headers?: Record<string, string>;
+  transport: "http";
+  url: string;
+}
+
+export interface JuniorPluginEnvVarDeclaration {
+  default?: string;
+}
+
+export interface JuniorPluginManifest {
+  apiHeaders?: Record<string, string>;
+  capabilities?: string[];
+  commandEnv?: Record<string, string>;
+  configKeys?: string[];
+  credentials?: JuniorPluginCredentials;
+  description: string;
+  domains?: string[];
+  envVars?: Record<string, JuniorPluginEnvVarDeclaration>;
+  mcp?: JuniorPluginMcpConfig;
   name: string;
-  pluginConfig?: JuniorPluginConfig;
+  oauth?: JuniorPluginOAuthConfig;
+  runtimeDependencies?: JuniorPluginRuntimeDependency[];
+  runtimePostinstall?: JuniorPluginRuntimePostinstallCommand[];
+  target?: {
+    commandFlags?: string[];
+    configKey: string;
+    type: string;
+  };
 }
 
-/** Define a trusted Junior plugin with optional package config and agent hooks. */
-export function defineJuniorPlugin(plugin: JuniorPlugin): JuniorPlugin {
-  return plugin;
+export type JuniorPluginRegistrationInput = {
+  hooks?: AgentPluginHooks;
+  legacyStatePrefixes?: string[];
+  manifest: JuniorPluginManifest;
+  name?: string;
+  packageName?: string;
+};
+
+export interface JuniorPluginRegistration extends JuniorPluginRegistrationInput {
+  name: string;
+}
+
+const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
+
+/** Define one Junior plugin registration for app and build-time wiring. */
+export function defineJuniorPlugin(
+  plugin: JuniorPluginRegistrationInput,
+): JuniorPluginRegistration {
+  if ("pluginConfig" in plugin) {
+    throw new Error(
+      "pluginConfig is no longer supported. Put runtime metadata in manifest and trusted state prefixes on the plugin registration.",
+    );
+  }
+  const manifest = plugin.manifest;
+  if (!manifest) {
+    throw new Error(
+      "defineJuniorPlugin() requires a manifest. Use a package name string in defineJuniorPlugins([...]) for plugin.yaml packages.",
+    );
+  }
+  const name = plugin.name ?? manifest.name;
+  if (!name) {
+    throw new Error(
+      "Junior plugin registrations must include name or manifest.name.",
+    );
+  }
+  if (!PLUGIN_NAME_RE.test(name)) {
+    throw new Error(
+      `Junior plugin registration name "${name}" must be a lowercase plugin identifier.`,
+    );
+  }
+  if (
+    typeof manifest.description !== "string" ||
+    !manifest.description.trim()
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" manifest.description is required.`,
+    );
+  }
+  if (plugin.name && manifest.name && plugin.name !== manifest.name) {
+    throw new Error(
+      `Junior plugin registration name "${plugin.name}" must match manifest.name "${manifest.name}".`,
+    );
+  }
+  return {
+    ...plugin,
+    name,
+  };
 }

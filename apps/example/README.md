@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-datadog`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
 
 ## Run
 
@@ -38,7 +38,7 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `plugin-packages.ts` is the single source of truth for installed plugin packages in this app
-- `nitro.config.ts` passes that list to `juniorNitro()` so plugin content is copied into the build output
-- `server.ts` registers trusted runtime plugins, including the dashboard plugin, through `createApp({ plugins: [...] })`
+- `plugins.ts` is the single source of truth for installed plugin registrations and trusted runtime plugins in this app
+- `nitro.config.ts` passes that set to `juniorNitro()` so plugin content is copied into the build output
+- `server.ts` passes the same set to `createApp()` so local dev and deployed builds use one plugin contract
 - root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for trusted plugin heartbeats and stale dispatch recovery; it also defaults `JUNIOR_BASE_URL` to the local server when unset so signed internal callbacks can recover dispatched runs

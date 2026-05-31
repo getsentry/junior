@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
 
@@ -130,15 +131,12 @@ describe("plugin manifest API headers", () => {
     ]);
   });
 
-  it("parses the packaged GitHub command env host bindings", () => {
-    const manifestPath = path.resolve(
-      process.cwd(),
-      "../junior-github/plugin.yaml",
-    );
-    const manifest = parsePluginManifest(
-      readFileSync(manifestPath, "utf8"),
-      path.dirname(manifestPath),
-    );
+  it("registers the packaged GitHub command env host bindings", async () => {
+    const { githubPlugin } = (await import(
+      pathToFileURL(path.resolve(process.cwd(), "../junior-github/index.js"))
+        .href
+    )) as typeof import("../../../../junior-github/index.js");
+    const manifest = githubPlugin().manifest!;
 
     expect(manifest.envVars).toMatchObject({
       GITHUB_APP_BOT_NAME: {},

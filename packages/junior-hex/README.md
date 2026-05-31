@@ -10,14 +10,13 @@ pnpm add @sentry/junior @sentry/junior-hex
 
 ## Configure
 
-List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
+Add the package name to the shared plugin set passed to both `juniorNitro()`
+and `createApp()`:
 
 ```ts
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-hex"],
-  },
-});
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-hex"]);
 ```
 
 No API token is needed. Each user completes OAuth the first time Junior calls a Hex MCP tool on their behalf.

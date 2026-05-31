@@ -19,8 +19,7 @@
   },
   "files": [
     "dist",
-    "src",
-    "plugin.yaml"
+    "src"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",

@@ -1,6 +1,7 @@
 /** Virtual module injected by juniorNitro() at build time. */
 declare module "#junior/config" {
-  import type { PluginConfig } from "@/chat/plugins/types";
+  import type { PluginCatalogConfig } from "@/chat/plugins/types";
 
-  export const plugins: PluginConfig;
+  export const plugins: PluginCatalogConfig;
+  export const trustedPluginRegistrations: string[];
 }

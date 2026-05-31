@@ -8,14 +8,13 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-datadog
 ```
 
-Then register the plugin package in `juniorNitro(...)`:
+Then add the package name to the shared plugin set passed to both
+`juniorNitro()` and `createApp()`:
 
-```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-datadog"],
-  },
-});
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-datadog"]);
 ```
 
 Set Datadog credentials in the Junior deployment environment:

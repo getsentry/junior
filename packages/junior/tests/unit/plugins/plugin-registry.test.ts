@@ -25,6 +25,7 @@ describe("plugin registry", () => {
     vi.doMock("@/chat/plugins/package-discovery", () => ({
       discoverInstalledPluginPackageContent: () => ({
         packageNames: [],
+        packages: [],
         manifestRoots: [],
         skillRoots: [],
         tracingIncludes: [],
@@ -54,6 +55,11 @@ describe("plugin registry", () => {
   it("reloads plugin state after packaged content changes", async () => {
     const packagedContent = {
       packageNames: [] as string[],
+      packages: [] as {
+        dir: string;
+        hasSkillsDir: boolean;
+        name: string;
+      }[],
       manifestRoots: [] as string[],
       skillRoots: [] as string[],
       tracingIncludes: [] as string[],

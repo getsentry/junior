@@ -7,7 +7,7 @@ import type {
   PluginOAuthConfig,
   OAuthBearerCredentials,
   PluginCredentials,
-  PluginConfig,
+  PluginCatalogConfig,
   PluginManifest,
   PluginManifestConfig,
   PluginNpmRuntimeDependency,
@@ -441,7 +441,7 @@ function mergeManifestConfig(
 
 function applyManifestConfig(
   source: ManifestSource,
-  config: PluginConfig | undefined,
+  config: PluginCatalogConfig | undefined,
 ): ManifestSource {
   const name = source.name;
   if (typeof name !== "string") {
@@ -970,7 +970,7 @@ function normalizeMcp(
 export function parsePluginManifest(
   raw: string,
   dir: string,
-  config?: PluginConfig,
+  config?: PluginCatalogConfig,
 ): PluginManifest {
   let parsedYaml: unknown;
   try {

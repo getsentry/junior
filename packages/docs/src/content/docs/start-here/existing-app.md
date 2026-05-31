@@ -24,8 +24,9 @@ import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins";
 
-const app = await createApp();
+const app = await createApp({ plugins });
 
 export default app;
 ```
@@ -34,18 +35,24 @@ export default app;
 
 ## Add Nitro wiring
 
-Register `juniorNitro()` so app files and declared plugin packages are copied into the deployment bundle:
+Create a shared plugin set and register `juniorNitro()` so app files and
+declared plugin packages are copied into the deployment bundle:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
+```
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
+import { plugins } from "./plugins";
 
 export default defineConfig({
   modules: [
     juniorNitro({
-      plugins: {
-        packages: ["@sentry/junior-sentry"],
-      },
+      plugins,
     }),
   ],
   routes: {
@@ -56,10 +63,10 @@ export default defineConfig({
 
 If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/turn-resume`, and `/health`. Do not split those routes across independent runtime instances. When mounted, `@sentry/junior-dashboard` owns `/`, `/api/dashboard/*`, and `/api/auth/*`.
 
-Some packages also export trusted runtime hooks. Register those in `createApp()`;
-do not rely on `juniorNitro()` alone. For example, see
+Some packages export trusted runtime hooks instead of `plugin.yaml`. Add those
+plugin factories to the same `plugins.ts` set. For example, see
 [Scheduler Plugin](/extend/scheduler-plugin/) for scheduled tasks and
-[GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` app-code setup.
+[GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` setup.
 
 ## Add app files
 

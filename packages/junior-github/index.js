@@ -84,9 +84,42 @@ export function githubPlugin(options = {}) {
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
 
   return defineJuniorPlugin({
-    name: "github",
-    pluginConfig: {
-      packages: ["@sentry/junior-github"],
+    packageName: "@sentry/junior-github",
+    manifest: {
+      name: "github",
+      description:
+        "GitHub issue, pull request, and repository workflows via GitHub App",
+      configKeys: ["org", "repo"],
+      envVars: {
+        GITHUB_APP_BOT_NAME: {},
+        GITHUB_APP_BOT_EMAIL: {},
+      },
+      credentials: {
+        type: "github-app",
+        domains: ["api.github.com", "github.com"],
+        authTokenEnv: "GITHUB_TOKEN",
+        authTokenPlaceholder: "ghp_host_managed_credential",
+        appIdEnv: "GITHUB_APP_ID",
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+      },
+      commandEnv: {
+        GIT_AUTHOR_NAME: "${GITHUB_APP_BOT_NAME}",
+        GIT_AUTHOR_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
+        GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
+        GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
+      },
+      target: {
+        type: "repo",
+        configKey: "repo",
+        commandFlags: ["--repo", "-R"],
+      },
+      runtimeDependencies: [
+        {
+          type: "system",
+          package: "gh",
+        },
+      ],
     },
     hooks: {
       async sandboxPrepare(ctx) {

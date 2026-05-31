@@ -158,7 +158,7 @@ export async function runTrustedPluginHeartbeats(args: {
         Promise.resolve(
           heartbeat(
             createHeartbeatContext({
-              legacyStatePrefixes: plugin.pluginConfig?.legacyStatePrefixes,
+              legacyStatePrefixes: plugin.legacyStatePrefixes,
               plugin: plugin.name,
               nowMs: args.nowMs,
             }),

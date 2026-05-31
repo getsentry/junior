@@ -16,6 +16,11 @@ interface InstalledJuniorContentPackage {
 
 export interface InstalledPluginPackageContent {
   packageNames: string[];
+  packages: {
+    dir: string;
+    hasSkillsDir: boolean;
+    name: string;
+  }[];
   manifestRoots: string[];
   skillRoots: string[];
   tracingIncludes: string[];
@@ -216,6 +221,11 @@ export function discoverInstalledPluginPackageContent(
     packageNames: uniqueStringsInOrder(
       discoveredPackages.map((pkg) => pkg.name),
     ),
+    packages: discoveredPackages.map((pkg) => ({
+      dir: pkg.dir,
+      hasSkillsDir: pkg.hasSkillsDir,
+      name: pkg.name,
+    })),
     manifestRoots: uniqueStringsInOrder(manifestRoots),
     skillRoots: uniqueStringsInOrder(skillRoots),
     tracingIncludes: uniqueStringsInOrder(tracingIncludes),

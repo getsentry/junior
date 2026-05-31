@@ -169,11 +169,11 @@ async function failClaimedRun(args: {
 /** Create Junior's built-in trusted scheduler plugin. */
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
-    name: "scheduler",
-    pluginConfig: {
-      legacyStatePrefixes: ["junior:scheduler"],
-      packages: ["@sentry/junior-scheduler"],
+    manifest: {
+      name: "scheduler",
+      description: "Scheduled Junior task management and heartbeat dispatch",
     },
+    legacyStatePrefixes: ["junior:scheduler"],
     hooks: {
       tools(ctx) {
         if (!ctx.channelId || !ctx.teamId || !ctx.requester?.userId) {
