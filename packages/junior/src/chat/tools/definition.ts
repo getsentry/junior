@@ -6,7 +6,17 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   description: string;
   inputSchema: TInputSchema;
   annotations?: ToolAnnotations;
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for plugin compatibility; may be
+   * removed in a future major version.
+   */
   promptSnippet?: string;
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for plugin compatibility; may be
+   * removed in a future major version.
+   */
   promptGuidelines?: string[];
   prepareArguments?: (args: unknown) => Static<TInputSchema>;
   executionMode?: ToolExecutionMode;

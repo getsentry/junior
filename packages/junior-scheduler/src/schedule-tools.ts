@@ -38,12 +38,6 @@ export interface SchedulerToolContext {
 const TASK_ID_PREFIX = "sched";
 const MAX_LISTED_TASKS = 50;
 const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
-const ACTIVE_DESTINATION_GUIDELINE =
-  "Only manage tasks for the active Slack DM or channel; never target an existing thread, another channel, or another user's DM.";
-const ACTIVE_TASK_ID_GUIDELINE =
-  "Use only task IDs returned from this active destination.";
-const RECURRING_GUIDELINE =
-  "Omit recurrence for one-time requests like 'in 1 minute', 'tomorrow', or a specific date; provide recurrence only for requests that explicitly repeat.";
 
 const recurrenceInputSchema = Type.Union([
   Type.Literal("daily"),
@@ -349,22 +343,11 @@ export function createSlackScheduleCreateTaskTool(
 ) {
   return tool({
     description:
-      "Create a scheduled Junior task in the active Slack conversation.",
-    promptSnippet: "create future or recurring Junior work here",
-    promptGuidelines: [
-      "Use only when the user explicitly asks Junior to do work later or on a recurring cadence.",
-      ACTIVE_DESTINATION_GUIDELINE,
-      RECURRING_GUIDELINE,
-      "When the user's scheduling intent is clear, create the task immediately without asking for confirmation.",
-      "Ask for confirmation only when the task contract, schedule, or active destination is ambiguous.",
-      "Recurring tasks can run at most once per day; use only daily, weekly, monthly, or yearly recurrence frequencies.",
-      "Provide next_run_at as an exact ISO timestamp computed from the user's requested schedule.",
-      "Provide recurrence only for repeating schedules.",
-    ],
+      "Create a future or recurring Junior task in the active Slack conversation. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
     inputSchema: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 4000 }),
       schedule: Type.String({ minLength: 1, maxLength: 300 }),
-      timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+      timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80, description: "IANA timezone, e.g. 'America/Los_Angeles'. Defaults to the channel's configured timezone." })),
       next_run_at: Type.Optional(
         Type.String({
           minLength: 1,
@@ -372,7 +355,12 @@ export function createSlackScheduleCreateTaskTool(
             "Exact next run time as an ISO timestamp, computed from the user's requested schedule.",
         }),
       ),
-      recurrence: Type.Optional(recurrenceInputSchema),
+      recurrence: Type.Optional(Type.Union([
+        Type.Literal("daily"),
+        Type.Literal("weekly"),
+        Type.Literal("monthly"),
+        Type.Literal("yearly"),
+      ], { description: "Provide only for explicitly repeating schedules; omit for one-time requests like 'in 1 minute', 'tomorrow', or a specific date. Recurring tasks run at most once per day: use daily, weekly, monthly, or yearly only." })),
     }),
     execute: async (input) => {
       const destination = requireActiveDestination(context);
@@ -438,12 +426,7 @@ export function createSlackScheduleListTasksTool(
 ) {
   return tool({
     description:
-      "List scheduled Junior tasks for the active Slack conversation.",
-    promptSnippet: "list schedules for this Slack destination",
-    promptGuidelines: [
-      "Use when the user asks what is scheduled here or needs task IDs before editing, deleting, or running schedules.",
-      ACTIVE_DESTINATION_GUIDELINE,
-    ],
+      "List scheduled Junior tasks for the active Slack conversation. Use when the user asks what is scheduled here, or when task IDs are needed before editing, deleting, or running schedules. Only manages tasks for the active Slack DM or channel.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({}),
     execute: async () => {
@@ -471,32 +454,23 @@ export function createSlackScheduleUpdateTaskTool(
   context: SchedulerToolContext,
 ) {
   return tool({
-    description: "Edit, pause, resume, or reschedule a Junior scheduled task.",
-    promptSnippet: "edit/pause/resume one schedule in this Slack destination",
-    promptGuidelines: [
-      ACTIVE_TASK_ID_GUIDELINE,
-      ACTIVE_DESTINATION_GUIDELINE,
-      RECURRING_GUIDELINE,
-      "Do not move scheduled tasks across conversations.",
-      "Provide next_run_at as an exact ISO timestamp when changing the next run.",
-      "Set recurrence to null when converting a recurring task to one-time.",
-      "Set status to active, paused, or blocked when the user asks to resume, pause, or block a task.",
-    ],
+    description:
+      "Edit, pause, resume, or reschedule an existing Junior scheduled task in the active Slack conversation. Use only task IDs returned for this destination. Do not move scheduled tasks across conversations.",
     inputSchema: Type.Object({
-      task_id: Type.String({ minLength: 1 }),
+      task_id: Type.String({ minLength: 1, description: "ID of the task to update. Must be from this active Slack destination." }),
       task: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
       schedule: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-      next_run_at: Type.Optional(Type.String({ minLength: 1 })),
+      next_run_at: Type.Optional(Type.String({ minLength: 1, description: "Exact ISO timestamp when changing the next run time." })),
       recurrence: Type.Optional(
-        Type.Union([recurrenceInputSchema, Type.Null()]),
+        Type.Union([recurrenceInputSchema, Type.Null()], { description: "Provide only for repeating schedules. Omit for one-time requests. Set to null to convert a recurring task to one-time." }),
       ),
       status: Type.Optional(
         Type.Union([
           Type.Literal("active"),
           Type.Literal("paused"),
           Type.Literal("blocked"),
-        ]),
+        ], { description: "Set to active, paused, or blocked to resume, pause, or block the task." }),
       ),
     }),
     execute: async (input) => {
@@ -571,11 +545,9 @@ export function createSlackScheduleDeleteTaskTool(
 ) {
   return tool({
     description:
-      "Delete a Junior scheduled task from the active Slack conversation.",
-    promptSnippet: "delete one schedule from this Slack destination",
-    promptGuidelines: [ACTIVE_TASK_ID_GUIDELINE, ACTIVE_DESTINATION_GUIDELINE],
+      "Delete one scheduled Junior task from the active Slack conversation. Use only task IDs returned for this destination. Do not delete schedules from threads, other channels, or another user's DM.",
     inputSchema: Type.Object({
-      task_id: Type.String({ minLength: 1 }),
+      task_id: Type.String({ minLength: 1, description: "ID of the task to delete. Must be from this active Slack destination." }),
     }),
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });
@@ -604,15 +576,9 @@ export function createSlackScheduleRunTaskNowTool(
 ) {
   return tool({
     description:
-      "Queue an active Junior scheduled task to run as soon as possible.",
-    promptSnippet: "run one active schedule now without changing its cadence",
-    promptGuidelines: [
-      ACTIVE_TASK_ID_GUIDELINE,
-      ACTIVE_DESTINATION_GUIDELINE,
-      "Use when the user asks to run an existing scheduled task now; do not rewrite the stored calendar cadence.",
-    ],
+      "Queue an existing active scheduled Junior task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled task now. Use only task IDs returned for this destination.",
     inputSchema: Type.Object({
-      task_id: Type.String({ minLength: 1 }),
+      task_id: Type.String({ minLength: 1, description: "ID of the active task to run now. Must be from this active Slack destination." }),
     }),
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });

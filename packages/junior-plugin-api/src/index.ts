@@ -88,7 +88,17 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
   executionMode?: unknown;
   inputSchema: unknown;
   prepareArguments?: (args: unknown) => unknown;
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for compatibility; may be removed in a
+   * future major version.
+   */
   promptGuidelines?: string[];
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for compatibility; may be removed in a
+   * future major version.
+   */
   promptSnippet?: string;
   execute?: AgentPluginToolExecute<TInput>;
 }

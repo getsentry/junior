@@ -108,13 +108,7 @@ const editReplacementSchema = Type.Object(
 export function createEditFileTool() {
   return tool({
     description:
-      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff.",
-    promptSnippet: "existing-file exact edits; returns diff",
-    promptGuidelines: [
-      "prefer over writeFile for targeted changes",
-      "oldText exact, unique, non-overlapping",
-      "multiple same-file changes: one edits[] call",
-    ],
+      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
     prepareArguments: prepareEditFileArguments,
     executionMode: "sequential",
     inputSchema: Type.Object(

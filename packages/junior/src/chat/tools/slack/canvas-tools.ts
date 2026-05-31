@@ -264,13 +264,7 @@ export function createSlackCanvasReadTool() {
 export function createSlackCanvasEditTool(state: ToolState) {
   return tool({
     description:
-      "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff.",
-    promptSnippet: "existing-canvas exact edits; returns diff",
-    promptGuidelines: [
-      "prefer over slackCanvasWrite for targeted changes",
-      "oldText exact, unique, non-overlapping",
-      "multiple same-canvas changes: one edits[] call",
-    ],
+      "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content; prefer this over slackCanvasWrite for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same canvas: use one edits[] call.",
     prepareArguments: prepareCanvasEditArguments,
     executionMode: "sequential",
     inputSchema: Type.Object(
@@ -372,9 +366,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
 export function createSlackCanvasWriteTool(state: ToolState) {
   return tool({
     description:
-      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation. Do not use for targeted edits.",
-    promptSnippet: "deliberate full-canvas replacement",
-    promptGuidelines: ["targeted existing-canvas changes: slackCanvasEdit"],
+      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content. Do not use for targeted edits.",
     executionMode: "sequential",
     inputSchema: Type.Object(
       {

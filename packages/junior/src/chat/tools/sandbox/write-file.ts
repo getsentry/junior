@@ -5,9 +5,7 @@ import { tool } from "@/chat/tools/definition";
 export function createWriteFileTool() {
   return tool({
     description:
-      "Write UTF-8 content to a file in the sandbox workspace. Use for intentional file creation or replacement after validation. Do not use for exploratory analysis-only turns.",
-    promptSnippet: "new file or deliberate full-file replacement",
-    promptGuidelines: ["targeted existing-file changes: editFile"],
+      "Write UTF-8 content to a file in the sandbox workspace. Use for intentional file creation or deliberate full-file replacement after validation; use editFile instead for targeted changes to existing files. Do not use for exploratory analysis-only turns.",
     executionMode: "sequential",
     inputSchema: Type.Object(
       {

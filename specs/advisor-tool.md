@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-06
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-31
 
 ## Purpose
 
@@ -45,7 +45,7 @@ Input:
 - `question`: required focused advisor question or decision point.
 - `context`: required curated evidence packet with the requirements, constraints, current plan, alternatives, code snippets, diffs, command output, and open questions the advisor should start from.
 
-The tool description is the executor-facing trigger policy. It must say the advisor is stronger, tool-backed, does not automatically receive the parent transcript, keeps advisor history for the parent conversation, receives a read-only tool subset, and is for hard reasoning rather than routine work.
+The tool description is the executor-facing trigger policy. It must say the advisor should be called proactively before committing to a non-obvious plan or declaring complex work complete — not only when stuck. It must also say the advisor is stronger, tool-backed, does not automatically receive the parent transcript, keeps advisor history for the parent conversation, receives a read-only tool subset, and is for hard reasoning rather than routine work.
 
 ## Runtime Contract
 
