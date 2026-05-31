@@ -1,3 +1,10 @@
+/**
+ * Plugin authorization pause orchestration.
+ *
+ * This module detects plugin command credential failures and maps them onto the
+ * same paused-turn contract used by MCP auth. It owns provider attribution,
+ * private-link delivery/reuse, session-log recording, and credential cleanup.
+ */
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";

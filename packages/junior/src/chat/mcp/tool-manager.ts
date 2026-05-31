@@ -1,3 +1,11 @@
+/**
+ * Turn-local MCP tool manager.
+ *
+ * This manager activates plugin MCP providers for one agent turn, exposes
+ * discovered tools through provider-prefixed names, and converts MCP results
+ * into Pi tool content. MCP clients, auth challenges, and provider session
+ * details stay inside this layer.
+ */
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { logWarn, setSpanAttributes } from "@/chat/logging";

@@ -1,3 +1,11 @@
+/**
+ * MCP authorization pause orchestration.
+ *
+ * This module turns an MCP client auth challenge into Junior's paused-turn
+ * model: create provider auth state, deliver or reuse a private Slack link,
+ * record pending auth, and abort the agent so the OAuth callback can resume the
+ * same session.
+ */
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";

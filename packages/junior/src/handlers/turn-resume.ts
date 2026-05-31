@@ -1,3 +1,11 @@
+/**
+ * Internal timeout-resume handler.
+ *
+ * This handler receives signed continuation callbacks for turns that outlived a
+ * request slice. It reloads the turn session, reacquires Slack/thread context,
+ * and either resumes the agent or schedules the next slice while preserving the
+ * same conversation/session identity.
+ */
 import { logException, logWarn } from "@/chat/logging";
 import {
   ResumeTurnBusyError,

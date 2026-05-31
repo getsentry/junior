@@ -1,3 +1,11 @@
+/**
+ * Prompt assembly.
+ *
+ * This module owns Junior's durable identity/world prompt and volatile per-turn
+ * runtime context. Runtime context is session-scoped bootstrap data; it must
+ * stay separate from durable conversation history so compaction does not retain
+ * runtime instructions as user text.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { botConfig } from "@/chat/config";

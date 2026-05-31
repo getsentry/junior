@@ -1,3 +1,11 @@
+/**
+ * Slack event runtime.
+ *
+ * This module owns inbound Slack routing decisions for mentions, subscribed
+ * messages, assistant lifecycle events, and retryable turn pauses. It should
+ * normalize text/queued context and decide reply vs silence while keeping
+ * Pi/MCP internals and durable session storage behind injected services.
+ */
 import type { Message, MessageContext, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isRetryableTurnError } from "@/chat/runtime/turn";

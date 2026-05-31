@@ -1,3 +1,11 @@
+/**
+ * Durable agent dispatch runner.
+ *
+ * This is the queue/scheduled-task path for agent turns that are not driven by
+ * a live Slack event. It claims a dispatch lease, reconstructs thread state,
+ * calls the same agent boundary as Slack replies, persists visible result
+ * state, and schedules follow-up slices when a turn needs to continue.
+ */
 import { botConfig } from "@/chat/config";
 import {
   generateAssistantReply as generateAssistantReplyImpl,

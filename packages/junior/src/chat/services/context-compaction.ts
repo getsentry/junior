@@ -1,3 +1,11 @@
+/**
+ * Context compaction.
+ *
+ * This module bounds visible Pi history for long conversations. It strips
+ * runtime-only turn context before summarizing, commits a session-log projection
+ * reset, and keeps recent user intent. Compaction must not preserve runtime
+ * bootstrap context as durable conversation history.
+ */
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
   estimateContextTokens,

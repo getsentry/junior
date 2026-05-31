@@ -1,3 +1,11 @@
+/**
+ * Conversation-scoped Pi session log.
+ *
+ * This append-only log is the durable source for reusable Pi history across
+ * turns. Projection resets mark internal session boundaries after compaction;
+ * readers normally load the current projection so older sessions do not make
+ * active context grow without bound.
+ */
 import { isDeepStrictEqual } from "node:util";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { z } from "zod";

@@ -1,3 +1,11 @@
+/**
+ * Slack reply execution boundary.
+ *
+ * This module bridges prepared Slack thread state into `generateAssistantReply`
+ * and commits the resulting Slack-visible delivery/state updates. It is where
+ * queued messages, compaction, status updates, and Slack posting meet; agent
+ * internals stay behind the reply generator.
+ */
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";

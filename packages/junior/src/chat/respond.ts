@@ -1,3 +1,12 @@
+/**
+ * Agent turn orchestration.
+ *
+ * This module owns the Pi-facing execution boundary for one Junior turn after
+ * Slack/runtime code has normalized the request. It assembles prompt context,
+ * restores durable Pi/session state, wires tools/MCP/auth, executes the agent,
+ * and persists resumable checkpoints. Slack delivery and thread presentation
+ * should stay outside this file.
+ */
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";

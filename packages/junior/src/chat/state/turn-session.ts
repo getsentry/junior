@@ -1,3 +1,11 @@
+/**
+ * Turn session records.
+ *
+ * These records track one user request across auth pauses, timeout slices, and
+ * completion. Full Pi messages live in the session log; this record stores
+ * resumability metadata and committed message counts so resumes can materialize
+ * the exact continuable boundary without duplicating the log.
+ */
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";

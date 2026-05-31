@@ -1,3 +1,11 @@
+/**
+ * MCP OAuth callback handler.
+ *
+ * This handler finalizes provider OAuth, updates pending-auth/session-log state,
+ * and resumes the exact Slack turn that parked on MCP auth. Stale callbacks
+ * must not resume newer thread work after another user message has superseded
+ * the paused request.
+ */
 import { THREAD_STATE_TTL_MS } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {

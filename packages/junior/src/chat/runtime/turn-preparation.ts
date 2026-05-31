@@ -1,3 +1,11 @@
+/**
+ * Turn state preparation.
+ *
+ * This module turns durable chat thread state plus the current Slack message
+ * into the state needed before agent execution. It owns conversation backfill,
+ * memory/context rendering, vision hydration, configuration, and artifact
+ * snapshots; it should not execute the agent or post replies.
+ */
 import type { Message, Thread } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type {
