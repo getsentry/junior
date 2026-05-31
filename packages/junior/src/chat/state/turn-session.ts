@@ -707,9 +707,9 @@ export async function recordAgentTurnSessionSummary(args: {
 }
 
 /** List recent turn-session summaries for authenticated operational dashboards. */
-export async function listAgentTurnSessionSummaries(
-  limit = 50,
-): Promise<AgentTurnSessionSummary[]> {
+async function readAgentTurnSessionSummaries(): Promise<
+  AgentTurnSessionSummary[]
+> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const values = await stateAdapter.getList(AGENT_TURN_SESSION_INDEX_KEY);
@@ -726,9 +726,28 @@ export async function listAgentTurnSessionSummaries(
     }
   }
 
-  return [...summaries.values()]
-    .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
-    .slice(0, Math.max(0, Math.floor(limit)));
+  return [...summaries.values()].sort(
+    (left, right) => right.updatedAtMs - left.updatedAtMs,
+  );
+}
+
+/** List recent turn-session summaries for authenticated operational dashboards. */
+export async function listAgentTurnSessionSummaries(
+  limit = 50,
+): Promise<AgentTurnSessionSummary[]> {
+  return (await readAgentTurnSessionSummaries()).slice(
+    0,
+    Math.max(0, Math.floor(limit)),
+  );
+}
+
+/** List known turn-session summaries for one authenticated dashboard conversation. */
+export async function listAgentTurnSessionSummariesForConversation(
+  conversationId: string,
+): Promise<AgentTurnSessionSummary[]> {
+  return (await readAgentTurnSessionSummaries()).filter(
+    (summary) => summary.conversationId === conversationId,
+  );
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */

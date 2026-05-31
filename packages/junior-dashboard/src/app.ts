@@ -101,7 +101,34 @@ function unauthorized(request: Request): Response {
   return Response.redirect(dashboardLoginUrl(request), 302);
 }
 
-function forbidden(): Response {
+function forbidden(request: Request): Response {
+  if (!isJsonRoute(new URL(request.url).pathname)) {
+    return new Response(
+      `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Junior access denied</title>
+</head>
+<body style="margin:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif">
+  <main style="min-height:100vh;display:grid;place-items:center;padding:2rem">
+    <section style="max-width:32rem;border-left:4px solid #f43f5e;padding-left:1rem">
+      <h1 style="margin:0 0 .75rem;font-size:1.75rem;line-height:1.1">Access denied</h1>
+      <p style="margin:0;color:#b8b8b8;line-height:1.5">Your Google account is authenticated, but it is not allowed to use this Junior dashboard.</p>
+    </section>
+  </main>
+</body>
+</html>`,
+      {
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "text/html; charset=utf-8",
+        },
+        status: 403,
+      },
+    );
+  }
   return Response.json({ error: "forbidden" }, { status: 403 });
 }
 
@@ -315,7 +342,7 @@ export function createDashboardApp(
       return unauthorized(c.req.raw);
     }
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
-      return forbidden();
+      return forbidden(c.req.raw);
     }
     c.set("dashboardSession", session);
     await next();
@@ -365,6 +392,7 @@ export function createDashboardApp(
       allowedEmailCount: allowedEmails.length,
       allowedGoogleDomainCount: allowedDomains.length,
       authRequired,
+      authPath,
       basePath,
       sentryConversationLinks: hasSentryConversationLinks(),
       timeZone: dashboardTimeZone(),

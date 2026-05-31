@@ -39,11 +39,11 @@ export function DashboardShell() {
       : "loading command center";
 
   async function signOut() {
-    await fetch("/api/auth/sign-out", {
+    await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
       credentials: "same-origin",
       method: "POST",
     });
-    window.location.assign("/");
+    window.location.assign(data?.config.basePath ?? "/");
   }
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>

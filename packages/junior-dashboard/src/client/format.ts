@@ -607,9 +607,7 @@ export function filterConversations(
   if (filter === "active") return conversations.filter(isActiveConversation);
   if (filter === "hung") return conversations.filter(isHungConversation);
   if (filter === "failed") return conversations.filter(isFailedConversation);
-  return conversations.filter(
-    (conversation) => !isActiveConversation(conversation),
-  );
+  return conversations;
 }
 
 /** Normalize URL filter params to the supported dashboard filter set. */

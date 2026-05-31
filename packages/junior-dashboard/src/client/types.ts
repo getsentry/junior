@@ -121,6 +121,7 @@ export type DashboardConfig = {
   allowedEmailCount: number;
   allowedGoogleDomainCount: number;
   authRequired: boolean;
+  authPath: string;
   basePath: string;
   sentryConversationLinks: boolean;
   timeZone: string;

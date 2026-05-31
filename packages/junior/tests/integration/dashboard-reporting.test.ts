@@ -128,6 +128,59 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("reports a conversation even when newer global turns exceed the feed limit", async () => {
+    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-29T00:00:00.000Z"));
+      await upsertAgentTurnSessionRecord({
+        conversationId: "slack:C1:999",
+        sessionId: "target-turn",
+        sliceId: 1,
+        state: "completed",
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "target question" }],
+            timestamp: 1,
+          },
+        ] as PiMessage[],
+      });
+
+      const newerTurnStartMs = Date.parse("2026-05-29T00:10:00.000Z");
+      for (let index = 0; index < 205; index += 1) {
+        vi.setSystemTime(new Date(newerTurnStartMs + index));
+        await recordAgentTurnSessionSummary({
+          conversationId: `slack:C2:${index}`,
+          sessionId: `newer-turn-${index}`,
+          sliceId: 1,
+          state: "completed",
+        });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const report =
+      await createJuniorReporting().getConversation("slack:C1:999");
+
+    expect(report.turns).toHaveLength(1);
+    expect(report.turns[0]).toMatchObject({
+      id: "target-turn",
+      transcriptAvailable: true,
+    });
+    expect(report.turns[0]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "target question" }],
+      },
+    ]);
+  });
+
   it("keeps earlier turn transcripts pinned to their committed log prefix", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

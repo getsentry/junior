@@ -7,6 +7,8 @@ import {
   type DashboardAuth,
   type DashboardSession,
 } from "../src/auth";
+import { filterConversations } from "../src/client/format";
+import type { Conversation } from "../src/client/types";
 import { resolveDashboardConfig } from "../src/config";
 import { juniorDashboardNitro } from "../src/nitro";
 
@@ -19,6 +21,7 @@ const dashboardEnvNames = [
   "JUNIOR_BASE_URL",
   "VERCEL_PROJECT_PRODUCTION_URL",
   "VERCEL_URL",
+  "JUNIOR_DASHBOARD_AUTH_REQUIRED",
   "JUNIOR_DASHBOARD_GOOGLE_DOMAINS",
   "JUNIOR_DASHBOARD_ALLOWED_EMAILS",
   "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
@@ -496,6 +499,7 @@ describe("dashboard routes", () => {
       allowedEmailCount: 1,
       allowedGoogleDomainCount: 1,
       authRequired: true,
+      authPath: "/api/auth",
       basePath: "/",
       sentryConversationLinks: true,
       timeZone: "America/Los_Angeles",
@@ -517,6 +521,22 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "forbidden" });
+  });
+
+  it("renders a browser-readable forbidden page for denied dashboard routes", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@example.com",
+        emailVerified: true,
+        hostedDomain: "example.com",
+      },
+    });
+
+    const response = await app.fetch(new Request("http://localhost/"));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("Access denied");
   });
 
   it("allows explicitly configured email exceptions", async () => {
@@ -612,6 +632,35 @@ describe("dashboard routes", () => {
       allowedEmails: ["admin@example.com"],
       trustedOrigins: ["https://junior.example.com"],
     });
+  });
+
+  it("fails clearly when list env JSON is malformed", async () => {
+    process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = '["admin@example.com"';
+
+    await expect(resolveDashboardConfig()).rejects.toThrow(
+      "JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array",
+    );
+  });
+
+  it("keeps active conversations in the default recent filter", () => {
+    const conversations = [
+      {
+        id: "active",
+        status: "active",
+        turns: [{ status: "active" }],
+      },
+      {
+        id: "completed",
+        status: "completed",
+        turns: [{ status: "completed" }],
+      },
+    ] as Conversation[];
+
+    expect(
+      filterConversations(conversations, "recent").map(
+        (conversation) => conversation.id,
+      ),
+    ).toEqual(["active", "completed"]);
   });
 
   it("uses JUNIOR_SECRET as the default Better Auth secret", () => {

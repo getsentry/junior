@@ -35,7 +35,14 @@ function readListEnv(name: string): string[] {
   }
 
   if (value.trim().startsWith("[")) {
-    const parsed: unknown = JSON.parse(value);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      throw new Error(`${name} must be a JSON string array`, {
+        cause: error,
+      });
+    }
     if (
       !Array.isArray(parsed) ||
       parsed.some((item) => typeof item !== "string")

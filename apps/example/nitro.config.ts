@@ -12,7 +12,6 @@ export default defineConfig({
       },
     }),
     juniorDashboardNitro({
-      authRequired: false,
       allowedGoogleDomains: ["sentry.io"],
     }),
   ],

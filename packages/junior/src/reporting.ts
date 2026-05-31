@@ -21,6 +21,7 @@ import {
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummaries,
+  listAgentTurnSessionSummariesForConversation,
   type AgentTurnRequester,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
@@ -524,9 +525,8 @@ async function readSessions(): Promise<DashboardSessionFeed> {
 async function readConversation(
   conversationId: string,
 ): Promise<DashboardConversationReport> {
-  const summaries = (await listAgentTurnSessionSummaries(200)).filter(
-    (summary) => summary.conversationId === conversationId,
-  );
+  const summaries =
+    await listAgentTurnSessionSummariesForConversation(conversationId);
   summaries.sort((left, right) => left.startedAtMs - right.startedAtMs);
 
   const turns = await Promise.all(
