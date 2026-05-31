@@ -359,11 +359,65 @@ function turnMeta(turn: ConversationTurn): string[] {
   ].filter((value) => value && value !== "none");
 }
 
+function SystemMessageView(props: {
+  message: TranscriptMessage;
+  turn: ConversationTurn;
+  view: TranscriptViewMode;
+}) {
+  const [open, setOpen] = useState(false);
+  const rawText = messageRawText(props.message);
+
+  return (
+    <TranscriptMessageShell role={props.message.role}>
+      <details
+        onToggle={(event) => {
+          if (event.currentTarget !== event.target) return;
+          setOpen(event.currentTarget.open);
+        }}
+        open={open}
+      >
+        <summary className="list-none cursor-pointer">
+          <div className={transcriptRoleClass(props.message.role)}>
+            <span className={transcriptRoleLabelClass(props.message.role)}>
+              {transcriptRoleLabel(props.message.role, props.turn)}
+            </span>
+            {open ? null : (
+              <span className="font-mono text-[0.78rem] text-[#888]">
+                {rawText.length.toLocaleString()} chars
+              </span>
+            )}
+          </div>
+        </summary>
+        <div className="mt-2">
+          {props.view === "raw" ? (
+            <HighlightedCode
+              code={rawText || "{}"}
+              language={detectLanguage(rawText)}
+            />
+          ) : (
+            <HighlightedCode code={rawText || "{}"} language="markdown" />
+          )}
+        </div>
+      </details>
+    </TranscriptMessageShell>
+  );
+}
+
 function TranscriptMessageView(props: {
   message: TranscriptMessage;
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
+  if (transcriptRoleKind(props.message.role) === "system") {
+    return (
+      <SystemMessageView
+        message={props.message}
+        turn={props.turn}
+        view={props.view}
+      />
+    );
+  }
+
   const offset = formatMessageOffset(props.turn, props.message.timestamp);
   const renderedParts = groupTranscriptParts(props.message.parts);
   const rawText = messageRawText(props.message);

@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 
+vi.mock("@/chat/prompt", () => ({
+  buildSystemPrompt: vi.fn(() => "[system prompt]"),
+  buildTurnContextPrompt: vi.fn(() => null),
+  JUNIOR_PERSONALITY: "",
+  JUNIOR_WORLD: null,
+}));
+
+const SYSTEM_MESSAGE = {
+  role: "system",
+  parts: [{ type: "text", text: "[system prompt]" }],
+};
+
 const ORIGINAL_ENV = { ...process.env };
 
 describe("dashboard reporting", () => {
@@ -137,6 +149,7 @@ describe("dashboard reporting", () => {
       transcriptMessageCount: 2,
     });
     expect(report.turns[0]!.transcript).toEqual([
+      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 3,
@@ -211,6 +224,7 @@ describe("dashboard reporting", () => {
       transcriptAvailable: true,
     });
     expect(report.turns[0]!.transcript).toEqual([
+      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 1,
@@ -277,6 +291,7 @@ describe("dashboard reporting", () => {
     expect(report.turns).toHaveLength(2);
     expect(report.turns[0]).toMatchObject({ id: "turn-one" });
     expect(report.turns[0]!.transcript).toEqual([
+      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 1,
@@ -290,6 +305,7 @@ describe("dashboard reporting", () => {
     ]);
     expect(report.turns[1]).toMatchObject({ id: "turn-two" });
     expect(report.turns[1]!.transcript).toEqual([
+      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 3,

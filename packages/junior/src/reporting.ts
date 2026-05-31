@@ -26,6 +26,7 @@ import {
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { GET as healthGET } from "@/handlers/health";
+import { buildSystemPrompt } from "@/chat/prompt";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
@@ -510,6 +511,14 @@ function countConversationMessages(
   return transcript.filter(isConversationMessage).length;
 }
 
+/** Build the synthetic system-prompt message prepended to each exposed turn transcript. */
+function systemPromptMessage(): DashboardTranscriptMessage {
+  return {
+    role: "system",
+    parts: [{ type: "text", text: buildSystemPrompt() }],
+  };
+}
+
 function turnScopedMessages(messages: PiMessage[]): PiMessage[] {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index] as unknown as Record<string, unknown>;
@@ -579,7 +588,9 @@ async function readConversation(
       );
       const transcriptMessageCount =
         countConversationMessages(normalizedTranscript);
-      const transcript = canExposeTranscript ? normalizedTranscript : [];
+      const transcript = canExposeTranscript
+        ? [systemPromptMessage(), ...normalizedTranscript]
+        : [];
       const transcriptMetadata = canExposeTranscript
         ? undefined
         : normalizedTranscript.map(redactTranscriptMessage);
