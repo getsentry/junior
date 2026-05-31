@@ -21,7 +21,7 @@ export function TranscriptText(props: {
         const childCount = countStructuredBlockChildren(block);
         seenChildren += childCount;
 
-        if (!canRenderStructuredMarkup(block.language)) {
+        if (!canRenderStructuredMarkup(block)) {
           return (
             <HighlightedCode
               code={block.code}

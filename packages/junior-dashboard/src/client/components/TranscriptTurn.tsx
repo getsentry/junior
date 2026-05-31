@@ -3,6 +3,7 @@ import { useState, type ClipboardEventHandler, type ReactNode } from "react";
 import { HighlightedCode } from "../code";
 import {
   detectLanguage,
+  detectOutputLanguage,
   formatBytes,
   formatMessageOffset,
   formatMessageTimestamp,
@@ -494,7 +495,7 @@ function ThinkingPartView(props: { value: unknown }) {
       <div className="border-t border-[#beaaff]/15 px-3 py-3">
         <HighlightedCode
           code={rendered || "{}"}
-          language={detectLanguage(rendered)}
+          language={detectOutputLanguage(rendered)}
         />
       </div>
     </details>

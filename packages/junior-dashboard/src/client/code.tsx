@@ -7,7 +7,7 @@ import type { CodeBlock, MarkupNode } from "./types";
 
 /** Count rendered children so transcripts can decide which markup node expands. */
 export function countStructuredBlockChildren(block: CodeBlock): number {
-  if (!canRenderStructuredMarkup(block.language)) return 1;
+  if (!canRenderStructuredMarkup(block)) return 1;
   const rootCount = parseMarkupNodes(block.code, block.language).length;
   return rootCount > 0 ? rootCount : 1;
 }

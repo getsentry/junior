@@ -511,9 +511,34 @@ function formatCodeBlock(code: string, language: BundledLanguage): string {
   return language === "json" ? (prettyJsonData(code) ?? code) : code;
 }
 
-/** Decide whether a fenced block can use the interactive markup renderer. */
-export function canRenderStructuredMarkup(language: BundledLanguage): boolean {
-  return language === "xml" || language === "html";
+/**
+ * Detect the language for LLM text output prose: json if the text is valid
+ * JSON or JSONL, markdown otherwise. Never auto-detects XML, HTML, TypeScript,
+ * or shell — those heuristics are unreliable for rendered assistant output.
+ */
+export function detectOutputLanguage(text: string): BundledLanguage {
+  const trimmed = text.trim();
+  if (!trimmed) return "markdown";
+  try {
+    JSON.parse(trimmed);
+    return "json";
+  } catch {
+    // continue
+  }
+  if (prettyJsonl(trimmed)) return "json";
+  return "markdown";
+}
+
+/**
+ * Decide whether a fenced block can use the interactive markup renderer.
+ * Structured XML/HTML rendering is only enabled for explicitly-fenced blocks;
+ * auto-detected prose is never eligible regardless of inferred language.
+ */
+export function canRenderStructuredMarkup(block: CodeBlock): boolean {
+  return (
+    block.fenced === true &&
+    (block.language === "xml" || block.language === "html")
+  );
 }
 
 /** Parse markdown into renderable code blocks while preserving plain text blocks. */
@@ -525,24 +550,25 @@ export function parseMarkdownBlocks(text: string): CodeBlock[] {
   while ((match = fence.exec(text))) {
     const prose = text.slice(cursor, match.index).trim();
     if (prose) {
-      const language = detectLanguage(prose);
-      blocks.push({ code: formatCodeBlock(prose, language), language });
+      const language = detectOutputLanguage(prose);
+      blocks.push({ code: formatCodeBlock(prose, language), fenced: false, language });
     }
     const language = normalizeLanguage(match[1]);
     blocks.push({
       code: formatCodeBlock(match[2] ?? "", language),
+      fenced: true,
       language,
     });
     cursor = match.index + match[0].length;
   }
   const rest = text.slice(cursor).trim();
   if (rest) {
-    const language = detectLanguage(rest);
-    blocks.push({ code: formatCodeBlock(rest, language), language });
+    const language = detectOutputLanguage(rest);
+    blocks.push({ code: formatCodeBlock(rest, language), fenced: false, language });
   }
   if (blocks.length > 0) return blocks;
-  const language = detectLanguage(text);
-  return [{ code: formatCodeBlock(text, language), language }];
+  const language = detectOutputLanguage(text);
+  return [{ code: formatCodeBlock(text, language), fenced: false, language }];
 }
 
 /** Parse XML/HTML-ish fragments for the collapsible transcript renderer. */
