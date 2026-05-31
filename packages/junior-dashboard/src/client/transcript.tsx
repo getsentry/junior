@@ -21,7 +21,7 @@ import {
   unavailableTranscriptLabel,
   visualStatusForSession,
 } from "./format";
-import { SectionTitle, StatusBadge } from "./components";
+import { StatusBadge } from "./components";
 import { cn } from "./styles";
 import type {
   ConversationTurn,
@@ -205,20 +205,15 @@ export function Transcript(props: { turns: ConversationTurn[] }) {
   }
 
   return (
-    <div className="grid gap-3">
-      <TranscriptToolbar value={view} onChange={setView} />
-      {hasRedactedTurns ? <TranscriptPrivacyNotice /> : null}
+    <div className="grid min-w-0">
+      <TranscriptHeader
+        redacted={hasRedactedTurns}
+        value={view}
+        onChange={setView}
+      />
       {props.turns.map((turn) => (
         <TurnTranscript key={turn.id} turn={turn} view={view} />
       ))}
-    </div>
-  );
-}
-
-function TranscriptPrivacyNotice() {
-  return (
-    <div className="border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[0.9rem] leading-relaxed text-[#b8b8b8]">
-      Transcript hidden because this conversation is not public.
     </div>
   );
 }
@@ -227,25 +222,31 @@ function TurnTranscript(props: {
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
+  const status = visualStatusForSession(props.turn);
+
   return (
-    <section
-      className={turnTranscriptClass(visualStatusForSession(props.turn))}
-    >
-      <TurnHeader turn={props.turn} />
-      <TurnEvents turn={props.turn} view={props.view} />
+    <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 border-t border-white/10 py-4 first:border-t-0">
+      <div className="flex flex-col items-center pt-2" aria-hidden="true">
+        <span className={turnMarkerClass(status)} />
+        <span className="mt-2 w-px flex-1 bg-[#beaaff]/20" />
+      </div>
+      <div className="min-w-0">
+        <TurnHeader turn={props.turn} />
+        <TurnEvents turn={props.turn} view={props.view} />
+      </div>
     </section>
   );
 }
 
-function turnTranscriptClass(
+function turnMarkerClass(
   status: ReturnType<typeof visualStatusForSession>,
-) {
+): string {
   return cn(
-    "border border-l-4 border-white/10 bg-[#0b0b0b]",
-    status === "active" && "border-l-emerald-400",
-    status === "hung" && "border-l-amber-400",
-    status === "failed" && "border-l-rose-400",
-    status === "idle" && "border-l-white/25 saturate-50",
+    "size-2.5 shrink-0 border",
+    status === "active" && "border-emerald-300 bg-emerald-300",
+    status === "hung" && "border-amber-300 bg-amber-300",
+    status === "failed" && "border-rose-300 bg-rose-300",
+    status === "idle" && "border-[#beaaff]/70 bg-[#beaaff]/50",
   );
 }
 
@@ -267,25 +268,25 @@ function transcriptRoleClass(): string {
 }
 
 function toolFrameClass(): string {
-  return "border border-white/10 bg-[#111] transition-colors hover:border-white/25 hover:bg-[#151515]";
+  return "border border-[#beaaff]/20 bg-[#111] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]";
 }
 
 function toolHeaderClass(): string {
-  return "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-[#b8b8b8] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1";
+  return "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-[#b8b8b8] hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1 max-md:gap-1";
 }
 
 function TurnHeader(props: { turn: ConversationTurn }) {
   const status = visualStatusForSession(props.turn);
 
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3 max-md:flex-col">
+    <div className="flex items-start justify-between gap-3 max-md:flex-col">
       <div className="min-w-0">
-        <SectionTitle>
+        <div className="text-[1.05rem] font-bold leading-tight tracking-normal">
           Turn{" "}
           <span className="break-all">
             {props.turn.traceId ?? "trace unavailable"}
           </span>
-        </SectionTitle>
+        </div>
         <div className="mt-1 font-mono text-[0.84rem] leading-relaxed text-white">
           {turnActorLabel(props.turn)}
         </div>
@@ -316,7 +317,7 @@ function TurnEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid gap-3 p-3">
+    <div className="grid gap-3 pt-3">
       {props.turn.transcriptAvailable ? (
         groupTranscriptMessages(props.turn.transcript).map((entry, index) =>
           entry.kind === "tool" ? (
@@ -421,7 +422,7 @@ function RedactedPartLine(props: { part: TranscriptPart }) {
 
 function RedactedMetadataRow(props: { label: string; meta?: string }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-white/10 bg-white/[0.03] px-3 py-2 transition-colors hover:border-white/25 hover:bg-white/[0.05] max-md:grid-cols-1">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-white/10 py-2 first:border-t-0 max-md:grid-cols-1">
       <span className="min-w-0 break-words text-white">{props.label}</span>
       {props.meta ? (
         <span className="min-w-0 break-words text-right text-[#888] max-md:text-left">
@@ -485,12 +486,21 @@ function redactedMessageSize(part: TranscriptPart): string | undefined {
   return typeof part.chars === "number" ? `${part.chars} chars` : undefined;
 }
 
-function TranscriptToolbar(props: {
+function TranscriptHeader(props: {
   onChange(value: TranscriptViewMode): void;
+  redacted: boolean;
   value: TranscriptViewMode;
 }) {
   return (
-    <div className="flex items-center justify-end pb-2 font-mono text-[0.78rem] leading-none">
+    <div className="mb-1 flex min-w-0 items-start justify-between gap-3 border-b border-[#beaaff]/20 pb-3 font-mono leading-none max-md:flex-col">
+      <div className="min-w-0">
+        <div className="text-[0.78rem] uppercase text-[#888]">Transcript</div>
+        {props.redacted ? (
+          <div className="mt-2 break-words text-[0.88rem] leading-relaxed text-[#b8b8b8]">
+            Hidden because this conversation is not public.
+          </div>
+        ) : null}
+      </div>
       <TranscriptViewToggle value={props.value} onChange={props.onChange} />
     </div>
   );
@@ -659,8 +669,8 @@ function TranscriptPartView(props: {
   if (part.type === "thinking") {
     const rendered = stringifyPartValue(value);
     return (
-      <details className="border border-white/10 bg-white/[0.03] transition-colors hover:border-white/25 hover:bg-white/[0.05]">
-        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1">
+      <details className="border border-[#beaaff]/20 bg-white/[0.03] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]">
+        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1 max-md:gap-1">
           <span className="uppercase text-[#b8b8b8]">thinking</span>
           <span className="min-w-0 truncate">{previewToolValue(value)}</span>
         </summary>
