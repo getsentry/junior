@@ -6,10 +6,15 @@ let app: ReturnType<typeof createDashboardApp> | undefined;
 let appPromise: Promise<ReturnType<typeof createDashboardApp>> | undefined;
 
 async function resolveApp(): Promise<ReturnType<typeof createDashboardApp>> {
-  appPromise ??= resolveDashboardConfig().then((config) => {
-    app = createDashboardApp(config);
-    return app;
-  });
+  appPromise ??= resolveDashboardConfig()
+    .then((config) => {
+      app = createDashboardApp(config);
+      return app;
+    })
+    .catch((error: unknown) => {
+      appPromise = undefined;
+      throw error;
+    });
   return app ?? appPromise;
 }
 
