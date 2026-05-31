@@ -317,4 +317,31 @@ describe("dashboard reporting", () => {
     );
     expect(JSON.stringify(report)).not.toContain("secret-dm-name");
   });
+
+  it("marks expired private transcripts as privacy redacted", async () => {
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:D1:333",
+      sessionId: "turn-private-expired",
+      sliceId: 1,
+      state: "completed",
+    });
+
+    const report =
+      await createJuniorReporting().getConversation("slack:D1:333");
+
+    expect(report.turns[0]).toMatchObject({
+      conversationTitle: "Direct Message",
+      channelName: "Direct Message",
+      id: "turn-private-expired",
+      transcriptAvailable: false,
+      transcriptMetadata: [],
+      transcriptRedacted: true,
+      transcriptRedactionReason: "non_public_conversation",
+      transcript: [],
+    });
+  });
 });

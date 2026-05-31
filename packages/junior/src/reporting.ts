@@ -566,7 +566,7 @@ async function readConversation(
         ...(sessionRecord && scopedMessages.length > 0
           ? { transcriptMessageCount: scopedMessages.length }
           : {}),
-        ...(sessionRecord && !canExposeTranscript
+        ...(!canExposeTranscript
           ? {
               transcriptMetadata,
               transcriptRedacted: true,
