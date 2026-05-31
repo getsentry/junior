@@ -57,6 +57,7 @@ import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
+import { combineQueuedUserText } from "@/chat/runtime/queued-user-text";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
@@ -262,15 +263,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           strippedUserText,
           message.raw,
         );
-        const effectiveUserText =
-          options.queuedMessages && options.queuedMessages.length > 0
-            ? [
-                ...options.queuedMessages.map((queued) => queued.userText),
-                userText,
-              ]
-                .filter((part) => part.trim().length > 0)
-                .join("\n\n")
-            : userText;
+        const effectiveUserText = combineQueuedUserText(
+          options.queuedMessages ?? [],
+          userText,
+        );
 
         const preparedState =
           options.preparedState ??

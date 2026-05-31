@@ -1,8 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import type {
-  ManagedMcpToolDescriptor,
-  McpToolManager,
-} from "@/chat/mcp/tool-manager";
+import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
 import { tool } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
@@ -18,6 +15,14 @@ interface ProviderSummary {
   provider: string;
   description: string;
   active: boolean;
+}
+
+interface SearchMcpToolManager {
+  activateProvider(provider: string): Promise<boolean>;
+  getActiveToolCatalog(options?: {
+    provider?: string;
+  }): ManagedMcpToolDescriptor[];
+  getAvailableProviderCatalog(): ProviderSummary[];
 }
 
 interface RankedProvider {
@@ -179,7 +184,7 @@ function searchProviderCatalog(
 }
 
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
-export function createSearchMcpToolsTool(mcpToolManager: McpToolManager) {
+export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return tool({
     description:
       "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
@@ -210,7 +215,7 @@ export function createSearchMcpToolsTool(mcpToolManager: McpToolManager) {
       { additionalProperties: false },
     ),
     execute: async ({ query, provider, max_results }) => {
-      if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
+      if (provider) {
         await mcpToolManager.activateProvider(provider);
       }
       const catalog = mcpToolManager.getActiveToolCatalog(

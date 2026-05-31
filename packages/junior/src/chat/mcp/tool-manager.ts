@@ -198,8 +198,7 @@ export class McpToolManager {
     );
   }
 
-  /** Return all configured MCP providers with active/inactive state.
-   * Never connects to any MCP server. */
+  /** List configured MCP providers for discovery without connecting to them. */
   getAvailableProviderCatalog(): Array<{
     provider: string;
     description: string;
@@ -212,11 +211,6 @@ export class McpToolManager {
         description: plugin.manifest.description,
         active: this.activeProviders.has(provider),
       }));
-  }
-
-  /** Return true when the provider is configured (active or not). */
-  hasConfiguredProvider(provider: string): boolean {
-    return this.pluginsByProvider.has(provider);
   }
 
   async activateForSkill(skill: ActiveMcpSkill): Promise<boolean> {

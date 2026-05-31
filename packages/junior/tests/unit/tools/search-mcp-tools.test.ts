@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 
 describe("searchMcpTools", () => {
   function buildManager() {
     return {
-      hasConfiguredProvider: vi.fn(() => false),
       activateProvider: vi.fn(async () => true),
       getAvailableProviderCatalog: vi.fn(() => [
         {
@@ -56,7 +54,7 @@ describe("searchMcpTools", () => {
           parameters: { type: "object", properties: {} },
         },
       ]),
-    } as unknown as McpToolManager;
+    };
   }
 
   it("returns focused MCP descriptors with input and output schemas", async () => {

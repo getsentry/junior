@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
-import type { McpToolManager } from "@/chat/mcp/tool-manager";
+import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import { tool } from "@/chat/tools/definition";
+
+interface CallMcpToolManager {
+  activateProvider(provider: string): Promise<boolean>;
+  getResolvedActiveTools(): ManagedMcpTool[];
+}
 
 function resolveMcpArguments(
   input: Record<string, unknown>,
@@ -30,7 +35,7 @@ function resolveMcpArguments(
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
-export function createCallMcpToolTool(mcpToolManager: McpToolManager) {
+export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return tool({
     description:
       "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
@@ -52,7 +57,7 @@ export function createCallMcpToolTool(mcpToolManager: McpToolManager) {
     execute: async (input) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
-      if (provider && mcpToolManager.hasConfiguredProvider(provider)) {
+      if (provider) {
         await mcpToolManager.activateProvider(provider);
       }
       const mcpTool = mcpToolManager

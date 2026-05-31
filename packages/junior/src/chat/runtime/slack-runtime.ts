@@ -8,6 +8,7 @@ import {
   appendSlackLegacyAttachmentText,
   renderSlackLegacyAttachmentText,
 } from "@/chat/slack/legacy-attachments";
+import { combineQueuedUserText } from "@/chat/runtime/queued-user-text";
 import {
   shouldKeepProcessingReactionForToolInvocation,
   startSlackProcessingReaction,
@@ -191,17 +192,6 @@ function getQueuedMessages(
       userText: appendSlackLegacyAttachmentText(stripped, message.raw),
     };
   });
-}
-
-function combineQueuedUserText(
-  queuedMessages: Array<{ userText: string }>,
-  latestUserText: string,
-): string {
-  const parts = [
-    ...queuedMessages.map((message) => message.userText),
-    latestUserText,
-  ].filter((part) => part.trim().length > 0);
-  return parts.length > 0 ? parts.join("\n\n") : latestUserText;
 }
 
 export interface SlackTurnRuntime<
