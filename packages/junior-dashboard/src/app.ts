@@ -110,6 +110,9 @@ function forbidden(request: Request): Response {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Junior access denied</title>
+  <style>
+    ${readDashboardTailwind()}
+  </style>
 </head>
 <body class="m-0 bg-black font-sans text-white [color-scheme:dark]">
   <main class="grid min-h-screen place-items-center p-8">

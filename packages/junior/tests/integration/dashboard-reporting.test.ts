@@ -261,6 +261,12 @@ describe("dashboard reporting", () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
+    const privateToolArgs = Object.fromEntries(
+      Array.from({ length: 25 }, (_, index) => [
+        `privateKey${index}`,
+        `private value ${index}`,
+      ]),
+    );
 
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:D1:222",
@@ -286,7 +292,7 @@ describe("dashboard reporting", () => {
             {
               type: "toolCall",
               name: "search",
-              arguments: { query: "private lookup" },
+              arguments: privateToolArgs,
             },
           ],
           timestamp: 2,
@@ -311,11 +317,17 @@ describe("dashboard reporting", () => {
     });
     expect(JSON.stringify(report)).not.toContain("private question");
     expect(JSON.stringify(report)).not.toContain("private answer");
-    expect(JSON.stringify(report)).not.toContain("private lookup");
+    expect(JSON.stringify(report)).not.toContain("private value");
     expect(JSON.stringify(report)).not.toContain(
       "sensitive generated thread title",
     );
     expect(JSON.stringify(report)).not.toContain("secret-dm-name");
+    const toolCall = report.turns[0]!.transcriptMetadata?.[1]?.parts.find(
+      (part) => part.type === "tool_call",
+    );
+    expect(toolCall?.inputKeys).toHaveLength(20);
+    expect(toolCall?.inputKeys).toContain("privateKey0");
+    expect(toolCall?.inputKeys).not.toContain("privateKey20");
   });
 
   it("marks expired private transcripts as privacy redacted", async () => {

@@ -2,6 +2,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 
 export type ConversationPrivacy = "public" | "private";
 type TraceAttributeValue = string | number | boolean | string[];
+const SAFE_METADATA_KEY_LIMIT = 20;
 
 function conversationPrivacyFromChannelId(
   channelId: string | undefined,
@@ -93,6 +94,17 @@ function payloadType(payload: unknown): string {
   return Array.isArray(payload) ? "array" : typeof payload;
 }
 
+function payloadKeys(payload: unknown): string[] | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const keys = Object.keys(payload as Record<string, unknown>).slice(
+    0,
+    SAFE_METADATA_KEY_LIMIT,
+  );
+  return keys.length > 0 ? keys : undefined;
+}
+
 function serializedLength(payload: unknown): number {
   const serialized =
     typeof payload === "string" ? payload : JSON.stringify(payload);
@@ -110,9 +122,10 @@ export function toGenAiPayloadMetadata(
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return base;
   }
+  const keys = payloadKeys(payload);
   return {
     ...base,
-    keys: Object.keys(payload as Record<string, unknown>),
+    ...(keys ? { keys } : {}),
   };
 }
 
@@ -125,11 +138,9 @@ export function toGenAiPayloadTraceAttributes(
     [`${prefix}.type`]: payloadType(payload),
     [`${prefix}.size_chars`]: serializedLength(payload),
   };
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const keys = Object.keys(payload as Record<string, unknown>);
-    if (keys.length > 0) {
-      attributes[`${prefix}.keys`] = keys;
-    }
+  const keys = payloadKeys(payload);
+  if (keys) {
+    attributes[`${prefix}.keys`] = keys;
   }
   return attributes;
 }

@@ -28,6 +28,7 @@ import {
 import { GET as healthGET } from "@/handlers/health";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
+const SAFE_METADATA_KEY_LIMIT = 20;
 
 export interface HealthReport {
   status: "ok";
@@ -352,15 +353,16 @@ function normalizeToolResultMessage(
   record: Record<string, unknown>,
 ): DashboardTranscriptPart {
   const content = record.content;
-  const output =
-    Array.isArray(content) && content.length === 1
-      ? recordField(content[0] as Record<string, unknown>, [
-          "text",
-          "content",
-          "output",
-          "result",
-        ])
-      : content;
+  let output = content;
+  if (Array.isArray(content) && content.length === 1 && isRecord(content[0])) {
+    const extracted = recordField(content[0], [
+      "text",
+      "content",
+      "output",
+      "result",
+    ]);
+    output = extracted !== undefined ? extracted : content;
+  }
   return {
     type: "tool_result",
     ...(typeof record.toolCallId === "string" ? { id: record.toolCallId } : {}),
@@ -411,7 +413,10 @@ function payloadKeys(value: unknown): string[] | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
-  const keys = Object.keys(value as Record<string, unknown>);
+  const keys = Object.keys(value as Record<string, unknown>).slice(
+    0,
+    SAFE_METADATA_KEY_LIMIT,
+  );
   return keys.length > 0 ? keys : undefined;
 }
 

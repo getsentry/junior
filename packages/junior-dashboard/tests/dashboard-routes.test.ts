@@ -536,7 +536,9 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(await response.text()).toContain("Access denied");
+    const html = await response.text();
+    expect(html).toContain("<style>");
+    expect(html).toContain("Access denied");
   });
 
   it("allows explicitly configured email exceptions", async () => {

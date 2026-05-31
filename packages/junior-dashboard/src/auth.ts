@@ -130,7 +130,7 @@ export function createDashboardAuth(
     },
     account: {
       storeStateStrategy: "cookie",
-      storeAccountCookie: true,
+      storeAccountCookie: false,
       updateAccountOnSignIn: false,
     },
     session: {
