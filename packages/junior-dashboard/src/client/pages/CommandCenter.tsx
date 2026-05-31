@@ -1,12 +1,9 @@
-import {
-  CommandRail,
-  ConversationStack,
-  Kicker,
-  Section,
-  SectionHeader,
-  SectionTitle,
-  TurnDurationChart,
-} from "../components";
+import { CommandRail } from "../components/CommandRail";
+import { ConversationStack } from "../components/ConversationStack";
+import { Section } from "../components/Section";
+import { SectionHeader } from "../components/SectionHeader";
+import { SectionTitle } from "../components/SectionTitle";
+import { TurnDurationChart } from "../components/TurnDurationChart";
 import { buildConversations } from "../format";
 import type { DashboardData } from "../types";
 
@@ -30,7 +27,6 @@ export function CommandCenter(props: {
 
         <Section className="border-[#beaaff]/20">
           <SectionHeader>
-            <Kicker>Recent</Kicker>
             <SectionTitle>Latest Conversations</SectionTitle>
           </SectionHeader>
           <ConversationStack conversations={conversations.slice(0, 4)} />

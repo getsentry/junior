@@ -12,6 +12,7 @@ import type {
   Skill,
 } from "./types";
 
+/** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
 
 async function read<T>(path: string): Promise<T> {
@@ -56,13 +57,19 @@ export function useConversationData(conversationId: string | undefined) {
   return useQuery({
     enabled: Boolean(conversationId),
     queryKey: ["conversation", conversationId],
-    queryFn: async (): Promise<ConversationDetailFeed> => {
-      return read<ConversationDetailFeed>(
-        `/api/dashboard/conversations/${encodeURIComponent(conversationId!)}`,
-      );
-    },
+    queryFn: async (): Promise<ConversationDetailFeed> =>
+      readConversationData(conversationId!),
     refetchInterval: 5_000,
     refetchIntervalInBackground: false,
     retry: false,
   });
+}
+
+/** Read one conversation transcript payload for dashboard-local detail views. */
+export function readConversationData(
+  conversationId: string,
+): Promise<ConversationDetailFeed> {
+  return read<ConversationDetailFeed>(
+    `/api/dashboard/conversations/${encodeURIComponent(conversationId)}`,
+  );
 }

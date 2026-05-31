@@ -8,7 +8,7 @@ import {
 } from "react-router";
 
 import { useDashboardData } from "./api";
-import { LoadingView } from "./components";
+import { LoadingView } from "./components/LoadingView";
 import {
   conversationPath,
   setDashboardTimeZone,
@@ -48,14 +48,14 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "whitespace-nowrap border px-2.5 py-1.5 font-mono text-[0.82rem] leading-tight no-underline transition-colors",
+      "whitespace-nowrap border-b-4 px-0.5 pb-1.5 pt-2 text-[0.9rem] font-semibold leading-tight no-underline transition-colors",
       isActive
-        ? "border-white/30 bg-white text-black"
-        : "border-white/10 bg-[#0b0b0b] text-[#888] hover:border-white/25 hover:bg-[#151515] hover:text-white",
+        ? "border-b-[#beaaff] text-white"
+        : "border-b-transparent text-[#b8b8b8] hover:border-b-white/45 hover:text-white",
     );
 
   return (
-    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black text-white">
+    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black font-sans text-white">
       <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/10 bg-[#050505]/95 px-4 py-3 backdrop-blur md:px-8 max-md:grid-cols-1">
         <Link
           className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
@@ -65,13 +65,13 @@ export function DashboardShell() {
             <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
               Junior
             </h1>
-            <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-[#888]">
+            <div className="mt-1 truncate text-[0.82rem] leading-tight text-[#888]">
               {headerSummary}
             </div>
           </div>
         </Link>
         <div className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:justify-between">
-          <nav className="flex min-w-0 items-center gap-1">
+          <nav className="flex min-w-0 items-center gap-5">
             <NavLink className={navLinkClass} end to="/">
               Command
             </NavLink>

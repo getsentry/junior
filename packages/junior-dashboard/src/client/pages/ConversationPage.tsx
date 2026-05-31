@@ -1,7 +1,7 @@
 import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
-import { StatusBadge } from "../components";
+import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -13,7 +13,8 @@ import {
   turnToolCallCount,
   visualStatusForConversation,
 } from "../format";
-import { Transcript, TranscriptLoading } from "../transcript";
+import { Transcript } from "../components/Transcript";
+import { TranscriptLoading } from "../components/TranscriptLoading";
 import type {
   Conversation,
   ConversationDetailFeed,
@@ -45,14 +46,14 @@ export function ConversationPage(props: { data?: DashboardData }) {
               </h2>
               <StatusBadge status={visualStatus} />
             </div>
-            <div className="mt-1 break-words font-mono text-[0.84rem] leading-relaxed text-[#b8b8b8]">
+            <div className="mt-1 break-words text-[0.88rem] leading-relaxed text-[#b8b8b8]">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
               />
             </div>
           </div>
-          <div className="self-start break-words font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8] md:text-right">
+          <div className="self-start break-words text-[0.82rem] leading-relaxed text-[#b8b8b8] md:text-right">
             updated{" "}
             {formatRelativeTime(
               conversation?.lastSeenAt ?? detail.data?.generatedAt,
@@ -64,7 +65,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error ? (
-          <div className="border border-white/10 bg-[#050505] p-4 font-mono text-[0.88rem] leading-relaxed text-[#b8b8b8]">
+          <div className="border border-white/10 bg-[#050505] p-4 text-[0.9rem] leading-relaxed text-[#b8b8b8]">
             {detail.error.message}
           </div>
         ) : (
@@ -132,7 +133,7 @@ function ConversationStats(props: {
   ].filter(Boolean);
 
   return (
-    <div className="col-span-full flex flex-wrap gap-x-3 gap-y-1 break-words font-mono text-[0.72rem] leading-[1.45] text-[#888]">
+    <div className="col-span-full flex flex-wrap gap-x-3 gap-y-1 break-words text-[0.76rem] leading-[1.45] text-[#888]">
       {stats.map((value, index) => (
         <span key={`${index}-${value}`}>
           {index > 0 ? <span className="mr-3 text-[#666]">·</span> : null}

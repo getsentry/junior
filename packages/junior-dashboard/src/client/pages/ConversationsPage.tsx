@@ -1,13 +1,10 @@
 import { useSearchParams } from "react-router";
 
-import {
-  ConversationList,
-  FilterTabs,
-  Kicker,
-  Section,
-  SectionHeader,
-  SectionTitle,
-} from "../components";
+import { ConversationList } from "../components/ConversationList";
+import { FilterTabs } from "../components/FilterTabs";
+import { Section } from "../components/Section";
+import { SectionHeader } from "../components/SectionHeader";
+import { SectionTitle } from "../components/SectionTitle";
 import {
   buildConversations,
   filterConversations,
@@ -43,9 +40,8 @@ export function ConversationsPage(props: { data?: DashboardData }) {
             actions={<FilterTabs current={filter} onChange={updateFilter} />}
           >
             <div>
-              <Kicker>Flight Recorder</Kicker>
               <SectionTitle>Conversations</SectionTitle>
-              <div className="mt-1 break-words font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8]">
+              <div className="mt-1 break-words text-[0.82rem] leading-relaxed text-[#b8b8b8]">
                 {feedMeta}
               </div>
             </div>

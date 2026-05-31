@@ -208,6 +208,12 @@ function totalUsageTokens(usage: TurnUsage | undefined): number | undefined {
 }
 
 /** Format known token counters without estimating per-message usage. */
+export function formatTokenTotal(usage: TurnUsage | undefined): string {
+  const total = totalUsageTokens(usage);
+  return total === undefined ? "" : `${formatNumber(total)} tokens`;
+}
+
+/** Format known token counters with available input/output detail. */
 export function formatUsage(usage: TurnUsage | undefined): string {
   const total = totalUsageTokens(usage);
   if (total === undefined) return "";
