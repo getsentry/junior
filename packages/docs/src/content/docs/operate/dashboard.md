@@ -59,7 +59,7 @@ You can also provide the same authorization policy through deployment environmen
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | Comma-separated or JSON array of Better Auth trusted origins. |
 | `JUNIOR_DASHBOARD_AUTH_REQUIRED`   | Set to `false` only for explicit local dashboard auth bypass. |
 
-The dashboard owns these routes:
+The dashboard package owns these routes:
 
 | Route              | Purpose                                 |
 | ------------------ | --------------------------------------- |
@@ -67,20 +67,21 @@ The dashboard owns these routes:
 | `/conversations`   | Authenticated conversation-history UI.  |
 | `/api/dashboard/*` | Authenticated dashboard JSON APIs.      |
 | `/api/auth/*`      | Better Auth Google login and callbacks. |
-| `/health`          | Public minimal Junior health response.  |
+
+`/health` remains the public minimal Junior runtime health response.
 
 The current dashboard API slices are:
 
-| Endpoint                                     | Purpose                                                   |
-| -------------------------------------------- | --------------------------------------------------------- |
-| `/api/dashboard/health`                      | Health status for the command center pulse.               |
-| `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.           |
-| `/api/dashboard/plugins`                     | Loaded plugin list.                                       |
-| `/api/dashboard/skills`                      | Discovered skill list.                                    |
-| `/api/dashboard/sessions`                    | Recent conversation feed from turn-session checkpoints.   |
-| `/api/dashboard/conversations/:conversation` | Expiring conversation transcript with tool calls/results. |
-| `/api/dashboard/config`                      | Safe dashboard config signals and feature readiness.      |
-| `/api/dashboard/me`                          | Signed-in dashboard identity.                             |
+| Endpoint                                     | Purpose                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `/api/dashboard/health`                      | Health status for the command center pulse.                                            |
+| `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.                                        |
+| `/api/dashboard/plugins`                     | Loaded plugin list.                                                                    |
+| `/api/dashboard/skills`                      | Discovered skill list.                                                                 |
+| `/api/dashboard/sessions`                    | Recent conversation feed from turn-session checkpoints.                                |
+| `/api/dashboard/conversations/:conversation` | Expiring conversation transcript; private conversations return redacted metadata only. |
+| `/api/dashboard/config`                      | Safe dashboard config signals and feature readiness.                                   |
+| `/api/dashboard/me`                          | Signed-in dashboard identity.                                                          |
 
 The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health and recent turn durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and turn/tool-call detail for one conversation. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 The conversation feed is a bounded metadata index with the same expiration policy as turn-session checkpoints. Conversation detail reads transcript data from the expiring checkpoint message store, so old transcripts disappear when checkpoint state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the turn metadata.
