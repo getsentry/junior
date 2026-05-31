@@ -8,7 +8,7 @@ import {
 } from "react-router";
 
 import { useDashboardData } from "./api";
-import { JuniorLogo, LoadingView } from "./components";
+import { LoadingView } from "./components";
 import {
   conversationPath,
   setDashboardTimeZone,
@@ -61,15 +61,12 @@ export function DashboardShell() {
           className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
           to="/"
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <JuniorLogo />
-            <div className="min-w-0">
-              <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
-                Junior
-              </h1>
-              <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-[#888]">
-                {headerSummary}
-              </div>
+          <div className="min-w-0">
+            <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
+              Junior
+            </h1>
+            <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-[#888]">
+              {headerSummary}
             </div>
           </div>
         </Link>

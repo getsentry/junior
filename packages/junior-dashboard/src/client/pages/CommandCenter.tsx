@@ -28,7 +28,7 @@ export function CommandCenter(props: {
           timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
         />
 
-        <Section>
+        <Section className="border-[#beaaff]/20">
           <SectionHeader>
             <Kicker>Recent</Kicker>
             <SectionTitle>Latest Conversations</SectionTitle>

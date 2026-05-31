@@ -510,7 +510,7 @@ export function ConversationStack(props: { conversations: Conversation[] }) {
   }
 
   return (
-    <div className="grid gap-2 p-3">
+    <div className="grid">
       {props.conversations.map((conversation) => {
         return (
           <ConversationStackRow
@@ -681,8 +681,11 @@ function conversationRecordClass(
 
 function conversationStackRowClass(status: VisualStatus): string {
   return cn(
-    "group relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(12rem,max-content)] items-center gap-3 overflow-hidden border-y border-r border-l-4 border-y-white/10 border-r-white/10 bg-[#050505] px-4 py-3 text-inherit no-underline transition-colors hover:border-y-white/25 hover:border-r-white/25 hover:bg-[#151515] max-md:grid-cols-1",
-    statusBorderClass(status),
+    "group relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(12rem,max-content)] items-center gap-3 overflow-hidden border-b border-l-4 border-b-white/10 bg-[#050505] px-4 py-3 text-inherit no-underline transition-colors last:border-b-0 hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1",
+    status === "active" && "border-l-emerald-400",
+    status === "hung" && "border-l-amber-400",
+    status === "failed" && "border-l-rose-400",
+    status === "idle" && "border-l-[#beaaff]/60",
     status === "idle" && "saturate-50",
   );
 }
