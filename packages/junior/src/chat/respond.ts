@@ -386,6 +386,7 @@ export async function generateAssistantReply(
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
+  let loadedSkillNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
   let canRecordMcpProviders = false;
@@ -519,6 +520,9 @@ export async function generateAssistantReply(
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
     const activeSkills: Skill[] = [];
+    const syncLoadedSkillNamesForResume = () => {
+      loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
+    };
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     // ── Turn Session Record ────────────────────────────────────────
@@ -674,12 +678,14 @@ export async function generateAssistantReply(
       const restoredSkill = await skillSandbox.loadSkill(skillName);
       if (restoredSkill) {
         upsertActiveSkill(activeSkills, restoredSkill);
+        syncLoadedSkillNamesForResume();
       }
     }
     if (invokedSkill) {
       const restoredSkill = await skillSandbox.loadSkill(invokedSkill.name);
       if (restoredSkill) {
         upsertActiveSkill(activeSkills, restoredSkill);
+        syncLoadedSkillNamesForResume();
       }
     }
 
@@ -829,6 +835,7 @@ export async function generateAssistantReply(
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
           upsertActiveSkill(activeSkills, effective);
+          syncLoadedSkillNamesForResume();
           if (await turnMcpToolManager.activateForSkill(effective)) {
             await recordConnectedMcpProvider(effective.pluginProvider!);
           }
@@ -1037,7 +1044,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         messages,
-        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
       });
@@ -1282,7 +1289,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
-        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
       });
@@ -1322,7 +1329,7 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         errorMessage: error instanceof Error ? error.message : String(error),
-        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
       });
@@ -1362,7 +1369,7 @@ export async function generateAssistantReply(
         currentUsage: turnUsage,
         messages: timeoutResumeMessages,
         errorMessage: error.message,
-        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
       });
