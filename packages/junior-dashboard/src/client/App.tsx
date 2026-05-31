@@ -50,13 +50,13 @@ export function DashboardShell() {
     cn(
       "whitespace-nowrap border px-2.5 py-1.5 font-mono text-[0.82rem] leading-tight no-underline transition-colors",
       isActive
-        ? "border-slate-500 bg-slate-800 text-white"
-        : "border-slate-800 bg-neutral-900 text-slate-400 hover:border-slate-600 hover:text-white",
+        ? "border-white/30 bg-white text-black"
+        : "border-white/10 bg-[#0b0b0b] text-[#888] hover:border-white/25 hover:bg-[#151515] hover:text-white",
     );
 
   return (
-    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-neutral-950 text-slate-100">
-      <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-800 bg-neutral-950/95 px-4 py-3 backdrop-blur md:px-8 max-md:grid-cols-1">
+    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black text-white">
+      <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/10 bg-[#050505]/95 px-4 py-3 backdrop-blur md:px-8 max-md:grid-cols-1">
         <Link
           className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
           to="/"
@@ -67,7 +67,7 @@ export function DashboardShell() {
               <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
                 Junior
               </h1>
-              <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-slate-400">
+              <div className="mt-1 truncate font-mono text-[0.8rem] leading-tight text-[#888]">
                 {headerSummary}
               </div>
             </div>
@@ -85,7 +85,7 @@ export function DashboardShell() {
           {loggedIn ? (
             <button
               aria-label="Log out"
-              className="grid size-9 cursor-pointer place-items-center border border-slate-700 bg-neutral-900 p-0 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              className="grid size-9 cursor-pointer place-items-center border border-white/15 bg-[#0b0b0b] p-0 text-[#b8b8b8] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white"
               type="button"
               title="Log out"
               onClick={() => void signOut()}

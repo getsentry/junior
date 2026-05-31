@@ -306,11 +306,11 @@ function materializePiMessages(
   if (committedMessageCount === 0) {
     return sessionProjection;
   }
-  if (sessionProjection.length >= committedMessageCount) {
-    return sessionProjection;
-  }
   if (sessionMessages) {
     return sessionMessages;
+  }
+  if (sessionProjection.length >= committedMessageCount) {
+    return sessionProjection.slice(0, committedMessageCount);
   }
   return undefined;
 }

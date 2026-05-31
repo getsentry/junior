@@ -45,12 +45,12 @@ export function ConversationsPage(props: { data?: DashboardData }) {
             <div>
               <Kicker>Flight Recorder</Kicker>
               <SectionTitle>Conversations</SectionTitle>
-              <div className="mt-1 break-words font-mono text-[0.82rem] leading-relaxed text-slate-400">
+              <div className="mt-1 break-words font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8]">
                 {feedMeta}
               </div>
             </div>
           </SectionHeader>
-          <div className="min-h-[calc(100vh-15rem)]">
+          <div>
             <ConversationList
               conversations={visibleConversations}
               search={search ? `?${search}` : ""}

@@ -21,7 +21,7 @@ import {
   unavailableTranscriptLabel,
   visualStatusForSession,
 } from "./format";
-import { ActivityIndicator, SectionTitle } from "./components";
+import { SectionTitle, StatusBadge } from "./components";
 import { cn } from "./styles";
 import type {
   ConversationTurn,
@@ -48,20 +48,20 @@ type RenderedToolEntry = {
 type TranscriptViewMode = "raw" | "rich";
 
 function mutedMonoClass(size = "text-[0.84rem]"): string {
-  return cn("font-mono leading-relaxed text-slate-400", size);
+  return cn("font-mono leading-relaxed text-[#b8b8b8]", size);
 }
 
 function transcriptEmptyClass(): string {
-  return "border border-slate-800 bg-neutral-950/60 p-4 font-mono text-[0.88rem] leading-relaxed text-slate-400";
+  return "border border-white/10 bg-[#050505] p-4 font-mono text-[0.88rem] leading-relaxed text-[#b8b8b8]";
 }
 
 /** Render a transcript-shaped loading state for route transitions. */
 export function TranscriptLoading() {
   return (
     <div className="grid gap-3">
-      <div className="min-h-28 animate-pulse border border-slate-800 bg-neutral-900/70" />
-      <div className="min-h-[4.5rem] animate-pulse border border-slate-800 bg-neutral-900/70" />
-      <div className="min-h-28 animate-pulse border border-slate-800 bg-neutral-900/70" />
+      <div className="min-h-28 animate-pulse border border-white/10 bg-[#0b0b0b]" />
+      <div className="min-h-[4.5rem] animate-pulse border border-white/10 bg-[#0b0b0b]" />
+      <div className="min-h-28 animate-pulse border border-white/10 bg-[#0b0b0b]" />
     </div>
   );
 }
@@ -217,7 +217,7 @@ export function Transcript(props: { turns: ConversationTurn[] }) {
 
 function TranscriptPrivacyNotice() {
   return (
-    <div className="border border-slate-800 bg-slate-800/20 px-3 py-2 font-mono text-[0.9rem] leading-relaxed text-slate-400">
+    <div className="border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[0.9rem] leading-relaxed text-[#b8b8b8]">
       Transcript hidden because this conversation is not public.
     </div>
   );
@@ -241,24 +241,24 @@ function turnTranscriptClass(
   status: ReturnType<typeof visualStatusForSession>,
 ) {
   return cn(
-    "border bg-neutral-950/50",
-    status === "active" && "border-emerald-400/60",
-    status === "hung" && "border-amber-400/60",
-    status === "failed" && "border-rose-400/60",
-    status === "idle" && "border-slate-700 saturate-50",
+    "border border-l-4 border-white/10 bg-[#0b0b0b]",
+    status === "active" && "border-l-emerald-400",
+    status === "hung" && "border-l-amber-400",
+    status === "failed" && "border-l-rose-400",
+    status === "idle" && "border-l-white/25 saturate-50",
   );
 }
 
 function transcriptMessageClass(role: string): string {
   return cn(
     "grid min-w-0 gap-2",
-    role === "assistant" && "text-cyan-300",
-    role === "toolResult" && "text-violet-300",
-    role === "tool_result" && "text-violet-300",
+    role === "assistant" && "text-white",
+    role === "toolResult" && "text-[#b8b8b8]",
+    role === "tool_result" && "text-[#b8b8b8]",
     role !== "assistant" &&
       role !== "toolResult" &&
       role !== "tool_result" &&
-      "text-amber-300",
+      "text-[#f4f4f4]",
   );
 }
 
@@ -267,21 +267,26 @@ function transcriptRoleClass(): string {
 }
 
 function toolFrameClass(): string {
-  return "border border-violet-400/40 bg-violet-400/10 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10";
+  return "border border-white/10 bg-[#111] transition-colors hover:border-white/25 hover:bg-[#151515]";
 }
 
 function toolHeaderClass(): string {
-  return "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-slate-400 hover:bg-cyan-400/10";
+  return "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-[#b8b8b8] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1";
 }
 
 function TurnHeader(props: { turn: ConversationTurn }) {
+  const status = visualStatusForSession(props.turn);
+
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-neutral-900/70 px-4 py-3">
-      <div>
+    <div className="flex items-start justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3 max-md:flex-col">
+      <div className="min-w-0">
         <SectionTitle>
-          Turn {props.turn.traceId ?? "trace unavailable"}
+          Turn{" "}
+          <span className="break-all">
+            {props.turn.traceId ?? "trace unavailable"}
+          </span>
         </SectionTitle>
-        <div className="mt-1 font-mono text-[0.84rem] leading-relaxed text-slate-100">
+        <div className="mt-1 font-mono text-[0.84rem] leading-relaxed text-white">
           {turnActorLabel(props.turn)}
         </div>
         <div className={mutedMonoClass()}>
@@ -290,7 +295,7 @@ function TurnHeader(props: { turn: ConversationTurn }) {
             <>
               {" · "}
               <a
-                className="text-cyan-300 no-underline hover:text-white hover:underline"
+                className="text-white no-underline hover:underline"
                 href={props.turn.sentryTraceUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -301,7 +306,7 @@ function TurnHeader(props: { turn: ConversationTurn }) {
           ) : null}
         </div>
       </div>
-      <ActivityIndicator status={visualStatusForSession(props.turn)} />
+      <StatusBadge status={status} />
     </div>
   );
 }
@@ -385,12 +390,12 @@ function RedactedMessageView(props: {
       <div className={transcriptRoleClass()}>
         <span className="font-extrabold">{props.message.role}</span>
         {meta.map((value) => (
-          <span className="text-slate-400" key={value}>
+          <span className="text-[#888]" key={value}>
             {value}
           </span>
         ))}
       </div>
-      <div className="grid min-w-0 gap-2 font-mono text-[0.9rem] leading-snug text-slate-400">
+      <div className="grid min-w-0 gap-2 font-mono text-[0.9rem] leading-snug text-[#b8b8b8]">
         {props.message.parts.map((part, index) => (
           <RedactedPartLine key={index} part={part} />
         ))}
@@ -416,10 +421,10 @@ function RedactedPartLine(props: { part: TranscriptPart }) {
 
 function RedactedMetadataRow(props: { label: string; meta?: string }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-slate-800 bg-slate-800/20 px-3 py-2 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10">
-      <span className="min-w-0 truncate text-slate-100">{props.label}</span>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-white/10 bg-white/[0.03] px-3 py-2 transition-colors hover:border-white/25 hover:bg-white/[0.05] max-md:grid-cols-1">
+      <span className="min-w-0 break-words text-white">{props.label}</span>
       {props.meta ? (
-        <span className="min-w-0 truncate text-right text-slate-500">
+        <span className="min-w-0 break-words text-right text-[#888] max-md:text-left">
           {props.meta}
         </span>
       ) : null}
@@ -457,11 +462,11 @@ function RedactedToolView(props: {
       raw
       signature={
         <>
-          <strong className="min-w-0 truncate font-bold text-slate-100">
+          <strong className="min-w-0 break-words font-bold text-white">
             {toolName}
           </strong>
           {props.call?.inputKeys?.length ? (
-            <code className="min-w-0 truncate font-[inherit] text-slate-400">
+            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8]">
               ({props.call.inputKeys.join(", ")})
             </code>
           ) : null}
@@ -498,15 +503,15 @@ function TranscriptViewToggle(props: {
   const options: TranscriptViewMode[] = ["rich", "raw"];
   return (
     <div
-      className="inline-flex items-center gap-1 text-slate-400"
+      className="inline-flex items-center gap-1 text-[#888]"
       aria-label="Transcript view"
     >
       {options.map((option) => (
         <button
           className={`cursor-pointer border-0 bg-transparent px-1.5 py-1 uppercase tracking-normal underline-offset-4 ${
             props.value === option
-              ? "text-emerald-400 underline decoration-emerald-400"
-              : "text-slate-400"
+              ? "text-white underline decoration-white"
+              : "text-[#888] hover:text-white"
           }`}
           key={option}
           onClick={() => props.onChange(option)}
@@ -557,10 +562,10 @@ function TranscriptMessageView(props: {
     >
       <div className={transcriptRoleClass()}>
         <span className="font-extrabold">{props.message.role}</span>
-        <span className="text-slate-400">
+        <span className="text-[#888]">
           {formatMessageTimestamp(props.message.timestamp)}
         </span>
-        {offset ? <span className="text-slate-400">{offset}</span> : null}
+        {offset ? <span className="text-[#888]">{offset}</span> : null}
       </div>
       {props.view === "raw" ? (
         <HighlightedCode
@@ -654,9 +659,9 @@ function TranscriptPartView(props: {
   if (part.type === "thinking") {
     const rendered = stringifyPartValue(value);
     return (
-      <details className="border border-slate-700 bg-slate-800/20 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10">
-        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-slate-500 hover:bg-cyan-400/10">
-          <span className="uppercase text-violet-300">thinking</span>
+      <details className="border border-white/10 bg-white/[0.03] transition-colors hover:border-white/25 hover:bg-white/[0.05]">
+        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1">
+          <span className="uppercase text-[#b8b8b8]">thinking</span>
           <span className="min-w-0 truncate">{previewToolValue(value)}</span>
         </summary>
         <HighlightedCode
@@ -669,13 +674,13 @@ function TranscriptPartView(props: {
 
   const rendered = stringifyPartValue(value);
   return (
-    <details className="border border-violet-400/40 bg-violet-400/10 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10">
-      <summary className={toolHeaderClass()}>
-        <span className="text-slate-500">{part.type}</span>
-        <strong className="min-w-0 truncate font-bold text-slate-100">
+    <details className={toolFrameClass()}>
+      <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-[#b8b8b8] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1">
+        <span className="text-[#888]">{part.type}</span>
+        <strong className="min-w-0 break-words font-bold text-white">
           {part.name ?? part.id ?? "unknown"}
         </strong>
-        <span className="min-w-0 truncate text-right">
+        <span className="min-w-0 break-words text-right max-md:text-left">
           {previewToolValue(value)}
         </span>
       </summary>
@@ -722,7 +727,7 @@ function TranscriptToolView(props: {
         meta={meta}
         raw
         signature={
-          <strong className="min-w-0 truncate font-bold text-slate-100">
+          <strong className="min-w-0 break-words font-bold text-white">
             {toolName}
           </strong>
         }
@@ -745,11 +750,11 @@ function TranscriptToolView(props: {
       meta={meta}
       signature={
         <>
-          <strong className="min-w-0 truncate font-bold text-slate-100">
+          <strong className="min-w-0 break-words font-bold text-white">
             {toolName}
           </strong>
           {isPreviewableValue(input) ? (
-            <code className="min-w-0 truncate font-[inherit] text-slate-400">
+            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8]">
               ({args})
             </code>
           ) : null}
@@ -784,10 +789,10 @@ function ToolFrame(props: {
 }) {
   const header = (
     <>
-      <span className="flex min-w-0 items-baseline gap-1 overflow-hidden whitespace-nowrap">
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5 overflow-hidden">
         {props.signature}
       </span>
-      <span className="min-w-0 truncate text-right text-slate-500">
+      <span className="min-w-0 break-words text-right text-[#888] max-md:text-left">
         {props.meta.join(" · ")}
       </span>
     </>
@@ -818,12 +823,12 @@ function ToolBodySection(props: {
   return (
     <div
       className={cn(
-        "border-t border-slate-800 px-3",
+        "border-t border-white/10 px-3",
         props.padded === false ? "" : "py-3",
       )}
     >
       {props.label ? (
-        <div className="pb-2 font-mono text-[0.78rem] uppercase leading-none text-slate-500">
+        <div className="pb-2 font-mono text-[0.78rem] uppercase leading-none text-[#888]">
           {props.label}
         </div>
       ) : null}
@@ -877,16 +882,16 @@ function ToolArgumentsPreview(props: { input: unknown }) {
 function ToolArgEntry(props: { index: number; name: string; value: string }) {
   return (
     <span>
-      {props.index > 0 ? <span className="text-slate-500">, </span> : null}
-      <span className="text-amber-300">{props.name}</span>
-      <span className="text-slate-500">: </span>
+      {props.index > 0 ? <span className="text-[#888]">, </span> : null}
+      <span className="text-white">{props.name}</span>
+      <span className="text-[#888]">: </span>
       <ToolArgValue value={props.value} />
     </span>
   );
 }
 
 function ToolArgValue(props: { value: string }) {
-  return <span className="text-slate-400">{props.value}</span>;
+  return <span className="text-[#b8b8b8]">{props.value}</span>;
 }
 
 function previewArgumentValue(value: unknown): string {

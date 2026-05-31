@@ -128,6 +128,90 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("keeps earlier turn transcripts pinned to their committed log prefix", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:C1:333",
+      sessionId: "turn-one",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "first question" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "first answer" }],
+          timestamp: 2,
+        },
+      ] as PiMessage[],
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:C1:333",
+      sessionId: "turn-two",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "first question" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "first answer" }],
+          timestamp: 2,
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "second question" }],
+          timestamp: 3,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "second answer" }],
+          timestamp: 4,
+        },
+      ] as PiMessage[],
+    });
+
+    const report =
+      await createJuniorReporting().getConversation("slack:C1:333");
+
+    expect(report.turns).toHaveLength(2);
+    expect(report.turns[0]).toMatchObject({ id: "turn-one" });
+    expect(report.turns[0]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "first question" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 2,
+        parts: [{ type: "text", text: "first answer" }],
+      },
+    ]);
+    expect(report.turns[1]).toMatchObject({ id: "turn-two" });
+    expect(report.turns[1]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 3,
+        parts: [{ type: "text", text: "second question" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 4,
+        parts: [{ type: "text", text: "second answer" }],
+      },
+    ]);
+  });
+
   it("redacts dashboard transcripts for non-public conversations", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

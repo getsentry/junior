@@ -1,7 +1,7 @@
 import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
-import { ActivityIndicator } from "../components";
+import { StatusBadge } from "../components";
 import { cn } from "../styles";
 import {
   buildConversations,
@@ -40,18 +40,18 @@ export function ConversationPage(props: { data?: DashboardData }) {
       <section className="min-w-0">
         <div
           className={cn(
-            "mb-4 grid items-stretch gap-3 border bg-neutral-900/70 p-4 md:grid-cols-[minmax(0,1fr)_auto]",
-            visualStatus === "active" && "border-emerald-400/70",
-            visualStatus === "hung" && "border-amber-400/70",
-            visualStatus === "failed" && "border-rose-400/70",
-            (!visualStatus || visualStatus === "idle") && "border-slate-700",
+            "mb-4 grid items-stretch gap-3 border border-l-4 border-white/10 bg-[#0b0b0b] p-4 md:grid-cols-[minmax(0,1fr)_auto]",
+            visualStatus === "active" && "border-l-emerald-400",
+            visualStatus === "hung" && "border-l-amber-400",
+            visualStatus === "failed" && "border-l-rose-400",
+            (!visualStatus || visualStatus === "idle") && "border-l-white/25",
           )}
         >
           <div className="grid min-w-0 content-between gap-1">
             <div className="text-lg font-bold leading-tight">
               {conversationDisplayTitle(conversation)}
             </div>
-            <div className="break-words font-mono text-[0.82rem] leading-relaxed text-slate-400">
+            <div className="break-words font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8]">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
@@ -59,8 +59,10 @@ export function ConversationPage(props: { data?: DashboardData }) {
             </div>
           </div>
           <div className="grid min-w-48 content-between justify-items-end gap-2 max-md:min-w-0 max-md:justify-items-stretch">
-            <ActivityIndicator status={visualStatus} variant="full" />
-            <div className="break-words text-right font-mono text-[0.82rem] leading-relaxed text-slate-400 max-md:text-left">
+            <div className="flex justify-end max-md:justify-start">
+              <StatusBadge status={visualStatus} />
+            </div>
+            <div className="break-words text-right font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8] max-md:text-left">
               updated{" "}
               {formatRelativeTime(
                 conversation?.lastSeenAt ?? detail.data?.generatedAt,
@@ -73,7 +75,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error ? (
-          <div className="border border-slate-800 bg-neutral-950/60 p-4 font-mono text-[0.88rem] leading-relaxed text-slate-400">
+          <div className="border border-white/10 bg-[#050505] p-4 font-mono text-[0.88rem] leading-relaxed text-[#b8b8b8]">
             {detail.error.message}
           </div>
         ) : (
@@ -101,7 +103,7 @@ function ConversationIdentity(props: {
         <>
           {" · "}
           <a
-            className="text-cyan-300 no-underline hover:text-white hover:underline"
+            className="text-white no-underline hover:underline"
             href={props.conversation.sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
@@ -141,7 +143,7 @@ function ConversationStats(props: {
   ].filter(Boolean);
 
   return (
-    <div className="col-span-full border-t border-slate-800 pt-3 break-words font-mono text-[0.72rem] leading-[1.45] text-slate-400">
+    <div className="col-span-full break-words border-t border-white/10 pt-3 font-mono text-[0.72rem] leading-[1.45] text-[#888]">
       {stats.join(" · ")}
     </div>
   );

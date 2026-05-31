@@ -31,7 +31,7 @@ export function StructuredMarkup(props: {
     <>
       {nodes.map((node, index) => (
         <div
-          className="grid min-w-0 gap-0 py-0.5 pl-4 font-mono text-[0.86rem] leading-relaxed text-slate-400"
+          className="grid min-w-0 gap-0 py-0.5 pl-4 font-mono text-[0.86rem] leading-relaxed text-[#b8b8b8]"
           key={index}
         >
           <MarkupNodeView
@@ -47,7 +47,7 @@ export function StructuredMarkup(props: {
 function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
   if (props.node.type === "text") {
     return (
-      <div className="min-w-0 whitespace-pre-wrap break-words text-slate-100">
+      <div className="min-w-0 whitespace-pre-wrap break-words text-white">
         {props.node.text.trim()}
       </div>
     );
@@ -56,18 +56,18 @@ function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
   const children = props.node.children;
   const hasChildren = children.length > 0;
   const attributes = props.node.attributes.map(([name, value]) => (
-    <span className="ml-1.5 text-amber-300" key={name}>
-      {name}=<span className="text-emerald-300">"{value}"</span>
+    <span className="ml-1.5 text-[#b8b8b8]" key={name}>
+      {name}=<span className="text-white">"{value}"</span>
     </span>
   ));
 
   if (!hasChildren) {
     return (
       <div className="-ml-1 flex min-w-0 flex-wrap items-baseline px-1 py-0.5">
-        <span className="text-slate-500">&lt;</span>
-        <span className="font-bold text-cyan-300">{props.node.tagName}</span>
+        <span className="text-[#888]">&lt;</span>
+        <span className="font-bold text-white">{props.node.tagName}</span>
         {attributes}
-        <span className="text-slate-500"> /&gt;</span>
+        <span className="text-[#888]"> /&gt;</span>
       </div>
     );
   }
@@ -77,17 +77,15 @@ function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
       className="group min-w-0 break-words"
       open={props.defaultOpen ?? true}
     >
-      <summary className="-ml-1 flex w-full max-w-full cursor-pointer list-none flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-cyan-400/10 hover:text-slate-100 [&::-webkit-details-marker]:hidden">
-        <span className="mr-1 w-2 text-cyan-300 group-open:hidden">+</span>
-        <span className="mr-1 hidden w-2 text-cyan-300 group-open:inline">
-          -
-        </span>
-        <span className="text-slate-500">&lt;</span>
-        <span className="font-bold text-cyan-300">{props.node.tagName}</span>
+      <summary className="-ml-1 flex w-full max-w-full cursor-pointer list-none flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-white/[0.05] hover:text-white [&::-webkit-details-marker]:hidden">
+        <span className="mr-1 w-2 text-white group-open:hidden">+</span>
+        <span className="mr-1 hidden w-2 text-white group-open:inline">-</span>
+        <span className="text-[#888]">&lt;</span>
+        <span className="font-bold text-white">{props.node.tagName}</span>
         {attributes}
-        <span className="text-slate-500">&gt;</span>
+        <span className="text-[#888]">&gt;</span>
       </summary>
-      <div className="ml-1 grid gap-0 border-l border-slate-700 pl-3">
+      <div className="ml-1 grid gap-0 border-l border-white/10 pl-3">
         {children.map((child, index) => (
           <MarkupNodeView
             defaultOpen={index === children.length - 1}
@@ -97,13 +95,13 @@ function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
         ))}
       </div>
       <div
-        className="-ml-1 flex min-w-0 flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-cyan-400/10"
+        className="-ml-1 flex min-w-0 flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-white/[0.05]"
         role="button"
         tabIndex={0}
       >
-        <span className="text-slate-500">&lt;/</span>
-        <span className="font-bold text-cyan-300">{props.node.tagName}</span>
-        <span className="text-slate-500">&gt;</span>
+        <span className="text-[#888]">&lt;/</span>
+        <span className="font-bold text-white">{props.node.tagName}</span>
+        <span className="text-[#888]">&gt;</span>
       </div>
     </details>
   );
@@ -126,7 +124,7 @@ export function HighlightedCode(props: {
 
   if (!highlighted.data) {
     return (
-      <pre className="m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-[0.86rem] leading-relaxed text-slate-100">
+      <pre className="m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-[0.86rem] leading-relaxed text-white">
         <code>{props.code}</code>
       </pre>
     );

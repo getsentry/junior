@@ -35,7 +35,7 @@ import type {
 /** Render the compact Junior wordmark used by the dashboard shell. */
 export function JuniorLogo() {
   return (
-    <div className="grid size-9 shrink-0 place-items-center bg-black font-mono text-[0.82rem] font-black leading-none text-white">
+    <div className="grid size-9 shrink-0 select-none place-items-center bg-black font-mono text-[0.82rem] font-black leading-none text-white">
       Jr
     </div>
   );
@@ -46,7 +46,7 @@ export function Section(props: { children: ReactNode; className?: string }) {
   return (
     <section
       className={cn(
-        "mb-4 min-w-0 border border-slate-800 bg-neutral-900/80",
+        "mb-4 min-w-0 border border-white/10 bg-[#0b0b0b]",
         props.className,
       )}
     >
@@ -61,7 +61,7 @@ export function SectionHeader(props: {
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-neutral-950/60 px-4 py-3 max-md:flex-col max-md:items-stretch">
+    <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3 max-md:flex-col max-md:items-stretch">
       <div className="min-w-0">{props.children}</div>
       {props.actions ? (
         <div className="shrink-0 max-md:w-full">{props.actions}</div>
@@ -73,7 +73,7 @@ export function SectionHeader(props: {
 /** Render small uppercase dashboard context labels consistently. */
 export function Kicker(props: { children: ReactNode }) {
   return (
-    <div className="font-mono text-[0.78rem] uppercase leading-tight text-slate-400">
+    <div className="font-mono text-[0.78rem] uppercase leading-tight text-[#888]">
       {props.children}
     </div>
   );
@@ -82,7 +82,7 @@ export function Kicker(props: { children: ReactNode }) {
 /** Render compact section titles that fit inside operational panels. */
 export function SectionTitle(props: { children: ReactNode }) {
   return (
-    <div className="mt-1 text-[1.05rem] font-bold leading-tight tracking-normal">
+    <div className="mt-1 min-w-0 break-words text-[1.05rem] font-bold leading-tight tracking-normal">
       {props.children}
     </div>
   );
@@ -92,48 +92,41 @@ export function SectionTitle(props: { children: ReactNode }) {
 export function LoadingView(props: { label: string }) {
   return (
     <div className="grid min-h-[calc(100vh-5rem)] place-items-center px-4 py-8 md:px-8">
-      <section className="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-slate-700 bg-neutral-900/80 p-4">
+      <section className="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
         <JuniorLogo />
         <div>
           <div className="font-bold">{props.label}</div>
-          <div className="mt-3 h-1.5 w-full animate-pulse bg-slate-600" />
+          <div className="mt-3 h-1.5 w-full animate-pulse bg-white/20" />
         </div>
       </section>
     </div>
   );
 }
 
-/** Render the shared active/idle visual indicator without duplicating status text. */
-export function ActivityIndicator(props: {
+/** Render readable status text while keeping severity color restrained. */
+export function StatusBadge(props: {
+  label?: string;
   status: VisualStatus | undefined;
-  variant?: "compact" | "full";
 }) {
-  const activity = props.status ?? "idle";
-  if (props.variant !== "full" && activity === "idle") {
-    return null;
-  }
+  const status = props.status ?? "idle";
   return (
-    <div
+    <span
       className={cn(
-        "inline-flex items-center gap-1.5 font-mono text-[0.78rem] font-bold uppercase leading-none tracking-normal",
-        props.variant === "full" ? "w-full justify-end" : "",
-        activity === "active" && "text-emerald-400",
-        activity === "hung" && "text-amber-400",
-        activity === "failed" && "text-rose-400",
-        activity === "idle" && "text-slate-500",
+        "inline-flex items-center gap-1.5",
+        statusBadgeClass(status),
       )}
-      aria-label={activity}
     >
       <span
         className={cn(
-          "size-2.5 shrink-0 border",
-          activity === "active" && "border-emerald-400 bg-emerald-400",
-          activity === "hung" && "border-amber-400 bg-amber-400",
-          activity === "failed" && "border-rose-400 bg-rose-400",
-          activity === "idle" && "border-slate-500 bg-transparent",
+          "size-1.5 shrink-0",
+          status === "active" && "bg-emerald-300",
+          status === "hung" && "bg-amber-300",
+          status === "failed" && "bg-rose-300",
+          status === "idle" && "bg-white/35",
         )}
       />
-    </div>
+      {props.label ?? status}
+    </span>
   );
 }
 
@@ -156,24 +149,24 @@ export function CommandRail(props: {
       <Section>
         <SectionHeader
           actions={
-            <div className="inline-flex items-center gap-1.5 font-mono text-[0.82rem] leading-none text-emerald-400">
-              <span className="size-2 bg-emerald-400" />
-              <span>
-                {props.error ? "degraded" : props.data ? "online" : "checking"}
-              </span>
-            </div>
+            <StatusBadge
+              label={
+                props.error ? "degraded" : props.data ? "online" : "checking"
+              }
+              status={props.error ? "failed" : props.data ? "active" : "idle"}
+            />
           }
         >
           <Kicker>Command Center</Kicker>
           <SectionTitle>Pulse</SectionTitle>
         </SectionHeader>
         <div className="px-4 py-4">
-          <div className="text-6xl font-black leading-none text-emerald-400 md:text-7xl">
+          <div className="text-5xl font-black leading-none text-white md:text-6xl">
             {props.error
               ? "ERR"
               : (props.data?.health.status.toUpperCase() ?? "...")}
           </div>
-          <div className="mt-3 break-words font-mono text-[0.84rem] leading-relaxed text-slate-400">
+          <div className="mt-3 break-words font-mono text-[0.84rem] leading-relaxed text-[#b8b8b8]">
             {props.error
               ? props.error.message
               : props.data
@@ -181,7 +174,7 @@ export function CommandRail(props: {
                 : "Waiting for Junior telemetry."}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-px border-t border-slate-800 bg-slate-800">
+        <div className="flex flex-wrap border-t border-white/10">
           <Stat label="plugins" value={props.data?.plugins.length ?? 0} />
           <Stat label="skills" value={props.data?.skills.length ?? 0} />
           <Stat label="active" value={activeSessions.length} />
@@ -195,11 +188,11 @@ export function CommandRail(props: {
 
 function Stat(props: { label: string; value: number }) {
   return (
-    <div className="min-w-0 bg-neutral-950/80 px-3 py-3">
-      <div className="text-2xl font-extrabold leading-none text-slate-100">
+    <div className="min-w-0 flex-1 basis-1/2 border-r border-t border-white/10 bg-[#050505] px-3 py-3 first:border-t-0 sm:basis-1/3">
+      <div className="text-2xl font-extrabold leading-none text-white">
         {props.value}
       </div>
-      <div className="mt-1 font-mono text-[0.78rem] uppercase leading-tight text-slate-400">
+      <div className="mt-1 font-mono text-[0.78rem] uppercase leading-tight text-[#888]">
         {props.label}
       </div>
     </div>
@@ -239,8 +232,8 @@ export function TurnDurationChart(props: {
     <Section>
       <SectionHeader
         actions={
-          <div className="flex flex-wrap items-center gap-3 font-mono text-[0.78rem] uppercase leading-none text-slate-400">
-            <ChartLegendItem className="bg-slate-400" label="Complete" />
+          <div className="flex flex-wrap items-center gap-3 font-mono text-[0.78rem] uppercase leading-none text-[#888]">
+            <ChartLegendItem className="bg-[#b8b8b8]" label="Complete" />
             <ChartLegendItem className="bg-amber-400" label="Hung" />
             <ChartLegendItem className="bg-rose-400" label="Error" />
           </div>
@@ -258,7 +251,7 @@ export function TurnDurationChart(props: {
             data={points}
             margin={{ bottom: 0, left: 0, right: 4, top: 14 }}
           >
-            <CartesianGrid stroke="rgba(71, 85, 105, 0.35)" vertical={false} />
+            <CartesianGrid stroke="rgba(255, 255, 255, 0.1)" vertical={false} />
             <XAxis
               axisLine={false}
               dataKey="x"
@@ -267,7 +260,7 @@ export function TurnDurationChart(props: {
                 bucketLabel(Number(value), props.timeZone)
               }
               tick={{
-                fill: "#94a3b8",
+                fill: "#888",
                 fontFamily: "ui-monospace",
                 fontSize: 12,
               }}
@@ -281,7 +274,7 @@ export function TurnDurationChart(props: {
               dataKey="durationMs"
               tickFormatter={(value) => formatMs(Number(value))}
               tick={{
-                fill: "#94a3b8",
+                fill: "#888",
                 fontFamily: "ui-monospace",
                 fontSize: 11,
               }}
@@ -290,12 +283,12 @@ export function TurnDurationChart(props: {
             />
             <Tooltip
               content={<TurnDurationTooltip />}
-              cursor={{ stroke: "rgba(71, 85, 105, 0.55)" }}
+              cursor={{ stroke: "rgba(255, 255, 255, 0.22)" }}
             />
             <Line
-              activeDot={durationDot("rgba(203, 213, 225, 0.95)", 5, openPoint)}
+              activeDot={durationDot("rgba(250, 250, 250, 0.96)", 5, openPoint)}
               dataKey="completeDurationMs"
-              dot={durationDot("rgba(148, 163, 184, 0.78)", 4, openPoint)}
+              dot={durationDot("rgba(184, 184, 184, 0.82)", 4, openPoint)}
               isAnimationActive={false}
               stroke="transparent"
             />
@@ -316,7 +309,7 @@ export function TurnDurationChart(props: {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="border-t border-slate-800 px-4 py-3 font-mono text-[0.8rem] leading-tight text-slate-400">
+      <div className="border-t border-white/10 px-4 py-3 font-mono text-[0.8rem] leading-tight text-[#888]">
         {totals.total} turns / {totals.hung} hung / {totals.failed} errors
       </div>
     </Section>
@@ -416,7 +409,7 @@ function durationDot(
         }}
         r={radius}
         role="link"
-        stroke="rgba(12, 19, 32, 0.92)"
+        stroke="rgba(0, 0, 0, 0.96)"
         strokeWidth={1}
         tabIndex={0}
       />
@@ -433,11 +426,9 @@ function TurnDurationTooltip(props: {
     return null;
   }
   return (
-    <div className="border border-slate-700 bg-neutral-950/95 px-3 py-2 font-mono text-[0.78rem] leading-relaxed text-slate-400 shadow-xl shadow-black/40">
-      <div className="mb-1 text-slate-100">{point.tooltipLabel}</div>
-      <div className="font-bold text-slate-100">
-        {formatMs(point.durationMs)}
-      </div>
+    <div className="border border-white/15 bg-[#050505] px-3 py-2 font-mono text-[0.78rem] leading-relaxed text-[#b8b8b8]">
+      <div className="mb-1 text-white">{point.tooltipLabel}</div>
+      <div className="font-bold text-white">{formatMs(point.durationMs)}</div>
       <div>{point.status}</div>
       <div>{point.session.title ?? point.session.id}</div>
     </div>
@@ -463,8 +454,8 @@ export function FilterTabs(props: {
           className={cn(
             "cursor-pointer border px-2 py-1 font-mono text-[0.78rem] uppercase leading-tight transition-colors",
             props.current === filter
-              ? "border-slate-500 bg-slate-800 text-white"
-              : "border-slate-800 bg-neutral-900 text-slate-400 hover:border-slate-600 hover:text-white",
+              ? "border-white/30 bg-white text-black"
+              : "border-white/10 bg-[#0b0b0b] text-[#888] hover:border-white/25 hover:bg-[#151515] hover:text-white",
           )}
           key={filter}
           onClick={() => props.onChange(filter)}
@@ -492,9 +483,9 @@ export function ConversationList(props: {
   }
 
   return (
-    <div className="min-w-0 overflow-auto" role="table">
+    <div className="min-w-0" role="table">
       <div
-        className="sticky top-0 z-[1] grid min-w-[40rem] grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-slate-800 bg-neutral-950/95 px-3 py-2 font-mono text-[0.76rem] uppercase leading-none text-slate-500"
+        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/10 bg-[#050505] px-3 py-2 font-mono text-[0.76rem] uppercase leading-none text-[#888] max-md:hidden"
         role="row"
       >
         <div>Conversation</div>
@@ -534,7 +525,7 @@ export function ConversationStack(props: { conversations: Conversation[] }) {
 
 function EmptyTelemetry(props: { children: ReactNode }) {
   return (
-    <div className="relative min-w-0 border border-slate-800 bg-neutral-950/70 px-4 py-3 pl-5 font-mono text-[0.88rem] leading-relaxed text-slate-400">
+    <div className="relative min-w-0 border border-white/10 bg-[#050505] px-4 py-3 pl-5 font-mono text-[0.88rem] leading-relaxed text-[#b8b8b8]">
       <span className="absolute bottom-0 left-0 top-0 w-1 bg-amber-400" />
       {props.children}
     </div>
@@ -602,18 +593,23 @@ function ConversationStackRow(props: { conversation: Conversation }) {
 }
 
 function ConversationSummary(props: { conversation: Conversation }) {
+  const visualStatus = visualStatusForConversation(props.conversation);
+
   return (
     <div className="min-w-0">
-      <div className="truncate text-[1.04rem] font-bold leading-tight text-slate-100 group-hover:text-white">
-        {conversationDisplayTitle(props.conversation)}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="min-w-0 truncate text-[1.04rem] font-bold leading-tight text-white">
+          {conversationDisplayTitle(props.conversation)}
+        </div>
+        <StatusBadge status={visualStatus} />
       </div>
-      <div className="mt-1 truncate font-mono text-[0.82rem] leading-relaxed text-slate-400">
+      <div className="mt-1 break-words font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8] md:truncate">
         {conversationIdentityMeta(props.conversation, props.conversation.id)}
         {props.conversation.sentryConversationUrl ? (
           <>
             {" · "}
             <a
-              className="border-b border-cyan-400/40 font-mono text-[0.82rem] leading-relaxed text-cyan-300 no-underline hover:border-cyan-300"
+              className="border-b border-white/30 font-mono text-[0.82rem] leading-relaxed text-white no-underline hover:border-white"
               href={props.conversation.sentryConversationUrl}
               onClick={(event) => event.stopPropagation()}
               rel="noreferrer"
@@ -640,12 +636,12 @@ function ConversationRowStats(props: {
   timeLabel: string;
 }) {
   return (
-    <div className="grid min-w-0 justify-items-end gap-1 text-right">
-      <div className="font-mono text-[0.82rem] leading-relaxed text-slate-400">
+    <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
+      <div className="font-mono text-[0.82rem] leading-relaxed text-[#b8b8b8]">
         {props.conversation.turns.length} turns · {props.timeLabel}
       </div>
       {props.conversation.channel ? (
-        <div className="max-w-full truncate font-mono text-[0.82rem] leading-relaxed text-slate-400">
+        <div className="max-w-full break-words font-mono text-[0.82rem] leading-relaxed text-[#888] md:truncate">
           {slackLocationLabel(props.conversation, { includeId: false })}
         </div>
       ) : null}
@@ -657,7 +653,18 @@ function statusBorderClass(status: VisualStatus): string {
   if (status === "active") return "border-l-emerald-400";
   if (status === "hung") return "border-l-amber-400";
   if (status === "failed") return "border-l-rose-400";
-  return "border-l-slate-500";
+  return "border-l-white/25";
+}
+
+function statusBadgeClass(status: VisualStatus): string {
+  return cn(
+    "border px-1.5 py-0.5 font-mono text-[0.68rem] font-bold uppercase leading-none",
+    status === "active" &&
+      "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
+    status === "hung" && "border-amber-400/25 bg-amber-400/10 text-amber-300",
+    status === "failed" && "border-rose-400/25 bg-rose-400/10 text-rose-300",
+    status === "idle" && "border-white/10 bg-white/[0.03] text-[#888]",
+  );
 }
 
 function conversationRecordClass(
@@ -665,16 +672,16 @@ function conversationRecordClass(
   selected: boolean | undefined,
 ): string {
   return cn(
-    "group grid min-w-[40rem] cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-l-4 border-b-slate-800 bg-neutral-950/50 px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-neutral-900",
+    "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-l-4 border-b-white/10 bg-[#0b0b0b] px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-[#151515] max-md:grid-cols-1 max-md:px-4 max-md:py-4",
     statusBorderClass(status),
     status === "idle" && "saturate-50",
-    selected && "border-l-cyan-400 bg-neutral-900",
+    selected && "border-l-white bg-[#111]",
   );
 }
 
 function conversationStackRowClass(status: VisualStatus): string {
   return cn(
-    "group relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(12rem,max-content)] items-center gap-3 overflow-hidden border-y border-r border-l-4 border-y-slate-800 border-r-slate-800 bg-neutral-950/70 px-4 py-3 text-inherit no-underline transition-colors hover:border-y-slate-600 hover:border-r-slate-600 hover:bg-neutral-900 max-md:grid-cols-1",
+    "group relative grid min-h-16 cursor-pointer grid-cols-[minmax(0,1fr)_minmax(12rem,max-content)] items-center gap-3 overflow-hidden border-y border-r border-l-4 border-y-white/10 border-r-white/10 bg-[#050505] px-4 py-3 text-inherit no-underline transition-colors hover:border-y-white/25 hover:border-r-white/25 hover:bg-[#151515] max-md:grid-cols-1",
     statusBorderClass(status),
     status === "idle" && "saturate-50",
   );
