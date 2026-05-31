@@ -4,6 +4,8 @@ import { HighlightedCode } from "../code";
 import {
   detectLanguage,
   detectOutputLanguage,
+  transcriptRoleKind,
+  type TranscriptRoleKind,
   formatBytes,
   formatMessageOffset,
   formatMessageTimestamp,
@@ -70,17 +72,6 @@ function turnMarkerClass(
     status === "failed" && "border-rose-300 bg-rose-300",
     status === "idle" && "border-[#beaaff]/70 bg-[#beaaff]/50",
   );
-}
-
-type TranscriptRoleKind = "assistant" | "other" | "system" | "tool" | "user";
-
-function transcriptRoleKind(role: string): TranscriptRoleKind {
-  const normalized = role.toLowerCase();
-  if (normalized === "assistant") return "assistant";
-  if (normalized === "user") return "user";
-  if (normalized === "system") return "system";
-  if (normalized.includes("tool")) return "tool";
-  return "other";
 }
 
 function transcriptRoleLabel(role: string, turn: ConversationTurn): string {

@@ -1,5 +1,5 @@
 import { countStructuredBlockChildren } from "../code";
-import { parseMarkdownBlocks, stringifyPartValue } from "../format";
+import { parseMarkdownBlocks, stringifyPartValue, transcriptRoleKind } from "../format";
 import type { TranscriptMessage, TranscriptPart } from "../types";
 
 export type RenderedTranscriptPart =
@@ -190,7 +190,7 @@ export function countRenderedTranscriptChildren(
   if (part.part.type === "text") {
     return countTextRenderedChildren(
       part.part.text ?? "",
-      role?.toLowerCase() === "assistant",
+      transcriptRoleKind(role ?? "") === "assistant",
     );
   }
   return 1;

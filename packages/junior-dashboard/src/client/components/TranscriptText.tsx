@@ -3,7 +3,7 @@ import {
   HighlightedCode,
   StructuredMarkup,
 } from "../code";
-import { canRenderStructuredMarkup, parseMarkdownBlocks } from "../format";
+import { canRenderStructuredMarkup, parseMarkdownBlocks, transcriptRoleKind } from "../format";
 
 /** Render transcript markdown/code blocks with structured markup expansion. */
 export function TranscriptText(props: {
@@ -13,7 +13,7 @@ export function TranscriptText(props: {
   text: string;
 }) {
   const blocks = parseMarkdownBlocks(props.text, {
-    outputOnly: props.role?.toLowerCase() === "assistant",
+    outputOnly: transcriptRoleKind(props.role ?? "") === "assistant",
   });
   let seenChildren = props.firstChildIndex;
 

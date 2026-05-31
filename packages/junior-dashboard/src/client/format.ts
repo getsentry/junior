@@ -204,9 +204,22 @@ function transcriptSource(turn: ConversationTurn) {
     : (turn.transcriptMetadata ?? []);
 }
 
-function isConversationMessageRole(role: string): boolean {
+/** Normalized role category for transcript messages. */
+export type TranscriptRoleKind =
+  | "assistant"
+  | "other"
+  | "system"
+  | "tool"
+  | "user";
+
+/** Normalize a raw transcript role string to a canonical kind. */
+export function transcriptRoleKind(role: string): TranscriptRoleKind {
   const normalized = role.toLowerCase();
-  return normalized === "user" || normalized === "assistant";
+  if (normalized === "assistant") return "assistant";
+  if (normalized === "user") return "user";
+  if (normalized === "system") return "system";
+  if (normalized.includes("tool")) return "tool";
+  return "other";
 }
 
 function hasTextPart(
@@ -222,8 +235,9 @@ function hasTextPart(
 function isConversationMessage(
   message: Pick<ConversationTurn["transcript"][number], "parts" | "role">,
 ): boolean {
-  if (!isConversationMessageRole(message.role)) return false;
-  if (message.role.toLowerCase() === "assistant") return hasTextPart(message);
+  const kind = transcriptRoleKind(message.role);
+  if (kind !== "user" && kind !== "assistant") return false;
+  if (kind === "assistant") return hasTextPart(message);
   return message.parts.length > 0;
 }
 
