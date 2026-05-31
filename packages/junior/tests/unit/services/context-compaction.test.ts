@@ -186,6 +186,17 @@ describe("context compaction projection reset", () => {
     const { commitMessages } = await import("@/chat/state/session-log");
 
     const priorMessages = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nbootstrap instructions that must not be summarized\n</runtime-turn-context>",
+          },
+          { type: "text", text: "first actual request" },
+        ],
+        timestamp: 1,
+      } as PiMessage,
       ...Array.from({ length: 35 }, (_, index) =>
         user(`old-${index.toString().padStart(2, "0")} ${"x".repeat(5_000)}`),
       ),
@@ -217,6 +228,8 @@ describe("context compaction projection reset", () => {
     expect(capturedMessageAttributeMode).toBe("metadata");
     expect(capturedPrompt).toContain("[older context omitted]");
     expect(capturedPrompt).not.toContain("old-00");
+    expect(capturedPrompt).not.toContain("bootstrap instructions");
+    expect(capturedPrompt).not.toContain("<runtime-turn-context>");
     expect(capturedPrompt).toContain("recent-critical-marker");
   });
 

@@ -110,11 +110,13 @@ function pluginAuthorizationId(args: {
 async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
+  expectedVersion: number;
   sessionId: string;
 }): Promise<void> {
   try {
     await failAgentTurnSessionRecord({
       conversationId: args.conversationId,
+      expectedVersion: args.expectedVersion,
       sessionId: args.sessionId,
       errorMessage: args.errorMessage,
     });
@@ -134,6 +136,7 @@ async function failSessionRecordBestEffort(args: {
 
 async function persistFailedOAuthReplyState(args: {
   conversationId: string;
+  expectedVersion: number;
   sessionId: string;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(args.conversationId);
@@ -151,6 +154,7 @@ async function persistFailedOAuthReplyState(args: {
 
   await failSessionRecordBestEffort({
     conversationId: args.conversationId,
+    expectedVersion: args.expectedVersion,
     sessionId: args.sessionId,
     errorMessage: "OAuth-resumed turn failed",
   });
@@ -388,6 +392,7 @@ async function resumeOAuthSessionRecordTurn(
         onFailure: async () => {
           await persistFailedOAuthReplyState({
             conversationId: stored.resumeConversationId!,
+            expectedVersion: lockedSessionRecord.version,
             sessionId: lockedSessionId,
           });
         },
@@ -405,7 +410,7 @@ async function resumeOAuthSessionRecordTurn(
           const nextSliceId = error.metadata?.sliceId;
           if (typeof version !== "number") {
             throw new Error(
-              "Timed-out OAuth resume did not include a session session version",
+              "Timed-out OAuth resume did not include a turn-session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {

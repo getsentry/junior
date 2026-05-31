@@ -1,9 +1,15 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
-  it("when listing Sentry organizations, report accessible organizations", async ({
+  const followUpThread = {
+    id: "thread-sentry-follow-up",
+    channel_id: "C-sentry-follow-up",
+    thread_ts: "17000000.sentry-follow-up",
+  };
+
+  it("when a Sentry request follows a generic first turn, use the Sentry skill and CLI", async ({
     run,
   }) => {
     const result = await run({
@@ -11,17 +17,25 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         credential_providers: ["sentry"],
         plugin_packages: ["@sentry/junior-sentry"],
       },
-      events: [mention("List the Sentry organizations I can access.")],
+      events: [
+        mention("are you working", { thread: followUpThread }),
+        threadMessage("what's up with the latest Sentry issues in getsentry?", {
+          thread: followUpThread,
+          is_mention: true,
+        }),
+      ],
       criteria: rubric({
         contract:
-          "The assistant reports accessible Sentry organizations instead of blocking on setup or stale instructions.",
+          "A Sentry follow-up in an existing Slack thread still has skill context and queries Sentry instead of claiming tools are unavailable.",
         pass: [
-          "The assistant reply includes `getsentry` or otherwise reports the accessible organization list.",
-          "The assistant does not claim that organization listing is unavailable.",
+          "The first reply acknowledges it is available.",
+          "The second reply reports latest Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
+          "The assistant uses the Sentry skill/CLI path on the second turn rather than falling back to manual instructions.",
         ],
         fail: [
-          "Do not say the Sentry org query surface is unavailable.",
-          "Do not ask the user to reconnect Sentry when the organization list is available.",
+          "Do not claim no skills, MCP tools, or Sentry tools are configured.",
+          "Do not tell the user to manually open Sentry, run sentry-cli themselves, or provide an auth token.",
+          "Do not ask the user to reconnect Sentry when the issue list is available.",
         ],
       }),
     });
@@ -39,13 +53,13 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         expect.objectContaining({
           tool: "bash",
           bash_command: expect.stringMatching(
-            /\bsentry\s+(org list|api organizations\/)/,
+            /\bsentry\s+(issue list|api organizations\/getsentry\/issues\/)/,
           ),
         }),
       ]),
     );
     expect(
       output.assistant_posts?.map((post) => post.text ?? "").join("\n") ?? "",
-    ).toMatch(/\bgetsentry\b/i);
+    ).toMatch(/\b(JUNIOR-1|Eval issue|getsentry)\b/i);
   });
 });

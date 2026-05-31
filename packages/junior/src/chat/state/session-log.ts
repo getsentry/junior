@@ -153,17 +153,38 @@ function nextSessionId(entries: SessionLogEntry[]): string {
   return `${SESSION_ID_PREFIX}${resetCount + 1}`;
 }
 
-function currentProjectionEntries(
+function projectionEntries(
   entries: SessionLogEntry[],
+  sessionId?: string,
 ): SessionLogEntry[] {
+  if (sessionId) {
+    const sessionEntries: SessionLogEntry[] = [];
+    let started = false;
+    for (const entry of entries) {
+      const entryId = entrySessionId(entry);
+      if (!started) {
+        if (entryId !== sessionId) {
+          continue;
+        }
+        started = true;
+      } else if (entry.type === "projection_reset" && entryId !== sessionId) {
+        break;
+      }
+      if (entryId === sessionId) {
+        sessionEntries.push(entry);
+      }
+    }
+    return sessionEntries;
+  }
+
   const resetIndex = latestProjectionResetIndex(entries);
   const startIndex = resetIndex < 0 ? 0 : resetIndex;
-  const sessionId =
+  const currentId =
     resetIndex < 0 ? INITIAL_SESSION_ID : entrySessionId(entries[resetIndex]!);
 
   return entries
     .slice(startIndex)
-    .filter((entry) => entrySessionId(entry) === sessionId);
+    .filter((entry) => entrySessionId(entry) === currentId);
 }
 
 function piEntry(message: PiMessage, sessionId: string): SessionLogEntry {
@@ -269,9 +290,9 @@ function decode(value: unknown): SessionLogEntry {
   return piEntry(piMessageSchema.parse(value), INITIAL_SESSION_ID);
 }
 
-function project(entries: SessionLogEntry[]): PiMessage[] {
+function project(entries: SessionLogEntry[], sessionId?: string): PiMessage[] {
   let messages: PiMessage[] = [];
-  for (const entry of currentProjectionEntries(entries)) {
+  for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "pi_message") {
       messages.push(entry.message);
       continue;
@@ -291,9 +312,12 @@ function project(entries: SessionLogEntry[]): PiMessage[] {
   return messages;
 }
 
-function connectedMcpProviders(entries: SessionLogEntry[]): string[] {
+function connectedMcpProviders(
+  entries: SessionLogEntry[],
+  sessionId?: string,
+): string[] {
   const providers = new Set<string>();
-  for (const entry of currentProjectionEntries(entries)) {
+  for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "mcp_provider_connected") {
       providers.add(entry.provider);
     }
@@ -379,6 +403,7 @@ export async function loadMessages(
   args: Scope & {
     store?: SessionLogStore;
     messageCount: number;
+    sessionId?: string;
   },
 ): Promise<PiMessage[] | undefined> {
   const messageCount = normalizeMessageCount(args.messageCount);
@@ -387,7 +412,7 @@ export async function loadMessages(
   }
 
   const store = args.store ?? (await defaultStore());
-  const messages = project(await store.read(args));
+  const messages = project(await store.read(args), args.sessionId);
   return messages.length >= messageCount
     ? messages.slice(0, messageCount)
     : undefined;
@@ -397,10 +422,11 @@ export async function loadMessages(
 export async function loadProjection(
   args: Scope & {
     store?: SessionLogStore;
+    sessionId?: string;
   },
 ): Promise<PiMessage[]> {
   const store = args.store ?? (await defaultStore());
-  return project(await store.read(args));
+  return project(await store.read(args), args.sessionId);
 }
 
 /** Load MCP providers that were durably connected in this conversation. */
@@ -449,7 +475,7 @@ export async function recordAuthorizationRequested(
   const entries = await store.read(args);
   const sessionId = currentSessionId(entries);
   if (
-    currentProjectionEntries(entries).some(
+    projectionEntries(entries).some(
       (entry) =>
         entry.type === "authorization_requested" &&
         entry.authorizationId === args.authorizationId,
@@ -489,7 +515,7 @@ export async function recordAuthorizationCompleted(
   const entries = await store.read(args);
   const sessionId = currentSessionId(entries);
   if (
-    currentProjectionEntries(entries).some(
+    projectionEntries(entries).some(
       (entry) =>
         entry.type === "authorization_completed" &&
         entry.authorizationId === args.authorizationId,
@@ -526,18 +552,25 @@ export async function commitMessages(
     messages: PiMessage[];
     ttlMs: number;
   },
-): Promise<void> {
+): Promise<{ sessionId: string }> {
   const store = args.store ?? (await defaultStore());
   const entries = await store.read(args);
   const existingMessages = project(entries);
+  const currentId = currentSessionId(entries);
+  const nextEntries = commitEntries(
+    existingMessages,
+    args.messages,
+    currentId,
+    entries,
+  );
   await store.append({
     scope: args,
-    entries: commitEntries(
-      existingMessages,
-      args.messages,
-      currentSessionId(entries),
-      entries,
-    ),
+    entries: nextEntries,
     ttlMs: args.ttlMs,
   });
+  return {
+    sessionId:
+      nextEntries.find((entry) => entry.type === "projection_reset")
+        ?.sessionId ?? currentId,
+  };
 }

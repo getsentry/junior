@@ -149,43 +149,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("materializes legacy turn session checkpoint records", async () => {
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const piMessages: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "continue legacy turn" }],
-        timestamp: 1,
-      },
-    ];
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(
-      "junior:agent_turn_session:conversation-legacy:turn-legacy",
-      {
-        checkpointVersion: 4,
-        conversationId: "conversation-legacy",
-        sessionId: "turn-legacy",
-        sliceId: 2,
-        state: "superseded",
-        updatedAtMs: 123,
-        messageCount: piMessages.length,
-        piMessages,
-      },
-      60_000,
-    );
-
-    await expect(
-      getAgentTurnSessionRecord("conversation-legacy", "turn-legacy"),
-    ).resolves.toMatchObject({
-      version: 4,
-      state: "abandoned",
-      piMessages,
-    });
-  });
-
   it("carries cumulative diagnostics across pause records", async () => {
     const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");
@@ -404,7 +367,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
-  it("stores completed records without volatile runtime turn context", async () => {
+  it("keeps completed session bootstrap context for later turns in the same session", async () => {
     const { persistCompletedSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
@@ -444,7 +407,13 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: [
         {
           role: "user",
-          content: [{ type: "text", text: "actual request" }],
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
+            },
+            { type: "text", text: "actual request" },
+          ],
         },
         {
           role: "assistant",
@@ -627,5 +596,64 @@ describe("persistAuthPauseSessionRecord", () => {
       state: "running",
       piMessages: [user, replacementToolResult],
     });
+  });
+
+  it("keeps older turn records pinned to their committed projection after reset", async () => {
+    const {
+      failAgentTurnSessionRecord,
+      getAgentTurnSessionRecord,
+      upsertAgentTurnSessionRecord,
+    } = await import("@/chat/state/turn-session");
+    const { loadProjection } = await import("@/chat/state/session-log");
+    const oldRequest: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "old request" }],
+      timestamp: 1,
+    };
+    const newRequest: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "new request" }],
+      timestamp: 2,
+    };
+    const newFollowup: PiMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "new followup" }],
+      timestamp: 3,
+    } as PiMessage;
+
+    const oldRecord = await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-projection-pin",
+      sessionId: "turn-old",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [oldRequest],
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-projection-pin",
+      sessionId: "turn-new",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [newRequest, newFollowup],
+    });
+
+    await expect(
+      getAgentTurnSessionRecord("conversation-projection-pin", "turn-old"),
+    ).resolves.toMatchObject({
+      piMessages: [oldRequest],
+    });
+
+    await failAgentTurnSessionRecord({
+      conversationId: "conversation-projection-pin",
+      sessionId: "turn-old",
+      expectedVersion: oldRecord.version,
+      errorMessage: "stale timeout callback",
+    });
+
+    await expect(
+      loadProjection({
+        conversationId: "conversation-projection-pin",
+      }),
+    ).resolves.toEqual([newRequest, newFollowup]);
   });
 });

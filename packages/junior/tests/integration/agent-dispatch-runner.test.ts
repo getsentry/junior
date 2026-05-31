@@ -159,7 +159,6 @@ describe("agent dispatch runner", () => {
 
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "awaiting_resume",
-      resumeRecordVersion: 7,
     });
     expect(scheduleCallback).toHaveBeenCalledWith({
       id: created.record.id,

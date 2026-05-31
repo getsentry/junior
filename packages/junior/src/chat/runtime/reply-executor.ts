@@ -79,10 +79,7 @@ import {
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { loadProjection } from "@/chat/state/session-log";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+import { trimTrailingAssistantMessages } from "@/chat/respond-helpers";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -143,9 +140,7 @@ async function loadPiMessagesForTurn(args: {
     );
     if (sessionRecord?.piMessages.length) {
       return {
-        piMessages: stripRuntimeTurnContext(
-          trimTrailingAssistantMessages(sessionRecord.piMessages),
-        ),
+        piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
       };
     }
   }
@@ -156,7 +151,7 @@ async function loadPiMessagesForTurn(args: {
   if (projection.length > 0) {
     return {
       canCompact: true,
-      piMessages: stripRuntimeTurnContext(projection),
+      piMessages: projection,
     };
   }
 
@@ -927,12 +922,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             if (conversationId) {
               try {
-                await failAgentTurnSessionRecord({
+                const sessionRecord = await getAgentTurnSessionRecord(
                   conversationId,
-                  sessionId: turnId,
-                  errorMessage:
-                    "Agent turn failed before final reply delivery completed",
-                });
+                  turnId,
+                );
+                if (sessionRecord) {
+                  await failAgentTurnSessionRecord({
+                    conversationId,
+                    expectedVersion: sessionRecord.version,
+                    sessionId: turnId,
+                    errorMessage:
+                      "Agent turn failed before final reply delivery completed",
+                  });
+                }
               } catch (recordError) {
                 logException(
                   recordError,

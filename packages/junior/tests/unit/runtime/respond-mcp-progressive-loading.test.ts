@@ -50,10 +50,12 @@ const {
   resumeTurnContextCounts: [] as number[],
   searchMcpToolNames: [] as string[][],
   turnContextInputs: [] as Array<{
+    availableSkills?: Array<{ name: string }>;
     activeMcpCatalogs?: Array<{
       provider: string;
       available_tool_count: number;
     }>;
+    includeSessionContext?: boolean;
   }>,
 }));
 
@@ -276,7 +278,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
                 part &&
                 typeof part === "object" &&
                 (part as { type?: unknown }).type === "text" &&
-                (part as { text?: unknown }).text === "Turn context",
+                typeof (part as { text?: unknown }).text === "string" &&
+                (part as { text: string }).text.includes("Turn context"),
             )
           );
         }).length,
@@ -399,13 +402,18 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
     ...actual,
     buildSystemPrompt: () => "System prompt",
     buildTurnContextPrompt: (input: {
+      availableSkills?: Array<{ name: string }>;
       activeMcpCatalogs?: Array<{
         provider: string;
         available_tool_count: number;
       }>;
+      includeSessionContext?: boolean;
     }) => {
       turnContextInputs.push(input);
-      return "Turn context";
+      if (input.includeSessionContext === false) {
+        return null;
+      }
+      return "<runtime-turn-context>\nTurn context\n</runtime-turn-context>";
     },
   };
 });
@@ -679,6 +687,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       "System prompt",
     ]);
     expect(resumeTurnContextCounts).toEqual([1]);
+    expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
+    expect(turnContextInputs[1]?.includeSessionContext).toBe(true);
     expect(turnContextInputs[1]?.activeMcpCatalogs).toEqual([
       { provider: "demo", available_tool_count: 1 },
     ]);
@@ -820,7 +830,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
   });
 
-  it("seeds normal turns from persisted Pi history", async () => {
+  it("injects session context when persisted Pi history has no runtime context", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const priorMessages: PiMessage[] = [
@@ -853,11 +863,48 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<thread-background>",
     );
+    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(turnContextInputs.at(-1)?.availableSkills).toEqual([
+      expect.objectContaining({ name: "demo-skill" }),
+    ]);
+    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
+  });
+
+  it("does not duplicate session context when persisted Pi history already has it", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    const priorMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nexisting bootstrap\n</runtime-turn-context>",
+          },
+          { type: "text", text: "prior question" },
+        ],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "prior answer" }],
+        timestamp: 2,
+      },
+    ] as PiMessage[];
+
+    await generateAssistantReply("help me", {
+      ...makeReplyContext({
+        conversationId: "conversation-history-with-context",
+        threadTs: "1712345.00031",
+        turnId: "turn-history-with-context",
+      }),
+      piMessages: priorMessages,
+    });
+
+    expect(promptSeedMessages[0]).toEqual(priorMessages);
+    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(false);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<runtime-turn-context>",
-    );
-    expect(JSON.stringify(promptMessages[0])).not.toContain(
-      "<available-skills>",
     );
   });
 

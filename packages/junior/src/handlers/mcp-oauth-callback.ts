@@ -37,6 +37,7 @@ import {
 import {
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { recordAuthorizationCompleted } from "@/chat/state/session-log";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
@@ -116,6 +117,7 @@ async function persistCompletedReplyState(
 async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
+  expectedVersion: number;
   sessionId: string;
 }): Promise<void> {
   try {
@@ -123,6 +125,7 @@ async function failSessionRecordBestEffort(args: {
       conversationId: args.conversationId,
       sessionId: args.sessionId,
       errorMessage: args.errorMessage,
+      expectedVersion: args.expectedVersion,
     });
   } catch (error) {
     logException(
@@ -142,6 +145,7 @@ async function persistFailedReplyState(
   channelId: string,
   threadTs: string,
   sessionId: string,
+  expectedVersion: number,
 ): Promise<void> {
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
@@ -161,6 +165,7 @@ async function persistFailedReplyState(
     conversationId: threadId,
     sessionId,
     errorMessage: "OAuth-resumed MCP turn failed",
+    expectedVersion,
   });
   await persistThreadStateById(threadId, {
     conversation,
@@ -257,6 +262,17 @@ async function resumeAuthorizedMcpTurn(args: {
       if (!lockedUserMessage) {
         return false;
       }
+      const lockedSessionRecord = await getAgentTurnSessionRecord(
+        authSession.conversationId,
+        lockedSessionId,
+      );
+      if (
+        !lockedSessionRecord ||
+        lockedSessionRecord.state !== "awaiting_resume" ||
+        lockedSessionRecord.resumeReason !== "auth"
+      ) {
+        return false;
+      }
 
       const lockedConversationContext = buildConversationContext(
         lockedConversation,
@@ -330,6 +346,7 @@ async function resumeAuthorizedMcpTurn(args: {
         onPostDeliveryCommitFailure: async () => {
           await failAgentTurnSessionRecord({
             conversationId: authSession.conversationId,
+            expectedVersion: lockedSessionRecord.version,
             sessionId: lockedSessionId,
             errorMessage:
               "OAuth-resumed MCP reply was delivered but completion state did not persist",
@@ -341,6 +358,7 @@ async function resumeAuthorizedMcpTurn(args: {
               authSession.channelId!,
               authSession.threadTs!,
               lockedSessionId,
+              lockedSessionRecord.version,
             );
           } catch (persistError) {
             logException(
@@ -377,7 +395,7 @@ async function resumeAuthorizedMcpTurn(args: {
           const nextSliceId = error.metadata?.sliceId;
           if (typeof version !== "number") {
             throw new Error(
-              "Timed-out MCP resume did not include a session session version",
+              "Timed-out MCP resume did not include a turn-session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {

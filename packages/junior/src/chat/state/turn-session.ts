@@ -37,6 +37,7 @@ interface StoredAgentTurnSessionRecord extends Omit<
   "piMessages"
 > {
   committedMessageCount: number;
+  logSessionId?: string;
 }
 
 function agentTurnSessionKey(
@@ -92,18 +93,15 @@ function parseStoredRecord(
   }
 }
 
-function parseAgentTurnSessionRecord(value: unknown):
-  | {
-      legacyPiMessages: PiMessage[];
-      record: StoredAgentTurnSessionRecord;
-    }
-  | undefined {
+function parseAgentTurnSessionRecord(
+  value: unknown,
+): StoredAgentTurnSessionRecord | undefined {
   const parsed = parseStoredRecord(value);
   if (!parsed) {
     return undefined;
   }
 
-  const status = parsed.state === "superseded" ? "abandoned" : parsed.state;
+  const status = parsed.state;
   if (
     status !== "running" &&
     status !== "awaiting_resume" &&
@@ -117,59 +115,52 @@ function parseAgentTurnSessionRecord(value: unknown):
   const conversationId = parsed.conversationId;
   const sessionId = parsed.sessionId;
   const sliceId = parsed.sliceId;
-  const version =
-    toFiniteNonNegativeNumber(parsed.version) ??
-    toFiniteNonNegativeNumber(parsed.checkpointVersion);
+  const version = toFiniteNonNegativeNumber(parsed.version);
   const updatedAtMs = parsed.updatedAtMs;
+  const committedMessageCount = toFiniteNonNegativeNumber(
+    parsed.committedMessageCount,
+  );
   const cumulativeDurationMs = toFiniteNonNegativeNumber(
     parsed.cumulativeDurationMs,
   );
   const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
+  const logSessionId =
+    typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
   if (
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
     typeof sliceId !== "number" ||
     version === undefined ||
+    committedMessageCount === undefined ||
     typeof updatedAtMs !== "number"
   ) {
     return undefined;
   }
 
-  const legacyPiMessages = Array.isArray(parsed.piMessages)
-    ? (parsed.piMessages as PiMessage[])
-    : [];
-  const committedMessageCount =
-    toFiniteNonNegativeNumber(parsed.committedMessageCount) ??
-    toFiniteNonNegativeNumber(parsed.messageCount) ??
-    legacyPiMessages.length;
-
   return {
-    legacyPiMessages,
-    record: {
-      version,
-      conversationId,
-      sessionId,
-      sliceId,
-      state: status,
-      updatedAtMs,
-      committedMessageCount,
-      ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
-      ...(cumulativeUsage ? { cumulativeUsage } : {}),
-      ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
-        ? { resumeReason: parsed.resumeReason }
-        : {}),
-      ...(typeof parsed.errorMessage === "string"
-        ? { errorMessage: parsed.errorMessage }
-        : {}),
-      ...(typeof parsed.resumedFromSliceId === "number"
-        ? { resumedFromSliceId: parsed.resumedFromSliceId }
-        : {}),
-    },
+    version,
+    conversationId,
+    sessionId,
+    sliceId,
+    state: status,
+    updatedAtMs,
+    committedMessageCount,
+    ...(logSessionId ? { logSessionId } : {}),
+    ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
+    ...(cumulativeUsage ? { cumulativeUsage } : {}),
+    ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
+      ? { resumeReason: parsed.resumeReason }
+      : {}),
+    ...(typeof parsed.errorMessage === "string"
+      ? { errorMessage: parsed.errorMessage }
+      : {}),
+    ...(typeof parsed.resumedFromSliceId === "number"
+      ? { resumedFromSliceId: parsed.resumedFromSliceId }
+      : {}),
   };
 }
 
 function materializePiMessages(
-  legacyPiMessages: PiMessage[],
   committedMessageCount: number,
   sessionMessages: PiMessage[] | undefined,
   sessionProjection: PiMessage[],
@@ -182,9 +173,6 @@ function materializePiMessages(
   }
   if (sessionMessages) {
     return sessionMessages;
-  }
-  if (legacyPiMessages.length >= committedMessageCount) {
-    return legacyPiMessages.slice(0, committedMessageCount);
   }
   return undefined;
 }
@@ -232,14 +220,15 @@ export async function getAgentTurnSessionRecord(
 
   const sessionMessages = await loadMessages({
     conversationId,
-    messageCount: parsed.record.committedMessageCount,
+    messageCount: parsed.committedMessageCount,
+    ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
   const sessionProjection = await loadProjection({
     conversationId,
+    ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
   const piMessages = materializePiMessages(
-    parsed.legacyPiMessages,
-    parsed.record.committedMessageCount,
+    parsed.committedMessageCount,
     sessionMessages,
     sessionProjection,
   );
@@ -247,7 +236,109 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  return materializeAgentTurnSessionRecord(parsed.record, piMessages);
+  return materializeAgentTurnSessionRecord(parsed, piMessages);
+}
+
+function buildStoredRecord(args: {
+  conversationId: string;
+  cumulativeDurationMs?: number;
+  cumulativeUsage?: AgentTurnUsage;
+  committedMessageCount: number;
+  logSessionId?: string;
+  previousVersion?: number;
+  sessionId: string;
+  sliceId: number;
+  state: AgentTurnSessionStatus;
+  resumeReason?: AgentTurnResumeReason;
+  errorMessage?: string;
+  resumedFromSliceId?: number;
+}): StoredAgentTurnSessionRecord {
+  return {
+    version: (args.previousVersion ?? 0) + 1,
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    state: args.state,
+    updatedAtMs: Date.now(),
+    committedMessageCount: args.committedMessageCount,
+    ...(args.logSessionId ? { logSessionId: args.logSessionId } : {}),
+    ...(typeof args.cumulativeDurationMs === "number" &&
+    Number.isFinite(args.cumulativeDurationMs)
+      ? {
+          cumulativeDurationMs: Math.max(
+            0,
+            Math.floor(args.cumulativeDurationMs),
+          ),
+        }
+      : {}),
+    ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
+    ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
+    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+    ...(typeof args.resumedFromSliceId === "number"
+      ? { resumedFromSliceId: args.resumedFromSliceId }
+      : {}),
+  };
+}
+
+async function setStoredRecord(args: {
+  piMessages: PiMessage[];
+  record: StoredAgentTurnSessionRecord;
+  ttlMs: number;
+}): Promise<AgentTurnSessionRecord> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+
+  await stateAdapter.set(
+    agentTurnSessionKey(args.record.conversationId, args.record.sessionId),
+    args.record,
+    args.ttlMs,
+  );
+  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
+}
+
+async function updateAgentTurnSessionState(args: {
+  existing: AgentTurnSessionRecord;
+  errorMessage?: string;
+  state: "abandoned" | "failed";
+}): Promise<AgentTurnSessionRecord | undefined> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const existingValue = await stateAdapter.get(
+    agentTurnSessionKey(args.existing.conversationId, args.existing.sessionId),
+  );
+  const parsed = parseAgentTurnSessionRecord(existingValue);
+  if (!parsed || parsed.version !== args.existing.version) {
+    return undefined;
+  }
+
+  return await setStoredRecord({
+    piMessages: args.existing.piMessages,
+    ttlMs: AGENT_TURN_SESSION_TTL_MS,
+    record: buildStoredRecord({
+      conversationId: args.existing.conversationId,
+      sessionId: args.existing.sessionId,
+      sliceId: args.existing.sliceId,
+      state: args.state,
+      committedMessageCount: parsed.committedMessageCount,
+      previousVersion: parsed.version,
+      ...(parsed.logSessionId ? { logSessionId: parsed.logSessionId } : {}),
+      ...(args.existing.cumulativeDurationMs !== undefined
+        ? { cumulativeDurationMs: args.existing.cumulativeDurationMs }
+        : {}),
+      ...(args.existing.cumulativeUsage
+        ? { cumulativeUsage: args.existing.cumulativeUsage }
+        : {}),
+      ...(args.existing.resumeReason
+        ? { resumeReason: args.existing.resumeReason }
+        : {}),
+      ...(args.existing.resumedFromSliceId !== undefined
+        ? { resumedFromSliceId: args.existing.resumedFromSliceId }
+        : {}),
+      ...((args.errorMessage ?? args.existing.errorMessage)
+        ? { errorMessage: args.errorMessage ?? args.existing.errorMessage }
+        : {}),
+    }),
+  });
 }
 
 /** Commit stable Pi session state and advance the turn session record. */
@@ -266,50 +357,41 @@ export async function upsertAgentTurnSessionRecord(args: {
 }): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-
   const existingValue = await stateAdapter.get(
     agentTurnSessionKey(args.conversationId, args.sessionId),
   );
   const existingRecord = parseAgentTurnSessionRecord(existingValue);
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  await commitMessages({
+  const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
     ttlMs,
   });
-  const committedMessageCount = args.piMessages.length;
 
-  const record: StoredAgentTurnSessionRecord = {
-    version: (existingRecord?.record.version ?? 0) + 1,
-    conversationId: args.conversationId,
-    sessionId: args.sessionId,
-    sliceId: args.sliceId,
-    state: args.state,
-    updatedAtMs: Date.now(),
-    committedMessageCount,
-    ...(typeof args.cumulativeDurationMs === "number" &&
-    Number.isFinite(args.cumulativeDurationMs)
-      ? {
-          cumulativeDurationMs: Math.max(
-            0,
-            Math.floor(args.cumulativeDurationMs),
-          ),
-        }
-      : {}),
-    ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
-    ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
-    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-    ...(typeof args.resumedFromSliceId === "number"
-      ? { resumedFromSliceId: args.resumedFromSliceId }
-      : {}),
-  };
-
-  await stateAdapter.set(
-    agentTurnSessionKey(args.conversationId, args.sessionId),
-    record,
+  return await setStoredRecord({
+    piMessages: args.piMessages,
     ttlMs,
-  );
-  return materializeAgentTurnSessionRecord(record, [...args.piMessages]);
+    record: buildStoredRecord({
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+      sliceId: args.sliceId,
+      state: args.state,
+      committedMessageCount: args.piMessages.length,
+      logSessionId: commit.sessionId,
+      previousVersion: existingRecord?.version,
+      ...(args.cumulativeDurationMs !== undefined
+        ? { cumulativeDurationMs: args.cumulativeDurationMs }
+        : {}),
+      ...(args.cumulativeUsage
+        ? { cumulativeUsage: args.cumulativeUsage }
+        : {}),
+      ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
+      ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+      ...(args.resumedFromSliceId !== undefined
+        ? { resumedFromSliceId: args.resumedFromSliceId }
+        : {}),
+    }),
+  });
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */
@@ -331,16 +413,9 @@ export async function abandonAgentTurnSessionRecord(args: {
     return undefined;
   }
 
-  return await upsertAgentTurnSessionRecord({
-    conversationId: existing.conversationId,
-    sessionId: existing.sessionId,
-    sliceId: existing.sliceId,
+  return await updateAgentTurnSessionState({
+    existing,
     state: "abandoned",
-    piMessages: existing.piMessages,
-    cumulativeDurationMs: existing.cumulativeDurationMs,
-    cumulativeUsage: existing.cumulativeUsage,
-    resumeReason: existing.resumeReason,
-    resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,
   });
 }
@@ -348,7 +423,7 @@ export async function abandonAgentTurnSessionRecord(args: {
 /** Mark an unfinished turn session record as failed so it cannot resume. */
 export async function failAgentTurnSessionRecord(args: {
   conversationId: string;
-  expectedVersion?: number;
+  expectedVersion: number;
   sessionId: string;
   errorMessage?: string;
 }): Promise<AgentTurnSessionRecord | undefined> {
@@ -361,22 +436,14 @@ export async function failAgentTurnSessionRecord(args: {
     existing.state === "completed" ||
     existing.state === "failed" ||
     existing.state === "abandoned" ||
-    (typeof args.expectedVersion === "number" &&
-      existing.version !== args.expectedVersion)
+    existing.version !== args.expectedVersion
   ) {
     return undefined;
   }
 
-  return await upsertAgentTurnSessionRecord({
-    conversationId: existing.conversationId,
-    sessionId: existing.sessionId,
-    sliceId: existing.sliceId,
+  return await updateAgentTurnSessionState({
+    existing,
     state: "failed",
-    piMessages: existing.piMessages,
-    cumulativeDurationMs: existing.cumulativeDurationMs,
-    cumulativeUsage: existing.cumulativeUsage,
-    resumeReason: existing.resumeReason,
-    resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,
   });
 }

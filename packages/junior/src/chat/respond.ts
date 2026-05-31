@@ -76,6 +76,7 @@ import {
   buildUserTurnText,
   encodeNonImageAttachmentForPrompt,
   getSessionIdentifiers,
+  hasRuntimeTurnContext,
   isAssistantMessage,
   refreshRuntimeTurnContext,
   summarizeMessageText,
@@ -865,10 +866,12 @@ export async function generateAssistantReply(
       turnMcpToolManager.getActiveToolCatalog(),
     );
     baseInstructions = buildSystemPrompt();
+    const includeSessionContext =
+      resumedFromSessionRecord || !hasRuntimeTurnContext(priorPiMessages ?? []);
     const turnContextPrompt = buildTurnContextPrompt({
       availableSkills,
       activeMcpCatalogs,
-      includeSessionContext: !priorPiMessages || priorPiMessages.length === 0,
+      includeSessionContext,
       toolGuidance,
       runtime: {
         conversationId: spanContext.conversationId,

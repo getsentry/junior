@@ -479,10 +479,13 @@ The callback must:
 ### Slice Lifecycle
 
 1. User message resolves a predictable `conversation_id`.
-2. If the conversation log is empty, this is the first turn and runtime may add
-   first-turn-only prompt/context material before the first user Pi message.
-3. If the conversation log already exists, runtime loads and reduces it,
-   restores Pi from the projected messages, and appends the new user input.
+2. If the reduced conversation projection has no session bootstrap context,
+   runtime adds first-turn-only prompt/context material before the user Pi
+   message.
+3. If the reduced conversation projection already contains session bootstrap
+   context, runtime loads and reduces it, restores Pi from the projected
+   messages, and appends the new user input without duplicating bootstrap
+   context.
 4. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
 5. If Slack accepts the final assistant reply, append `assistant_reply_delivered`.
 6. If MCP auth pauses at a safe boundary, append `auth_paused`; the OAuth callback later consults auth-owned state before resuming.

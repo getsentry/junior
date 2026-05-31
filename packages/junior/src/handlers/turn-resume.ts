@@ -254,7 +254,7 @@ async function resumeTimedOutTurn(
           const nextSliceId = error.metadata?.sliceId;
           if (typeof version !== "number") {
             throw new Error(
-              "Timed-out resume turn did not include a session session version",
+              "Timed-out resume turn did not include a turn-session version",
             );
           }
           if (!canScheduleTurnTimeoutResume(nextSliceId)) {

@@ -322,6 +322,15 @@ export function refreshRuntimeTurnContext(
   ];
 }
 
+/** Return whether Pi history already carries session bootstrap context. */
+export function hasRuntimeTurnContext(messages: PiMessage[]): boolean {
+  return messages.some((message) =>
+    getUserMessageContent(message)?.some((part) =>
+      isRuntimeTurnContextPart(part, RUNTIME_TURN_CONTEXT_START),
+    ),
+  );
+}
+
 /** Remove volatile runtime context before reusing messages as history. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
   return messages.flatMap((message) => {

@@ -16,8 +16,6 @@ export interface TurnContinuationRequest {
   sessionId: string;
 }
 
-export type TurnTimeoutResumeRequest = TurnContinuationRequest;
-
 /** Bound automatic timeout continuation so one bad turn cannot loop forever. */
 export function canScheduleTurnTimeoutResume(
   nextSliceId: number | undefined,

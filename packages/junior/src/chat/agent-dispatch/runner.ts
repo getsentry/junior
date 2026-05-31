@@ -116,7 +116,6 @@ async function persistRuntimePatch(args: {
 async function markDispatch(args: {
   dispatch: DispatchRecord;
   errorMessage?: string;
-  resumeRecordVersion?: number;
   resultMessageTs?: string;
   status: DispatchRecord["status"];
 }): Promise<DispatchRecord> {
@@ -129,9 +128,6 @@ async function markDispatch(args: {
       ...current,
       status: args.status,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-      ...(typeof args.resumeRecordVersion === "number"
-        ? { resumeRecordVersion: args.resumeRecordVersion }
-        : {}),
       ...(args.resultMessageTs
         ? { resultMessageTs: args.resultMessageTs }
         : {}),
@@ -426,7 +422,6 @@ export async function runAgentDispatchSlice(
       ) {
         const awaiting = await markDispatch({
           dispatch,
-          resumeRecordVersion: version,
           status: "awaiting_resume",
         });
         await scheduleCallback({

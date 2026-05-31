@@ -226,6 +226,13 @@ describe("agent session log store", () => {
       }),
     ).resolves.toEqual([replacement, next]);
     await expect(
+      loadProjection({
+        store,
+        conversationId: "conversation-1",
+        sessionId: "session_0",
+      }),
+    ).resolves.toEqual([first]);
+    await expect(
       loadConnectedMcpProviders({
         store,
         conversationId: "conversation-1",

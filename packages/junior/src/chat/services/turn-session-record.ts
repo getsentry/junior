@@ -7,7 +7,6 @@ import { logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
-  stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
@@ -184,7 +183,7 @@ export async function persistCompletedSessionRecord(args: {
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "completed",
-      piMessages: stripRuntimeTurnContext(args.allMessages),
+      piMessages: args.allMessages,
     });
   } catch (recordError) {
     logSessionRecordError(

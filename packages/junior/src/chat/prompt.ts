@@ -442,7 +442,6 @@ function buildRuntimeSection(params: {
 }
 
 function buildContextSection(params: {
-  includeSessionContext: boolean;
   requester?: { userName?: string; fullName?: string; userId?: string };
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
@@ -450,13 +449,11 @@ function buildContextSection(params: {
 }): string | null {
   const blocks: string[][] = [];
 
-  if (params.includeSessionContext && JUNIOR_WORLD) {
+  if (JUNIOR_WORLD) {
     blocks.push(renderTag("world", [JUNIOR_WORLD.trim()]));
   }
 
-  const referenceLines = params.includeSessionContext
-    ? formatReferenceFilesLines()
-    : null;
+  const referenceLines = formatReferenceFilesLines();
   if (referenceLines) {
     blocks.push(
       renderTag("reference-files", [
@@ -578,29 +575,30 @@ export function buildTurnContextPrompt(
   params: TurnContextPromptInput,
 ): string | null {
   const includeSessionContext = params.includeSessionContext ?? true;
-  // Session context is bootstrap material. Once it is in Pi history, follow-up
-  // turns should only add facts specific to the current message.
+  // Session context is bootstrap material. Once it is present in Pi history,
+  // ordinary follow-up user messages should carry only the user's input.
+  if (!includeSessionContext) {
+    return null;
+  }
+
   // Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
   // are dynamic data, so expose them through loadSkill/searchMcpTools/
   // <active-mcp-catalogs> and execute them through callMcpTool without mutating
   // the native tool list.
   const runtimeSections = [
-    includeSessionContext
-      ? buildCapabilitiesSection({
-          availableSkills: params.availableSkills,
-          activeMcpCatalogs: params.activeMcpCatalogs ?? [],
-          invocation: params.invocation,
-          toolGuidance: params.toolGuidance ?? [],
-        })
-      : null,
+    buildCapabilitiesSection({
+      availableSkills: params.availableSkills,
+      activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      invocation: params.invocation,
+      toolGuidance: params.toolGuidance ?? [],
+    }),
     buildContextSection({
-      includeSessionContext,
       requester: params.requester,
       artifactState: params.artifactState,
       configuration: params.configuration,
       invocation: params.invocation,
     }),
-    includeSessionContext ? buildRuntimeSection(params.runtime ?? {}) : null,
+    buildRuntimeSection(params.runtime ?? {}),
   ].filter((section): section is string => Boolean(section));
 
   if (runtimeSections.length === 0) {

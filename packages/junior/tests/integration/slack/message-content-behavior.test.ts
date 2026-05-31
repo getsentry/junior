@@ -243,15 +243,6 @@ describe("Slack behavior: message content", () => {
         timestamp: 2,
       },
     ] as PiMessage[];
-    const expectedHistory: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "I need the budget by Friday" }],
-        timestamp: 1,
-      },
-      storedFirstTurnHistory[1]!,
-    ] as PiMessage[];
-
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -330,7 +321,7 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
-    expect(calls[1]?.piMessages).toEqual(expectedHistory);
+    expect(calls[1]?.piMessages).toEqual(storedFirstTurnHistory);
   });
 
   it("auto compacts oversized reusable Pi history before the next turn", async () => {
@@ -338,7 +329,13 @@ describe("Slack behavior: message content", () => {
     const priorMessages: PiMessage[] = [
       {
         role: "user",
-        content: [{ type: "text", text: "old context ".repeat(5_000) }],
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nbootstrap instructions that must be replaced after compaction\n</runtime-turn-context>",
+          },
+          { type: "text", text: "old context ".repeat(5_000) },
+        ],
         timestamp: 1,
       },
       {
@@ -419,6 +416,12 @@ describe("Slack behavior: message content", () => {
     );
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
       "old context is still relevant",
+    );
+    expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
+      "bootstrap instructions",
+    );
+    expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
+      "<runtime-turn-context>",
     );
   });
 

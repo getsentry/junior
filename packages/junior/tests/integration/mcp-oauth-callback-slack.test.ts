@@ -83,6 +83,28 @@ async function createPendingAuthSession(args: {
   return authProvider;
 }
 
+async function createAwaitingMcpTurnRecord(args: {
+  conversationId: string;
+  sessionId: string;
+  text: string;
+}) {
+  await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    sliceId: 2,
+    state: "awaiting_resume",
+    piMessages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: args.text }],
+        timestamp: 1,
+      },
+    ],
+    resumeReason: "auth",
+    resumedFromSliceId: 1,
+  });
+}
+
 describe("mcp oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
@@ -190,6 +212,11 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       },
+    });
+    await createAwaitingMcpTurnRecord({
+      conversationId: "conversation-1",
+      sessionId,
+      text: "what did i say about the budget?",
     });
 
     const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
@@ -451,6 +478,11 @@ describe("mcp oauth callback slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.005",
     });
+    await createAwaitingMcpTurnRecord({
+      conversationId: threadId,
+      sessionId,
+      text: "what did i say about the budget?",
+    });
     await stateAdapterModule
       .getStateAdapter()
       .set(`thread-state:${threadId}`, freshState);
@@ -587,6 +619,57 @@ describe("mcp oauth callback slack integration", () => {
     expect(sessionRecord?.state).toBe("abandoned");
   });
 
+  it("does not resume MCP OAuth without an awaiting turn-session record", async () => {
+    const sessionId = "turn_missing_record";
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("thread-state:slack:C123:1700000000.006", {
+        conversation: {
+          messages: [
+            {
+              id: "user-6",
+              role: "user",
+              text: "list mcp data",
+              createdAtMs: 1,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+          ],
+          processing: {
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              requesterId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+
+    const authProvider = await createPendingAuthSession({
+      conversationId: "conversation-missing-record",
+      sessionId,
+      userMessage: "list mcp data",
+      channelId: "C123",
+      threadTs: "1700000000.006",
+    });
+
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+      });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+  });
+
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {
     generateAssistantReplyMock.mockResolvedValueOnce({
       text: "",
@@ -634,6 +717,11 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       });
+    await createAwaitingMcpTurnRecord({
+      conversationId: "conversation-2",
+      sessionId: "turn_msg_2",
+      text: "/demo upload",
+    });
 
     const authProvider = await createPendingAuthSession({
       conversationId: "conversation-2",
@@ -713,6 +801,11 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       });
+    await createAwaitingMcpTurnRecord({
+      conversationId: "conversation-3",
+      sessionId: "turn_msg_3",
+      text: "/demo upload",
+    });
 
     const authProvider = await createPendingAuthSession({
       conversationId: "conversation-3",
