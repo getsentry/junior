@@ -47,6 +47,7 @@ import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { scheduleDispatchCallback } from "./signing";
 import {
   getDispatchConversationId,
+  getDispatchDestinationLockId,
   getDispatchStorageKey,
   getDispatchTurnId,
   isTerminalDispatchStatus,
@@ -192,14 +193,15 @@ export async function runAgentDispatchSlice(
   }
   let dispatch = claimedDispatch;
 
-  const conversationId = getDispatchConversationId(dispatch.destination);
+  const conversationId = getDispatchConversationId(dispatch);
+  const destinationLockId = getDispatchDestinationLockId(dispatch.destination);
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const conversationLock = await stateAdapter.acquireLock(
-    conversationId,
+  const destinationLock = await stateAdapter.acquireLock(
+    destinationLockId,
     DISPATCH_SLICE_LEASE_MS,
   );
-  if (!conversationLock) {
+  if (!destinationLock) {
     await markDispatch({
       dispatch,
       status: "pending",
@@ -462,6 +464,6 @@ export async function runAgentDispatchSlice(
       errorMessage: error instanceof Error ? error.message : String(error),
     });
   } finally {
-    await stateAdapter.releaseLock(conversationLock);
+    await stateAdapter.releaseLock(destinationLock);
   }
 }

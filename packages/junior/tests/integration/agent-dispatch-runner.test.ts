@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOrGetDispatch,
+  getDispatchConversationId,
+  getDispatchDestinationLockId,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { RetryableTurnError } from "@/chat/runtime/turn";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AssistantReply } from "@/chat/respond";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
@@ -70,11 +76,13 @@ describe("agent dispatch runner", () => {
         metadata: { runId: "run-1" },
       },
     });
+    const dispatchConversationId = getDispatchConversationId(created.record);
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
       expect(context.correlation).toMatchObject({
-        conversationId: "slack:T123:C123",
+        conversationId: dispatchConversationId,
+        threadId: dispatchConversationId,
         channelId: "C123",
         teamId: "T123",
         actorType: "system",
@@ -104,7 +112,7 @@ describe("agent dispatch runner", () => {
       }),
     ]);
     await expect(
-      getPersistedThreadState("slack:T123:C123"),
+      getPersistedThreadState(dispatchConversationId),
     ).resolves.toMatchObject({
       conversation: {
         messages: expect.arrayContaining([
@@ -121,6 +129,84 @@ describe("agent dispatch runner", () => {
               slackTs: "1700000000.000001",
               replied: true,
             }),
+          }),
+        ]),
+      },
+    });
+    await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
+      {},
+    );
+  });
+
+  it("starts dispatches without inherited destination conversation memory", async () => {
+    const destinationConversation = coerceThreadConversationState({
+      conversation: {
+        messages: [
+          {
+            id: "channel-message-1",
+            role: "user",
+            text: "Previous scheduled run failed with stale context.",
+            createdAtMs: Date.parse("2026-05-25T12:00:00.000Z"),
+            author: { userName: "alice" },
+          },
+        ],
+      },
+    });
+    await persistThreadStateById("slack:T123:C123", {
+      conversation: destinationConversation,
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000003",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-isolated-context",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+        metadata: { runId: "run-isolated-context" },
+      },
+    });
+    const dispatchConversationId = getDispatchConversationId(created.record);
+    const generateAssistantReply = vi.fn(async (_input, context) => {
+      expect(context.conversationContext).toBeUndefined();
+      expect(context.piMessages).toEqual([]);
+      return createReply();
+    });
+
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { generateAssistantReply },
+    );
+
+    const persistedDestination =
+      await getPersistedThreadState("slack:T123:C123");
+    expect(
+      coerceThreadConversationState(persistedDestination).messages.map(
+        (message) => message.id,
+      ),
+    ).toEqual(["channel-message-1"]);
+    await expect(
+      getPersistedThreadState(dispatchConversationId),
+    ).resolves.toMatchObject({
+      conversation: {
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            id: `dispatch:${created.record.id}:user`,
+          }),
+          expect.objectContaining({
+            id: `dispatch:${created.record.id}:assistant`,
           }),
         ]),
       },
@@ -236,7 +322,10 @@ describe("agent dispatch runner", () => {
     });
     const state = getStateAdapter();
     await state.connect();
-    const lock = await state.acquireLock("slack:T123:C123", 5 * 60 * 1000);
+    const lock = await state.acquireLock(
+      getDispatchDestinationLockId(created.record.destination),
+      5 * 60 * 1000,
+    );
     expect(lock).toBeTruthy();
 
     try {

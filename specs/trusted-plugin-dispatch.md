@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-31
 
 ## Purpose
 
@@ -106,6 +106,8 @@ type Dispatch = {
 
 Core derives and enforces system actor identity, auth mode, conversation identity, callback scheduling, timeout continuation, sandbox state persistence, delivery behavior, tool policy, logging, tracing, and redaction.
 
+Dispatch conversation identity is scoped to the dispatch record, not to the Slack destination. A dispatch that posts a new Slack message must start with fresh persisted conversation state unless it is resuming the same dispatch id.
+
 ## Internal Callback
 
 `agent.dispatch` persists a core-owned dispatch record, then fires a signed internal callback:
@@ -177,6 +179,7 @@ Lock order is always:
 2. destination conversation lock
 
 Code must not acquire those locks in reverse order. Stale recovery uses durable status, version, attempt, and lease fields rather than process memory.
+The destination conversation lock serializes Slack delivery for the target conversation; dispatch conversation state remains isolated by dispatch id.
 
 Dispatch leases are not renewed during a slice. Lease duration must exceed the maximum callback slice budget plus platform scheduling slack.
 
@@ -186,7 +189,7 @@ The internal callback runs a core-owned dispatched agent runner. The runner owns
 
 - loading and claiming the dispatch record
 - acquiring the destination conversation lock
-- loading persisted conversation, artifact, sandbox, and channel config state
+- loading dispatch-scoped persisted conversation/artifact/sandbox state and destination channel config state
 - creating or reusing synthetic system-authored conversation messages
 - building conversation context
 - calling `generateAssistantReply`
@@ -224,8 +227,7 @@ Dispatched requests must not use the interactive Slack turn-resume route. Timeou
 
 Continuation invariants:
 
-- one stable conversation id and one stable turn id per dispatch
-- turn id derived from dispatch id
+- one stable conversation id and one stable turn id per dispatch, both derived from the dispatch id rather than the Slack destination
 - duplicate callbacks must not run the same dispatch concurrently
 - duplicate callbacks must not deliver assistant output twice
 - timeout continuation preserves cumulative usage and duration

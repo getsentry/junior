@@ -56,11 +56,18 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
   return `dispatch_${digest}`;
 }
 
-/** Map a dispatch destination to the conversation lock and memory key it owns. */
-export function getDispatchConversationId(
+/** Map a dispatch destination to the lock key that serializes Slack delivery. */
+export function getDispatchDestinationLockId(
   destination: DispatchRecord["destination"],
 ): string {
   return `slack:${destination.teamId}:${destination.channelId}`;
+}
+
+/** Return the isolated persisted conversation key for one dispatch run. */
+export function getDispatchConversationId(
+  dispatch: Pick<DispatchRecord, "id">,
+): string {
+  return `agent-dispatch:${dispatch.id}`;
 }
 
 /** Give dispatch slices stable turn ids for resumability and trace correlation. */

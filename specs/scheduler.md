@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-05-28
+- Last Edited: 2026-05-31
 
 ## Purpose
 
@@ -48,6 +48,7 @@ The stored task must include:
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
 Slack destinations are conversations, not existing threads. A scheduled task may target the active Slack DM or channel, and scheduled output posts as a new message in that conversation.
+Each scheduled execution gets fresh dispatch-scoped conversation state. The runner must not load destination-level Slack conversation history as prior thread context for a scheduled run that is creating its own new message.
 
 The scheduler must distinguish conversation audience from visibility. A private direct conversation may use explicit user-delegated credentials for scheduled tools; a private group conversation or private channel is still multi-user and must not implicitly use one user's credentials. Unknown privacy or audience must fail closed for delegated user credentials.
 
