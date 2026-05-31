@@ -8,6 +8,7 @@ import {
   formatConversationDuration,
   formatRelativeTime,
   formatTime,
+  formatUsageTotal,
   slackLocationLabel,
   turnMessageCount,
   turnToolCallCount,
@@ -123,11 +124,17 @@ function ConversationStats(props: {
         0,
       )
     : undefined;
+  const tokens = formatUsageTotal(
+    (props.detail?.turns ?? props.conversation.turns).map(
+      (turn) => turn.cumulativeUsage,
+    ),
+  );
   const stats = [
     slackLocationLabel(props.conversation, { includeId: false }),
     `${props.conversation.turns.length} turns`,
     messages === undefined ? "messages loading" : `${messages} messages`,
     toolCalls === undefined ? "tool calls loading" : `${toolCalls} tool calls`,
+    tokens,
     formatConversationDuration(props.conversation),
     `started ${formatTime(props.conversation.startedAt)}`,
   ].filter(Boolean);

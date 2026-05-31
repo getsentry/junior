@@ -151,6 +151,25 @@ function formatNumber(value: number | undefined): string {
   return `${formatted}${suffix}`;
 }
 
+function getFiniteTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : undefined;
+}
+
+function getUsageComponentTotal(usage: TurnUsage): number | undefined {
+  return [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationTokens,
+  ].reduce<number | undefined>((sum, value) => {
+    const count = getFiniteTokenCount(value);
+    if (count === undefined) return sum;
+    return (sum ?? 0) + count;
+  }, undefined);
+}
+
 /** Format byte counts in lowercase compact units for transcript metadata. */
 export function formatBytes(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "0b";
@@ -190,26 +209,24 @@ export function turnToolCallCount(turn: ConversationTurn): number {
 
 function totalUsageTokens(usage: TurnUsage | undefined): number | undefined {
   if (!usage) return undefined;
-  if (
-    typeof usage.totalTokens === "number" &&
-    Number.isFinite(usage.totalTokens)
-  ) {
-    return usage.totalTokens;
-  }
-  return [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].reduce<number | undefined>((sum, value) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return sum;
-    return (sum ?? 0) + Math.max(0, Math.floor(value));
-  }, undefined);
+  return (
+    getUsageComponentTotal(usage) ?? getFiniteTokenCount(usage.totalTokens)
+  );
 }
 
 /** Format known token counters without estimating per-message usage. */
 export function formatTokenTotal(usage: TurnUsage | undefined): string {
   const total = totalUsageTokens(usage);
+  return total === undefined ? "" : `${formatNumber(total)} tokens`;
+}
+
+/** Format the aggregate token count across conversation turns. */
+export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
+  const total = usages.reduce<number | undefined>((sum, usage) => {
+    const tokens = totalUsageTokens(usage);
+    if (tokens === undefined) return sum;
+    return (sum ?? 0) + tokens;
+  }, undefined);
   return total === undefined ? "" : `${formatNumber(total)} tokens`;
 }
 

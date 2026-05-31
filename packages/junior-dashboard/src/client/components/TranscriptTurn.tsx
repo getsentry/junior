@@ -1,4 +1,4 @@
-import type { ClipboardEventHandler, ReactNode } from "react";
+import { useState, type ClipboardEventHandler, type ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -450,19 +450,7 @@ function TranscriptPartView(props: {
 
   const value = part.output;
   if (part.type === "thinking") {
-    const rendered = stringifyPartValue(value);
-    return (
-      <details className="border border-[#beaaff]/20 bg-white/[0.03] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]">
-        <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1 max-md:gap-1">
-          <span className="uppercase text-[#b8b8b8]">thinking</span>
-          <span className="min-w-0 truncate">{previewToolValue(value)}</span>
-        </summary>
-        <HighlightedCode
-          code={rendered || "{}"}
-          language={detectLanguage(rendered)}
-        />
-      </details>
-    );
+    return <ThinkingPartView value={value} />;
   }
 
   const rendered = stringifyPartValue(value);
@@ -478,6 +466,37 @@ function TranscriptPartView(props: {
         </span>
       </summary>
       <HighlightedCode code={rendered || "{}"} language="json" />
+    </details>
+  );
+}
+
+function ThinkingPartView(props: { value: unknown }) {
+  const [open, setOpen] = useState(false);
+  const rendered = stringifyPartValue(props.value);
+
+  return (
+    <details
+      className="border border-[#beaaff]/20 bg-white/[0.03] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]"
+      onToggle={(event) => {
+        if (event.currentTarget !== event.target) return;
+        setOpen(event.currentTarget.open);
+      }}
+      open={open}
+    >
+      <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1 max-md:gap-1">
+        <span className="uppercase text-[#b8b8b8]">thinking</span>
+        {open ? null : (
+          <span className="min-w-0 truncate">
+            {previewToolValue(props.value)}
+          </span>
+        )}
+      </summary>
+      <div className="border-t border-[#beaaff]/15 px-3 py-3">
+        <HighlightedCode
+          code={rendered || "{}"}
+          language={detectLanguage(rendered)}
+        />
+      </div>
     </details>
   );
 }

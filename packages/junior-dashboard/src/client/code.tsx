@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { codeToHtml, type BundledLanguage } from "shiki/bundle/web";
 
@@ -53,8 +54,18 @@ function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
     );
   }
 
+  return (
+    <MarkupElementView defaultOpen={props.defaultOpen} node={props.node} />
+  );
+}
+
+function MarkupElementView(props: {
+  defaultOpen?: boolean;
+  node: Extract<MarkupNode, { type: "element" }>;
+}) {
   const children = props.node.children;
   const hasChildren = children.length > 0;
+  const [open, setOpen] = useState(props.defaultOpen ?? true);
   const attributes = props.node.attributes.map(([name, value]) => (
     <span className="ml-1.5 text-[#b8b8b8]" key={name}>
       {name}=<span className="text-white">"{value}"</span>
@@ -74,12 +85,15 @@ function MarkupNodeView(props: { defaultOpen?: boolean; node: MarkupNode }) {
 
   return (
     <details
-      className="group min-w-0 break-words"
-      open={props.defaultOpen ?? true}
+      className="min-w-0 break-words"
+      onToggle={(event) => {
+        if (event.currentTarget !== event.target) return;
+        setOpen(event.currentTarget.open);
+      }}
+      open={open}
     >
       <summary className="-ml-1 flex w-full max-w-full cursor-pointer list-none flex-wrap items-baseline px-1 py-0.5 transition-colors hover:bg-white/[0.05] hover:text-white [&::-webkit-details-marker]:hidden">
-        <span className="mr-1 w-2 text-white group-open:hidden">+</span>
-        <span className="mr-1 hidden w-2 text-white group-open:inline">-</span>
+        <span className="mr-1 w-2 text-white">{open ? "-" : "+"}</span>
         <span className="text-[#888]">&lt;</span>
         <span className="font-bold text-white">{props.node.tagName}</span>
         {attributes}
