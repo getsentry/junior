@@ -94,7 +94,7 @@ export function createSlackRuntime(
       });
     },
     getPreparedConversationContext: (preparedState) =>
-      preparedState.routingContext ?? preparedState.conversationContext,
+      preparedState.conversationContext,
     decideSubscribedReply: services.subscribedReplyPolicy,
     recordSkippedSubscribedMessage: async ({
       thread,

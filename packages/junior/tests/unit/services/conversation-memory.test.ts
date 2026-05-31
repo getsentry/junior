@@ -67,4 +67,45 @@ describe("buildConversationContext", () => {
     const conversation = coerceThreadConversationState({});
     expect(buildConversationContext(conversation)).toBeUndefined();
   });
+
+  it("returns undefined when the only message is excluded via excludeMessageId", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "hello",
+        createdAtMs: 1000,
+        author: { isBot: false, userId: "U1", userName: "alice" },
+      },
+    ];
+    expect(
+      buildConversationContext(conversation, { excludeMessageId: "msg-1" }),
+    ).toBeUndefined();
+  });
+
+  it("omits the excluded message but keeps prior messages in the transcript", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "first message",
+        createdAtMs: 1000,
+        author: { isBot: false, userId: "U1", userName: "alice" },
+      },
+      {
+        id: "msg-2",
+        role: "user",
+        text: "current message",
+        createdAtMs: 2000,
+        author: { isBot: false, userId: "U1", userName: "alice" },
+      },
+    ];
+    const context = buildConversationContext(conversation, {
+      excludeMessageId: "msg-2",
+    });
+    expect(context).toContain("first message");
+    expect(context).not.toContain("current message");
+  });
 });

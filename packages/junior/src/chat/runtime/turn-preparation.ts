@@ -47,7 +47,6 @@ export interface PreparedTurnState {
   channelConfiguration?: ChannelConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
-  routingContext?: string;
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   userMessageId?: string;
@@ -240,8 +239,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       runId: args.context.runId,
     });
 
-    const conversationContext = buildConversationContext(conversation);
-    const routingContext = buildConversationContext(conversation, {
+    const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
 
@@ -258,7 +256,6 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       sandboxId: existingSandboxId,
       sandboxDependencyProfileHash: existingSandboxDependencyProfileHash,
       conversationContext,
-      routingContext,
       userMessageId,
     };
   };

@@ -606,9 +606,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const compaction =
               await deps.services.contextCompactor.maybeCompact({
                 conversation: preparedState.conversation,
-                conversationContext:
-                  preparedState.routingContext ??
-                  preparedState.conversationContext,
+                conversationContext: preparedState.conversationContext,
                 conversationId,
                 metadata: {
                   threadId,
@@ -652,9 +650,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 fullName: message.author.fullName ?? fallbackIdentity?.fullName,
                 email: fallbackIdentity?.email,
               },
-              conversationContext:
-                preparedState.routingContext ??
-                preparedState.conversationContext,
+              conversationContext: preparedState.conversationContext,
               artifactState: preparedState.artifacts,
               piMessages,
               pendingAuth: preparedState.conversation.processing.pendingAuth,
