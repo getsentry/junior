@@ -81,6 +81,10 @@ function agentTurnSessionKey(
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
 }
 
+function agentTurnSessionConversationIndexKey(conversationId: string): string {
+  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
+}
+
 function toFiniteNonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
@@ -288,10 +292,17 @@ async function appendAgentTurnSessionSummary(
   ttlMs: number,
 ): Promise<void> {
   const stateAdapter = getStateAdapter();
-  await stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, summary, {
-    maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
-    ttlMs,
-  });
+  await Promise.all([
+    stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, summary, {
+      maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
+      ttlMs,
+    }),
+    stateAdapter.appendToList(
+      agentTurnSessionConversationIndexKey(summary.conversationId),
+      summary,
+      { ttlMs },
+    ),
+  ]);
 }
 
 /**
@@ -714,13 +725,12 @@ export async function recordAgentTurnSessionSummary(args: {
   );
 }
 
-/** List recent turn-session summaries for authenticated operational dashboards. */
-async function readAgentTurnSessionSummaries(): Promise<
-  AgentTurnSessionSummary[]
-> {
+async function readAgentTurnSessionSummariesFromIndex(
+  key: string,
+): Promise<AgentTurnSessionSummary[]> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const values = await stateAdapter.getList(AGENT_TURN_SESSION_INDEX_KEY);
+  const values = await stateAdapter.getList(key);
   const summaries = new Map<string, AgentTurnSessionSummary>();
 
   for (const value of [...values].reverse()) {
@@ -743,10 +753,25 @@ async function readAgentTurnSessionSummaries(): Promise<
 export async function listAgentTurnSessionSummaries(
   limit = 50,
 ): Promise<AgentTurnSessionSummary[]> {
-  return (await readAgentTurnSessionSummaries()).slice(
-    0,
-    Math.max(0, Math.floor(limit)),
+  return (
+    await readAgentTurnSessionSummariesFromIndex(AGENT_TURN_SESSION_INDEX_KEY)
+  ).slice(0, Math.max(0, Math.floor(limit)));
+}
+
+/** List turn-session summaries for one conversation without the global feed cap. */
+export async function listAgentTurnSessionSummariesForConversation(
+  conversationId: string,
+): Promise<AgentTurnSessionSummary[]> {
+  const summaries = await readAgentTurnSessionSummariesFromIndex(
+    agentTurnSessionConversationIndexKey(conversationId),
   );
+  if (summaries.length > 0) {
+    return summaries;
+  }
+
+  return (
+    await readAgentTurnSessionSummariesFromIndex(AGENT_TURN_SESSION_INDEX_KEY)
+  ).filter((summary) => summary.conversationId === conversationId);
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */

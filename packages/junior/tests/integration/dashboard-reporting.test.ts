@@ -128,7 +128,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports a conversation even when newer global turns exceed the feed limit", async () => {
+  it("reports a conversation after newer turns evict it from the global index", async () => {
     const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
@@ -147,7 +147,7 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
-    for (let index = 0; index < 205; index += 1) {
+    for (let index = 0; index < 5_005; index += 1) {
       await recordAgentTurnSessionSummary({
         conversationId: `slack:C2:${index}`,
         sessionId: `newer-turn-${index}`,
