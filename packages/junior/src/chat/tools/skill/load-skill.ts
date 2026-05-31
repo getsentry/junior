@@ -88,7 +88,6 @@ async function loadSkillFromHost(
     location: skillFilePath,
     path_resolution: `Resolve relative paths in this skill against ${skillDir}. For bash commands from this skill, cd to ${skillDir} first or use absolute paths.`,
     instructions: loaded.body,
-    ...(skill.pluginProvider ? { mcp_provider: skill.pluginProvider } : {}),
   };
 }
 
