@@ -102,13 +102,13 @@ function buildClassifierSystemPrompt(): string {
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
     "",
     "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
-    "Use low rarely: only for deterministic one-step answers or transformations with no tools, no current/external facts, no thread-background interpretation, and no source verification.",
+    "Use low rarely: only for deterministic one-step answers or transformations with no tools, no current/external facts, no prior thread-context interpretation, and no source verification.",
     "Use medium for normal assistant work: explanations, source-backed checks, thread follow-ups, tool choice, likely tool use, ambiguous asks, multi-step analysis, or anything where a confident but shallow answer would be risky.",
     "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     "",
-    "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and the thread-background contains a pending task, classify the pending task — not the affirmation.",
+    "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
     "Return JSON only with thinking_level, confidence, and reason.",
     "confidence must be a number from 0 to 1, not a word label.",
@@ -123,12 +123,17 @@ function buildClassifierPrompt(args: {
   const sections: string[] = [];
 
   if (args.conversationContext) {
-    sections.push(
-      "<thread-background>",
-      args.conversationContext.text,
-      "</thread-background>",
-      "",
-    );
+    const contextText = args.conversationContext.text;
+    if (/^<thread-(compactions|transcript)>/.test(contextText)) {
+      sections.push(contextText, "");
+    } else {
+      sections.push(
+        "<thread-background>",
+        contextText,
+        "</thread-background>",
+        "",
+      );
+    }
   }
 
   sections.push(

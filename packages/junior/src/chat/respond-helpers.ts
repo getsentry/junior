@@ -148,9 +148,20 @@ export function summarizeMessageText(text: string): string {
     : normalized;
 }
 
+function isStructuredThreadContext(context: string): boolean {
+  return /^<thread-(compactions|transcript)>/.test(context);
+}
+
+function renderThreadContextForPrompt(context: string): string {
+  if (isStructuredThreadContext(context)) {
+    return context;
+  }
+  return ["<thread-background>", context, "</thread-background>"].join("\n");
+}
+
 /**
  * Put prior thread text before the current instruction when no Pi history
- * exists. These are top-level sibling blocks in the user message.
+ * exists. Structured thread XML is already a top-level prompt block.
  */
 export function buildUserTurnText(
   userInput: string,
@@ -163,9 +174,7 @@ export function buildUserTurnText(
   }
 
   return [
-    "<thread-background>",
-    trimmedContext,
-    "</thread-background>",
+    renderThreadContextForPrompt(trimmedContext),
     "",
     "<current-instruction>",
     userInput,

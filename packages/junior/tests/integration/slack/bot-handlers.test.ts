@@ -1633,6 +1633,99 @@ describe("bot handlers (integration)", () => {
     expect(titleGenerationCount).toBe(1);
   });
 
+  it("new mention first turn has no conversation context without prior thread messages", async () => {
+    const capturedContexts: Array<string | undefined> = [];
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            capturedContexts.push(context?.conversationContext);
+            return {
+              text: "First reply.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const threadId = "slack:C_FIRST_EMPTY:1700000000.000";
+    const thread = createTestThread({ id: threadId });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-first-current",
+        threadId,
+        text: "Can you summarize this?",
+        isMention: true,
+      }),
+    );
+
+    expect(capturedContexts).toEqual([undefined]);
+  });
+
+  it("new mention first turn uses pre-existing thread transcript without the current message", async () => {
+    const capturedContexts: Array<string | undefined> = [];
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            capturedContexts.push(context?.conversationContext);
+            return {
+              text: "Follow-up reply.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const threadId = "slack:C_FIRST_EXISTING:1700000000.000";
+    const thread = createTestThread({ id: threadId });
+    const priorMessage = createTestMessage({
+      id: "msg-first-prior",
+      threadId,
+      text: "Original production issue summary.",
+      author: { userId: "U-prior", userName: "alice", isBot: false },
+    });
+    priorMessage.metadata.dateSent = new Date(1_700_000_000_000);
+    const currentMessage = createTestMessage({
+      id: "msg-first-current",
+      threadId,
+      text: "Can you include the regression window?",
+      isMention: true,
+      author: { userId: "U-current", userName: "bob", isBot: false },
+    });
+    currentMessage.metadata.dateSent = new Date(1_700_000_001_000);
+    thread.recentMessages = [priorMessage, currentMessage];
+
+    await slackRuntime.handleNewMention(thread, currentMessage);
+
+    expect(capturedContexts).toHaveLength(1);
+    expect(capturedContexts[0]).toContain("<thread-transcript>");
+    expect(capturedContexts[0]).toContain("Original production issue summary.");
+    expect(capturedContexts[0]).not.toContain(
+      "Can you include the regression window?",
+    );
+  });
+
   it("subscribed message: does not include newer thread messages in turn context", async () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createRuntime({
@@ -1700,7 +1793,7 @@ describe("bot handlers (integration)", () => {
     await slackRuntime.handleSubscribedMessage(thread, firstMessage);
 
     expect(capturedContexts).toHaveLength(1);
-    expect(capturedContexts[0]).not.toContain("hello");
+    expect(capturedContexts[0]).toBeUndefined();
   });
 
   it("multi-turn state continuity: second turn sees first turn's conversation state", async () => {

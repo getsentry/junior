@@ -178,23 +178,28 @@ export function buildConversationContext(
         "  </compaction>",
       );
     }
-    lines.push("</thread-compactions>", "");
+    lines.push("</thread-compactions>");
   }
 
-  lines.push("<thread-transcript>");
-  for (const [index, message] of messages.entries()) {
-    const author = escapeXml(message.author?.userName ?? message.role);
-    const ts = new Date(message.createdAtMs).toISOString();
-    const slackTsAttr = message.meta?.slackTs
-      ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
-      : "";
-    lines.push(
-      `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
-      renderConversationMessageLine(message, conversation),
-      "  </message>",
-    );
+  if (messages.length > 0) {
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push("<thread-transcript>");
+    for (const [index, message] of messages.entries()) {
+      const author = escapeXml(message.author?.userName ?? message.role);
+      const ts = new Date(message.createdAtMs).toISOString();
+      const slackTsAttr = message.meta?.slackTs
+        ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
+        : "";
+      lines.push(
+        `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
+        renderConversationMessageLine(message, conversation),
+        "  </message>",
+      );
+    }
+    lines.push("</thread-transcript>");
   }
-  lines.push("</thread-transcript>");
   return lines.join("\n");
 }
 

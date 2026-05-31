@@ -37,10 +37,10 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - The classifier may run with low thinking because it is a bounded routing task; the selected main-turn level is independent.
 - The default and failure fallback for substantive work is medium effort, which is the normal assistant reasoning level.
 - Use `none` only for greetings, acknowledgments, and turns that need no substantive assistant work.
-- Use `low` rarely, only for deterministic one-step answers or transformations with no tools, no current or external facts, no thread-background interpretation, and no source verification.
+- Use `low` rarely, only for deterministic one-step answers or transformations with no tools, no current or external facts, no prior thread-context interpretation, and no source verification.
 - Use `medium` for ordinary assistant work, including explanations, source-backed checks, thread follow-ups, likely tool use, ambiguity, or multi-step analysis.
 - Use `high` for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.
-- Thread background and current-turn attachment/source blocks floor non-`none` selections at medium so short follow-ups and source-backed turns do not run with shallow reasoning.
+- Prior thread context and current-turn attachment/source blocks floor non-`none` selections at medium so short follow-ups and source-backed turns do not run with shallow reasoning.
 
 ### Timeout behavior
 

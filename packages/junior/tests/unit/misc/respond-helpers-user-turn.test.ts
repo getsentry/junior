@@ -19,4 +19,24 @@ describe("buildUserTurnText", () => {
       ].join("\n"),
     );
   });
+
+  it("does not wrap structured thread transcript context again", () => {
+    const transcript = [
+      "<thread-transcript>",
+      '  <message index="1" ts="2026-05-31T00:00:00.000Z" role="user" author="alice">',
+      "alice: budget is due Friday",
+      "  </message>",
+      "</thread-transcript>",
+    ].join("\n");
+
+    expect(buildUserTurnText("what now?", transcript)).toBe(
+      [
+        transcript,
+        "",
+        "<current-instruction>",
+        "what now?",
+        "</current-instruction>",
+      ].join("\n"),
+    );
+  });
 });
