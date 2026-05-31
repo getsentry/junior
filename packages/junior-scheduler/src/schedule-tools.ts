@@ -39,13 +39,6 @@ const TASK_ID_PREFIX = "sched";
 const MAX_LISTED_TASKS = 50;
 const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 
-const recurrenceInputSchema = Type.Union([
-  Type.Literal("daily"),
-  Type.Literal("weekly"),
-  Type.Literal("monthly"),
-  Type.Literal("yearly"),
-]);
-
 function throwToolInputError(error: string): never {
   throw new AgentPluginToolInputError(error);
 }
@@ -463,7 +456,7 @@ export function createSlackScheduleUpdateTaskTool(
       timezone: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       next_run_at: Type.Optional(Type.String({ minLength: 1, description: "Exact ISO timestamp when changing the next run time." })),
       recurrence: Type.Optional(
-        Type.Union([recurrenceInputSchema, Type.Null()], { description: "Provide only for repeating schedules. Omit for one-time requests. Set to null to convert a recurring task to one-time." }),
+        Type.Union([Type.Literal("daily"), Type.Literal("weekly"), Type.Literal("monthly"), Type.Literal("yearly"), Type.Null()], { description: "Provide only for repeating schedules. Omit for one-time requests. Set to null to convert a recurring task to one-time." }),
       ),
       status: Type.Optional(
         Type.Union([

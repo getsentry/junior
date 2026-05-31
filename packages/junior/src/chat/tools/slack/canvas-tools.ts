@@ -366,7 +366,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
 export function createSlackCanvasWriteTool(state: ToolState) {
   return tool({
     description:
-      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content. Do not use for targeted edits.",
+      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content.",
     executionMode: "sequential",
     inputSchema: Type.Object(
       {
