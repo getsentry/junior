@@ -508,7 +508,7 @@ export function createSlackTurnRuntime<
           const preparedState = await deps.prepareTurnState({
             thread,
             message,
-            userText: combinedUserText,
+            userText,
             explicitMention: Boolean(message.isMention),
             context: threadContext,
             queuedMessages,

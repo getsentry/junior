@@ -42,6 +42,15 @@ describe("Pi derived state", () => {
         ],
       },
       {
+        role: "toolResult",
+        toolName: "callMcpTool",
+        isError: false,
+        input: {
+          tool_name: "mcp__eval_auth__budget_echo",
+        },
+        content: [{ type: "text", text: "called tool" }],
+      },
+      {
         role: "assistant",
         content: [
           {
@@ -66,6 +75,7 @@ describe("Pi derived state", () => {
     ]);
     expect(inferActiveMcpProvidersFromPiMessages(messages)).toEqual([
       "demo",
+      "eval_auth",
       "linear",
       "notion",
     ]);

@@ -1,6 +1,6 @@
 import type { PiMessage } from "@/chat/pi/messages";
+import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 
-const MCP_TOOL_NAME_RE = /^mcp__([a-z][a-z0-9-]*)__/;
 const MCP_BRIDGE_TOOLS = new Set(["callMcpTool", "searchMcpTools"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -11,7 +11,7 @@ function providerFromToolName(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
-  return MCP_TOOL_NAME_RE.exec(value)?.[1];
+  return parseMcpProviderFromToolName(value);
 }
 
 function addString(values: Set<string>, value: unknown): void {

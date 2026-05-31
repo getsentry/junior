@@ -355,6 +355,7 @@ export async function generateAssistantReply(
     context.sandbox?.sandboxDependencyProfileHash;
   let mcpToolManager: McpToolManager | undefined;
   let connectedMcpProviders = new Set<string>();
+  let canRecordMcpProviders = false;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
   let turnUsage: AgentTurnUsage | undefined;
@@ -368,6 +369,29 @@ export async function generateAssistantReply(
     actorId: context.correlation?.actorId,
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
+  };
+  const recordConnectedMcpProvider = async (provider: string) => {
+    if (
+      !canRecordMcpProviders ||
+      !timeoutResumeConversationId ||
+      connectedMcpProviders.has(provider)
+    ) {
+      return;
+    }
+    await recordMcpProviderConnected({
+      conversationId: timeoutResumeConversationId,
+      provider,
+      ttlMs: THREAD_STATE_TTL_MS,
+    });
+    connectedMcpProviders.add(provider);
+  };
+  const recordActiveMcpProviders = async () => {
+    if (!mcpToolManager) {
+      return;
+    }
+    for (const provider of mcpToolManager.getActiveProviders()) {
+      await recordConnectedMcpProvider(provider);
+    }
   };
 
   const getSandboxMetadata = () =>
@@ -465,6 +489,9 @@ export async function generateAssistantReply(
     timeoutResumeConversationId = sessionConversationId;
     timeoutResumeSessionId = sessionId;
     timeoutResumeSliceId = currentSliceId;
+    canRecordMcpProviders = Boolean(
+      turnSessionState.canUseTurnSession && sessionConversationId && sessionId,
+    );
     const persistedConfigurationValues = context.channelConfiguration
       ? await context.channelConfiguration.resolveValues()
       : {};
@@ -709,27 +736,6 @@ export async function generateAssistantReply(
     const turnMcpToolManager = mcpToolManager;
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
-    const recordConnectedMcpProvider = async (provider: string) => {
-      if (
-        !turnSessionState.canUseTurnSession ||
-        !sessionConversationId ||
-        !sessionId ||
-        connectedMcpProviders.has(provider)
-      ) {
-        return;
-      }
-      await recordMcpProviderConnected({
-        conversationId: sessionConversationId,
-        provider,
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
-      connectedMcpProviders.add(provider);
-    };
-    const recordActiveMcpProviders = async () => {
-      for (const provider of turnMcpToolManager.getActiveProviders()) {
-        await recordConnectedMcpProvider(provider);
-      }
-    };
     setTags({
       conversationId: spanContext.conversationId,
       slackThreadId: context.correlation?.threadId,
@@ -1224,18 +1230,7 @@ export async function generateAssistantReply(
       turnUsage =
         turnUsage ??
         extractSliceUsage(timeoutResumeMessages, beforeMessageCount);
-      if (mcpToolManager) {
-        for (const provider of mcpToolManager.getActiveProviders()) {
-          if (!connectedMcpProviders.has(provider)) {
-            await recordMcpProviderConnected({
-              conversationId: timeoutResumeConversationId,
-              provider,
-              ttlMs: THREAD_STATE_TTL_MS,
-            });
-            connectedMcpProviders.add(provider);
-          }
-        }
-      }
+      await recordActiveMcpProviders();
       const sessionRecord = await persistTimeoutSessionRecord({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
@@ -1272,18 +1267,7 @@ export async function generateAssistantReply(
           beforeMessageCount,
         );
       }
-      if (mcpToolManager) {
-        for (const provider of mcpToolManager.getActiveProviders()) {
-          if (!connectedMcpProviders.has(provider)) {
-            await recordMcpProviderConnected({
-              conversationId: timeoutResumeConversationId,
-              provider,
-              ttlMs: THREAD_STATE_TTL_MS,
-            });
-            connectedMcpProviders.add(provider);
-          }
-        }
-      }
+      await recordActiveMcpProviders();
       const sessionRecord = await persistAuthPauseSessionRecord({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,

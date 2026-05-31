@@ -1,15 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
+import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import { tool } from "@/chat/tools/definition";
-
-/** Extract the provider name from a canonical MCP tool name (mcp__<provider>__<tool>).
- * Uses the double-underscore delimiter; handles provider names that contain single underscores. */
-function parseMcpProviderFromToolName(toolName: string): string | undefined {
-  if (!toolName.startsWith("mcp__")) return undefined;
-  const afterPrefix = toolName.slice("mcp__".length);
-  const delimIdx = afterPrefix.indexOf("__");
-  return delimIdx > 0 ? afterPrefix.slice(0, delimIdx) : undefined;
-}
 
 function resolveMcpArguments(
   input: Record<string, unknown>,

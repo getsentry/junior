@@ -430,6 +430,19 @@ describe("Slack behavior: message content", () => {
     const activeMessages: PiMessage[] = [
       {
         role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nstale active turn bootstrap\n</runtime-turn-context>",
+          },
+          { type: "text", text: "active session record tool context" },
+        ],
+        timestamp: 3,
+      },
+    ] as PiMessage[];
+    const expectedActiveMessages: PiMessage[] = [
+      {
+        role: "user",
         content: [{ type: "text", text: "active session record tool context" }],
         timestamp: 3,
       },
@@ -507,6 +520,6 @@ describe("Slack behavior: message content", () => {
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.piMessages).toEqual(activeMessages);
+    expect(calls[0]?.piMessages).toEqual(expectedActiveMessages);
   });
 });

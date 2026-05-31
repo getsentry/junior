@@ -79,7 +79,10 @@ import {
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { loadProjection } from "@/chat/state/session-log";
-import { trimTrailingAssistantMessages } from "@/chat/respond-helpers";
+import {
+  stripRuntimeTurnContext,
+  trimTrailingAssistantMessages,
+} from "@/chat/respond-helpers";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -140,7 +143,9 @@ async function loadPiMessagesForTurn(args: {
     );
     if (sessionRecord?.piMessages.length) {
       return {
-        piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
+        piMessages: stripRuntimeTurnContext(
+          trimTrailingAssistantMessages(sessionRecord.piMessages),
+        ),
       };
     }
   }
@@ -272,7 +277,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           (await deps.prepareTurnState({
             thread,
             message,
-            userText: effectiveUserText,
+            userText,
             explicitMention: Boolean(
               options.explicitMention || message.isMention,
             ),

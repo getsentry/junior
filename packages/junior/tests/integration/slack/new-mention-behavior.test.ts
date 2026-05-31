@@ -130,6 +130,21 @@ describe("Slack behavior: new mention", () => {
     expect(
       fakeReplyCalls[0]?.prompt.indexOf("first queued request"),
     ).toBeLessThan(fakeReplyCalls[0]?.prompt.indexOf("latest request") ?? -1);
+    const state = thread.getState() as {
+      conversation?: {
+        messages?: Array<{ id: string; text: string }>;
+      };
+    };
+    expect(
+      state.conversation?.messages
+        ?.filter(
+          (message) => message.id === "m-queued" || message.id === "m-latest",
+        )
+        .map((message) => ({ id: message.id, text: message.text })),
+    ).toEqual([
+      { id: "m-queued", text: "first queued request" },
+      { id: "m-latest", text: "latest request" },
+    ]);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Handled both updates.");
   });
