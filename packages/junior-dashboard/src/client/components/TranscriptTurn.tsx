@@ -10,8 +10,11 @@ import {
   formatMessageOffset,
   formatMessageTimestamp,
   formatMs,
-  formatUsage,
   requesterLabel,
+  summarizeMessages,
+  summarizeToolCalls,
+  summarizeUsage,
+  turnMessageCount,
   stringifyPartValue,
   unavailableTranscriptLabel,
   visualStatusForSession,
@@ -24,6 +27,13 @@ import type {
 } from "../types";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
+import { MetricList, type MetricListItem } from "./Metric";
+import {
+  DurationMetric,
+  MessagesMetric,
+  TokenMetric,
+  ToolCallsMetric,
+} from "./TelemetryMetrics";
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptToolView } from "./TranscriptToolView";
 import {
@@ -148,22 +158,10 @@ function TurnHeader(props: { number: number; turn: ConversationTurn }) {
         <div className="break-all text-[1.05rem] font-bold leading-tight tracking-normal">
           Turn {props.number}
         </div>
-        <div className={cn(mutedTranscriptMetaClass(), "mt-1")}>
-          {turnMeta(props.turn).join(" · ")}
-          {props.turn.sentryTraceUrl ? (
-            <>
-              {" · "}
-              <a
-                className="text-white no-underline hover:underline"
-                href={props.turn.sentryTraceUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                View in Sentry
-              </a>
-            </>
-          ) : null}
-        </div>
+        <MetricList
+          className={cn(mutedTranscriptMetaClass(), "mt-1")}
+          items={turnMeta(props.turn)}
+        />
       </div>
       <StatusBadge status={status} />
     </div>
@@ -352,11 +350,52 @@ function turnActorLabel(turn: ConversationTurn): string {
   );
 }
 
-function turnMeta(turn: ConversationTurn): string[] {
-  return [
-    formatMs(turn.cumulativeDurationMs),
-    formatUsage(turn.cumulativeUsage),
-  ].filter((value) => value && value !== "none");
+function turnMessageSummary(turn: ConversationTurn) {
+  const summary = summarizeMessages([turn]);
+  if (summary.total > 0) return summary;
+  const total = turnMessageCount(turn);
+  return total > 0 ? { items: [], total } : undefined;
+}
+
+function turnMeta(turn: ConversationTurn): MetricListItem[] {
+  const duration = formatMs(turn.cumulativeDurationMs);
+  const tokenSummary = summarizeUsage([turn.cumulativeUsage]);
+  const toolSummary = summarizeToolCalls([turn]);
+  const messageSummary = turnMessageSummary(turn);
+  const items: Array<MetricListItem | undefined> = [
+    duration !== "none"
+      ? {
+          content: (
+            <DurationMetric
+              endedAt={turn.completedAt ?? turn.lastSeenAt}
+              label={duration}
+              startedAt={turn.startedAt}
+            />
+          ),
+          key: "duration",
+        }
+      : undefined,
+    tokenSummary
+      ? {
+          content: <TokenMetric summary={tokenSummary} />,
+          key: "tokens",
+        }
+      : undefined,
+    messageSummary
+      ? {
+          content: <MessagesMetric summary={messageSummary} />,
+          key: "messages",
+        }
+      : undefined,
+    toolSummary.total > 0
+      ? {
+          content: <ToolCallsMetric summary={toolSummary} />,
+          key: "tools",
+        }
+      : undefined,
+  ];
+
+  return items.filter((item): item is MetricListItem => Boolean(item));
 }
 
 /**

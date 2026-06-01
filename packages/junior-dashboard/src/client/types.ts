@@ -31,6 +31,7 @@ export type TurnUsage = {
 export type Session = {
   channel?: string;
   channelName?: string;
+  completedAt?: string;
   conversationId?: string;
   conversationTitle?: string;
   cumulativeDurationMs?: number;
@@ -141,7 +142,11 @@ export type SessionFilter = "active" | "recent" | "hung" | "failed" | "all";
 
 export type VisualStatus = "active" | "failed" | "hung" | "idle";
 
-export type CodeBlock = { code: string; fenced?: boolean; language: BundledLanguage };
+export type CodeBlock = {
+  code: string;
+  fenced?: boolean;
+  language: BundledLanguage;
+};
 
 export type MarkupNode =
   | {

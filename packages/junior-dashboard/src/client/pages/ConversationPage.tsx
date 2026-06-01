@@ -4,16 +4,24 @@ import { useConversationData } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
+  conversationIdentityMeta,
   conversationDisplayTitle,
   formatConversationDuration,
   formatRelativeTime,
   formatTime,
-  formatUsageTotal,
   slackLocationLabel,
-  turnMessageCount,
-  turnToolCallCount,
+  summarizeMessages,
+  summarizeToolCalls,
+  summarizeUsage,
   visualStatusForConversation,
 } from "../format";
+import { MetricList, type MetricListItem } from "../components/Metric";
+import {
+  DurationMetric,
+  MessagesMetric,
+  TokenMetric,
+  ToolCallsMetric,
+} from "../components/TelemetryMetrics";
 import { Transcript } from "../components/Transcript";
 import { TranscriptLoading } from "../components/TranscriptLoading";
 import type {
@@ -81,15 +89,9 @@ function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
 }) {
-  const id = props.conversationId ?? "missing conversation id";
-  const owner =
-    props.conversation?.requesterIdentity?.email ??
-    props.conversation?.requester ??
-    props.conversation?.requesterIdentity?.slackUserName;
   return (
     <>
-      {owner ? `${owner} · ` : ""}
-      {id}
+      {conversationIdentityMeta(props.conversation, props.conversationId)}
       {props.conversation?.sentryConversationUrl ? (
         <>
           {" · "}
@@ -112,41 +114,75 @@ function ConversationStats(props: {
   detail?: ConversationDetailFeed;
 }) {
   if (!props.conversation) return null;
-  const messages = props.detail
-    ? props.detail.turns.reduce(
-        (count, turn) => count + turnMessageCount(turn),
-        0,
-      )
+  const messageSummary = props.detail
+    ? summarizeMessages(props.detail.turns)
     : undefined;
-  const toolCalls = props.detail
-    ? props.detail.turns.reduce(
-        (count, turn) => count + turnToolCallCount(turn),
-        0,
-      )
+  const toolSummary = props.detail
+    ? summarizeToolCalls(props.detail.turns)
     : undefined;
-  const tokens = formatUsageTotal(
+  const tokenSummary = summarizeUsage(
     (props.detail?.turns ?? props.conversation.turns).map(
       (turn) => turn.cumulativeUsage,
     ),
   );
-  const stats = [
-    slackLocationLabel(props.conversation, { includeId: false }),
-    `${props.conversation.turns.length} turns`,
-    messages === undefined ? "messages loading" : `${messages} messages`,
-    toolCalls === undefined ? "tool calls loading" : `${toolCalls} tool calls`,
-    tokens,
-    formatConversationDuration(props.conversation),
-    `started ${formatTime(props.conversation.startedAt)}`,
-  ].filter(Boolean);
+  const location = slackLocationLabel(props.conversation, {
+    includeId: false,
+  });
+  const durationLabel = formatConversationDuration(props.conversation);
+  const rawStats: Array<MetricListItem | undefined> = [
+    location
+      ? {
+          content: location,
+          key: "location",
+        }
+      : undefined,
+    {
+      content: `${props.conversation.turns.length} turns`,
+      key: "turns",
+    },
+    {
+      content: (
+        <MessagesMetric loading={!props.detail} summary={messageSummary} />
+      ),
+      key: "messages",
+    },
+    {
+      content: (
+        <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
+      ),
+      key: "tools",
+    },
+    tokenSummary
+      ? {
+          content: <TokenMetric summary={tokenSummary} />,
+          key: "tokens",
+        }
+      : undefined,
+    durationLabel !== "none"
+      ? {
+          content: (
+            <DurationMetric
+              endedAt={props.conversation.lastSeenAt}
+              label={durationLabel}
+              startedAt={props.conversation.startedAt}
+            />
+          ),
+          key: "duration",
+        }
+      : undefined,
+    {
+      content: `started ${formatTime(props.conversation.startedAt)}`,
+      key: "started",
+    },
+  ];
+  const stats = rawStats.filter(
+    (item): item is MetricListItem => item !== undefined,
+  );
 
   return (
-    <div className="col-span-full flex flex-wrap gap-x-3 gap-y-1 break-words text-[0.76rem] leading-[1.45] text-[#888]">
-      {stats.map((value, index) => (
-        <span key={`${index}-${value}`}>
-          {index > 0 ? <span className="mr-3 text-[#666]">·</span> : null}
-          {value}
-        </span>
-      ))}
-    </div>
+    <MetricList
+      className="col-span-full break-words text-[0.76rem] leading-[1.45] text-[#888]"
+      items={stats}
+    />
   );
 }
