@@ -1,63 +1,81 @@
 # Sources
 
-Retrieved: 2026-03-05
+Retrieved: 2026-06-01
 Skill class: `integration-documentation`
-Selected profile: `references/examples/documentation-skill.md`
+Primary execution shape: `reference-backed-expert`
+Scope: Pi package documentation only; no consuming-product-specific contracts.
 
 ## Source inventory
 
-| Source | Trust tier | Confidence | Contribution | Usage constraints |
-| --- | --- | --- | --- | --- |
-| `AGENTS.md` (junior) | canonical | high | Repository conventions and Pi streaming standard (`message_update`/`text_delta` -> `AsyncIterable`) | Repo-local guidance |
-| `.agents/skills/skill-writer/SKILL.md` | canonical | high | Required workflow for synthesis/authoring/validation outputs | Skill-authoring process source |
-| `.agents/skills/skill-writer/references/mode-selection.md` | canonical | high | Class selection and required outputs | Process guidance |
-| `.agents/skills/skill-writer/references/synthesis-path.md` | canonical | high | Provenance, coverage matrix, depth gates | Process guidance |
-| `.agents/skills/skill-writer/references/authoring-path.md` | canonical | high | Required artifact set for integration-documentation skills | Process guidance |
-| `.agents/skills/skill-writer/references/description-optimization.md` | canonical | high | Trigger quality constraints | Process guidance |
-| `.agents/skills/skill-writer/references/evaluation-path.md` | canonical | high | Lightweight evaluation rubric | Process guidance |
-| `<pi-mono>/packages/agent/README.md` | canonical | high | Public API intent, event flow, message pipeline semantics | External repo snapshot at retrieval date |
-| `<pi-mono>/packages/agent/src/types.ts` | canonical | high | Type-level contracts for `AgentLoopConfig`, events, and tools | Source of truth for interfaces |
-| `<pi-mono>/packages/agent/src/agent.ts` | canonical | high | Runtime semantics for `prompt`, `continue`, queueing, state transitions | Source of truth for behavior |
-| `<pi-mono>/packages/agent/src/agent-loop.ts` | canonical | high | Loop/event ordering and transform/convert call boundary | Source of truth for loop behavior |
-| `<pi-mono>/packages/agent/src/proxy.ts` | canonical | medium | Proxy streaming model and error path behavior | Focused on proxy mode only |
-| `<pi-mono>/packages/agent/CHANGELOG.md` | secondary | medium | Migration/renaming guidance and breaking changes | Historical summaries, validate against source |
-| `<pi-mono>/packages/agent/test/agent.test.ts` | canonical | high | Concurrency/queue/continue edge-case behavior | Test-backed behavioral assertions |
-| `<pi-mono>/packages/agent/test/agent-loop.test.ts` | canonical | high | transform/convert ordering, event semantics | Test-backed behavioral assertions |
-| `specs/harness-agent-spec.md` | canonical | high | Consumer-side integration contract in junior runtime | Repo-local runtime spec |
-| `packages/junior/src/chat/respond.ts` | canonical | high | Real-world Pi streaming bridge and timeout handling pattern | Consumer implementation snapshot |
-| `packages/junior/src/chat/runtime/streaming.ts` | canonical | high | `AsyncIterable<string>` bridge behavior | Consumer implementation snapshot |
+| Source                                                               | Trust tier | Confidence | Contribution                                                                                | Usage constraints                         |
+| -------------------------------------------------------------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| npm metadata for `@earendil-works/pi-agent-core`                     | canonical  | high       | Confirmed latest package name, latest version, repository, dist-tags                        | Re-check before future material API edits |
+| `@earendil-works/pi-agent-core@0.78.0/package.json`                  | canonical  | high       | Runtime engine, exports, repository, dependency baseline                                    | Published package snapshot                |
+| `@earendil-works/pi-agent-core@0.78.0/README.md`                     | canonical  | high       | Public API intent, event flow, tool execution, continuation, proxy, low-level loop guidance | Published package snapshot                |
+| `@earendil-works/pi-agent-core@0.78.0/dist/agent.d.ts`               | canonical  | high       | `AgentOptions`, `Agent` methods, state, queue, lifecycle surface                            | Declaration source of truth               |
+| `@earendil-works/pi-agent-core@0.78.0/dist/agent.js`                 | canonical  | high       | Runtime semantics for `continue()`, queue draining, listener settlement, state updates      | Used where README/types were ambiguous    |
+| `@earendil-works/pi-agent-core@0.78.0/dist/types.d.ts`               | canonical  | high       | `StreamFn`, message pipeline, tool hooks, queue mode, tool execution, event types           | Declaration source of truth               |
+| `@earendil-works/pi-agent-core@0.78.0/dist/agent-loop.d.ts`          | canonical  | high       | Low-level loop signatures and continuation caveat                                           | Declaration source of truth               |
+| `@earendil-works/pi-agent-core@0.78.0/dist/agent-loop.js`            | canonical  | high       | Low-level loop ordering, `shouldStopAfterTurn`, `prepareNextTurn`, tool execution internals | Used where README/types were ambiguous    |
+| `@earendil-works/pi-agent-core@0.78.0/dist/proxy.d.ts`               | canonical  | high       | `streamProxy` events and serializable proxy options                                         | Declaration source of truth               |
+| `@earendil-works/pi-agent-core@0.78.0/dist/harness/*.d.ts`           | canonical  | high       | `AgentHarness`, session, skill, prompt-template, compaction, environment contracts          | Declaration source of truth               |
+| `.agents/skills/skill-writer/SKILL.md`                               | canonical  | high       | Required workflow for skill synthesis, authoring, and validation                            | Skill-authoring process source            |
+| `.agents/skills/skill-writer/references/mode-selection.md`           | canonical  | high       | Classified this as `integration-documentation`                                              | Process guidance                          |
+| `.agents/skills/skill-writer/references/execution-shapes.md`         | canonical  | high       | Selected `reference-backed-expert` shape                                                    | Process guidance                          |
+| `.agents/skills/skill-writer/references/synthesis-path.md`           | canonical  | high       | Required source inventory, decisions, coverage, gaps                                        | Process guidance                          |
+| `.agents/skills/skill-writer/references/authoring-path.md`           | canonical  | high       | Runtime authoring and precision-pass rules                                                  | Process guidance                          |
+| `.agents/skills/skill-writer/references/reference-architecture.md`   | canonical  | high       | Added focused `references/harness.md` as a routed lookup leaf                               | Process guidance                          |
+| `.agents/skills/skill-writer/references/spec-template.md`            | canonical  | high       | Added `SPEC.md` for material scope/reference changes                                        | Process guidance                          |
+| `.agents/skills/skill-writer/references/description-optimization.md` | canonical  | high       | Trigger quality pass                                                                        | Process guidance                          |
+| `.agents/skills/skill-writer/references/registration-validation.md`  | canonical  | high       | Validation expectations                                                                     | Process guidance                          |
 
 ## Decisions
 
-| Decision | Status | Evidence |
-| --- | --- | --- |
-| Classify skill as `integration-documentation` | adopted | `mode-selection.md` + user goal ("using Pi in another library") |
-| Keep skill focused on consumer integration (not authoring internals) | adopted | User request + `harness-agent-spec.md` + `respond.ts` |
-| Make event-stream bridge (`message_update`/`text_delta`) a primary guardrail | adopted | `AGENTS.md`, `README.md`, `respond.ts` |
-| Require explicit queue/concurrency guidance (`steer`/`followUp`, `continue`) | adopted | `agent.ts`, tests, changelog |
-| Include migration checks for renamed APIs | adopted | `CHANGELOG.md`, `agent.ts`, `types.ts` |
-| Add proxy transport guidance as optional path | adopted | `proxy.ts` + constructor `streamFn` option |
-| Add provider-specific model recommendations | rejected | Out of scope for abstraction-level integration skill |
+| Decision                                                         | Status   | Evidence                                                                           |
+| ---------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| Keep the skill Pi-only                                           | adopted  | User direction on 2026-06-01                                                       |
+| Target npm `latest` only                                         | adopted  | User direction + npm metadata                                                      |
+| Use `@earendil-works/pi-agent-core` as the only package identity | adopted  | Latest package metadata                                                            |
+| Remove consuming-product-specific source references              | adopted  | User direction + portability goal                                                  |
+| Add a routed harness reference                                   | adopted  | Latest package exports substantial `AgentHarness`, session, skill, compaction APIs |
+| Keep `SKILL.md` as router/guardrail layer                        | adopted  | `skill-writer` reference architecture                                              |
+| Add `SPEC.md`                                                    | adopted  | Material scope and reference architecture change                                   |
+| Add backward compatibility or old package migration guidance     | rejected | Latest-only user direction                                                         |
 
 ## Coverage matrix
 
-| Dimension | Coverage status | Evidence |
-| --- | --- | --- |
-| API surface and behavior contracts | complete | `types.ts`, `agent.ts`, `agent-loop.ts`, `README.md` |
-| Config/runtime options | complete | `agent.ts` options + `README.md` options sections |
-| Common downstream use cases | complete | `respond.ts`, `streaming.ts`, `harness-agent-spec.md`, tests |
-| Known issues/failure modes with workarounds | complete | `agent.test.ts`, `agent-loop.test.ts`, changelog fixes |
-| Version/migration variance | complete | `CHANGELOG.md` breaking/renamed APIs |
+| Dimension                                   | Coverage status | Evidence                                                                                |
+| ------------------------------------------- | --------------- | --------------------------------------------------------------------------------------- |
+| API surface and behavior contracts          | covered         | `agent.d.ts`, `agent.js`, `types.d.ts`, `agent-loop.d.ts`, `agent-loop.js`, `README.md` |
+| Config/runtime options                      | covered         | `AgentOptions`, `AgentLoopConfig`, `AgentHarnessOptions`, package metadata              |
+| Common downstream use cases                 | covered         | `README.md`, declarations, runtime implementation                                       |
+| Known issues/failure modes with workarounds | covered         | `agent.js`, `agent-loop.js`, type contracts                                             |
+| Version/migration variance                  | constrained     | Latest-only package targeting; migration intentionally omitted                          |
+| Harness/session/skill/compaction surface    | covered         | `dist/harness/*.d.ts`                                                                   |
+
+## Trigger quality notes
+
+Should trigger:
+
+- "integrate pi-agent-core Agent into my app"
+- "stream Pi Agent text deltas into our SDK"
+- "how should I use AgentHarness sessions and skills"
+- "fix continue() throwing in pi-agent-core"
+- "wire streamProxy for Pi"
+
+Should not trigger:
+
+- "write a generic OpenAI API streaming adapter"
+- "document a consuming app's chat runtime behavior"
+- "create a new Codex skill unrelated to Pi"
+- "debug a React component"
+- "explain TypeBox generally"
 
 ## Open gaps
 
-- Add integration examples for browser-only consumers that use `streamProxy` with non-fetch runtimes.
-- Expand troubleshooting with provider-specific retry/backoff examples after confirming stable patterns in upstream docs.
+- Re-run npm package retrieval before the next material update; the skill intentionally follows `latest`.
+- Add concrete code examples only after collecting stable upstream examples or tests from the Pi repository. The current runtime guidance is source-backed but example-light.
 
 ## Stopping rationale
 
-Additional retrieval is currently low-yield because:
-
-1. API contracts are already covered by source code and tests in `packages/agent`.
-2. Consumer integration patterns are already represented by concrete junior runtime code (`respond.ts`, streaming bridge).
-3. Remaining gaps are variant-specific extensions, not blockers for the core integration skill.
+Further retrieval is low-yield for this pass because published package metadata, README, declarations, and implementation files cover the latest API contracts needed by this Pi-only integration skill.

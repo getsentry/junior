@@ -1,0 +1,759 @@
+import { randomUUID } from "node:crypto";
+import type { Lock, StateAdapter } from "chat";
+import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import type { ConversationWorkQueue } from "./queue";
+
+const CONVERSATION_WORK_PREFIX = "junior:conversation-work";
+const CONVERSATION_WORK_SCHEMA_VERSION = 1;
+const CONVERSATION_WORK_INDEX_MAX_LENGTH = 10_000;
+const CONVERSATION_WORK_INDEX_LOCK_TTL_MS = 10_000;
+const CONVERSATION_WORK_MUTATION_LOCK_TTL_MS = 10_000;
+const CONVERSATION_WORK_MUTATION_WAIT_MS = 2_000;
+const CONVERSATION_WORK_MUTATION_RETRY_MS = 25;
+
+export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
+export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
+export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
+
+export type InboundMessageSource = "plugin" | "scheduler" | "slack";
+
+export interface AgentInputMessage {
+  attachments?: unknown[];
+  authorId?: string;
+  metadata?: Record<string, unknown>;
+  text: string;
+}
+
+export interface InboundMessageRecord {
+  conversationId: string;
+  createdAtMs: number;
+  inboundMessageId: string;
+  injectedAtMs?: number;
+  input: AgentInputMessage;
+  receivedAtMs: number;
+  source: InboundMessageSource;
+}
+
+export interface ConversationLease {
+  acquiredAtMs: number;
+  lastCheckInAtMs: number;
+  leaseExpiresAtMs: number;
+  leaseToken: string;
+}
+
+export interface ConversationWorkState {
+  conversationId: string;
+  lastEnqueuedAtMs?: number;
+  lease?: ConversationLease;
+  messages: InboundMessageRecord[];
+  needsRun: boolean;
+  schemaVersion: 1;
+  updatedAtMs: number;
+}
+
+export interface ConversationLeaseAcquired {
+  leaseExpiresAtMs: number;
+  leaseToken: string;
+  status: "acquired";
+}
+
+export interface ConversationLeaseActive {
+  leaseExpiresAtMs: number;
+  status: "active";
+}
+
+export interface ConversationLeaseNoWork {
+  status: "no_work";
+}
+
+export type ConversationLeaseStartResult =
+  | ConversationLeaseAcquired
+  | ConversationLeaseActive
+  | ConversationLeaseNoWork;
+
+export interface AppendInboundMessageResult {
+  status: "appended" | "duplicate";
+}
+
+export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessageResult {
+  queueMessageId?: string;
+}
+
+export interface RequestConversationWorkResult {
+  status: "created" | "updated";
+}
+
+function stateKey(conversationId: string): string {
+  return `${CONVERSATION_WORK_PREFIX}:state:${conversationId}`;
+}
+
+function indexKey(): string {
+  return `${CONVERSATION_WORK_PREFIX}:index`;
+}
+
+function indexLockKey(): string {
+  return `${CONVERSATION_WORK_PREFIX}:index:lock`;
+}
+
+function mutationLockKey(conversationId: string): string {
+  return `${CONVERSATION_WORK_PREFIX}:mutation:${conversationId}`;
+}
+
+function now(): number {
+  return Date.now();
+}
+
+function uniqueStrings(values: unknown[]): string[] {
+  return [
+    ...new Set(
+      values.filter((value): value is string => {
+        return typeof value === "string" && value.trim().length > 0;
+      }),
+    ),
+  ];
+}
+
+function compareMessages(
+  left: InboundMessageRecord,
+  right: InboundMessageRecord,
+): number {
+  return (
+    left.createdAtMs - right.createdAtMs ||
+    left.receivedAtMs - right.receivedAtMs ||
+    left.inboundMessageId.localeCompare(right.inboundMessageId)
+  );
+}
+
+function normalizeSource(value: unknown): InboundMessageSource | undefined {
+  if (value === "plugin" || value === "scheduler" || value === "slack") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeMetadata(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return value;
+}
+
+function normalizeInput(value: unknown): AgentInputMessage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const text = toOptionalString(value.text);
+  if (!text) {
+    return undefined;
+  }
+  return {
+    text,
+    authorId: toOptionalString(value.authorId),
+    attachments: Array.isArray(value.attachments)
+      ? [...value.attachments]
+      : undefined,
+    metadata: normalizeMetadata(value.metadata),
+  };
+}
+
+function normalizeMessage(value: unknown): InboundMessageRecord | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const conversationId = toOptionalString(value.conversationId);
+  const inboundMessageId = toOptionalString(value.inboundMessageId);
+  const source = normalizeSource(value.source);
+  const createdAtMs = toOptionalNumber(value.createdAtMs);
+  const receivedAtMs = toOptionalNumber(value.receivedAtMs);
+  const input = normalizeInput(value.input);
+  if (
+    !conversationId ||
+    !inboundMessageId ||
+    !source ||
+    typeof createdAtMs !== "number" ||
+    typeof receivedAtMs !== "number" ||
+    !input
+  ) {
+    return undefined;
+  }
+  return {
+    conversationId,
+    inboundMessageId,
+    source,
+    createdAtMs,
+    receivedAtMs,
+    input,
+    injectedAtMs: toOptionalNumber(value.injectedAtMs),
+  };
+}
+
+function normalizeLease(value: unknown): ConversationLease | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const leaseToken = toOptionalString(value.leaseToken);
+  const acquiredAtMs = toOptionalNumber(value.acquiredAtMs);
+  const lastCheckInAtMs = toOptionalNumber(value.lastCheckInAtMs);
+  const leaseExpiresAtMs = toOptionalNumber(value.leaseExpiresAtMs);
+  if (
+    !leaseToken ||
+    typeof acquiredAtMs !== "number" ||
+    typeof lastCheckInAtMs !== "number" ||
+    typeof leaseExpiresAtMs !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    leaseToken,
+    acquiredAtMs,
+    lastCheckInAtMs,
+    leaseExpiresAtMs,
+  };
+}
+
+function normalizeWorkState(
+  conversationId: string,
+  value: unknown,
+): ConversationWorkState | undefined {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== CONVERSATION_WORK_SCHEMA_VERSION
+  ) {
+    return undefined;
+  }
+  const storedConversationId = toOptionalString(value.conversationId);
+  const updatedAtMs = toOptionalNumber(value.updatedAtMs);
+  if (
+    storedConversationId !== conversationId ||
+    typeof updatedAtMs !== "number"
+  ) {
+    return undefined;
+  }
+  const messages = Array.isArray(value.messages)
+    ? value.messages
+        .map(normalizeMessage)
+        .filter((message): message is InboundMessageRecord => Boolean(message))
+        .filter((message) => message.conversationId === conversationId)
+        .sort(compareMessages)
+    : [];
+  return {
+    schemaVersion: CONVERSATION_WORK_SCHEMA_VERSION,
+    conversationId,
+    messages,
+    needsRun: value.needsRun === true,
+    updatedAtMs,
+    lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
+    lease: normalizeLease(value.lease),
+  };
+}
+
+function emptyWorkState(args: {
+  conversationId: string;
+  nowMs: number;
+}): ConversationWorkState {
+  return {
+    schemaVersion: CONVERSATION_WORK_SCHEMA_VERSION,
+    conversationId: args.conversationId,
+    messages: [],
+    needsRun: false,
+    updatedAtMs: args.nowMs,
+  };
+}
+
+function isLeaseActive(
+  lease: ConversationLease | undefined,
+  nowMs: number,
+): boolean {
+  return Boolean(lease && lease.leaseExpiresAtMs > nowMs);
+}
+
+function pendingMessages(state: ConversationWorkState): InboundMessageRecord[] {
+  return state.messages
+    .filter((message) => message.injectedAtMs === undefined)
+    .sort(compareMessages);
+}
+
+function shouldKeepIndexed(state: ConversationWorkState): boolean {
+  return (
+    state.needsRun || Boolean(state.lease) || pendingMessages(state).length > 0
+  );
+}
+
+async function getConnectedState(
+  stateAdapter?: StateAdapter,
+): Promise<StateAdapter> {
+  const state = stateAdapter ?? getStateAdapter();
+  await state.connect();
+  return state;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+}
+
+async function withIndexLock<T>(
+  state: StateAdapter,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const lock = await state.acquireLock(
+    indexLockKey(),
+    CONVERSATION_WORK_INDEX_LOCK_TTL_MS,
+  );
+  if (!lock) {
+    throw new Error("Could not acquire conversation work index lock");
+  }
+  try {
+    return await callback();
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+async function addToIndex(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<void> {
+  await withIndexLock(state, async () => {
+    const existing = uniqueStrings(
+      (await state.get<unknown[]>(indexKey())) ?? [],
+    );
+    if (existing.includes(conversationId)) {
+      return;
+    }
+    await state.set(
+      indexKey(),
+      [...existing, conversationId].slice(-CONVERSATION_WORK_INDEX_MAX_LENGTH),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+  });
+}
+
+async function removeFromIndex(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<void> {
+  await withIndexLock(state, async () => {
+    const existing = uniqueStrings(
+      (await state.get<unknown[]>(indexKey())) ?? [],
+    );
+    const next = existing.filter((id) => id !== conversationId);
+    if (next.length === existing.length) {
+      return;
+    }
+    await state.set(indexKey(), next, JUNIOR_THREAD_STATE_TTL_MS);
+  });
+}
+
+async function acquireMutationLock(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<Lock> {
+  const startedAtMs = now();
+  while (true) {
+    const lock = await state.acquireLock(
+      mutationLockKey(conversationId),
+      CONVERSATION_WORK_MUTATION_LOCK_TTL_MS,
+    );
+    if (lock) {
+      return lock;
+    }
+    if (now() - startedAtMs >= CONVERSATION_WORK_MUTATION_WAIT_MS) {
+      throw new Error(
+        `Could not acquire conversation work mutation lock for ${conversationId}`,
+      );
+    }
+    await sleep(CONVERSATION_WORK_MUTATION_RETRY_MS);
+  }
+}
+
+async function withConversationMutation<T>(
+  args: {
+    conversationId: string;
+    state?: StateAdapter;
+  },
+  callback: (state: StateAdapter) => Promise<T>,
+): Promise<T> {
+  const state = await getConnectedState(args.state);
+  const lock = await acquireMutationLock(state, args.conversationId);
+  try {
+    return await callback(state);
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+async function readWorkState(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<ConversationWorkState | undefined> {
+  return normalizeWorkState(
+    conversationId,
+    await state.get(stateKey(conversationId)),
+  );
+}
+
+async function writeWorkState(
+  state: StateAdapter,
+  work: ConversationWorkState,
+): Promise<void> {
+  await state.set(
+    stateKey(work.conversationId),
+    work,
+    JUNIOR_THREAD_STATE_TTL_MS,
+  );
+  if (shouldKeepIndexed(work)) {
+    await addToIndex(state, work.conversationId);
+  } else {
+    await removeFromIndex(state, work.conversationId);
+  }
+}
+
+function hasRunnableWork(state: ConversationWorkState): boolean {
+  return state.needsRun || pendingMessages(state).length > 0;
+}
+
+/** Return a persisted conversation work record, if one exists. */
+export async function getConversationWorkState(args: {
+  conversationId: string;
+  state?: StateAdapter;
+}): Promise<ConversationWorkState | undefined> {
+  const state = await getConnectedState(args.state);
+  return await readWorkState(state, args.conversationId);
+}
+
+/** Count mailbox messages that have not yet reached the session log. */
+export function countPendingConversationMessages(
+  state: ConversationWorkState,
+): number {
+  return pendingMessages(state).length;
+}
+
+/** Return whether a conversation has pending or resumable execution work. */
+export function hasRunnableConversationWork(
+  state: ConversationWorkState,
+): boolean {
+  return hasRunnableWork(state);
+}
+
+/** Persist one inbound message idempotently in its conversation mailbox. */
+export async function appendInboundMessage(args: {
+  message: InboundMessageRecord;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AppendInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(
+    { conversationId: args.message.conversationId, state: args.state },
+    async (state) => {
+      const current =
+        (await readWorkState(state, args.message.conversationId)) ??
+        emptyWorkState({
+          conversationId: args.message.conversationId,
+          nowMs,
+        });
+      const existing = current.messages.find(
+        (message) => message.inboundMessageId === args.message.inboundMessageId,
+      );
+      if (existing) {
+        const next: ConversationWorkState = {
+          ...current,
+          needsRun: current.needsRun || existing.injectedAtMs === undefined,
+          updatedAtMs: nowMs,
+        };
+        await writeWorkState(state, next);
+        return { status: "duplicate" };
+      }
+
+      const next: ConversationWorkState = {
+        ...current,
+        messages: [...current.messages, args.message].sort(compareMessages),
+        needsRun: true,
+        updatedAtMs: nowMs,
+      };
+      await writeWorkState(state, next);
+      return { status: "appended" };
+    },
+  );
+}
+
+/** Persist inbound work and send the queue nudge that wakes a worker. */
+export async function appendAndEnqueueInboundMessage(args: {
+  message: InboundMessageRecord;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+}): Promise<AppendAndEnqueueInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  const appendResult = await appendInboundMessage({
+    message: args.message,
+    nowMs,
+    state: args.state,
+  });
+  const queueResult = await args.queue.send(
+    { conversationId: args.message.conversationId },
+    { idempotencyKey: args.message.inboundMessageId },
+  );
+  await markConversationWorkEnqueued({
+    conversationId: args.message.conversationId,
+    nowMs,
+    state: args.state,
+  });
+  return {
+    ...appendResult,
+    queueMessageId: queueResult?.messageId,
+  };
+}
+
+/** Mark a conversation runnable when there is no new mailbox message. */
+export async function requestConversationWork(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<RequestConversationWorkResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current =
+      (await readWorkState(state, args.conversationId)) ??
+      emptyWorkState({
+        conversationId: args.conversationId,
+        nowMs,
+      });
+    await writeWorkState(state, {
+      ...current,
+      needsRun: true,
+      updatedAtMs: nowMs,
+    });
+    return { status: current === undefined ? "created" : "updated" };
+  });
+}
+
+/** Record that a wake-up nudge was accepted for the conversation. */
+export async function markConversationWorkEnqueued(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<void> {
+  const nowMs = args.nowMs ?? now();
+  await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current) {
+      return;
+    }
+    await writeWorkState(state, {
+      ...current,
+      lastEnqueuedAtMs: nowMs,
+      updatedAtMs: nowMs,
+    });
+  });
+}
+
+/** Try to acquire the durable execution lease for one conversation. */
+export async function startConversationWork(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<ConversationLeaseStartResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || !hasRunnableWork(current)) {
+      return { status: "no_work" };
+    }
+    if (isLeaseActive(current.lease, nowMs)) {
+      return {
+        status: "active",
+        leaseExpiresAtMs: current.lease!.leaseExpiresAtMs,
+      };
+    }
+
+    const lease: ConversationLease = {
+      leaseToken: randomUUID(),
+      acquiredAtMs: nowMs,
+      lastCheckInAtMs: nowMs,
+      leaseExpiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
+    };
+    await writeWorkState(state, {
+      ...current,
+      lease,
+      needsRun: true,
+      updatedAtMs: nowMs,
+    });
+    return {
+      status: "acquired",
+      leaseToken: lease.leaseToken,
+      leaseExpiresAtMs: lease.leaseExpiresAtMs,
+    };
+  });
+}
+
+/** Extend the durable execution lease when the worker checks in. */
+export async function checkInConversationWork(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      return false;
+    }
+    await writeWorkState(state, {
+      ...current,
+      lease: {
+        ...current.lease,
+        lastCheckInAtMs: nowMs,
+        leaseExpiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
+      },
+      updatedAtMs: nowMs,
+    });
+    return true;
+  });
+}
+
+/** Drain pending mailbox entries after the caller has durably injected them. */
+export async function drainConversationMailbox(args: {
+  conversationId: string;
+  inject: (messages: InboundMessageRecord[]) => Promise<void>;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<InboundMessageRecord[]> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      throw new Error(
+        `Conversation work lease is not held for ${args.conversationId}`,
+      );
+    }
+    const pending = pendingMessages(current);
+    if (pending.length === 0) {
+      return [];
+    }
+
+    await args.inject(pending);
+    const drainedIds = new Set(
+      pending.map((message) => message.inboundMessageId),
+    );
+    await writeWorkState(state, {
+      ...current,
+      messages: current.messages.map((message) =>
+        drainedIds.has(message.inboundMessageId)
+          ? { ...message, injectedAtMs: nowMs }
+          : message,
+      ),
+      updatedAtMs: nowMs,
+    });
+    return pending;
+  });
+}
+
+/** Mark the leased conversation as needing another queue-delivered slice. */
+export async function requestConversationContinuation(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      return false;
+    }
+    await writeWorkState(state, {
+      ...current,
+      needsRun: true,
+      updatedAtMs: nowMs,
+    });
+    return true;
+  });
+}
+
+/** Release the durable execution lease without changing completion state. */
+export async function releaseConversationWork(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      return false;
+    }
+    await writeWorkState(state, {
+      ...current,
+      lease: undefined,
+      updatedAtMs: nowMs,
+    });
+    return true;
+  });
+}
+
+/** Finish a leased conversation when no pending mailbox work remains. */
+export async function completeConversationWork(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<"completed" | "lost_lease" | "pending"> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      return "lost_lease";
+    }
+    const hasPending = pendingMessages(current).length > 0;
+    await writeWorkState(state, {
+      ...current,
+      lease: undefined,
+      needsRun: hasPending,
+      updatedAtMs: nowMs,
+    });
+    return hasPending ? "pending" : "completed";
+  });
+}
+
+/** Clear an expired durable lease so a later worker can resume safely. */
+export async function clearExpiredConversationLease(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current?.lease || current.lease.leaseExpiresAtMs > nowMs) {
+      return false;
+    }
+    await writeWorkState(state, {
+      ...current,
+      lease: undefined,
+      updatedAtMs: nowMs,
+    });
+    return true;
+  });
+}
+
+/** List bounded conversation ids that may need heartbeat recovery. */
+export async function listConversationWorkIds(
+  args: {
+    limit?: number;
+    state?: StateAdapter;
+  } = {},
+): Promise<string[]> {
+  const state = await getConnectedState(args.state);
+  const ids = uniqueStrings((await state.get<unknown[]>(indexKey())) ?? []);
+  return ids.slice(0, args.limit ?? ids.length);
+}

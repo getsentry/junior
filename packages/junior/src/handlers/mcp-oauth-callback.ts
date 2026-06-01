@@ -49,10 +49,7 @@ import {
 } from "@/chat/state/turn-session";
 import { recordAuthorizationCompleted } from "@/chat/state/session-log";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
-import {
-  canScheduleTurnTimeoutResume,
-  scheduleTurnTimeoutResume,
-} from "@/chat/services/timeout-resume";
+import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -403,26 +400,9 @@ async function resumeAuthorizedMcpTurn(args: {
             throw error;
           }
           const version = error.metadata?.version;
-          const nextSliceId = error.metadata?.sliceId;
           if (typeof version !== "number") {
             throw new Error(
               "Timed-out MCP resume did not include a turn-session version",
-            );
-          }
-          if (!canScheduleTurnTimeoutResume(nextSliceId)) {
-            logWarn(
-              "mcp_oauth_callback_resume_slice_limit_reached",
-              {},
-              {
-                "app.credential.provider": provider,
-                ...(typeof nextSliceId === "number"
-                  ? { "app.ai.resume_slice_id": nextSliceId }
-                  : {}),
-              },
-              "Skipped automatic timeout resume because the turn exceeded the slice limit",
-            );
-            throw new Error(
-              "Timed-out turn exceeded the automatic resume slice limit",
             );
           }
           await scheduleTurnTimeoutResume({

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-01
 
 ## Purpose
 
@@ -217,10 +217,9 @@ Current rules:
 6. When a turn blocks on OAuth/MCP auth, Junior must privately deliver the auth link, post a brief visible thread acknowledgement that authorization is needed, clear `activeTurnId`, and persist thread-local pending-auth state. The visible acknowledgement must not include the auth URL or other secret-bearing state.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already replaced the blocked request, Junior stores the credentials but does not post a stale resumed answer.
-9. When a turn session record is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.
-10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Session Record rescheduling mechanics belong to `./agent-session-resumability.md`.
-11. Turn-continuation acknowledgements are not final assistant replies. They do not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
-12. Turn-continuation acknowledgements may include a correlation-only footer with the conversation ID or trace link so operators can connect the durable notice to diagnostics. They must not include final-turn duration, token usage, or thinking-level metadata because those belong to the finalized reply.
+9. Routine cooperative continuation must not post a visible "continuing in the background" thread acknowledgement. User-visible progress belongs to assistant status and `reportProgress`; final answers still use the finalized reply path.
+10. If a user follow-up or duplicate delivery arrives while a turn is active, Junior should fold it into the active conversation at the next safe execution boundary instead of creating a second visible turn. Mailbox and worker mechanics belong to `./task-execution.md`.
+11. Any explicit pause acknowledgement that remains for auth or exceptional failure handling is not a final assistant reply. It does not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
 
 ### 12. Testing Contract
 
@@ -274,6 +273,7 @@ Required verification coverage for this contract:
 ## Related Specs
 
 - `./chat-architecture.md`
+- `./task-execution.md`
 - `./slack-outbound-contract.md`
 - `./oauth-flows.md`
 - `./agent-session-resumability.md`

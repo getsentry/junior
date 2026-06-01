@@ -77,6 +77,7 @@ const replyDecisionSchema = z.object({
 });
 
 const ROUTER_CONFIDENCE_THRESHOLD = 0.8;
+const ROUTER_CLASSIFIER_MAX_TOKENS = 240;
 const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
@@ -363,7 +364,7 @@ function buildRouterSystemPrompt(botUserName: string): string {
     "If the latest message clearly tells Junior to stop watching, replying, or participating, set should_unsubscribe=true and should_reply=false.",
     "When uncertain, prefer should_reply=false with low confidence.",
     "",
-    "Return JSON with should_reply, should_unsubscribe, confidence, and a short reason.",
+    "Return JSON with should_reply, should_unsubscribe, confidence, and a reason under 160 characters.",
     "Do not return any extra keys.",
     "",
     `<assistant-name>${escapeXml(botUserName)}</assistant-name>`,
@@ -466,7 +467,7 @@ export async function decideSubscribedThreadReply(args: {
     const result = await args.completeObject({
       modelId: args.modelId,
       schema: replyDecisionSchema,
-      maxTokens: 120,
+      maxTokens: ROUTER_CLASSIFIER_MAX_TOKENS,
       temperature: 0,
       system: buildRouterSystemPrompt(args.botUserName),
       prompt: buildRouterPrompt(rawText, signals),

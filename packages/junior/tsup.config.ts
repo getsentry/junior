@@ -33,6 +33,7 @@ export default defineConfig({
     "@sinclair/typebox",
     "@slack/web-api",
     "@vercel/functions",
+    "@vercel/queue",
     "@vercel/sandbox",
     "ai",
     "bash-tool",

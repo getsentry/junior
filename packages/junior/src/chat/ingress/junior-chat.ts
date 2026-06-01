@@ -13,6 +13,7 @@ import {
 } from "chat";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 
 type ChatInternals = {
   logger?: {
@@ -89,7 +90,7 @@ export class JuniorChat<
       const runtime = this as unknown as ChatInternals;
       return enqueueBackgroundTask(
         options,
-        (async (): Promise<void> => {
+        runWithTurnRequestDeadline(async (): Promise<void> => {
           let message: Message;
           try {
             message = await messageOrFactory();
@@ -109,7 +110,7 @@ export class JuniorChat<
               normalized;
           }
           await super.processMessage(adapter, normalized, message, options);
-        })(),
+        }),
       );
     }
 
@@ -122,7 +123,9 @@ export class JuniorChat<
     if (normalized !== threadId && "threadId" in message) {
       (message as unknown as Record<string, unknown>).threadId = normalized;
     }
-    return super.processMessage(adapter, normalized, message, options);
+    return runWithTurnRequestDeadline(() =>
+      super.processMessage(adapter, normalized, message, options),
+    );
   }
 
   override processReaction(

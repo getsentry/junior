@@ -1,7 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
+
+export interface HeartbeatHandlerOptions {
+  conversationWorkQueue?: ConversationWorkQueue;
+}
 
 function getHeartbeatSecret(): string | undefined {
   return (
@@ -29,6 +34,7 @@ function verifyHeartbeatRequest(request: Request): boolean {
 export async function GET(
   request: Request,
   waitUntil: WaitUntilFn,
+  options: HeartbeatHandlerOptions = {},
 ): Promise<Response> {
   if (!verifyHeartbeatRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
@@ -36,7 +42,10 @@ export async function GET(
 
   const nowMs = Date.now();
   waitUntil(() =>
-    runHeartbeat({ nowMs }).catch((error) => {
+    runHeartbeat({
+      conversationWorkQueue: options.conversationWorkQueue,
+      nowMs,
+    }).catch((error) => {
       logException(
         error,
         "heartbeat_failed",

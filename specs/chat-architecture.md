@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-01
 
 ## Purpose
 
@@ -37,77 +37,77 @@ The core architecture is the flow of one Slack event through a durable agent tur
 
 ```mermaid
 flowchart TD
-  A[Slack webhook event] --> B[ingress/ JuniorChat normalization]
-  B --> C[Chat SDK dedupe, queue, per-thread lock]
-  C --> D[runtime/slack-runtime route: mention, DM, subscribed, lifecycle]
-  D --> E[runtime/turn-preparation]
+  A[Slack webhook event] --> B[Slack-specific ingress normalization]
+  B --> C[Append to durable conversation mailbox]
+  C --> D[Send Vercel Queue nudge: conversationId]
+  D --> E[Queue worker acquires conversation lease]
   E --> E1[Load persisted thread state]
-  E --> E2[Seed/backfill conversation if needed]
-  E --> E3[Upsert inbound user message and attachment metadata]
+  E --> E2[Drain pending mailbox messages]
+  E --> E3[Append drained input and attachment metadata to session log]
   E --> F[runtime/reply-executor]
-  F --> G{Existing active turn has continuable pause?}
-  G -->|yes| H[Reschedule existing continuation and post acknowledgement]
-  G -->|no| I[Start active turn and persist conversation]
-  I --> J[respond.ts generateAssistantReply]
+  F --> G[Restore Pi state from reduced session log]
+  G --> J[respond.ts generateAssistantReply / continue]
   J --> K[Build prompt context from durable conversation, config, artifacts, sandbox, attachments]
-  K --> L[Pi agent prompt/continue loop]
+  K --> L[Pi agent continue loop]
   L --> M[Tools, skills, MCP, sandbox]
   M --> N[Eager state updates: sandbox id, artifacts, pending auth]
   N --> L
+  L --> Y{Safe boundary and soft yield due?}
+  Y -->|yes| YA[Enqueue conversationId, release lease, ack delivery]
+  Y -->|no| L
+  L --> Z{Safe boundary and mailbox has new input?}
+  Z -->|yes| E2
+  Z -->|no| O
   L --> O{Turn outcome}
   O -->|success/final diagnostics| P[Plan finalized Slack reply]
   O -->|auth pause| Q[Append auth pause event and pending auth pointer]
-  O -->|timeout at safe boundary| R[Append timeout pause event]
+  O -->|cooperative yield| R[Durable session-log boundary already committed]
   O -->|terminal failure| S[Capture failure and build fallback reply]
-  R --> T[Schedule signed internal continuation callback]
-  T --> U[Post durable continuation acknowledgement]
+  R --> YA
   Q --> V[Private auth link plus visible URL-free auth acknowledgement; live turn ends]
-  V --> AB[OAuth/MCP callback resumes session]
+  V --> AB[OAuth/MCP callback appends mailbox work and enqueues conversation]
   P --> W[Deliver finalized Slack reply/files]
   S --> W
-  W --> X[Persist assistant message and mark session delivered]
-  T --> Y[handlers/turn-resume callback]
-  Y --> Z[Validate callback state, pause event/session, and per-thread lock]
-  AB --> Z
-  Z --> AA[Rebuild state from durable thread/configuration stores]
-  AA --> J
+  W --> X[Persist assistant message, mark session delivered, release lease]
+  AB --> D
 ```
 
 Normative rules:
 
-1. Ingress normalizes events and hands them to queue/runtime. It must not decide agent behavior.
-2. The Chat SDK queue/lock layer handles transport-level concerns such as duplicate inbound delivery, ordering, and lock serialization. It is not the source of truth for agent recovery.
-3. Turn preparation is the only point that converts an inbound Slack message into persisted conversation context for an agent turn.
+1. Ingress normalizes events, appends them to the durable mailbox, and sends a queue nudge. It must not decide agent behavior.
+2. The task execution layer owns queue wake-ups, conversation leases, worker check-ins, and heartbeat recovery. Chat SDK queue/lock semantics are not canonical.
+3. The mailbox worker is the only point that drains inbound messages into persisted agent session context.
 4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
 5. Tool calls and tool failures are internal agent-loop data until the assistant produces final turn diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
 6. User-visible assistant text is posted only after the reply is finalized and planned for Slack delivery.
 7. Final turn success is defined by Slack accepting the visible final reply, not by model generation completing.
 8. Agent recovery is session continuation: reload durable thread state plus the reduced session log, then continue the same session. It must not create a second active turn or re-run from transient process memory.
-9. Serverless timeout handling is one producer of continuation pause events. It is a proactive accommodation for Vercel execution limits, not the general recovery architecture.
-10. Acknowledgement messages, assistant status, and logs are observability/UX surfaces. They never substitute for persisted session recovery or final reply delivery.
+9. Cooperative yield at safe agent-loop boundaries is the normal accommodation for Vercel execution limits. Platform death is recovered by queue redelivery and heartbeat repair from the latest durable session boundary.
+10. Assistant status and logs are observability/UX surfaces. They never substitute for persisted session recovery or final reply delivery.
 
 Data authority by stage:
 
-| Data                                     | Authority                                              | Notes                                                                                                                       |
-| ---------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Slack event shape                        | `ingress/` and Slack adapter payloads                  | Normalize IDs and attachments before runtime; do not infer behavior here.                                                   |
-| Queue ordering and duplicate suppression | Chat SDK state adapter lock/queue                      | Prevent concurrent handler execution, but do not rely on queue memory for turn recovery.                                    |
-| Conversation transcript                  | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final Slack delivery.             |
-| Active pause routing                     | Thread state                                           | Points callbacks at the paused session/event when a live run has parked for auth or timeout.                                |
-| Pi execution transcript                  | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible Slack transcript. |
-| Sandbox/artifact state                   | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                        |
-| Pending auth                             | Auth-owned callback state plus session-log pause event | Auth pauses end the live turn after private link delivery and are resumed by callback.                                      |
-| Final Slack reply                        | Slack thread post acceptance                           | Completion is persisted only after Slack accepts the final visible reply.                                                   |
-| Continuation acknowledgement             | Slack thread post                                      | User-facing status only; does not complete the turn.                                                                        |
+| Data                                    | Authority                                              | Notes                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Slack event shape                       | `ingress/` and Slack adapter payloads                  | Normalize IDs and attachments before runtime; do not infer behavior here.                                                   |
+| Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                  | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                          |
+| Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final Slack delivery.             |
+| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries.                                               |
+| Pi execution transcript                 | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible Slack transcript. |
+| Sandbox/artifact state                  | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                        |
+| Pending auth                            | Auth-owned callback state plus session-log pause event | Auth pauses end the live turn after private link delivery and are resumed by callback.                                      |
+| Final Slack reply                       | Slack thread post acceptance                           | Completion is persisted only after Slack accepts the final visible reply.                                                   |
+| Routine continuation progress           | Assistant status and `reportProgress`                  | Cooperative yields do not post filler thread messages.                                                                      |
 
 Related contract ownership:
 
-| Spec                              | Owns                                                                                           |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `./chat-architecture.md`          | End-to-end turn data flow, data authority, and module boundaries.                              |
-| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, timeout callback safety, and session lifecycle. |
-| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.    |
-| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping.         |
+| Spec                              | Owns                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| `./chat-architecture.md`          | End-to-end turn data flow, data authority, and module boundaries.                      |
+| `./task-execution.md`             | Conversation mailbox, queue wake-up, lease, cooperative yield, and heartbeat repair.   |
+| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, and session lifecycle.                  |
+| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, pause acknowledgements, and final reply delivery.   |
+| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping. |
 
 ### File Tree Responsibilities
 
@@ -180,8 +180,8 @@ interface ChatTurnRuntime {
 
 #### Ingress Router
 
-- Ingress owns event normalization, dedupe, thread-kind classification, and queue handoff.
-- Chat SDK compatibility should be expressed through an explicit `Chat` subclass or wrapper, not prototype mutation or import-side effects.
+- Ingress owns event normalization, dedupe, thread-kind classification, mailbox append, and queue handoff.
+- Chat SDK must not own canonical ingress queueing, conversation locks, or long-running handler lifetime.
 - Ingress must not become a second authority for turn behavior that already belongs in runtime.
 - Canonical ingress code lives under `chat/ingress/*`. Do not reintroduce legacy patch modules for core ingress behavior.
 
@@ -195,7 +195,7 @@ interface MessageIngressRouter {
 
 #### Queue Dispatcher
 
-- The queue worker owns serialization, locking, ordering, and retry interaction.
+- The queue worker owns conversation lease acquisition, mailbox draining, cooperative yield, and retry interaction.
 - Queue dispatch into the turn runtime must be an injected boundary.
 - Queue worker code must not import the production bot singleton.
 - Provider transport should stay behind a local queue transport module so retry policy and handler semantics remain project-owned.
@@ -249,19 +249,19 @@ interface EvalScenarioRunner {
 - Adapter/backend selection belongs in the adapter layer.
 - Key-building, TTL policy, and persistence rules belong in store modules.
 - Consumers should import the narrowest store they need rather than routing all access through a broad facade.
-- Per-thread Chat SDK locks use a short renewable state-adapter lease. Live workers heartbeat the lease while processing; if a worker disappears, the lease must expire quickly enough for a retry or continuation callback to acquire ownership.
+- Conversation execution leases use a short renewable state-adapter lease. Live workers check in while processing; if a worker disappears, the lease must expire quickly enough for heartbeat or queue redelivery to re-enqueue the conversation.
 
 ### Turn Continuation Recovery
 
-Turn continuation recovery covers any case where Junior has a durable safe resume boundary but does not know whether the active turn reached final Slack delivery: serverless timeout, lost or duplicate callback, transport retry, or user follow-up while thread state still points at an awaiting pause.
+Turn continuation recovery covers any case where Junior has a durable safe resume boundary but does not know whether the active turn reached final Slack delivery: serverless timeout, lost or duplicate queue nudge, worker death, transport retry, or user follow-up while the conversation is active.
 
 Rules:
 
-1. Recovery continues the existing conversation from durable thread state plus the reduced agent-session log keyed by the predictable conversation id. It must not start a second active run for a thread with an awaiting continuation pause.
-2. Chat SDK retry, dedupe, queueing, and per-thread locking protect inbound delivery. They do not replace session continuation because they do not carry Junior's canonical agent session log, sandbox/artifact state, pending auth, or final Slack delivery state.
-3. `respond.ts` appends safe pause events; `runtime/reply-executor.ts` schedules or reschedules continuation; `handlers/turn-resume.ts` validates pause event identity and lock ownership; `runtime/slack-resume.ts` reuses the normal final-delivery path.
-4. Continuation acknowledgements are Slack UX only. They do not complete the turn and are not a recovery mechanism.
-5. Lock-busy callback retry is bounded. There is no durable sweeper today, so retry exhaustion reschedules the same signed callback for the current pause event rather than completing or abandoning the turn.
+1. Recovery continues the existing conversation from durable thread state plus the reduced agent-session log keyed by the predictable conversation id. It must not start a second active run for the same conversation.
+2. Conversation mailbox state, queue wake-ups, and leases protect inbound delivery. They do not replace session continuation because they do not carry Junior's canonical agent session log, sandbox/artifact state, pending auth, or final Slack delivery state.
+3. `respond.ts` appends safe session-log boundaries; the mailbox worker enqueues cooperative continuations; heartbeat re-enqueues expired leases and stranded pending mailbox work.
+4. Routine cooperative continuation does not create a Slack acknowledgement message. Assistant status and `reportProgress` own progress UX.
+5. Queue duplicate and active-lease cases are harmless because queue messages are conversation wake-up nudges, not canonical work records.
 
 ### Test And Eval Rules
 
@@ -306,6 +306,7 @@ Current names that should be treated as transitional:
 
 ## Related Specs
 
+- `./task-execution.md`
 - `./agent-session-resumability.md`
 - `./oauth-flows.md`
 - `./plugin.md`

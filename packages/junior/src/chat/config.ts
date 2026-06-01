@@ -4,7 +4,7 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
-const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 800;
+const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const ADVISOR_THINKING_LEVELS = [
   "minimal",
   "low",
@@ -16,9 +16,11 @@ const ADVISOR_THINKING_LEVELS = [
 export type AdvisorThinkingLevel = (typeof ADVISOR_THINKING_LEVELS)[number];
 
 const DEFAULT_ADVISOR_THINKING_LEVEL: AdvisorThinkingLevel = "xhigh";
-/** Buffer between the Vercel function timeout and the agent turn timeout,
- *  so the agent can abort and post a failure reply before Vercel kills it. */
-const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
+/**
+ * Buffer between the Vercel function timeout and the agent turn timeout so
+ * Junior can abort, persist, and schedule continuation before host teardown.
+ */
+export const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
 const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Consulting the orb",
   "Bribing the gremlins",

@@ -533,7 +533,7 @@ describe("turn resume handler", () => {
     expect(conversation.messages).toHaveLength(1);
   });
 
-  it("persists timeout-resume failure state when terminalization fails", async () => {
+  it("persists timeout-resume failure state when continuation scheduling fails", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -593,6 +593,9 @@ describe("turn resume handler", () => {
       sessionId,
       expectedVersion: sessionRecord.version,
     });
+    scheduleTurnTimeoutResumeMock.mockRejectedValueOnce(
+      new Error("queue unavailable"),
+    );
 
     resumeSlackTurnMock.mockImplementationOnce(async (args) => {
       const prepared = await args.beforeStart?.();
@@ -630,7 +633,11 @@ describe("turn resume handler", () => {
     expect(response.status).toBe(202);
     await waitUntilCallbacks[0]?.();
 
-    expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
+    expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version + 1,
+    });
 
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = (persisted.conversation ?? {}) as {

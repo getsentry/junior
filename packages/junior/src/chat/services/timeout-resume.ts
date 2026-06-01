@@ -1,21 +1,25 @@
 /**
- * Timeout resume callback signing.
+ * Timeout resume continuation scheduling.
  *
- * This module owns the internal HTTP handoff used when a turn times out but has
- * a safe Pi continuation boundary. It emits and verifies a small signed request
- * so only current deployment code can resume the parked turn.
+ * This module owns the durable queue handoff used when a turn times out but has
+ * a safe Pi continuation boundary. The signed request verifier remains for
+ * callbacks that were already in flight during a deployment rollover.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import type { StateAdapter } from "chat";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  markConversationWorkEnqueued,
+  requestConversationWork,
+} from "@/chat/task-execution/store";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
-const TURN_TIMEOUT_RESUME_PATH = "/api/internal/turn-resume";
 const TURN_TIMEOUT_RESUME_HMAC_CONTEXT = "junior.turn_timeout_resume.v1";
 const TURN_TIMEOUT_RESUME_SIGNATURE_VERSION = "v1";
 const TURN_TIMEOUT_RESUME_MAX_SKEW_MS = 5 * 60 * 1000;
 const TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER = "x-junior-resume-timestamp";
 const TURN_TIMEOUT_RESUME_SIGNATURE_HEADER = "x-junior-resume-signature";
-const MAX_TURN_TIMEOUT_RESUME_SLICE_ID = 5;
 
 export interface TurnContinuationRequest {
   conversationId: string;
@@ -23,15 +27,10 @@ export interface TurnContinuationRequest {
   sessionId: string;
 }
 
-/** Bound automatic timeout continuation so one bad turn cannot loop forever. */
-export function canScheduleTurnTimeoutResume(
-  nextSliceId: number | undefined,
-): boolean {
-  return (
-    typeof nextSliceId === "number" &&
-    nextSliceId > 1 &&
-    nextSliceId <= MAX_TURN_TIMEOUT_RESUME_SLICE_ID
-  );
+export interface ScheduleTurnTimeoutResumeOptions {
+  nowMs?: number;
+  queue?: ConversationWorkQueue;
+  state?: StateAdapter;
 }
 
 /** Build the callback request for an awaiting automatic turn continuation. */
@@ -47,7 +46,7 @@ export async function getAwaitingTurnContinuationRequest(args: {
     !sessionRecord ||
     sessionRecord.state !== "awaiting_resume" ||
     sessionRecord.resumeReason !== "timeout" ||
-    !canScheduleTurnTimeoutResume(sessionRecord.sliceId)
+    sessionRecord.sliceId < 2
   ) {
     return undefined;
   }
@@ -118,44 +117,34 @@ function parseTurnTimeoutResumeRequest(
   };
 }
 
-/** Schedule an authenticated internal callback to resume a timed-out turn. */
+/** Schedule durable conversation work to resume a timed-out turn. */
 export async function scheduleTurnTimeoutResume(
   request: TurnContinuationRequest,
+  options: ScheduleTurnTimeoutResumeOptions = {},
 ): Promise<void> {
-  const baseUrl = resolveBaseUrl();
-  if (!baseUrl) {
-    throw new Error(
-      "Cannot determine base URL for timeout resume callback (set JUNIOR_BASE_URL or deploy to Vercel)",
-    );
-  }
-
-  const secret = getTurnTimeoutResumeSecret();
-  if (!secret) {
-    throw new Error(
-      "Cannot determine timeout resume secret (set JUNIOR_SECRET)",
-    );
-  }
-
-  const body = JSON.stringify(request);
-  const timestamp = Date.now().toString();
-  const response = await fetch(`${baseUrl}${TURN_TIMEOUT_RESUME_PATH}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER]: timestamp,
-      [TURN_TIMEOUT_RESUME_SIGNATURE_HEADER]: signTurnTimeoutResumeBody(
-        secret,
-        timestamp,
-        body,
-      ),
-    },
-    body,
+  const nowMs = options.nowMs ?? Date.now();
+  await requestConversationWork({
+    conversationId: request.conversationId,
+    nowMs,
+    state: options.state,
   });
-  if (!response.ok) {
-    throw new Error(
-      `Timeout resume callback failed with status ${response.status}`,
-    );
-  }
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await queue.send(
+    { conversationId: request.conversationId },
+    {
+      idempotencyKey: [
+        "timeout",
+        request.conversationId,
+        request.sessionId,
+        request.expectedVersion,
+      ].join(":"),
+    },
+  );
+  await markConversationWorkEnqueued({
+    conversationId: request.conversationId,
+    nowMs,
+    state: options.state,
+  });
 }
 
 /** Verify and parse an authenticated timeout resume callback request. */

@@ -18,8 +18,12 @@ import {
 } from "@/chat/agent-dispatch/store";
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import type { PiMessage } from "@/chat/pi/messages";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
@@ -35,6 +39,21 @@ function collectWaitUntil(tasks: Promise<unknown>[]): WaitUntilFn {
   return (task) => {
     tasks.push(typeof task === "function" ? task() : task);
   };
+}
+
+class FakeConversationWorkQueue implements ConversationWorkQueue {
+  sent: Array<{ conversationId: string; idempotencyKey?: string }> = [];
+
+  async send(
+    message: { conversationId: string },
+    options?: { idempotencyKey?: string },
+  ): Promise<{ messageId: string }> {
+    this.sent.push({
+      conversationId: message.conversationId,
+      idempotencyKey: options?.idempotencyKey,
+    });
+    return { messageId: `queue-${this.sent.length}` };
+  }
 }
 
 function schedulerStore() {
@@ -192,6 +211,55 @@ describe("trusted plugin heartbeat", () => {
     expect(response.status).toBe(202);
     await Promise.all(waitUntilTasks);
     expect(seen).toHaveLength(1);
+  });
+
+  it("reschedules stale timeout resume records", async () => {
+    const queue = new FakeConversationWorkQueue();
+    const conversationId = "slack:C123:1712345.0001";
+    const sessionId = "turn-timeout";
+    const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
+    vi.setSystemTime(staleNowMs);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "finish this" }],
+          timestamp: staleNowMs,
+        } as PiMessage,
+      ],
+    });
+    vi.setSystemTime(TEST_NOW_MS);
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+      { conversationWorkQueue: queue },
+    );
+
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+    expect(queue.sent).toEqual([
+      {
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `timeout:${conversationId}:${sessionId}:`,
+        ),
+      },
+    ]);
+    await expect(
+      getConversationWorkState({ conversationId }),
+    ).resolves.toMatchObject({
+      conversationId,
+      needsRun: true,
+    });
   });
 
   it("scopes dispatch lookup to the plugin that created it", async () => {

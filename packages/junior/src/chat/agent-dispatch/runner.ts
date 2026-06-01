@@ -42,7 +42,6 @@ import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
-import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { scheduleDispatchCallback } from "./signing";
 import {
@@ -426,11 +425,7 @@ export async function runAgentDispatchSlice(
     }
     if (isRetryableTurnError(error, "turn_timeout_resume")) {
       const version = error.metadata?.version;
-      const nextSliceId = error.metadata?.sliceId;
-      if (
-        typeof version === "number" &&
-        canScheduleTurnTimeoutResume(nextSliceId)
-      ) {
+      if (typeof version === "number") {
         const awaiting = await markDispatch({
           dispatch,
           status: "awaiting_resume",

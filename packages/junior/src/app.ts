@@ -36,6 +36,11 @@ import {
 } from "@/handlers/sandbox-egress-proxy";
 import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
+import {
+  createVercelConversationWorkCallback,
+  type VercelConversationWorkCallbackOptions,
+} from "@/chat/task-execution/vercel-callback";
+import { getProductionConversationWorkOptions } from "@/chat/app/production";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export { defineJuniorPlugins } from "@/plugins";
@@ -48,6 +53,8 @@ export type {
 export interface JuniorAppOptions {
   /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
+  /** Queue consumer wiring for the durable conversation worker. */
+  conversationWork?: VercelConversationWorkCallbackOptions;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   waitUntil?: WaitUntilFn;
@@ -323,6 +330,16 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil);
+  });
+
+  let agentContinuePOST:
+    | ReturnType<typeof createVercelConversationWorkCallback>
+    | undefined;
+  app.post("/api/internal/agent/continue", (c) => {
+    agentContinuePOST ??= createVercelConversationWorkCallback(
+      options?.conversationWork ?? getProductionConversationWorkOptions(),
+    );
+    return agentContinuePOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {

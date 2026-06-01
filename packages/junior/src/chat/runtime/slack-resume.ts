@@ -26,7 +26,6 @@ import {
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
-import { buildSlackTurnContinuationNotice } from "@/chat/slack/turn-continuation-notice";
 import { ACTIVE_LOCK_TTL_MS, getStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { addAgentTurnUsage } from "@/chat/usage";
@@ -169,33 +168,6 @@ async function postResumeFailureReply(args: {
       "Failed to post resumed turn failure reply",
     );
     throw error;
-  }
-}
-
-async function postTurnContinuationNoticeBestEffort(args: {
-  lockKey: string;
-  resumeArgs: ResumeSlackTurnArgs;
-}): Promise<void> {
-  const notice = buildSlackTurnContinuationNotice({
-    conversationId:
-      args.resumeArgs.replyContext?.correlation?.conversationId ?? args.lockKey,
-  });
-  try {
-    await postSlackApiMessage({
-      channelId: args.resumeArgs.channelId,
-      threadTs: args.resumeArgs.threadTs,
-      ...notice,
-    });
-  } catch (error) {
-    logException(
-      error,
-      "slack_turn_continuation_notice_post_failed",
-      getResumeLogContext(args.resumeArgs, args.lockKey),
-      {
-        "app.slack.reply_stage": "thread_reply_turn_continuation_notice",
-      },
-      "Failed to post turn continuation notice",
-    );
   }
 }
 
@@ -469,12 +441,6 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
           runArgs.threadTs,
           buildAuthPauseResponse(),
         );
-      }
-      if (deferredPauseKind === "timeout") {
-        await postTurnContinuationNoticeBestEffort({
-          lockKey,
-          resumeArgs: runArgs,
-        });
       }
       return;
     } catch (pauseError) {

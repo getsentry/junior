@@ -1,19 +1,39 @@
 import { Buffer } from "node:buffer";
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WaitUntilFn } from "@/handlers/types";
-import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
+const { generateAssistantReplyMock, queueSends } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
+  queueSends: [] as Array<{
+    conversationId: string;
+    idempotencyKey?: string;
+  }>,
 }));
 
 vi.mock("@/chat/respond", () => ({
   generateAssistantReply: generateAssistantReplyMock,
+}));
+
+vi.mock("@/chat/task-execution/vercel-queue", () => ({
+  DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC: "junior_conversation_work",
+  getVercelConversationWorkQueue: () => ({
+    send: async (
+      message: { conversationId: string },
+      options?: { idempotencyKey?: string },
+    ) => {
+      queueSends.push({
+        conversationId: message.conversationId,
+        idempotencyKey: options?.idempotencyKey,
+      });
+      return { messageId: `queue-${queueSends.length}` };
+    },
+  }),
 }));
 
 const ORIGINAL_ENV = { ...process.env };
@@ -39,35 +59,26 @@ async function buildSignedTurnResumeRequest(args: {
   sessionId: string;
   expectedVersion: number;
 }): Promise<Request> {
-  const originalFetch = global.fetch;
-  const fetchMock = vi.fn(
-    async () => new Response("Accepted", { status: 202 }),
-  );
-  global.fetch = fetchMock as typeof fetch;
-
-  try {
-    const { scheduleTurnTimeoutResume } =
-      await import("@/chat/services/timeout-resume");
-    await scheduleTurnTimeoutResume(args);
-  } finally {
-    global.fetch = originalFetch;
-  }
-
-  const firstCall = fetchMock.mock.calls[0];
-  if (!firstCall) {
-    throw new Error("Expected scheduleTurnTimeoutResume to issue one fetch");
-  }
-  const [url, init] = firstCall as unknown as [string, RequestInit];
-  return new Request(url, {
-    method: init.method,
-    headers: init.headers,
-    body: init.body,
+  const timestamp = Date.now().toString();
+  const body = JSON.stringify(args);
+  const digest = createHmac("sha256", "resume-secret")
+    .update(`junior.turn_timeout_resume.v1:${timestamp}:${body}`)
+    .digest("hex");
+  return new Request("https://junior.example.com/api/internal/turn-resume", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-junior-resume-timestamp": timestamp,
+      "x-junior-resume-signature": `v1=${digest}`,
+    },
+    body,
   });
 }
 
 describe("turn resume slack integration", () => {
   beforeEach(async () => {
     waitUntilCallbacks.length = 0;
+    queueSends.length = 0;
     generateAssistantReplyMock.mockReset();
     generateAssistantReplyMock.mockResolvedValue({
       text: "Final resumed answer",
@@ -250,7 +261,7 @@ describe("turn resume slack integration", () => {
     });
   });
 
-  it("posts the failure message when timeout resume depth is exhausted", async () => {
+  it("schedules another continuation for high timeout resume slice ids", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
     const sessionRecord =
@@ -330,16 +341,14 @@ describe("turn resume slack integration", () => {
 
     await waitUntilCallbacks[0]?.();
 
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0002",
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that. Reference: `event_id=",
-          ),
-        }),
-      }),
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+    expect(queueSends).toEqual([
+      {
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `timeout:${conversationId}:${sessionId}:`,
+        ),
+      },
     ]);
 
     const persisted =
@@ -347,10 +356,10 @@ describe("turn resume slack integration", () => {
     const conversation = (persisted.conversation ?? {}) as {
       processing?: { activeTurnId?: string };
     };
-    expect(conversation.processing?.activeTurnId).toBeUndefined();
+    expect(conversation.processing?.activeTurnId).toBe(sessionId);
   });
 
-  it("posts a continuation notice with a correlation footer when a resumed slice times out again", async () => {
+  it("schedules a durable continuation without posting a notice when a resumed slice times out again", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord =
@@ -428,43 +437,18 @@ describe("turn resume slack integration", () => {
     expect(response.status).toBe(202);
     expect(waitUntilCallbacks).toHaveLength(1);
 
-    const originalFetch = global.fetch;
-    const fetchMock = vi.fn(
-      async () => new Response("Accepted", { status: 202 }),
-    );
-    global.fetch = fetchMock as typeof fetch;
-    try {
-      await waitUntilCallbacks[0]?.();
-    } finally {
-      global.fetch = originalFetch;
-    }
+    await waitUntilCallbacks[0]?.();
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
-    expect(postCalls).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0006",
-          text: buildTurnContinuationResponse(),
-          blocks: [
-            {
-              type: "markdown",
-              text: buildTurnContinuationResponse(),
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `*ID:* ${conversationId}`,
-                },
-              ],
-            },
-          ],
-        }),
-      }),
+    expect(postCalls).toEqual([]);
+    expect(queueSends).toEqual([
+      {
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `timeout:${conversationId}:${sessionId}:`,
+        ),
+      },
     ]);
-    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("uploads resumed reply files through the shared delivery path", async () => {

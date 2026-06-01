@@ -1,33 +1,77 @@
 # Common Use Cases
 
-Use these patterns when Pi `Agent` is consumed by another library/runtime.
+Open this when adding Pi behavior in a consuming app, library, runtime, or adapter.
 
-1. Stream assistant text into another SDK surface:
-Use `agent.subscribe` and forward only `message_update` + `text_delta` into an `AsyncIterable<string>` bridge.
+## Stream assistant text into another surface
 
-2. Preserve streamed-vs-final output parity:
-Insert separators between assistant message boundaries during delta streaming so final joined text matches non-streamed output semantics.
+Use `agent.subscribe()` and forward only:
 
-3. Add custom app messages without leaking them to LLM calls:
-Keep custom message types in agent state; filter/convert them in `convertToLlm`.
+```ts
+event.type === "message_update" &&
+  event.assistantMessageEvent.type === "text_delta";
+```
 
-4. Prune or augment context safely:
-Use `transformContext` for context window control and deterministic context injection before `convertToLlm`.
+Bridge those deltas into the consumer's streaming abstraction. Insert separators only at intentional assistant message boundaries and apply the same normalization to streamed and finalized output.
 
-5. Support user steering while tools are running:
-Use `steer` for interruptions and `followUp` for deferred prompts instead of issuing parallel `prompt()` calls.
+## Proxy provider access
 
-6. Implement timeout-controlled turns:
-Race prompt execution against a timeout, call `agent.abort()` on timeout, and surface explicit timeout diagnostics.
+Use `streamFn` when model calls must route through a backend, tracing layer, gateway, or policy boundary.
 
-7. Resume across session slices/checkpoints:
-Restore message history (for example via `replaceMessages`) and call `continue()` with valid tail-state semantics.
+- Preserve the `StreamFn` contract: return a stream; do not throw/reject for expected provider failures.
+- Use `streamProxy` when a browser or untrusted client needs server-owned auth.
+- Use `onPayload` and `onResponse` when the consumer needs provider payload/response observation without replacing the stream function.
 
-8. Route through backend-proxied model access:
-Provide a custom `streamFn` (or `streamProxy`) so auth/provider calls stay server-side while preserving local `Agent` event semantics.
+## Resolve short-lived credentials
 
-9. Handle expiring provider tokens:
-Use `getApiKey` dynamic resolution for each LLM call instead of static long-lived API keys.
+Use `getApiKey(provider)` for per-call provider credentials. Return `undefined` for expected unauthenticated states and let the consumer own visible auth recovery.
 
-10. Tune transport/retry constraints:
-Set `transport` and `maxRetryDelayMs` intentionally for consumer runtime behavior and bounded latency.
+## Add custom app messages
+
+Extend `CustomAgentMessages` and keep custom entries in `agent.state.messages` when they matter to UI/session state. Use `convertToLlm` to filter UI-only messages or map custom messages to provider-compatible `user`, `assistant`, or `toolResult` messages.
+
+## Prune or augment context
+
+Use `transformContext(messages, signal)` for message-level pruning, compaction insertion, external context injection, and other operations that should happen before provider conversion.
+
+Keep `transformContext` deterministic and no-throw for expected cases. Return the original messages or a conservative safe subset when pruning cannot run.
+
+## Support steering and follow-ups
+
+Use `steer()` for user input that should influence the next model call after the current assistant turn and tool batch finish. Use `followUp()` for input that should wait until the agent would otherwise stop.
+
+Set `steeringMode` and `followUpMode` explicitly when queued-message batching affects UX or correctness.
+
+## Retry or resume generation
+
+Use `continue()` only when the agent is idle and has a valid transcript.
+
+- `user` or `toolResult` tail: normal continuation.
+- `assistant` tail with queued steering/follow-up: drains queued messages as a new prompt path.
+- `assistant` tail without queued messages: throws.
+
+For provider retry, trim only retryable trailing assistant error messages and continue from a safe `user` or `toolResult` boundary.
+
+## Bound and abort runs
+
+Race the prompt/continue promise against the consumer timeout. On timeout, call `agent.abort()`, wait for run settlement when possible, and close downstream streams/iterables in `finally`.
+
+## Execute tools through Pi
+
+Prefer Pi's tool execution surface over a custom runner.
+
+- Use `toolExecution` for global parallel/sequential policy.
+- Use per-tool `executionMode` for tools that cannot run in a concurrent batch.
+- Use `beforeToolCall` to block or authorize a call after validation.
+- Use `afterToolCall` to patch content/details/error/termination at the final tool boundary.
+- Throw from `execute()` on tool failure; Pi will create an error tool result for the model.
+- Use `onUpdate` for progress, not user-visible final replies.
+
+## Stop gracefully between turns
+
+Use low-level `shouldStopAfterTurn` when the consumer owns the loop and needs to stop after a completed assistant turn before queues are polled.
+
+Use `prepareNextTurn` when the next provider request needs a replacement context, model, or thinking level.
+
+## Choose `AgentHarness`
+
+Use Pi's `AgentHarness` instead of a custom wrapper when the consumer needs a session tree, skill loading/invocation, prompt templates, resources, filesystem/shell environment, compaction, branch navigation, provider request hooks, or high-level queue UX. Read `references/harness.md`.

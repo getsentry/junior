@@ -209,6 +209,8 @@ export interface ReplyRequestContext {
   configuration?: Record<string, unknown>;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
   piMessages?: PiMessage[];
+  /** Absolute wall-clock deadline for this host request, in milliseconds. */
+  turnDeadlineAtMs?: number;
   channelConfiguration?: ChannelConfigurationService;
   userAttachments?: Array<{
     data?: Buffer;
@@ -409,6 +411,16 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
   const replyStartedAtMs = Date.now();
+  const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
+  const contextTurnDeadlineAtMs =
+    typeof context.turnDeadlineAtMs === "number" &&
+    Number.isFinite(context.turnDeadlineAtMs)
+      ? Math.floor(context.turnDeadlineAtMs)
+      : undefined;
+  const turnDeadlineAtMs =
+    contextTurnDeadlineAtMs === undefined
+      ? configuredTurnDeadlineAtMs
+      : Math.min(configuredTurnDeadlineAtMs, contextTurnDeadlineAtMs);
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
@@ -1166,7 +1178,7 @@ export async function generateAssistantReply(
           ): Promise<unknown> => {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
             const timeoutPromise = new Promise<never>((_, reject) => {
-              timeoutId = setTimeout(() => {
+              const rejectWithTimeout = () => {
                 timedOut = true;
                 agent.abort();
                 reject(
@@ -1174,7 +1186,13 @@ export async function generateAssistantReply(
                     `Agent turn timed out after ${botConfig.turnTimeoutMs}ms`,
                   ),
                 );
-              }, botConfig.turnTimeoutMs);
+              };
+              const remainingTimeoutMs = turnDeadlineAtMs - Date.now();
+              if (remainingTimeoutMs <= 0) {
+                rejectWithTimeout();
+                return;
+              }
+              timeoutId = setTimeout(rejectWithTimeout, remainingTimeoutMs);
             });
 
             try {
@@ -1195,6 +1213,10 @@ export async function generateAssistantReply(
                         }
                       : {}),
                     "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
+                    "app.ai.turn_deadline_remaining_ms": Math.max(
+                      0,
+                      turnDeadlineAtMs - Date.now(),
+                    ),
                   },
                   "Agent turn timed out and was aborted",
                 );

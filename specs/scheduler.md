@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-05-31
+- Last Edited: 2026-06-01
 
 ## Purpose
 
@@ -310,6 +310,7 @@ Use unit tests only for small deterministic helpers when integration or eval cov
 ## Related Specs
 
 - `./chat-architecture.md`
+- `./task-execution.md`
 - `./agent-prompt.md`
 - `./agent-session-resumability.md`
 - `./trusted-plugin-heartbeat.md`

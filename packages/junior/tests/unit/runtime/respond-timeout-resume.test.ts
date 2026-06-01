@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { promptAborted, promptMode } = vi.hoisted(() => ({
   promptAborted: { value: false },
   promptMode: {
-    value: "settlesAfterAbort" as "settlesAfterAbort" | "hangsAfterAbort",
+    value: "settlesAfterAbort" as
+      | "settlesAfterAbort"
+      | "hangsAfterAbort"
+      | "providerRetryThenHangs",
   },
 }));
 
@@ -43,6 +46,18 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     async continue() {
+      if (promptMode.value === "providerRetryThenHangs") {
+        await new Promise<void>((resolve) => {
+          this.resolveAbort = resolve;
+        });
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "continued partial" }],
+          stopReason: "stop",
+        });
+        return {};
+      }
+
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "continued" }],
@@ -53,6 +68,16 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
+      if (promptMode.value === "providerRetryThenHangs") {
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "provider error" }],
+          stopReason: "error",
+          errorMessage: "Provider returned error: 503 service unavailable",
+        });
+        return {};
+      }
       if (promptMode.value === "hangsAfterAbort") {
         await new Promise(() => undefined);
         return {};
@@ -285,6 +310,40 @@ describe("generateAssistantReply timeout resume", () => {
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-hung",
       "turn-hung",
+    );
+    expect(sessionRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      sliceId: 2,
+    });
+    expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+      }),
+    ]);
+  });
+
+  it("uses one wall-clock timeout budget across provider retries", async () => {
+    promptMode.value = "providerRetryThenHangs";
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-retry",
+        turnId: "turn-retry",
+        channelId: "C123",
+        threadTs: "1712345.0004",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const error = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-retry",
+      "turn-retry",
     );
     expect(sessionRecord).toMatchObject({
       state: "awaiting_resume",

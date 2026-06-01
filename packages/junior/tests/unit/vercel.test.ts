@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
 
 describe("juniorVercelConfig", () => {
@@ -13,6 +14,17 @@ describe("juniorVercelConfig", () => {
         schedule: "* * * * *",
       },
     ]);
+    expect(config.functions).toEqual({
+      "server.ts": {
+        maxDuration: 300,
+        experimentalTriggers: [
+          {
+            type: "queue/v2beta",
+            topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
+          },
+        ],
+      },
+    });
   });
 
   it("omits buildCommand when set to null", () => {

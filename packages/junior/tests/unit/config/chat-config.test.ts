@@ -158,25 +158,25 @@ describe("chat config", () => {
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();
-    expect(botConfig.turnTimeoutMs).toBe(720000);
+    expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
   it("uses AGENT_TURN_TIMEOUT_MS from env var when valid", async () => {
-    process.env.AGENT_TURN_TIMEOUT_MS = "600000";
+    process.env.AGENT_TURN_TIMEOUT_MS = "240000";
     const { botConfig } = await loadConfig();
-    expect(botConfig.turnTimeoutMs).toBe(600000);
+    expect(botConfig.turnTimeoutMs).toBe(240000);
   });
 
   it("falls back to default AGENT_TURN_TIMEOUT_MS when env var is invalid", async () => {
     process.env.AGENT_TURN_TIMEOUT_MS = "not-a-number";
     const { botConfig } = await loadConfig();
-    expect(botConfig.turnTimeoutMs).toBe(720000);
+    expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
   it("caps AGENT_TURN_TIMEOUT_MS to configured max", async () => {
     process.env.AGENT_TURN_TIMEOUT_MS = "999999";
     const { botConfig } = await loadConfig();
-    expect(botConfig.turnTimeoutMs).toBe(780000);
+    expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
   it("derives AGENT_TURN_TIMEOUT_MS cap from FUNCTION_MAX_DURATION_SECONDS", async () => {

@@ -1,3 +1,5 @@
+import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+
 export interface JuniorVercelConfigOptions {
   buildCommand?: string | null;
 }
@@ -15,6 +17,17 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
         schedule: "* * * * *",
       },
     ],
+    functions: {
+      "server.ts": {
+        maxDuration: 300,
+        experimentalTriggers: [
+          {
+            type: "queue/v2beta",
+            topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
+          },
+        ],
+      },
+    },
   };
 
   if (buildCommand !== null) {

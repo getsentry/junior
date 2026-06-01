@@ -193,7 +193,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.options.vercel ??= {};
         nitro.options.vercel.functions ??= {};
         nitro.options.vercel.functions.maxDuration ??=
-          options.maxDuration ?? 800;
+          options.maxDuration ?? 300;
 
         applyRolldownTreeshakeWorkaround(nitro);
         const pluginSource = options.plugins;

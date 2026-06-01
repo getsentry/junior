@@ -135,7 +135,7 @@ Scenarios:
 2. Authorization pause resumes:
    - When a turn resumes after an authorization pause, Junior must continue the pending user request from durable session history and answer with the final requested content only.
 3. Timeout continuation resumes:
-   - When a turn resumes after a timeout continuation notice, Junior must continue the same pending turn and not apologize for or repeat the runtime continuation notice unless the final answer needs to explain an actual blocker.
+   - When a turn resumes after a timeout continuation, Junior must continue the same pending turn and not apologize for or mention routine runtime continuation unless the final answer needs to explain an actual blocker.
 
 ### 9. Attachments And Unavailable Vision
 

@@ -57,10 +57,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import {
-  canScheduleTurnTimeoutResume,
-  scheduleTurnTimeoutResume,
-} from "@/chat/services/timeout-resume";
+import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import type { AssistantReply } from "@/chat/respond";
 
 /**
@@ -413,15 +410,9 @@ async function resumeOAuthSessionRecordTurn(
             throw error;
           }
           const version = error.metadata?.version;
-          const nextSliceId = error.metadata?.sliceId;
           if (typeof version !== "number") {
             throw new Error(
               "Timed-out OAuth resume did not include a turn-session version",
-            );
-          }
-          if (!canScheduleTurnTimeoutResume(nextSliceId)) {
-            throw new Error(
-              "Timed-out turn exceeded the automatic resume slice limit",
             );
           }
           await scheduleTurnTimeoutResume({

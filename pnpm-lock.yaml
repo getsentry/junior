@@ -159,6 +159,9 @@ importers:
       "@vercel/functions":
         specifier: ^3.6.0
         version: 3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43)
+      "@vercel/queue":
+        specifier: ^0.2.0
+        version: 0.2.0
       "@vercel/sandbox":
         specifier: 2.0.0
         version: 2.0.0
@@ -204,7 +207,7 @@ importers:
         version: 2.14.6(@types/node@25.9.1)(typescript@6.0.3)
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0
@@ -245,7 +248,7 @@ importers:
         version: 1.17.0(react@19.2.6)
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -4660,6 +4663,13 @@ packages:
       {
         integrity: sha512-kAykqslePS5jRgBsIui8m4BK7/7+Iqztb7X88qeTDqg0eP/JRCxg0kxC7HkX9ZkW9lpQr6hn6CNzMAdKH8ihFg==,
       }
+
+  "@vercel/queue@0.2.0":
+    resolution:
+      {
+        integrity: sha512-+iOwbz9wHWwcr8kLyB6m6seE/Kw2mn0Mxatj+6ko6HwBaCZGSYRNgII7JwrKMPSaxaqE1iZ3BZRbhLwYQATaew==,
+      }
+    engines: { node: ">=20.0.0" }
 
   "@vercel/redwood@2.4.13":
     resolution:
@@ -13572,6 +13582,7 @@ snapshots:
       "@sinclair/typebox": 0.34.49
       "@slack/web-api": 7.16.0
       "@vercel/functions": 3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43)
+      "@vercel/queue": 0.2.0
       "@vercel/sandbox": 2.0.0
       ai: 6.0.190(zod@4.4.3)
       bash-tool: 1.3.16(@vercel/sandbox@2.0.0)(ai@6.0.190(zod@4.4.3))(just-bash@3.0.1)
@@ -15222,12 +15233,14 @@ snapshots:
 
   entities@6.0.1: {}
 
-  env-runner@0.1.9:
+  env-runner@0.1.9(@vercel/queue@0.2.0):
     dependencies:
       crossws: 0.4.5(srvx@0.11.16)
       exsolve: 1.0.8
       httpxy: 0.5.3
       srvx: 0.11.16
+    optionalDependencies:
+      "@vercel/queue": 0.2.0
 
   environment@1.1.0: {}
 
@@ -16965,12 +16978,12 @@ snapshots:
 
   nf3@0.3.17: {}
 
-  nitro@3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)):
+  nitro@3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.5(srvx@0.11.16)
       db0: 0.3.4
-      env-runner: 0.1.9
+      env-runner: 0.1.9(@vercel/queue@0.2.0)
       h3: 2.0.1-rc.22(crossws@0.4.5(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
@@ -16982,6 +16995,7 @@ snapshots:
       unenv: 2.0.0-rc.24
       unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(db0@0.3.4)(lru-cache@11.5.0)(ofetch@2.0.0-alpha.3)
     optionalDependencies:
+      "@vercel/queue": 0.2.0
       jiti: 2.7.0
       rollup: 4.60.4
       vite: 8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)
@@ -17016,12 +17030,12 @@ snapshots:
       - sqlite3
       - uploadthing
 
-  nitro@3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)):
+  nitro@3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.5(srvx@0.11.16)
       db0: 0.3.4
-      env-runner: 0.1.9
+      env-runner: 0.1.9(@vercel/queue@0.2.0)
       h3: 2.0.1-rc.22(crossws@0.4.5(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
@@ -17033,6 +17047,7 @@ snapshots:
       unenv: 2.0.0-rc.24
       unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(db0@0.3.4)(lru-cache@11.5.0)(ofetch@2.0.0-alpha.3)
     optionalDependencies:
+      "@vercel/queue": 0.2.0
       jiti: 2.7.0
       rollup: 4.60.4
       vite: 8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)

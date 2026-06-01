@@ -1,4 +1,7 @@
-import { getProductionBot } from "@/chat/app/production";
+import type { SlackAdapter } from "@chat-adapter/slack";
+import { getProductionSlackWebhookServices } from "@/chat/app/production";
+import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import { JuniorChat } from "@/chat/ingress/junior-chat";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -30,6 +33,8 @@ interface SlackWebhookAuthAdapter {
   ) => boolean;
 }
 
+type LegacyChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
+
 function getSlackPayloadTeamId(body: unknown): string | undefined {
   if (!body || typeof body !== "object") {
     return undefined;
@@ -41,7 +46,7 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
 
 async function handleAuthenticatedSlackMessageChangedMention(args: {
   body: unknown;
-  bot: ReturnType<typeof getProductionBot>;
+  bot: LegacyChatSdkBot;
   rawBody: string;
   request: Request;
   waitUntil: WaitUntilFn;
@@ -51,14 +56,10 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
 
-  // Reuse the adapter's own Slack signature verification before dispatching
-  // the synthetic edit event so this side-channel cannot bypass auth.
   if (!authAdapter.verifySignature(args.rawBody, timestamp, signature)) {
     return;
   }
 
-  // Chat SDK initializes adapters automatically inside webhook handling. This
-  // side-channel runs before the SDK handler, so it must join that lifecycle.
   await args.bot.initialize();
 
   const webhookOptions = {
@@ -111,81 +112,76 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   authAdapter.requestContext.run(context, dispatch);
 }
 
+async function handleLegacyChatSdkWebhook(args: {
+  bot: LegacyChatSdkBot;
+  platform: string;
+  request: Request;
+  waitUntil: WaitUntilFn;
+}): Promise<Response> {
+  const handler =
+    args.bot.webhooks[args.platform as keyof typeof args.bot.webhooks];
+  if (!handler) {
+    return new Response(`Unknown platform: ${args.platform}`, { status: 404 });
+  }
+
+  let request = args.request;
+  let slackWorkspaceTeamId: string | undefined;
+  if (args.platform === "slack") {
+    const rawBody = await args.request.text();
+    const parsedBody = parseJson(rawBody);
+    slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
+
+    if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
+      await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
+        handleAuthenticatedSlackMessageChangedMention({
+          body: parsedBody,
+          bot: args.bot,
+          rawBody,
+          request: args.request,
+          waitUntil: args.waitUntil,
+        }),
+      );
+    }
+
+    request = new Request(args.request.url, {
+      method: args.request.method,
+      headers: args.request.headers,
+      body: rawBody,
+    });
+  }
+
+  return await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
+    handler(request, {
+      waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
+    } as Parameters<typeof handler>[1]),
+  );
+}
+
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Handles `POST /api/webhooks/:platform`.
  *
- * The router only resolves the platform and delegates to the adapter webhook
- * implementation; request semantics stay owned by the adapter package.
- *
- * For Slack, the body is read once and used to detect `message_changed` events
- * that introduce a new bot @mention, which the Slack adapter silently ignores.
- * The request is then reconstructed so the adapter can consume it normally.
+ * Slack production ingress persists messages into the durable conversation
+ * mailbox and wakes the queue worker. The optional `legacyBot` parameter is
+ * kept for integration tests that still exercise Chat SDK fixtures directly.
  */
 export async function handlePlatformWebhook(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
-  bot = getProductionBot(),
+  legacyBot?: LegacyChatSdkBot,
 ): Promise<Response> {
-  const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
 
-  return withContext(requestContext, async () => {
-    if (!handler) {
-      const error = new Error(`Unknown platform: ${platform}`);
-      logException(
-        error,
-        "webhook_platform_unknown",
-        {},
-        {
-          "http.response.status_code": 404,
-        },
-        `Unknown platform: ${platform}`,
-      );
-      return new Response(`Unknown platform: ${platform}`, { status: 404 });
-    }
-
-    // For Slack webhooks, peek the body to handle `message_changed` events
-    // that introduce a new bot @mention. The Slack adapter drops these subtypes,
-    // so we dispatch them as a synthesized mention before forwarding to the adapter.
-    let rebuiltRequest = request;
-    let slackWorkspaceTeamId: string | undefined;
-    if (platform === "slack") {
-      const rawBody = await request.text();
-      let parsedBody: unknown;
-      try {
-        parsedBody = JSON.parse(rawBody);
-      } catch {
-        parsedBody = undefined;
-      }
-
-      slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
-
-      if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
-        try {
-          await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
-            handleAuthenticatedSlackMessageChangedMention({
-              body: parsedBody,
-              bot,
-              rawBody,
-              request,
-              waitUntil,
-            }),
-          );
-        } catch (error) {
-          logException(error, "slack_message_changed_side_channel_failed");
-        }
-      }
-
-      // Reconstruct the request so the adapter can read the body.
-      rebuiltRequest = new Request(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: rawBody,
-      });
-    }
-
+  return await withContext(requestContext, async () => {
     try {
       return await withSpan(
         "http.server.request",
@@ -193,13 +189,26 @@ export async function handlePlatformWebhook(
         requestContext,
         async () => {
           try {
-            const response = await runWithWorkspaceTeamId(
-              slackWorkspaceTeamId,
-              () =>
-                handler(rebuiltRequest, {
-                  waitUntil: (task: Promise<unknown>) => waitUntil(task),
-                } as Parameters<typeof handler>[1]),
-            );
+            let response: Response;
+            if (legacyBot) {
+              response = await handleLegacyChatSdkWebhook({
+                bot: legacyBot,
+                platform,
+                request,
+                waitUntil,
+              });
+            } else if (platform === "slack") {
+              response = await handleSlackWebhook({
+                request,
+                services: getProductionSlackWebhookServices(),
+                waitUntil,
+              });
+            } else {
+              response = new Response(`Unknown platform: ${platform}`, {
+                status: 404,
+              });
+            }
+
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
               try {
@@ -227,6 +236,7 @@ export async function handlePlatformWebhook(
                 `Webhook ${platform} returned ${response.status}`,
               );
             }
+
             setSpanAttributes({
               "http.response.status_code": response.status,
             });
@@ -249,6 +259,7 @@ export async function handlePlatformWebhook(
   });
 }
 
+/** Handle a platform webhook request from the app route. */
 export async function POST(
   request: Request,
   platform: string,

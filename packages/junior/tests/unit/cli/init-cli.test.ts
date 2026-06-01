@@ -57,7 +57,17 @@ describe("init cli", () => {
         schedule: "* * * * *",
       },
     ]);
-    expect(vercelConfig.functions).toBeUndefined();
+    expect(vercelConfig.functions).toEqual({
+      "server.ts": {
+        maxDuration: 300,
+        experimentalTriggers: [
+          {
+            type: "queue/v2beta",
+            topic: "junior_conversation_work",
+          },
+        ],
+      },
+    });
 
     const pkg = JSON.parse(
       fs.readFileSync(path.join(target, "package.json"), "utf8"),

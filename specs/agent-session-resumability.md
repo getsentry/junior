@@ -15,7 +15,7 @@ Define the durable agent session log and how a single assistant turn is split in
 - Durable agent session history and its projection into Pi/runtime state.
 - Minimal session-log event schema at safe resume boundaries.
 - Pi replay/continue contract (`agent.state.messages = ...` + `continue`) across slices.
-- Signed internal callback contract for timeout continuation.
+- Continuation contract for queue-driven conversation workers.
 - Separation between canonical session logs, derived projections, and durable thread state.
 - Failure recovery and observability requirements.
 
@@ -25,14 +25,15 @@ Define the durable agent session log and how a single assistant turn is split in
 - Backward compatibility with legacy `inflight_partial` state.
 - Replacing existing tool implementations or Slack transport UX.
 - Multi-turn planning policies (this spec covers one assistant turn/session at a time).
-- A generic queue/lease/fencing workflow runtime.
+- Conversation mailbox, queue wake-up, lease, and heartbeat mechanics owned by
+  `./task-execution.md`.
 - Reconciling or rewriting partially visible Slack assistant output after timeout.
 
 ## Contracts
 
 ### Spec Boundary
 
-This spec owns how one assistant turn is persisted and resumed across execution slices. The full Slack-event-to-agent-to-Slack data flow belongs to `./chat-architecture.md`; user-visible Slack acknowledgements and final delivery belong to `./slack-agent-delivery.md`.
+This spec owns how agent session state is persisted and resumed across execution slices. The durable mailbox, queue wake-up, lease, and heartbeat recovery flow belongs to `./task-execution.md`. The full Slack-event-to-agent-to-Slack data flow belongs to `./chat-architecture.md`; user-visible Slack progress and final delivery belong to `./slack-agent-delivery.md`.
 
 ### Identity Model
 
@@ -40,9 +41,12 @@ This spec owns how one assistant turn is persisted and resumed across execution 
 - `session_id`: Conversation-local session marker for the reduced session-log
   projection. It starts at `session_0`, advances when `projection_reset`
   creates a replacement projection, and is not the durable history key.
-- `turn_id`: Internal identity for one resumable execution attempt inside the
-  conversation. This is only needed for pause/resume correlation and diagnostics.
-- `slice_id`: Monotonic integer starting at `1` for each resumed execution chunk in the same turn.
+- `turn_id`: Optional internal identity for one resumable execution attempt
+  inside the conversation. Queue-driven continuation does not need this value to
+  decide where to resume; the reduced conversation session log is the resume
+  source.
+- `slice_id`: Diagnostic integer for one execution chunk in the same
+  conversation. The first-pass mailbox worker must not enforce a slice cap.
 - `event_id`: Stable identity for one durable session-log event.
 - `pause_event_id`: Event id carried by timeout/auth resume callbacks so stale callbacks can be dropped.
 
@@ -53,15 +57,15 @@ events. Each pause event identifies one safe resume boundary inside that log.
 
 ### Runtime State Partition
 
-- Chat SDK state is the ingress coordination layer. It owns webhook message
-  dedupe/cache, `concurrency: "queue"` storage, per-thread locks, thread
-  subscriptions, and `thread.setState()`/`channel.setState()` payloads.
+- Task execution state is the ingress coordination layer. It owns durable
+  conversation mailboxes, queue wake-up nudges, conversation leases, and
+  heartbeat repair as specified in `./task-execution.md`.
 - Junior agent session state is separate application state. It owns the
   append-only model execution history and the minimal runtime transition facts
   needed to resume that history.
-- Junior may reuse the same Redis connection as the Chat SDK adapter, but the
-  session log keyspace must be Junior-owned, not Chat SDK thread-state/cache
-  keys.
+- Junior may reuse the same Redis connection as the mailbox and lease stores,
+  but the session log keyspace must remain Junior-owned and separate from
+  mailbox indexes.
 - The durable session log key is `junior:agent-session-log:<conversation_id>`
   (prefixed by `JUNIOR_STATE_KEY_PREFIX` when configured). It stores an
   append-only chronological model-execution log with one deterministic
@@ -88,20 +92,20 @@ events. Each pause event identifies one safe resume boundary inside that log.
 
 ### Ingress Queue Contract
 
-Production Slack ingress uses Chat SDK `concurrency: "queue"` for each
-normalized thread key. The SDK holds the per-thread lock while the active
-handler runs. Messages that arrive during that handler are queued; after the
-handler finishes, the SDK drains the queue, dispatches the latest queued
-message, and passes earlier queued messages as `MessageContext.skipped`.
+Production ingress appends normalized inbound messages to the durable
+conversation mailbox and sends a queue wake-up nudge containing only the
+`conversation_id`. Ingress does not decide whether a message starts a new turn
+or steers an active one.
 
-Junior must consume `MessageContext.skipped` as user-authored input for the
-next dispatched turn. Ignoring it loses user messages even though the SDK queue
-worked correctly.
+The queue worker owns the conversation lease. Before each Pi `continue()`, and
+again at each safe boundary before another model call, the worker drains pending
+mailbox messages into the session log. Drained messages become part of the same
+active conversation rather than a competing run.
 
-Session-log writes for a live Slack turn must happen before the SDK handler
-returns and releases the thread lock. Timeout and OAuth resume handlers must
-acquire the same logical thread/conversation lock before reading or writing the
-session log.
+Session-log writes for drained inbound messages must happen before those
+messages are marked injected in the mailbox. Queue delivery acknowledgement must
+happen only after the worker has durably committed final completion, safe
+cooperative yield, or a no-work result.
 
 ### Agent Session Log Contract
 
@@ -153,8 +157,8 @@ happened:
 
 - `user_input_received`: records the user input that starts one assistant turn
   session when the first Pi user message does not already carry enough identity.
-- `slice_started`: records that a serverless execution slice started when slice identity is
-  needed for timeout accounting, diagnostics, or callback validation.
+- `slice_started`: records that a serverless execution chunk started when that
+  fact is needed for timeout accounting or diagnostics.
 - `pi_message`: records user, assistant, tool-call, tool-result, and
   host-authored Pi messages.
 - `projection_reset`: advances the current Pi projection to an earlier safe
@@ -165,14 +169,13 @@ happened:
   authorization link for provider work that blocked the current session.
 - `authorization_completed`: records that the requester completed the
   authorization callback for the blocked provider work.
-- `timeout_paused`: records a safe timeout boundary and carries the
-  `pause_event_id` used by the signed continuation callback.
+- `timeout_paused`: records a safe timeout or cooperative-yield boundary when a
+  durable pause fact is needed beyond the Pi messages already in the log.
 - `auth_paused`: records a safe auth boundary and points at auth-owned callback
   state.
 - `pause_resumed`: records that a specific pause event was consumed when that
-  fact is needed to reject stale callbacks or explain slice continuity. Omit it
-  when a following `slice_started` event with
-  `reason=timeout_resume|auth_resume` is enough.
+  fact is needed to explain execution continuity. Omit it when a following
+  `slice_started` event with `reason=queue_resume|auth_resume` is enough.
 - `assistant_reply_delivered`: records that the final assistant reply for this
   session was accepted by Slack.
 - `session_abandoned`: records that this session must not resume because a
@@ -347,8 +350,9 @@ Valid lifecycle transitions:
 4. `delivered` is terminal
 5. `abandoned` is terminal
 
-The implementation should not persist a separate `running` lease state between
-slices. Per-thread execution locks are owned by the Chat SDK state adapter.
+The implementation should not persist a separate `running` lease state in the
+session log. Conversation execution leases are mailbox-worker state owned by
+`./task-execution.md`.
 
 ### Safe Resume Boundary Contract
 
@@ -424,67 +428,59 @@ is resumable with `continue()`.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 
-### Slice Deadline And Timeout Pause Contract
+### Cooperative Continuation Contract
 
-- Slice execution is bounded by:
-  - `AGENT_TURN_TIMEOUT_MS` inside `generateAssistantReply(...)`
-  - the platform/function max duration outside the agent loop
-- On timeout:
-  1. Abort the Pi agent and wait only a short bounded grace period for the in-flight prompt/continue call to settle before snapshotting Pi messages. If the run does not settle, use the best available in-memory Pi state and the last durable boundary rules below; timeout recovery must not wait until the platform/function max duration kills the request.
-  2. If session context exists and a safe boundary can be materialized, append a `timeout_paused` event with:
-     - `pause_event_id`
-     - current `slice_id`
-     - `resumed_from_slice_id=<previous slice>`
-     - projected safe Pi boundary, directly or by deterministic projection rule
-  3. Throw a retryable timeout error carrying `conversation_id`, `turn_id`, `slice_id`, and `pause_event_id`.
-  4. If timeout pause persistence fails, fall back to normal non-resumable turn failure behavior.
-
-### Automatic Continuation Contract
-
-- Session continuation is the agent recovery model: Junior must be able to rebuild the runtime from durable thread state plus the latest safe session-log pause event and continue the same turn session.
-- This spec covers session-log and resume mechanics. Transport retry/locking is defined in the chat architecture spec, and Slack-visible delivery behavior is defined in the Slack delivery spec.
-- Automatic timeout continuation is the current proactive producer of session-continuation work for serverless/Vercel time limits. It is best-effort and currently uses a signed internal HTTP callback, not a generic queue/lease system.
-- A timeout pause may be auto-scheduled only when no assistant text has been made visible to the user for the current turn.
-- Once visible assistant output has started posting, the runtime must not auto-resume that turn or attempt to rewrite/reconcile the partial output.
-- In the current Slack delivery contract, assistant text is not posted until the reply is finalized, so ordinary agent-generation timeouts still occur before visible output begins.
-- If a later user message arrives while `activeTurnId` points at a session whose reduced state is awaiting automatic continuation, the live runtime must treat that message as a retry signal for the existing session: reschedule the pause callback, keep `activeTurnId` on the original session, and do not start a new agent turn.
-- In that case, the last safe pause event may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail only after automatic continuation is impossible or exhausted.
+- Session continuation is the agent recovery model: Junior must be able to
+  rebuild runtime state from durable thread state plus the reduced session log
+  and call Pi `continue()`.
+- The task execution spec owns when a serverless worker should yield, enqueue
+  another conversation wake-up, release the lease, and exit.
+- This spec owns only the session-log requirement: every safe boundary that may
+  be resumed must already be durably represented in the session log before the
+  worker yields or before the next model call begins.
+- Routine cooperative continuation must happen only at safe Pi boundaries. The
+  runtime must not create synthetic checkpoints midway through a model stream or
+  tool call.
+- If a function dies during a model or tool call, recovery uses the last
+  previously persisted safe boundary. It does not need an emergency abort to
+  create a new boundary.
+- Once visible assistant output has started posting, the runtime must not
+  auto-resume that turn or attempt to rewrite/reconcile the partial output.
+- In the current Slack delivery contract, assistant text is not posted until the
+  reply is finalized, so ordinary generation and tool-loop continuation remains
+  eligible until final delivery starts.
+- If a later user message arrives while the conversation is active, the mailbox
+  worker treats it as pending input for the same conversation and injects it at
+  the next safe boundary. It must not start a competing agent run for the same
+  conversation.
 
 ### In-Process Provider Retry Contract
 
 - Transient provider failures reported as terminal assistant messages with `stopReason=error` may be retried inside the same running slice before final Slack delivery.
 - Provider retry must not replay the original user prompt. It must remove only the trailing assistant error message(s), verify the remaining Pi history ends at a continuable boundary (`user` or `toolResult`), append a `projection_reset` event for that safe boundary, then call `continue()`.
 - Provider retry is bounded and uses short exponential backoff. If the retry limit is reached, if the error is not classified as transient, or if no safe boundary remains after trimming, the normal provider-failure reply path owns user-visible recovery.
-- Provider retry does not create an awaiting pause and does not schedule a signed resume callback. If a retried slice later times out, the timeout continuation contract above applies.
+- Provider retry does not create an awaiting pause. If a retried slice reaches a
+  cooperative yield boundary later, the conversation mailbox worker owns
+  re-enqueueing the conversation.
 - Provider retry is only allowed before final Slack reply delivery. The runtime must not retry by rewriting or reconciling text already posted to Slack.
 
-### Internal Timeout-Resume Callback Contract
+### Queue-Driven Resume Contract
 
-The timeout-resume callback payload is:
+A queue-driven resume payload contains only `conversation_id`. It must not carry
+a checkpoint, slice id, or prompt text.
 
-- `conversation_id`
-- `turn_id`
-- `pause_event_id`
+The worker must:
 
-The callback must:
-
-1. Be authenticated with an HMAC signature over the request body plus timestamp.
-2. Be rejected when the signature is invalid or too old.
-3. Load and reduce the session log for `conversation_id`.
-4. Exit without work when:
-   - no session log exists
-   - `state !== awaiting_resume`
-   - `resume_reason !== timeout`
-   - `latest_pause_event_id !== pause_event_id`
-5. Acquire the same per-thread state-adapter lock used by live turn execution. Because callbacks are often scheduled before the scheduling live handler has released the lock, a busy lock must be retried for a short bounded window before the callback reschedules itself.
-6. Rebuild turn runtime state from durable thread/configuration state:
-   - user message
+1. Acquire the conversation lease defined in `./task-execution.md`.
+2. Load durable thread/configuration state:
    - conversation context
+   - pending mailbox messages
    - artifact state
    - sandbox identity
    - channel configuration
-7. Restore Pi messages with `agent.state.messages = ...` and resume with `continue()`.
-8. If the resumed slice times out again before visible output, schedule a new callback carrying the new `pause_event_id`.
+3. Drain pending mailbox messages into the session log idempotently.
+4. Restore Pi messages with `agent.state.messages = ...`.
+5. Resume with `continue()`.
 
 ### Slice Lifecycle
 
@@ -496,40 +492,32 @@ The callback must:
    context, runtime loads and reduces it, restores Pi from the projected
    messages, and appends the new user input without duplicating bootstrap
    context.
-4. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
+4. The queue worker runs and eagerly persists sandbox/artifact state as those values change.
 5. If Slack accepts the final assistant reply, append `assistant_reply_delivered`.
 6. If MCP auth pauses at a safe boundary, append `auth_paused`; the OAuth callback later consults auth-owned state before resuming.
-7. If timeout is reached before any assistant text is visible, append `timeout_paused` and schedule the signed internal timeout-resume callback with that event id.
-8. The timeout-resume handler validates `pause_event_id`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
-9. If the callback loses the per-thread lock because the scheduling live handler is still unwinding, it retries briefly and then reschedules the same pause-event callback without mutating state.
-10. If the user pings the thread while the timeout pause is still awaiting resume, the runtime reschedules the existing callback. The ping must not create a second agent run for the same conversation.
-11. If timeout happens after visible assistant output begins, keep the timeout pause event but do not auto-schedule continuation.
+7. If the worker reaches a cooperative yield boundary, it ensures the latest safe boundary is durably represented in the session log, enqueues the conversation id, releases the lease, and exits.
+8. The next queue worker rebuilds durable runtime state, restores Pi messages, drains newly pending mailbox input, and calls `continue()`.
+9. If the worker disappears before a cooperative yield, heartbeat recovery requeues the conversation after the lease expires. The next worker resumes from the latest durable session-log boundary.
+10. If timeout happens after visible assistant output begins, keep the last durable state but do not auto-reconcile partial visible output.
 
 ## Failure Model
 
 1. Timeout or crash before a stable session-log append: no new boundary exists; the system can rely on the previous reduced state plus whatever thread state had already been eagerly persisted.
-2. Timeout pause append succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback, a later user follow-up that reschedules the existing pause, or operator intervention.
-3. Stale timeout-resume callbacks for an older `pause_event_id` are dropped without doing work.
-4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock. Lock-busy callbacks retry for a short bounded window, then reschedule the same pause-event callback rather than abandoning the awaiting session.
-5. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
-6. Repeated resumed timeouts before visible output may produce further `timeout_paused` events with incremented slice ids.
-7. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
+2. Queue nudge is never delivered after a safe boundary append: heartbeat finds pending mailbox or expired lease state and enqueues the conversation id.
+3. Duplicate queue nudges for the same conversation are serialized by the conversation lease.
+4. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
+5. Repeated cooperative yields before visible output may produce further execution chunks, but first pass does not enforce a slice cap.
+6. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
 
 ## Observability
 
 Required log events/diagnostics:
 
-- `agent_turn_timeout`
-- `agent_turn_timeout_resume_log_append_failed`
-- `agent_turn_timeout_resume_schedule_failed`
-- `agent_turn_continuation_retry_schedule_failed`
-- `agent_turn_timeout_resume_skipped_after_visible_output`
+- `conversation_work_cooperative_yield`
+- `conversation_work_lease_expired_requeued`
+- `agent_turn_session_log_append_failed`
+- `agent_turn_resume_skipped_after_visible_output`
 - `agent_turn_provider_retry`
-- `timeout_resume_failed`
-- `timeout_resume_handler_failed`
-- `timeout_resume_lock_busy`
-- `timeout_resume_lock_busy_retrying`
-- `slack_turn_continuation_notice_post_failed`
 
 Required attributes when available:
 
@@ -537,33 +525,27 @@ Required attributes when available:
 - `gen_ai.operation.name`
 - `gen_ai.request.model`
 - `app.ai.turn_timeout_ms`
-- `app.ai.resume_conversation_id`
-- `app.ai.resume_session_id`
-- `app.ai.resume_from_slice_id`
-- `app.ai.resume_next_slice_id`
-- `app.ai.resume_pause_event_id`
 - `app.ai.conversation_id`
 - `app.ai.session_id`
+- `app.conversation.id`
 - `messaging.message.id`
 
 ## Verification
 
-1. Unit: timeout pause events trim trailing assistant-only messages and carry a unique `pause_event_id`.
-2. Unit: signed timeout-resume callbacks verify successfully and tampered payloads are rejected.
-3. Unit/integration: a timed-out turn resumes with restored `agent.state.messages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
-4. Unit/integration: a resumed timeout slice can time out again and schedule the next callback with the new `pause_event_id`.
-5. Unit/integration: a lock-busy timeout callback retries before rescheduling the same pause event.
-6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation pause reschedules the existing session instead of starting a new turn.
-7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
-8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
-9. Unit/integration: fresh follow-up turns can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
-10. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
-11. Unit/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
-12. Unit/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
+1. Unit: resumable boundaries trim trailing assistant-only messages when needed.
+2. Unit/integration: queue-driven resume restores `agent.state.messages` and calls `continue()`.
+3. Integration: a cooperative yield resumes in a later worker and reaches a successful terminal reply.
+4. Integration: a user follow-up during active execution is appended to the mailbox and injected into the same conversation at the next safe boundary.
+5. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+6. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across execution chunks.
+7. Unit/integration: fresh follow-up turns can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
+8. Manual/eval: once assistant text is already visible, recovery does not auto-reconcile partial thread output.
+9. Unit/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
+10. Unit/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
 
 ## Related Specs
 
 - [Harness Agent Spec](./harness-agent.md)
-- [Durable Slack Thread Workflows Spec](./archive/durable-workflows.md) (archived — unimplemented design)
+- [Task Execution Spec](./task-execution.md)
 - [Agent Execution Spec](./agent-execution.md)
 - [Instrumentation Spec](./instrumentation.md)

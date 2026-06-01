@@ -240,12 +240,7 @@ describe("resumeAuthorizedRequest", () => {
     });
 
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
-    expect(postMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0002",
-      }),
-    );
+    expect(postMessageMock).not.toHaveBeenCalled();
   });
 
   it("posts the canonical failure response when timeout pause handling throws", async () => {
@@ -270,7 +265,7 @@ describe("resumeAuthorizedRequest", () => {
         });
       },
       onTimeoutPause: async () => {
-        throw new Error("slice limit reached");
+        throw new Error("continuation scheduling failed");
       },
       onFailure,
     });

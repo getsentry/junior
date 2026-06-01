@@ -298,6 +298,7 @@ Use unit tests for:
 ## Related Specs
 
 - `./trusted-plugin-heartbeat.md`
+- `./task-execution.md`
 - `./scheduler.md`
 - `./agent-session-resumability.md`
 - `./chat-architecture.md`

@@ -3,7 +3,6 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { RetryableTurnError } from "@/chat/runtime/turn";
-import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -594,7 +593,7 @@ describe("bot handlers (integration)", () => {
     });
   });
 
-  it("posts a durable notice when a turn is scheduled for continuation", async () => {
+  it("schedules durable continuation without posting a notice", async () => {
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C_TIMEOUT:1700000000.000";
     const sessionId = "turn_msg-timeout";
@@ -636,11 +635,7 @@ describe("bot handlers (integration)", () => {
       sessionId,
       expectedVersion: 3,
     });
-    expect(thread.posts).toEqual([
-      expect.objectContaining({
-        markdown: buildTurnContinuationResponse(),
-      }),
-    ]);
+    expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
     const conversation = (
@@ -653,7 +648,7 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBe(sessionId);
   });
 
-  it("posts a Slack continuation notice with a correlation footer when a live turn times out", async () => {
+  it("does not post a Slack continuation notice when a live turn times out", async () => {
     resetSlackApiMockState();
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C_TIMEOUT_API:1700000000.000";
@@ -699,30 +694,7 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 3,
     });
     expect(thread.posts).toEqual([]);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C_TIMEOUT_API",
-          thread_ts: "1700000000.000",
-          text: buildTurnContinuationResponse(),
-          blocks: [
-            {
-              type: "markdown",
-              text: buildTurnContinuationResponse(),
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `*ID:* ${conversationId}`,
-                },
-              ],
-            },
-          ],
-        }),
-      }),
-    ]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
   it("reschedules an awaiting turn continuation instead of starting a new turn", async () => {
@@ -772,11 +744,7 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([
-      expect.objectContaining({
-        markdown: buildTurnContinuationResponse(),
-      }),
-    ]);
+    expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
     const conversation = (
@@ -847,7 +815,7 @@ describe("bot handlers (integration)", () => {
     expect(generateAssistantReply).not.toHaveBeenCalled();
   });
 
-  it("does not silently complete when continuation acknowledgement fails", async () => {
+  it("keeps awaiting continuation state without a visible acknowledgement", async () => {
     const conversationId = "slack:C_TIMEOUT_NOTICE_FAIL:1700000000.000";
     const activeSessionId = "turn_msg-original";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
@@ -871,9 +839,6 @@ describe("bot handlers (integration)", () => {
       id: conversationId,
       state: createAwaitingContinuationState({ activeSessionId }),
     });
-    vi.spyOn(thread, "post").mockRejectedValueOnce(
-      new Error("slack unavailable"),
-    );
 
     await slackRuntime.handleNewMention(
       thread,
@@ -891,11 +856,7 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
+    expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
     const conversation = (
