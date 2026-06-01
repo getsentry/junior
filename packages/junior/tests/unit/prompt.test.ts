@@ -48,7 +48,6 @@ describe("prompt builders", () => {
         },
         runtime: {
           conversationId: "conversation-alpha",
-          traceId: "trace-alpha",
         },
         toolGuidance: [
           {

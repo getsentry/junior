@@ -13,7 +13,6 @@ import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
   extractGenAiUsageSummary,
-  getActiveTraceId,
   logException,
   logInfo,
   logWarn,
@@ -971,7 +970,6 @@ export async function generateAssistantReply(
       toolGuidance,
       runtime: {
         conversationId: spanContext.conversationId,
-        traceId: getActiveTraceId(),
       },
       invocation: skillInvocation,
       requester: context.requester,

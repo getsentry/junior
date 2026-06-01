@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-01
 
 ## Purpose
 
@@ -29,14 +29,15 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 - The core prompt owns platform behavior: tool-use policy, execution bias, context boundaries, Slack output shape, and failure reporting expectations.
 - `SOUL.md` and other deployment-authored personality files are voice-only. Platform behavior must still work if those files are empty or heavily customized.
+- `WORLD.md` is trusted deployment-stable world context. It belongs in the static system prompt, not per-turn context, and must not carry load-bearing platform mechanics.
 - Skill files own domain-specific workflow mechanics. They must not duplicate generic harness behavior such as "use tools before answering" or "ask only when blocked."
 - The core prompt must not name or describe specific installed plugins, plugin providers, plugin-owned config keys, plugin-owned default targets, plugin-owned tools, or plugin-specific workflows. That knowledge belongs to dynamic capabilities.
 
 ### Section boundaries
 
-`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. Deployment-stable assistant identity, such as the bot Slack username, belongs here. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
+`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. Deployment-stable assistant identity, such as the bot Slack username, and deployment-stable world context from `WORLD.md` belong here. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
 
-`buildTurnContextPrompt(...)` owns session bootstrap prompt context. It is attached to the first model-visible user message in a Pi session projection, including requester identity, available capabilities, configuration, artifacts, runtime identifiers, and resumed-turn context. Completed turns may store that bootstrap context as part of durable Pi history so later follow-up messages can avoid duplicating it. Compaction replacement history must omit stale bootstrap context; the next user turn after a projection reset receives fresh bootstrap context exactly once.
+`buildTurnContextPrompt(...)` owns session bootstrap prompt context. It is attached to the first model-visible user message in a Pi session projection, including requester identity, available capabilities, configuration, artifacts, model-actionable runtime identifiers, and resumed-turn context. Completed turns may store that bootstrap context as part of durable Pi history so later follow-up messages can avoid duplicating it. Compaction replacement history must omit stale bootstrap context; the next user turn after a projection reset receives fresh bootstrap context exactly once.
 
 Turn context may disclose dynamic capability surfaces that the model can act on, such as available skill names/descriptions, active MCP catalog summaries, and tool guidance attached to the current native tool set. It must not separately disclose plugin ownership or installed plugin/provider catalogs as prompt knowledge. If the model needs plugin-specific behavior, that behavior must arrive through the loaded skill body, tool description, tool schema, `promptSnippet`, or `promptGuidelines`.
 
@@ -45,14 +46,17 @@ Turn context is not a session-state cache. If prior tool use, loaded skills, MCP
 The combined prompt surface must keep these concerns distinct:
 
 1. Identity/personality.
-2. Core operating rules.
-3. Slack output contract.
-4. Available and loaded capabilities.
-5. Runtime and thread context.
+2. Deployment-stable world context.
+3. Core operating rules.
+4. Slack output contract.
+5. Available and loaded capabilities.
+6. Runtime and thread context.
 
-Context blocks describe facts. Behavior and output blocks carry instructions.
+Context blocks describe facts. Operating-rule and output sections carry instructions.
 
 Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile requester, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in session bootstrap context.
+
+Trusted deployment-authored Markdown files, such as `SOUL.md` and `WORLD.md`, should render as Markdown sections rather than raw XML payloads. XML-style tags are appropriate for generated runtime blocks whose dynamic values are escaped. Do not add generic wrapper markers that only repeat child-section meaning, such as wrapping all operating rule sections in an additional behavior tag or wrapping all capability blocks in an additional capabilities tag.
 
 Session bootstrap context is injected on the first model-visible user message in each Pi session. Ordinary follow-up messages in the same session must not duplicate that bootstrap context. When compaction creates a replacement projection, the replacement history must omit the old bootstrap context; the next user turn starts a new Pi session projection and receives fresh bootstrap context exactly once.
 
@@ -114,6 +118,8 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 The tool policy must make sandbox workspace ownership explicit: sandbox-backed file and shell tools inspect the isolated sandbox workspace, not arbitrary host files. If sandbox execution is unavailable, the model should report that blocker instead of implying local inspection succeeded.
 
 Runtime facts should live in a compact runtime block inside session bootstrap context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
+
+Runtime tracing and logging correlation identifiers, such as `trace_id`, are observability data, not model-actionable context, and must not be included in prompt runtime context.
 
 The safety section must stay generic and runtime-level: remain within the user's request, respect stop/pause/audit/approval boundaries, avoid access expansion, and avoid administrative prompt/tool/security/config changes unless explicitly requested and supported by an available tool.
 

@@ -329,7 +329,7 @@ function formatConfigurationLines(
 }
 
 const HEADER =
-  "You are a Slack-based helper assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.";
+  "You are a Slack-based helper assistant. Follow the personality section for voice and tone in every reply. Platform mechanics and output rules override personality and world context when they conflict.";
 
 const TURN_CONTEXT_HEADER =
   "Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.";
@@ -425,21 +425,31 @@ function buildOutputSection(): string {
 }
 
 function buildIdentitySection(): string {
-  return renderTagBlock(
-    "identity",
-    `Your Slack username is \`${escapeXml(botConfig.userName)}\`.`,
-  );
+  return [
+    "# Identity",
+    `Your Slack username is \`${botConfig.userName}\`.`,
+  ].join("\n");
+}
+
+function buildPersonalitySection(): string {
+  return ["# Personality", JUNIOR_PERSONALITY.trim()].join("\n");
+}
+
+function buildWorldSection(): string | null {
+  if (!JUNIOR_WORLD) {
+    return null;
+  }
+
+  return ["# World", JUNIOR_WORLD.trim()].join("\n");
 }
 
 function buildRuntimeSection(params: {
   conversationId?: string;
-  traceId?: string;
 }): string | null {
   const lines = [
     params.conversationId
       ? `- gen_ai.conversation.id: ${escapeXml(params.conversationId)}`
       : "",
-    params.traceId ? `- trace_id: ${escapeXml(params.traceId)}` : "",
   ].filter(Boolean);
 
   if (lines.length === 0) {
@@ -456,10 +466,6 @@ function buildContextSection(params: {
   invocation: SkillInvocation | null;
 }): string | null {
   const blocks: string[][] = [];
-
-  if (JUNIOR_WORLD) {
-    blocks.push(renderTag("world", [JUNIOR_WORLD.trim()]));
-  }
 
   const referenceLines = formatReferenceFilesLines();
   if (referenceLines) {
@@ -543,7 +549,7 @@ function buildCapabilitiesSection(params: {
     return null;
   }
 
-  return renderTagBlock("capabilities", blocks.join("\n\n"));
+  return blocks.join("\n\n");
 }
 
 type TurnContextPromptInput = {
@@ -553,7 +559,6 @@ type TurnContextPromptInput = {
   toolGuidance?: ToolPromptContext[];
   runtime?: {
     conversationId?: string;
-    traceId?: string;
   };
   invocation: SkillInvocation | null;
   requester?: {
@@ -568,10 +573,13 @@ type TurnContextPromptInput = {
 const STATIC_SYSTEM_PROMPT = [
   HEADER,
   buildIdentitySection(),
-  renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
-  renderTagBlock("behavior", buildBehaviorSection()),
+  buildPersonalitySection(),
+  buildWorldSection(),
+  buildBehaviorSection(),
   buildOutputSection(),
-].join("\n\n");
+]
+  .filter((section): section is string => Boolean(section))
+  .join("\n\n");
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
 export function buildSystemPrompt(): string {
