@@ -297,7 +297,9 @@ function sameToolPart(
   call: Pick<TranscriptPart, "id" | "name">,
   result: Pick<TranscriptPart, "id" | "name">,
 ): boolean {
-  if (call.id && result.id) return call.id === result.id;
+  if (call.id || result.id) {
+    return Boolean(call.id && result.id && call.id === result.id);
+  }
   if (call.name && result.name) return call.name === result.name;
   return !call.id && !call.name && !result.id && !result.name;
 }
@@ -642,14 +644,8 @@ function sameDisplayLabel(
   );
 }
 
-function suspiciousThreadTitleFromRequester(
-  requester: RequesterIdentity | undefined,
-): string | undefined {
-  const slackUserName = requester?.slackUserName?.trim();
-  return slackUserName && /\s/.test(slackUserName) ? slackUserName : undefined;
-}
-
-function conversationRequesterLabel(
+/** Suppress redundant conversation owners already represented by title or surface. */
+export function conversationRequesterLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
   if (!conversation) return undefined;
@@ -1002,13 +998,9 @@ export function buildConversations(sessions: Session[]): Conversation[] {
       const requesterTurn =
         sortedTurns.find((turn) => turn.requesterIdentity) ??
         sortedTurns.find((turn) => turn.requester);
-      const conversationTitle =
-        sortedTurns.find((turn) => turn.conversationTitle)?.conversationTitle ??
-        sortedTurns
-          .map((turn) =>
-            suspiciousThreadTitleFromRequester(turn.requesterIdentity),
-          )
-          .find((title): title is string => Boolean(title));
+      const conversationTitle = sortedTurns.find(
+        (turn) => turn.conversationTitle,
+      )?.conversationTitle;
 
       return {
         channel: newest.channel,

@@ -5,6 +5,8 @@ import {
   canRenderStructuredMarkup,
   conversationDisplayTitle,
   conversationIdentityMeta,
+  conversationRequesterLabel,
+  formatConversationDuration,
   formatDurationTotal,
   formatDurationTick,
   formatTokenTotal,
@@ -173,7 +175,37 @@ describe("dashboard token formatting", () => {
     });
   });
 
-  it("keeps suspicious Slack thread titles out of requester metadata", () => {
+  it("does not match id-bearing tool calls to name-only results", () => {
+    const turn = {
+      id: "turn-1",
+      status: "completed",
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: 1_000,
+          parts: [{ type: "tool_call", id: "call-1", name: "search" }],
+        },
+        {
+          role: "assistant",
+          timestamp: 1_200,
+          parts: [{ type: "tool_call", id: "call-2", name: "search" }],
+        },
+        {
+          role: "toolResult",
+          timestamp: 1_800,
+          parts: [{ type: "tool_result", name: "search" }],
+        },
+      ],
+    } as ConversationTurn;
+
+    expect(summarizeToolCalls([turn])).toEqual({
+      items: [{ count: 2, name: "search" }],
+      total: 2,
+    });
+  });
+
+  it("does not synthesize conversation titles from requester display names", () => {
     const sessions: Session[] = [
       {
         channel: "C1",
@@ -182,7 +214,7 @@ describe("dashboard token formatting", () => {
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         requesterIdentity: {
           slackUserId: "U1",
-          slackUserName: "jr upcoming holidays",
+          slackUserName: "Alice Reviewer",
         },
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
@@ -192,10 +224,52 @@ describe("dashboard token formatting", () => {
     ];
     const [conversation] = buildConversations(sessions);
 
-    expect(conversationDisplayTitle(conversation)).toBe("jr upcoming holidays");
+    expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
       "U1 · slack:C1:123",
     );
+  });
+
+  it("suppresses redundant conversation requester labels", () => {
+    const sessions: Session[] = [
+      {
+        channel: "C1",
+        channelName: "alice",
+        conversationId: "slack:C1:123",
+        conversationTitle: "Alice",
+        id: "turn-1",
+        lastSeenAt: "2026-06-01T10:05:00.000Z",
+        requesterIdentity: {
+          fullName: "alice",
+          slackUserId: "U1",
+        },
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+    ];
+    const [conversation] = buildConversations(sessions);
+
+    expect(conversationRequesterLabel(conversation)).toBeUndefined();
+    expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
+      "slack:C1:123",
+    );
+  });
+
+  it("formats conversation spans with the compact conversation duration rules", () => {
+    const [conversation] = buildConversations([
+      {
+        conversationId: "slack:C1:123",
+        id: "turn-1",
+        lastSeenAt: "2026-06-01T10:02:29.000Z",
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        title: "Turn turn-1",
+      },
+    ]);
+
+    expect(formatConversationDuration(conversation!)).toBe("2m");
   });
 });
 

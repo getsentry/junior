@@ -217,13 +217,10 @@ function requesterLabel(
   requester: AgentTurnRequester | undefined,
 ): string | undefined {
   if (!requester) return undefined;
-  const slackUserName = requester.slackUserName?.trim();
-  const safeSlackUserName =
-    slackUserName && !/\s/.test(slackUserName) ? slackUserName : undefined;
   return (
     requester.email ??
     requester.fullName ??
-    safeSlackUserName ??
+    requester.slackUserName ??
     requester.slackUserId
   );
 }

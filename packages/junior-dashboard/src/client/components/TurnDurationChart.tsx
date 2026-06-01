@@ -15,8 +15,10 @@ import { readConversationData } from "../api";
 import {
   buildConversations,
   conversationDisplayTitle,
+  conversationRequesterLabel,
   conversationIdForSession,
   conversationPath,
+  formatConversationDuration,
   formatDurationTick,
   formatMs,
   requesterLabel,
@@ -409,10 +411,10 @@ function chartTooltipRows(
   detail: ConversationDetailFeed | undefined,
 ): Array<[string, ReactNode]> {
   const session = point.session ?? point.conversation;
-  const requester = requesterLabel(
-    session?.requesterIdentity,
-    session?.requester,
-  );
+  const requester =
+    point.kind === "conversations"
+      ? conversationRequesterLabel(point.conversation)
+      : requesterLabel(session?.requesterIdentity, session?.requester);
   const location = session
     ? slackLocationLabel(session, { includeId: false })
     : undefined;
@@ -432,7 +434,7 @@ function chartTooltipRows(
       <DurationMetric
         align="right"
         endedAt={point.endedAt}
-        label={formatMs(point.durationMs)}
+        label={chartDurationLabel(point)}
         startedAt={point.startedAt}
       />,
     ],
@@ -459,6 +461,13 @@ function chartTooltipRows(
     location ? ["surface", location] : null,
   ];
   return rows.filter((row): row is [string, ReactNode] => row !== null);
+}
+
+function chartDurationLabel(point: DurationPoint): string {
+  if (point.kind === "conversations" && point.conversation) {
+    return formatConversationDuration(point.conversation);
+  }
+  return formatMs(point.durationMs);
 }
 
 function chartTooltipTurns(
