@@ -19,7 +19,7 @@ export function ConversationRowStats(props: {
   const primaryStats = [
     `${props.conversation.turns.length} turns`,
     tokens,
-    runtime,
+    runtime ? `${runtime} runtime` : "",
   ].filter(Boolean);
   const secondaryStats = [
     props.timeLabel,
