@@ -110,6 +110,53 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("removes leaked thinking blocks from terminal assistant text", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "private reasoning" },
+            {
+              type: "text",
+              text: [
+                "<thinking>",
+                "I should not show this in Slack.",
+                "</thinking>",
+                "Visible answer.",
+                "",
+                "```xml",
+                "<thinking>example tag</thinking>",
+                "```",
+              ].join("\n"),
+            },
+          ],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "Do the thing",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe(
+      [
+        "Visible answer.",
+        "",
+        "```xml",
+        "<thinking>example tag</thinking>",
+        "```",
+      ].join("\n"),
+    );
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
   it("treats terminal provider errors without text as provider errors", () => {
     const reply = buildTurnResult({
       newMessages: [

@@ -26,6 +26,9 @@ import {
 
 const POST_CANVAS_REPLY_MAX_CHARS = 700;
 const POST_CANVAS_REPLY_MAX_LINES = 8;
+const THINKING_XML_BLOCK_PATTERN =
+  /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
+const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -103,6 +106,24 @@ function buildBriefPostCanvasReply(
     : "I created a canvas with the full reference.";
 }
 
+function stripThinkingXmlBlocks(text: string): string {
+  let result = "";
+  let cursor = 0;
+
+  for (const match of text.matchAll(FENCED_CODE_BLOCK_PATTERN)) {
+    const start = match.index;
+    if (start === undefined) {
+      continue;
+    }
+    result += text.slice(cursor, start).replace(THINKING_XML_BLOCK_PATTERN, "");
+    result += match[0];
+    cursor = start + match[0].length;
+  }
+
+  result += text.slice(cursor).replace(THINKING_XML_BLOCK_PATTERN, "");
+  return result;
+}
+
 /** Process raw agent messages into a structured AssistantReply. */
 export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const {
@@ -126,10 +147,11 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
 
-  const primaryText = terminalAssistantMessages
-    .map((message) => extractAssistantText(message))
-    .join("\n\n")
-    .trim();
+  const primaryText = stripThinkingXmlBlocks(
+    terminalAssistantMessages
+      .map((message) => extractAssistantText(message))
+      .join("\n\n"),
+  ).trim();
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
