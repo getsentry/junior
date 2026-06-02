@@ -269,6 +269,20 @@ async function handleSlackEvent(args: {
   const installation = installationFromEnvelope(args.body);
   const receivedAtMs = Date.now();
 
+  async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
+    try {
+      await publishAppHomeView(
+        getSlackClient(),
+        userId,
+        createUserTokenStore(),
+      );
+    } catch (error) {
+      logException(error, "slack_app_home_publish_failed", {
+        slackUserId: userId,
+      });
+    }
+  }
+
   await runWithWorkspaceTeamId(installation.teamId, () =>
     runWithSlackInstallation({
       adapter,
@@ -339,11 +353,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "app_home_opened" && event.user) {
-          await publishAppHomeView(
-            getSlackClient(),
-            event.user,
-            createUserTokenStore(),
-          );
+          await publishAppHomeViewBestEffort(event.user);
           return;
         }
 
