@@ -110,7 +110,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("uses only assistant text after the latest steered user message", () => {
+  it("keeps assistant text across steered user messages", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -119,7 +119,7 @@ describe("buildTurnResult", () => {
         },
         {
           role: "assistant",
-          content: [{ type: "text", text: "Stale answer." }],
+          content: [{ type: "text", text: "Initial answer." }],
           stopReason: "stop",
         },
         {
@@ -142,7 +142,9 @@ describe("buildTurnResult", () => {
       thinkingSelection,
     });
 
-    expect(reply.text).toBe("Updated answer.");
+    expect(reply.text).toBe(
+      ["Initial answer.", "Updated answer."].join("\n\n"),
+    );
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.assistantMessageCount).toBe(2);
   });

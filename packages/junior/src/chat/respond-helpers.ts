@@ -379,18 +379,15 @@ export function extractAssistantText(message: AssistantMessage): string {
 export function getTerminalAssistantMessages(
   messages: readonly unknown[],
 ): AssistantMessage[] {
-  let lastInputBoundaryIndex = -1;
+  let lastToolResultIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (
-      isToolResultMessage(messages[index]) ||
-      getPiMessageRole(messages[index]) === "user"
-    ) {
-      lastInputBoundaryIndex = index;
+    if (isToolResultMessage(messages[index])) {
+      lastToolResultIndex = index;
       break;
     }
   }
 
-  return messages.slice(lastInputBoundaryIndex + 1).filter(isAssistantMessage);
+  return messages.slice(lastToolResultIndex + 1).filter(isAssistantMessage);
 }
 
 /** Upsert a skill into the active skills list by name. */
