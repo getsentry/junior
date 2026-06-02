@@ -129,6 +129,7 @@ function ConversationStats(props: {
     includeId: false,
   });
   const durationLabel = formatConversationDuration(props.conversation);
+  const turnCount = props.conversation.turns.length;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -137,7 +138,7 @@ function ConversationStats(props: {
         }
       : undefined,
     {
-      content: `${props.conversation.turns.length} turns`,
+      content: `${turnCount} ${turnCount === 1 ? "turn" : "turns"}`,
       key: "turns",
     },
     {
@@ -146,12 +147,14 @@ function ConversationStats(props: {
       ),
       key: "messages",
     },
-    {
-      content: (
-        <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
-      ),
-      key: "tools",
-    },
+    !props.detail || (toolSummary && toolSummary.total > 0)
+      ? {
+          content: (
+            <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
+          ),
+          key: "tools",
+        }
+      : undefined,
     tokenSummary
       ? {
           content: <TokenMetric summary={tokenSummary} />,

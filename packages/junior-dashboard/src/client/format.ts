@@ -902,9 +902,10 @@ export function buildConversations(sessions: Session[]): Conversation[] {
       const sortedTurns = [...turns].sort((a, b) =>
         compareTimeAsc(a.startedAt, b.startedAt),
       );
-      const newest = [...turns].sort((a, b) =>
+      const recentTurns = [...turns].sort((a, b) =>
         compareTimeDesc(a.lastSeenAt, b.lastSeenAt),
-      )[0]!;
+      );
+      const newest = recentTurns[0]!;
       const oldest = sortedTurns.reduce((current, next) =>
         (parseTime(next.startedAt) ?? Number.MAX_SAFE_INTEGER) <
         (parseTime(current.startedAt) ?? Number.MAX_SAFE_INTEGER)
@@ -919,13 +920,13 @@ export function buildConversations(sessions: Session[]): Conversation[] {
             ? "failed"
             : newest.status;
       const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
-      const conversationTitle = sortedTurns.find(
+      const conversationTitle = recentTurns.find(
         (turn) => turn.conversationTitle,
       )?.conversationTitle;
 
       return {
         channel: newest.channel,
-        channelName: sortedTurns.find((turn) => turn.channelName)?.channelName,
+        channelName: recentTurns.find((turn) => turn.channelName)?.channelName,
         conversationTitle,
         id,
         lastProgressAt: newest.lastProgressAt,

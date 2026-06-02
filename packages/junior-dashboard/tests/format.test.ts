@@ -287,6 +287,35 @@ describe("dashboard token formatting", () => {
     );
   });
 
+  it("uses the newest available conversation title", () => {
+    const [conversation] = buildConversations([
+      {
+        conversationId: "slack:C1:123",
+        conversationTitle: "Older title",
+        id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
+        lastSeenAt: "2026-06-01T10:05:00.000Z",
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+      {
+        conversationId: "slack:C1:123",
+        conversationTitle: "Newer title",
+        id: "turn-2",
+        lastProgressAt: "2026-06-01T11:05:00.000Z",
+        lastSeenAt: "2026-06-01T11:05:00.000Z",
+        startedAt: "2026-06-01T11:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-2",
+      },
+    ]);
+
+    expect(conversationDisplayTitle(conversation)).toBe("Newer title");
+  });
+
   it("keeps requester labels even when the title matches", () => {
     const sessions: Session[] = [
       {

@@ -38,7 +38,9 @@ export function TranscriptToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const meta = [
-    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    typeof props.timestamp === "number"
+      ? formatMessageTimestamp(props.timestamp)
+      : undefined,
     duration,
     props.result ? formatBytes(outputBytes) : undefined,
     props.result ? undefined : "missing result",

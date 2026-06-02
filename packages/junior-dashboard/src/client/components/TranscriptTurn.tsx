@@ -481,7 +481,9 @@ function RedactedThinkingView(props: {
 }) {
   const offset = formatMessageOffset(props.turn, props.timestamp);
   const meta = [
-    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    typeof props.timestamp === "number"
+      ? formatMessageTimestamp(props.timestamp)
+      : undefined,
     offset,
   ].filter(isString);
 
@@ -517,7 +519,9 @@ function RedactedToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const meta = [
-    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    typeof props.timestamp === "number"
+      ? formatMessageTimestamp(props.timestamp)
+      : undefined,
     duration,
     props.result ? undefined : "missing result",
   ].filter(isString);
@@ -812,7 +816,9 @@ function ThinkingPartView(props: {
     ? formatMessageOffset(props.turn, props.timestamp)
     : undefined;
   const meta = [
-    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    typeof props.timestamp === "number"
+      ? formatMessageTimestamp(props.timestamp)
+      : undefined,
     offset,
   ].filter(isString);
 
