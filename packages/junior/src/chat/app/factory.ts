@@ -83,7 +83,11 @@ export function createSlackRuntime(
     getThreadId,
     getChannelId,
     getRunId,
-    stripLeadingBotMention,
+    stripLeadingBotMention: (text, stripOptions) =>
+      stripLeadingBotMention(text, {
+        ...stripOptions,
+        botUserId: options.getSlackAdapter().botUserId,
+      }),
     withSpan,
     logWarn,
     logException,

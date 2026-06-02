@@ -2,8 +2,29 @@ import { describe, expect, it } from "vitest";
 import {
   getAssistantThreadContext,
   getTeamId,
+  stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
+
+describe("stripLeadingBotMention", () => {
+  it("strips the Slack adapter's normalized bot user id mention", () => {
+    expect(
+      stripLeadingBotMention("@U_BOT start the incident summary", {
+        botUserId: "U_BOT",
+        stripLeadingSlackMentionToken: true,
+      }),
+    ).toBe("start the incident summary");
+  });
+
+  it("keeps non-bot normalized mentions intact", () => {
+    expect(
+      stripLeadingBotMention("@U_OTHER ask junior for help", {
+        botUserId: "U_BOT",
+        stripLeadingSlackMentionToken: true,
+      }),
+    ).toBe("@U_OTHER ask junior for help");
+  });
+});
 
 describe("getAssistantThreadContext", () => {
   it("uses the current raw message ts for the first non-DM thread reply", () => {

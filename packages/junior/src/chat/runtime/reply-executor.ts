@@ -311,6 +311,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       },
       async () => {
         const strippedUserText = stripLeadingBotMention(message.text, {
+          botUserId: deps.getSlackAdapter().botUserId,
           stripLeadingSlackMentionToken:
             options.explicitMention || Boolean(message.isMention),
         });

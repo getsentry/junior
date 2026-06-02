@@ -155,6 +155,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   stripLeadingBotMention: (
     text: string,
     options: {
+      botUserId?: string;
       stripLeadingSlackMentionToken?: boolean;
     },
   ) => string;
