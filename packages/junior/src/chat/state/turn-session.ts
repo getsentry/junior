@@ -25,7 +25,7 @@ export type AgentTurnSessionStatus =
   | "failed"
   | "abandoned";
 
-export type AgentTurnResumeReason = "timeout" | "auth";
+export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
 export interface AgentTurnRequester {
   email?: string;
@@ -231,7 +231,9 @@ function parseAgentTurnSessionFields(
           ),
         }
       : {}),
-    ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
+    ...(parsed.resumeReason === "timeout" ||
+    parsed.resumeReason === "auth" ||
+    parsed.resumeReason === "yield"
       ? { resumeReason: parsed.resumeReason }
       : {}),
     ...(typeof parsed.errorMessage === "string"

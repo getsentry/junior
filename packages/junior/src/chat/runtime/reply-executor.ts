@@ -83,7 +83,10 @@ import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  isCooperativeTurnYieldError,
+  isRetryableTurnError,
+} from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
@@ -913,6 +916,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
         } catch (error) {
+          if (isCooperativeTurnYieldError(error)) {
+            shouldPersistFailureState = false;
+            throw error;
+          }
+
           if (
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")

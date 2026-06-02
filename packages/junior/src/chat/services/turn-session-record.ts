@@ -417,3 +417,75 @@ export async function persistTimeoutSessionRecord(args: {
     return undefined;
   }
 }
+
+/**
+ * Persist a cooperative-yield boundary without advancing timeout slice counts.
+ */
+export async function persistYieldSessionRecord(args: {
+  channelName?: string;
+  conversationId: string;
+  sessionId: string;
+  currentSliceId: number;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
+  messages: PiMessage[];
+  loadedSkillNames?: string[];
+  errorMessage: string;
+  logContext: SessionRecordLogContext;
+  requester?: AgentTurnRequester;
+}): Promise<AgentTurnSessionRecord | undefined> {
+  try {
+    const latestSessionRecord = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+    const piMessages = resumableBoundary(
+      args.messages,
+      latestSessionRecord?.piMessages,
+    );
+    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
+      return undefined;
+    }
+    return await upsertAgentTurnSessionRecord({
+      ...((args.channelName ?? latestSessionRecord?.channelName)
+        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+        : {}),
+      conversationId: args.conversationId,
+      cumulativeDurationMs: addDurationMs(
+        latestSessionRecord?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latestSessionRecord?.cumulativeUsage,
+        args.currentUsage,
+      ),
+      sessionId: args.sessionId,
+      sliceId: args.currentSliceId,
+      state: "awaiting_resume",
+      piMessages,
+      ...(args.loadedSkillNames
+        ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      resumeReason: "yield",
+      resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
+      errorMessage: args.errorMessage,
+      ...((args.requester ?? latestSessionRecord?.requester)
+        ? { requester: args.requester ?? latestSessionRecord?.requester }
+        : {}),
+      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
+    });
+  } catch (recordError) {
+    logSessionRecordError(
+      recordError,
+      "agent_turn_yield_session_record_failed",
+      args,
+      {
+        "app.ai.resume_slice_id": args.currentSliceId,
+      },
+      "Failed to persist cooperative yield session record",
+    );
+    return undefined;
+  }
+}

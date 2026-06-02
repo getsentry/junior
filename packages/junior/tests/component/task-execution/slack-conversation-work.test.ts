@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Message, Thread } from "chat";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -675,5 +676,66 @@ describe("Slack conversation work execution", () => {
     });
     expect(work?.needsRun).toBe(false);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("yields Slack mailbox work after a persisted safe boundary", async () => {
+    const queue = createFakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    let currentNowMs = 1_000;
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    queue.sent = [];
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async (_thread, _message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
+              currentNowMs = 242_000;
+              throw new CooperativeTurnYieldError();
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+
+    expect(queue.sent).toMatchObject([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `yield:${CONVERSATION_ID}:242000`,
+      },
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(true);
+    expect(work?.messages.map((message) => message.injectedAtMs)).toEqual([
+      expect.any(Number),
+    ]);
   });
 });

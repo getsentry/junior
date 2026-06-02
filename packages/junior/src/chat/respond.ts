@@ -82,7 +82,11 @@ import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  CooperativeTurnYieldError,
+  RetryableTurnError,
+  isRetryableTurnError,
+} from "@/chat/runtime/turn";
 import {
   buildUserTurnText,
   encodeNonImageAttachmentForPrompt,
@@ -119,6 +123,7 @@ import {
   persistAuthPauseSessionRecord,
   persistRunningSessionRecord,
   persistTimeoutSessionRecord,
+  persistYieldSessionRecord,
 } from "@/chat/services/turn-session-record";
 import type { AgentTurnRequester } from "@/chat/state/turn-session";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -463,6 +468,7 @@ export async function generateAssistantReply(
   let canRecordMcpProviders = false;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
+  let yielded = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
   const requester = requesterFromContext(
@@ -1164,9 +1170,9 @@ export async function generateAssistantReply(
         return;
       }
 
-      timedOut = true;
+      yielded = true;
       timeoutResumeMessages = [...agent!.state.messages];
-      throw new Error(
+      throw new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${
           Date.now() - replyStartedAtMs
         }ms`,
@@ -1477,6 +1483,34 @@ export async function generateAssistantReply(
       assistantUserName: botConfig.userName,
     });
   } catch (error) {
+    if (
+      yielded &&
+      error instanceof CooperativeTurnYieldError &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
+      turnUsage =
+        turnUsage ??
+        extractSliceUsage(timeoutResumeMessages, beforeMessageCount);
+      await recordActiveMcpProviders();
+      const sessionRecord = await persistYieldSessionRecord({
+        channelName: context.correlation?.channelName,
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        currentSliceId: timeoutResumeSliceId,
+        currentDurationMs: Date.now() - replyStartedAtMs,
+        currentUsage: turnUsage,
+        messages: timeoutResumeMessages,
+        errorMessage: error.message,
+        loadedSkillNames: loadedSkillNamesForResume,
+        logContext: sessionRecordLogContext,
+        requester,
+      });
+      if (sessionRecord) {
+        throw error;
+      }
+    }
+
     if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
       turnUsage =
         turnUsage ??

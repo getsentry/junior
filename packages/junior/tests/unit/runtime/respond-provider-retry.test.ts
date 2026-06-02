@@ -207,9 +207,10 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { generateAssistantReply } from "@/chat/respond";
+import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
+import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
@@ -314,18 +315,29 @@ describe("generateAssistantReply provider retry", () => {
       (caught: unknown) => caught,
     );
 
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(isCooperativeTurnYieldError(error)).toBe(true);
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-yield",
       "turn-yield",
     );
     expect(sessionRecord).toMatchObject({
       state: "awaiting_resume",
-      resumeReason: "timeout",
+      resumeReason: "yield",
+      sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
     ]);
+    await expect(
+      getAwaitingTurnContinuationRequest({
+        conversationId: "conversation-yield",
+        sessionId: "turn-yield",
+      }),
+    ).resolves.toMatchObject({
+      conversationId: "conversation-yield",
+      sessionId: "turn-yield",
+      expectedVersion: sessionRecord?.version,
+    });
   });
 
   it("rejects steering injection when Pi steer fails", async () => {

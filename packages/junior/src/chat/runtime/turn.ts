@@ -61,6 +61,22 @@ export function isRetryableTurnError(
   return error.reason === reason;
 }
 
+/** Error indicating the turn paused voluntarily at a safe continuation boundary. */
+export class CooperativeTurnYieldError extends Error {
+  readonly code = "cooperative_turn_yield";
+
+  constructor(message = "Agent turn yielded at a safe boundary") {
+    super(message);
+    this.name = "CooperativeTurnYieldError";
+  }
+}
+
+export function isCooperativeTurnYieldError(
+  error: unknown,
+): error is CooperativeTurnYieldError {
+  return error instanceof CooperativeTurnYieldError;
+}
+
 // ---------------------------------------------------------------------------
 // Turn lifecycle mutations
 // ---------------------------------------------------------------------------

@@ -45,8 +45,9 @@ export async function getAwaitingTurnContinuationRequest(args: {
   if (
     !sessionRecord ||
     sessionRecord.state !== "awaiting_resume" ||
-    sessionRecord.resumeReason !== "timeout" ||
-    sessionRecord.sliceId < 2
+    (sessionRecord.resumeReason !== "timeout" &&
+      sessionRecord.resumeReason !== "yield") ||
+    (sessionRecord.resumeReason === "timeout" && sessionRecord.sliceId < 2)
   ) {
     return undefined;
   }

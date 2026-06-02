@@ -149,7 +149,8 @@ export async function resumeTimedOutTurn(
       if (
         !sessionRecord ||
         sessionRecord.state !== "awaiting_resume" ||
-        sessionRecord.resumeReason !== "timeout" ||
+        (sessionRecord.resumeReason !== "timeout" &&
+          sessionRecord.resumeReason !== "yield") ||
         sessionRecord.version !== payload.expectedVersion
       ) {
         return false;

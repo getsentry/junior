@@ -8,7 +8,10 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  isCooperativeTurnYieldError,
+  isRetryableTurnError,
+} from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
@@ -417,6 +420,9 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
+        if (isCooperativeTurnYieldError(error)) {
+          throw error;
+        }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
           requesterId: message.author.userId,
@@ -618,6 +624,9 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
+        if (isCooperativeTurnYieldError(error)) {
+          throw error;
+        }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
           requesterId: message.author.userId,

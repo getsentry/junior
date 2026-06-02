@@ -8,6 +8,7 @@ import {
   type StateAdapter,
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
+import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
@@ -133,17 +134,20 @@ function restoreThread(args: {
   });
 }
 
-function latestTimeoutResume(
+function latestContinuationResume(
   summaries: AgentTurnSessionSummary[],
 ): AgentTurnSessionSummary | undefined {
   return summaries.find(
     (summary) =>
-      summary.state === "awaiting_resume" && summary.resumeReason === "timeout",
+      summary.state === "awaiting_resume" &&
+      (summary.resumeReason === "timeout" || summary.resumeReason === "yield"),
   );
 }
 
-async function resumeAwaitingTimeout(conversationId: string): Promise<void> {
-  const summary = latestTimeoutResume(
+async function resumeAwaitingContinuation(
+  conversationId: string,
+): Promise<void> {
+  const summary = latestContinuationResume(
     await listAgentTurnSessionSummariesForConversation(conversationId),
   );
   if (!summary) {
@@ -200,7 +204,7 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      await resumeAwaitingTimeout(context.conversationId);
+      await resumeAwaitingContinuation(context.conversationId);
       return { status: "completed" };
     }
 
@@ -220,7 +224,7 @@ export function createSlackConversationWorker(
       return { status: "lost_lease" };
     }
 
-    await runWithSlackInstallation({
+    const turnResult = await runWithSlackInstallation({
       adapter,
       installation: getInstallation(records),
       state,
@@ -286,24 +290,34 @@ export function createSlackConversationWorker(
           );
         };
 
-        if (route === "mention") {
-          await options.runtime.handleNewMention(thread, latestMessage, {
+        try {
+          if (route === "mention") {
+            await options.runtime.handleNewMention(thread, latestMessage, {
+              messageContext,
+              drainSteeringMessages,
+              onTurnStatePersisted,
+              shouldYield: context.shouldYield,
+            });
+            return;
+          }
+
+          await options.runtime.handleSubscribedMessage(thread, latestMessage, {
             messageContext,
             drainSteeringMessages,
             onTurnStatePersisted,
             shouldYield: context.shouldYield,
           });
-          return;
+        } catch (error) {
+          if (isCooperativeTurnYieldError(error)) {
+            return { status: "yielded" } satisfies ConversationWorkerResult;
+          }
+          throw error;
         }
-
-        await options.runtime.handleSubscribedMessage(thread, latestMessage, {
-          messageContext,
-          drainSteeringMessages,
-          onTurnStatePersisted,
-          shouldYield: context.shouldYield,
-        });
       },
     });
+    if (turnResult?.status === "yielded") {
+      return turnResult;
+    }
 
     const messagesMarked = await markConversationMessagesInjected({
       conversationId: context.conversationId,
