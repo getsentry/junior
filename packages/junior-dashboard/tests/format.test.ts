@@ -12,6 +12,7 @@ import {
   formatTokenTotal,
   formatUsageTotal,
   parseMarkdownBlocks,
+  requesterLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -226,8 +227,17 @@ describe("dashboard token formatting", () => {
 
     expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
-      "U1 · slack:C1:123",
+      "Alice Reviewer · slack:C1:123",
     );
+  });
+
+  it("keeps Slack display names with spaces as requester labels", () => {
+    expect(
+      requesterLabel(
+        { slackUserId: "U1", slackUserName: "Alice Reviewer" },
+        "Alice Reviewer",
+      ),
+    ).toBe("Alice Reviewer");
   });
 
   it("keeps meaningful conversation titles that start with turn", () => {
@@ -290,6 +300,25 @@ describe("dashboard token formatting", () => {
     ]);
 
     expect(formatConversationDuration(conversation!)).toBe("2m");
+  });
+
+  it("formats open-ended conversation spans from the supplied current time", () => {
+    const [conversation] = buildConversations([
+      {
+        conversationId: "slack:C1:123",
+        id: "turn-1",
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        title: "Turn turn-1",
+      },
+    ]);
+
+    expect(
+      formatConversationDuration(
+        conversation!,
+        Date.parse("2026-06-01T10:02:29.000Z"),
+      ),
+    ).toBe("2m");
   });
 });
 

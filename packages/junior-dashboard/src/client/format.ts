@@ -552,9 +552,12 @@ export function formatUsage(usage: TurnUsage | undefined): string {
 }
 
 /** Format a conversation span from first turn start to latest activity. */
-export function formatConversationDuration(conversation: Conversation): string {
+export function formatConversationDuration(
+  conversation: Conversation,
+  nowMs = Date.now(),
+): string {
   const start = parseTime(conversation.startedAt);
-  const end = parseTime(conversation.lastSeenAt) ?? Date.now();
+  const end = parseTime(conversation.lastSeenAt) ?? nowMs;
   if (start == null || end < start) return "none";
   const seconds = Math.max(1, Math.round((end - start) / 1000));
   if (seconds < 60) return `${seconds}s`;
@@ -619,17 +622,14 @@ export function requesterLabel(
   requester: RequesterIdentity | undefined,
   fallback: string | undefined,
 ): string | undefined {
-  const slackUserName = requester?.slackUserName?.trim();
-  const safeSlackUserName =
-    slackUserName && !/\s/.test(slackUserName) ? slackUserName : undefined;
-  const fallbackLabel =
-    fallback?.trim() && fallback.trim() !== slackUserName
-      ? fallback.trim()
-      : undefined;
+  const email = requester?.email?.trim() || undefined;
+  const fullName = requester?.fullName?.trim() || undefined;
+  const slackUserName = requester?.slackUserName?.trim() || undefined;
+  const fallbackLabel = fallback?.trim() || undefined;
   return (
-    requester?.email ??
-    requester?.fullName ??
-    safeSlackUserName ??
+    email ??
+    fullName ??
+    slackUserName ??
     fallbackLabel ??
     requester?.slackUserId
   );

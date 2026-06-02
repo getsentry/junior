@@ -70,7 +70,7 @@ export function TurnDurationChart(props: {
     mode === "turns"
       ? props.sessions.map((session) => turnPoint(session, props.timeZone))
       : conversations.map((conversation) =>
-          conversationPoint(conversation, props.timeZone),
+          conversationPoint(conversation, props.timeZone, nowMs),
         )
   )
     .filter((point): point is DurationPoint => Boolean(point))
@@ -188,6 +188,7 @@ type DurationChartMode = "conversations" | "turns";
 type DurationPoint = {
   conversation?: Conversation;
   conversationId: string;
+  durationLabel: string;
   durationMs: number;
   endedAt?: string;
   kind: DurationChartMode;
@@ -256,6 +257,7 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
       : 0);
   return {
     conversationId: conversationIdForSession(session),
+    durationLabel: formatMs(durationMs),
     durationMs,
     endedAt: session.completedAt ?? session.lastSeenAt,
     kind: "turns",
@@ -276,6 +278,7 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
 function conversationPoint(
   conversation: Conversation,
   timeZone: string,
+  nowMs: number,
 ): DurationPoint | null {
   const startedAtMs = Date.parse(conversation.startedAt ?? "");
   if (!Number.isFinite(startedAtMs)) {
@@ -286,13 +289,13 @@ function conversationPoint(
     return null;
   }
   const lastSeenAtMs = Date.parse(conversation.lastSeenAt ?? "");
-  const durationMs = Number.isFinite(lastSeenAtMs)
-    ? Math.max(0, lastSeenAtMs - startedAtMs)
-    : 0;
+  const durationEndMs = Number.isFinite(lastSeenAtMs) ? lastSeenAtMs : nowMs;
+  const durationMs = Math.max(0, durationEndMs - startedAtMs);
 
   return {
     conversation,
     conversationId: conversation.id,
+    durationLabel: formatConversationDuration(conversation, nowMs),
     durationMs,
     endedAt: conversation.lastSeenAt,
     kind: "conversations",
@@ -467,10 +470,7 @@ function chartTooltipRows(
 }
 
 function chartDurationLabel(point: DurationPoint): string {
-  if (point.kind === "conversations" && point.conversation) {
-    return formatConversationDuration(point.conversation);
-  }
-  return formatMs(point.durationMs);
+  return point.durationLabel;
 }
 
 function chartTooltipTurns(
