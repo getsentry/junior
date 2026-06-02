@@ -31,17 +31,17 @@ export function stripLeadingBotMention(
   if (!text.trim()) return text;
 
   let next = text;
-  if (options.stripLeadingSlackMentionToken && options.botUserId) {
-    const botUserId = escapeRegExp(options.botUserId);
-    const mentionByBotUserIdRe = new RegExp(
-      `^\\s*(?:<@${botUserId}(?:\\|[^>]+)?>|@${botUserId})[\\s,:-]*`,
-      "i",
-    );
-    next = next.replace(mentionByBotUserIdRe, "").trim();
-  }
-
   if (options.stripLeadingSlackMentionToken) {
-    next = next.replace(/^\s*<@[^>]+>[\s,:-]*/, "").trim();
+    if (options.botUserId) {
+      const botUserId = escapeRegExp(options.botUserId);
+      const mentionByBotUserIdRe = new RegExp(
+        `^\\s*(?:<@${botUserId}(?:\\|[^>]+)?>|@${botUserId})[\\s,:-]*`,
+        "i",
+      );
+      next = next.replace(mentionByBotUserIdRe, "").trim();
+    } else {
+      next = next.replace(/^\s*<@[^>]+>[\s,:-]*/, "").trim();
+    }
   }
 
   const mentionByNameRe = new RegExp(

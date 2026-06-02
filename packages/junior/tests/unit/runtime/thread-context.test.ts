@@ -24,6 +24,15 @@ describe("stripLeadingBotMention", () => {
       }),
     ).toBe("@U_OTHER ask junior for help");
   });
+
+  it("preserves a referenced user after the leading bot mention", () => {
+    expect(
+      stripLeadingBotMention("<@U_BOT> <@U_OTHER> status?", {
+        botUserId: "U_BOT",
+        stripLeadingSlackMentionToken: true,
+      }),
+    ).toBe("<@U_OTHER> status?");
+  });
 });
 
 describe("getAssistantThreadContext", () => {
