@@ -104,6 +104,7 @@ describe("dashboard telemetry components", () => {
   it("keeps the per-turn Sentry trace link in transcript headers", () => {
     const turn = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -127,6 +128,7 @@ describe("dashboard telemetry components", () => {
   it("removes residual grid row gap from collapsed system prompts", () => {
     const turn = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -155,6 +157,7 @@ describe("dashboard telemetry components", () => {
   it("uses chart mode links as the duration chart title", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 3_000,
       id: "turn-1",
       completedAt: "2026-01-01T00:00:03.000Z",
       lastProgressAt: "2026-01-01T00:00:03.000Z",
@@ -194,6 +197,7 @@ describe("dashboard telemetry components", () => {
   it("omits the conversation tool-call metric slot when the loaded detail has no tool calls", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "not-a-date",

@@ -18,15 +18,13 @@ import {
   conversationRequesterLabel,
   conversationIdForSession,
   conversationPath,
-  formatConversationDuration,
   formatDurationTick,
-  formatTurnDuration,
+  formatMs,
   requesterLabel,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
-  turnElapsedDurationMs,
   visualStatusForSession,
   visualStatusForConversation,
 } from "../format";
@@ -251,13 +249,10 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
     return null;
   }
 
-  const durationMs = turnElapsedDurationMs(session);
-  if (durationMs === undefined) {
-    return null;
-  }
+  const durationMs = session.cumulativeDurationMs;
   return {
     conversationId: conversationIdForSession(session),
-    durationLabel: formatTurnDuration(session),
+    durationLabel: formatMs(durationMs),
     durationMs,
     endedAt: session.completedAt ?? session.lastSeenAt,
     kind: "turns",
@@ -284,16 +279,15 @@ function conversationPoint(
   if (!status) {
     return null;
   }
-  const lastSeenAtMs = Date.parse(conversation.lastSeenAt);
-  if (!Number.isFinite(lastSeenAtMs)) {
-    return null;
-  }
-  const durationMs = Math.max(0, lastSeenAtMs - startedAtMs);
+  const durationMs = conversation.turns.reduce(
+    (sum, turn) => sum + turn.cumulativeDurationMs,
+    0,
+  );
 
   return {
     conversation,
     conversationId: conversation.id,
-    durationLabel: formatConversationDuration(conversation),
+    durationLabel: formatMs(durationMs),
     durationMs,
     endedAt: conversation.lastSeenAt,
     kind: "conversations",

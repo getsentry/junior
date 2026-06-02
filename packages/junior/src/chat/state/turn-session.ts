@@ -39,7 +39,7 @@ export interface AgentTurnSessionRecord {
   conversationTitle?: string;
   version: number;
   conversationId: string;
-  cumulativeDurationMs?: number;
+  cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   errorMessage?: string;
   lastProgressAtMs: number;
@@ -191,9 +191,8 @@ function parseAgentTurnSessionFields(
   const sliceId = toFiniteNonNegativeNumber(parsed.sliceId);
   const version = toFiniteNonNegativeNumber(parsed.version);
   const updatedAtMs = toFiniteNonNegativeNumber(parsed.updatedAtMs);
-  const cumulativeDurationMs = toFiniteNonNegativeNumber(
-    parsed.cumulativeDurationMs,
-  );
+  const cumulativeDurationMs =
+    toFiniteNonNegativeNumber(parsed.cumulativeDurationMs) ?? 0;
   const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
@@ -221,8 +220,8 @@ function parseAgentTurnSessionFields(
     startedAtMs: startedAtMs ?? updatedAtMs,
     lastProgressAtMs: lastProgressAtMs ?? updatedAtMs,
     updatedAtMs,
+    cumulativeDurationMs,
     ...(logSessionId ? { logSessionId } : {}),
-    ...(cumulativeDurationMs !== undefined ? { cumulativeDurationMs } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     ...(requester ? { requester } : {}),
     ...(Array.isArray(parsed.loadedSkillNames)
@@ -351,9 +350,7 @@ function materializeAgentTurnSessionRecord(
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
     piMessages,
-    ...(stored.cumulativeDurationMs !== undefined
-      ? { cumulativeDurationMs: stored.cumulativeDurationMs }
-      : {}),
+    cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.cumulativeUsage
       ? { cumulativeUsage: stored.cumulativeUsage }
       : {}),
@@ -423,7 +420,7 @@ function buildStoredRecord(args: {
   channelName?: string;
   conversationTitle?: string;
   conversationId: string;
-  cumulativeDurationMs?: number;
+  cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   committedMessageCount: number;
   lastProgressAtMs?: number;
@@ -456,15 +453,7 @@ function buildStoredRecord(args: {
     updatedAtMs: nowMs,
     committedMessageCount: args.committedMessageCount,
     ...(args.logSessionId ? { logSessionId: args.logSessionId } : {}),
-    ...(typeof args.cumulativeDurationMs === "number" &&
-    Number.isFinite(args.cumulativeDurationMs)
-      ? {
-          cumulativeDurationMs: Math.max(
-            0,
-            Math.floor(args.cumulativeDurationMs),
-          ),
-        }
-      : {}),
+    cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.requester ? { requester: args.requester } : {}),
     ...(Array.isArray(args.loadedSkillNames)
@@ -540,9 +529,7 @@ async function updateAgentTurnSessionState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...(parsed.logSessionId ? { logSessionId: parsed.logSessionId } : {}),
-      ...(args.existing.cumulativeDurationMs !== undefined
-        ? { cumulativeDurationMs: args.existing.cumulativeDurationMs }
-        : {}),
+      cumulativeDurationMs: args.existing.cumulativeDurationMs,
       ...(args.existing.cumulativeUsage
         ? { cumulativeUsage: args.existing.cumulativeUsage }
         : {}),
@@ -623,9 +610,10 @@ export async function upsertAgentTurnSessionRecord(args: {
       committedMessageCount: args.piMessages.length,
       logSessionId: commit.sessionId,
       previousVersion: existingRecord?.version,
-      ...(args.cumulativeDurationMs !== undefined
-        ? { cumulativeDurationMs: args.cumulativeDurationMs }
-        : {}),
+      cumulativeDurationMs:
+        toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
+        existingRecord?.cumulativeDurationMs ??
+        0,
       ...(args.cumulativeUsage
         ? { cumulativeUsage: args.cumulativeUsage }
         : {}),
@@ -690,17 +678,10 @@ export async function recordAgentTurnSessionSummary(args: {
       lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
       state: args.state,
       updatedAtMs: nowMs,
-      ...(typeof args.cumulativeDurationMs === "number" &&
-      Number.isFinite(args.cumulativeDurationMs)
-        ? {
-            cumulativeDurationMs: Math.max(
-              0,
-              Math.floor(args.cumulativeDurationMs),
-            ),
-          }
-        : existing?.cumulativeDurationMs !== undefined
-          ? { cumulativeDurationMs: existing.cumulativeDurationMs }
-          : {}),
+      cumulativeDurationMs:
+        toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
+        existing?.cumulativeDurationMs ??
+        0,
       ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
         ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
         : {}),

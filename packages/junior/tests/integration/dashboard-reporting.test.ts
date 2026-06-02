@@ -82,6 +82,7 @@ describe("dashboard reporting", () => {
     expect(turn1).not.toHaveProperty("errorMessage");
     expect(turn2).toMatchObject({
       conversationId: "slack:C2:222",
+      cumulativeDurationMs: 0,
       sessionId: "turn-2",
       state: "awaiting_resume",
       resumeReason: "timeout",

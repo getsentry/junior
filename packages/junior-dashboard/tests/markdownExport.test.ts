@@ -106,6 +106,7 @@ describe("dashboard markdown export", () => {
           channelName: "Direct Message",
           conversationId: "slack:D1:222",
           conversationTitle: "Direct Message",
+          cumulativeDurationMs: 7_000,
           id: "turn-private",
           lastProgressAt: "2026-01-01T00:00:07.000Z",
           lastSeenAt: "2026-01-01T00:00:07.000Z",

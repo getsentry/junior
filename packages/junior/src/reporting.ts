@@ -81,7 +81,7 @@ export interface DashboardRequesterIdentity {
 
 export interface DashboardSessionReport {
   conversationTitle?: string;
-  cumulativeDurationMs?: number;
+  cumulativeDurationMs: number;
   cumulativeUsage?: DashboardTurnUsage;
   conversationId: string;
   id: string;
@@ -336,9 +336,7 @@ function sessionReportFromSummary(
     ...(summary.state === "completed"
       ? { completedAt: new Date(summary.updatedAtMs).toISOString() }
       : {}),
-    ...(summary.cumulativeDurationMs !== undefined
-      ? { cumulativeDurationMs: summary.cumulativeDurationMs }
-      : {}),
+    cumulativeDurationMs: summary.cumulativeDurationMs,
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     surface: surfaceFromConversationId(summary.conversationId),
     title: titleFromSummary(summary),

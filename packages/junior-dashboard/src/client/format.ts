@@ -118,15 +118,14 @@ export function formatDurationTick(value: number | undefined): string {
   return formatMs(ms);
 }
 
-/** Format aggregate runtime across turn summaries when duration data exists. */
-export function formatDurationTotal(
-  durations: Array<number | undefined>,
-): string {
-  const total = durations.reduce<number | undefined>((sum, value) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return sum;
-    return (sum ?? 0) + Math.max(0, Math.floor(value));
-  }, undefined);
-  return total === undefined ? "" : formatMs(total);
+/** Format aggregate runtime across turn summaries. */
+export function formatDurationTotal(durations: number[]): string {
+  if (durations.length === 0) return "";
+  const total = durations.reduce(
+    (sum, value) => sum + Math.max(0, Math.floor(value)),
+    0,
+  );
+  return formatMs(total);
 }
 
 /** Format transcript event timestamps independently from turn start offsets. */

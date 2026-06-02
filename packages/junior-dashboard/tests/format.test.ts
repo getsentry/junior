@@ -36,8 +36,8 @@ describe("dashboard token formatting", () => {
     ).toBe("205 tokens");
   });
 
-  it("sums turn runtime when duration data exists", () => {
-    expect(formatDurationTotal([1_000, 2_500, undefined])).toBe("3.5s");
+  it("sums turn runtime", () => {
+    expect(formatDurationTotal([1_000, 2_500])).toBe("3.5s");
   });
 
   it("rounds long chart duration ticks to whole minutes", () => {
@@ -235,6 +235,7 @@ describe("dashboard token formatting", () => {
       {
         channel: "C1",
         conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
@@ -272,6 +273,7 @@ describe("dashboard token formatting", () => {
         channel: "C1",
         channelName: "engineering",
         conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
@@ -292,6 +294,7 @@ describe("dashboard token formatting", () => {
       {
         conversationId: "slack:C1:123",
         conversationTitle: "Older title",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
@@ -303,6 +306,7 @@ describe("dashboard token formatting", () => {
       {
         conversationId: "slack:C1:123",
         conversationTitle: "Newer title",
+        cumulativeDurationMs: 0,
         id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
@@ -323,6 +327,7 @@ describe("dashboard token formatting", () => {
         channelName: "alice",
         conversationId: "slack:C1:123",
         conversationTitle: "Alice",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
@@ -348,6 +353,7 @@ describe("dashboard token formatting", () => {
     const [conversation] = buildConversations([
       {
         conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
@@ -365,6 +371,7 @@ describe("dashboard token formatting", () => {
     const [conversation] = buildConversations([
       {
         conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "not-a-date",
