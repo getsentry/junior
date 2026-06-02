@@ -1,5 +1,4 @@
 import {
-  formatBytes,
   formatCompactNumber,
   formatMs,
   formatTime,
@@ -114,22 +113,12 @@ export function ToolCallsMetric(props: {
   );
 }
 
-/** Render a conversational message count with per-message author and size. */
+/** Render a conversational message count. */
 export function MessagesMetric(props: {
-  align?: "left" | "right";
   loading?: boolean;
   summary: MessageSummary | undefined;
 }) {
   if (props.loading) return <span>messages loading</span>;
   if (!props.summary) return null;
-  const tooltip = props.summary.items.map((item) => ({
-    label: item.author,
-    labelStyle: "text" as const,
-    value: formatBytes(item.bytes),
-  }));
-  return (
-    <MetricValue align={props.align} tooltip={tooltip}>
-      {plural("message", props.summary.total)}
-    </MetricValue>
-  );
+  return <MetricValue>{plural("message", props.summary.total)}</MetricValue>;
 }

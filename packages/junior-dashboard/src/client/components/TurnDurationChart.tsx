@@ -442,11 +442,7 @@ function chartTooltipRows(
       : null,
     [
       "messages",
-      detail ? (
-        <MessagesMetric align="right" summary={messageSummary} />
-      ) : (
-        "loading"
-      ),
+      detail ? <MessagesMetric summary={messageSummary} /> : "loading",
     ],
     [
       "tool calls",

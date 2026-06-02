@@ -10,7 +10,7 @@ import { cn } from "../styles";
 
 export type MetricTooltipLine = {
   label?: string;
-  labelStyle?: "code" | "text";
+  labelStyle?: "code";
   value: string;
 };
 
@@ -79,7 +79,7 @@ export function MetricValue(props: {
     <span className={cn("relative inline-flex", props.className)}>
       <span
         aria-describedby={position ? tooltipId : undefined}
-        className="cursor-help border-b border-dotted border-white/20 outline-none transition-colors hover:border-white/45 focus-visible:border-white/45"
+        className="border-b border-dotted border-white/20 outline-none transition-colors hover:border-white/45 focus-visible:border-white/45"
         onBlur={hideTooltip}
         onFocus={showTooltip}
         onMouseEnter={showTooltip}
@@ -112,7 +112,6 @@ export function MetricValue(props: {
                       "min-w-0 break-words font-medium text-[#888]",
                       line.labelStyle === "code" &&
                         "break-all font-mono text-[0.74rem] text-[#d6d6d6]",
-                      line.labelStyle === "text" && "text-[#aaa]",
                     )}
                   >
                     {line.label}
