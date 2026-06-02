@@ -7,7 +7,7 @@ title: "juniorNitro"
 
 > **juniorNitro**(`options?`): `object`
 
-Defined in: [nitro.ts:170](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L170)
+Defined in: [nitro.ts:183](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L183)
 
 Nitro module that copies app and plugin content into the Vercel build output.
 
