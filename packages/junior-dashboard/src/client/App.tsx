@@ -1,3 +1,4 @@
+import { LogOut } from "lucide-react";
 import {
   Link,
   Navigate,
@@ -8,6 +9,7 @@ import {
 } from "react-router";
 
 import { useDashboardData } from "./api";
+import { Button } from "./components/Button";
 import { LoadingView } from "./components/LoadingView";
 import {
   conversationPath,
@@ -80,43 +82,14 @@ export function DashboardShell() {
             </NavLink>
           </nav>
           {loggedIn ? (
-            <button
+            <Button
               aria-label="Log out"
-              className="grid size-9 cursor-pointer place-items-center border border-white/15 bg-[#0b0b0b] p-0 text-[#b8b8b8] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white"
-              type="button"
-              title="Log out"
               onClick={() => void signOut()}
+              size="icon"
+              title="Log out"
             >
-              <svg
-                aria-hidden="true"
-                fill="none"
-                height="16"
-                viewBox="0 0 24 24"
-                width="16"
-              >
-                <path
-                  d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-                <path
-                  d="m16 17 5-5-5-5"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M21 12H9"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-              </svg>
-            </button>
+              <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+            </Button>
           ) : null}
         </div>
       </header>

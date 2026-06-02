@@ -4,6 +4,9 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
+import { Button } from "../src/client/components/Button";
+import { FilterTabs } from "../src/client/components/FilterTabs";
+import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { TurnTranscript } from "../src/client/components/TranscriptTurn";
 import { TurnDurationChart } from "../src/client/components/TurnDurationChart";
@@ -70,6 +73,34 @@ function renderConversationPage(data: DashboardData): string {
 }
 
 describe("dashboard telemetry components", () => {
+  it("keeps shared command buttons out of form-submit mode", () => {
+    const html = renderToStaticMarkup(<Button>Copy as Markdown</Button>);
+    const iconHtml = renderToStaticMarkup(
+      <Button aria-label="Log out" disabled size="icon" />,
+    );
+
+    expect(html).toContain('type="button"');
+    expect(iconHtml).toContain('disabled=""');
+    expect(iconHtml).toContain("size-9");
+  });
+
+  it("exposes pressed state for dashboard toggle controls", () => {
+    const filters = renderToStaticMarkup(
+      <FilterTabs current="failed" onChange={() => {}} />,
+    );
+    const transcript = renderToStaticMarkup(
+      <TranscriptHeader onChange={() => {}} redacted={false} value="raw" />,
+    );
+
+    expect(filters).toContain('role="group"');
+    expect(filters).toContain('aria-label="Conversation filter"');
+    expect(filters.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
+    expect(filters.match(/aria-pressed="false"/g) ?? []).toHaveLength(4);
+    expect(transcript).toContain('aria-label="Transcript view"');
+    expect(transcript.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
+    expect(transcript.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
+  });
+
   it("keeps the per-turn Sentry trace link in transcript headers", () => {
     const turn = {
       conversationId: "conversation-1",

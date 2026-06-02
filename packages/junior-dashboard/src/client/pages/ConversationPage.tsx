@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
+import { Button } from "../components/Button";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -32,7 +33,6 @@ import type {
   ConversationDetailFeed,
   DashboardData,
 } from "../types";
-import { cn } from "../styles";
 
 /** Render one permalinkable conversation transcript route. */
 export function ConversationPage(props: { data?: DashboardData }) {
@@ -127,22 +127,15 @@ function CopyMarkdownButton(props: {
   }
 
   return (
-    <button
+    <Button
       aria-label="Copy conversation as Markdown"
-      className={cn(
-        "inline-flex h-9 max-w-full items-center gap-2 border border-white/15 bg-[#0b0b0b] px-3 text-[0.82rem] font-semibold leading-none text-[#d6d6d6] transition-colors",
-        disabled
-          ? "cursor-not-allowed opacity-50"
-          : "cursor-pointer hover:border-white/30 hover:bg-[#151515] hover:text-white",
-      )}
       disabled={disabled}
       onClick={() => void copyMarkdown()}
       title="Copy conversation as Markdown"
-      type="button"
     >
       <Icon aria-hidden="true" size={15} strokeWidth={2} />
       <span className="truncate">{label}</span>
-    </button>
+    </Button>
   );
 }
 

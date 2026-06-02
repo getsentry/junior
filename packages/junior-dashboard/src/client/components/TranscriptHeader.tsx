@@ -1,3 +1,4 @@
+import { ToggleButton } from "./Button";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /** Render transcript controls without coupling them to turn rendering. */
@@ -30,22 +31,19 @@ function TranscriptViewToggle(props: {
   const options: TranscriptViewMode[] = ["rich", "raw"];
   return (
     <div
-      className="inline-flex items-center gap-1 text-[0.82rem] font-semibold text-[#888]"
       aria-label="Transcript view"
+      className="inline-flex items-center gap-1 text-[0.82rem] font-semibold text-[#888]"
+      role="group"
     >
       {options.map((option) => (
-        <button
-          className={`cursor-pointer border-0 bg-transparent px-1.5 py-1 uppercase tracking-normal underline-offset-4 ${
-            props.value === option
-              ? "text-white underline decoration-white"
-              : "text-[#888] hover:text-white"
-          }`}
+        <ToggleButton
           key={option}
           onClick={() => props.onChange(option)}
-          type="button"
+          pressed={props.value === option}
+          variant="text"
         >
           {option}
-        </button>
+        </ToggleButton>
       ))}
     </div>
   );
