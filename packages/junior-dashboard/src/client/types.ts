@@ -1,95 +1,39 @@
 import type { BundledLanguage } from "shiki/bundle/web";
+import type {
+  DashboardConversationReport,
+  DashboardSessionFeed,
+  DashboardSessionReport,
+  DashboardTurnReport,
+  HealthReport,
+  PluginReport,
+  RuntimeInfoReport,
+  SkillReport,
+} from "@sentry/junior/reporting";
 
-export type Health = { service: string; status: string; timestamp: string };
+export type Health = HealthReport;
 
-export type Runtime = {
-  cwd: string;
-  descriptionText?: string;
-  homeDir: string;
-  packagedContent: { packageNames: string[] };
-};
+export type Runtime = RuntimeInfoReport;
 
-export type Plugin = { name: string };
+export type Plugin = PluginReport;
 
-export type Skill = { name: string; pluginProvider?: string };
+export type Skill = SkillReport;
 
-export type RequesterIdentity = {
-  email?: string;
-  fullName?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-};
+export type RequesterIdentity = NonNullable<
+  DashboardSessionReport["requesterIdentity"]
+>;
 
-export type TurnUsage = {
-  cachedInputTokens?: number;
-  cacheCreationTokens?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-};
+export type TurnUsage = NonNullable<DashboardSessionReport["cumulativeUsage"]>;
 
-export type Session = {
-  channel?: string;
-  channelName?: string;
-  completedAt?: string;
-  conversationId?: string;
-  conversationTitle?: string;
-  cumulativeDurationMs?: number;
-  cumulativeUsage?: TurnUsage;
-  id: string;
-  lastProgressAt?: string;
-  lastSeenAt?: string;
-  requester?: string;
-  requesterIdentity?: RequesterIdentity;
-  sentryConversationUrl?: string;
-  sentryTraceUrl?: string;
-  startedAt?: string;
-  status: string;
-  surface?: string;
-  title?: string;
-  traceId?: string;
-};
+export type Session = DashboardSessionReport;
 
-export type TranscriptPart = {
-  bytes?: number;
-  chars?: number;
-  id?: string;
-  input?: unknown;
-  inputKeys?: string[];
-  inputSizeBytes?: number;
-  inputSizeChars?: number;
-  inputType?: string;
-  name?: string;
-  output?: unknown;
-  outputKeys?: string[];
-  outputSizeBytes?: number;
-  outputSizeChars?: number;
-  outputType?: string;
-  redacted?: boolean;
-  text?: string;
-  type: string;
-};
+export type TranscriptPart =
+  DashboardTurnReport["transcript"][number]["parts"][number];
 
-export type TranscriptMessage = {
-  parts: TranscriptPart[];
-  role: string;
-  timestamp?: number;
-};
+export type TranscriptMessage = DashboardTurnReport["transcript"][number];
 
-export type ConversationTurn = Session & {
-  transcript: TranscriptMessage[];
-  transcriptAvailable: boolean;
-  transcriptMetadata?: TranscriptMessage[];
-  transcriptMessageCount?: number;
-  transcriptRedacted?: boolean;
-  transcriptRedactionReason?: "non_public_conversation";
-};
+export type ConversationTurn = DashboardTurnReport;
 
-export type ConversationDetailFeed = {
-  conversationId: string;
-  generatedAt: string;
-  turns: ConversationTurn[];
-};
+export type ConversationDetailFeed = DashboardConversationReport;
 
 export type Conversation = {
   channel?: string;
@@ -98,7 +42,6 @@ export type Conversation = {
   id: string;
   lastProgressAt?: string;
   lastSeenAt?: string;
-  requester?: string;
   requesterIdentity?: RequesterIdentity;
   sentryConversationUrl?: string;
   sentryTraceUrl?: string;
@@ -110,11 +53,7 @@ export type Conversation = {
   turns: Session[];
 };
 
-export type SessionFeed = {
-  generatedAt?: string;
-  sessions: Session[];
-  source: string;
-};
+export type SessionFeed = DashboardSessionFeed;
 
 export type Identity = { user: { email?: string; hostedDomain?: string } };
 

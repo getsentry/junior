@@ -68,7 +68,6 @@ export interface DashboardSessionReport {
   completedAt?: string;
   surface?: "slack" | "api" | "scheduler" | "internal";
   title?: string;
-  requester?: string;
   requesterIdentity?: AgentTurnRequester;
   channel?: string;
   channelName?: string;
@@ -213,18 +212,6 @@ function titleFromSummary(summary: AgentTurnSessionSummary): string {
   return `Turn ${summary.sessionId}`;
 }
 
-function requesterLabel(
-  requester: AgentTurnRequester | undefined,
-): string | undefined {
-  if (!requester) return undefined;
-  return (
-    requester.email ??
-    requester.fullName ??
-    requester.slackUserName ??
-    requester.slackUserId
-  );
-}
-
 function safePrivateLabel(summary: AgentTurnSessionSummary): string {
   const slackThread = parseSlackThreadId(summary.conversationId);
   if (slackThread?.channelId.startsWith("D")) {
@@ -249,7 +236,6 @@ function sessionReportFromSummary(
     privacy !== "public" ? safePrivateLabel(summary) : undefined;
   const conversationTitle = privateLabel ?? summary.conversationTitle;
   const channelName = privateLabel ?? summary.channelName;
-  const requester = requesterLabel(summary.requester);
   const sentryConversationUrl = buildSentryConversationUrl(
     summary.conversationId,
   );
@@ -275,7 +261,6 @@ function sessionReportFromSummary(
       : {}),
     surface: surfaceFromConversationId(summary.conversationId),
     title: titleFromSummary(summary),
-    ...(requester ? { requester } : {}),
     ...(summary.requester ? { requesterIdentity: summary.requester } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),

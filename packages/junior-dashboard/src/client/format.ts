@@ -26,7 +26,7 @@ function displayTimeZone(): string {
 }
 
 function isActiveSession(session: Session): boolean {
-  return session.status === "active" || session.status === "running";
+  return session.status === "active";
 }
 
 /** Identify turn summaries that should appear in failed conversation filters. */
@@ -393,7 +393,7 @@ function transcriptMessageAuthor(
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return "Junior";
   if (kind === "user") {
-    return requesterLabel(turn.requesterIdentity, turn.requester) ?? "User";
+    return requesterLabel(turn.requesterIdentity) ?? "User";
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -552,13 +552,10 @@ export function formatUsage(usage: TurnUsage | undefined): string {
 }
 
 /** Format a conversation span from first turn start to latest activity. */
-export function formatConversationDuration(
-  conversation: Conversation,
-  nowMs = Date.now(),
-): string {
+export function formatConversationDuration(conversation: Conversation): string {
   const start = parseTime(conversation.startedAt);
-  const end = parseTime(conversation.lastSeenAt) ?? nowMs;
-  if (start == null || end < start) return "none";
+  const end = parseTime(conversation.lastSeenAt);
+  if (start == null || end == null || end < start) return "none";
   const seconds = Math.max(1, Math.round((end - start) / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.round(seconds / 60);
@@ -620,19 +617,11 @@ export function conversationDisplayTitle(
 /** Prefer stable requester identifiers while keeping Slack ids as a last resort. */
 export function requesterLabel(
   requester: RequesterIdentity | undefined,
-  fallback: string | undefined,
 ): string | undefined {
   const email = requester?.email?.trim() || undefined;
   const fullName = requester?.fullName?.trim() || undefined;
   const slackUserName = requester?.slackUserName?.trim() || undefined;
-  const fallbackLabel = fallback?.trim() || undefined;
-  return (
-    email ??
-    fullName ??
-    slackUserName ??
-    fallbackLabel ??
-    requester?.slackUserId
-  );
+  return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
 }
 
 function sameDisplayLabel(
@@ -649,10 +638,7 @@ export function conversationRequesterLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
   if (!conversation) return undefined;
-  const owner = requesterLabel(
-    conversation.requesterIdentity,
-    conversation.requester,
-  );
+  const owner = requesterLabel(conversation.requesterIdentity);
   if (
     sameDisplayLabel(owner, conversation.conversationTitle) ||
     sameDisplayLabel(owner, meaningfulConversationTitle(conversation)) ||
@@ -678,10 +664,7 @@ export function conversationIdentityMeta(
 
 /** Convert Slack channel ids and names into user-facing location labels. */
 export function slackLocationLabel(
-  input: Pick<
-    Session,
-    "channel" | "channelName" | "requester" | "requesterIdentity"
-  >,
+  input: Pick<Session, "channel" | "channelName">,
   options: { includeId?: boolean } = {},
 ): string | undefined {
   const channelId = input.channel;
@@ -995,9 +978,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
           : sortedTurns.some(isFailedSession)
             ? "failed"
             : newest.status;
-      const requesterTurn =
-        sortedTurns.find((turn) => turn.requesterIdentity) ??
-        sortedTurns.find((turn) => turn.requester);
+      const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
       const conversationTitle = sortedTurns.find(
         (turn) => turn.conversationTitle,
       )?.conversationTitle;
@@ -1008,10 +989,6 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         conversationTitle,
         id,
         lastSeenAt: newest.lastSeenAt,
-        requester: requesterLabel(
-          requesterTurn?.requesterIdentity,
-          requesterTurn?.requester,
-        ),
         requesterIdentity: requesterTurn?.requesterIdentity,
         sentryConversationUrl: newest.sentryConversationUrl,
         sentryTraceUrl: newest.sentryTraceUrl,

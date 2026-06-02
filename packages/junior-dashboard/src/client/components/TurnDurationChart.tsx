@@ -70,7 +70,7 @@ export function TurnDurationChart(props: {
     mode === "turns"
       ? props.sessions.map((session) => turnPoint(session, props.timeZone))
       : conversations.map((conversation) =>
-          conversationPoint(conversation, props.timeZone, nowMs),
+          conversationPoint(conversation, props.timeZone),
         )
   )
     .filter((point): point is DurationPoint => Boolean(point))
@@ -278,7 +278,6 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
 function conversationPoint(
   conversation: Conversation,
   timeZone: string,
-  nowMs: number,
 ): DurationPoint | null {
   const startedAtMs = Date.parse(conversation.startedAt ?? "");
   if (!Number.isFinite(startedAtMs)) {
@@ -289,13 +288,15 @@ function conversationPoint(
     return null;
   }
   const lastSeenAtMs = Date.parse(conversation.lastSeenAt ?? "");
-  const durationEndMs = Number.isFinite(lastSeenAtMs) ? lastSeenAtMs : nowMs;
-  const durationMs = Math.max(0, durationEndMs - startedAtMs);
+  if (!Number.isFinite(lastSeenAtMs)) {
+    return null;
+  }
+  const durationMs = Math.max(0, lastSeenAtMs - startedAtMs);
 
   return {
     conversation,
     conversationId: conversation.id,
-    durationLabel: formatConversationDuration(conversation, nowMs),
+    durationLabel: formatConversationDuration(conversation),
     durationMs,
     endedAt: conversation.lastSeenAt,
     kind: "conversations",
@@ -420,7 +421,7 @@ function chartTooltipRows(
   const requester =
     point.kind === "conversations"
       ? conversationRequesterLabel(point.conversation)
-      : requesterLabel(session?.requesterIdentity, session?.requester);
+      : requesterLabel(session?.requesterIdentity);
   const location = session
     ? slackLocationLabel(session, { includeId: false })
     : undefined;

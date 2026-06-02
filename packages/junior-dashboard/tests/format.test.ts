@@ -92,7 +92,7 @@ describe("dashboard token formatting", () => {
   it("summarizes tooltip metrics from visible transcripts", () => {
     const turn = {
       id: "turn-1",
-      requester: "alice",
+      requesterIdentity: { fullName: "alice" },
       status: "completed",
       transcriptAvailable: true,
       transcript: [
@@ -212,6 +212,7 @@ describe("dashboard token formatting", () => {
         channel: "C1",
         conversationId: "slack:C1:123",
         id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         requesterIdentity: {
           slackUserId: "U1",
@@ -233,10 +234,7 @@ describe("dashboard token formatting", () => {
 
   it("keeps Slack display names with spaces as requester labels", () => {
     expect(
-      requesterLabel(
-        { slackUserId: "U1", slackUserName: "Alice Reviewer" },
-        "Alice Reviewer",
-      ),
+      requesterLabel({ slackUserId: "U1", slackUserName: "Alice Reviewer" }),
     ).toBe("Alice Reviewer");
   });
 
@@ -247,6 +245,7 @@ describe("dashboard token formatting", () => {
         channelName: "engineering",
         conversationId: "slack:C1:123",
         id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
@@ -268,6 +267,7 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         conversationTitle: "Alice",
         id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         requesterIdentity: {
           fullName: "alice",
@@ -292,6 +292,7 @@ describe("dashboard token formatting", () => {
       {
         conversationId: "slack:C1:123",
         id: "turn-1",
+        lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
@@ -302,23 +303,20 @@ describe("dashboard token formatting", () => {
     expect(formatConversationDuration(conversation!)).toBe("2m");
   });
 
-  it("formats open-ended conversation spans from the supplied current time", () => {
+  it("does not invent conversation spans without a valid end time", () => {
     const [conversation] = buildConversations([
       {
         conversationId: "slack:C1:123",
         id: "turn-1",
+        lastProgressAt: "2026-06-01T10:02:29.000Z",
+        lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         title: "Turn turn-1",
       },
     ]);
 
-    expect(
-      formatConversationDuration(
-        conversation!,
-        Date.parse("2026-06-01T10:02:29.000Z"),
-      ),
-    ).toBe("2m");
+    expect(formatConversationDuration(conversation!)).toBe("none");
   });
 });
 

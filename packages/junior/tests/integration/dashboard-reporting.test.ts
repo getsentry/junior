@@ -370,6 +370,10 @@ describe("dashboard reporting", () => {
       conversationTitle: "Direct Message",
       channelName: "Direct Message",
       id: "turn-private",
+      requesterIdentity: {
+        email: "david@sentry.io",
+        slackUserId: "U1",
+      },
       traceId: "0123456789abcdef0123456789abcdef",
       transcriptAvailable: false,
       transcriptMessageCount: 2,
@@ -377,6 +381,7 @@ describe("dashboard reporting", () => {
       transcriptRedactionReason: "non_public_conversation",
       transcript: [],
     });
+    expect(report.turns[0]).not.toHaveProperty("requester");
     expect(JSON.stringify(report)).not.toContain("private question");
     expect(JSON.stringify(report)).not.toContain("private answer");
     expect(JSON.stringify(report)).not.toContain("private value");
