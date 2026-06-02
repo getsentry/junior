@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
+import { buildConversationMarkdown } from "../markdownExport";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -29,6 +32,7 @@ import type {
   ConversationDetailFeed,
   DashboardData,
 } from "../types";
+import { cn } from "../styles";
 
 /** Render one permalinkable conversation transcript route. */
 export function ConversationPage(props: { data?: DashboardData }) {
@@ -62,11 +66,17 @@ export function ConversationPage(props: { data?: DashboardData }) {
               />
             </div>
           </div>
-          <div className="self-start break-words text-[0.82rem] leading-relaxed text-[#b8b8b8] md:text-right">
-            updated{" "}
-            {formatRelativeTime(
-              conversation?.lastSeenAt ?? detail.data?.generatedAt,
-            )}
+          <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.82rem] leading-relaxed text-[#b8b8b8] md:items-end md:text-right">
+            <CopyMarkdownButton
+              conversation={conversation}
+              detail={detail.data}
+            />
+            <div className="break-words">
+              updated{" "}
+              {formatRelativeTime(
+                conversation?.lastSeenAt ?? detail.data?.generatedAt,
+              )}
+            </div>
           </div>
           <ConversationStats conversation={conversation} detail={detail.data} />
         </header>
@@ -82,6 +92,57 @@ export function ConversationPage(props: { data?: DashboardData }) {
         )}
       </section>
     </div>
+  );
+}
+
+function CopyMarkdownButton(props: {
+  conversation: Conversation | undefined;
+  detail: ConversationDetailFeed | undefined;
+}) {
+  const [status, setStatus] = useState<"copied" | "failed" | "idle">("idle");
+  const disabled = !props.detail;
+  const label =
+    status === "copied"
+      ? "Copied"
+      : status === "failed"
+        ? "Copy failed"
+        : "Copy as Markdown";
+  const Icon = status === "copied" ? Check : Copy;
+
+  useEffect(() => {
+    setStatus("idle");
+  }, [props.detail?.conversationId, props.detail?.generatedAt]);
+
+  async function copyMarkdown() {
+    if (!props.detail) return;
+
+    try {
+      await navigator.clipboard.writeText(
+        buildConversationMarkdown(props.detail, props.conversation),
+      );
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+  }
+
+  return (
+    <button
+      aria-label="Copy conversation as Markdown"
+      className={cn(
+        "inline-flex h-9 max-w-full items-center gap-2 border border-white/15 bg-[#0b0b0b] px-3 text-[0.82rem] font-semibold leading-none text-[#d6d6d6] transition-colors",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "cursor-pointer hover:border-white/30 hover:bg-[#151515] hover:text-white",
+      )}
+      disabled={disabled}
+      onClick={() => void copyMarkdown()}
+      title="Copy conversation as Markdown"
+      type="button"
+    >
+      <Icon aria-hidden="true" size={15} strokeWidth={2} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
