@@ -433,6 +433,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });
+          await options.onTurnStatePersisted?.();
           return;
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
@@ -467,6 +468,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });
+          await options.onTurnStatePersisted?.();
           return;
         }
         startActiveTurn({

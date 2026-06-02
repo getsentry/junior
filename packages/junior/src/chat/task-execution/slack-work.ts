@@ -282,6 +282,7 @@ export function createSlackConversationWorker(
           (record) => record.inboundMessageId,
         );
         let initialMessagesPersisted = false;
+        let leaseLostDuringTurnHandoff = false;
         const markInitialMessagesInjected = async (): Promise<boolean> => {
           if (initialMessagesPersisted) {
             return true;
@@ -297,6 +298,7 @@ export function createSlackConversationWorker(
         };
         const onTurnStatePersisted = async (): Promise<void> => {
           if (!(await markInitialMessagesInjected())) {
+            leaseLostDuringTurnHandoff = true;
             throw new Error(
               `Conversation work lease lost before Slack turn handoff for ${context.conversationId}`,
             );
@@ -340,22 +342,15 @@ export function createSlackConversationWorker(
           if (isCooperativeTurnYieldError(error)) {
             return { status: "yielded" } satisfies ConversationWorkerResult;
           }
+          if (leaseLostDuringTurnHandoff) {
+            return { status: "lost_lease" } satisfies ConversationWorkerResult;
+          }
           throw error;
         }
       },
     });
     if (turnResult?.status === "yielded") {
       return turnResult;
-    }
-
-    const messagesMarked = await markConversationMessagesInjected({
-      conversationId: context.conversationId,
-      inboundMessageIds: records.map((record) => record.inboundMessageId),
-      leaseToken: context.leaseToken,
-      state,
-    });
-    if (!messagesMarked) {
-      return { status: "lost_lease" };
     }
 
     return { status: "completed" };

@@ -142,7 +142,8 @@ describe("Slack conversation work execution", () => {
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
           runtime: {
-            handleNewMention: async (thread, message) => {
+            handleNewMention: async (thread, message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
               calls.push({ thread, message });
             },
             handleSubscribedMessage: async () => {
@@ -210,6 +211,7 @@ describe("Slack conversation work execution", () => {
           getSlackAdapter: () => slackAdapter,
           runtime: {
             handleNewMention: async (thread, message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
               calls.push({
                 thread,
                 message,
@@ -298,6 +300,7 @@ describe("Slack conversation work execution", () => {
           getSlackAdapter: () => slackAdapter,
           runtime: {
             handleNewMention: async (thread, message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
               subscribedValues.push(await thread.isSubscribed());
               calls.push({
                 thread,
@@ -368,7 +371,8 @@ describe("Slack conversation work execution", () => {
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
           runtime: {
-            handleNewMention: async (_thread, message) => {
+            handleNewMention: async (_thread, message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
               calls.push(message.text);
             },
             handleSubscribedMessage: async () => {
@@ -730,7 +734,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
-  it("reports lost lease when Slack injection marking loses ownership", async () => {
+  it("requeues Slack mailbox records when the runtime returns without durable handoff", async () => {
     const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
@@ -739,7 +743,7 @@ describe("Slack conversation work execution", () => {
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
-          text: `<@${SLACK_BOT_USER_ID}> first`,
+          text: `<@${SLACK_BOT_USER_ID}> follow-up during resume`,
         }),
       ),
       services: {
@@ -749,37 +753,44 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
+    queue.sent = [];
 
     let handled = 0;
-    const worker = createSlackConversationWorker({
-      getSlackAdapter: () => slackAdapter,
-      runtime: {
-        handleNewMention: async () => {
-          handled += 1;
-        },
-        handleSubscribedMessage: async () => {
-          throw new Error("unexpected subscribed route");
-        },
-      },
-      state,
-    });
-
     await expect(
-      worker({
-        checkIn: async () => true,
-        conversationId: CONVERSATION_ID,
-        drainMailbox: async () => [],
-        leaseToken: "stale-lease",
-        shouldYield: () => false,
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => 3_000,
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async () => {
+              handled += 1;
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
       }),
-    ).resolves.toEqual({ status: "lost_lease" });
+    ).resolves.toEqual({ status: "pending_requeued" });
 
     expect(handled).toBe(1);
+    expect(queue.sent).toEqual([
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `pending:${CONVERSATION_ID}:3000`,
+      }),
+    ]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
     });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
@@ -812,8 +823,9 @@ describe("Slack conversation work execution", () => {
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
           runtime: {
-            handleNewMention: async () => {
+            handleNewMention: async (_thread, _message, hooks) => {
               currentNowMs = 242_000;
+              await hooks?.onTurnStatePersisted?.();
             },
             handleSubscribedMessage: async () => {
               throw new Error("unexpected subscribed route");
