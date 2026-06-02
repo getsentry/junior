@@ -444,14 +444,16 @@ function chartTooltipRows(
       "messages",
       detail ? <MessagesMetric summary={messageSummary} /> : "loading",
     ],
-    [
-      "tool calls",
-      detail ? (
-        <ToolCallsMetric align="right" summary={toolSummary} />
-      ) : (
-        "loading"
-      ),
-    ],
+    !detail || (toolSummary && toolSummary.total > 0)
+      ? [
+          "tool calls",
+          detail ? (
+            <ToolCallsMetric align="right" summary={toolSummary} />
+          ) : (
+            "loading"
+          ),
+        ]
+      : null,
     requester ? ["requester", requester] : null,
     location ? ["surface", location] : null,
   ];

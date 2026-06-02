@@ -93,7 +93,7 @@ export function ToolCallsMetric(props: {
   summary: ToolCallSummary | undefined;
 }) {
   if (props.loading) return <span>tool calls loading</span>;
-  if (!props.summary) return null;
+  if (!props.summary || props.summary.total <= 0) return null;
   const tooltip = props.summary.items.map((item) => ({
     label: item.name,
     labelStyle: "code" as const,

@@ -594,6 +594,21 @@ function turnMeta(turn: ConversationTurn): MetricListItem[] {
           key: "tools",
         }
       : undefined,
+    turn.sentryTraceUrl
+      ? {
+          content: (
+            <a
+              className="text-white no-underline hover:underline"
+              href={turn.sentryTraceUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              View in Sentry
+            </a>
+          ),
+          key: "sentry",
+        }
+      : undefined,
   ];
 
   return items.filter((item): item is MetricListItem => Boolean(item));
