@@ -24,12 +24,12 @@ import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
-  FakeQueue,
+  createFakeQueue,
   deferred,
   delayIndexLockOnce,
   delayMutationLockUntil,
   inboundMessage,
-} from "./conversation-work-fixtures";
+} from "../../fixtures/conversation-work";
 
 describe("conversation work execution", () => {
   beforeEach(async () => {
@@ -42,7 +42,7 @@ describe("conversation work execution", () => {
   });
 
   it("stores inbound mailbox messages idempotently", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await expect(
       appendAndEnqueueInboundMessage({
         message: inboundMessage("m1"),
@@ -70,7 +70,7 @@ describe("conversation work execution", () => {
   });
 
   it("retries transient conversation work index lock contention", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = delayIndexLockOnce(getStateAdapter());
 
     await expect(
@@ -92,7 +92,7 @@ describe("conversation work execution", () => {
 
   it("waits through same-conversation mutation lock contention", async () => {
     vi.useFakeTimers({ now: 1_000 });
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = delayMutationLockUntil({
       conversationId: CONVERSATION_ID,
       readyAtMs: 3_500,
@@ -115,7 +115,7 @@ describe("conversation work execution", () => {
   });
 
   it("repairs pending mailbox work when the initial queue send fails", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     queue.fail = true;
     await expect(
       appendAndEnqueueInboundMessage({
@@ -141,7 +141,7 @@ describe("conversation work execution", () => {
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
     const finish = deferred<void>();
@@ -181,7 +181,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues work requested while a lease is running", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -216,7 +216,7 @@ describe("conversation work execution", () => {
   });
 
   it("uses fresh queue idempotency keys for repeated worker requeues", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     let currentNowMs = 1_000;
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -250,7 +250,7 @@ describe("conversation work execution", () => {
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: InboundMessageRecord[][] = [];
 
@@ -277,7 +277,7 @@ describe("conversation work execution", () => {
 
   it("extends the lease with worker check-ins during long execution", async () => {
     vi.useFakeTimers({ now: 1_000 });
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
     const finish = deferred<void>();
@@ -314,7 +314,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues an expired conversation lease from heartbeat", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     await expect(
       startConversationWork({ conversationId: CONVERSATION_ID, nowMs: 2_000 }),
@@ -339,7 +339,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues pending mailbox work with no recent queue marker", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -352,7 +352,7 @@ describe("conversation work execution", () => {
   });
 
   it("uses fresh queue idempotency keys for repeated heartbeat recovery", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -375,7 +375,7 @@ describe("conversation work execution", () => {
   });
 
   it("runs conversation work recovery from the core heartbeat", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await runHeartbeat({
@@ -392,7 +392,7 @@ describe("conversation work execution", () => {
   });
 
   it("injects messages that arrive during active execution at a safe boundary", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: string[][] = [];
 
@@ -420,7 +420,7 @@ describe("conversation work execution", () => {
   });
 
   it("clears the run marker after draining messages that arrived during active execution", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -449,7 +449,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues instead of completing when final mailbox work remains", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -480,7 +480,7 @@ describe("conversation work execution", () => {
   });
 
   it("yields cooperatively and leaves the conversation resumable", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -590,7 +590,7 @@ describe("conversation work execution", () => {
   });
 
   it("processes Vercel Queue payloads through the leased worker", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: string[] = [];
 
@@ -614,7 +614,7 @@ describe("conversation work execution", () => {
   });
 
   it("rejects malformed Vercel Queue payloads", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
 
     await expect(
       processConversationQueueMessage(

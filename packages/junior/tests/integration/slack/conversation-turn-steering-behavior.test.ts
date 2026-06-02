@@ -1,105 +1,36 @@
-import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StateAdapter } from "chat";
-import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
+import {
+  SLACK_BOT_USER_ID,
+  SLACK_SIGNING_SECRET,
+  createFakeQueue,
+  deferred,
+  handleSlackWebhookAndFlush,
+  slackEnvelope,
+  slackWebhookRequest,
+} from "../../fixtures/conversation-work";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
-import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import type { ReplySteeringMessage } from "@/chat/respond";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import type {
-  ConversationQueueMessage,
-  ConversationQueueSendOptions,
-  ConversationWorkQueue,
-} from "@/chat/task-execution/queue";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
-import type { WaitUntilFn } from "@/handlers/types";
 
-const BOT_USER_ID = "U_BOT";
 const CHANNEL_ID = "C_STEER";
-const SIGNING_SECRET = "slack-signature-fixture";
 const THREAD_TS = "1712345.000100";
-
-class FakeQueue implements ConversationWorkQueue {
-  sent: Array<{
-    conversationId: string;
-    delayMs?: number;
-    idempotencyKey?: string;
-  }> = [];
-
-  async send(
-    message: ConversationQueueMessage,
-    options?: ConversationQueueSendOptions,
-  ): Promise<{ messageId: string }> {
-    this.sent.push({
-      conversationId: message.conversationId,
-      delayMs: options?.delayMs,
-      idempotencyKey: options?.idempotencyKey,
-    });
-    return { messageId: `fake-queue-${this.sent.length}` };
-  }
-}
-
-type WaitUntilTask = () => Promise<unknown>;
-
-function collectWaitUntil(tasks: WaitUntilTask[]): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task : () => task);
-  };
-}
-
-async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index]?.();
-  }
-}
-
-function signSlackBody(body: string, timestamp: string): string {
-  return `v0=${createHmac("sha256", SIGNING_SECRET)
-    .update(`v0:${timestamp}:${body}`)
-    .digest("hex")}`;
-}
-
-function slackRequest(body: unknown): Request {
-  const serialized = JSON.stringify(body);
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(serialized, timestamp),
-    },
-    body: serialized,
-  });
-}
-
-async function handleSlackWebhookAndFlush(args: {
-  request: Request;
-  services: Parameters<typeof handleSlackWebhook>[0]["services"];
-}): Promise<Response> {
-  const waitUntilTasks: WaitUntilTask[] = [];
-  const response = await handleSlackWebhook({
-    ...args,
-    waitUntil: collectWaitUntil(waitUntilTasks),
-  });
-  await flushWaitUntil(waitUntilTasks);
-  return response;
-}
 
 function makeMessageEvent(args: {
   eventType: "app_mention" | "message";
   text: string;
   ts: string;
 }) {
-  return slackEventsApiEnvelope({
+  return slackEnvelope({
     channel: CHANNEL_ID,
     eventType: args.eventType,
     text: args.text,
@@ -120,26 +51,15 @@ function makeDiagnostics() {
   };
 }
 
-function deferred<T = void>(): {
-  promise: Promise<T>;
-  resolve(value: T): void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 function createTurnHarness(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
   state: StateAdapter;
 }) {
-  const queue = new FakeQueue();
+  const queue = createFakeQueue();
   const adapter = createJuniorSlackAdapter({
     botToken: "slack-bot-fixture",
-    botUserId: BOT_USER_ID,
-    signingSecret: SIGNING_SECRET,
+    botUserId: SLACK_BOT_USER_ID,
+    signingSecret: SLACK_SIGNING_SECRET,
   });
   const runtime = createSlackRuntime({
     getSlackAdapter: () => adapter,
@@ -228,10 +148,10 @@ describe("Slack behavior: durable turn steering", () => {
     });
 
     const firstResponse = await handleSlackWebhookAndFlush({
-      request: slackRequest(
+      request: slackWebhookRequest(
         makeMessageEvent({
           eventType: "app_mention",
-          text: `<@${BOT_USER_ID}> start the incident summary`,
+          text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
           ts: THREAD_TS,
         }),
       ),
@@ -249,7 +169,7 @@ describe("Slack behavior: durable turn steering", () => {
       { text: "finish with the next action", ts: "1712345.000400" },
     ]) {
       const response = await handleSlackWebhookAndFlush({
-        request: slackRequest(
+        request: slackWebhookRequest(
           makeMessageEvent({
             eventType: "message",
             text: followUp.text,

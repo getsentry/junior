@@ -14,14 +14,14 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import {
   CONVERSATION_ID,
-  FakeQueue,
+  createFakeQueue,
   SLACK_BOT_USER_ID,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
-} from "./conversation-work-fixtures";
+} from "../../fixtures/conversation-work";
 
 describe("Slack conversation work execution", () => {
   beforeEach(async () => {
@@ -33,7 +33,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("persists Slack mentions into the durable mailbox and wakes the queue", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -79,7 +79,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -157,7 +157,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("keeps restored thread context aligned with promoted mention routing", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -242,7 +242,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("processes pending Slack follow-ups before timeout continuation", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -306,7 +306,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("drains Slack messages that arrive during an active turn into steering", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -376,7 +376,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("does not replay injected Slack mailbox records after lease recovery", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -450,7 +450,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("keeps Slack mailbox records pending when the runtime handoff fails", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -498,7 +498,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("reports lost lease when Slack injection marking loses ownership", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -550,7 +550,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
-    const queue = new FakeQueue();
+    const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();

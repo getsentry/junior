@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
 import type { StateAdapter } from "chat";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type {
+  ConversationQueueMessage,
+  ConversationQueueSendOptions,
+  ConversationWorkQueue,
+} from "@/chat/task-execution/queue";
 import type { InboundMessageRecord } from "@/chat/task-execution/store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -8,33 +12,42 @@ import type { WaitUntilFn } from "@/handlers/types";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_BOT_USER_ID = "U_BOT";
+export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
-const SLACK_SIGNING_SECRET = "slack-signature-fixture";
-
-export class FakeQueue implements ConversationWorkQueue {
-  fail = false;
+/** Queue fixture state exposed for recovery and idempotency assertions. */
+export interface FakeConversationWorkQueue extends ConversationWorkQueue {
+  fail: boolean;
   sent: Array<{
     conversationId: string;
     delayMs?: number;
     idempotencyKey?: string;
-  }> = [];
-
-  async send(
-    message: { conversationId: string },
-    options?: { delayMs?: number; idempotencyKey?: string },
-  ): Promise<{ messageId: string }> {
-    if (this.fail) {
-      throw new Error("queue unavailable");
-    }
-    this.sent.push({
-      conversationId: message.conversationId,
-      delayMs: options?.delayMs,
-      idempotencyKey: options?.idempotencyKey,
-    });
-    return { messageId: `queue-${this.sent.length}` };
-  }
+  }>;
 }
 
+/** Create a queue port fixture that records durable wake-up sends. */
+export function createFakeQueue(): FakeConversationWorkQueue {
+  const queue: FakeConversationWorkQueue = {
+    fail: false,
+    sent: [],
+    async send(
+      message: ConversationQueueMessage,
+      options?: ConversationQueueSendOptions,
+    ): Promise<{ messageId: string }> {
+      if (queue.fail) {
+        throw new Error("queue unavailable");
+      }
+      queue.sent.push({
+        conversationId: message.conversationId,
+        delayMs: options?.delayMs,
+        idempotencyKey: options?.idempotencyKey,
+      });
+      return { messageId: `queue-${queue.sent.length}` };
+    },
+  };
+  return queue;
+}
+
+/** Build a durable mailbox record for component-level conversation work tests. */
 export function inboundMessage(
   inboundMessageId: string,
   overrides: Partial<InboundMessageRecord> = {},
@@ -53,6 +66,7 @@ export function inboundMessage(
   };
 }
 
+/** Delay the global work index lock once so retry behavior is observable. */
 export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
   let blocked = false;
   return new Proxy(state, {
@@ -72,6 +86,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
   }) as StateAdapter;
 }
 
+/** Delay one conversation's mutation lock until the fake clock reaches a point. */
 export function delayMutationLockUntil(args: {
   conversationId: string;
   readyAtMs: number;
@@ -100,6 +115,7 @@ function signSlackBody(body: string, timestamp: string): string {
     .digest("hex")}`;
 }
 
+/** Build a signed Slack JSON webhook request for Slack ingress tests. */
 export function slackWebhookRequest(body: unknown): Request {
   const serialized = JSON.stringify(body);
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -114,6 +130,7 @@ export function slackWebhookRequest(body: unknown): Request {
   });
 }
 
+/** Build the minimal Slack Events API envelope used by durable ingress tests. */
 export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
@@ -139,7 +156,8 @@ export function slackEnvelope(input: {
   };
 }
 
-export function deferred<T>(): {
+/** Create a manually-resolved promise for coordinating async worker tests. */
+export function deferred<T = void>(): {
   promise: Promise<T>;
   resolve(value: T): void;
 } {
@@ -164,6 +182,7 @@ async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
   }
 }
 
+/** Run Slack webhook ingress and flush every scheduled waitUntil task. */
 export async function handleSlackWebhookAndFlush(
   args: Omit<Parameters<typeof handleSlackWebhook>[0], "waitUntil">,
 ): Promise<Response> {
@@ -176,6 +195,7 @@ export async function handleSlackWebhookAndFlush(
   return response;
 }
 
+/** Create a Slack adapter that shares the signed-request fixture credentials. */
 export function createSlackAdapterFixture() {
   return createJuniorSlackAdapter({
     botToken: "slack-bot-fixture",
@@ -184,6 +204,7 @@ export function createSlackAdapterFixture() {
   });
 }
 
+/** Provide no-op Slack runtime handlers when tests only care about ingress. */
 export function createNoopSlackWebhookRuntime() {
   return {
     handleAssistantContextChanged: async () => {},
