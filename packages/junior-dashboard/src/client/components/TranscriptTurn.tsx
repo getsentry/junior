@@ -625,15 +625,15 @@ function SystemMessageView(props: {
 
   return (
     <details
-      className={transcriptMessageClass(role)}
+      className={cn(transcriptMessageClass(role), !open && "gap-0")}
       onToggle={(event) => {
         if (event.currentTarget !== event.target) return;
         setOpen(event.currentTarget.open);
       }}
       open={open}
     >
-      <summary className="list-none cursor-pointer">
-        <div className={transcriptRoleClass(role)}>
+      <summary className="flex min-h-6 cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden">
+        <div className={cn(transcriptRoleClass(role), "items-center")}>
           <span className={transcriptRoleLabelClass(role)}>
             {transcriptRoleLabel(role, props.turn)}
           </span>
