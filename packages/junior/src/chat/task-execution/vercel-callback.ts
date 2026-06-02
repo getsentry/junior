@@ -1,5 +1,6 @@
 import { handleCallback } from "@vercel/queue";
 import type { StateAdapter } from "chat";
+import { getChatConfig } from "@/chat/config";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
 import { getVercelConversationWorkQueue } from "./vercel-queue";
@@ -10,7 +11,7 @@ import {
   type ConversationWorkerContext,
 } from "./worker";
 
-export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_SECONDS = 300;
+export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
 
 export interface ProcessConversationQueueMessageOptions {
   checkInIntervalMs?: number;
@@ -42,6 +43,16 @@ function parseConversationQueueMessage(
   };
 }
 
+/** Resolve queue visibility so redelivery waits past the host timeout boundary. */
+export function resolveConversationWorkVisibilityTimeoutSeconds(
+  functionMaxDurationSeconds = getChatConfig().functionMaxDurationSeconds,
+): number {
+  return (
+    functionMaxDurationSeconds +
+    CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS
+  );
+}
+
 /** Process one Vercel Queue payload with the generic conversation worker. */
 export async function processConversationQueueMessage(
   message: unknown,
@@ -71,7 +82,7 @@ export function createVercelConversationWorkCallback(
     {
       visibilityTimeoutSeconds:
         options.visibilityTimeoutSeconds ??
-        CONVERSATION_WORK_VISIBILITY_TIMEOUT_SECONDS,
+        resolveConversationWorkVisibilityTimeoutSeconds(),
     },
   );
 }

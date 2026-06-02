@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
 
@@ -31,5 +32,11 @@ describe("juniorVercelConfig", () => {
     const config = juniorVercelConfig({ buildCommand: null });
 
     expect(config.buildCommand).toBeUndefined();
+  });
+});
+
+describe("resolveConversationWorkVisibilityTimeoutSeconds", () => {
+  it("keeps queue redelivery past the function timeout boundary", () => {
+    expect(resolveConversationWorkVisibilityTimeoutSeconds(300)).toBe(330);
   });
 });

@@ -197,11 +197,13 @@ provider's idempotency window.
 
 The Vercel push consumer boundary is a thin adapter around the generic worker:
 it validates the `{ conversationId }` payload, uses `handleCallback`, and keeps
-the Vercel visibility timeout at 300 seconds. The internal push endpoint is
-`/api/internal/agent/continue`, because each queue delivery asks Junior to
-continue the latest durable agent state for that conversation. The app must wire
-the concrete conversation runner before registering the queue trigger; otherwise
-queue messages could be acknowledged without advancing agent state.
+the Vercel visibility timeout slightly beyond the configured function timeout
+so redelivery does not race host teardown at the exact timeout boundary. The
+internal push endpoint is `/api/internal/agent/continue`, because each queue
+delivery asks Junior to continue the latest durable agent state for that
+conversation. The app must wire the concrete conversation runner before
+registering the queue trigger; otherwise queue messages could be acknowledged
+without advancing agent state.
 
 ### Lease And Check-In Contract
 

@@ -4,6 +4,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import type { WaitUntilFn } from "@/handlers/types";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
@@ -34,6 +35,20 @@ function slackWebhookRequest(body: unknown): Request {
   });
 }
 
+type WaitUntilTask = () => Promise<unknown>;
+
+function collectWaitUntil(tasks: WaitUntilTask[]): WaitUntilFn {
+  return (task) => {
+    tasks.push(typeof task === "function" ? task : () => task);
+  };
+}
+
+async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
+  for (let index = 0; index < tasks.length; index += 1) {
+    await tasks[index]?.();
+  }
+}
+
 describe("Slack webhook: App Home events", () => {
   beforeEach(() => {
     process.env = {
@@ -56,6 +71,7 @@ describe("Slack webhook: App Home events", () => {
     });
 
     const state = createMemoryState();
+    const waitUntilTasks: WaitUntilTask[] = [];
     const slackAdapter = createJuniorSlackAdapter({
       botToken: "xoxb-test-token",
       botUserId: BOT_USER_ID,
@@ -72,7 +88,7 @@ describe("Slack webhook: App Home events", () => {
           event_ts: "1712345.0001",
         },
       }),
-      waitUntil: () => {},
+      waitUntil: collectWaitUntil(waitUntilTasks),
       services: {
         getSlackAdapter: () => slackAdapter,
         queue: {
@@ -99,6 +115,71 @@ describe("Slack webhook: App Home events", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(waitUntilTasks).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(0);
+    await flushWaitUntil(waitUntilTasks);
     expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(1);
+  });
+
+  it("acknowledges message events before durable handoff work runs", async () => {
+    const state = createMemoryState();
+    const waitUntilTasks: WaitUntilTask[] = [];
+    const queueMessages: Array<{ conversationId: string }> = [];
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test-token",
+      botUserId: BOT_USER_ID,
+      signingSecret: SIGNING_SECRET,
+    });
+
+    const response = await handleSlackWebhook({
+      request: slackWebhookRequest({
+        team_id: "T123",
+        type: "event_callback",
+        event: {
+          type: "app_mention",
+          user: "U123",
+          text: `<@${BOT_USER_ID}> hello`,
+          channel: "C123",
+          ts: "1712345.0001",
+          event_ts: "1712345.0001",
+          channel_type: "channel",
+        },
+      }),
+      waitUntil: collectWaitUntil(waitUntilTasks),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue: {
+          send: async (message) => {
+            queueMessages.push(message);
+            return { messageId: "queue-1" };
+          },
+        },
+        runtime: {
+          handleAssistantContextChanged: async () => {
+            throw new Error("unexpected assistant context callback");
+          },
+          handleAssistantThreadStarted: async () => {
+            throw new Error("unexpected assistant thread callback");
+          },
+          handleNewMention: async () => {
+            throw new Error("unexpected mention callback");
+          },
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed message callback");
+          },
+        },
+        state,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(waitUntilTasks).toHaveLength(1);
+    expect(queueMessages).toEqual([]);
+
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(queueMessages).toEqual([
+      { conversationId: "slack:C123:1712345.0001" },
+    ]);
   });
 });

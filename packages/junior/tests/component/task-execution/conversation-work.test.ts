@@ -29,6 +29,7 @@ import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import type { WaitUntilFn } from "@/handlers/types";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -137,6 +138,32 @@ function deferred<T>(): {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+type WaitUntilTask = () => Promise<unknown>;
+
+function collectWaitUntil(tasks: WaitUntilTask[]): WaitUntilFn {
+  return (task) => {
+    tasks.push(typeof task === "function" ? task : () => task);
+  };
+}
+
+async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
+  for (let index = 0; index < tasks.length; index += 1) {
+    await tasks[index]?.();
+  }
+}
+
+async function handleSlackWebhookAndFlush(
+  args: Omit<Parameters<typeof handleSlackWebhook>[0], "waitUntil">,
+): Promise<Response> {
+  const waitUntilTasks: WaitUntilTask[] = [];
+  const response = await handleSlackWebhook({
+    ...args,
+    waitUntil: collectWaitUntil(waitUntilTasks),
+  });
+  await flushWaitUntil(waitUntilTasks);
+  return response;
 }
 
 describe("conversation work execution", () => {
@@ -686,13 +713,12 @@ describe("conversation work execution", () => {
       signingSecret: SLACK_SIGNING_SECRET,
     });
 
-    const response = await handleSlackWebhook({
+    const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> deploy status`,
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -747,14 +773,13 @@ describe("conversation work execution", () => {
       thread: Thread;
     }> = [];
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> first`,
           ts: "1712345.0001",
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -767,7 +792,7 @@ describe("conversation work execution", () => {
         state,
       },
     });
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> second`,
@@ -775,7 +800,6 @@ describe("conversation work execution", () => {
           threadTs: "1712345.0001",
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -853,18 +877,17 @@ describe("conversation work execution", () => {
       state,
     };
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> first`,
           ts: "1712345.0001",
         }),
       ),
-      waitUntil: () => {},
       services: ingressServices,
     });
     await state.subscribe(CONVERSATION_ID);
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           eventType: "message",
@@ -873,7 +896,6 @@ describe("conversation work execution", () => {
           threadTs: "1712345.0001",
         }),
       ),
-      waitUntil: () => {},
       services: ingressServices,
     });
     const workBeforeProcessing = await getConversationWorkState({
@@ -946,7 +968,7 @@ describe("conversation work execution", () => {
       ],
     });
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> follow-up`,
@@ -954,7 +976,6 @@ describe("conversation work execution", () => {
           threadTs: "1712345.0001",
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -1006,13 +1027,12 @@ describe("conversation work execution", () => {
       signingSecret: SLACK_SIGNING_SECRET,
     });
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> first`,
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -1090,13 +1110,12 @@ describe("conversation work execution", () => {
       signingSecret: SLACK_SIGNING_SECRET,
     });
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> first`,
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
@@ -1149,13 +1168,12 @@ describe("conversation work execution", () => {
     });
     let currentNowMs = 1_000;
 
-    await handleSlackWebhook({
+    await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> first`,
         }),
       ),
-      waitUntil: () => {},
       services: {
         getSlackAdapter: () => slackAdapter,
         queue,
