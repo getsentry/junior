@@ -51,7 +51,7 @@ export function TranscriptToolView(props: {
         meta={meta}
         raw
         signature={
-          <strong className="min-w-0 break-words font-bold text-white">
+          <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
             {toolName}
           </strong>
         }
@@ -74,7 +74,7 @@ export function TranscriptToolView(props: {
       meta={meta}
       signature={
         <>
-          <strong className="min-w-0 break-words font-bold text-white">
+          <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
             {toolName}
           </strong>
           {isPreviewableValue(input) ? (
@@ -113,12 +113,12 @@ function ToolBodySection(props: {
   return (
     <div
       className={cn(
-        "border-t border-white/10 px-3",
-        props.padded === false ? "" : "py-3",
+        "border-t border-white/10",
+        props.padded === false ? "" : "py-2",
       )}
     >
       {props.label ? (
-        <div className="pb-2 font-mono text-[0.78rem] uppercase leading-none text-[#888]">
+        <div className="pb-2 font-mono text-[0.78rem] leading-none text-[#888]">
           {props.label}
         </div>
       ) : null}
@@ -173,7 +173,7 @@ function ToolArgEntry(props: { index: number; name: string; value: string }) {
   return (
     <span>
       {props.index > 0 ? <span className="text-[#888]">, </span> : null}
-      <span className="text-white">{props.name}</span>
+      <span className="text-[#d6d6d6]">{props.name}</span>
       <span className="text-[#888]">: </span>
       <ToolArgValue value={props.value} />
     </span>

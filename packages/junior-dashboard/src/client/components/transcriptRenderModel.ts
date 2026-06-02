@@ -1,5 +1,9 @@
 import { countStructuredBlockChildren } from "../code";
-import { parseMarkdownBlocks, stringifyPartValue, transcriptRoleKind } from "../format";
+import {
+  parseMarkdownBlocks,
+  stringifyPartValue,
+  transcriptRoleKind,
+} from "../format";
 import type { TranscriptMessage, TranscriptPart } from "../types";
 
 export type RenderedTranscriptPart =
@@ -8,7 +12,14 @@ export type RenderedTranscriptPart =
 
 type RenderedTranscriptEntry =
   | { kind: "message"; message: TranscriptMessage }
+  | RenderedThinkingEntry
   | RenderedToolEntry;
+
+type RenderedThinkingEntry = {
+  kind: "thinking";
+  part: TranscriptPart;
+  timestamp?: number;
+};
 
 type RenderedToolEntry = {
   call?: TranscriptPart;
@@ -26,6 +37,10 @@ function isToolCall(part: TranscriptPart): boolean {
 
 function isToolResult(part: TranscriptPart): boolean {
   return part.type === "tool_result";
+}
+
+function isThinking(part: TranscriptPart): boolean {
+  return part.type === "thinking";
 }
 
 function isString(value: string | undefined): value is string {
@@ -135,6 +150,16 @@ export function groupTranscriptMessages(
             resultTimestamp: message.timestamp,
           });
         }
+        continue;
+      }
+
+      if (isThinking(part)) {
+        flushMessage();
+        entries.push({
+          kind: "thinking",
+          part,
+          timestamp: message.timestamp,
+        });
         continue;
       }
 

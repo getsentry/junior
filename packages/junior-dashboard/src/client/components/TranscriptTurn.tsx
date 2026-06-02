@@ -1,4 +1,9 @@
-import { useState, type ClipboardEventHandler, type ReactNode } from "react";
+import {
+  Fragment,
+  useState,
+  type ClipboardEventHandler,
+  type ReactNode,
+} from "react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -49,6 +54,15 @@ import {
   mutedTranscriptMetaClass,
 } from "./transcriptStyles";
 import { previewToolValue } from "./transcriptPreview";
+
+type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
+type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
+type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
+type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
+
+const TOOL_RUN_COLLAPSE_THRESHOLD = 10;
+const TOOL_RUN_HEAD_COUNT = 4;
+const TOOL_RUN_TAIL_COUNT = 2;
 
 /** Render one conversation turn as actor messages and tool events. */
 export function TurnTranscript(props: {
@@ -173,10 +187,28 @@ function TurnEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid gap-3 pt-3">
+    <div className="grid gap-2 pt-3">
       {props.turn.transcriptAvailable ? (
-        groupTranscriptMessages(props.turn.transcript).map((entry, index) =>
-          entry.kind === "tool" ? (
+        <TranscriptEntryList
+          entries={groupTranscriptMessages(props.turn.transcript)}
+          keyPrefix={props.turn.id}
+          renderMessage={(entry, index) => (
+            <TranscriptMessageView
+              key={`${props.turn.id}:${index}`}
+              message={entry.message}
+              turn={props.turn}
+              view={props.view}
+            />
+          )}
+          renderThinking={(entry, index) => (
+            <ThinkingPartView
+              key={`${props.turn.id}:thinking:${index}`}
+              timestamp={entry.timestamp}
+              turn={props.turn}
+              value={entry.part.output}
+            />
+          )}
+          renderTool={(entry, index) => (
             <TranscriptToolView
               call={entry.call}
               key={`${props.turn.id}:${index}`}
@@ -185,15 +217,8 @@ function TurnEvents(props: {
               timestamp={entry.timestamp}
               view={props.view}
             />
-          ) : (
-            <TranscriptMessageView
-              key={`${props.turn.id}:${index}`}
-              message={entry.message}
-              turn={props.turn}
-              view={props.view}
-            />
-          ),
-        )
+          )}
+        />
       ) : props.turn.transcriptRedacted &&
         props.turn.transcriptMetadata?.length ? (
         <RedactedTranscriptView turn={props.turn} />
@@ -206,28 +231,184 @@ function TurnEvents(props: {
   );
 }
 
-function RedactedTranscriptView(props: { turn: ConversationTurn }) {
+function TranscriptEntryList(props: {
+  entries: TranscriptEntry[];
+  keyPrefix: string;
+  renderMessage: (entry: TranscriptMessageEntry, index: number) => ReactNode;
+  renderThinking: (entry: TranscriptThinkingEntry, index: number) => ReactNode;
+  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
+}) {
+  const rows: ReactNode[] = [];
+
+  for (let index = 0; index < props.entries.length; ) {
+    const entry = props.entries[index]!;
+
+    if (entry.kind === "tool") {
+      const startIndex = index;
+      const tools: TranscriptToolEntry[] = [];
+      while (props.entries[index]?.kind === "tool") {
+        tools.push(props.entries[index] as TranscriptToolEntry);
+        index += 1;
+      }
+      rows.push(
+        <ToolRunView
+          entries={tools}
+          key={`${props.keyPrefix}:tool-run:${startIndex}`}
+          keyPrefix={props.keyPrefix}
+          renderTool={props.renderTool}
+          startIndex={startIndex}
+        />,
+      );
+      continue;
+    }
+
+    rows.push(
+      <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
+        {entry.kind === "thinking"
+          ? props.renderThinking(entry, index)
+          : props.renderMessage(entry, index)}
+      </Fragment>,
+    );
+    index += 1;
+  }
+
+  return <>{rows}</>;
+}
+
+function ToolRunView(props: {
+  entries: TranscriptToolEntry[];
+  keyPrefix: string;
+  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
+  startIndex: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (props.entries.length < TOOL_RUN_COLLAPSE_THRESHOLD) {
+    return (
+      <>
+        {renderToolEntries(
+          props.entries,
+          props.startIndex,
+          props.keyPrefix,
+          props.renderTool,
+        )}
+      </>
+    );
+  }
+
+  if (expanded) {
+    return (
+      <>
+        {renderToolEntries(
+          props.entries,
+          props.startIndex,
+          props.keyPrefix,
+          props.renderTool,
+        )}
+        <ToolRunToggle
+          expanded
+          onClick={() => setExpanded(false)}
+          totalCount={props.entries.length}
+        />
+      </>
+    );
+  }
+
+  const hiddenCount =
+    props.entries.length - TOOL_RUN_HEAD_COUNT - TOOL_RUN_TAIL_COUNT;
+
   return (
     <>
-      {groupTranscriptMessages(props.turn.transcriptMetadata ?? []).map(
-        (entry, index) =>
-          entry.kind === "tool" ? (
-            <RedactedToolView
-              call={entry.call}
-              key={`${props.turn.id}:redacted:${index}`}
-              result={entry.result}
-              resultTimestamp={entry.resultTimestamp}
-              timestamp={entry.timestamp}
-            />
-          ) : (
-            <RedactedMessageView
-              key={`${props.turn.id}:redacted:${index}`}
-              message={entry.message}
-              turn={props.turn}
-            />
-          ),
+      {renderToolEntries(
+        props.entries.slice(0, TOOL_RUN_HEAD_COUNT),
+        props.startIndex,
+        props.keyPrefix,
+        props.renderTool,
+      )}
+      <ToolRunToggle
+        hiddenCount={hiddenCount}
+        onClick={() => setExpanded(true)}
+        totalCount={props.entries.length}
+      />
+      {renderToolEntries(
+        props.entries.slice(-TOOL_RUN_TAIL_COUNT),
+        props.startIndex + props.entries.length - TOOL_RUN_TAIL_COUNT,
+        props.keyPrefix,
+        props.renderTool,
       )}
     </>
+  );
+}
+
+function renderToolEntries(
+  entries: TranscriptToolEntry[],
+  startIndex: number,
+  keyPrefix: string,
+  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode,
+): ReactNode[] {
+  return entries.map((entry, offset) => {
+    const index = startIndex + offset;
+    return (
+      <Fragment key={`${keyPrefix}:tool:${index}`}>
+        {renderTool(entry, index)}
+      </Fragment>
+    );
+  });
+}
+
+function ToolRunToggle(props: {
+  expanded?: boolean;
+  hiddenCount?: number;
+  onClick: () => void;
+  totalCount: number;
+}) {
+  const label = props.expanded
+    ? `collapse ${props.totalCount} tool calls`
+    : `show ${props.hiddenCount ?? 0} more tool calls`;
+
+  return (
+    <button
+      aria-expanded={props.expanded ?? false}
+      className="group flex w-full items-center gap-2 py-1 pl-3 text-left font-mono text-[0.78rem] leading-tight text-[#888] transition-colors hover:text-[#d6d6d6] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
+      onClick={props.onClick}
+      type="button"
+    >
+      <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
+      <span className="shrink-0">{label}</span>
+      <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
+    </button>
+  );
+}
+
+function RedactedTranscriptView(props: { turn: ConversationTurn }) {
+  return (
+    <TranscriptEntryList
+      entries={groupTranscriptMessages(props.turn.transcriptMetadata ?? [])}
+      keyPrefix={`${props.turn.id}:redacted`}
+      renderMessage={(entry, index) => (
+        <RedactedMessageView
+          key={`${props.turn.id}:redacted:${index}`}
+          message={entry.message}
+          turn={props.turn}
+        />
+      )}
+      renderThinking={(entry, index) => (
+        <RedactedThinkingView
+          key={`${props.turn.id}:redacted:thinking:${index}`}
+          timestamp={entry.timestamp}
+          turn={props.turn}
+        />
+      )}
+      renderTool={(entry, index) => (
+        <RedactedToolView
+          call={entry.call}
+          key={`${props.turn.id}:redacted:${index}`}
+          result={entry.result}
+          resultTimestamp={entry.resultTimestamp}
+          timestamp={entry.timestamp}
+        />
+      )}
+    />
   );
 }
 
@@ -295,6 +476,29 @@ function RedactedMarker() {
   );
 }
 
+function RedactedThinkingView(props: {
+  timestamp?: number;
+  turn: ConversationTurn;
+}) {
+  const offset = formatMessageOffset(props.turn, props.timestamp);
+  const meta = [
+    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    offset,
+  ].filter(isString);
+
+  return (
+    <div className="border-l border-[#beaaff]/15 py-1.5 pl-3 font-mono text-[0.82rem] leading-tight text-[#888]">
+      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 max-md:grid-cols-1 max-md:gap-1">
+        <span className="text-[#b8b8b8]">thinking</span>
+        <RedactedMarker />
+        <span className="min-w-0 break-words text-right text-[0.78rem] text-[#777] max-md:text-left">
+          {meta.join(" · ")}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function RedactedToolView(props: {
   call?: TranscriptPart;
   result?: TranscriptPart;
@@ -325,7 +529,7 @@ function RedactedToolView(props: {
       raw
       signature={
         <>
-          <strong className="min-w-0 break-words font-bold text-white">
+          <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
             {toolName}
           </strong>
           {props.call?.inputKeys?.length ? (
@@ -569,9 +773,9 @@ function TranscriptPartView(props: {
   const rendered = stringifyPartValue(value);
   return (
     <details className={toolFrameClass()}>
-      <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.86rem] leading-tight text-[#b8b8b8] hover:bg-white/[0.04] max-md:grid-cols-1 max-md:gap-1">
+      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8] transition-colors hover:text-[#d6d6d6] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
         <span className="text-[#888]">{part.type}</span>
-        <strong className="min-w-0 break-words font-bold text-white">
+        <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
           {part.name ?? part.id ?? "unknown"}
         </strong>
         <span className="min-w-0 break-words text-right max-md:text-left">
@@ -583,28 +787,44 @@ function TranscriptPartView(props: {
   );
 }
 
-function ThinkingPartView(props: { value: unknown }) {
+function ThinkingPartView(props: {
+  timestamp?: number;
+  turn?: ConversationTurn;
+  value: unknown;
+}) {
   const [open, setOpen] = useState(false);
   const rendered = stringifyPartValue(props.value);
+  const offset = props.turn
+    ? formatMessageOffset(props.turn, props.timestamp)
+    : undefined;
+  const meta = [
+    props.timestamp ? formatMessageTimestamp(props.timestamp) : undefined,
+    offset,
+  ].filter(isString);
 
   return (
     <details
-      className="border border-[#beaaff]/20 bg-white/[0.03] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]"
+      className="border-l border-[#beaaff]/20 py-1 pl-3 transition-colors hover:border-[#beaaff]/40"
       onToggle={(event) => {
         if (event.currentTarget !== event.target) return;
         setOpen(event.currentTarget.open);
       }}
       open={open}
     >
-      <summary className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 font-mono text-[0.8rem] leading-tight text-[#888] hover:bg-[rgba(190,170,255,0.07)] max-md:grid-cols-1 max-md:gap-1">
-        <span className="uppercase text-[#b8b8b8]">thinking</span>
+      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 font-mono text-[0.8rem] leading-tight text-[#888] transition-colors hover:text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
+        <span className="text-[#c7bfff]">thinking</span>
         {open ? null : (
           <span className="min-w-0 truncate">
             {previewToolValue(props.value)}
           </span>
         )}
+        {meta.length ? (
+          <span className="min-w-0 break-words text-right text-[0.78rem] text-[#777] max-md:text-left">
+            {meta.join(" · ")}
+          </span>
+        ) : null}
       </summary>
-      <div className="border-t border-[#beaaff]/15 px-3 py-3">
+      <div className="py-2 opacity-85">
         <HighlightedCode
           code={rendered || "{}"}
           language={detectOutputLanguage(rendered)}

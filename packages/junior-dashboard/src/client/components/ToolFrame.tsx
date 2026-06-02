@@ -39,14 +39,14 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "border border-[#beaaff]/20 bg-[#111] transition-colors hover:border-[#beaaff]/45 hover:bg-[rgba(190,170,255,0.06)]";
+  return "border-l border-[#beaaff]/20 pl-3 transition-colors hover:border-[#beaaff]/40";
 }
 
 function toolHeaderClass(interactive: boolean): string {
   return cn(
-    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-2 font-mono text-[0.84rem] leading-tight text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1",
+    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1",
     interactive
-      ? "cursor-pointer hover:bg-[rgba(190,170,255,0.07)]"
+      ? "cursor-pointer list-none transition-colors hover:text-[#d6d6d6] [&::-webkit-details-marker]:hidden"
       : "cursor-default",
   );
 }
