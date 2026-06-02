@@ -232,6 +232,8 @@ export interface ReplyRequestContext {
   drainSteeringMessages?: (
     inject: (messages: ReplySteeringMessage[]) => Promise<void>,
   ) => Promise<ReplySteeringMessage[]>;
+  /** Return true when the durable worker should pause at the next Pi boundary. */
+  shouldYield?: () => boolean;
   onAuthPending?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
@@ -1157,6 +1159,19 @@ export async function generateAssistantReply(
         );
       }
     };
+    const yieldAtSafeBoundaryIfDue = (): void => {
+      if (!context.shouldYield?.()) {
+        return;
+      }
+
+      timedOut = true;
+      timeoutResumeMessages = [...agent!.state.messages];
+      throw new Error(
+        `Agent turn yielded at a safe boundary after ${
+          Date.now() - replyStartedAtMs
+        }ms`,
+      );
+    };
 
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
@@ -1164,6 +1179,7 @@ export async function generateAssistantReply(
       steeringMode: "all",
       prepareNextTurn: async () => {
         await drainSteeringMessages();
+        yieldAtSafeBoundaryIfDue();
         return undefined;
       },
       initialState: {

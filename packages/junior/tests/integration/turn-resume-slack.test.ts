@@ -214,7 +214,10 @@ describe("turn resume slack integration", () => {
       channelConfiguration?: {
         resolve: (key: string) => Promise<unknown>;
       };
+      turnDeadlineAtMs?: number;
     };
+    expect(resumeContext.turnDeadlineAtMs).toEqual(expect.any(Number));
+    expect(resumeContext.turnDeadlineAtMs).toBeGreaterThan(Date.now());
     expect(await resumeContext.channelConfiguration?.resolve("demo.org")).toBe(
       "acme",
     );

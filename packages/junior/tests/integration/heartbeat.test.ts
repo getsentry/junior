@@ -19,6 +19,7 @@ import {
 import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
@@ -150,6 +151,33 @@ function createCredentialSubject(
   return subject;
 }
 
+async function persistActiveTurn(
+  conversationId: string,
+  activeTurnId?: string,
+): Promise<void> {
+  await persistThreadStateById(conversationId, {
+    conversation: {
+      schemaVersion: 1,
+      backfill: {},
+      compactions: [],
+      messages: [],
+      piMessages: [],
+      processing: {
+        activeTurnId,
+      },
+      stats: {
+        compactedMessageCount: 0,
+        estimatedContextTokens: 0,
+        totalMessageCount: 0,
+        updatedAtMs: TEST_NOW_MS,
+      },
+      vision: {
+        byFileId: {},
+      },
+    },
+  });
+}
+
 describe("trusted plugin heartbeat", () => {
   const originalFetch = global.fetch;
 
@@ -233,6 +261,7 @@ describe("trusted plugin heartbeat", () => {
         } as PiMessage,
       ],
     });
+    await persistActiveTurn(conversationId, sessionId);
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntilTasks: Promise<unknown>[] = [];
@@ -260,6 +289,46 @@ describe("trusted plugin heartbeat", () => {
       conversationId,
       needsRun: true,
     });
+  });
+
+  it("skips stale timeout resume records for inactive turns", async () => {
+    const queue = new FakeConversationWorkQueue();
+    const conversationId = "slack:C123:1712345.0007";
+    const sessionId = "turn-timeout-inactive";
+    const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
+    vi.setSystemTime(staleNowMs);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "finish this" }],
+          timestamp: staleNowMs,
+        } as PiMessage,
+      ],
+    });
+    await persistActiveTurn(conversationId, "turn-newer");
+    vi.setSystemTime(TEST_NOW_MS);
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+      { conversationWorkQueue: queue },
+    );
+
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+    expect(queue.sent).toEqual([]);
+    await expect(getConversationWorkState({ conversationId })).resolves.toBe(
+      undefined,
+    );
   });
 
   it("scopes dispatch lookup to the plugin that created it", async () => {

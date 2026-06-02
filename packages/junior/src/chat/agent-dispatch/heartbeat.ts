@@ -4,6 +4,8 @@ import {
   getAwaitingTurnContinuationRequest,
   scheduleTurnTimeoutResume,
 } from "@/chat/services/timeout-resume";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -120,6 +122,14 @@ export async function recoverStaleTimeoutResumes(args: {
     }
 
     try {
+      const persistedState = await getPersistedThreadState(
+        summary.conversationId,
+      );
+      const conversation = coerceThreadConversationState(persistedState);
+      if (conversation.processing.activeTurnId !== summary.sessionId) {
+        continue;
+      }
+
       const request = await getAwaitingTurnContinuationRequest({
         conversationId: summary.conversationId,
         sessionId: summary.sessionId,

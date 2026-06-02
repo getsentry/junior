@@ -6,6 +6,7 @@
  * durable conversation queue.
  */
 import { logException } from "@/chat/logging";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { resumeTimedOutTurnWithLockRetry } from "@/chat/runtime/timeout-resume-runner";
 import { verifyTurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -21,18 +22,20 @@ export async function POST(
   }
 
   waitUntil(() =>
-    resumeTimedOutTurnWithLockRetry(payload).catch((error) => {
-      logException(
-        error,
-        "timeout_resume_handler_failed",
-        {},
-        {
-          "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.sessionId,
-        },
-        "Timeout resume handler failed",
-      );
-    }),
+    runWithTurnRequestDeadline(() =>
+      resumeTimedOutTurnWithLockRetry(payload).catch((error) => {
+        logException(
+          error,
+          "timeout_resume_handler_failed",
+          {},
+          {
+            "app.ai.conversation_id": payload.conversationId,
+            "app.ai.session_id": payload.sessionId,
+          },
+          "Timeout resume handler failed",
+        );
+      }),
+    ),
   );
   return new Response("Accepted", { status: 202 });
 }

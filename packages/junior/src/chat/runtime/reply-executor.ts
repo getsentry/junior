@@ -274,6 +274,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       drainSteeringMessages?: (
         inject: (messages: QueuedTurnMessage[]) => Promise<void>,
       ) => Promise<QueuedTurnMessage[]>;
+      shouldYield?: () => boolean;
     } = {},
   ) {
     if (message.author.isMe) {
@@ -749,6 +750,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
               drainSteeringMessages,
+              shouldYield: options.shouldYield,
             },
           );
           const diagnosticsContext = {

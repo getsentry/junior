@@ -34,6 +34,7 @@ import {
   type ProcessingReactionSession,
 } from "@/chat/runtime/processing-reaction";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -201,6 +202,7 @@ function createResumeReplyContext(
   statusSession: AssistantStatusSession,
 ): ReplyRequestContext {
   const replyContext = args.replyContext ?? {};
+  const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
   const persistedChannelConfiguration =
@@ -211,6 +213,8 @@ function createResumeReplyContext(
 
   return {
     ...replyContext,
+    turnDeadlineAtMs:
+      replyContext.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
     correlation: {
       ...replyContext.correlation,
       threadId: replyContext.correlation?.threadId ?? threadId,

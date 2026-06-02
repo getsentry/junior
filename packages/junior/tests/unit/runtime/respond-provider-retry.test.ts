@@ -5,6 +5,7 @@ const { agentMode, counters } = vi.hoisted(() => ({
   agentMode: {
     value: "providerRetry" as
       | "providerRetry"
+      | "cooperativeYield"
       | "steering"
       | "steeringSteerThrows",
   },
@@ -61,6 +62,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       counters.promptCalls += 1;
       this.state.messages.push(message);
       if (
+        agentMode.value === "cooperativeYield" ||
         agentMode.value === "steering" ||
         agentMode.value === "steeringSteerThrows"
       ) {
@@ -207,6 +209,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 import { generateAssistantReply } from "@/chat/respond";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
@@ -292,6 +295,37 @@ describe("generateAssistantReply provider retry", () => {
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
+  });
+
+  it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
+    agentMode.value = "cooperativeYield";
+
+    const error = await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-yield",
+        turnId: "turn-yield",
+        channelId: "C123",
+        threadTs: "1712345.0003",
+      },
+      shouldYield: () => true,
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-yield",
+      "turn-yield",
+    );
+    expect(sessionRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+    });
+    expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
+    ]);
   });
 
   it("rejects steering injection when Pi steer fails", async () => {

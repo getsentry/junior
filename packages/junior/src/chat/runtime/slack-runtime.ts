@@ -51,6 +51,7 @@ export interface ReplyHooks {
   messageContext?: MessageContext;
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
   onTurnStatePersisted?: () => Promise<void>;
+  shouldYield?: () => boolean;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -149,6 +150,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       drainSteeringMessages?: (
         inject: (messages: QueuedTurnMessage[]) => Promise<void>,
       ) => Promise<QueuedTurnMessage[]>;
+      shouldYield?: () => boolean;
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
@@ -411,6 +413,7 @@ export function createSlackTurnRuntime<
             onToolInvocation: toolInvocationHook,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
+            shouldYield: hooks?.shouldYield,
           });
         });
       } catch (error) {
@@ -611,6 +614,7 @@ export function createSlackTurnRuntime<
             onToolInvocation: toolInvocationHook,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
+            shouldYield: hooks?.shouldYield,
           });
         });
       } catch (error) {

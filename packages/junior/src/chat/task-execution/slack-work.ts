@@ -291,6 +291,7 @@ export function createSlackConversationWorker(
             messageContext,
             drainSteeringMessages,
             onTurnStatePersisted,
+            shouldYield: context.shouldYield,
           });
           return;
         }
@@ -299,6 +300,7 @@ export function createSlackConversationWorker(
           messageContext,
           drainSteeringMessages,
           onTurnStatePersisted,
+          shouldYield: context.shouldYield,
         });
       },
     });
