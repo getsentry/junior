@@ -776,7 +776,7 @@ describe("bot handlers (integration)", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
-  it("reschedules an awaiting turn continuation instead of starting a new turn", async () => {
+  it("reschedules an awaiting turn continuation without replying to the follow-up", async () => {
     const conversationId = "slack:C_TIMEOUT_RETRY:1700000000.000";
     const activeSessionId = "turn_msg-original";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
@@ -838,14 +838,12 @@ describe("bot handlers (integration)", () => {
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
-    expect(
-      conversation?.messages?.find((message) => message.id === "msg-retry"),
-    ).toMatchObject({
-      meta: {
-        replied: true,
-        skippedReason: undefined,
-      },
-    });
+    const followUp = conversation?.messages?.find(
+      (message) => message.id === "msg-retry",
+    );
+    expect(followUp).toBeDefined();
+    expect(followUp?.meta?.replied).toBeUndefined();
+    expect(followUp?.meta?.skippedReason).toBeUndefined();
   });
 
   it("reschedules an awaiting continuation for repeated delivery of the active message", async () => {

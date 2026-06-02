@@ -423,14 +423,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               throw error;
             }
 
-            markConversationMessage(
-              preparedState.conversation,
-              preparedState.userMessageId,
-              {
-                replied: true,
-                skippedReason: undefined,
-              },
-            );
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });
