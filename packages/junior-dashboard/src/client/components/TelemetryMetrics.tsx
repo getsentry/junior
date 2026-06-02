@@ -97,6 +97,7 @@ export function ToolCallsMetric(props: {
   if (!props.summary) return null;
   const tooltip = props.summary.items.map((item) => ({
     label: item.name,
+    labelStyle: "code" as const,
     value: [
       plural("call", item.count),
       item.totalDurationMs !== undefined
@@ -123,6 +124,7 @@ export function MessagesMetric(props: {
   if (!props.summary) return null;
   const tooltip = props.summary.items.map((item) => ({
     label: item.author,
+    labelStyle: "text" as const,
     value: formatBytes(item.bytes),
   }));
   return (

@@ -10,6 +10,7 @@ import { cn } from "../styles";
 
 export type MetricTooltipLine = {
   label?: string;
+  labelStyle?: "code" | "text";
   value: string;
 };
 
@@ -17,12 +18,6 @@ export type MetricListItem = {
   content: ReactNode;
   key: string;
 };
-
-function titleText(lines: MetricTooltipLine[]): string {
-  return lines
-    .map((line) => (line.label ? `${line.label}: ${line.value}` : line.value))
-    .join("\n");
-}
 
 type TooltipPosition = {
   left: number;
@@ -91,7 +86,6 @@ export function MetricValue(props: {
         onMouseLeave={hideTooltip}
         ref={triggerRef}
         tabIndex={0}
-        title={titleText(tooltip)}
       >
         {props.children}
       </span>
@@ -102,7 +96,7 @@ export function MetricValue(props: {
           role="tooltip"
           style={tooltipStyle}
         >
-          <span className="grid max-h-72 grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 overflow-y-auto">
+          <span className="grid max-h-72 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 overflow-y-auto">
             {tooltip.map((line, index) => (
               <span
                 className={
@@ -113,7 +107,14 @@ export function MetricValue(props: {
                 key={`${index}-${line.label ?? ""}-${line.value}`}
               >
                 {line.label ? (
-                  <span className="min-w-0 break-words font-semibold uppercase text-[#777]">
+                  <span
+                    className={cn(
+                      "min-w-0 break-words font-medium text-[#888]",
+                      line.labelStyle === "code" &&
+                        "break-all font-mono text-[0.74rem] text-[#d6d6d6]",
+                      line.labelStyle === "text" && "text-[#aaa]",
+                    )}
+                  >
                     {line.label}
                   </span>
                 ) : null}
