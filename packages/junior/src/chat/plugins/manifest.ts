@@ -1093,9 +1093,12 @@ function parseManifestSource(
   const credentials = data.credentials
     ? normalizeCredentials(data.credentials, data.name)
     : undefined;
-  if (commandEnv && !credentials && !apiHeaders) {
+  const hasHostEnvVars = Object.values(envVars).some(
+    (decl) => decl.default === undefined,
+  );
+  if (commandEnv && !credentials && !apiHeaders && !hasHostEnvVars) {
     throw new Error(
-      `Plugin ${data.name} command-env requires credentials or api-headers`,
+      `Plugin ${data.name} command-env requires credentials, api-headers, or env-vars`,
     );
   }
   const runtimeDependencies = data["runtime-dependencies"]

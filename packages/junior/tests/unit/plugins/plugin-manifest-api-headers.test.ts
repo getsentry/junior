@@ -268,7 +268,7 @@ describe("plugin manifest API headers", () => {
     );
   });
 
-  it("rejects command env without credentials or API headers", () => {
+  it("rejects command env without credentials, api-headers, or env-vars", () => {
     expect(() =>
       parsePluginManifest(
         [
@@ -279,7 +279,32 @@ describe("plugin manifest API headers", () => {
         ].join("\n"),
         "/tmp/example",
       ),
-    ).toThrow("Plugin example command-env requires credentials or api-headers");
+    ).toThrow("Plugin example command-env requires credentials, api-headers, or env-vars");
+  });
+
+  it("accepts command env with only host env-vars declared (no credentials or api-headers)", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "description: Example browser automation",
+        "env-vars:",
+        "  EXAMPLE_LOGIN_EMAIL:",
+        "  EXAMPLE_LOGIN_PASSWORD:",
+        "command-env:",
+        '  EXAMPLE_LOGIN_EMAIL: "${EXAMPLE_LOGIN_EMAIL}"',
+        '  EXAMPLE_LOGIN_PASSWORD: "${EXAMPLE_LOGIN_PASSWORD}"',
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.commandEnv).toEqual({
+      EXAMPLE_LOGIN_EMAIL: "${EXAMPLE_LOGIN_EMAIL}",
+      EXAMPLE_LOGIN_PASSWORD: "${EXAMPLE_LOGIN_PASSWORD}",
+    });
+    expect(manifest.envVars).toMatchObject({
+      EXAMPLE_LOGIN_EMAIL: {},
+      EXAMPLE_LOGIN_PASSWORD: {},
+    });
   });
 
   it("rejects API headers without domains", () => {
