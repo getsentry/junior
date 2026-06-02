@@ -55,8 +55,12 @@ function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
 }
 
-function nudgeIdempotencyKey(reason: string, conversationId: string): string {
-  return `${reason}:${conversationId}`;
+function nudgeIdempotencyKey(
+  reason: string,
+  conversationId: string,
+  nowMs: number,
+): string {
+  return `${reason}:${conversationId}:${nowMs}`;
 }
 
 async function sendWakeNudge(args: {
@@ -145,11 +149,12 @@ export async function processConversationWork(
     return { status: "no_work" };
   }
   if (lease.status === "active") {
+    const nudgeNowMs = now(options);
     await sendWakeNudge({
       conversationId,
       delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
-      idempotencyKey: nudgeIdempotencyKey("active", conversationId),
-      nowMs: now(options),
+      idempotencyKey: nudgeIdempotencyKey("active", conversationId, nudgeNowMs),
+      nowMs: nudgeNowMs,
       options,
     });
     logInfo(
@@ -206,10 +211,11 @@ export async function processConversationWork(
   try {
     const result = await options.run(workerContext);
     if (result.status === "yielded") {
+      const yieldNowMs = now(options);
       const continuationMarked = await requestConversationContinuation({
         conversationId,
         leaseToken: lease.leaseToken,
-        nowMs: now(options),
+        nowMs: yieldNowMs,
         state: options.state,
       });
       if (!continuationMarked) {
@@ -217,14 +223,18 @@ export async function processConversationWork(
       }
       await sendWakeNudge({
         conversationId,
-        idempotencyKey: nudgeIdempotencyKey("yield", conversationId),
-        nowMs: now(options),
+        idempotencyKey: nudgeIdempotencyKey(
+          "yield",
+          conversationId,
+          yieldNowMs,
+        ),
+        nowMs: yieldNowMs,
         options,
       });
       await releaseConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
-        nowMs: now(options),
+        nowMs: yieldNowMs,
         state: options.state,
       });
       logInfo(
@@ -249,10 +259,15 @@ export async function processConversationWork(
       return { status: "lost_lease" };
     }
     if (completion === "pending") {
+      const nudgeNowMs = now(options);
       await sendWakeNudge({
         conversationId,
-        idempotencyKey: nudgeIdempotencyKey("pending", conversationId),
-        nowMs: now(options),
+        idempotencyKey: nudgeIdempotencyKey(
+          "pending",
+          conversationId,
+          nudgeNowMs,
+        ),
+        nowMs: nudgeNowMs,
         options,
       });
       return { status: "pending_requeued" };

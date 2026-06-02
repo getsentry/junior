@@ -8,6 +8,17 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
+const ORIGINAL_ENV = vi.hoisted(() => {
+  const original = {
+    JUNIOR_SECRET: process.env.JUNIOR_SECRET,
+    JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
+    SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
+  };
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env.JUNIOR_SECRET = "resume-secret";
+  return original;
+});
+
 class FakeQueue implements ConversationWorkQueue {
   sent: Array<{
     conversationId: string;
@@ -45,9 +56,15 @@ function makeSignedResumeRequest(body: Record<string, unknown>): Request {
   });
 }
 
-describe("timeout resume callback signing", () => {
-  const originalSlackSigningSecret = process.env.SLACK_SIGNING_SECRET;
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
 
+describe("timeout resume callback signing", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_SECRET = "resume-secret";
@@ -56,13 +73,9 @@ describe("timeout resume callback signing", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    delete process.env.JUNIOR_SECRET;
-    if (originalSlackSigningSecret === undefined) {
-      delete process.env.SLACK_SIGNING_SECRET;
-    } else {
-      process.env.SLACK_SIGNING_SECRET = originalSlackSigningSecret;
-    }
+    restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
+    restoreEnv("JUNIOR_SECRET", ORIGINAL_ENV.JUNIOR_SECRET);
+    restoreEnv("SLACK_SIGNING_SECRET", ORIGINAL_ENV.SLACK_SIGNING_SECRET);
     vi.restoreAllMocks();
   });
 

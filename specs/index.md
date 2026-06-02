@@ -58,6 +58,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/otel-semantics.md`
 - `specs/testing.md`
 - `specs/unit-testing.md`
+- `specs/component-testing.md`
 - `specs/integration-testing.md`
 - `specs/eval-testing.md`
 - `specs/slack-http-mocking.md`

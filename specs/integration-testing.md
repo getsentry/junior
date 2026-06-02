@@ -3,11 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-02
 
 ## Intent
 
-Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. This is the default test layer for most product/runtime changes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
+Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. Use this layer when the contract depends on production composition, handler routing, external transport behavior, or user-visible runtime outcomes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
 
 ## Scope
 
@@ -22,6 +22,7 @@ In scope:
 ## Non-Goals
 
 - Pure algorithmic invariants better covered by unit tests.
+- Deterministic service/runtime contracts better covered by component tests.
 - Judge-scored conversational quality (belongs to evals).
 
 ## Required Runtime Shape
@@ -65,11 +66,11 @@ Do not let low-level stream ordering or request-shape assertions dominate genera
 
 ## Classification Guidance
 
-If a test relies on runtime module mocks to drive control-flow branches, classify it as unit (not integration).
+If a test relies on runtime module mocks to drive control-flow branches, classify it as unit or component instead of integration.
 
 If the behavior under test depends on natural-language interpretation, continuity, or model choice, classify it as eval instead of integration.
 
-If a product/runtime change can be proven with real wiring plus a deterministic fake agent, integration is the default answer.
+If a product/runtime change can be proven only by real wiring plus a deterministic fake agent, integration is the right answer. If the contract is a deterministic store, worker, queue-port, lease, or service-coordination invariant, prefer a component test.
 
 Do not keep a scenario in integration solely because a fake classifier fixture is easier than writing the corresponding eval. When the real contract is ambiguous natural-language behavior or reply quality, promote it to eval.
 

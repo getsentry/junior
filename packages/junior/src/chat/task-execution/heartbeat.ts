@@ -20,8 +20,9 @@ export interface ConversationWorkRecoveryResult {
 function heartbeatIdempotencyKey(
   reason: string,
   conversationId: string,
+  nowMs: number,
 ): string {
-  return `heartbeat:${reason}:${conversationId}`;
+  return `heartbeat:${reason}:${conversationId}:${nowMs}`;
 }
 
 async function sendRecoveryNudge(args: {
@@ -79,7 +80,11 @@ export async function recoverConversationWork(args: {
         }
         await sendRecoveryNudge({
           conversationId,
-          idempotencyKey: heartbeatIdempotencyKey("lease", conversationId),
+          idempotencyKey: heartbeatIdempotencyKey(
+            "lease",
+            conversationId,
+            args.nowMs,
+          ),
           nowMs: args.nowMs,
           queue: args.queue,
           state: args.state,
@@ -106,7 +111,11 @@ export async function recoverConversationWork(args: {
 
       await sendRecoveryNudge({
         conversationId,
-        idempotencyKey: heartbeatIdempotencyKey("pending", conversationId),
+        idempotencyKey: heartbeatIdempotencyKey(
+          "pending",
+          conversationId,
+          args.nowMs,
+        ),
         nowMs: args.nowMs,
         queue: args.queue,
         state: args.state,

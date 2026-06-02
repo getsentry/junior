@@ -198,7 +198,7 @@ describe("conversation work execution", () => {
     expect(queue.sent).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}`,
+        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
   });
@@ -243,23 +243,26 @@ describe("conversation work execution", () => {
     await expect(first).resolves.toEqual({ status: "completed" });
   });
 
-  it("preserves work requested while a lease is running", async () => {
+  it("requeues work requested while a lease is running", async () => {
     const queue = new FakeQueue();
+    let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
       processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
           await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
-            nowMs: 2_000,
+            nowMs: currentNowMs,
           });
           return { status: "completed" };
         },
       }),
-    ).resolves.toEqual({ status: "completed" });
+    ).resolves.toEqual({ status: "pending_requeued" });
 
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -267,6 +270,46 @@ describe("conversation work execution", () => {
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
+    expect(queue.sent).toMatchObject([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `pending:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
+  it("uses fresh queue idempotency keys for repeated worker requeues", async () => {
+    const queue = new FakeQueue();
+    let currentNowMs = 1_000;
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: currentNowMs,
+    });
+
+    async function runSlice(nowMs: number): Promise<void> {
+      currentNowMs = nowMs;
+      await expect(
+        processConversationWork(CONVERSATION_ID, {
+          nowMs: () => currentNowMs,
+          queue,
+          run: async (context) => {
+            await requestConversationWork({
+              conversationId: context.conversationId,
+              nowMs: currentNowMs,
+            });
+            return { status: "completed" };
+          },
+        }),
+      ).resolves.toEqual({ status: "pending_requeued" });
+    }
+
+    await runSlice(2_000);
+    await runSlice(63_000);
+
+    expect(queue.sent.map((send) => send.idempotencyKey)).toEqual([
+      `pending:${CONVERSATION_ID}:2000`,
+      `pending:${CONVERSATION_ID}:63000`,
+    ]);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
@@ -353,7 +396,7 @@ describe("conversation work execution", () => {
     expect(queue.sent).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}`,
+        idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:92000`,
       },
     ]);
   });
@@ -371,6 +414,29 @@ describe("conversation work execution", () => {
     expect(queue.sent).toHaveLength(1);
   });
 
+  it("uses fresh queue idempotency keys for repeated heartbeat recovery", async () => {
+    const queue = new FakeQueue();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      recoverConversationWork({
+        nowMs: 62_000,
+        queue,
+      }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
+    await expect(
+      recoverConversationWork({
+        nowMs: 122_001,
+        queue,
+      }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
+
+    expect(queue.sent.map((send) => send.idempotencyKey)).toEqual([
+      `heartbeat:pending:${CONVERSATION_ID}:62000`,
+      `heartbeat:pending:${CONVERSATION_ID}:122001`,
+    ]);
+  });
+
   it("runs conversation work recovery from the core heartbeat", async () => {
     const queue = new FakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -383,7 +449,7 @@ describe("conversation work execution", () => {
     expect(queue.sent).toEqual([
       {
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}`,
+        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
   });
@@ -447,19 +513,22 @@ describe("conversation work execution", () => {
 
   it("requeues instead of completing when final mailbox work remains", async () => {
     const queue = new FakeQueue();
+    let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
       processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
           await context.drainMailbox(async () => {});
+          currentNowMs = 2_100;
           await appendInboundMessage({
             message: inboundMessage("m2", {
               createdAtMs: 2_000,
               receivedAtMs: 2_100,
             }),
-            nowMs: 2_100,
+            nowMs: currentNowMs,
           });
           return { status: "completed" };
         },
@@ -468,7 +537,7 @@ describe("conversation work execution", () => {
     expect(queue.sent).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `pending:${CONVERSATION_ID}`,
+        idempotencyKey: `pending:${CONVERSATION_ID}:2100`,
       },
     ]);
   });
@@ -499,7 +568,7 @@ describe("conversation work execution", () => {
     expect(queue.sent).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `yield:${CONVERSATION_ID}`,
+        idempotencyKey: `yield:${CONVERSATION_ID}:242000`,
       },
     ]);
   });

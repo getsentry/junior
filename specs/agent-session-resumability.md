@@ -534,15 +534,15 @@ Required attributes when available:
 ## Verification
 
 1. Unit: resumable boundaries trim trailing assistant-only messages when needed.
-2. Unit/integration: queue-driven resume restores `agent.state.messages` and calls `continue()`.
+2. Component/integration: queue-driven resume restores `agent.state.messages` and calls `continue()`.
 3. Integration: a cooperative yield resumes in a later worker and reaches a successful terminal reply.
 4. Integration: a user follow-up during active execution is appended to the mailbox and injected into the same conversation at the next safe boundary.
-5. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
-6. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across execution chunks.
-7. Unit/integration: fresh follow-up turns can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
+5. Component/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+6. Component/integration: eager sandbox/artifact persistence preserves resumed tool context across execution chunks.
+7. Component/integration: fresh follow-up turns can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
 8. Manual/eval: once assistant text is already visible, recovery does not auto-reconcile partial thread output.
-9. Unit/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
-10. Unit/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
+9. Component/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
+10. Component/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
 
 ## Related Specs
 

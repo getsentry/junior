@@ -753,7 +753,7 @@ export async function releaseConversationWork(args: {
   });
 }
 
-/** Finish a leased conversation when no pending mailbox work remains. */
+/** Finish a leased conversation and report whether runnable work remains. */
 export async function completeConversationWork(args: {
   conversationId: string;
   leaseToken: string;
@@ -767,13 +767,14 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
+    const hasRunnableWork = current.needsRun || hasPending;
     await writeWorkState(state, {
       ...current,
       lease: undefined,
-      needsRun: current.needsRun || hasPending,
+      needsRun: hasRunnableWork,
       updatedAtMs: nowMs,
     });
-    return hasPending ? "pending" : "completed";
+    return hasRunnableWork ? "pending" : "completed";
   });
 }
 

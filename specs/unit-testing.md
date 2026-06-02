@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-02
 
 ## Intent
 
@@ -20,6 +20,7 @@ In scope:
 ## Non-Goals
 
 - Real handler/runtime flows that rebuild thread state, call Slack APIs, or exercise multi-module orchestration.
+- Deterministic multi-module service contracts better covered by component tests.
 - Slack HTTP request/response contract validation.
 - Full runtime Slack event handling behavior.
 - Conversational quality and multi-turn judge-scored outcomes.
@@ -38,7 +39,7 @@ Recommended:
 - Assert behavior at module outputs rather than internal calls where practical.
 - Do not treat logger or tracer calls as required behavior unless the test is explicitly validating instrumentation.
 - Do not unit test prompt builders by asserting exact or substring prompt prose. If prompt wording matters, cover the resulting user-visible behavior with evals or integration tests.
-- If a test has to mock large parts of the runtime or Slack client to prove a user-visible flow, reclassify it as integration or eval instead of growing the unit seam.
+- If a test has to mock large parts of the runtime or Slack client to prove a user-visible flow, reclassify it as component, integration, or eval instead of growing the unit seam.
 
 ## Data and Fixtures
 

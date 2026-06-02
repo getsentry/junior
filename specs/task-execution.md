@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-02
 
 ## Purpose
 
@@ -188,6 +188,12 @@ Queue consumer rules:
 
 The queue is not the state authority. A successful queue acknowledgement only
 means that one wake-up delivery has been handled.
+
+Queue idempotency keys must be scoped to the source of one wake-up attempt:
+the inbound message id, worker nudge timestamp, or heartbeat scan timestamp.
+They must not be stable only by `conversationId` and reason, because that can
+suppress a later legitimate recovery or continuation nudge inside the queue
+provider's idempotency window.
 
 The Vercel push consumer boundary is a thin adapter around the generic worker:
 it validates the `{ conversationId }` payload, uses `handleCallback`, and keeps
@@ -435,29 +441,33 @@ authorization URLs, or unredacted private message bodies.
 
 ## Verification
 
-Required tests:
+Required invariants, using the lowest layer that proves the contract:
 
-1. Unit: mailbox append is idempotent by `inboundMessageId`.
-2. Unit/integration: enqueue failure after mailbox append is repaired by
-   heartbeat.
-3. Integration: duplicate queue nudges do not run a conversation concurrently.
-4. Integration: active-lease queue delivery defers a nudge and acknowledges.
-5. Integration: worker check-in extends the lease while a long model/tool call
-   is in progress.
-6. Integration: expired lease is cleared/requeued by heartbeat.
-7. Integration: pending mailbox messages with no recent enqueue marker are
-   requeued by heartbeat.
-8. Integration: message arriving during active execution is injected at the next
-   safe boundary and answered as part of the same conversation run.
-9. Integration: final inbox drain prevents posting a stale answer when a new
-   message arrived before delivery.
-10. Integration: cooperative yield near the 240 second soft deadline releases
-    the lease, enqueues another nudge, and does not post a continuation message.
-11. Integration: recovery after death during model/tool work resumes from the
-    latest durable session-log boundary.
+1. Component: mailbox append is idempotent by `inboundMessageId`.
+2. Component: enqueue failure after mailbox append is repaired by heartbeat.
+3. Component: duplicate queue nudges do not run a conversation concurrently.
+4. Component: active-lease queue delivery defers a nudge and acknowledges.
+5. Component: worker check-in extends the lease while a long model/tool call is
+   in progress.
+6. Component: expired leases and stranded pending mailbox messages are
+   cleared/requeued by heartbeat.
+7. Component: work requested while a lease is running is requeued immediately
+   when the lease completes, even if no mailbox messages are pending.
+8. Component: repeated worker and heartbeat requeues use fresh queue
+   idempotency keys so provider dedupe cannot suppress later runnable work.
+9. Component: messages that arrive during active execution are injected at the
+   next safe boundary or requeued instead of being lost.
+10. Component: final inbox drain prevents completing a stale answer when new work
+    arrived before delivery.
+11. Component: cooperative yield near the soft deadline releases the lease and
+    enqueues another nudge.
 12. Integration: Slack ingress returns after durable mailbox append and enqueue,
     not after agent execution.
-13. Evals: realistic multi-message Slack follow-ups during long work are folded
+13. Integration: a queue-driven Slack worker path reaches the real Slack runtime
+    and finalized delivery with deterministic fake-agent output.
+14. Component/integration: recovery after death during model/tool work resumes
+    from the latest durable session-log boundary.
+15. Evals: realistic multi-message Slack follow-ups during long work are folded
     into the active answer without losing user intent.
 
 ## Related Specs
