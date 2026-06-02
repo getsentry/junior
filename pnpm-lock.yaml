@@ -52,7 +52,7 @@ importers:
         version: link:../../packages/junior-agent-browser
       "@sentry/junior-dashboard":
         specifier: workspace:*
-        version: file:packages/junior-dashboard(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(react-is@19.2.6)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: file:packages/junior-dashboard(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(react-is@19.2.6)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))
       "@sentry/junior-datadog":
         specifier: workspace:*
         version: link:../../packages/junior-datadog
@@ -86,7 +86,7 @@ importers:
         version: 2.7.0
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -8279,6 +8279,13 @@ packages:
       }
     engines: { node: 18 || 20 || >=22 }
 
+  mixpart@0.0.6:
+    resolution:
+      {
+        integrity: sha512-CRdXtgfQH2jARmtNmPR0Q7jL20fiESbaYk1b0KvLD0jCdUuemepREtsbd8nbiY6BHV9OGGddAZITNXklupUPUQ==,
+      }
+    engines: { node: ">=20.0.0" }
+
   minimatch@3.1.5:
     resolution:
       {
@@ -13484,14 +13491,14 @@ snapshots:
 
   "@sentry/core@10.53.1": {}
 
-  "@sentry/junior-dashboard@file:packages/junior-dashboard(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(react-is@19.2.6)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))":
+  "@sentry/junior-dashboard@file:packages/junior-dashboard(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(react-is@19.2.6)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))":
     dependencies:
       "@sentry/junior": file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)
       "@tanstack/react-query": 5.100.14(react@19.2.6)
       better-auth: 1.6.11(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)))
       hono: 4.12.22
       lucide-react: 1.17.0(react@19.2.6)
-      nitro: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+      nitro: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0(@aws-sdk/credential-provider-web-identity@3.972.43))(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       react-router: 7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -14306,6 +14313,13 @@ snapshots:
   "@vercel/python@6.43.1":
     dependencies:
       "@vercel/python-analysis": 0.11.1
+
+  "@vercel/queue@0.2.0":
+    dependencies:
+      "@vercel/oidc": 3.4.1
+      minimatch: 10.2.5
+      mixpart: 0.0.6
+      picocolors: 1.1.1
 
   "@vercel/redwood@2.4.13(rollup@4.60.4)":
     dependencies:
@@ -16889,6 +16903,8 @@ snapshots:
   minimatch@10.2.5:
     dependencies:
       brace-expansion: 5.0.6
+
+  mixpart@0.0.6: {}
 
   minimatch@3.1.5:
     dependencies:
