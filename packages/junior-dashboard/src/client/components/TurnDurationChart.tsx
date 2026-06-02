@@ -20,12 +20,13 @@ import {
   conversationPath,
   formatConversationDuration,
   formatDurationTick,
-  formatMs,
+  formatTurnDuration,
   requesterLabel,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
+  turnElapsedDurationMs,
   visualStatusForSession,
   visualStatusForConversation,
 } from "../format";
@@ -248,14 +249,13 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
     return null;
   }
 
-  const lastSeenAtMs = Date.parse(session.lastSeenAt);
-  if (!Number.isFinite(lastSeenAtMs)) {
+  const durationMs = turnElapsedDurationMs(session);
+  if (durationMs === undefined) {
     return null;
   }
-  const durationMs = Math.max(0, lastSeenAtMs - startedAtMs);
   return {
     conversationId: conversationIdForSession(session),
-    durationLabel: formatMs(durationMs),
+    durationLabel: formatTurnDuration(session),
     durationMs,
     endedAt: session.completedAt ?? session.lastSeenAt,
     kind: "turns",
@@ -433,7 +433,7 @@ function chartTooltipRows(
       <DurationMetric
         align="right"
         endedAt={point.endedAt}
-        label={chartDurationLabel(point)}
+        label={point.durationLabel}
         startedAt={point.startedAt}
       />,
     ],
@@ -456,10 +456,6 @@ function chartTooltipRows(
     location ? ["surface", location] : null,
   ];
   return rows.filter((row): row is [string, ReactNode] => row !== null);
-}
-
-function chartDurationLabel(point: DurationPoint): string {
-  return point.durationLabel;
 }
 
 function chartTooltipTurns(

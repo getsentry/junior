@@ -8,13 +8,13 @@ import {
 import { HighlightedCode } from "../code";
 import {
   detectLanguage,
-  detectOutputLanguage,
   transcriptRoleKind,
   type TranscriptRoleKind,
   formatBytes,
   formatMessageOffset,
   formatMessageTimestamp,
   formatMs,
+  formatTurnDuration,
   requesterLabel,
   summarizeMessages,
   summarizeToolCalls,
@@ -487,11 +487,11 @@ function RedactedThinkingView(props: {
   ].filter(isString);
 
   return (
-    <div className="border-l border-[#beaaff]/15 py-1.5 pl-3 font-mono text-[0.82rem] leading-tight text-[#888]">
+    <div className="py-0.5 text-[0.84rem] leading-relaxed text-[#888]">
       <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 max-md:grid-cols-1 max-md:gap-1">
-        <span className="text-[#b8b8b8]">thinking</span>
+        <span className="font-mono text-[0.78rem] text-[#777]">thought</span>
         <RedactedMarker />
-        <span className="min-w-0 break-words text-right text-[0.78rem] text-[#777] max-md:text-left">
+        <span className="min-w-0 break-words text-right font-mono text-[0.78rem] text-[#777] max-md:text-left">
           {meta.join(" · ")}
         </span>
       </div>
@@ -560,7 +560,7 @@ function turnMessageSummary(turn: ConversationTurn) {
 }
 
 function turnMeta(turn: ConversationTurn): MetricListItem[] {
-  const duration = formatMs(turn.cumulativeDurationMs);
+  const duration = formatTurnDuration(turn);
   const tokenSummary = summarizeUsage([turn.cumulativeUsage]);
   const toolSummary = summarizeToolCalls([turn]);
   const messageSummary = turnMessageSummary(turn);
@@ -804,31 +804,30 @@ function ThinkingPartView(props: {
 
   return (
     <details
-      className="border-l border-[#beaaff]/20 py-1 pl-3 transition-colors hover:border-[#beaaff]/40"
+      className="py-0.5 text-[0.84rem] leading-relaxed text-[#888]"
       onToggle={(event) => {
         if (event.currentTarget !== event.target) return;
         setOpen(event.currentTarget.open);
       }}
       open={open}
     >
-      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 font-mono text-[0.8rem] leading-tight text-[#888] transition-colors hover:text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
-        <span className="text-[#c7bfff]">thinking</span>
+      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 transition-colors hover:text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
+        <span className="font-mono text-[0.78rem] not-italic text-[#777]">
+          thought
+        </span>
         {open ? null : (
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 truncate italic">
             {previewToolValue(props.value)}
           </span>
         )}
         {meta.length ? (
-          <span className="min-w-0 break-words text-right text-[0.78rem] text-[#777] max-md:text-left">
+          <span className="min-w-0 break-words text-right font-mono text-[0.78rem] not-italic text-[#777] max-md:text-left">
             {meta.join(" · ")}
           </span>
         ) : null}
       </summary>
-      <div className="py-2 opacity-85">
-        <HighlightedCode
-          code={rendered || "{}"}
-          language={detectOutputLanguage(rendered)}
-        />
+      <div className="min-w-0 whitespace-pre-wrap break-words py-1 italic text-[#9a9a9a]">
+        {rendered || "{}"}
       </div>
     </details>
   );

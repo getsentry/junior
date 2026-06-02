@@ -521,6 +521,23 @@ export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
   return formatTokenSummary(summarizeUsage(usages));
 }
 
+/** Keep turn duration displays aligned on elapsed transcript time. */
+export function turnElapsedDurationMs(
+  turn: Pick<ConversationTurn, "completedAt" | "lastSeenAt" | "startedAt">,
+): number | undefined {
+  const start = parseTime(turn.startedAt);
+  const end = parseTime(turn.completedAt ?? turn.lastSeenAt);
+  if (start == null || end == null || end < start) return undefined;
+  return Math.max(0, end - start);
+}
+
+/** Format elapsed turn time for chart dots and transcript metadata. */
+export function formatTurnDuration(
+  turn: Pick<ConversationTurn, "completedAt" | "lastSeenAt" | "startedAt">,
+): string {
+  return formatMs(turnElapsedDurationMs(turn));
+}
+
 /** Format a conversation span from first turn start to latest activity. */
 export function formatConversationDuration(conversation: Conversation): string {
   const start = parseTime(conversation.startedAt);

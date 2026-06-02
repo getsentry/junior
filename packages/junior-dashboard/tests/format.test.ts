@@ -9,6 +9,7 @@ import {
   formatConversationDuration,
   formatDurationTotal,
   formatDurationTick,
+  formatTurnDuration,
   formatTokenTotal,
   formatUsageTotal,
   parseMarkdownBlocks,
@@ -55,6 +56,16 @@ describe("dashboard token formatting", () => {
     expect(formatDurationTick(17 * 60_000 + 38_000)).toBe("18m");
     expect(formatDurationTick(9 * 60_000 + 38_000)).toBe("9m 38s");
     expect(formatDurationTick(9 * 60_000 + 59_900)).toBe("10m");
+  });
+
+  it("formats turn duration from start to completion time", () => {
+    expect(
+      formatTurnDuration({
+        completedAt: "2026-01-01T00:02:00.000Z",
+        lastSeenAt: "2026-01-01T00:05:00.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toBe("2m 0s");
   });
 
   it("counts conversational transcript messages instead of tool events", () => {
