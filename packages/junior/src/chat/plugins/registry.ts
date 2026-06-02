@@ -5,7 +5,7 @@ import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
 import { createGitHubAppBroker } from "./auth/github-app-broker";
-import { parsePluginManifest } from "./manifest";
+import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { createApiHeadersBroker } from "./auth/api-headers-broker";
 import {
@@ -225,12 +225,12 @@ function registerInlineManifests(
     const skillsDir = pkg?.hasSkillsDir
       ? path.join(pkg.dir, "skills")
       : path.join(dir, "skills");
-    registerPluginManifest(
-      state,
-      structuredClone(definition.manifest),
+    const manifest = parseInlinePluginManifest(
+      definition.manifest,
       dir,
-      skillsDir,
+      pluginConfig,
     );
+    registerPluginManifest(state, manifest, dir, skillsDir);
   }
 }
 

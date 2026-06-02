@@ -99,13 +99,13 @@ export interface JuniorDashboardPluginOptions {
 
 export function juniorDashboardPlugin(
   options?: JuniorDashboardPluginOptions,
-): JuniorPlugin;
+): JuniorPluginRegistration;
 ```
 
 The trusted plugin is the normal dashboard integration path. When registered
-with `createApp({ plugins: [juniorDashboardPlugin(...)] })`, it mounts the
-dashboard/auth HTTP routes and supplies dashboard conversation URLs for
-finalized Slack reply footers. It must not expose dashboard data or tools to
+through a `defineJuniorPlugins([juniorDashboardPlugin(...)])` plugin set, it
+mounts the dashboard/auth HTTP routes and supplies dashboard conversation URLs
+for finalized Slack reply footers. It must not expose dashboard data or tools to
 agent turns.
 
 `authRequired` defaults to `true`. Setting `authRequired: false` is only for explicit local/demo deployments and must bypass dashboard auth only for dashboard routes. Production configuration must not silently disable dashboard auth.

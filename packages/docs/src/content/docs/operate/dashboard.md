@@ -24,26 +24,30 @@ pnpm add @sentry/junior-dashboard
 
 ## Register the plugin
 
-Register `juniorDashboardPlugin()` in the trusted plugin array passed to
-`createApp()`. Configure the Google Workspace domain that should be allowed to
-view the dashboard:
+Register `juniorDashboardPlugin()` in the runtime-safe plugin set. Configure the
+Google Workspace domain that should be allowed to view the dashboard:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
+
+export const plugins = defineJuniorPlugins([
+  juniorDashboardPlugin({
+    allowedGoogleDomains: ["sentry.io"],
+    trustedOrigins: ["https://<your-domain>"],
+  }),
+]);
+```
+
+`createApp()` reads that plugin set from Nitro's virtual config:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
-import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 
-export default await createApp({
-  plugins: [
-    juniorDashboardPlugin({
-      allowedGoogleDomains: ["sentry.io"],
-      trustedOrigins: ["https://<your-domain>"],
-    }),
-  ],
-});
+export default await createApp();
 ```
 
-Keep the normal Junior Nitro module in `nitro.config.ts`; the dashboard routes
-are mounted by the trusted plugin at runtime:
+Point the Junior Nitro module at the same plugin module:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
@@ -53,9 +57,7 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
-      plugins: {
-        packages: ["@sentry/junior-sentry"],
-      },
+      plugins: "./plugins",
     }),
   ],
   routes: {

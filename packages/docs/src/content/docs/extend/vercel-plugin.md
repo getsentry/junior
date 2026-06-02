@@ -25,14 +25,18 @@ pnpm add @sentry/junior @sentry/junior-vercel
 
 ## Runtime setup
 
-List the plugin in `juniorNitro({ plugins: { packages: [...] } })`:
+Add the plugin package to the plugin set exported from `plugins.ts`:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins(["@sentry/junior-vercel"]);
+```
+
+Point `juniorNitro()` at that plugin module:
 
 ```ts title="nitro.config.ts"
-juniorNitro({
-  plugins: {
-    packages: ["@sentry/junior-vercel"],
-  },
-});
+juniorNitro({ plugins: "./plugins" });
 ```
 
 Set a Vercel token in your Junior deployment environment:

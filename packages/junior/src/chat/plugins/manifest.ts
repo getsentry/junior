@@ -16,6 +16,7 @@ import type {
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
+import { inlineManifestSource } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
@@ -966,100 +967,80 @@ function normalizeMcp(
   } satisfies PluginMcpConfig;
 }
 
-/** Parse one plugin manifest after applying install-level plugin config. */
-export function parsePluginManifest(
-  raw: string,
+function parseManifestSource(
+  parsedSource: ManifestSource,
   dir: string,
   config?: PluginCatalogConfig,
 ): PluginManifest {
-  let parsedYaml: unknown;
-  try {
-    parsedYaml = parseYaml(raw);
-  } catch (error) {
-    throw new Error(
-      `Invalid plugin manifest in ${dir}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  if (
-    !parsedYaml ||
-    typeof parsedYaml !== "object" ||
-    Array.isArray(parsedYaml)
-  ) {
-    throw new Error(`Invalid plugin manifest in ${dir}: expected an object`);
-  }
-
-  const source = applyManifestConfig(parsedYaml as ManifestSource, config);
+  const source = applyManifestConfig(parsedSource, config);
   const sourceResult = manifestSourceSchema.safeParse(source);
   if (!sourceResult.success) {
     const issue = sourceResult.error.issues[0];
     const path = formatPath(issue?.path ?? []);
     if (path === "name") {
-      throw new Error(
-        `Invalid plugin name in ${dir}: "${(parsedYaml as { name?: unknown }).name}"`,
-      );
+      throw new Error(`Invalid plugin name in ${dir}: "${parsedSource.name}"`);
     }
     if (path === "description") {
       throw new Error(`Invalid plugin description in ${dir}`);
     }
     if (path === "capabilities") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} capabilities must be an array when provided`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} capabilities must be an array when provided`,
       );
     }
     if (path === "config-keys") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} config-keys must be an array when provided`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} config-keys must be an array when provided`,
       );
     }
     if (path === "domains") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} ${path} must be a non-empty array of domains`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} ${path} must be a non-empty array of domains`,
       );
     }
     if (path === "api-headers") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} api-headers must be an object when provided`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} api-headers must be an object when provided`,
       );
     }
     if (path === "command-env") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-env must be an object when provided`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} command-env must be an object when provided`,
       );
     }
     if (path === "credentials") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} credentials must be an object when provided`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} credentials must be an object when provided`,
       );
     }
     if (path === "runtime-dependencies") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} runtime-dependencies must be an array`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} runtime-dependencies must be an array`,
       );
     }
     if (path === "runtime-postinstall") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} runtime-postinstall must be an array`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} runtime-postinstall must be an array`,
       );
     }
     if (path === "env-vars") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} env-vars must be an object`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} env-vars must be an object`,
       );
     }
     if (path === "mcp") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} mcp must be an object`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} mcp must be an object`,
       );
     }
     if (path === "oauth") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} oauth must be an object`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} oauth must be an object`,
       );
     }
     if (path === "target") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} target must be an object`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} target must be an object`,
       );
     }
     throw new Error(issue?.message ?? `Invalid plugin manifest in ${dir}`);
@@ -1229,4 +1210,39 @@ export function parsePluginManifest(
   }
 
   return manifest;
+}
+
+/** Parse one plugin.yaml manifest after applying install-level plugin config. */
+export function parsePluginManifest(
+  raw: string,
+  dir: string,
+  config?: PluginCatalogConfig,
+): PluginManifest {
+  let parsedYaml: unknown;
+  try {
+    parsedYaml = parseYaml(raw);
+  } catch (error) {
+    throw new Error(
+      `Invalid plugin manifest in ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (
+    !parsedYaml ||
+    typeof parsedYaml !== "object" ||
+    Array.isArray(parsedYaml)
+  ) {
+    throw new Error(`Invalid plugin manifest in ${dir}: expected an object`);
+  }
+
+  return parseManifestSource(parsedYaml as ManifestSource, dir, config);
+}
+
+/** Parse one inline JavaScript manifest through the same effective manifest pipeline as plugin.yaml. */
+export function parseInlinePluginManifest(
+  manifest: PluginManifest,
+  dir: string,
+  config?: PluginCatalogConfig,
+): PluginManifest {
+  return parseManifestSource(inlineManifestSource(manifest), dir, config);
 }

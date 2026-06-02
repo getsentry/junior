@@ -238,6 +238,69 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
   });
 
+  it("applies manifest overrides to trusted plugin inline manifests", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins(
+        [
+          defineJuniorPlugin({
+            manifest: {
+              name: "trusted",
+              description: "Trusted plugin",
+              credentials: {
+                type: "oauth-bearer",
+                domains: ["old.example.com"],
+                authTokenEnv: "TRUSTED_TOKEN",
+              },
+            },
+            hooks: {},
+          }),
+        ],
+        {
+          manifests: {
+            trusted: {
+              credentials: {
+                domains: ["new.example.com"],
+              },
+            },
+          },
+        },
+      ),
+    });
+
+    expect(
+      getPluginProviders().map((plugin) => ({
+        name: plugin.manifest.name,
+        domains: plugin.manifest.credentials?.domains,
+      })),
+    ).toEqual([{ name: "trusted", domains: ["new.example.com"] }]);
+  });
+
+  it("rejects invalid trusted plugin inline manifests before mutating app config", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+
+    await expect(
+      createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "invalid",
+              description: "Invalid plugin",
+              domains: ["api.example.com"],
+            },
+            hooks: {},
+          }),
+        ]),
+      }),
+    ).rejects.toThrow(
+      "Plugin invalid domains requires credentials or api-headers",
+    );
+
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
+
   it("loads trusted plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
       pluginSet: defineJuniorPlugins([
