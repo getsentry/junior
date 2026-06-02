@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -9,11 +9,16 @@ import {
   setPluginConfig,
 } from "@/chat/plugins/registry";
 import {
+  type AgentPluginRouteRegistration,
+  getAgentPluginRoutes,
   setAgentPlugins,
   validateAgentPlugins,
 } from "@/chat/plugins/agent-hooks";
 import type { PluginConfig } from "@/chat/plugins/types";
-import type { JuniorPlugin } from "@sentry/junior-plugin-api";
+import type {
+  AgentPluginRouteMethod,
+  JuniorPlugin,
+} from "@sentry/junior-plugin-api";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
@@ -173,6 +178,40 @@ function pluginConfigFromAgentPlugins(
   return packages.length ? { packages } : undefined;
 }
 
+/** Resolve catalog config without letting an explicit empty trusted array read env fallbacks. */
+async function resolveAgentPluginBaseConfig(
+  plugins: JuniorPlugin[],
+): Promise<PluginConfig | undefined> {
+  if (plugins.length === 0) {
+    return resolveVirtualPluginConfig();
+  }
+  return resolveBuildPluginConfig();
+}
+
+/** Mount trusted plugin HTTP handlers before core routes claim those paths. */
+function mountAgentPluginRoutes(
+  app: Hono,
+  routes: AgentPluginRouteRegistration[],
+): void {
+  for (const route of routes) {
+    const handler = (c: Context) => route.handler(c.req.raw);
+    const methods = Array.isArray(route.method)
+      ? route.method
+      : [route.method ?? "ALL"];
+    const explicitMethods = methods.filter(
+      (method): method is Exclude<AgentPluginRouteMethod, "ALL"> =>
+        method !== "ALL",
+    );
+
+    if (methods.includes("ALL")) {
+      app.all(route.path, handler);
+    }
+    if (explicitMethods.length > 0) {
+      app.on(explicitMethods, route.path, handler);
+    }
+  }
+}
+
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const configuredPlugins = options?.plugins;
@@ -181,7 +220,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     : [];
   const pluginConfig = isJuniorPluginArray(configuredPlugins)
     ? mergePluginConfig(
-        await resolveVirtualPluginConfig(),
+        await resolveAgentPluginBaseConfig(configuredPlugins),
         pluginConfigFromAgentPlugins(configuredPlugins),
       )
     : (configuredPlugins ?? (await resolveBuildPluginConfig()));
@@ -192,11 +231,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginConfig = setPluginConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
+  let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
   try {
     setConfigDefaults(options?.configDefaults);
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
     }
+    agentPluginRoutes = getAgentPluginRoutes();
   } catch (error) {
     setPluginConfig(previousPluginConfig);
     setAgentPlugins(previousAgentPlugins);
@@ -221,6 +262,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }
     await next();
   });
+
+  mountAgentPluginRoutes(app, agentPluginRoutes);
 
   app.get("/", () => healthGET());
   app.get("/health", () => healthGET());

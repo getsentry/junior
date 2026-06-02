@@ -91,6 +91,36 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
   });
 
+  it("merges env plugin packages with trusted runtime plugins", async () => {
+    const tempRoot = await makeTempDir();
+    await writePluginPackage(tempRoot, "@acme/env-plugin", "env");
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/env-plugin": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(["@acme/env-plugin"]);
+
+    await createApp({
+      plugins: [defineJuniorPlugin({ name: "dashboard" })],
+      configDefaults: { "env.org": "sentry" },
+    });
+
+    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "env",
+    ]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([
+      "dashboard",
+    ]);
+  });
+
   it("fails loudly when configured plugin package names are invalid", async () => {
     await expect(
       createApp({

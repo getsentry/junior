@@ -4,6 +4,7 @@ import path from "node:path";
 import type { JuniorReporting } from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
 import { initSentry } from "@sentry/junior/instrumentation";
+import { dashboardClientAsset, dashboardTailwindAsset } from "./assets";
 import {
   createDashboardAuth,
   resolveGoogleHostedDomainHint,
@@ -18,6 +19,7 @@ const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 
 export interface JuniorDashboardOptions {
   basePath?: string;
+  baseURL?: string;
   authPath?: string;
   authRequired?: boolean;
   allowedGoogleDomains?: string[];
@@ -146,18 +148,15 @@ function dashboardSessionBypass(): DashboardSession {
   };
 }
 
-function readDashboardAsset(fileName: string): string {
-  const localDistUrl = new URL(`./${fileName}`, import.meta.url);
-  if (existsSync(localDistUrl)) {
-    return readFileSync(localDistUrl, "utf8");
+function readAssetUrl(url: URL): string {
+  if (!existsSync(url)) {
+    return "";
   }
+  return readFileSync(url, "utf8");
+}
 
-  const sourceDistUrl = new URL(`../dist/${fileName}`, import.meta.url);
-  if (existsSync(sourceDistUrl)) {
-    return readFileSync(sourceDistUrl, "utf8");
-  }
-
-  const workspacePackagePath = path.join(
+function readWorkspaceAsset(fileName: string): string {
+  const assetPath = path.join(
     process.cwd(),
     "node_modules",
     "@sentry",
@@ -165,15 +164,18 @@ function readDashboardAsset(fileName: string): string {
     "dist",
     fileName,
   );
-  if (existsSync(workspacePackagePath)) {
-    return readFileSync(workspacePackagePath, "utf8");
+  if (!existsSync(assetPath)) {
+    return "";
   }
-
-  return "";
+  return readFileSync(assetPath, "utf8");
 }
 
 function readDashboardClient(): string {
-  const client = readDashboardAsset("client.js");
+  const client =
+    dashboardClientAsset ||
+    readAssetUrl(new URL("./client.js", import.meta.url)) ||
+    readAssetUrl(new URL("../dist/client.js", import.meta.url)) ||
+    readWorkspaceAsset("client.js");
   if (!client) {
     throw new Error("Junior dashboard client bundle was not found");
   }
@@ -185,7 +187,12 @@ function dashboardTimeZone(): string {
 }
 
 function readDashboardTailwind(): string {
-  return readDashboardAsset("tailwind.css");
+  return (
+    dashboardTailwindAsset ||
+    readAssetUrl(new URL("./tailwind.css", import.meta.url)) ||
+    readAssetUrl(new URL("../dist/tailwind.css", import.meta.url)) ||
+    readWorkspaceAsset("tailwind.css")
+  );
 }
 
 function dashboardPagePaths(basePath: string): string[] {
@@ -307,6 +314,7 @@ export function createDashboardApp(
     ? (options.auth ??
       createDashboardAuth({
         authPath,
+        baseURL: options.baseURL,
         trustedOrigins: options.trustedOrigins ?? [],
         googleHostedDomain: resolveGoogleHostedDomainHint(allowedDomains),
         sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,

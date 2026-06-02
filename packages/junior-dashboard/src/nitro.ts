@@ -104,7 +104,12 @@ function dashboardPageRoutes(
   };
 }
 
-/** Mount the authenticated Junior dashboard into a Nitro deployment. */
+/**
+ * Mount the authenticated Junior dashboard into a Nitro deployment.
+ *
+ * @deprecated Register `juniorDashboardPlugin()` in `createApp({ plugins })`;
+ * this helper remains for existing Nitro apps.
+ */
 export function juniorDashboardNitro(options: JuniorDashboardNitroOptions): {
   nitro: { setup(nitro: unknown): void };
 } {

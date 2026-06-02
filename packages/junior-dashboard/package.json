@@ -13,8 +13,8 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/app.d.ts",
-      "default": "./dist/app.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./nitro": {
       "types": "./dist/nitro.d.ts",
@@ -30,8 +30,10 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup && pnpm run build:css && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "pnpm run build:client && pnpm run build:css && pnpm run build:server && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build:client": "tsup --config tsup.client.config.ts",
     "build:css": "tailwindcss -i src/tailwind.css -o dist/tailwind.css --minify",
+    "build:server": "tsup --config tsup.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "test": "vitest run -c vitest.config.ts",
@@ -39,6 +41,7 @@
   },
   "dependencies": {
     "@sentry/junior": "workspace:*",
+    "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
     "better-auth": "^1.3.36",
     "hono": "^4.12.22",

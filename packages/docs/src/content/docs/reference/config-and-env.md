@@ -48,7 +48,7 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 | `BETTER_AUTH_URL`      | No       | Optional dashboard callback origin. Defaults to `JUNIOR_BASE_URL`, Vercel URL envs, or local dev. |
 | `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`.                             |
 
-Configure allowed Google Workspace domains in `juniorDashboardNitro()` for normal Nitro deployments. If your deployment imports the dashboard handler before Nitro virtual modules are available, set these optional policy variables instead:
+Configure allowed Google Workspace domains in `juniorDashboardPlugin()` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
 | Variable                           | Required | Purpose                                                       |
 | ---------------------------------- | -------- | ------------------------------------------------------------- |

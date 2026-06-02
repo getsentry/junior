@@ -119,6 +119,10 @@ Apps pass trusted plugin factories to `createApp({ plugins })`, and `juniorNitro
 
 Hook contexts expose narrow capabilities rather than raw Junior internals. Trusted plugin hook contracts are defined in [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md) and [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
 
+Trusted plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts trusted plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. Trusted route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for trusted plugin routes.
+
+Trusted plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
+
 ## Security Properties
 
 - Plugin manifests are committed YAML files, not dynamically loaded remote code.

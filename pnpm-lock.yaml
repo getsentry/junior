@@ -225,6 +225,9 @@ importers:
       "@sentry/junior":
         specifier: workspace:*
         version: file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)
+      "@sentry/junior-plugin-api":
+        specifier: workspace:*
+        version: link:../junior-plugin-api
       "@tanstack/react-query":
         specifier: ^5.100.14
         version: 5.100.14(react@19.2.6)

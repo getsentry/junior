@@ -10,7 +10,7 @@ const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
-const exampleNitroConfig = path.join(exampleRoot, "nitro.config.ts");
+const exampleDashboardConfig = path.join(exampleRoot, "dashboard.ts");
 const exampleRequire = createRequire(exampleEntry);
 const vercelEnvNames = [
   "VERCEL",
@@ -35,7 +35,10 @@ function getExamplePluginPackages(): string[] {
   };
 
   return Object.keys(pkg.dependencies ?? {}).filter(
-    (name) => name.startsWith("@sentry/junior-") && name !== "@sentry/junior",
+    (name) =>
+      name.startsWith("@sentry/junior-") &&
+      name !== "@sentry/junior" &&
+      name !== "@sentry/junior-dashboard",
   );
 }
 
@@ -76,8 +79,8 @@ async function importExampleApp() {
   };
 }
 
-async function importExampleNitroConfig() {
-  const href = `${pathToFileURL(exampleNitroConfig).href}?t=${Date.now()}`;
+async function importExampleDashboardConfig() {
+  const href = `${pathToFileURL(exampleDashboardConfig).href}?t=${Date.now()}`;
   return (await import(href)) as {
     exampleDashboardAuthRequired: () => boolean;
   };
@@ -101,7 +104,7 @@ describe.sequential("example build discovery integration", () => {
   });
 
   it("only disables dashboard auth for local development outside Vercel", async () => {
-    const config = await importExampleNitroConfig();
+    const config = await importExampleDashboardConfig();
 
     process.env = { ...originalEnv, NODE_ENV: "development" };
     clearVercelEnv();

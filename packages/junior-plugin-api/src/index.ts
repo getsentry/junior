@@ -177,15 +177,49 @@ export interface HeartbeatResult {
   dispatchCount?: number;
 }
 
+export type AgentPluginRouteMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS"
+  | "ALL";
+
+export type AgentPluginRouteHandler = {
+  bivarianceHack(request: Request): Promise<Response> | Response;
+}["bivarianceHack"];
+
+export interface AgentPluginRoute {
+  handler: AgentPluginRouteHandler;
+  method?: AgentPluginRouteMethod | AgentPluginRouteMethod[];
+  path: string;
+}
+
+export interface RouteRegistrationHookContext extends AgentPluginContext {}
+
+export interface SlackConversationLink {
+  url: string;
+}
+
+export interface SlackConversationLinkHookContext extends AgentPluginContext {
+  conversationId: string;
+}
+
 export interface AgentPluginHooks {
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  routes?(ctx: RouteRegistrationHookContext): AgentPluginRoute[];
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, AgentPluginToolDefinition>;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
+  slackConversationLink?(
+    ctx: SlackConversationLinkHookContext,
+  ): SlackConversationLink | undefined;
 }
 
 export interface JuniorPluginConfig {

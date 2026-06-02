@@ -36,5 +36,5 @@ Copy `.env.example` and set:
 
 - `plugin-packages.ts` is the single source of truth for installed plugin packages in this app
 - `nitro.config.ts` passes that list to `juniorNitro()` so plugin content is copied into the build output
-- `server.ts` passes the same list to `createApp()` so local dev does not depend on Nitro's virtual config path for plugin discovery
+- `server.ts` registers trusted runtime plugins, including the dashboard plugin, through `createApp({ plugins: [...] })`
 - root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for trusted plugin heartbeats and stale dispatch recovery; it also defaults `JUNIOR_BASE_URL` to the local server when unset so signed internal callbacks can recover dispatched runs

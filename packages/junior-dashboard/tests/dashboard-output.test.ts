@@ -6,23 +6,14 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const juniorRoot = path.resolve(packageRoot, "../junior");
+const pluginApiRoot = path.resolve(packageRoot, "../junior-plugin-api");
 const nitroBin = path.join(packageRoot, "node_modules", ".bin", "nitro");
 
 function linkPackage(root: string, name: string, target: string): void {
   const linkPath = path.join(root, "node_modules", ...name.split("/"));
   fs.mkdirSync(path.dirname(linkPath), { recursive: true });
   fs.symlinkSync(target, linkPath, "dir");
-}
-
-function dashboardOutputAsset(functionDir: string, fileName: string): string {
-  return path.join(
-    functionDir,
-    "node_modules",
-    "@sentry",
-    "junior-dashboard",
-    "dist",
-    fileName,
-  );
 }
 
 function writeFixture(root: string): void {
@@ -40,12 +31,25 @@ function writeFixture(root: string): void {
   fs.writeFileSync(
     path.join(root, "nitro.config.ts"),
     `import { defineConfig } from "nitro";
-import { juniorDashboardNitro } from "@sentry/junior-dashboard/nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
 
 export default defineConfig({
   preset: "vercel",
-  modules: [
-    juniorDashboardNitro({
+  modules: [juniorNitro()],
+  routes: {
+    "/**": { handler: "./server.ts" },
+  },
+});
+`,
+  );
+  fs.writeFileSync(
+    path.join(root, "server.ts"),
+    `import { createApp } from "@sentry/junior";
+import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
+
+export default await createApp({
+  plugins: [
+    juniorDashboardPlugin({
       authRequired: false,
       allowedGoogleDomains: ["sentry.io"],
     }),
@@ -55,11 +59,13 @@ export default defineConfig({
   );
 
   linkPackage(root, "nitro", path.join(packageRoot, "node_modules", "nitro"));
+  linkPackage(root, "@sentry/junior", juniorRoot);
   linkPackage(root, "@sentry/junior-dashboard", packageRoot);
+  linkPackage(root, "@sentry/junior-plugin-api", pluginApiRoot);
 }
 
 describe.sequential("dashboard Nitro production output", () => {
-  it("serves dashboard assets from the Vercel function cwd", async () => {
+  it("serves dashboard routes from the trusted plugin array", async () => {
     const root = fs.mkdtempSync(
       path.join(os.tmpdir(), "junior-dashboard-output-"),
     );
@@ -80,15 +86,6 @@ describe.sequential("dashboard Nitro production output", () => {
         "functions",
         "__server.func",
       );
-      expect(
-        fs.existsSync(dashboardOutputAsset(functionDir, "client.js")),
-      ).toBe(true);
-      const css = fs.readFileSync(
-        dashboardOutputAsset(functionDir, "tailwind.css"),
-        "utf8",
-      );
-      expect(css.length).toBeGreaterThan(0);
-
       process.chdir(functionDir);
       const app = (
         await import(
@@ -109,7 +106,9 @@ describe.sequential("dashboard Nitro production output", () => {
 
       const page = await app.fetch(new Request("http://localhost/"), {});
       expect(page.status).toBe(200);
-      expect(await page.text()).toContain(css.slice(0, 80));
+      const html = await page.text();
+      expect(html).toContain("dashboard-root");
+      expect(html).toContain("bg-black");
     } finally {
       process.chdir(originalCwd);
       fs.rmSync(root, { force: true, recursive: true });

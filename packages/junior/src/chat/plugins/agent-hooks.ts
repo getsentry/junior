@@ -1,6 +1,9 @@
 import type {
   AgentPluginRequester,
+  AgentPluginRoute,
+  AgentPluginRouteMethod,
   AgentPluginSandbox,
+  SlackConversationLink,
   JuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
@@ -32,6 +35,10 @@ export interface ToolHookResult {
   input: Record<string, unknown>;
 }
 
+export interface AgentPluginRouteRegistration extends AgentPluginRoute {
+  pluginName: string;
+}
+
 export interface AgentPluginHookRunner {
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(sandbox: SandboxInstance): Promise<void>;
@@ -40,6 +47,16 @@ export interface AgentPluginHookRunner {
 let agentPlugins: JuniorPlugin[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+  "ALL",
+]);
 
 function validateLegacyStatePrefixes(plugin: JuniorPlugin): void {
   const prefixes = plugin.pluginConfig?.legacyStatePrefixes;
@@ -140,6 +157,137 @@ export function getAgentPluginTools(
     }
   }
   return tools;
+}
+
+/** Normalize route methods so JS plugins cannot register invalid verbs. */
+function routeMethods(
+  route: AgentPluginRoute,
+  pluginName: string,
+): AgentPluginRouteMethod[] {
+  const methods = Array.isArray(route.method)
+    ? route.method
+    : [route.method ?? "ALL"];
+  if (methods.length === 0) {
+    throw new Error(
+      `Trusted plugin route "${route.path}" from plugin "${pluginName}" must declare at least one method`,
+    );
+  }
+
+  for (const method of methods) {
+    if (!AGENT_PLUGIN_ROUTE_METHODS.has(method)) {
+      throw new Error(
+        `Trusted plugin route "${route.path}" from plugin "${pluginName}" has invalid method "${String(method)}"`,
+      );
+    }
+  }
+  return methods;
+}
+
+/** Collect route handlers exposed by trusted plugins for app-level mounting. */
+export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
+  const routes: AgentPluginRouteRegistration[] = [];
+  const seen = new Set<string>();
+
+  for (const plugin of getAgentPlugins()) {
+    const hook = plugin.hooks?.routes;
+    if (!hook) {
+      continue;
+    }
+    const log = createAgentPluginLogger(plugin.name);
+    const pluginRoutes = hook({
+      plugin: { name: plugin.name },
+      log,
+    });
+    if (!Array.isArray(pluginRoutes)) {
+      throw new Error(
+        `Trusted plugin routes hook from plugin "${plugin.name}" must return an array`,
+      );
+    }
+    for (const route of pluginRoutes) {
+      if (!isRecord(route)) {
+        throw new Error(
+          `Trusted plugin route from plugin "${plugin.name}" must be an object`,
+        );
+      }
+      if (typeof route.path !== "string" || !route.path.startsWith("/")) {
+        throw new Error(
+          `Trusted plugin route "${route.path}" from plugin "${plugin.name}" must start with /`,
+        );
+      }
+      if (typeof route.handler !== "function") {
+        throw new Error(
+          `Trusted plugin route "${route.path}" from plugin "${plugin.name}" must provide a handler`,
+        );
+      }
+      const methods = routeMethods(route, plugin.name);
+      for (const method of methods) {
+        const key = `${method}:${route.path}`;
+        if (seen.has(key)) {
+          throw new Error(
+            `Duplicate trusted plugin route "${method} ${route.path}"`,
+          );
+        }
+        seen.add(key);
+      }
+      routes.push({
+        ...route,
+        pluginName: plugin.name,
+      });
+    }
+  }
+
+  return routes;
+}
+
+/** Return only absolute HTTP(S) URLs that Slack can render as footer links. */
+function trustedSlackConversationUrl(
+  pluginName: string,
+  link: SlackConversationLink | undefined,
+): string | undefined {
+  const url = typeof link?.url === "string" ? link.url.trim() : "";
+  if (!url) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch (error) {
+    throw new Error(
+      `Trusted plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
+      { cause: error },
+    );
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(
+      `Trusted plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
+    );
+  }
+  return parsed.toString();
+}
+
+/** Resolve the first trusted plugin conversation URL for finalized Slack footers. */
+export function getAgentPluginSlackConversationLink(
+  conversationId: string,
+): SlackConversationLink | undefined {
+  for (const plugin of getAgentPlugins()) {
+    const hook = plugin.hooks?.slackConversationLink;
+    if (!hook) {
+      continue;
+    }
+    const log = createAgentPluginLogger(plugin.name);
+    const link = hook({
+      plugin: { name: plugin.name },
+      log,
+      conversationId,
+    });
+    const url = trustedSlackConversationUrl(plugin.name, link);
+    if (url) {
+      return { url };
+    }
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

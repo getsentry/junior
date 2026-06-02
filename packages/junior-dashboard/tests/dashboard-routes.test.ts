@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "@sentry/junior";
 import type { JuniorReporting } from "@sentry/junior/reporting";
+import { juniorDashboardPlugin } from "../src/index";
 import { createDashboardApp } from "../src/app";
 import {
   createDashboardAuth,
@@ -638,6 +639,37 @@ describe("dashboard routes", () => {
 
     const oldInfo = await fetch(new Request("http://localhost/api/info"));
     expect(oldInfo.status).toBe(404);
+  });
+
+  it("mounts dashboard routes through the trusted plugin array", async () => {
+    const app = await createApp({
+      plugins: [
+        juniorDashboardPlugin({
+          authRequired: false,
+          allowedGoogleDomains: ["sentry.io"],
+          reporting: reporting(),
+        }),
+      ],
+    });
+
+    const dashboard = await app.fetch(new Request("http://localhost/"));
+    expect(dashboard.status).toBe(200);
+    expect(await dashboard.text()).toContain("dashboard-root");
+
+    const info = await app.fetch(
+      new Request("http://localhost/api/dashboard/info"),
+    );
+    expect(info.status).toBe(200);
+    expect(await info.json()).toMatchObject({
+      descriptionText: "Dashboard test",
+    });
+
+    const health = await app.fetch(new Request("http://localhost/health"));
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({
+      status: "ok",
+      service: "junior",
+    });
   });
 
   it("registers dashboard Nitro routes before an existing catch-all route", () => {

@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth/minimal";
+import { resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
@@ -56,40 +57,6 @@ function firstHostedDomain(domains: string[]): string | undefined {
   return domains.length === 1 ? domains[0] : undefined;
 }
 
-function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
-}
-
-function stripTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 1 && value.charCodeAt(end - 1) === 47) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function resolveBaseURL(config: DashboardAuthConfig): string {
-  const explicit =
-    config.baseURL ??
-    process.env.BETTER_AUTH_URL ??
-    process.env.JUNIOR_BASE_URL;
-  if (explicit?.trim()) {
-    return stripTrailingSlashes(withHttps(explicit.trim()));
-  }
-
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  if (vercelProd) {
-    return stripTrailingSlashes(withHttps(vercelProd));
-  }
-
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) {
-    return stripTrailingSlashes(withHttps(vercelUrl));
-  }
-
-  return "http://localhost:3000";
-}
-
 /** Create the Better Auth bridge used by dashboard browser routes. */
 export function createDashboardAuth(
   config: DashboardAuthConfig,
@@ -100,7 +67,7 @@ export function createDashboardAuth(
       process.env.JUNIOR_SECRET,
     "JUNIOR_SECRET or BETTER_AUTH_SECRET",
   );
-  const baseURL = resolveBaseURL(config);
+  const baseURL = resolveDashboardBaseURL({ baseURL: config.baseURL });
   const googleClientId = required(
     config.googleClientId ?? process.env.GOOGLE_CLIENT_ID,
     "GOOGLE_CLIENT_ID",

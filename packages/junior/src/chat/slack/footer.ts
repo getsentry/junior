@@ -1,4 +1,5 @@
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
+import { getAgentPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 
@@ -133,7 +134,9 @@ export function buildSlackReplyFooter(args: {
       label: "ID",
       value: conversationId,
     };
-    const conversationUrl = buildSentryConversationUrl(conversationId);
+    const conversationUrl =
+      getAgentPluginSlackConversationLink(conversationId)?.url ??
+      buildSentryConversationUrl(conversationId);
     if (conversationUrl) {
       idItem.url = conversationUrl;
     }

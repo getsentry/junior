@@ -1,13 +1,17 @@
 import { createApp } from "@sentry/junior";
+import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 import { initSentry } from "@sentry/junior/instrumentation";
-import { examplePluginPackages } from "./plugin-packages";
+import { exampleDashboardAuthRequired } from "./dashboard";
 
 initSentry();
 
 const app = await createApp({
-  plugins: {
-    packages: examplePluginPackages,
-  },
+  plugins: [
+    juniorDashboardPlugin({
+      authRequired: exampleDashboardAuthRequired(),
+      allowedGoogleDomains: ["sentry.io"],
+    }),
+  ],
   configDefaults: {
     "sentry.org": "sentry",
   },

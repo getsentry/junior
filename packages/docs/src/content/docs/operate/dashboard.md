@@ -22,13 +22,31 @@ Install the dashboard package next to `@sentry/junior`:
 pnpm add @sentry/junior-dashboard
 ```
 
-## Mount the routes
+## Register the plugin
 
-Add `juniorDashboardNitro()` before the catch-all Junior route. Configure the Google Workspace domain that should be allowed to view the dashboard:
+Register `juniorDashboardPlugin()` in the trusted plugin array passed to
+`createApp()`. Configure the Google Workspace domain that should be allowed to
+view the dashboard:
+
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
+
+export default await createApp({
+  plugins: [
+    juniorDashboardPlugin({
+      allowedGoogleDomains: ["sentry.io"],
+      trustedOrigins: ["https://<your-domain>"],
+    }),
+  ],
+});
+```
+
+Keep the normal Junior Nitro module in `nitro.config.ts`; the dashboard routes
+are mounted by the trusted plugin at runtime:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
-import { juniorDashboardNitro } from "@sentry/junior-dashboard/nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
 
 export default defineConfig({
@@ -39,10 +57,6 @@ export default defineConfig({
         packages: ["@sentry/junior-sentry"],
       },
     }),
-    juniorDashboardNitro({
-      allowedGoogleDomains: ["sentry.io"],
-      trustedOrigins: ["https://<your-domain>"],
-    }),
   ],
   routes: {
     "/**": { handler: "./server.ts" },
@@ -50,7 +64,7 @@ export default defineConfig({
 });
 ```
 
-You can also provide the same authorization policy through deployment environment variables when the handler is loaded outside Nitro's virtual module path:
+You can also provide the same authorization policy through deployment environment variables:
 
 | Variable                           | Purpose                                                       |
 | ---------------------------------- | ------------------------------------------------------------- |
