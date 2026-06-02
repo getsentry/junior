@@ -144,6 +144,9 @@ describe("dashboard telemetry components", () => {
     expect(
       renderToStaticMarkup(<StatusBadge showCompleted status="idle" />),
     ).toContain("completed");
+    expect(
+      renderToStaticMarkup(<StatusBadge label="checking" status="idle" />),
+    ).toContain("checking");
     expect(renderToStaticMarkup(<StatusBadge status="failed" />)).toContain(
       "error",
     );

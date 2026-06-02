@@ -527,6 +527,10 @@ export function longReleaseConversation(
   const traceId = "7a4f12c9e3d84901b6c7d8e9f0123456";
   const firstStartedAt = iso(nowMs, -92 * 60_000);
   const secondStartedAt = iso(nowMs, -90 * 60_000);
+  const firstTranscript = releaseTranscriptTurnOne(Date.parse(firstStartedAt));
+  const secondTranscript = releaseTranscriptTurnTwo(
+    Date.parse(secondStartedAt),
+  );
 
   return {
     conversationId: LONG_CONVERSATION_ID,
@@ -561,8 +565,8 @@ export function longReleaseConversation(
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
-        transcriptMessageCount: 2,
-        transcript: releaseTranscriptTurnOne(Date.parse(firstStartedAt)),
+        transcriptMessageCount: firstTranscript.length,
+        transcript: firstTranscript,
       },
       {
         conversationId: LONG_CONVERSATION_ID,
@@ -593,8 +597,8 @@ export function longReleaseConversation(
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
-        transcriptMessageCount: 14,
-        transcript: releaseTranscriptTurnTwo(Date.parse(secondStartedAt)),
+        transcriptMessageCount: secondTranscript.length,
+        transcript: secondTranscript,
       },
     ],
   };

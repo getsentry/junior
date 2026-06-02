@@ -8,7 +8,7 @@ export function StatusBadge(props: {
   status: VisualStatus | undefined;
 }) {
   const status = props.status ?? "idle";
-  if (status === "idle" && !props.showCompleted) return null;
+  if (status === "idle" && !props.showCompleted && !props.label) return null;
 
   return (
     <span

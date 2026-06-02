@@ -163,7 +163,9 @@ describe("dashboard mock conversation routes", () => {
     expect(longConversationBody.turns).toHaveLength(2);
     expect(systemMessages).toHaveLength(1);
     expect(longConversationBody.turns[1]?.transcript[0]?.role).toBe("user");
-    expect(longConversationBody.turns[1]?.transcriptMessageCount).toBe(14);
+    for (const turn of longConversationBody.turns) {
+      expect(turn.transcriptMessageCount).toBe(turn.transcript.length);
+    }
     expect(
       longConversationParts.filter((part) => part.name === "bash").length,
     ).toBeGreaterThan(20);
