@@ -6,9 +6,13 @@ import {
 } from "../format";
 import type { TranscriptMessage, TranscriptPart } from "../types";
 
+type RenderedToolPart =
+  | { call: TranscriptPart; kind: "tool"; result?: TranscriptPart }
+  | { call?: undefined; kind: "tool"; result: TranscriptPart };
+
 export type RenderedTranscriptPart =
   | { kind: "part"; part: TranscriptPart }
-  | { kind: "tool"; call?: TranscriptPart; result?: TranscriptPart };
+  | RenderedToolPart;
 
 type RenderedTranscriptEntry =
   | { kind: "message"; message: TranscriptMessage }
@@ -21,13 +25,32 @@ type RenderedThinkingEntry = {
   timestamp?: number;
 };
 
-type RenderedToolEntry = {
-  call?: TranscriptPart;
-  kind: "tool";
-  result?: TranscriptPart;
-  resultTimestamp?: number;
-  timestamp?: number;
-};
+type RenderedToolEntry =
+  | {
+      call: TranscriptPart;
+      kind: "tool";
+      result?: TranscriptPart;
+      resultTimestamp?: number;
+      timestamp?: number;
+    }
+  | {
+      call?: undefined;
+      kind: "tool";
+      result: TranscriptPart;
+      resultTimestamp?: number;
+      timestamp?: never;
+    };
+
+type RenderedToolCallEntry = Extract<
+  RenderedToolEntry,
+  { call: TranscriptPart }
+>;
+
+function isRenderedToolCallEntry(
+  entry: RenderedTranscriptEntry,
+): entry is RenderedToolCallEntry {
+  return entry.kind === "tool" && entry.call !== undefined;
+}
 
 export type TranscriptViewMode = "raw" | "rich";
 
@@ -51,7 +74,9 @@ function sameToolInvocation(
   call: TranscriptPart,
   result: TranscriptPart,
 ): boolean {
-  if (call.id && result.id) return call.id === result.id;
+  if (call.id || result.id) {
+    return Boolean(call.id && result.id && call.id === result.id);
+  }
   if (call.name && result.name) return call.name === result.name;
   return false;
 }
@@ -98,11 +123,11 @@ export function groupTranscriptParts(
 function findToolEntry(
   entries: RenderedTranscriptEntry[],
   result: TranscriptPart,
-): RenderedToolEntry | undefined {
+): RenderedToolCallEntry | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
-    if (entry.kind !== "tool" || entry.result) continue;
-    if (!entry.call || sameToolInvocation(entry.call, result)) {
+    if (!isRenderedToolCallEntry(entry) || entry.result) continue;
+    if (sameToolInvocation(entry.call, result)) {
       return entry;
     }
   }

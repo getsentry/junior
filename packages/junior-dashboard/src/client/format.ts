@@ -263,15 +263,6 @@ export function turnMessageCount(turn: ConversationTurn): number {
   return turn.transcriptMessageCount ?? 0;
 }
 
-/** Count tool calls from visible transcripts or safe redacted metadata. */
-export function turnToolCallCount(turn: ConversationTurn): number {
-  return transcriptSource(turn).reduce((count, message) => {
-    return (
-      count + message.parts.filter((part) => part.type === "tool_call").length
-    );
-  }, 0);
-}
-
 export type ToolCallSummaryItem = {
   count: number;
   name: string;
@@ -301,7 +292,7 @@ function sameToolPart(
     return Boolean(call.id && result.id && call.id === result.id);
   }
   if (call.name && result.name) return call.name === result.name;
-  return !call.id && !call.name && !result.id && !result.name;
+  return false;
 }
 
 function findPendingToolCallIndex(
@@ -511,11 +502,6 @@ export function formatTokenSummary(
   return summary ? `${formatNumber(summary.totalTokens)} tokens` : "";
 }
 
-/** Format known token counters without estimating per-message usage. */
-export function formatTokenTotal(usage: TurnUsage | undefined): string {
-  return formatTokenSummary(summarizeUsage([usage]));
-}
-
 /** Format the aggregate token count across conversation turns. */
 export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
   return formatTokenSummary(summarizeUsage(usages));
@@ -623,8 +609,9 @@ export function conversationIdentityMeta(
   conversation: Conversation | undefined,
   conversationId: string | undefined,
 ): string {
-  const id = conversationId ?? "missing conversation id";
+  const id = conversationId ?? conversation?.id;
   const owner = conversationRequesterLabel(conversation);
+  if (!id) return owner ?? "";
   return owner ? `${owner} · ${id}` : id;
 }
 

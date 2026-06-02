@@ -10,7 +10,6 @@ import {
   formatDurationTotal,
   formatDurationTick,
   formatTurnDuration,
-  formatTokenTotal,
   formatUsageTotal,
   parseMarkdownBlocks,
   requesterLabel,
@@ -35,17 +34,6 @@ describe("dashboard token formatting", () => {
         },
       ]),
     ).toBe("205 tokens");
-  });
-
-  it("uses component counters for token totals when present", () => {
-    expect(
-      formatTokenTotal({
-        cachedInputTokens: 10,
-        inputTokens: 20,
-        outputTokens: 30,
-        totalTokens: 999,
-      }),
-    ).toBe("60 tokens");
   });
 
   it("sums turn runtime when duration data exists", () => {
@@ -217,6 +205,31 @@ describe("dashboard token formatting", () => {
     });
   });
 
+  it("does not infer tool durations for unnamed calls and results", () => {
+    const turn = {
+      id: "turn-1",
+      status: "completed",
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: 1_000,
+          parts: [{ type: "tool_call" }],
+        },
+        {
+          role: "toolResult",
+          timestamp: 2_000,
+          parts: [{ type: "tool_result" }],
+        },
+      ],
+    } as ConversationTurn;
+
+    expect(summarizeToolCalls([turn])).toEqual({
+      items: [{ count: 1, name: "unknown" }],
+      total: 1,
+    });
+  });
+
   it("does not synthesize conversation titles from requester display names", () => {
     const sessions: Session[] = [
       {
@@ -241,6 +254,10 @@ describe("dashboard token formatting", () => {
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
       "Alice Reviewer · slack:C1:123",
     );
+  });
+
+  it("does not render a fake identity line before route data exists", () => {
+    expect(conversationIdentityMeta(undefined, undefined)).toBe("");
   });
 
   it("keeps Slack display names with spaces as requester labels", () => {

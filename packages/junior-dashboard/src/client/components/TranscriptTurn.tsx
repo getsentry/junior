@@ -9,7 +9,6 @@ import { HighlightedCode } from "../code";
 import {
   detectLanguage,
   transcriptRoleKind,
-  type TranscriptRoleKind,
   formatBytes,
   formatMessageOffset,
   formatMessageTimestamp,
@@ -549,7 +548,7 @@ function redactedMessageSize(part: TranscriptPart): string | undefined {
 }
 
 function turnActorLabel(turn: ConversationTurn): string {
-  return requesterLabel(turn.requesterIdentity) ?? "unknown actor";
+  return requesterLabel(turn.requesterIdentity) ?? "User";
 }
 
 function turnMessageSummary(turn: ConversationTurn) {
