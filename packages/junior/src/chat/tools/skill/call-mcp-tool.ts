@@ -1,4 +1,6 @@
 import { Type } from "@sinclair/typebox";
+import { setSpanAttributes } from "@/chat/logging";
+import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import { tool } from "@/chat/tools/definition";
@@ -34,6 +36,19 @@ function resolveMcpArguments(
   return {};
 }
 
+function activeProviderNames(tools: ManagedMcpTool[]): string[] {
+  return [...new Set(tools.map((toolDef) => toolDef.provider))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function missingToolMessage(toolName: string, provider: string | undefined) {
+  const retryHint = provider
+    ? `Call searchMcpTools with provider "${provider}" to refresh the catalog, then retry with an exact returned tool_name.`
+    : "Call searchMcpTools to refresh the catalog, then retry with an exact returned tool_name.";
+  return `MCP tool is not active for this turn: ${toolName}. ${retryHint}`;
+}
+
 /** Create the stable dispatcher for active MCP provider tools. */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return tool({
@@ -60,11 +75,29 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       if (provider) {
         await mcpToolManager.activateProvider(provider);
       }
-      const mcpTool = mcpToolManager
-        .getResolvedActiveTools()
-        .find((candidate) => candidate.name === tool_name);
+      const activeTools = mcpToolManager.getResolvedActiveTools();
+      const mcpTool = activeTools.find(
+        (candidate) => candidate.name === tool_name,
+      );
       if (!mcpTool) {
-        throw new Error(`MCP tool is not active for this turn: ${tool_name}`);
+        const providerTools = provider
+          ? activeTools.filter((candidate) => candidate.provider === provider)
+          : [];
+        setSpanAttributes({
+          "app.mcp.requested_tool_name": tool_name,
+          ...(provider ? { "app.mcp.requested_provider": provider } : {}),
+          "app.mcp.active_provider_names": activeProviderNames(activeTools),
+          "app.mcp.active_tool_count": activeTools.length,
+          ...(provider
+            ? {
+                "app.mcp.matching_provider_tool_count": providerTools.length,
+                "app.mcp.matching_provider_tool_names": providerTools
+                  .map((candidate) => candidate.name)
+                  .sort((a, b) => a.localeCompare(b)),
+              }
+            : {}),
+        });
+        throw new McpToolError(missingToolMessage(tool_name, provider));
       }
       return await mcpTool.execute(
         resolveMcpArguments(input as Record<string, unknown>),

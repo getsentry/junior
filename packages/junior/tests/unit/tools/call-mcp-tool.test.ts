@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { McpToolError } from "@/chat/mcp/errors";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 
 describe("callMcpTool", () => {
@@ -142,20 +143,41 @@ describe("callMcpTool", () => {
     ).rejects.toThrow("callMcpTool arguments must be an object");
   });
 
-  it("rejects tools that are not active for the turn", async () => {
+  it("returns an expected MCP error when a resumed catalog is missing the requested tool", async () => {
     const manager = {
       activateProvider: vi.fn(async () => true),
-      getResolvedActiveTools: vi.fn(() => []),
+      getResolvedActiveTools: vi.fn(() => [
+        {
+          name: "mcp__demo__other",
+          rawName: "other",
+          provider: "demo",
+          description: "Other",
+          parameters: {},
+          execute: vi.fn(),
+        },
+      ]),
     };
     const callMcpTool = createCallMcpToolTool(manager);
 
-    await expect(
-      callMcpTool.execute!(
+    let error: unknown;
+    try {
+      await callMcpTool.execute!(
         {
-          tool_name: "mcp__demo__missing",
+          tool_name: "mcp__demo__missing_after_resume",
         },
         {},
-      ),
-    ).rejects.toThrow("MCP tool is not active for this turn");
+      );
+    } catch (caught: unknown) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(McpToolError);
+    if (!(error instanceof Error)) {
+      throw new Error("expected callMcpTool to throw an error");
+    }
+    expect(error.message).toContain(
+      'Call searchMcpTools with provider "demo" to refresh the catalog',
+    );
+    expect(manager.activateProvider).toHaveBeenCalledWith("demo");
   });
 });

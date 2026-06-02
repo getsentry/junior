@@ -1,4 +1,4 @@
-/** Thrown when an MCP tool returns an error result. */
+/** Thrown when an MCP failure should be returned as a model-visible tool error. */
 export class McpToolError extends Error {
   constructor(message: string) {
     super(message);
