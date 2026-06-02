@@ -13,6 +13,7 @@ import type {
   TurnUsage,
   VisualStatus,
 } from "./types";
+import { sameToolInvocation } from "./toolInvocations";
 
 let dashboardTimeZone = "America/Los_Angeles";
 
@@ -284,23 +285,12 @@ function toolCallName(part: TranscriptPart): string {
   return part.name ?? part.id ?? "unknown";
 }
 
-function sameToolPart(
-  call: Pick<TranscriptPart, "id" | "name">,
-  result: Pick<TranscriptPart, "id" | "name">,
-): boolean {
-  if (call.id || result.id) {
-    return Boolean(call.id && result.id && call.id === result.id);
-  }
-  if (call.name && result.name) return call.name === result.name;
-  return false;
-}
-
 function findPendingToolCallIndex(
   calls: PendingToolCall[],
   result: TranscriptPart,
 ): number {
   for (let index = calls.length - 1; index >= 0; index -= 1) {
-    if (sameToolPart(calls[index]!, result)) {
+    if (sameToolInvocation(calls[index]!, result)) {
       return index;
     }
   }

@@ -4,6 +4,7 @@ import {
   stringifyPartValue,
   transcriptRoleKind,
 } from "../format";
+import { sameToolInvocation } from "../toolInvocations";
 import type { TranscriptMessage, TranscriptPart } from "../types";
 
 type RenderedToolPart =
@@ -68,17 +69,6 @@ function isThinking(part: TranscriptPart): boolean {
 
 function isString(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
-}
-
-function sameToolInvocation(
-  call: TranscriptPart,
-  result: TranscriptPart,
-): boolean {
-  if (call.id || result.id) {
-    return Boolean(call.id && result.id && call.id === result.id);
-  }
-  if (call.name && result.name) return call.name === result.name;
-  return false;
 }
 
 /** Group inline transcript parts so matching tool calls/results render together. */
