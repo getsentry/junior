@@ -826,6 +826,102 @@ describe("conversation work execution", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
   });
 
+  it("keeps restored thread context aligned with promoted mention routing", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+    const calls: Array<{
+      message: Message;
+      skipped: Message[];
+      thread: Thread;
+    }> = [];
+    const subscribedValues: boolean[] = [];
+    const ingressServices = {
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime: {
+        handleAssistantContextChanged: async () => {},
+        handleAssistantThreadStarted: async () => {},
+        handleNewMention: async () => {},
+        handleSubscribedMessage: async () => {},
+      },
+      state,
+    };
+
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+          ts: "1712345.0001",
+        }),
+      ),
+      waitUntil: () => {},
+      services: ingressServices,
+    });
+    await state.subscribe(CONVERSATION_ID);
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          eventType: "message",
+          text: "follow-up without an explicit mention",
+          ts: "1712345.0002",
+          threadTs: "1712345.0001",
+        }),
+      ),
+      waitUntil: () => {},
+      services: ingressServices,
+    });
+    const workBeforeProcessing = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(
+      workBeforeProcessing?.messages.map((record) => record.input.metadata),
+    ).toEqual([
+      expect.objectContaining({ route: "mention" }),
+      expect.objectContaining({ route: "subscribed" }),
+    ]);
+    await state.unsubscribe(CONVERSATION_ID);
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async (thread, message, hooks) => {
+              subscribedValues.push(await thread.isSubscribed());
+              calls.push({
+                thread,
+                message,
+                skipped: hooks?.messageContext?.skipped ?? [],
+              });
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error(
+                "mixed mention batches should promote to mention",
+              );
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.message.id).toBe("1712345.0002");
+    expect(calls[0]?.skipped.map((message) => message.id)).toEqual([
+      "1712345.0001",
+    ]);
+    expect(subscribedValues).toEqual([false]);
+  });
+
   it("processes pending Slack follow-ups before timeout continuation", async () => {
     const queue = new FakeQueue();
     const state = getStateAdapter();

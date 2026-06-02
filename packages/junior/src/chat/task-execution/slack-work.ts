@@ -232,9 +232,10 @@ export function createSlackConversationWorker(
         if (!latestMessage) {
           return;
         }
+        const route = routeForRecords(records);
         const thread = restoreThread({
           adapter,
-          isSubscribedContext: latestMetadata.route === "subscribed",
+          isSubscribedContext: route === "subscribed",
           message: latestMessage,
           state,
           threadJson: latestMetadata.thread,
@@ -245,7 +246,7 @@ export function createSlackConversationWorker(
           totalSinceLastHandler: messages.length,
         };
 
-        if (routeForRecords(records) === "mention") {
+        if (route === "mention") {
           await options.runtime.handleNewMention(thread, latestMessage, {
             messageContext,
           });
