@@ -49,6 +49,7 @@ export interface PreparedTurnState {
   conversationContext?: string;
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
+  userMessageAlreadyReplied?: boolean;
   userMessageId?: string;
 }
 
@@ -205,6 +206,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       explicitMention: args.explicitMention,
       text: args.text.userText,
     });
+    const userMessageAlreadyReplied = conversation.messages.some(
+      (entry) => entry.id === incomingUserMessage.id && entry.meta?.replied,
+    );
 
     const userMessageId = upsertConversationMessage(
       conversation,
@@ -256,6 +260,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       sandboxId: existingSandboxId,
       sandboxDependencyProfileHash: existingSandboxDependencyProfileHash,
       conversationContext,
+      userMessageAlreadyReplied,
       userMessageId,
     };
   };

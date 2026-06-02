@@ -17,7 +17,6 @@ import {
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
 export const CONVERSATION_WORK_SOFT_YIELD_AFTER_MS = 240_000;
-export const CONVERSATION_WORK_MIN_NEXT_ITERATION_BUDGET_MS = 120_000;
 
 export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
@@ -130,7 +129,9 @@ export async function processConversationWork(
   });
   if (
     !initial ||
-    (countPendingConversationMessages(initial) === 0 && !initial.needsRun)
+    (countPendingConversationMessages(initial) === 0 &&
+      !initial.needsRun &&
+      !initial.lease)
   ) {
     return { status: "no_work" };
   }
@@ -268,6 +269,12 @@ export async function processConversationWork(
     return { status: "completed" };
   } catch (error) {
     try {
+      await requestConversationContinuation({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        nowMs: now(options),
+        state: options.state,
+      });
       await releaseConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,

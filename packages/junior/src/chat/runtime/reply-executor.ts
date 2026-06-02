@@ -425,6 +425,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
         }
+        if (preparedState.userMessageAlreadyReplied) {
+          await persistThreadState(thread, {
+            conversation: preparedState.conversation,
+          });
+          return;
+        }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,
           requesterId: message.author.userId,

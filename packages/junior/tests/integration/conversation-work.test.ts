@@ -14,6 +14,7 @@ import {
   drainConversationMailbox,
   getConversationWorkState,
   markConversationMessagesInjected,
+  requestConversationWork,
   startConversationWork,
   type InboundMessageRecord,
 } from "@/chat/task-execution/store";
@@ -27,6 +28,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -241,6 +243,32 @@ describe("conversation work execution", () => {
     await expect(first).resolves.toEqual({ status: "completed" });
   });
 
+  it("preserves work requested while a lease is running", async () => {
+    const queue = new FakeQueue();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            nowMs: 2_000,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
+  });
+
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = new FakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -386,6 +414,35 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(injected).toEqual([["m1"], ["m2"]]);
+  });
+
+  it("clears the run marker after draining messages that arrived during active execution", async () => {
+    const queue = new FakeQueue();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          await appendInboundMessage({
+            message: inboundMessage("m2", {
+              createdAtMs: 2_000,
+              receivedAtMs: 2_100,
+            }),
+            nowMs: 2_100,
+          });
+          await context.drainMailbox(async () => {});
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.needsRun).toBe(false);
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
   });
 
   it("requeues instead of completing when final mailbox work remains", async () => {
@@ -698,6 +755,164 @@ describe("conversation work execution", () => {
       state,
     });
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("processes pending Slack follow-ups before timeout continuation", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: CONVERSATION_ID,
+      sessionId: "turn-timeout",
+      sliceId: 2,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "original request" }],
+          timestamp: 1_000,
+        },
+      ],
+    });
+
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> follow-up`,
+          ts: "1712345.0002",
+          threadTs: "1712345.0001",
+        }),
+      ),
+      waitUntil: () => {},
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleAssistantContextChanged: async () => {},
+          handleAssistantThreadStarted: async () => {},
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      },
+    });
+
+    const calls: string[] = [];
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async (_thread, message) => {
+              calls.push(message.text);
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(calls).toEqual([expect.stringContaining("follow-up")]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("does not replay injected Slack mailbox records after lease recovery", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      waitUntil: () => {},
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleAssistantContextChanged: async () => {},
+          handleAssistantThreadStarted: async () => {},
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      },
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+      state,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    const inboundMessageIds =
+      work?.messages.map((message) => message.inboundMessageId) ?? [];
+    await markConversationMessagesInjected({
+      conversationId: CONVERSATION_ID,
+      inboundMessageIds,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      state,
+    });
+    await recoverConversationWork({
+      nowMs: 2_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+      queue,
+      state,
+    });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async () => {
+              throw new Error("injected messages should not replay");
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("injected messages should not replay");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "no_work" });
+
+    const recovered = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(recovered?.needsRun).toBe(false);
+    expect(recovered ? countPendingConversationMessages(recovered) : 0).toBe(0);
   });
 
   it("keeps Slack mailbox records pending when the runtime handoff fails", async () => {

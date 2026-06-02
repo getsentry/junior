@@ -46,7 +46,8 @@ This spec owns how agent session state is persisted and resumed across execution
   decide where to resume; the reduced conversation session log is the resume
   source.
 - `slice_id`: Diagnostic integer for one execution chunk in the same
-  conversation. The first-pass mailbox worker must not enforce a slice cap.
+  conversation. The mailbox worker must not enforce a slice cap; timeout
+  poison-work guards live in turn-session persistence.
 - `event_id`: Stable identity for one durable session-log event.
 - `pause_event_id`: Event id carried by timeout/auth resume callbacks so stale callbacks can be dropped.
 
@@ -506,7 +507,7 @@ The worker must:
 2. Queue nudge is never delivered after a safe boundary append: heartbeat finds pending mailbox or expired lease state and enqueues the conversation id.
 3. Duplicate queue nudges for the same conversation are serialized by the conversation lease.
 4. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
-5. Repeated cooperative yields before visible output may produce further execution chunks, but first pass does not enforce a slice cap.
+5. Repeated cooperative yields before visible output may produce further execution chunks, but timeout continuation must stop at the configured high-water slice cap and mark the session failed instead of scheduling another queue nudge.
 6. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
 
 ## Observability

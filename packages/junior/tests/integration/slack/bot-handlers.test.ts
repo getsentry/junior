@@ -152,6 +152,85 @@ describe("bot handlers (integration)", () => {
     expect(hasReply).toBe(true);
   });
 
+  it("does not replay a message that already has a delivered reply", async () => {
+    const conversationId = "slack:C_REPLAY:1700000000.000";
+    const generateAssistantReply = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply,
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: conversationId,
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          backfill: {
+            completedAtMs: 1,
+            source: "recent_messages",
+          },
+          compactions: [],
+          piMessages: [],
+          messages: [
+            {
+              id: "msg-replayed",
+              role: "user",
+              text: "please answer once",
+              createdAtMs: 1,
+              author: {
+                userId: "U-test",
+              },
+              meta: {
+                replied: true,
+                slackTs: "1700000000.000",
+              },
+            },
+            {
+              id: "assistant-reply",
+              role: "assistant",
+              text: "Already answered.",
+              createdAtMs: 2,
+              author: {
+                isBot: true,
+                userName: "Junior",
+              },
+              meta: {
+                replied: true,
+              },
+            },
+          ],
+          processing: {},
+          stats: {
+            compactedMessageCount: 0,
+            estimatedContextTokens: 0,
+            totalMessageCount: 2,
+            updatedAtMs: 2,
+          },
+          vision: {
+            byFileId: {},
+          },
+        },
+      },
+    });
+
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-replayed",
+          threadId: conversationId,
+          text: "please answer once",
+          isMention: true,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(thread.posts).toEqual([]);
+  });
+
   it("handleSubscribedMessage with explicit mention: replies when should_reply is true", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {

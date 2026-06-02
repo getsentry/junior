@@ -23,7 +23,6 @@ import type {
 } from "@/chat/task-execution/store";
 import {
   getConversationWorkState,
-  countPendingConversationMessages,
   markConversationMessagesInjected,
 } from "@/chat/task-execution/store";
 import type {
@@ -163,19 +162,6 @@ async function resumeAwaitingTimeout(conversationId: string): Promise<boolean> {
   return true;
 }
 
-async function getCrashRecoveryRecords(args: {
-  conversationId: string;
-  state?: StateAdapter;
-}): Promise<InboundMessageRecord[]> {
-  const work = await getConversationWorkState(args);
-  if (!work || countPendingConversationMessages(work) > 0) {
-    return [];
-  }
-  return work.messages
-    .filter((message) => message.source === "slack")
-    .sort(compareInboundMessages);
-}
-
 function getInstallation(
   records: InboundMessageRecord[],
 ): SlackInstallationContext {
@@ -208,12 +194,6 @@ export function createSlackConversationWorker(
     const state = getConnectedState(options.state);
     await state.connect();
 
-    if (await resumeAwaitingTimeout(context.conversationId)) {
-      return context.shouldYield()
-        ? { status: "yielded" }
-        : { status: "completed" };
-    }
-
     let records = getPendingRecords(
       await getConversationWorkState({
         conversationId: context.conversationId,
@@ -221,12 +201,9 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      records = await getCrashRecoveryRecords({
-        conversationId: context.conversationId,
-        state,
-      });
-    }
-    if (records.length === 0) {
+      if (await resumeAwaitingTimeout(context.conversationId)) {
+        return { status: "completed" };
+      }
       return { status: "completed" };
     }
 

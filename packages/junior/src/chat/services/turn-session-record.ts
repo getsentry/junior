@@ -12,6 +12,8 @@ import {
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
+export const AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES = 48;
+
 export interface TurnSessionContext {
   conversationId?: string;
   sessionId?: string;
@@ -159,7 +161,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -217,7 +219,7 @@ export async function persistCompletedSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -290,7 +292,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -340,19 +342,50 @@ export async function persistTimeoutSessionRecord(args: {
     if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
       return undefined;
     }
+    const cumulativeDurationMs = addDurationMs(
+      latestSessionRecord?.cumulativeDurationMs,
+      args.currentDurationMs,
+    );
+    const cumulativeUsage = addAgentTurnUsage(
+      latestSessionRecord?.cumulativeUsage,
+      args.currentUsage,
+    );
+    if (nextSliceId > AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES) {
+      await upsertAgentTurnSessionRecord({
+        ...((args.channelName ?? latestSessionRecord?.channelName)
+          ? {
+              channelName: args.channelName ?? latestSessionRecord?.channelName,
+            }
+          : {}),
+        conversationId: args.conversationId,
+        cumulativeDurationMs,
+        cumulativeUsage,
+        sessionId: args.sessionId,
+        sliceId: args.currentSliceId,
+        state: "failed",
+        piMessages,
+        ...(args.loadedSkillNames
+          ? { loadedSkillNames: args.loadedSkillNames }
+          : {}),
+        resumeReason: "timeout",
+        resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
+        errorMessage: `Turn exceeded timeout resume slice limit (${AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES})`,
+        ...((args.requester ?? latestSessionRecord?.requester)
+          ? { requester: args.requester ?? latestSessionRecord?.requester }
+          : {}),
+        ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+          ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+          : {}),
+      });
+      return undefined;
+    }
     return await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
       conversationId: args.conversationId,
-      cumulativeDurationMs: addDurationMs(
-        latestSessionRecord?.cumulativeDurationMs,
-        args.currentDurationMs,
-      ),
-      cumulativeUsage: addAgentTurnUsage(
-        latestSessionRecord?.cumulativeUsage,
-        args.currentUsage,
-      ),
+      cumulativeDurationMs,
+      cumulativeUsage,
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -366,7 +399,7 @@ export async function persistTimeoutSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
+      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });

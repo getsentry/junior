@@ -519,8 +519,9 @@ export async function requestConversationWork(args: {
 }): Promise<RequestConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state) => {
+    const existing = await readWorkState(state, args.conversationId);
     const current =
-      (await readWorkState(state, args.conversationId)) ??
+      existing ??
       emptyWorkState({
         conversationId: args.conversationId,
         nowMs,
@@ -530,7 +531,7 @@ export async function requestConversationWork(args: {
       needsRun: true,
       updatedAtMs: nowMs,
     });
-    return { status: current === undefined ? "created" : "updated" };
+    return { status: existing === undefined ? "created" : "updated" };
   });
 }
 
@@ -563,7 +564,7 @@ export async function startConversationWork(args: {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state) => {
     const current = await readWorkState(state, args.conversationId);
-    if (!current || !hasRunnableWork(current)) {
+    if (!current) {
       return { status: "no_work" };
     }
     if (isLeaseActive(current.lease, nowMs)) {
@@ -571,6 +572,9 @@ export async function startConversationWork(args: {
         status: "active",
         leaseExpiresAtMs: current.lease!.leaseExpiresAtMs,
       };
+    }
+    if (!hasRunnableWork(current)) {
+      return { status: "no_work" };
     }
 
     const lease: ConversationLease = {
@@ -582,7 +586,7 @@ export async function startConversationWork(args: {
     await writeWorkState(state, {
       ...current,
       lease,
-      needsRun: true,
+      needsRun: false,
       updatedAtMs: nowMs,
     });
     return {
@@ -644,13 +648,18 @@ export async function drainConversationMailbox(args: {
     const drainedIds = new Set(
       pending.map((message) => message.inboundMessageId),
     );
+    const messages = current.messages.map((message) =>
+      drainedIds.has(message.inboundMessageId)
+        ? { ...message, injectedAtMs: nowMs }
+        : message,
+    );
+    const hasPending = messages.some(
+      (message) => message.injectedAtMs === undefined,
+    );
     await writeWorkState(state, {
       ...current,
-      messages: current.messages.map((message) =>
-        drainedIds.has(message.inboundMessageId)
-          ? { ...message, injectedAtMs: nowMs }
-          : message,
-      ),
+      messages,
+      needsRun: hasPending,
       updatedAtMs: nowMs,
     });
     return pending;
@@ -761,7 +770,7 @@ export async function completeConversationWork(args: {
     await writeWorkState(state, {
       ...current,
       lease: undefined,
-      needsRun: hasPending,
+      needsRun: current.needsRun || hasPending,
       updatedAtMs: nowMs,
     });
     return hasPending ? "pending" : "completed";
