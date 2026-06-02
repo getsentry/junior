@@ -55,9 +55,9 @@ This policy applies to:
 - A registered provider authorizes its declared domains for sandbox egress; registration must not mint credentials by itself.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, sandbox credentials are issued lazily only when a sandbox request reaches a declared provider domain. The runtime must not pre-provision provider credentials merely because a plugin is loaded or a command might need auth.
-- Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
+- Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`us.sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
-- Plugin-declared command env may include non-secret placeholders, default-backed deployment values, and explicit non-secret host env bindings needed by the command process. It must not read or expose env vars used by API headers, credential config, OAuth config, or other secret deployment values.
+- Plugin-declared command env may include placeholders, default-backed deployment values, and host env bindings explicitly marked safe for sandbox exposure. It must not read or expose env vars used by API headers, credential config, OAuth config, or other host-only secret deployment values.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline
@@ -95,7 +95,7 @@ This policy applies to:
 - Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
 - Refresh tokens on host, deliver short-lived access tokens via header transforms.
 - Fall back to static `SENTRY_AUTH_TOKEN` env var only for local/dev/test paths outside requester-bound turn execution.
-- Inject `Authorization` header transform for `sentry.io` domain.
+- Inject `Authorization` header transforms for Sentry region API domains such as `us.sentry.io` and `de.sentry.io`.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
 

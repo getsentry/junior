@@ -115,7 +115,7 @@ After a user has connected their account:
 3. Broker loads stored requester-bound tokens.
 4. If the token is near expiry, broker refreshes it server-side.
 5. Broker returns a short-lived `CredentialLease`.
-6. Runtime injects provider headers at the sandbox egress proxy boundary and exposes only non-secret command env or placeholder values inside the sandbox.
+6. Runtime injects provider headers at the sandbox egress proxy boundary and exposes only declared sandbox command env or placeholder values inside the sandbox.
 
 ## State management
 

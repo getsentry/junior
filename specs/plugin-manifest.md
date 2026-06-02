@@ -47,7 +47,8 @@ config-keys:
 credentials:
   type: oauth-bearer
   domains:
-    - sentry.io
+    - us.sentry.io
+    - de.sentry.io
   auth-token-env: SENTRY_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
 
@@ -90,6 +91,8 @@ env-vars:
   EXAMPLE_AUTH_HEADER:
   EXAMPLE_SITE:
     default: example.com
+  EXAMPLE_SAFE_TOKEN:
+    expose-to-command-env: true
 
 api-headers:
   Authorization: ${EXAMPLE_AUTH_HEADER}
@@ -97,6 +100,7 @@ api-headers:
 command-env:
   EXAMPLE_API_KEY: host_managed_credential
   EXAMPLE_SITE: ${EXAMPLE_SITE}
+  EXAMPLE_SAFE_TOKEN: ${EXAMPLE_SAFE_TOKEN}
 ```
 
 Rules:
@@ -106,8 +110,8 @@ Rules:
 3. Placeholders must be declared in `env-vars`.
 4. `api-headers` placeholders must not have defaults.
 5. `mcp.url` and default-backed `command-env` placeholders expand at manifest load.
-6. `command-env` references without defaults bind from host env when sandbox command env is built; unset values are omitted.
-7. Secret-bearing provider values belong in `api-headers`, `oauth`, or `credentials`, not `command-env`.
+6. `command-env` references without defaults require `expose-to-command-env: true`, bind from host env when sandbox command env is built, and are omitted when unset.
+7. Secret-like values may be exposed through `command-env` only when they are intentionally safe for the sandbox. Provider auth values that must stay host-only belong in `api-headers`, `oauth`, or `credentials`.
 
 ## Runtime Dependencies
 
@@ -161,7 +165,7 @@ Rules:
 - No duplicate plugin names.
 - No duplicate qualified capability tokens.
 - No duplicate effective provider egress domains after app-level `PluginCatalogConfig` merges.
-- `command-env` requires credentials or API headers.
+- `command-env` may stand alone and must not force a plugin to claim provider egress domains.
 - `plugin.yaml` is the enforceable runtime authority; skill prose cannot override it.
 
 ## Related Specs

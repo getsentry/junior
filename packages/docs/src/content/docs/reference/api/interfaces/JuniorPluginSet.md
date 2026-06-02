@@ -19,7 +19,7 @@ Defined in: [plugins.ts:18](https://github.com/getsentry/junior/blob/main/packag
 
 Install-level manifest overrides applied before validation.
 
----
+***
 
 ### packageNames
 
@@ -29,7 +29,7 @@ Defined in: [plugins.ts:20](https://github.com/getsentry/junior/blob/main/packag
 
 Manifest-only plugin packages included by package name.
 
----
+***
 
 ### registrations
 

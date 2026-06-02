@@ -293,6 +293,7 @@ export interface JuniorPluginMcpConfig {
 
 export interface JuniorPluginEnvVarDeclaration {
   default?: string;
+  exposeToCommandEnv?: boolean;
 }
 
 export interface JuniorPluginManifest {

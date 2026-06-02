@@ -21,7 +21,7 @@ const SENTRY_MANIFEST: PluginManifest = {
   configKeys: ["sentry.org", "sentry.project"],
   credentials: {
     type: "oauth-bearer",
-    domains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
+    domains: ["us.sentry.io", "de.sentry.io"],
     authTokenEnv: "SENTRY_AUTH_TOKEN",
   },
   oauth: {
@@ -89,10 +89,6 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
       {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer user-access-token" },
-      },
-      {
         domain: "us.sentry.io",
         headers: { Authorization: "Bearer user-access-token" },
       },
@@ -114,10 +110,6 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
       {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer static-env-token" },
-      },
-      {
         domain: "us.sentry.io",
         headers: { Authorization: "Bearer static-env-token" },
       },
@@ -133,7 +125,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     process.env.SENTRY_EXTRA_AUTH = "PluginManaged value";
     const manifest: PluginManifest = {
       ...SENTRY_MANIFEST,
-      domains: ["uploads.sentry.io", "sentry.io"],
+      domains: ["uploads.sentry.io", "us.sentry.io"],
       apiHeaders: {
         Authorization: "${SENTRY_EXTRA_AUTH}",
         "X-Sentry-Mode": "sandbox",
@@ -158,15 +150,11 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         },
       },
       {
-        domain: "sentry.io",
+        domain: "us.sentry.io",
         headers: {
           Authorization: "Bearer static-env-token",
           "X-Sentry-Mode": "sandbox",
         },
-      },
-      {
-        domain: "us.sentry.io",
-        headers: { Authorization: "Bearer static-env-token" },
       },
       {
         domain: "de.sentry.io",
@@ -215,10 +203,6 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer new-access-token" },
-      },
       {
         domain: "us.sentry.io",
         headers: { Authorization: "Bearer new-access-token" },

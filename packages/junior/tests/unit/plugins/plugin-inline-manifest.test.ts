@@ -66,6 +66,26 @@ describe("inline plugin manifests", () => {
           configKey: 123,
         },
       }),
-    ).toThrow("Plugin bad-target-token target.config-key Invalid input");
+      ).toThrow("Plugin bad-target-token target.config-key Invalid input");
+  });
+
+  it("accepts camelCase command env exposure declarations", () => {
+    const manifest = parse({
+      name: "safe-env",
+      description: "Safe sandbox env",
+      envVars: {
+        EXAMPLE_SAFE_TOKEN: { exposeToCommandEnv: true },
+      },
+      commandEnv: {
+        EXAMPLE_SAFE_TOKEN: "${EXAMPLE_SAFE_TOKEN}",
+      },
+    });
+
+    expect(manifest.envVars).toEqual({
+      EXAMPLE_SAFE_TOKEN: { exposeToCommandEnv: true },
+    });
+    expect(manifest.commandEnv).toEqual({
+      EXAMPLE_SAFE_TOKEN: "${EXAMPLE_SAFE_TOKEN}",
+    });
   });
 });

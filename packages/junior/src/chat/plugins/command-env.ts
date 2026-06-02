@@ -23,7 +23,7 @@ function resolveValue(
   return missing ? undefined : resolved;
 }
 
-/** Resolve non-secret sandbox command env declared by a plugin manifest. */
+/** Resolve sandbox command env declared by a plugin manifest. */
 export function resolvePluginCommandEnv(
   manifest: PluginManifest,
 ): Record<string, string> {

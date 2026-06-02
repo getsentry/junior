@@ -636,6 +636,33 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   }
 }
 
+function assertCommandEnvHostRefsAreExplicitlyExposed(
+  commandEnv: Record<string, string> | undefined,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  pluginName: string,
+): void {
+  if (!commandEnv) {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(commandEnv)) {
+    for (const name of envReferences(value)) {
+      const declaration = envVars[name] as
+        | PluginEnvVarDeclaration
+        | undefined;
+      if (
+        declaration &&
+        declaration.default === undefined &&
+        declaration.exposeToCommandEnv !== true
+      ) {
+        throw new Error(
+          `Plugin ${pluginName} command-env.${key} references env var ${name}, but env-vars.${name} must set expose-to-command-env: true before host env can be exposed to sandbox`,
+        );
+      }
+    }
+  }
+}
+
 function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
@@ -866,6 +893,8 @@ const envVarDeclarationSchema = z.preprocess(
   z
     .object({
       default: z.string().optional(),
+      "expose-to-command-env": z.boolean().optional(),
+      exposeToCommandEnv: z.boolean().optional(),
     })
     .strict(),
 );
@@ -891,6 +920,12 @@ function normalizeEnvVars(
     const decl: PluginEnvVarDeclaration = {};
     if (parsed.data.default !== undefined) {
       decl.default = parsed.data.default;
+    }
+    if (
+      parsed.data["expose-to-command-env"] === true ||
+      parsed.data.exposeToCommandEnv === true
+    ) {
+      decl.exposeToCommandEnv = true;
     }
     normalized[name] = decl;
   }
@@ -1093,11 +1128,6 @@ function parseManifestSource(
   const credentials = data.credentials
     ? normalizeCredentials(data.credentials, data.name)
     : undefined;
-  if (commandEnv && !credentials && !apiHeaders) {
-    throw new Error(
-      `Plugin ${data.name} command-env requires credentials or api-headers`,
-    );
-  }
   const runtimeDependencies = data["runtime-dependencies"]
     ? normalizeRuntimeDependencies(data["runtime-dependencies"], data.name)
     : undefined;
@@ -1174,6 +1204,11 @@ function parseManifestSource(
     apiHeaders,
     credentials,
     manifest.oauth,
+    data.name,
+  );
+  assertCommandEnvHostRefsAreExplicitlyExposed(
+    data["command-env"],
+    envVars,
     data.name,
   );
 

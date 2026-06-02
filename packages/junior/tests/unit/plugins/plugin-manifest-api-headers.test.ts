@@ -1,8 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
+
+const ORIGINAL_ENV = { ...process.env };
+
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+});
 
 describe("plugin manifest API headers", () => {
   it("parses plugin-level API headers with literal and env-backed values", () => {
@@ -62,6 +69,7 @@ describe("plugin manifest API headers", () => {
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_BOT_EMAIL:",
+        "    expose-to-command-env: true",
         "credentials:",
         "  type: oauth-bearer",
         "  domains:",
@@ -73,7 +81,9 @@ describe("plugin manifest API headers", () => {
       "/tmp/example",
     );
 
-    expect(manifest.envVars?.EXAMPLE_BOT_EMAIL).toEqual({});
+    expect(manifest.envVars?.EXAMPLE_BOT_EMAIL).toEqual({
+      exposeToCommandEnv: true,
+    });
     expect(manifest.commandEnv).toEqual({
       GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}",
     });
@@ -138,9 +148,9 @@ describe("plugin manifest API headers", () => {
     )) as typeof import("../../../../junior-github/index.js");
     const manifest = githubPlugin().manifest!;
 
-    expect(manifest.envVars).toMatchObject({
-      GITHUB_APP_BOT_NAME: {},
-      GITHUB_APP_BOT_EMAIL: {},
+    expect(manifest.envVars).toEqual({
+      GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
+      GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
     });
     expect(manifest.commandEnv).toMatchObject({
       GIT_AUTHOR_NAME: "${GITHUB_APP_BOT_NAME}",
@@ -157,6 +167,7 @@ describe("plugin manifest API headers", () => {
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_BOT_EMAIL:",
+        "    expose-to-command-env: true",
         "credentials:",
         "  type: oauth-bearer",
         "  domains:",
@@ -181,7 +192,7 @@ describe("plugin manifest API headers", () => {
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_BOT_EMAIL:",
-          "    expose-to-command-env: true",
+          "    unexpected: true",
           "credentials:",
           "  type: oauth-bearer",
           "  domains:",
@@ -268,18 +279,46 @@ describe("plugin manifest API headers", () => {
     );
   });
 
-  it("rejects command env without credentials or API headers", () => {
+  it("resolves standalone command env from explicitly exposed host env references", () => {
+    process.env.EXAMPLE_SAFE_TOKEN = "safe-token";
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "description: Example CLI access",
+        "env-vars:",
+        "  EXAMPLE_SAFE_TOKEN:",
+        "    expose-to-command-env: true",
+        "command-env:",
+        '  EXAMPLE_SAFE_TOKEN: "${EXAMPLE_SAFE_TOKEN}"',
+        '  EXAMPLE_MODE: "readonly"',
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.credentials).toBeUndefined();
+    expect(manifest.apiHeaders).toBeUndefined();
+    expect(resolvePluginCommandEnv(manifest)).toEqual({
+      EXAMPLE_SAFE_TOKEN: "safe-token",
+      EXAMPLE_MODE: "readonly",
+    });
+  });
+
+  it("rejects command env host env references without explicit exposure", () => {
     expect(() =>
       parsePluginManifest(
         [
           "name: example",
           "description: Example CLI access",
+          "env-vars:",
+          "  EXAMPLE_SAFE_TOKEN:",
           "command-env:",
-          "  EXAMPLE_TOKEN: host_managed_credential",
+          '  EXAMPLE_SAFE_TOKEN: "${EXAMPLE_SAFE_TOKEN}"',
         ].join("\n"),
         "/tmp/example",
       ),
-    ).toThrow("Plugin example command-env requires credentials or api-headers");
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_SAFE_TOKEN references env var EXAMPLE_SAFE_TOKEN, but env-vars.EXAMPLE_SAFE_TOKEN must set expose-to-command-env: true before host env can be exposed to sandbox",
+    );
   });
 
   it("rejects API headers without domains", () => {

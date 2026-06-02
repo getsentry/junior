@@ -17,7 +17,7 @@ Defined in: [app.ts:50](https://github.com/getsentry/junior/blob/main/packages/j
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
----
+***
 
 ### plugins?
 
@@ -27,7 +27,7 @@ Defined in: [app.ts:52](https://github.com/getsentry/junior/blob/main/packages/j
 
 Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module.
 
----
+***
 
 ### waitUntil?
 

@@ -91,8 +91,8 @@ export function githubPlugin(options = {}) {
         "GitHub issue, pull request, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       envVars: {
-        GITHUB_APP_BOT_NAME: {},
-        GITHUB_APP_BOT_EMAIL: {},
+        GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
+        GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
       },
       credentials: {
         type: "github-app",

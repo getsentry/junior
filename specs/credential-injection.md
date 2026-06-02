@@ -37,7 +37,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Enablement happens when sandbox traffic reaches a registered provider domain, not at skill-load time.
 - Delivery uses the Vercel Sandbox firewall request proxy for provider domains when available, with host-side header injection on the forwarded request.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
-- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or explicit public host env bindings, but never real secrets.
+- Plugin manifests may define sandbox-visible `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or host env bindings explicitly marked `expose-to-command-env`; provider auth secrets that should remain host-only belong in credentials or API headers.
 - Do not inject long-lived secrets into sandbox files.
 - Credential issuance is intentionally lazy to avoid wasted token minting and provider compute for commands that never touch authenticated domains.
 - Do not infer provider intent from bash commands, skill prose, or planned work to pre-scope tokens. Fine-grained token scopes are desirable, but guessing intent is not a safe authorization boundary; provider/domain matching at request time is the contract.

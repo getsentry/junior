@@ -120,7 +120,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"], {
   manifests: {
     sentry: {
       credentials: {
-        domains: ["sentry.io", "us.sentry.io"],
+        domains: ["us.sentry.io", "de.sentry.io"],
       },
       oauth: {
         scope: "event:read org:read project:read",
@@ -230,14 +230,14 @@ runtime-postinstall:
 - `capabilities`: provider actions qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
 - `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin
-- `command-env`: optional non-secret sandbox env vars injected for registered credential/header providers; use it for CLI placeholders, deployment defaults, and public install metadata
+- `command-env`: optional sandbox env vars for CLI placeholders, deployment defaults, public install metadata, and host env bindings explicitly marked safe for sandbox exposure
 - `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
-- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`, `api-headers`, or `command-env`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url` and `command-env`. Command-env references without defaults bind from host env when command env is resolved; API header references cannot use defaults.
+- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`, `api-headers`, or `command-env`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url` and `command-env`. Command-env references without defaults must set `expose-to-command-env: true` before they bind from host env; API header references cannot use defaults.
 - `mcp.url`: supports `${VAR}` placeholders that must be declared in `env-vars`. This lets region-pinned providers pick the right host at deploy time without a manifest fork.
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
@@ -286,13 +286,11 @@ api-headers:
 
 ### Command env
 
-Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials from the host.
+Use top-level `command-env` when a sandbox CLI needs env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials from the host.
 
-`command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. References with defaults expand at manifest load. References without defaults are read from host env when sandbox command env is resolved and are skipped when unset.
+`command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. References with defaults expand at manifest load. References without defaults must set `expose-to-command-env: true`; they are read from host env when sandbox command env is resolved and skipped when unset.
 
-Only expose non-secret values. `command-env` placeholders cannot reuse env vars that back `api-headers`, credential config, or OAuth config. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but API keys and tokens belong in `api-headers` or credential brokers.
-
-Manifests with `command-env` must also declare `credentials` or `api-headers`, so sandbox env exposure stays tied to a credential/header provider.
+Only expose values that are safe for sandbox code to read. `command-env` placeholders cannot reuse env vars that back `api-headers`, credential config, or OAuth config. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but provider API keys and tokens belong in `api-headers` or credential brokers.
 
 ```yaml
 env-vars:
@@ -300,6 +298,7 @@ env-vars:
   EXAMPLE_SITE:
     default: example.com
   EXAMPLE_BOT_EMAIL:
+    expose-to-command-env: true
 
 domains:
   - api.example.com
