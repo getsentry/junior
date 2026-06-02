@@ -259,7 +259,7 @@ describe("dashboard token formatting", () => {
     );
   });
 
-  it("suppresses redundant conversation requester labels", () => {
+  it("keeps requester labels even when the title matches", () => {
     const sessions: Session[] = [
       {
         channel: "C1",
@@ -281,9 +281,9 @@ describe("dashboard token formatting", () => {
     ];
     const [conversation] = buildConversations(sessions);
 
-    expect(conversationRequesterLabel(conversation)).toBeUndefined();
+    expect(conversationRequesterLabel(conversation)).toBe("alice");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
-      "slack:C1:123",
+      "alice · slack:C1:123",
     );
   });
 
@@ -296,6 +296,7 @@ describe("dashboard token formatting", () => {
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
+        surface: "slack",
         title: "Turn turn-1",
       },
     ]);
@@ -312,6 +313,7 @@ describe("dashboard token formatting", () => {
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
+        surface: "slack",
         title: "Turn turn-1",
       },
     ]);

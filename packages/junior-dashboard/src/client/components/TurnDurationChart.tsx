@@ -190,10 +190,10 @@ type DurationPoint = {
   conversationId: string;
   durationLabel: string;
   durationMs: number;
-  endedAt?: string;
+  endedAt: string;
   kind: DurationChartMode;
   session?: Session;
-  startedAt?: string;
+  startedAt: string;
   status: PlottedTurnStatus;
   subtitle: string;
   title: string;
@@ -240,7 +240,7 @@ function plottedStatus(status: VisualStatus): PlottedTurnStatus | null {
 }
 
 function turnPoint(session: Session, timeZone: string): DurationPoint | null {
-  const startedAtMs = Date.parse(session.startedAt ?? "");
+  const startedAtMs = Date.parse(session.startedAt);
   if (!Number.isFinite(startedAtMs)) {
     return null;
   }
@@ -249,7 +249,7 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
     return null;
   }
 
-  const lastSeenAtMs = Date.parse(session.lastSeenAt ?? "");
+  const lastSeenAtMs = Date.parse(session.lastSeenAt);
   const durationMs =
     session.cumulativeDurationMs ??
     (Number.isFinite(lastSeenAtMs)
@@ -279,7 +279,7 @@ function conversationPoint(
   conversation: Conversation,
   timeZone: string,
 ): DurationPoint | null {
-  const startedAtMs = Date.parse(conversation.startedAt ?? "");
+  const startedAtMs = Date.parse(conversation.startedAt);
   if (!Number.isFinite(startedAtMs)) {
     return null;
   }
@@ -287,7 +287,7 @@ function conversationPoint(
   if (!status) {
     return null;
   }
-  const lastSeenAtMs = Date.parse(conversation.lastSeenAt ?? "");
+  const lastSeenAtMs = Date.parse(conversation.lastSeenAt);
   if (!Number.isFinite(lastSeenAtMs)) {
     return null;
   }
@@ -486,11 +486,7 @@ function chartTooltipTurns(
 }
 
 function turnTooltipTitle(session: Session): string {
-  return (
-    session.conversationTitle ??
-    session.title ??
-    conversationIdForSession(session)
-  );
+  return session.conversationTitle ?? session.title;
 }
 
 function chartTooltipStatus(status: PlottedTurnStatus): ReactNode {

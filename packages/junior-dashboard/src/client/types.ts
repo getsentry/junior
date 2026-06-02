@@ -1,9 +1,11 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   DashboardConversationReport,
+  DashboardRequesterIdentity,
   DashboardSessionFeed,
   DashboardSessionReport,
   DashboardTurnReport,
+  DashboardTurnUsage,
   HealthReport,
   PluginReport,
   RuntimeInfoReport,
@@ -18,11 +20,9 @@ export type Plugin = PluginReport;
 
 export type Skill = SkillReport;
 
-export type RequesterIdentity = NonNullable<
-  DashboardSessionReport["requesterIdentity"]
->;
+export type RequesterIdentity = DashboardRequesterIdentity;
 
-export type TurnUsage = NonNullable<DashboardSessionReport["cumulativeUsage"]>;
+export type TurnUsage = DashboardTurnUsage;
 
 export type Session = DashboardSessionReport;
 
@@ -40,14 +40,14 @@ export type Conversation = {
   channelName?: string;
   conversationTitle?: string;
   id: string;
-  lastProgressAt?: string;
-  lastSeenAt?: string;
+  lastProgressAt: string;
+  lastSeenAt: string;
   requesterIdentity?: RequesterIdentity;
   sentryConversationUrl?: string;
   sentryTraceUrl?: string;
-  startedAt?: string;
+  startedAt: string;
   status: Session["status"];
-  surface?: string;
+  surface: Session["surface"];
   title: string;
   traceId?: string;
   turns: Session[];

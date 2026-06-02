@@ -504,10 +504,6 @@ export function summarizeUsage(
   return summary.totalTokens > 0 ? summary : undefined;
 }
 
-function totalUsageTokens(usage: TurnUsage | undefined): number | undefined {
-  return summarizeUsage([usage])?.totalTokens;
-}
-
 /** Format a summarized token counter for compact metadata. */
 export function formatTokenSummary(
   summary: TokenUsageSummary | undefined,
@@ -525,32 +521,6 @@ export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
   return formatTokenSummary(summarizeUsage(usages));
 }
 
-/** Format known token counters with available input/output detail. */
-export function formatUsage(usage: TurnUsage | undefined): string {
-  const summary = summarizeUsage([usage]);
-  if (!summary) return "";
-  const pieces = [
-    summary.inputTokens !== undefined
-      ? `${formatNumber(summary.inputTokens)} in`
-      : undefined,
-    summary.outputTokens !== undefined
-      ? `${formatNumber(summary.outputTokens)} out`
-      : undefined,
-    summary.cachedInputTokens !== undefined
-      ? `${formatNumber(summary.cachedInputTokens)} cached`
-      : undefined,
-    summary.cacheCreationTokens !== undefined
-      ? `${formatNumber(summary.cacheCreationTokens)} cache-write`
-      : undefined,
-    summary.providerTotalTokens !== undefined
-      ? `${formatNumber(summary.providerTotalTokens)} provider total`
-      : undefined,
-  ].filter(Boolean);
-  return pieces.length > 0
-    ? `${formatNumber(summary.totalTokens)} tokens (${pieces.join(" / ")})`
-    : `${formatNumber(summary.totalTokens)} tokens`;
-}
-
 /** Format a conversation span from first turn start to latest activity. */
 export function formatConversationDuration(conversation: Conversation): string {
   const start = parseTime(conversation.startedAt);
@@ -565,7 +535,7 @@ export function formatConversationDuration(conversation: Conversation): string {
 
 /** Resolve the owning conversation id for a turn/session summary. */
 export function conversationIdForSession(session: Session): string {
-  return session.conversationId || session.id;
+  return session.conversationId;
 }
 
 function compareTimeDesc(a: string | undefined, b: string | undefined): number {
@@ -624,32 +594,11 @@ export function requesterLabel(
   return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
 }
 
-function sameDisplayLabel(
-  left: string | undefined,
-  right: string | undefined,
-): boolean {
-  return Boolean(
-    left && right && left.trim().toLowerCase() === right.trim().toLowerCase(),
-  );
-}
-
-/** Suppress redundant conversation owners already represented by title or surface. */
+/** Derive the conversation owner label from structured requester identity. */
 export function conversationRequesterLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
-  if (!conversation) return undefined;
-  const owner = requesterLabel(conversation.requesterIdentity);
-  if (
-    sameDisplayLabel(owner, conversation.conversationTitle) ||
-    sameDisplayLabel(owner, meaningfulConversationTitle(conversation)) ||
-    sameDisplayLabel(
-      owner,
-      slackLocationLabel(conversation, { includeId: false }),
-    )
-  ) {
-    return undefined;
-  }
-  return owner;
+  return requesterLabel(conversation?.requesterIdentity);
 }
 
 /** Format the owner and permalink id line shared by conversation rows and headers. */
@@ -988,6 +937,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         channelName: sortedTurns.find((turn) => turn.channelName)?.channelName,
         conversationTitle,
         id,
+        lastProgressAt: newest.lastProgressAt,
         lastSeenAt: newest.lastSeenAt,
         requesterIdentity: requesterTurn?.requesterIdentity,
         sentryConversationUrl: newest.sentryConversationUrl,
@@ -995,7 +945,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         startedAt: oldest.startedAt,
         status,
         surface: newest.surface,
-        title: newest.title || id,
+        title: newest.title,
         traceId: newest.traceId,
         turns: sortedTurns,
       };
