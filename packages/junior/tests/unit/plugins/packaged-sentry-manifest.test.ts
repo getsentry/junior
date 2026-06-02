@@ -14,5 +14,11 @@ describe("packaged Sentry plugin manifest", () => {
       "us.sentry.io",
       "de.sentry.io",
     ]);
+    expect(manifest.oauth?.authorizeEndpoint).toBe(
+      "https://sentry.io/oauth/authorize/",
+    );
+    expect(manifest.oauth?.tokenEndpoint).toBe(
+      "https://sentry.io/oauth/token/",
+    );
   });
 });
