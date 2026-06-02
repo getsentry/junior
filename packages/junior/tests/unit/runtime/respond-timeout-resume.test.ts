@@ -246,6 +246,33 @@ describe("generateAssistantReply timeout resume", () => {
     ]);
   });
 
+  it("records the effective request deadline timeout budget", async () => {
+    const startedAtMs = Date.now();
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      turnDeadlineAtMs: startedAtMs + 2_500,
+      correlation: {
+        conversationId: "conversation-short-deadline",
+        turnId: "turn-short-deadline",
+        channelId: "C123",
+        threadTs: "1712345.0005",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    const error = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-short-deadline",
+      "turn-short-deadline",
+    );
+    expect(sessionRecord?.errorMessage).toBe(
+      "Agent turn timed out after 2500ms",
+    );
+  });
+
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = generateAssistantReply("what is in this image?", {
       requester: { userId: "U123" },

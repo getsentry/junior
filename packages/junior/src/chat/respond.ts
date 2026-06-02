@@ -446,6 +446,7 @@ export async function generateAssistantReply(
     contextTurnDeadlineAtMs === undefined
       ? configuredTurnDeadlineAtMs
       : Math.min(configuredTurnDeadlineAtMs, contextTurnDeadlineAtMs);
+  const turnTimeoutBudgetMs = Math.max(0, turnDeadlineAtMs - replyStartedAtMs);
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
@@ -1258,7 +1259,7 @@ export async function generateAssistantReply(
                 agent.abort();
                 reject(
                   new Error(
-                    `Agent turn timed out after ${botConfig.turnTimeoutMs}ms`,
+                    `Agent turn timed out after ${turnTimeoutBudgetMs}ms`,
                   ),
                 );
               };
@@ -1287,7 +1288,7 @@ export async function generateAssistantReply(
                             thinkingSelection.thinkingLevel,
                         }
                       : {}),
-                    "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
+                    "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
                     "app.ai.turn_deadline_remaining_ms": Math.max(
                       0,
                       turnDeadlineAtMs - Date.now(),
