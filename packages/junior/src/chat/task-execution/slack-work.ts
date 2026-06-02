@@ -24,6 +24,7 @@ import type {
 import {
   getConversationWorkState,
   countPendingConversationMessages,
+  markConversationMessagesInjected,
 } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -187,6 +188,17 @@ function getInstallation(
   return {};
 }
 
+function getPendingRecords(
+  work: { messages: InboundMessageRecord[] } | undefined,
+): InboundMessageRecord[] {
+  if (!work) {
+    return [];
+  }
+  return work.messages
+    .filter((message) => message.injectedAtMs === undefined)
+    .sort(compareInboundMessages);
+}
+
 /** Build the worker run function for queued Slack conversation work. */
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
@@ -202,7 +214,12 @@ export function createSlackConversationWorker(
         : { status: "completed" };
     }
 
-    let records = await context.drainMailbox(async () => {});
+    let records = getPendingRecords(
+      await getConversationWorkState({
+        conversationId: context.conversationId,
+        state,
+      }),
+    );
     if (records.length === 0) {
       records = await getCrashRecoveryRecords({
         conversationId: context.conversationId,
@@ -264,9 +281,14 @@ export function createSlackConversationWorker(
       },
     });
 
-    return context.shouldYield()
-      ? { status: "yielded" }
-      : { status: "completed" };
+    await markConversationMessagesInjected({
+      conversationId: context.conversationId,
+      inboundMessageIds: records.map((record) => record.inboundMessageId),
+      leaseToken: context.leaseToken,
+      state,
+    });
+
+    return { status: "completed" };
   };
 }
 

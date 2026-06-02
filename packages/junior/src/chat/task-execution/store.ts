@@ -657,6 +657,49 @@ export async function drainConversationMailbox(args: {
   });
 }
 
+/** Mark selected leased mailbox entries after their session-log injection succeeds. */
+export async function markConversationMessagesInjected(args: {
+  conversationId: string;
+  inboundMessageIds: string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  const inboundMessageIds = new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      return false;
+    }
+    if (inboundMessageIds.size === 0) {
+      return true;
+    }
+
+    let changed = false;
+    const messages = current.messages.map((message) => {
+      if (
+        !inboundMessageIds.has(message.inboundMessageId) ||
+        message.injectedAtMs !== undefined
+      ) {
+        return message;
+      }
+      changed = true;
+      return { ...message, injectedAtMs: nowMs };
+    });
+    if (!changed) {
+      return true;
+    }
+
+    await writeWorkState(state, {
+      ...current,
+      messages,
+      updatedAtMs: nowMs,
+    });
+    return true;
+  });
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestConversationContinuation(args: {
   conversationId: string;

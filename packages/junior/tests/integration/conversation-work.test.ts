@@ -13,6 +13,7 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  markConversationMessagesInjected,
   startConversationWork,
   type InboundMessageRecord,
 } from "@/chat/task-execution/store";
@@ -479,6 +480,14 @@ describe("conversation work execution", () => {
         nowMs: 3_000,
       }),
     ).resolves.toBe("lost_lease");
+    await expect(
+      markConversationMessagesInjected({
+        conversationId: CONVERSATION_ID,
+        inboundMessageIds: ["m1"],
+        leaseToken: "wrong-token",
+        nowMs: 3_000,
+      }),
+    ).resolves.toBe(false);
   });
 
   it("maps the generic queue port to Vercel Queue send options", async () => {
@@ -684,6 +693,130 @@ describe("conversation work execution", () => {
     expect(calls[0]?.skipped.map((message) => message.id)).toEqual([
       "1712345.0001",
     ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("keeps Slack mailbox records pending when the runtime handoff fails", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      waitUntil: () => {},
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleAssistantContextChanged: async () => {},
+          handleAssistantThreadStarted: async () => {},
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      },
+    });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async () => {
+              throw new Error("runtime failed before durable handoff");
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).rejects.toThrow("runtime failed before durable handoff");
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
+  });
+
+  it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+    let currentNowMs = 1_000;
+
+    await handleSlackWebhook({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      waitUntil: () => {},
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleAssistantContextChanged: async () => {},
+          handleAssistantThreadStarted: async () => {},
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      },
+    });
+    queue.sent = [];
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async () => {
+              currentNowMs = 242_000;
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(queue.sent).toEqual([]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.needsRun).toBe(false);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
   });
 
   it("rejects malformed Vercel Queue payloads", async () => {
