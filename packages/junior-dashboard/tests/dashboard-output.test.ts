@@ -103,6 +103,7 @@ describe.sequential("dashboard Nitro production output", () => {
       expect(client.headers.get("content-type")).toContain(
         "application/javascript",
       );
+      expect(await client.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
 
       const page = await app.fetch(new Request("http://localhost/"), {});
       expect(page.status).toBe(200);

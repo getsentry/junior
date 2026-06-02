@@ -293,6 +293,8 @@ describe("dashboard routes", () => {
     expect(response.headers.get("content-type")).toContain("text/html");
     const html = await response.text();
     expect(html).toContain("<title>Junior</title>");
+    expect(html).toContain("Loading Junior");
+    expect(html).toContain("junior-rainbow-flow");
     expect(html).toMatch(/\/api\/dashboard\/client\.js\?v=[a-z0-9]+/);
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
   });

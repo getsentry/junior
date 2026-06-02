@@ -12,6 +12,7 @@ import {
   type DashboardAuth,
   type DashboardSession,
 } from "./auth";
+import { dashboardRainbowProgressClass } from "./dashboardLoader";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -216,7 +217,17 @@ function renderDashboard(basePath: string): Response {
   </style>
 </head>
 <body class="m-0 bg-black text-white [color-scheme:dark]">
-  <div id="dashboard-root"></div>
+  <div id="dashboard-root">
+    <main class="grid min-h-screen place-items-center bg-black px-4 py-8 font-sans text-white md:px-8" aria-busy="true">
+      <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
+        <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-[0.82rem] font-black leading-none text-white">Jr</div>
+        <div class="min-w-0">
+          <div class="font-bold">Loading Junior</div>
+          <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading Junior"></div>
+        </div>
+      </section>
+    </main>
+  </div>
   <script>
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
     (function () {

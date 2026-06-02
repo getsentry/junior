@@ -1,4 +1,5 @@
 import { JuniorLogo } from "./JuniorLogo";
+import { dashboardRainbowProgressClass } from "../../dashboardLoader";
 
 /** Render the full-page loading treatment before the first dashboard payload lands. */
 export function LoadingView(props: { label: string }) {
@@ -8,7 +9,11 @@ export function LoadingView(props: { label: string }) {
         <JuniorLogo />
         <div>
           <div className="font-bold">{props.label}</div>
-          <div className="mt-3 h-1.5 w-full animate-pulse bg-white/20" />
+          <div
+            aria-label={props.label}
+            className={`${dashboardRainbowProgressClass} mt-3 h-1.5 w-full`}
+            role="progressbar"
+          />
         </div>
       </section>
     </div>
