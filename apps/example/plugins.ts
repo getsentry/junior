@@ -1,12 +1,16 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 import { githubPlugin } from "@sentry/junior-github";
-import { exampleDashboardAuthRequired } from "./dashboard.ts";
+import {
+  exampleDashboardAuthRequired,
+  exampleDashboardMockConversations,
+} from "./dashboard.ts";
 
 export const plugins = defineJuniorPlugins([
   juniorDashboardPlugin({
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],
+    mockConversations: exampleDashboardMockConversations(),
   }),
   "@sentry/junior-agent-browser",
   "@sentry/junior-datadog",

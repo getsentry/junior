@@ -16,6 +16,12 @@ pnpm install
 pnpm dev
 ```
 
+To load baseline dashboard conversations for visual QA, run:
+
+```bash
+JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
+```
+
 ## Required env
 
 Copy `.env.example` and set:
@@ -30,6 +36,7 @@ Copy `.env.example` and set:
 - `JUNIOR_SECRET` (required outside `pnpm dev`; the local wrapper supplies a dev-only secret when unset)
 - `JUNIOR_SCHEDULER_SECRET` or `CRON_SECRET` (optional for `pnpm dev`; the local wrapper supplies a dev-only heartbeat secret when both are unset)
 - Dashboard auth is enabled by default. `pnpm dev` disables dashboard auth only for local non-Vercel development.
+- `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` overlays read-only sample dashboard conversations for local visual QA.
 
 ## Optional plugin env
 

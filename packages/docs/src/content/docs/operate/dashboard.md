@@ -103,6 +103,8 @@ The dashboard UI is a React client using React Router for browser views and TanS
 The conversation feed is a bounded metadata index with the same expiration policy as turn-session checkpoints. Conversation detail reads transcript data from the expiring checkpoint message store, so old transcripts disappear when checkpoint state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the turn metadata.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
 
+For local dashboard visual QA, pass `mockConversations: true` to `juniorDashboardPlugin()` or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real session records.
+
 ## Configure Google auth
 
 Create a Google OAuth client for the deployment origin. Add this redirect URI:

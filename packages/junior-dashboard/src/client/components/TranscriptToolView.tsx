@@ -46,11 +46,15 @@ export function TranscriptToolView(props: {
     props.result ? undefined : "missing result",
   ].filter(isString);
   const args = <ToolArgumentsPreview input={input} />;
+  const hasExpandableContent = Boolean(props.call || props.result);
+  const mobileSummaryMeta =
+    duration ?? (props.call && !props.result ? "missing result" : undefined);
 
   if (props.view === "raw") {
     return (
       <ToolFrame
         meta={meta}
+        mobileSummaryMeta={mobileSummaryMeta}
         raw
         signature={
           <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
@@ -73,7 +77,9 @@ export function TranscriptToolView(props: {
 
   return (
     <ToolFrame
+      expandable={hasExpandableContent}
       meta={meta}
+      mobileSummaryMeta={mobileSummaryMeta}
       signature={
         <>
           <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
@@ -115,7 +121,7 @@ function ToolBodySection(props: {
   return (
     <div
       className={cn(
-        "border-t border-white/10",
+        "min-w-0 max-w-full overflow-hidden border-t border-white/10",
         props.padded === false ? "" : "py-2",
       )}
     >

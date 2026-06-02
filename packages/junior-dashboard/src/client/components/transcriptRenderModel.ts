@@ -15,7 +15,7 @@ export type RenderedTranscriptPart =
   | { kind: "part"; part: TranscriptPart }
   | RenderedToolPart;
 
-type RenderedTranscriptEntry =
+export type RenderedTranscriptEntry =
   | { kind: "message"; message: TranscriptMessage }
   | RenderedThinkingEntry
   | RenderedToolEntry;
@@ -26,7 +26,7 @@ type RenderedThinkingEntry = {
   timestamp?: number;
 };
 
-type RenderedToolEntry =
+export type RenderedToolEntry =
   | {
       call: TranscriptPart;
       kind: "tool";

@@ -16,7 +16,7 @@ export function CommandCenter(props: {
   const conversations = buildConversations(sessions);
 
   return (
-    <div className="grid min-w-0 gap-4 px-4 py-4 md:px-8 lg:grid-cols-[minmax(21rem,0.32fr)_minmax(0,1fr)]">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-xl gap-4 px-4 py-4 md:px-8 lg:grid-cols-[minmax(21rem,0.32fr)_minmax(0,1fr)]">
       <CommandRail data={props.data} error={props.queryError} />
 
       <section className="min-w-0">

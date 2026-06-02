@@ -31,6 +31,11 @@ import type {
 } from "../types";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
+import {
+  TranscriptHeadingMeta,
+  TranscriptHeadingRow,
+  TranscriptThoughtLabel,
+} from "./TranscriptHeadingRow";
 import { MetricList, type MetricListItem } from "./Metric";
 import {
   DurationMetric,
@@ -39,6 +44,8 @@ import {
   ToolCallsMetric,
 } from "./TelemetryMetrics";
 import { TranscriptText } from "./TranscriptText";
+import { TranscriptThinkingView } from "./TranscriptThinkingView";
+import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
 import {
   countRenderedTranscriptChildren,
@@ -58,10 +65,6 @@ type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
 type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
-
-const TOOL_RUN_COLLAPSE_THRESHOLD = 10;
-const TOOL_RUN_HEAD_COUNT = 4;
-const TOOL_RUN_TAIL_COUNT = 2;
 
 /** Render one conversation turn as actor messages and tool events. */
 export function TurnTranscript(props: {
@@ -110,7 +113,7 @@ function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "grid min-w-0 gap-2 border-l-4 py-2 pl-3",
+    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-l-4 py-2 pl-3",
     kind === "assistant" &&
       "border-l-violet-300 bg-[rgba(190,170,255,0.14)] pr-3 text-white",
     kind === "user" && "border-l-white/70 bg-white/[0.08] pr-3 text-[#f4f4f4]",
@@ -125,7 +128,7 @@ function transcriptRoleClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "flex flex-wrap items-baseline gap-2 text-[0.88rem] leading-snug",
+    "text-[0.88rem] leading-snug",
     kind === "assistant" && "text-[#d8ccff]",
     kind === "user" && "text-white",
     kind === "system" && "text-amber-200",
@@ -162,6 +165,32 @@ function TranscriptMessageShell(props: {
   );
 }
 
+function TranscriptMessageHeader(props: {
+  meta?: Array<string | undefined>;
+  role: string;
+  turn: ConversationTurn;
+}) {
+  const metaText = props.meta?.filter(isString).join(" · ");
+
+  return (
+    <TranscriptHeadingRow
+      left={
+        <span className={transcriptRoleLabelClass(props.role)}>
+          {transcriptRoleLabel(props.role, props.turn)}
+        </span>
+      }
+      leftClassName={transcriptRoleClass(props.role)}
+      right={
+        metaText ? (
+          <TranscriptHeadingMeta className="text-[0.78rem] text-[#888]">
+            {metaText}
+          </TranscriptHeadingMeta>
+        ) : undefined
+      }
+    />
+  );
+}
+
 function TurnHeader(props: { number: number; turn: ConversationTurn }) {
   const status = visualStatusForSession(props.turn);
 
@@ -186,7 +215,7 @@ function TurnEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid gap-2 pt-3">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
       {props.turn.transcriptAvailable ? (
         <TranscriptEntryList
           entries={groupTranscriptMessages(props.turn.transcript)}
@@ -200,7 +229,7 @@ function TurnEvents(props: {
             />
           )}
           renderThinking={(entry, index) => (
-            <ThinkingPartView
+            <TranscriptThinkingView
               key={`${props.turn.id}:thinking:${index}`}
               timestamp={entry.timestamp}
               turn={props.turn}
@@ -250,7 +279,7 @@ function TranscriptEntryList(props: {
         index += 1;
       }
       rows.push(
-        <ToolRunView
+        <TranscriptToolRun
           entries={tools}
           key={`${props.keyPrefix}:tool-run:${startIndex}`}
           keyPrefix={props.keyPrefix}
@@ -272,111 +301,6 @@ function TranscriptEntryList(props: {
   }
 
   return <>{rows}</>;
-}
-
-function ToolRunView(props: {
-  entries: TranscriptToolEntry[];
-  keyPrefix: string;
-  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
-  startIndex: number;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (props.entries.length < TOOL_RUN_COLLAPSE_THRESHOLD) {
-    return (
-      <>
-        {renderToolEntries(
-          props.entries,
-          props.startIndex,
-          props.keyPrefix,
-          props.renderTool,
-        )}
-      </>
-    );
-  }
-
-  if (expanded) {
-    return (
-      <>
-        {renderToolEntries(
-          props.entries,
-          props.startIndex,
-          props.keyPrefix,
-          props.renderTool,
-        )}
-        <ToolRunToggle
-          expanded
-          onClick={() => setExpanded(false)}
-          totalCount={props.entries.length}
-        />
-      </>
-    );
-  }
-
-  const hiddenCount =
-    props.entries.length - TOOL_RUN_HEAD_COUNT - TOOL_RUN_TAIL_COUNT;
-
-  return (
-    <>
-      {renderToolEntries(
-        props.entries.slice(0, TOOL_RUN_HEAD_COUNT),
-        props.startIndex,
-        props.keyPrefix,
-        props.renderTool,
-      )}
-      <ToolRunToggle
-        hiddenCount={hiddenCount}
-        onClick={() => setExpanded(true)}
-        totalCount={props.entries.length}
-      />
-      {renderToolEntries(
-        props.entries.slice(-TOOL_RUN_TAIL_COUNT),
-        props.startIndex + props.entries.length - TOOL_RUN_TAIL_COUNT,
-        props.keyPrefix,
-        props.renderTool,
-      )}
-    </>
-  );
-}
-
-function renderToolEntries(
-  entries: TranscriptToolEntry[],
-  startIndex: number,
-  keyPrefix: string,
-  renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode,
-): ReactNode[] {
-  return entries.map((entry, offset) => {
-    const index = startIndex + offset;
-    return (
-      <Fragment key={`${keyPrefix}:tool:${index}`}>
-        {renderTool(entry, index)}
-      </Fragment>
-    );
-  });
-}
-
-function ToolRunToggle(props: {
-  expanded?: boolean;
-  hiddenCount?: number;
-  onClick: () => void;
-  totalCount: number;
-}) {
-  const label = props.expanded
-    ? `collapse ${props.totalCount} tool calls`
-    : `show ${props.hiddenCount ?? 0} more tool calls`;
-
-  return (
-    <button
-      aria-expanded={props.expanded ?? false}
-      className="group flex w-full items-center gap-2 py-1 pl-3 text-left font-mono text-[0.78rem] leading-tight text-[#888] transition-colors hover:text-[#d6d6d6] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
-      onClick={props.onClick}
-      type="button"
-    >
-      <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
-      <span className="shrink-0">{label}</span>
-      <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
-    </button>
-  );
 }
 
 function RedactedTranscriptView(props: { turn: ConversationTurn }) {
@@ -422,20 +346,12 @@ function RedactedMessageView(props: {
 
   return (
     <TranscriptMessageShell role={props.message.role}>
-      <div className={transcriptRoleClass(props.message.role)}>
-        <span className={transcriptRoleLabelClass(props.message.role)}>
-          {transcriptRoleLabel(props.message.role, props.turn)}
-        </span>
-        {meta.map((value, index) => (
-          <span
-            className="font-mono text-[0.78rem] text-[#888]"
-            key={`${index}-${value}`}
-          >
-            {value}
-          </span>
-        ))}
-      </div>
-      <div className="grid min-w-0 gap-1 font-mono text-[0.9rem] leading-snug text-[#b8b8b8]">
+      <TranscriptMessageHeader
+        meta={meta}
+        role={props.message.role}
+        turn={props.turn}
+      />
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-[0.9rem] leading-snug text-[#b8b8b8]">
         {props.message.parts.map((part, index) => (
           <RedactedPartLine key={index} part={part} />
         ))}
@@ -486,16 +402,26 @@ function RedactedThinkingView(props: {
       : undefined,
     offset,
   ].filter(isString);
+  const metaText = meta.join(" · ");
 
   return (
-    <div className="py-0.5 text-[0.84rem] leading-relaxed text-[#888]">
-      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 max-md:grid-cols-1 max-md:gap-1">
-        <span className="font-mono text-[0.78rem] text-[#777]">thought</span>
-        <RedactedMarker />
-        <span className="min-w-0 break-words text-right font-mono text-[0.78rem] text-[#777] max-md:text-left">
-          {meta.join(" · ")}
-        </span>
-      </div>
+    <div className="py-1.5 text-[0.84rem] leading-relaxed text-[#888]">
+      <TranscriptHeadingRow
+        left={
+          <>
+            <TranscriptThoughtLabel />
+            <RedactedMarker />
+          </>
+        }
+        leftClassName="gap-3"
+        right={
+          metaText ? (
+            <TranscriptHeadingMeta className="text-[0.78rem] text-[#777]">
+              {metaText}
+            </TranscriptHeadingMeta>
+          ) : undefined
+        }
+      />
     </div>
   );
 }
@@ -525,10 +451,13 @@ function RedactedToolView(props: {
     duration,
     props.result ? undefined : "missing result",
   ].filter(isString);
+  const mobileSummaryMeta =
+    duration ?? (props.call && !props.result ? "missing result" : undefined);
 
   return (
     <ToolFrame
       meta={meta}
+      mobileSummaryMeta={mobileSummaryMeta}
       raw
       signature={
         <>
@@ -650,17 +579,12 @@ function SystemMessageView(props: {
       }}
       open={open}
     >
-      <summary className="flex min-h-6 cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden">
-        <div className={cn(transcriptRoleClass(role), "items-center")}>
-          <span className={transcriptRoleLabelClass(role)}>
-            {transcriptRoleLabel(role, props.turn)}
-          </span>
-          {open ? null : (
-            <span className="font-mono text-[0.78rem] text-[#888]">
-              {formatBytes(byteCount)}
-            </span>
-          )}
-        </div>
+      <summary className="block min-h-6 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <TranscriptMessageHeader
+          meta={[formatBytes(byteCount)]}
+          role={role}
+          turn={props.turn}
+        />
       </summary>
       {props.view === "raw" ? (
         <HighlightedCode
@@ -668,7 +592,7 @@ function SystemMessageView(props: {
           language={detectLanguage(rawText)}
         />
       ) : (
-        <div className="grid min-w-0 gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
           {renderedParts.map((part, index) => {
             const firstChildIndex = seenRenderedChildren;
             seenRenderedChildren += countRenderedTranscriptChildren(part, role);
@@ -722,24 +646,18 @@ function TranscriptMessageView(props: {
         event.preventDefault();
       }}
     >
-      <div className={transcriptRoleClass(props.message.role)}>
-        <span className={transcriptRoleLabelClass(props.message.role)}>
-          {transcriptRoleLabel(props.message.role, props.turn)}
-        </span>
-        <span className="font-mono text-[0.78rem] text-[#888]">
-          {formatMessageTimestamp(props.message.timestamp)}
-        </span>
-        {offset ? (
-          <span className="font-mono text-[0.78rem] text-[#888]">{offset}</span>
-        ) : null}
-      </div>
+      <TranscriptMessageHeader
+        meta={[formatMessageTimestamp(props.message.timestamp), offset]}
+        role={props.message.role}
+        turn={props.turn}
+      />
       {props.view === "raw" ? (
         <HighlightedCode
           code={rawText || "{}"}
           language={detectLanguage(rawText)}
         />
       ) : (
-        <div className="grid min-w-0 gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
           {renderedParts.map((part, index) => {
             const firstChildIndex = seenRenderedChildren;
             seenRenderedChildren += countRenderedTranscriptChildren(part, role);
@@ -785,70 +703,32 @@ function TranscriptPartView(props: {
 
   const value = part.output;
   if (part.type === "thinking") {
-    return <ThinkingPartView value={value} />;
+    return <TranscriptThinkingView value={value} />;
   }
 
   const rendered = stringifyPartValue(value);
   return (
     <details className={toolFrameClass()}>
-      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8] transition-colors hover:text-[#d6d6d6] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
-        <span className="text-[#888] max-md:hidden">{part.type}</span>
-        <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
-          {part.name ?? part.id ?? "unknown"}
-        </strong>
-        <span className="min-w-0 break-words text-right max-md:hidden">
-          {previewToolValue(value)}
-        </span>
+      <summary className="block cursor-pointer list-none py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8] transition-colors hover:text-[#d6d6d6] [&::-webkit-details-marker]:hidden">
+        <TranscriptHeadingRow
+          left={
+            <>
+              <span className="text-[#888] max-md:hidden">{part.type}</span>
+              <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
+                {part.name ?? part.id ?? "unknown"}
+              </strong>
+            </>
+          }
+          leftClassName="gap-3"
+          right={
+            <span className="min-w-0 break-words text-right max-md:hidden">
+              {previewToolValue(value)}
+            </span>
+          }
+          rightClassName="min-w-0 max-md:hidden"
+        />
       </summary>
       <HighlightedCode code={rendered || "{}"} language="json" />
-    </details>
-  );
-}
-
-function ThinkingPartView(props: {
-  timestamp?: number;
-  turn?: ConversationTurn;
-  value: unknown;
-}) {
-  const [open, setOpen] = useState(false);
-  const rendered = stringifyPartValue(props.value);
-  const offset = props.turn
-    ? formatMessageOffset(props.turn, props.timestamp)
-    : undefined;
-  const meta = [
-    typeof props.timestamp === "number"
-      ? formatMessageTimestamp(props.timestamp)
-      : undefined,
-    offset,
-  ].filter(isString);
-
-  return (
-    <details
-      className="py-0.5 text-[0.84rem] leading-relaxed text-[#888]"
-      onToggle={(event) => {
-        if (event.currentTarget !== event.target) return;
-        setOpen(event.currentTarget.open);
-      }}
-      open={open}
-    >
-      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-3 transition-colors hover:text-[#b8b8b8] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
-        <span className="font-mono text-[0.78rem] not-italic text-[#777]">
-          thought
-        </span>
-        {open ? null : (
-          <span className="min-w-0 truncate italic">
-            {previewToolValue(props.value)}
-          </span>
-        )}
-        {meta.length ? (
-          <span className="min-w-0 break-words text-right font-mono text-[0.78rem] not-italic text-[#777] max-md:text-left">
-            {meta.join(" · ")}
-          </span>
-        ) : null}
-      </summary>
-      <div className="min-w-0 whitespace-pre-wrap break-words py-1 italic text-[#9a9a9a]">
-        {rendered || "{}"}
-      </div>
     </details>
   );
 }

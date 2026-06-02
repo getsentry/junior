@@ -29,6 +29,7 @@ const dashboardEnvNames = [
   "JUNIOR_DASHBOARD_GOOGLE_DOMAINS",
   "JUNIOR_DASHBOARD_ALLOWED_EMAILS",
   "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
+  "JUNIOR_DASHBOARD_MOCK_CONVERSATIONS",
   "SENTRY_DSN",
   "SENTRY_ORG_SLUG",
 ] as const;
@@ -338,6 +339,7 @@ describe("dashboard routes", () => {
     expect(response.headers.get("content-type")).toContain(
       "application/javascript",
     );
+    expect(await response.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
   });
 
   it("serves the dashboard favicon without auth noise", async () => {
@@ -684,6 +686,7 @@ describe("dashboard routes", () => {
 
     juniorDashboardNitro({
       allowedGoogleDomains: ["sentry.io"],
+      mockConversations: true,
       trustedOrigins: ["https://junior.example.com"],
     }).nitro.setup(fixture.nitro);
 
@@ -702,6 +705,9 @@ describe("dashboard routes", () => {
     });
     expect(fixture.nitro.options.virtual["#junior-dashboard/config"]).toContain(
       "sentry.io",
+    );
+    expect(fixture.nitro.options.virtual["#junior-dashboard/config"]).toContain(
+      "mockConversations",
     );
     expect(
       fixture.nitro.options.virtual["#junior-dashboard/handler"],
@@ -738,12 +744,14 @@ describe("dashboard routes", () => {
       "admin@example.com",
     ]);
     process.env.JUNIOR_DASHBOARD_TRUSTED_ORIGINS = "https://junior.example.com";
+    process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
 
     await expect(resolveDashboardConfig()).resolves.toEqual({
       authRequired: true,
       allowedGoogleDomains: ["sentry.io", "example.com"],
       allowedEmails: ["admin@example.com"],
       trustedOrigins: ["https://junior.example.com"],
+      mockConversations: true,
     });
   });
 

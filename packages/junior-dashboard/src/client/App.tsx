@@ -11,11 +11,7 @@ import {
 import { useDashboardData } from "./api";
 import { Button } from "./components/Button";
 import { LoadingView } from "./components/LoadingView";
-import {
-  conversationPath,
-  setDashboardTimeZone,
-  visualStatusForSession,
-} from "./format";
+import { conversationPath, setDashboardTimeZone } from "./format";
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
@@ -30,15 +26,6 @@ export function DashboardShell() {
   }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
-  const activeTurnCount =
-    data?.sessions.sessions.filter(
-      (session) => visualStatusForSession(session) === "active",
-    ).length ?? 0;
-  const headerSummary = query.error
-    ? query.error.message
-    : data
-      ? `${data.plugins.length} plugins / ${data.skills.length} skills / ${activeTurnCount} active`
-      : "loading command center";
 
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
@@ -58,39 +45,38 @@ export function DashboardShell() {
 
   return (
     <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black font-sans text-white">
-      <header className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/10 bg-[#050505]/95 px-4 py-3 backdrop-blur md:px-8 max-md:grid-cols-1">
-        <Link
-          className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
-          to="/"
-        >
-          <div className="min-w-0">
-            <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
-              Junior
-            </h1>
-            <div className="mt-1 truncate text-[0.82rem] leading-tight text-[#888]">
-              {headerSummary}
+      <header className="sticky top-0 z-10 border-b border-white/10 bg-[#050505]/95 backdrop-blur">
+        <div className="mx-auto grid w-full max-w-screen-xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 md:px-8 max-md:grid-cols-1">
+          <Link
+            className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
+            to="/"
+          >
+            <div className="min-w-0">
+              <h1 className="m-0 text-2xl font-bold leading-none tracking-normal">
+                Junior
+              </h1>
             </div>
+          </Link>
+          <div className="flex min-w-0 items-center gap-x-6 gap-y-2 max-md:flex-wrap max-md:justify-between">
+            <nav className="flex min-w-0 items-center gap-5">
+              <NavLink className={navLinkClass} end to="/">
+                Command
+              </NavLink>
+              <NavLink className={navLinkClass} to="/conversations">
+                Conversations
+              </NavLink>
+            </nav>
+            {loggedIn ? (
+              <Button
+                aria-label="Log out"
+                onClick={() => void signOut()}
+                size="icon"
+                title="Log out"
+              >
+                <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+              </Button>
+            ) : null}
           </div>
-        </Link>
-        <div className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:justify-between">
-          <nav className="flex min-w-0 items-center gap-5">
-            <NavLink className={navLinkClass} end to="/">
-              Command
-            </NavLink>
-            <NavLink className={navLinkClass} to="/conversations">
-              Conversations
-            </NavLink>
-          </nav>
-          {loggedIn ? (
-            <Button
-              aria-label="Log out"
-              onClick={() => void signOut()}
-              size="icon"
-              title="Log out"
-            >
-              <LogOut aria-hidden="true" size={16} strokeWidth={2} />
-            </Button>
-          ) : null}
         </div>
       </header>
 

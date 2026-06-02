@@ -239,6 +239,11 @@ function plottedStatus(status: VisualStatus): PlottedTurnStatus | null {
   return status === "active" ? null : status;
 }
 
+function finiteDurationMs(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.max(0, Math.floor(value));
+}
+
 function turnPoint(session: Session, timeZone: string): DurationPoint | null {
   const startedAtMs = Date.parse(session.startedAt);
   if (!Number.isFinite(startedAtMs)) {
@@ -249,7 +254,10 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
     return null;
   }
 
-  const durationMs = session.cumulativeDurationMs;
+  const durationMs = finiteDurationMs(session.cumulativeDurationMs);
+  if (durationMs === undefined) {
+    return null;
+  }
   return {
     conversationId: conversationIdForSession(session),
     durationLabel: formatMs(durationMs),
@@ -279,10 +287,13 @@ function conversationPoint(
   if (!status) {
     return null;
   }
-  const durationMs = conversation.turns.reduce(
-    (sum, turn) => sum + turn.cumulativeDurationMs,
-    0,
-  );
+  const durations = conversation.turns
+    .map((turn) => finiteDurationMs(turn.cumulativeDurationMs))
+    .filter((duration): duration is number => duration !== undefined);
+  if (durations.length === 0) {
+    return null;
+  }
+  const durationMs = durations.reduce((sum, duration) => sum + duration, 0);
 
   return {
     conversation,

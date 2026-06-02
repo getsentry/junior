@@ -13,6 +13,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import { createMockConversationReporting } from "./mock-conversations";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -29,6 +30,7 @@ export interface JuniorDashboardOptions {
   trustedOrigins?: string[];
   auth?: DashboardAuth;
   reporting?: JuniorReporting;
+  mockConversations?: boolean;
 }
 
 type Variables = {
@@ -331,7 +333,10 @@ export function createDashboardApp(
         sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
       }))
     : undefined;
-  const reporting = options.reporting ?? createJuniorReporting();
+  const baseReporting = options.reporting ?? createJuniorReporting();
+  const reporting = options.mockConversations
+    ? createMockConversationReporting(baseReporting)
+    : baseReporting;
   const app = new Hono<{ Variables: Variables }>();
 
   if (auth) {

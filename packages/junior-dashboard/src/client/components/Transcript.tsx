@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ConversationTurn } from "../types";
 import { TranscriptHeader } from "./TranscriptHeader";
@@ -7,7 +7,10 @@ import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
 /** Render ordered conversation turns as message, thinking, and tool-call events. */
-export function Transcript(props: { turns: ConversationTurn[] }) {
+export function Transcript(props: {
+  actions?: ReactNode;
+  turns: ConversationTurn[];
+}) {
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const hasRedactedTurns = props.turns.some((turn) => turn.transcriptRedacted);
 
@@ -22,6 +25,7 @@ export function Transcript(props: { turns: ConversationTurn[] }) {
   return (
     <div className="grid min-w-0">
       <TranscriptHeader
+        actions={props.actions}
         redacted={hasRedactedTurns}
         value={view}
         onChange={setView}

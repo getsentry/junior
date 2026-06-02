@@ -20,11 +20,15 @@ export async function resolveDashboardConfig(): Promise<JuniorDashboardRuntimeCo
 }
 
 function readEnvConfig(): JuniorDashboardRuntimeConfig {
+  const mockConversations =
+    process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS === "true";
+
   return {
     authRequired: process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED !== "false",
     allowedGoogleDomains: readListEnv("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
     allowedEmails: readListEnv("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
     trustedOrigins: readListEnv("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
+    ...(mockConversations ? { mockConversations } : {}),
   };
 }
 

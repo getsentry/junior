@@ -33,7 +33,7 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   }
 
   return (
-    <div className="min-w-0 px-4 py-4 md:px-8">
+    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
       <section className="min-w-0">
         <Section>
           <SectionHeader

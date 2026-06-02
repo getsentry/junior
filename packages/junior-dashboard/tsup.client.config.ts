@@ -16,6 +16,7 @@ export default defineConfig({
   },
   noExternal: [
     "@tanstack/react-query",
+    "lucide-react",
     "react",
     "react-dom",
     "react-router",

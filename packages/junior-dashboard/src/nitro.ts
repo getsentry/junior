@@ -11,6 +11,7 @@ export interface JuniorDashboardNitroOptions {
   allowedEmails?: string[];
   trustedOrigins?: string[];
   sessionMaxAgeSeconds?: number;
+  mockConversations?: boolean;
   disabled?: boolean;
 }
 

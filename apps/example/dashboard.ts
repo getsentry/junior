@@ -11,3 +11,8 @@ function isVercelEnvironment(): boolean {
 export function exampleDashboardAuthRequired(): boolean {
   return process.env.NODE_ENV !== "development" || isVercelEnvironment();
 }
+
+/** Return whether the example dashboard should overlay visual-QA fixtures. */
+export function exampleDashboardMockConversations(): boolean {
+  return process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS === "true";
+}

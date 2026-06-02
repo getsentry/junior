@@ -49,7 +49,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
     : undefined;
 
   return (
-    <div className="min-w-0 px-4 py-5 md:px-8">
+    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-5 md:px-8">
       <section className="min-w-0">
         <header className="mb-6 grid gap-3 border-l-4 border-[#beaaff]/70 pl-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
@@ -67,10 +67,6 @@ export function ConversationPage(props: { data?: DashboardData }) {
             </div>
           </div>
           <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.82rem] leading-relaxed text-[#b8b8b8] md:items-end md:text-right">
-            <CopyMarkdownButton
-              conversation={conversation}
-              detail={detail.data}
-            />
             <div className="break-words">
               updated{" "}
               {formatRelativeTime(
@@ -88,7 +84,15 @@ export function ConversationPage(props: { data?: DashboardData }) {
             {detail.error.message}
           </div>
         ) : (
-          <Transcript turns={detail.data?.turns ?? []} />
+          <Transcript
+            actions={
+              <CopyMarkdownButton
+                conversation={conversation}
+                detail={detail.data}
+              />
+            }
+            turns={detail.data?.turns ?? []}
+          />
         )}
       </section>
     </div>
@@ -128,13 +132,13 @@ function CopyMarkdownButton(props: {
 
   return (
     <Button
-      aria-label="Copy conversation as Markdown"
+      aria-label={label}
       disabled={disabled}
       onClick={() => void copyMarkdown()}
-      title="Copy conversation as Markdown"
+      size="icon"
+      title={label}
     >
       <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      <span className="truncate">{label}</span>
     </Button>
   );
 }

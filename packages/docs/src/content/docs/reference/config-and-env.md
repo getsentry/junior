@@ -50,11 +50,14 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 
 Configure allowed Google Workspace domains in `juniorDashboardPlugin()` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
-| Variable                           | Required | Purpose                                                       |
-| ---------------------------------- | -------- | ------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | No       | Comma-separated or JSON array of allowed Google domains.      |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | No       | Comma-separated or JSON array of explicit email allowlist.    |
-| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | No       | Comma-separated or JSON array of Better Auth trusted origins. |
+| Variable                              | Required | Purpose                                                       |
+| ------------------------------------- | -------- | ------------------------------------------------------------- |
+| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed Google domains.      |
+| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`     | No       | Comma-separated or JSON array of explicit email allowlist.    |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins. |
+| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to overlay local/demo visual-QA fixtures.       |
+
+For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to overlay sample conversation fixtures.
 
 ## Build-time snapshot warmup
 

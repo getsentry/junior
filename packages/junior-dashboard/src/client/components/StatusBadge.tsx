@@ -4,9 +4,12 @@ import type { VisualStatus } from "../types";
 /** Render readable status text while keeping severity color restrained. */
 export function StatusBadge(props: {
   label?: string;
+  showCompleted?: boolean;
   status: VisualStatus | undefined;
 }) {
   const status = props.status ?? "idle";
+  if (status === "idle" && !props.showCompleted) return null;
+
   return (
     <span
       className={cn(
@@ -23,9 +26,15 @@ export function StatusBadge(props: {
           status === "idle" && "bg-white/35",
         )}
       />
-      {props.label ?? status}
+      {props.label ?? statusLabel(status)}
     </span>
   );
+}
+
+function statusLabel(status: VisualStatus): string {
+  if (status === "failed") return "error";
+  if (status === "idle") return "completed";
+  return status;
 }
 
 function statusBadgeClass(status: VisualStatus): string {
