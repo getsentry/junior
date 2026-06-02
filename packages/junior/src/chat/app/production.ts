@@ -1,5 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
   getSlackBotToken,
   getSlackClientId,
@@ -57,6 +58,7 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
     getSlackAdapter: getProductionSlackAdapter,
     queue: getVercelConversationWorkQueue(),
     runtime: getProductionSlackRuntime(),
+    userTokenStore: createUserTokenStore(),
   };
 }
 

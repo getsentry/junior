@@ -1,7 +1,8 @@
 import { createHmac } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -33,6 +34,49 @@ function slackWebhookRequest(body: unknown): Request {
     },
     body: serialized,
   });
+}
+
+function slackFormRequest(params: URLSearchParams): Request {
+  const serialized = params.toString();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  return new Request("https://example.test/api/webhooks/slack", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-slack-request-timestamp": timestamp,
+      "x-slack-signature": signSlackBody(serialized, timestamp),
+    },
+    body: serialized,
+  });
+}
+
+function interactiveDisconnectPayload(): Record<string, unknown> {
+  return {
+    type: "block_actions",
+    team: { id: "T123" },
+    user: {
+      id: "U123",
+      team_id: "T123",
+      username: "alice",
+    },
+    actions: [
+      {
+        action_id: "app_home_disconnect",
+        value: "notion",
+      },
+    ],
+  };
+}
+
+function createTokenStore(
+  overrides: Partial<UserTokenStore> = {},
+): UserTokenStore {
+  return {
+    get: vi.fn(async () => undefined),
+    set: vi.fn(async () => undefined),
+    delete: vi.fn(async () => undefined),
+    ...overrides,
+  };
 }
 
 type WaitUntilTask = Promise<unknown>;
@@ -195,5 +239,118 @@ describe("Slack webhook: App Home events", () => {
 
     finishQueueSend.resolve();
     await flushWaitUntil(waitUntilTasks);
+  });
+
+  it("routes explicit mentions from other Slack bots", async () => {
+    const state = createMemoryState();
+    const waitUntilTasks: WaitUntilTask[] = [];
+    const queueMessages: Array<{ conversationId: string }> = [];
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test-token",
+      botUserId: BOT_USER_ID,
+      signingSecret: SIGNING_SECRET,
+    });
+
+    const response = await handleSlackWebhook({
+      request: slackWebhookRequest({
+        team_id: "T123",
+        type: "event_callback",
+        event: {
+          type: "message",
+          subtype: "bot_message",
+          bot_id: "B_DEPLOY",
+          username: "Deploy Bot",
+          text: `<@${BOT_USER_ID}> production deploy failed`,
+          channel: "C123",
+          ts: "1712345.0002",
+          event_ts: "1712345.0002",
+          channel_type: "channel",
+        },
+      }),
+      waitUntil: collectWaitUntil(waitUntilTasks),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue: {
+          send: async (message) => {
+            queueMessages.push(message);
+            return { messageId: "queue-1" };
+          },
+        },
+        runtime: {
+          handleAssistantContextChanged: async () => {
+            throw new Error("unexpected assistant context callback");
+          },
+          handleAssistantThreadStarted: async () => {
+            throw new Error("unexpected assistant thread callback");
+          },
+          handleNewMention: async () => {
+            throw new Error("unexpected mention callback");
+          },
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed message callback");
+          },
+        },
+        state,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(waitUntilTasks).toHaveLength(1);
+    await flushWaitUntil(waitUntilTasks);
+    expect(queueMessages).toEqual([
+      { conversationId: "slack:C123:1712345.0002" },
+    ]);
+  });
+
+  it("refreshes App Home after disconnect unlink failure", async () => {
+    const state = createMemoryState();
+    const waitUntilTasks: WaitUntilTask[] = [];
+    const deleteToken = vi.fn(async () => {
+      throw new Error("token store unavailable");
+    });
+    const userTokenStore = createTokenStore({ delete: deleteToken });
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test-token",
+      botUserId: BOT_USER_ID,
+      signingSecret: SIGNING_SECRET,
+    });
+    const params = new URLSearchParams({
+      payload: JSON.stringify(interactiveDisconnectPayload()),
+    });
+
+    const response = await handleSlackWebhook({
+      request: slackFormRequest(params),
+      waitUntil: collectWaitUntil(waitUntilTasks),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue: {
+          send: async () => {
+            throw new Error("interactive disconnect should not enqueue work");
+          },
+        },
+        runtime: {
+          handleAssistantContextChanged: async () => {
+            throw new Error("unexpected assistant context callback");
+          },
+          handleAssistantThreadStarted: async () => {
+            throw new Error("unexpected assistant thread callback");
+          },
+          handleNewMention: async () => {
+            throw new Error("unexpected mention callback");
+          },
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed message callback");
+          },
+        },
+        state,
+        userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(waitUntilTasks).toHaveLength(1);
+    await flushWaitUntil(waitUntilTasks);
+    expect(deleteToken).toHaveBeenCalledWith("U123", "notion");
+    expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(1);
   });
 });

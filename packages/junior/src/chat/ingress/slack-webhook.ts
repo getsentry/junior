@@ -31,6 +31,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { logException, withSpan } from "@/chat/logging";
@@ -57,6 +58,28 @@ type SlackEventEnvelope = {
   type?: string;
 };
 
+const IGNORED_MESSAGE_SUBTYPES = new Set([
+  "message_changed",
+  "message_deleted",
+  "message_replied",
+  "channel_join",
+  "channel_leave",
+  "channel_topic",
+  "channel_purpose",
+  "channel_name",
+  "channel_archive",
+  "channel_unarchive",
+  "group_join",
+  "group_leave",
+  "group_topic",
+  "group_purpose",
+  "group_name",
+  "group_archive",
+  "group_unarchive",
+  "ekm_access_denied",
+  "tombstone",
+]);
+
 interface SlackInteractivePayload {
   actions?: Array<{
     action_id?: string;
@@ -79,6 +102,7 @@ export interface SlackWebhookServices {
     | "handleSubscribedMessage"
   >;
   state?: StateAdapter;
+  userTokenStore?: UserTokenStore;
 }
 
 function enqueue(waitUntil: WaitUntilFn, task: Promise<void>): void {
@@ -114,6 +138,10 @@ function textMentionsBot(
   return Boolean(botUserId && event.text?.includes(`<@${botUserId}>`));
 }
 
+function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
+  return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
+}
+
 function normalizeMessageThreadId(message: Message): string {
   const normalized = normalizeIncomingSlackThreadId(message.threadId, message);
   if (normalized !== message.threadId) {
@@ -145,7 +173,6 @@ async function buildThread(args: {
 function shouldIgnoreMessage(message: Message): boolean {
   return (
     message.author.isMe === true ||
-    message.author.isBot === true ||
     isExternalSlackUser(message.raw as Record<string, unknown> | undefined)
   );
 }
@@ -265,17 +292,14 @@ async function handleSlackEvent(args: {
 
   const adapter = args.services.getSlackAdapter();
   const state = args.services.state ?? getStateAdapter();
+  const userTokenStore = args.services.userTokenStore ?? createUserTokenStore();
   await state.connect();
   const installation = installationFromEnvelope(args.body);
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
     try {
-      await publishAppHomeView(
-        getSlackClient(),
-        userId,
-        createUserTokenStore(),
-      );
+      await publishAppHomeView(getSlackClient(), userId, userTokenStore);
     } catch (error) {
       logException(error, "slack_app_home_publish_failed", {
         slackUserId: userId,
@@ -359,7 +383,7 @@ async function handleSlackEvent(args: {
 
         if (
           (event.type === "message" || event.type === "app_mention") &&
-          !event.subtype &&
+          !shouldIgnoreMessageSubtype(event) &&
           event.channel &&
           event.ts
         ) {
@@ -431,8 +455,8 @@ async function handleSlashCommandForm(args: {
 }
 
 async function handleInteractivePayload(args: {
-  adapter: SlackAdapter;
   payload: SlackInteractivePayload;
+  userTokenStore: UserTokenStore;
 }): Promise<void> {
   if (args.payload.type !== "block_actions") {
     return;
@@ -451,12 +475,27 @@ async function handleInteractivePayload(args: {
     "chat.app_home_disconnect",
     { slackUserId: userId },
     async () => {
-      await unlinkProvider(userId, provider, createUserTokenStore());
-      await publishAppHomeView(
-        getSlackClient(),
-        userId,
-        createUserTokenStore(),
-      );
+      try {
+        await unlinkProvider(userId, provider, args.userTokenStore);
+      } catch (error) {
+        logException(
+          error,
+          "app_home_disconnect_unlink_failed",
+          { slackUserId: userId },
+          { "app.credential.provider": provider },
+        );
+      }
+
+      try {
+        await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
+      } catch (error) {
+        logException(
+          error,
+          "app_home_disconnect_publish_failed",
+          { slackUserId: userId },
+          { "app.credential.provider": provider },
+        );
+      }
     },
   );
 }
@@ -528,7 +567,12 @@ async function handleSlackForm(args: {
       adapter,
       installation: installationFromInteractive(payload),
       state,
-      task: () => handleInteractivePayload({ adapter, payload }),
+      task: () =>
+        handleInteractivePayload({
+          payload,
+          userTokenStore:
+            args.services.userTokenStore ?? createUserTokenStore(),
+        }),
     }).catch((error) => {
       logException(error, "slack_interactive_payload_failed", {
         slackUserId: buildAuthorFromInteractive(payload.user).userId,
