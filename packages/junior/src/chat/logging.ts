@@ -36,6 +36,7 @@ export interface LogContext {
   slackThreadId?: string;
   slackUserId?: string;
   slackUserName?: string;
+  slackUserEmail?: string;
   slackChannelId?: string;
   runId?: string;
   actorType?: string;
@@ -60,6 +61,12 @@ interface SentryLike {
   logger?: SentryLoggerApi;
   getActiveSpan?: () => unknown;
   spanToJSON?: (span: unknown) => { trace_id?: string; span_id?: string };
+}
+
+interface SentryUserIdentity {
+  id: string | number;
+  email?: string;
+  username?: string;
 }
 
 const MAX_STRING_VALUE = 1200;
@@ -158,6 +165,16 @@ const CONSOLE_PREVIEW_KEYS = new Set([
   "gen_ai.output.messages",
   "gen_ai.tool.call.arguments",
   "gen_ai.tool.call.result",
+]);
+const SENTRY_TAG_ATTRIBUTE_KEYS = new Set([
+  "app.platform",
+  "messaging.system",
+  "app.actor.type",
+  "gen_ai.agent.name",
+  "gen_ai.request.model",
+  "app.skill.name",
+  "http.request.method",
+  "url.path",
 ]);
 
 function getSentryEnvironment(): string {
@@ -1178,6 +1195,7 @@ export const log = {
     error: unknown,
     attrs: Record<string, unknown> = {},
     body?: string,
+    context?: LogContext,
   ): string | undefined {
     const normalizedError =
       error instanceof Error ? error : new Error(String(error));
@@ -1211,6 +1229,9 @@ export const log = {
       typeof sentryCaptureException === "function"
     ) {
       sentryWithScope((scope) => {
+        if (context) {
+          setSentryScopeContext(scope, context);
+        }
         for (const [key, value] of Object.entries(
           mergeAttributes(contextStorage.getStore(), attrs),
         )) {
@@ -1222,6 +1243,9 @@ export const log = {
     }
 
     if (typeof sentryCaptureException === "function") {
+      if (context) {
+        setSentryUser(sentryUserIdentityFromContext(context));
+      }
       eventId = sentryCaptureException(normalizedError);
     }
     return eventId;
@@ -1397,33 +1421,64 @@ export function toSpanAttributes(context: LogContext): Record<string, string> {
   ) as Record<string, string>;
 }
 
+/** Attach filterable non-user context tags to Sentry. */
 export function setSentryTagsFromContext(context: LogContext): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
+    if (!SENTRY_TAG_ATTRIBUTE_KEYS.has(key)) {
+      continue;
+    }
     if (typeof value === "string" && value.length > 0) {
       Sentry.setTag(key, value);
     }
   }
-  if (context.slackUserId) {
-    Sentry.setUser({
-      id: context.slackUserId,
-      username: context.slackUserName,
-    });
-  }
 }
 
+function sentryUserIdentityFromContext(
+  context: LogContext,
+): SentryUserIdentity | undefined {
+  if (context.slackUserId) {
+    return {
+      id: context.slackUserId,
+      ...(context.slackUserName ? { username: context.slackUserName } : {}),
+      ...(context.slackUserEmail ? { email: context.slackUserEmail } : {}),
+    };
+  }
+  return undefined;
+}
+
+function sentryUserFromIdentity(identity: SentryUserIdentity): Sentry.User {
+  return {
+    id: identity.id,
+    ip_address: null,
+    ...(identity.username ? { username: identity.username } : {}),
+    ...(identity.email ? { email: identity.email } : {}),
+  };
+}
+
+/** Bind requester identity to Sentry's native user fields. */
+export function setSentryUser(identity: SentryUserIdentity | undefined): void {
+  if (!identity) return;
+  Sentry.setUser(sentryUserFromIdentity(identity));
+}
+
+/** Attach scoped Sentry context for isolated exception capture. */
 export function setSentryScopeContext(
   scope: Sentry.Scope,
   context: LogContext,
 ): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
+    if (!SENTRY_TAG_ATTRIBUTE_KEYS.has(key)) {
+      continue;
+    }
     if (typeof value === "string" && value.length > 0) {
       scope.setTag(key, value);
     }
   }
-  if (context.slackUserId) {
-    scope.setUser({ id: context.slackUserId, username: context.slackUserName });
+  const identity = sentryUserIdentityFromContext(context);
+  if (identity) {
+    scope.setUser(sentryUserFromIdentity(identity));
   }
   scope.setContext("app", attrs);
 }
@@ -1484,6 +1539,7 @@ export function captureException(
     normalizedError,
     toSpanAttributes(context),
     "Captured exception",
+    context,
   );
 }
 
@@ -1532,13 +1588,15 @@ export function logException(
     normalizedError,
     { ...toSpanAttributes(context), ...attributes },
     body,
+    context,
   );
 }
 
-/** Set log context and Sentry tags for the current scope. */
+/** Set log context and Sentry scope metadata for the current request. */
 export function setTags(context: LogContext = {}): void {
   setLogContext(context);
   setSentryTagsFromContext(context);
+  setSentryUser(sentryUserIdentityFromContext(context));
 }
 
 /** Create a LogContext from an incoming HTTP request. */
@@ -1654,6 +1712,7 @@ export function captureExceptionInScope(
   }
 
   if (typeof sentryCaptureException === "function") {
+    setSentryUser(sentryUserIdentityFromContext(context));
     sentryCaptureException(normalizedError);
   }
 }
@@ -1722,7 +1781,7 @@ function sanitizeGenAiValue(
     if (shouldTreatAsBlob) {
       return `[omitted:${value.length}]`;
     }
-    return truncateGenAiString(value, GEN_AI_MAX_STRING_CHARS);
+    return truncateGenAiString(redactSecrets(value), GEN_AI_MAX_STRING_CHARS);
   }
 
   if (typeof value === "number") {
@@ -1745,7 +1804,7 @@ function sanitizeGenAiValue(
   }
 
   if (typeof value !== "object") {
-    return String(value);
+    return redactSecrets(String(value));
   }
 
   if (seen.has(value)) {
@@ -1783,7 +1842,7 @@ export function serializeGenAiAttribute(
     return undefined;
   }
 
-  return truncateGenAiString(serialized, maxChars);
+  return truncateGenAiString(redactSecrets(serialized), maxChars);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

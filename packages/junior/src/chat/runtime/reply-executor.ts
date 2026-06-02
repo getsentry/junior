@@ -15,6 +15,7 @@ import {
   getActiveTraceId,
   logInfo,
   logWarn,
+  setSentryUser,
   setSpanAttributes,
   setTags,
   withSpan,
@@ -535,6 +536,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
         const resolvedUserName =
           message.author.userName ?? fallbackIdentity?.userName;
+        if (message.author.userId) {
+          setSentryUser({
+            id: message.author.userId,
+            ...(resolvedUserName ? { username: resolvedUserName } : {}),
+            ...(fallbackIdentity?.email
+              ? { email: fallbackIdentity.email }
+              : {}),
+          });
+        }
         if (resolvedUserName) {
           setTags({ slackUserName: resolvedUserName });
         }
