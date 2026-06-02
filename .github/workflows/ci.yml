@@ -61,6 +61,7 @@ jobs:
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
           pnpm --filter @sentry/junior-scheduler pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
           ls -la artifacts
 
       - name: Upload release artifacts

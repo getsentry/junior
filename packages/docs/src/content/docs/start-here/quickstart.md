@@ -100,7 +100,7 @@ Packaged plugins must be installed and listed in `juniorNitro` so Nitro bundles 
 Install only the plugins you plan to enable:
 
 ```bash
-pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry
+pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
 Then list them in `nitro.config.ts`:
@@ -123,6 +123,7 @@ export default defineConfig({
           "@sentry/junior-notion",
           "@sentry/junior-scheduler",
           "@sentry/junior-sentry",
+          "@sentry/junior-vercel",
         ],
       },
     }),

@@ -22,6 +22,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-notion`
 - `@sentry/junior-scheduler`
 - `@sentry/junior-sentry`
+- `@sentry/junior-vercel`
 
 ## Package release
 

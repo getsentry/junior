@@ -30,6 +30,8 @@ export default defineConfig({
     "/plugins/notion": "/extend/notion-plugin",
     "/plugins/scheduler": "/extend/scheduler-plugin",
     "/plugins/sentry": "/extend/sentry-plugin",
+    "/plugins/vercel": "/extend/vercel-plugin",
+    "/extend/vercel": "/extend/vercel-plugin",
     "/operate/telemetry-runbooks": "/operate/reliability-runbooks",
     "/operate/security": "/operate/security-hardening",
     "/operate/reliability": "/operate/reliability-runbooks",
@@ -105,6 +107,7 @@ export default defineConfig({
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             { label: "Scheduler Plugin", link: "/extend/scheduler-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
+            { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
           ],
         },
         {

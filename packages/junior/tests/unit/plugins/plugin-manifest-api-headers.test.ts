@@ -103,6 +103,33 @@ describe("plugin manifest API headers", () => {
     expect(manifest.runtimePostinstall).toHaveLength(1);
   });
 
+  it("parses the packaged Vercel manifest", () => {
+    const manifestPath = path.resolve(
+      process.cwd(),
+      "../junior-vercel/plugin.yaml",
+    );
+    const manifest = parsePluginManifest(
+      readFileSync(manifestPath, "utf8"),
+      path.dirname(manifestPath),
+    );
+
+    expect(manifest.name).toBe("vercel");
+    expect(manifest.domains).toEqual(["api.vercel.com"]);
+    expect(manifest.apiHeaders).toEqual({
+      Authorization: "Bearer ${JUNIOR_VERCEL_TOKEN}",
+    });
+    expect(manifest.commandEnv).toEqual({
+      VERCEL_TOKEN: "host_managed_credential",
+    });
+    expect(manifest.runtimeDependencies).toEqual([
+      {
+        type: "npm",
+        package: "vercel",
+        version: "latest",
+      },
+    ]);
+  });
+
   it("parses the packaged GitHub command env host bindings", () => {
     const manifestPath = path.resolve(
       process.cwd(),

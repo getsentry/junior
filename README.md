@@ -33,3 +33,4 @@ Start here:
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
 | `@sentry/junior-scheduler`     | Scheduler plugin package for scheduled Junior tasks                          |
 | `@sentry/junior-sentry`        | Sentry plugin package for issue workflows                                    |
+| `@sentry/junior-vercel`        | Vercel plugin package for deployment and log investigation workflows         |

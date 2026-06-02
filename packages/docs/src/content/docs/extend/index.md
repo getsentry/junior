@@ -15,6 +15,7 @@ related:
   - /extend/notion-plugin/
   - /extend/scheduler-plugin/
   - /extend/sentry-plugin/
+  - /extend/vercel-plugin/
 ---
 
 Junior plugins are manifest-owned provider integrations. A plugin package can also ship skills that use that provider surface, but skills do not define plugin config, credentials, domains, OAuth scopes, MCP endpoints, or runtime dependencies.
@@ -54,7 +55,7 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests and any bundled skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
@@ -77,6 +78,7 @@ export default defineConfig({
           "@sentry/junior-notion",
           "@sentry/junior-scheduler",
           "@sentry/junior-sentry",
+          "@sentry/junior-vercel",
         ],
       },
     }),

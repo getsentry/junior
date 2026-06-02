@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
 
 ## Run
 
@@ -29,8 +29,12 @@ Copy `.env.example` and set:
 - `AI_WEB_SEARCH_MODEL` (optional, overrides the `webSearch` tool model; defaults to a search-tuned model)
 - `JUNIOR_SECRET` (required outside `pnpm dev`; the local wrapper supplies a dev-only secret when unset)
 - `JUNIOR_SCHEDULER_SECRET` or `CRON_SECRET` (optional for `pnpm dev`; the local wrapper supplies a dev-only heartbeat secret when both are unset)
-- `NOTION_TOKEN` (optional, enables the bundled Notion plugin)
 - Dashboard auth is enabled by default. `pnpm dev` disables dashboard auth only for local non-Vercel development.
+
+## Optional plugin env
+
+- `JUNIOR_VERCEL_TOKEN` enables the bundled Vercel plugin's CLI access to deployments and logs.
+- Notion does not use `NOTION_TOKEN`; each user connects their own Notion account through MCP OAuth when Junior first calls a Notion tool.
 
 ## Wiring
 

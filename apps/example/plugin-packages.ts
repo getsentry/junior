@@ -6,4 +6,5 @@ export const examplePluginPackages = [
   "@sentry/junior-linear",
   "@sentry/junior-notion",
   "@sentry/junior-sentry",
+  "@sentry/junior-vercel",
 ];

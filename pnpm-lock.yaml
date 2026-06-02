@@ -71,6 +71,9 @@ importers:
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../../packages/junior-sentry
+      "@sentry/junior-vercel":
+        specifier: workspace:*
+        version: link:../../packages/junior-vercel
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -360,6 +363,8 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+
+  packages/junior-vercel: {}
 
 packages:
   "@ai-sdk/gateway@3.0.119":

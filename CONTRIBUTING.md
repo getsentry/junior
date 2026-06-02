@@ -70,6 +70,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-notion`
 - `@sentry/junior-scheduler`
 - `@sentry/junior-sentry`
+- `@sentry/junior-vercel`
 
 Run `pnpm release:check` before changing release package lists so `.craft.yml`, CI,
 the bump script, and the release docs stay aligned.

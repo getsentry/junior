@@ -35,3 +35,6 @@ targets:
   - name: npm
     id: "@sentry/junior-sentry"
     includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-vercel"
+    includeNames: /^sentry-junior-vercel-\d.*\.tgz$/

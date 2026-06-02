@@ -35,6 +35,7 @@ Junior runs as a Hono app, receives Slack events, processes turns through queue-
 - Linear: https://junior.sentry.dev/extend/linear-plugin/
 - Notion: https://junior.sentry.dev/extend/notion-plugin/
 - Sentry: https://junior.sentry.dev/extend/sentry-plugin/
+- Vercel: https://junior.sentry.dev/extend/vercel-plugin/
 
 ## Operate
 
