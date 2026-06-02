@@ -65,7 +65,7 @@ export function normalizePluginPackageNames(packageNames: unknown): string[] {
   }
 
   if (!Array.isArray(packageNames)) {
-    throw new Error("plugins.packages must be an array of package names");
+    throw new Error("Plugin package names must be an array");
   }
 
   const normalized: string[] = [];

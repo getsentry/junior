@@ -23,6 +23,53 @@ afterEach(async () => {
 });
 
 describe("juniorNitro plugin modules", () => {
+  it("loads plugin modules lazily when virtual config is rendered", async () => {
+    const tempRoot = await makeTempDir();
+    await fs.writeFile(
+      path.join(tempRoot, "plugins.mjs"),
+      [
+        "globalThis.__juniorNitroPluginModuleImports = (globalThis.__juniorNitroPluginModuleImports ?? 0) + 1;",
+        "export const plugins = {",
+        "  packageNames: [],",
+        "  registrations: [],",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const globalState = globalThis as typeof globalThis & {
+      __juniorNitroPluginModuleImports?: number;
+    };
+    delete globalState.__juniorNitroPluginModuleImports;
+
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: path.join(tempRoot, ".output", "server"),
+        },
+        rootDir: tempRoot,
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(globalState.__juniorNitroPluginModuleImports).toBeUndefined();
+
+    const template = virtual["#junior/config"];
+    expect(typeof template).toBe("function");
+    await (template as () => Promise<string>)();
+
+    expect(globalState.__juniorNitroPluginModuleImports).toBe(1);
+    delete globalState.__juniorNitroPluginModuleImports;
+  });
+
   it("rejects direct trusted plugin sets because hooks need a runtime import", () => {
     const compiledHooks: Array<() => Promise<void> | void> = [];
     const virtual: Record<string, (() => Promise<string>) | string> = {};

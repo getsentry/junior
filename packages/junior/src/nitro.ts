@@ -206,10 +206,13 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         if (directPluginSet) {
           assertSerializableDirectPluginSet(directPluginSet);
         }
-        const pluginSetPromise: Promise<JuniorPluginSet | undefined> =
-          pluginModule
+        let pluginSetPromise: Promise<JuniorPluginSet | undefined> | undefined;
+        const loadConfiguredPluginSet = () => {
+          pluginSetPromise ??= pluginModule
             ? loadPluginSetFromModule(pluginModule)
             : Promise.resolve(directPluginSet);
+          return pluginSetPromise;
+        };
         const pluginCatalogConfig =
           pluginCatalogConfigFromPluginSet(directPluginSet);
         const trustedPluginRegistrations =
@@ -219,7 +222,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         injectVirtualConfig(nitro, {
           ...(pluginModule
             ? {
-                loadPluginSet: () => pluginSetPromise,
+                loadPluginSet: loadConfiguredPluginSet,
                 pluginModule: pluginModule.runtimeModule,
               }
             : {}),
@@ -228,7 +231,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         });
 
         nitro.hooks.hook("compiled", async () => {
-          const pluginSet = await pluginSetPromise;
+          const pluginSet = await loadConfiguredPluginSet();
           const compiledPluginCatalogConfig =
             pluginCatalogConfigFromPluginSet(pluginSet);
           copyAppAndPluginContent(
