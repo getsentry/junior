@@ -125,10 +125,14 @@ async function persistFailedReplyState(
   });
 }
 
-/** Resume one durable timeout continuation for a Slack thread. */
+/**
+ * Resume one durable timeout continuation for a Slack thread.
+ *
+ * Returns false when the session became stale before generation began.
+ */
 export async function resumeTimedOutTurn(
   payload: TurnContinuationRequest,
-): Promise<void> {
+): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   if (!thread) {
     throw new Error(
@@ -136,7 +140,7 @@ export async function resumeTimedOutTurn(
     );
   }
 
-  await resumeSlackTurn({
+  return await resumeSlackTurn({
     messageText: "",
     channelId: thread.channelId,
     threadTs: thread.threadTs,
@@ -267,17 +271,22 @@ export async function resumeTimedOutTurn(
   });
 }
 
-/** Retry timeout continuation when the normal Slack thread lock is briefly busy. */
+/**
+ * Retry timeout continuation when the normal Slack thread lock is briefly busy.
+ *
+ * Returns false when the session became stale before generation began. A busy
+ * lock that is rescheduled still returns true because runnable work remains
+ * durable.
+ */
 export async function resumeTimedOutTurnWithLockRetry(
   payload: TurnContinuationRequest,
-): Promise<void> {
+): Promise<boolean> {
   for (const [attempt, delayMs] of [
     ...TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS,
     undefined,
   ].entries()) {
     try {
-      await resumeTimedOutTurn(payload);
-      return;
+      return await resumeTimedOutTurn(payload);
     } catch (error) {
       if (!(error instanceof ResumeTurnBusyError)) {
         throw error;
@@ -294,7 +303,7 @@ export async function resumeTimedOutTurnWithLockRetry(
           "Rescheduling timeout resume because another turn still owns the thread lock",
         );
         await scheduleTurnTimeoutResume(payload);
-        return;
+        return true;
       }
 
       logWarn(
@@ -311,4 +320,6 @@ export async function resumeTimedOutTurnWithLockRetry(
       await sleep(delayMs);
     }
   }
+
+  return true;
 }

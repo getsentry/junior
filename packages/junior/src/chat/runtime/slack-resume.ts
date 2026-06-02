@@ -245,12 +245,13 @@ function createResumeReplyContext(
 /**
  * Resume a paused Slack turn under the normal thread lock.
  *
- * Success is defined by final reply delivery, not only by successful assistant
- * generation. If the final visible Slack post fails, the resumed turn is
- * treated as failed so thread state does not claim the user saw a reply that
- * never arrived.
+ * Started resumes own their terminal side effects: final delivery, pause
+ * persistence, or failure response. Returns false only when `beforeStart`
+ * proves the resume is stale before generation begins.
  */
-export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
+export async function resumeSlackTurn(
+  args: ResumeSlackTurnArgs,
+): Promise<boolean> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const lockKey =
@@ -274,7 +275,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   try {
     const preparedArgs = await args.beforeStart?.();
     if (preparedArgs === false) {
-      return;
+      return false;
     }
     if (preparedArgs) {
       runArgs = { ...args, ...preparedArgs };
@@ -446,7 +447,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
           buildAuthPauseResponse(),
         );
       }
-      return;
+      return true;
     } catch (pauseError) {
       await handleResumeFailure({
         body: "Failed to handle resumed turn pause",
@@ -455,13 +456,15 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         lockKey,
         resumeArgs: runArgs,
       });
-      return;
+      return true;
     }
   }
 
   if (deferredFailureHandler) {
     await deferredFailureHandler();
   }
+
+  return true;
 }
 
 /** Resume an OAuth-paused Slack request through the shared resume runner. */

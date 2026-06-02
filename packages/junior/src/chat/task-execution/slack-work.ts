@@ -14,6 +14,7 @@ import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatc
 import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { resumeTimedOutTurnWithLockRetry } from "@/chat/runtime/timeout-resume-runner";
 import {
+  failAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
@@ -134,37 +135,63 @@ function restoreThread(args: {
   });
 }
 
-function latestContinuationResume(
-  summaries: AgentTurnSessionSummary[],
-): AgentTurnSessionSummary | undefined {
-  return summaries.find(
-    (summary) =>
-      summary.state === "awaiting_resume" &&
-      (summary.resumeReason === "timeout" || summary.resumeReason === "yield"),
+function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
+  return (
+    summary.state === "awaiting_resume" &&
+    (summary.resumeReason === "timeout" || summary.resumeReason === "yield")
   );
+}
+
+async function failUnresumableContinuation(args: {
+  conversationId: string;
+  errorMessage: string;
+  expectedVersion?: number;
+  summary: AgentTurnSessionSummary;
+}): Promise<void> {
+  await failAgentTurnSessionRecord({
+    conversationId: args.conversationId,
+    expectedVersion: args.expectedVersion ?? args.summary.version,
+    sessionId: args.summary.sessionId,
+    errorMessage: args.errorMessage,
+  });
 }
 
 async function resumeAwaitingContinuation(
   conversationId: string,
 ): Promise<void> {
-  const summary = latestContinuationResume(
-    await listAgentTurnSessionSummariesForConversation(conversationId),
-  );
-  if (!summary) {
-    return;
-  }
+  const summaries =
+    await listAgentTurnSessionSummariesForConversation(conversationId);
 
-  const request = await getAwaitingTurnContinuationRequest({
-    conversationId,
-    sessionId: summary.sessionId,
-  });
-  if (!request) {
-    throw new Error(
-      `Unable to build continuation request for turn session "${summary.sessionId}" in conversation "${conversationId}"`,
-    );
-  }
+  for (const summary of summaries) {
+    if (!isContinuationResume(summary)) {
+      continue;
+    }
 
-  await resumeTimedOutTurnWithLockRetry(request);
+    const request = await getAwaitingTurnContinuationRequest({
+      conversationId,
+      sessionId: summary.sessionId,
+    });
+    if (!request) {
+      await failUnresumableContinuation({
+        conversationId,
+        summary,
+        errorMessage:
+          "Awaiting turn continuation metadata could not be materialized",
+      });
+      continue;
+    }
+
+    if (await resumeTimedOutTurnWithLockRetry(request)) {
+      return;
+    }
+
+    await failUnresumableContinuation({
+      conversationId,
+      expectedVersion: request.expectedVersion,
+      summary,
+      errorMessage: "Awaiting turn continuation was stale before resuming",
+    });
+  }
 }
 
 function getInstallation(
