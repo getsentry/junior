@@ -131,19 +131,42 @@ async function handleAuthenticatedSlackEventPrompt(args: {
 
   await args.bot.initialize();
 
-  const botUserId = authAdapter.botUserId;
-  if (!botUserId) {
+  const dispatch = async () => {
+    const botUserId = authAdapter.botUserId;
+    if (!botUserId) {
+      return;
+    }
+
+    const envelope = extractSlackChannelMessageCreatedEnvelope(args.body, {
+      botUserId,
+    });
+    if (!envelope) {
+      return;
+    }
+
+    await dispatchEventPromptRuns(envelope);
+  };
+
+  if (authAdapter.defaultBotTokenProvider) {
+    await dispatch();
     return;
   }
 
-  const envelope = extractSlackChannelMessageCreatedEnvelope(args.body, {
-    botUserId,
-  });
-  if (!envelope) {
+  const teamId = getSlackPayloadTeamId(args.body);
+  if (
+    !teamId ||
+    !authAdapter.resolveTokenForTeam ||
+    !authAdapter.requestContext
+  ) {
     return;
   }
 
-  await dispatchEventPromptRuns(envelope);
+  const context = await authAdapter.resolveTokenForTeam(teamId);
+  if (!context) {
+    return;
+  }
+
+  await authAdapter.requestContext.run(context, dispatch);
 }
 
 async function handleLegacyChatSdkWebhook(args: {

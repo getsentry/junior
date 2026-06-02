@@ -14,6 +14,10 @@ import {
   getDispatchRecord,
   listIncompleteDispatchIds,
 } from "@/chat/agent-dispatch/store";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
@@ -87,6 +91,7 @@ describe("Slack event prompts: root channel messages", () => {
       JUNIOR_SECRET: "test-dispatch-secret",
       JUNIOR_STATE_ADAPTER: "memory",
     };
+    resetSlackApiMockState();
     await disconnectStateAdapter();
     mswServer.use(
       http.post("https://example.test/api/internal/agent-dispatch", () =>
@@ -114,7 +119,6 @@ describe("Slack event prompts: root channel messages", () => {
       adapters: {
         slack: createJuniorSlackAdapter({
           botToken: "xoxb-test",
-          botUserId: "U_BOT",
           signingSecret: SIGNING_SECRET,
         }),
       },
@@ -142,6 +146,7 @@ describe("Slack event prompts: root channel messages", () => {
     await flushWaitUntil(waitUntilTasks);
 
     expect(rootResponse.status).toBe(200);
+    expect(getCapturedSlackApiCalls("auth.test")).toHaveLength(1);
     const idsAfterRoot = await listIncompleteDispatchIds();
     expect(idsAfterRoot).toHaveLength(1);
     await expect(
@@ -207,5 +212,71 @@ describe("Slack event prompts: root channel messages", () => {
 
     expect(mentionResponse.status).toBe(200);
     await expect(listIncompleteDispatchIds()).resolves.toEqual(idsAfterRoot);
+  });
+
+  it("dispatches multi-workspace events inside the installed Slack bot context", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-events-"));
+    await writeEventBinding(root);
+    await loadEventPromptRegistry(root);
+    const bot = new JuniorChat({
+      userName: "junior",
+      adapters: {
+        slack: createJuniorSlackAdapter({
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          signingSecret: SIGNING_SECRET,
+        }),
+      },
+      state: createMemoryState(),
+    });
+    await bot.initialize();
+    const slackAdapter = bot.getAdapter("slack") as unknown as {
+      setInstallation(
+        teamId: string,
+        installation: {
+          botToken: string;
+          botUserId: string;
+          teamName: string;
+        },
+      ): Promise<void>;
+    };
+    await slackAdapter.setInstallation("T123", {
+      botToken: "xoxb-installed",
+      botUserId: "U_BOT",
+      teamName: "Installed Workspace",
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+
+    const rootBody = JSON.stringify({
+      ...slackEventsApiEnvelope({
+        eventType: "message",
+        channel: "CEVNT",
+        text: "the build failed again",
+        ts: "1700000000.000010",
+        user: "U123",
+      }),
+      team_id: "T123",
+      event_id: "EvMulti123",
+    });
+    const response = await handlePlatformWebhook(
+      createSlackRequest(rootBody),
+      "slack",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    const ids = await listIncompleteDispatchIds();
+    expect(ids).toHaveLength(1);
+    await expect(getDispatchRecord(ids[0] ?? "")).resolves.toMatchObject({
+      plugin: "event-prompts",
+      idempotencyKey: "event:slack-root-channel:EvMulti123",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "CEVNT",
+      },
+    });
   });
 });
