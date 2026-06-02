@@ -97,7 +97,7 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
   });
 
-  it("merges env plugin packages with trusted runtime plugins", async () => {
+  it("loads package plugins with trusted runtime plugins", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/env-plugin", "env");
     await fs.writeFile(
@@ -112,14 +112,23 @@ describe("createApp plugin config", () => {
       "utf8",
     );
     process.chdir(tempRoot);
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(["@acme/env-plugin"]);
 
     await createApp({
-      plugins: [defineJuniorPlugin({ name: "dashboard" })],
+      plugins: defineJuniorPlugins([
+        "@acme/env-plugin",
+        defineJuniorPlugin({
+          manifest: {
+            name: "dashboard",
+            description: "Dashboard plugin",
+          },
+          hooks: {},
+        }),
+      ]),
       configDefaults: { "env.org": "sentry" },
     });
 
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "dashboard",
       "env",
     ]);
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([

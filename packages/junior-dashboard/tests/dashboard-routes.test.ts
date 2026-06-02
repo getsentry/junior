@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createApp } from "@sentry/junior";
+import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import type { JuniorReporting } from "@sentry/junior/reporting";
 import { juniorDashboardPlugin } from "../src/index";
 import { createDashboardApp } from "../src/app";
@@ -643,13 +643,13 @@ describe("dashboard routes", () => {
 
   it("mounts dashboard routes through the trusted plugin array", async () => {
     const app = await createApp({
-      plugins: [
+      plugins: defineJuniorPlugins([
         juniorDashboardPlugin({
           authRequired: false,
           allowedGoogleDomains: ["sentry.io"],
           reporting: reporting(),
         }),
-      ],
+      ]),
     });
 
     const dashboard = await app.fetch(new Request("http://localhost/"));

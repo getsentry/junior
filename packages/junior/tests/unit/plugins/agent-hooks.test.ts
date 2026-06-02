@@ -181,6 +181,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           routes() {
             return [
@@ -212,6 +216,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           routes() {
             return [
@@ -238,6 +246,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           routes() {
             return [
@@ -264,6 +276,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           routes() {
             return [
@@ -295,6 +311,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
         hooks: {
           slackConversationLink() {
             return { url: "javascript:alert(1)" };

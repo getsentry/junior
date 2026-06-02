@@ -89,6 +89,10 @@ describe("Slack contract: outbound normalization", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "dashboard",
+        manifest: {
+          name: "dashboard",
+          description: "Dashboard",
+        },
         hooks: {
           slackConversationLink(ctx) {
             return {

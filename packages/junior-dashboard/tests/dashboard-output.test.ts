@@ -44,16 +44,16 @@ export default defineConfig({
   );
   fs.writeFileSync(
     path.join(root, "server.ts"),
-    `import { createApp } from "@sentry/junior";
+    `import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 
 export default await createApp({
-  plugins: [
+  plugins: defineJuniorPlugins([
     juniorDashboardPlugin({
       authRequired: false,
       allowedGoogleDomains: ["sentry.io"],
     }),
-  ],
+  ]),
 });
 `,
   );

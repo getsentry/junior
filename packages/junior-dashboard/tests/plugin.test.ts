@@ -30,11 +30,14 @@ afterEach(() => {
 });
 
 describe("juniorDashboardPlugin", () => {
-  it("does not register manifest package config", () => {
+  it("registers an inline dashboard manifest", () => {
     const plugin = juniorDashboardPlugin();
 
     expect(plugin.name).toBe("dashboard");
-    expect(plugin.pluginConfig).toBeUndefined();
+    expect(plugin.manifest).toMatchObject({
+      name: "dashboard",
+      description: "Junior dashboard routes and Slack footer links",
+    });
   });
 
   it("provides Slack footer links to dashboard conversation pages", () => {
