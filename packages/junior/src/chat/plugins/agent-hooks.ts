@@ -180,6 +180,11 @@ function routeMethods(
       );
     }
   }
+  if (methods.includes("ALL") && methods.length > 1) {
+    throw new Error(
+      `Trusted plugin route "${route.path}" from plugin "${pluginName}" must not combine ALL with explicit methods`,
+    );
+  }
   return methods;
 }
 
@@ -187,6 +192,7 @@ function routeMethods(
 export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
   const routes: AgentPluginRouteRegistration[] = [];
   const seen = new Set<string>();
+  const methodsByPath = new Map<string, Set<AgentPluginRouteMethod>>();
 
   for (const plugin of getAgentPlugins()) {
     const hook = plugin.hooks?.routes;
@@ -220,6 +226,15 @@ export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
         );
       }
       const methods = routeMethods(route, plugin.name);
+      const pathMethods = methodsByPath.get(route.path) ?? new Set();
+      if (
+        pathMethods.has("ALL") ||
+        (methods.includes("ALL") && pathMethods.size > 0)
+      ) {
+        throw new Error(
+          `Trusted plugin route "${route.path}" conflicts with an ALL route for the same path`,
+        );
+      }
       for (const method of methods) {
         const key = `${method}:${route.path}`;
         if (seen.has(key)) {
@@ -228,7 +243,9 @@ export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
           );
         }
         seen.add(key);
+        pathMethods.add(method);
       }
+      methodsByPath.set(route.path, pathMethods);
       routes.push({
         ...route,
         pluginName: plugin.name,

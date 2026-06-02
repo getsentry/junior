@@ -225,6 +225,63 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("rejects routes that combine ALL with explicit methods", () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "agent-demo",
+        hooks: {
+          routes() {
+            return [
+              {
+                method: ["ALL", "GET"],
+                path: "/demo",
+                handler: () => new Response("demo"),
+              },
+            ];
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(() => getAgentPluginRoutes()).toThrow(
+        'Trusted plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
+      );
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("rejects route paths that mix ALL and explicit method registrations", () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "agent-demo",
+        hooks: {
+          routes() {
+            return [
+              {
+                method: "ALL",
+                path: "/demo",
+                handler: () => new Response("demo"),
+              },
+              {
+                method: "GET",
+                path: "/demo",
+                handler: () => new Response("demo"),
+              },
+            ];
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(() => getAgentPluginRoutes()).toThrow(
+        'Trusted plugin route "/demo" conflicts with an ALL route for the same path',
+      );
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
   it("rejects unsafe Slack conversation links from configured plugins", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({

@@ -87,12 +87,4 @@ export default defineConfig({
     "hono",
     "nitro",
   ],
-  noExternal: [
-    "@tanstack/react-query",
-    "react",
-    "react-dom",
-    "react-router",
-    "recharts",
-    "shiki",
-  ],
 });

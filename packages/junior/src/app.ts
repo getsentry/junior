@@ -205,8 +205,7 @@ function mountAgentPluginRoutes(
 
     if (methods.includes("ALL")) {
       app.all(route.path, handler);
-    }
-    if (explicitMethods.length > 0) {
+    } else if (explicitMethods.length > 0) {
       app.on(explicitMethods, route.path, handler);
     }
   }
