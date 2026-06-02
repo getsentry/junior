@@ -581,7 +581,7 @@ function isGenericTurnTitle(title: string, conversationId: string): boolean {
   return (
     normalized.length === 0 ||
     normalized === conversationId ||
-    /^Turn\s+\S+/i.test(normalized) ||
+    /^Turn\s+\S+$/i.test(normalized) ||
     /^Awaiting\s+\w+\s+resume$/i.test(normalized)
   );
 }

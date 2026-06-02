@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import {
@@ -62,7 +62,10 @@ export function TurnDurationChart(props: {
   const chartEdgePaddingMs = 6 * 60 * 60 * 1000;
   const chartRangeStartMs = rangeStartMs - chartEdgePaddingMs;
   const chartRangeEndMs = rangeEndMs + chartEdgePaddingMs;
-  const conversations = buildConversations(props.sessions);
+  const conversations = useMemo(
+    () => (mode === "conversations" ? buildConversations(props.sessions) : []),
+    [mode, props.sessions],
+  );
   const points = (
     mode === "turns"
       ? props.sessions.map((session) => turnPoint(session, props.timeZone))

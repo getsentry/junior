@@ -230,6 +230,26 @@ describe("dashboard token formatting", () => {
     );
   });
 
+  it("keeps meaningful conversation titles that start with turn", () => {
+    const [conversation] = buildConversations([
+      {
+        channel: "C1",
+        channelName: "engineering",
+        conversationId: "slack:C1:123",
+        id: "turn-1",
+        lastSeenAt: "2026-06-01T10:05:00.000Z",
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn around the API design",
+      },
+    ]);
+
+    expect(conversationDisplayTitle(conversation)).toBe(
+      "Turn around the API design",
+    );
+  });
+
   it("suppresses redundant conversation requester labels", () => {
     const sessions: Session[] = [
       {
