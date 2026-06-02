@@ -56,6 +56,22 @@ import {
 import type { DispatchCallback, DispatchRecord } from "./types";
 
 const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
+const SILENT_EVENT_SUCCESS_REASON = "silent_event_success";
+const EVENT_PROMPT_BLOCKED_TOOL_NAMES = [
+  "slackCanvasCreate",
+  "slackCanvasEdit",
+  "slackCanvasWrite",
+  "slackChannelPostMessage",
+  "slackListAddItems",
+  "slackListCreate",
+  "slackListUpdateItem",
+  "slackMessageAddReaction",
+  "slackScheduleCreateTask",
+  "slackScheduleDeleteTask",
+  "slackScheduleListTasks",
+  "slackScheduleRunTaskNow",
+  "slackScheduleUpdateTask",
+] as const;
 
 export interface AgentDispatchRunnerDeps {
   generateAssistantReply?: typeof generateAssistantReplyImpl;
@@ -68,6 +84,38 @@ function getUserMessageId(dispatch: DispatchRecord): string {
 
 function getAssistantMessageId(dispatch: DispatchRecord): string {
   return `dispatch:${dispatch.id}:assistant`;
+}
+
+function isEventPromptDispatch(dispatch: DispatchRecord): boolean {
+  return dispatch.runMode === "event_prompt";
+}
+
+function isSilentEventSuccess(
+  dispatch: DispatchRecord,
+  reply: AssistantReply,
+): boolean {
+  return (
+    isEventPromptDispatch(dispatch) &&
+    reply.diagnostics.outcome === "success" &&
+    reply.text.trim().length === 0 &&
+    !reply.files?.length
+  );
+}
+
+function hasCompletedSilentEventSuccess(
+  conversation: ThreadConversationState,
+  dispatch: DispatchRecord,
+): boolean {
+  if (!isEventPromptDispatch(dispatch)) {
+    return false;
+  }
+  const userMessage = conversation.messages.find(
+    (message) => message.id === getUserMessageId(dispatch),
+  );
+  return (
+    userMessage?.meta?.replied === false &&
+    userMessage.meta.skippedReason === SILENT_EVENT_SUCCESS_REASON
+  );
 }
 
 function buildDispatchConversationText(dispatch: DispatchRecord): string {
@@ -237,6 +285,13 @@ export async function runAgentDispatchSlice(
 
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
+    if (hasCompletedSilentEventSuccess(conversation, dispatch)) {
+      await markDispatch({
+        dispatch,
+        status: "completed",
+      });
+      return;
+    }
     const deliveredMessage = conversation.messages.find(
       (message) =>
         message.id === getAssistantMessageId(dispatch) &&
@@ -282,6 +337,10 @@ export async function runAgentDispatchSlice(
           ? { subject: dispatch.credentialSubject }
           : {}),
       },
+      allowSilentSuccess: isEventPromptDispatch(dispatch),
+      ...(isEventPromptDispatch(dispatch)
+        ? { blockedToolNames: EVENT_PROMPT_BLOCKED_TOOL_NAMES }
+        : {}),
       configuration,
       channelConfiguration,
       conversationContext,
@@ -343,6 +402,30 @@ export async function runAgentDispatchSlice(
           modelId: reply.diagnostics.modelId,
         },
       });
+    }
+
+    if (isSilentEventSuccess(dispatch, reply)) {
+      markConversationMessage(conversation, userMessageId, {
+        replied: false,
+        skippedReason: SILENT_EVENT_SUCCESS_REASON,
+      });
+      updateConversationStats(conversation);
+      const nextArtifacts = reply.artifactStatePatch
+        ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
+        : artifacts;
+      await persistRuntimePatch({
+        threadId: conversationId,
+        conversation,
+        artifacts: nextArtifacts,
+        sandboxId: reply.sandboxId ?? sandboxId,
+        sandboxDependencyProfileHash:
+          reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+      });
+      await markDispatch({
+        dispatch,
+        status: "completed",
+      });
+      return;
     }
 
     const deliveryReply = ensureVisibleDeliveryText(reply);

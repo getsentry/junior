@@ -27,7 +27,10 @@ interface SlackWebhookAuthAdapter {
   requestContext?: {
     run<T>(context: unknown, fn: () => T): T;
   };
-  resolveTokenForTeam?: (teamId: string) => Promise<unknown>;
+  resolveTokenForTeam?: (
+    installationId: string,
+    isEnterpriseInstall?: boolean,
+  ) => Promise<unknown>;
   verifySignature: (
     body: string,
     timestamp: string | null,
@@ -37,13 +40,95 @@ interface SlackWebhookAuthAdapter {
 
 type LegacyChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
 
-function getSlackPayloadTeamId(body: unknown): string | undefined {
+interface SlackPayloadInstallation {
+  enterpriseId?: string;
+  installationId: string;
+  isEnterpriseInstall: boolean;
+  workspaceTeamId?: string;
+}
+
+function stringPayloadField(
+  body: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  const value = body[field];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function getSlackPayloadInstallation(
+  body: unknown,
+): SlackPayloadInstallation | undefined {
   if (!body || typeof body !== "object") {
     return undefined;
   }
 
-  const teamId = (body as Record<string, unknown>).team_id;
-  return typeof teamId === "string" && teamId.length > 0 ? teamId : undefined;
+  const record = body as Record<string, unknown>;
+  const workspaceTeamId = stringPayloadField(record, "team_id");
+  const enterpriseId = stringPayloadField(record, "enterprise_id");
+  const isEnterpriseInstall = record.is_enterprise_install === true;
+  const installationId = isEnterpriseInstall ? enterpriseId : workspaceTeamId;
+  if (!installationId) {
+    return undefined;
+  }
+
+  return {
+    installationId,
+    isEnterpriseInstall,
+    ...(enterpriseId ? { enterpriseId } : {}),
+    ...(workspaceTeamId ? { workspaceTeamId } : {}),
+  };
+}
+
+function getSlackPayloadTeamId(body: unknown): string | undefined {
+  return getSlackPayloadInstallation(body)?.workspaceTeamId;
+}
+
+function withSlackInstallationContext(
+  context: unknown,
+  installation: SlackPayloadInstallation,
+): unknown {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return context;
+  }
+  return {
+    ...context,
+    ...(installation.enterpriseId
+      ? { enterpriseId: installation.enterpriseId }
+      : {}),
+    isEnterpriseInstall: installation.isEnterpriseInstall,
+  };
+}
+
+async function runWithSlackPayloadInstallationContext<T>(args: {
+  authAdapter: SlackWebhookAuthAdapter;
+  body: unknown;
+  callback: () => T | Promise<T>;
+}): Promise<T | undefined> {
+  if (args.authAdapter.defaultBotTokenProvider) {
+    return await args.callback();
+  }
+
+  const installation = getSlackPayloadInstallation(args.body);
+  if (
+    !installation ||
+    !args.authAdapter.resolveTokenForTeam ||
+    !args.authAdapter.requestContext
+  ) {
+    return undefined;
+  }
+
+  const context = await args.authAdapter.resolveTokenForTeam(
+    installation.installationId,
+    installation.isEnterpriseInstall,
+  );
+  if (!context) {
+    return undefined;
+  }
+
+  return await args.authAdapter.requestContext.run(
+    withSlackInstallationContext(context, installation),
+    args.callback,
+  );
 }
 
 async function handleAuthenticatedSlackMessageChangedMention(args: {
@@ -92,26 +177,11 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
     return true;
   };
 
-  if (authAdapter.defaultBotTokenProvider) {
-    dispatch();
-    return;
-  }
-
-  const teamId = getSlackPayloadTeamId(args.body);
-  if (
-    !teamId ||
-    !authAdapter.resolveTokenForTeam ||
-    !authAdapter.requestContext
-  ) {
-    return;
-  }
-
-  const context = await authAdapter.resolveTokenForTeam(teamId);
-  if (!context) {
-    return;
-  }
-
-  authAdapter.requestContext.run(context, dispatch);
+  await runWithSlackPayloadInstallationContext({
+    authAdapter,
+    body: args.body,
+    callback: dispatch,
+  });
 }
 
 async function handleAuthenticatedSlackEventPrompt(args: {
@@ -147,26 +217,11 @@ async function handleAuthenticatedSlackEventPrompt(args: {
     await dispatchEventPromptRuns(envelope);
   };
 
-  if (authAdapter.defaultBotTokenProvider) {
-    await dispatch();
-    return;
-  }
-
-  const teamId = getSlackPayloadTeamId(args.body);
-  if (
-    !teamId ||
-    !authAdapter.resolveTokenForTeam ||
-    !authAdapter.requestContext
-  ) {
-    return;
-  }
-
-  const context = await authAdapter.resolveTokenForTeam(teamId);
-  if (!context) {
-    return;
-  }
-
-  await authAdapter.requestContext.run(context, dispatch);
+  await runWithSlackPayloadInstallationContext({
+    authAdapter,
+    body: args.body,
+    callback: dispatch,
+  });
 }
 
 async function handleLegacyChatSdkWebhook(args: {

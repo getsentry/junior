@@ -42,6 +42,52 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
+  it("allows autonomous event runs to complete silently", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "Review the event and stay silent when no action is needed.",
+      allowSilentSuccess: true,
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
+  it("does not treat missing assistant output as silent success", () => {
+    const reply = buildTurnResult({
+      newMessages: [],
+      userInput: "Review the event and stay silent when no action is needed.",
+      allowSilentSuccess: true,
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
+  });
+
   it("ignores provisional assistant text that appears before the last tool result", () => {
     const reply = buildTurnResult({
       newMessages: [

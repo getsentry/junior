@@ -48,6 +48,7 @@ function createDispatchResult(): DispatchCreateResult {
       input: "compiled prompt",
       maxAttempts: 5,
       plugin: "event-prompts",
+      runMode: "event_prompt",
       status: "pending",
       updatedAtMs: 1700000000000,
       version: 1,
@@ -106,6 +107,7 @@ describe("event prompt dispatch", () => {
     expect(results).toHaveLength(1);
     expect(createDispatch).toHaveBeenCalledWith({
       plugin: "event-prompts",
+      runMode: "event_prompt",
       nowMs: 1700000000000,
       options: expect.objectContaining({
         idempotencyKey: "event:slack-root-channel:Ev123",

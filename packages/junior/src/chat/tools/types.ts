@@ -44,6 +44,7 @@ export interface ToolHooks {
 
 export interface ToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
+  blockedToolNames?: readonly string[];
   channelId?: string;
   channelCapabilities: ChannelCapabilities;
   requester?: {

@@ -354,6 +354,8 @@ Event run destinations are derived from the binding delivery target and event en
 
 Delivery adapters must enforce final delivery idempotency using stable assistant message ids derived from the event run dispatch id.
 
+Event prompt runs may complete silently when the run succeeds with no assistant-visible text and no files. Silent success is an executor-level event-run behavior: Junior marks the dispatch completed and records the skipped delivery state without calling the platform delivery adapter. Ordinary user-message turns must continue to treat empty non-side-effect output as an execution failure.
+
 ### Runtime Policy
 
 Event runs are autonomous system-actor runs.
@@ -363,7 +365,8 @@ Core must enforce:
 1. Disabled interactive auth continuation for system actors.
 2. No use of user OAuth tokens unless a future explicit credential-subject contract permits it for the event run.
 3. No schedule-management or event-binding-management tools during event runs.
-4. Rejection of binding and event-definition policy fields until tool filtering, executor-level rejection, run limits, and repository mutation constraints are implemented below the model.
+4. No Slack mutating tools during event runs until binding-level tool policy is implemented below the model; final event output goes through the delivery adapter.
+5. Rejection of binding and event-definition policy fields until tool filtering, executor-level rejection, run limits, and repository mutation constraints are implemented below the model.
 
 Prompt wording is not sufficient enforcement for tools, credentials, delivery, or repository mutation policy.
 
@@ -379,6 +382,7 @@ Prompt wording is not sufficient enforcement for tools, credentials, delivery, o
 - Rate-limited or self-suppressed events are recorded as skipped and do not dispatch.
 - Dispatch creation failure leaves enough durable state or logs for recovery without asking the provider to retry indefinitely.
 - Delivery failure follows the platform delivery adapter's retry and idempotency rules.
+- Silent success records a completed event run without Slack delivery; it must not post placeholder, failure, or "no action needed" text.
 
 ## Observability
 
@@ -436,6 +440,7 @@ Use integration tests for:
 - Selected context blocks render as data and not as instruction text.
 - Event runs enforce tool policy and constraints below the model.
 - Platform delivery posts to the configured target exactly once best effort.
+- Empty successful event prompt runs complete silently without platform delivery.
 
 Use evals only when the behavior contract depends on model interpretation of the binding prompt or event context.
 

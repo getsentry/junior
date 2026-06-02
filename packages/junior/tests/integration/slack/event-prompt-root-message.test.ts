@@ -279,4 +279,72 @@ describe("Slack event prompts: root channel messages", () => {
       },
     });
   });
+
+  it("dispatches org-wide Enterprise Grid events from the enterprise installation", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-events-"));
+    await writeEventBinding(root);
+    await loadEventPromptRegistry(root);
+    const bot = new JuniorChat({
+      userName: "junior",
+      adapters: {
+        slack: createJuniorSlackAdapter({
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          signingSecret: SIGNING_SECRET,
+        }),
+      },
+      state: createMemoryState(),
+    });
+    await bot.initialize();
+    const slackAdapter = bot.getAdapter("slack") as unknown as {
+      setInstallation(
+        teamId: string,
+        installation: {
+          botToken: string;
+          botUserId: string;
+          teamName: string;
+        },
+      ): Promise<void>;
+    };
+    await slackAdapter.setInstallation("E123", {
+      botToken: "xoxb-enterprise-installed",
+      botUserId: "U_BOT",
+      teamName: "Enterprise Install",
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+
+    const rootBody = JSON.stringify({
+      ...slackEventsApiEnvelope({
+        eventType: "message",
+        channel: "CEVNT",
+        text: "enterprise build failed",
+        ts: "1700000000.000020",
+        user: "U123",
+      }),
+      team_id: "T123",
+      enterprise_id: "E123",
+      is_enterprise_install: true,
+      event_id: "EvEnterprise123",
+    });
+    const response = await handlePlatformWebhook(
+      createSlackRequest(rootBody),
+      "slack",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    const ids = await listIncompleteDispatchIds();
+    expect(ids).toHaveLength(1);
+    await expect(getDispatchRecord(ids[0] ?? "")).resolves.toMatchObject({
+      plugin: "event-prompts",
+      idempotencyKey: "event:slack-root-channel:EvEnterprise123",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "CEVNT",
+      },
+    });
+  });
 });

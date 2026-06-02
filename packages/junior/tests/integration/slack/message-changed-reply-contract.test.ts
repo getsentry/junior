@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
@@ -8,12 +8,18 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
 const slackWebhookClient = createSlackWebhookTestClient({
   signingSecret: SIGNING_SECRET,
+});
+const { ORIGINAL_ENV } = vi.hoisted(() => {
+  const ORIGINAL_ENV = { ...process.env };
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  return { ORIGINAL_ENV };
 });
 
 function makeDiagnostics() {
@@ -94,6 +100,19 @@ async function createEditedDmBot(args: {
 }
 
 describe("Slack contract: edited-message reply delivery", () => {
+  beforeEach(async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      JUNIOR_STATE_ADAPTER: "memory",
+    };
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    process.env = { ...ORIGINAL_ENV };
+  });
+
   it("posts the finalized reply into the edited DM thread with chat.postMessage", async () => {
     const bot = await createEditedDmBot({
       generateAssistantReply: async (_prompt, context) => {

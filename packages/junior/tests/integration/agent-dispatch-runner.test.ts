@@ -70,6 +70,28 @@ function createCredentialSubject() {
   return boundSubject;
 }
 
+function createSilentReply(): AssistantReply {
+  return {
+    text: "",
+    deliveryMode: "thread",
+    deliveryPlan: {
+      mode: "thread",
+      postThreadText: false,
+      attachFiles: "none",
+    },
+    diagnostics: {
+      assistantMessageCount: 1,
+      durationMs: 1234,
+      modelId: "test-model",
+      outcome: "success",
+      toolCalls: [],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: false,
+    },
+  };
+}
+
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
     process.env.JUNIOR_SECRET = "dispatch-runner-secret";
@@ -106,6 +128,8 @@ describe("agent dispatch runner", () => {
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
+      expect(context.allowSilentSuccess).toBe(false);
+      expect(context.blockedToolNames).toBeUndefined();
       expect(context.correlation).toMatchObject({
         conversationId: dispatchConversationId,
         threadId: dispatchConversationId,
@@ -163,6 +187,67 @@ describe("agent dispatch runner", () => {
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},
     );
+  });
+
+  it("completes event prompt dispatches silently without Slack delivery", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "event-prompts",
+      runMode: "event_prompt",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "event:no-action",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Review the event and stay silent when no action is needed.",
+        metadata: {
+          bindingId: "slack-root-channel",
+          eventId: "slack.channel.message.created",
+          sourceEventId: "EvNoAction",
+        },
+      },
+    });
+    const dispatchConversationId = getDispatchConversationId(created.record);
+    const generateAssistantReply = vi.fn(async (_input, context) => {
+      expect(context.allowSilentSuccess).toBe(true);
+      expect(context.blockedToolNames).toEqual(
+        expect.arrayContaining([
+          "slackChannelPostMessage",
+          "slackMessageAddReaction",
+          "slackScheduleCreateTask",
+        ]),
+      );
+      return createSilentReply();
+    });
+
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { generateAssistantReply },
+    );
+
+    const record = await getDispatchRecord(created.record.id);
+    expect(record).toMatchObject({
+      status: "completed",
+      runMode: "event_prompt",
+    });
+    expect(record?.resultMessageTs).toBeUndefined();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+    const persisted = await getPersistedThreadState(dispatchConversationId);
+    const conversation = coerceThreadConversationState(persisted);
+    expect(conversation.messages).toEqual([
+      expect.objectContaining({
+        id: `dispatch:${created.record.id}:user`,
+        meta: expect.objectContaining({
+          replied: false,
+          skippedReason: "silent_event_success",
+        }),
+      }),
+    ]);
   });
 
   it("starts dispatches without inherited destination conversation memory", async () => {
