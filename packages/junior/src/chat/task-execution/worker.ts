@@ -29,7 +29,7 @@ export interface ConversationWorkerContext {
 }
 
 export interface ConversationWorkerResult {
-  status: "completed" | "yielded";
+  status: "completed" | "lost_lease" | "yielded";
 }
 
 export interface ConversationWorkProcessResult {
@@ -210,6 +210,9 @@ export async function processConversationWork(
 
   try {
     const result = await options.run(workerContext);
+    if (result.status === "lost_lease") {
+      return { status: "lost_lease" };
+    }
     if (result.status === "yielded") {
       const yieldNowMs = now(options);
       const continuationMarked = await requestConversationContinuation({

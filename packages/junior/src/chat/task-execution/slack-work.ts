@@ -194,7 +194,7 @@ export function createSlackConversationWorker(
     const state = getConnectedState(options.state);
     await state.connect();
 
-    let records = getPendingRecords(
+    const records = getPendingRecords(
       await getConversationWorkState({
         conversationId: context.conversationId,
         state,
@@ -207,7 +207,6 @@ export function createSlackConversationWorker(
       return { status: "completed" };
     }
 
-    records = records.sort(compareInboundMessages);
     const latestRecord = records[records.length - 1];
     if (!latestRecord) {
       return { status: "completed" };
@@ -218,6 +217,10 @@ export function createSlackConversationWorker(
       throw new Error(
         "Latest conversation mailbox record is not Slack metadata",
       );
+    }
+
+    if (!(await context.checkIn())) {
+      return { status: "lost_lease" };
     }
 
     await runWithSlackInstallation({
@@ -259,12 +262,15 @@ export function createSlackConversationWorker(
       },
     });
 
-    await markConversationMessagesInjected({
+    const messagesMarked = await markConversationMessagesInjected({
       conversationId: context.conversationId,
       inboundMessageIds: records.map((record) => record.inboundMessageId),
       leaseToken: context.leaseToken,
       state,
     });
+    if (!messagesMarked) {
+      return { status: "lost_lease" };
+    }
 
     return { status: "completed" };
   };

@@ -1157,6 +1157,67 @@ describe("conversation work execution", () => {
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
+  it("reports lost lease when Slack injection marking loses ownership", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleAssistantContextChanged: async () => {},
+          handleAssistantThreadStarted: async () => {},
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      },
+    });
+
+    let handled = 0;
+    const worker = createSlackConversationWorker({
+      getSlackAdapter: () => slackAdapter,
+      runtime: {
+        handleNewMention: async () => {
+          handled += 1;
+        },
+        handleSubscribedMessage: async () => {
+          throw new Error("unexpected subscribed route");
+        },
+      },
+      state,
+    });
+
+    await expect(
+      worker({
+        checkIn: async () => true,
+        conversationId: CONVERSATION_ID,
+        drainMailbox: async () => [],
+        leaseToken: "stale-lease",
+        shouldYield: () => false,
+      }),
+    ).resolves.toEqual({ status: "lost_lease" });
+
+    expect(handled).toBe(1);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+  });
+
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
     const queue = new FakeQueue();
     const state = getStateAdapter();
