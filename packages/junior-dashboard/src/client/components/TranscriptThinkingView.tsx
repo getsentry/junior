@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { formatMessageTimestamp, stringifyPartValue } from "../format";
 import { cn } from "../styles";
-import type { ConversationTurn } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -19,7 +18,6 @@ function isString(value: string | undefined): value is string {
 /** Render a thinking transcript event with layout-aware expansion. */
 export function TranscriptThinkingView(props: {
   timestamp?: number;
-  turn?: ConversationTurn;
   value: unknown;
 }) {
   const [open, setOpen] = useState(false);

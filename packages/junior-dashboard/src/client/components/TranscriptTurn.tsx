@@ -231,7 +231,6 @@ function TurnEvents(props: {
             <TranscriptThinkingView
               key={`${props.turn.id}:thinking:${index}`}
               timestamp={entry.timestamp}
-              turn={props.turn}
               value={entry.part.output}
             />
           )}
@@ -318,7 +317,6 @@ function RedactedTranscriptView(props: { turn: ConversationTurn }) {
         <RedactedThinkingView
           key={`${props.turn.id}:redacted:thinking:${index}`}
           timestamp={entry.timestamp}
-          turn={props.turn}
         />
       )}
       renderTool={(entry, index) => (
@@ -389,10 +387,7 @@ function RedactedMarker() {
   );
 }
 
-function RedactedThinkingView(props: {
-  timestamp?: number;
-  turn: ConversationTurn;
-}) {
+function RedactedThinkingView(props: { timestamp?: number }) {
   const meta = [
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
