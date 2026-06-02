@@ -47,7 +47,7 @@ export function buildConversationMarkdown(
 
   if (detail.turns.length === 0) {
     lines.push("", "## Transcript", "", "No transcript is available.");
-    return trimMarkdown(lines);
+    return finishMarkdown(lines);
   }
 
   detail.turns.forEach((turn, index) => {
@@ -69,7 +69,7 @@ export function buildConversationMarkdown(
     appendTurnTranscript(lines, turn);
   });
 
-  return trimMarkdown(lines);
+  return finishMarkdown(lines);
 }
 
 function appendTurnTranscript(lines: string[], turn: ConversationTurn): void {
@@ -145,8 +145,8 @@ function appendMessage(
     return;
   }
 
-  const rawText = messageRawText(message).trim();
-  lines.push("", rawText || "_No content._");
+  const rawText = messageRawText(message);
+  lines.push("", rawText.trim().length ? rawText : "_No content._");
 }
 
 function appendThinking(
@@ -338,17 +338,16 @@ function inlineCode(value: string): string {
 }
 
 function fencedBlock(value: string, language: string): string {
-  const code = value.trimEnd();
-  const longestBacktickRun = [...code.matchAll(/`+/g)].reduce(
+  const longestBacktickRun = [...value.matchAll(/`+/g)].reduce(
     (longest, match) => Math.max(longest, match[0].length),
     0,
   );
   const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
-  return `${fence}${language}\n${code}\n${fence}`;
+  return `${fence}${language}\n${value}\n${fence}`;
 }
 
-function trimMarkdown(lines: string[]): string {
-  return `${lines.join("\n").trim()}\n`;
+function finishMarkdown(lines: string[]): string {
+  return `${lines.join("\n")}\n`;
 }
 
 function isNonEmptyString(value: string): boolean {

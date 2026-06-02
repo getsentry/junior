@@ -31,13 +31,21 @@ describe("dashboard markdown export", () => {
             {
               role: "user",
               timestamp: Date.parse(startedAt) + 1_000,
-              parts: [{ type: "text", text: "copy this conversation" }],
+              parts: [
+                {
+                  type: "text",
+                  text: "  copy this conversation  \n",
+                },
+              ],
             },
             {
               role: "assistant",
               timestamp: Date.parse(startedAt) + 2_000,
               parts: [
-                { type: "thinking", output: "Need a deterministic export." },
+                {
+                  type: "thinking",
+                  output: "Need a deterministic export.  \n",
+                },
                 {
                   type: "tool_call",
                   id: "call-1",
@@ -80,9 +88,9 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("- Requester: Alice");
     expect(markdown).toContain("- Location: #eng (C1)");
     expect(markdown).toContain("### Alice");
-    expect(markdown).toContain("copy this conversation");
+    expect(markdown).toContain("  copy this conversation  \n");
     expect(markdown).toContain("### Thinking");
-    expect(markdown).toContain("Need a deterministic export.");
+    expect(markdown).toContain("Need a deterministic export.  \n");
     expect(markdown).toContain("### Tool: search");
     expect(markdown).toContain('"query": "copy markdown"');
     expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
@@ -119,6 +127,7 @@ describe("dashboard markdown export", () => {
                   bytes: 24,
                   chars: 24,
                   redacted: true,
+                  text: "private question",
                   type: "text",
                 },
               ],
@@ -127,6 +136,13 @@ describe("dashboard markdown export", () => {
               role: "assistant",
               timestamp: 1_767_225_602_000,
               parts: [
+                {
+                  bytes: 22,
+                  chars: 22,
+                  redacted: true,
+                  text: "private answer",
+                  type: "text",
+                },
                 {
                   id: "call-1",
                   input: { query: "private search value" },
@@ -166,6 +182,7 @@ describe("dashboard markdown export", () => {
       "Transcript hidden because this conversation is not public.",
     );
     expect(markdown).toContain("<redacted> - 24 chars - 24 bytes");
+    expect(markdown).toContain("<redacted> - 22 chars - 22 bytes");
     expect(markdown).toContain(
       "<redacted> - tool_call - name: `search` - input: object - input keys: query",
     );
