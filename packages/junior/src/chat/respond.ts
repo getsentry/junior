@@ -212,12 +212,7 @@ export interface ReplyRequestContext {
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   channelConfiguration?: ChannelConfigurationService;
-  userAttachments?: Array<{
-    data?: Buffer;
-    mediaType: string;
-    filename?: string;
-    promptText?: string;
-  }>;
+  userAttachments?: ReplyRequestAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
   sandbox?: {
@@ -234,6 +229,9 @@ export interface ReplyRequestContext {
     webSearch?: WebSearchToolDeps;
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  drainSteeringMessages?: (
+    inject: (messages: ReplySteeringMessage[]) => Promise<void>,
+  ) => Promise<ReplySteeringMessage[]>;
   onAuthPending?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
@@ -243,6 +241,20 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void;
+}
+
+export interface ReplyRequestAttachment {
+  data?: Buffer;
+  mediaType: string;
+  filename?: string;
+  promptText?: string;
+}
+
+export interface ReplySteeringMessage {
+  omittedImageAttachmentCount?: number;
+  text: string;
+  timestampMs?: number;
+  userAttachments?: ReplyRequestAttachment[];
 }
 
 let startupDiscoveryLogged = false;
@@ -403,6 +415,19 @@ function buildUserTurnInput(args: {
   }
 
   return { routerBlocks, userContentParts };
+}
+
+function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
+  const { userContentParts } = buildUserTurnInput({
+    userTurnText: message.text,
+    userAttachments: message.userAttachments,
+    omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
+  });
+  return {
+    role: "user",
+    content: userContentParts,
+    timestamp: message.timestampMs ?? Date.now(),
+  } as PiMessage;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
@@ -1062,16 +1087,6 @@ export async function generateAssistantReply(
     // mid-run native tool-list mutation.
 
     // ── Agent execution ──────────────────────────────────────────────
-    agent = new Agent({
-      getApiKey: () => getPiGatewayApiKeyOverride(),
-      streamFn: createTracedStreamFn({ conversationPrivacy }),
-      initialState: {
-        systemPrompt: baseInstructions,
-        model: resolveGatewayModel(botConfig.modelId),
-        thinkingLevel: toAgentThinkingLevel(thinkingSelection.thinkingLevel),
-        tools: agentTools,
-      },
-    });
     let hasEmittedText = false;
     let needsSeparator = false;
     const persistSafeBoundary = async (
@@ -1096,6 +1111,66 @@ export async function generateAssistantReply(
         requester,
       });
     };
+    const drainSteeringMessages = async (): Promise<void> => {
+      if (
+        !context.drainSteeringMessages ||
+        !turnSessionState.canUseTurnSession ||
+        !sessionConversationId ||
+        !sessionId
+      ) {
+        return;
+      }
+
+      try {
+        let piMessages: PiMessage[] = [];
+        await context.drainSteeringMessages(async (messages) => {
+          piMessages = messages.map(buildSteeringPiMessage);
+          if (piMessages.length === 0) {
+            return;
+          }
+          await persistSafeBoundary([...agent!.state.messages, ...piMessages]);
+        });
+        for (const message of piMessages) {
+          agent!.steer(message);
+        }
+        if (piMessages.length > 0) {
+          logInfo(
+            "agent_turn_steering_messages_injected",
+            spanContext,
+            {
+              "app.ai.steering_message_count": piMessages.length,
+            },
+            "Agent turn steering messages injected",
+          );
+        }
+      } catch (error) {
+        logWarn(
+          "agent_turn_steering_messages_drain_failed",
+          spanContext,
+          {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Agent turn steering message drain failed",
+        );
+      }
+    };
+
+    agent = new Agent({
+      getApiKey: () => getPiGatewayApiKeyOverride(),
+      streamFn: createTracedStreamFn({ conversationPrivacy }),
+      steeringMode: "all",
+      prepareNextTurn: async () => {
+        await drainSteeringMessages();
+        return undefined;
+      },
+      initialState: {
+        systemPrompt: baseInstructions,
+        model: resolveGatewayModel(botConfig.modelId),
+        thinkingLevel: toAgentThinkingLevel(thinkingSelection.thinkingLevel),
+        tools: agentTools,
+      },
+    });
 
     const unsubscribe = agent.subscribe((event) => {
       if (event.type === "turn_end" && event.toolResults.length > 0) {

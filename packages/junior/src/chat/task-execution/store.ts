@@ -9,8 +9,10 @@ const CONVERSATION_WORK_PREFIX = "junior:conversation-work";
 const CONVERSATION_WORK_SCHEMA_VERSION = 1;
 const CONVERSATION_WORK_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_WORK_INDEX_LOCK_TTL_MS = 10_000;
+const CONVERSATION_WORK_INDEX_LOCK_WAIT_MS = 2_000;
+const CONVERSATION_WORK_INDEX_LOCK_RETRY_MS = 25;
 const CONVERSATION_WORK_MUTATION_LOCK_TTL_MS = 10_000;
-const CONVERSATION_WORK_MUTATION_WAIT_MS = 2_000;
+const CONVERSATION_WORK_MUTATION_WAIT_MS = 10_000;
 const CONVERSATION_WORK_MUTATION_RETRY_MS = 25;
 
 export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
@@ -302,12 +304,20 @@ async function withIndexLock<T>(
   state: StateAdapter,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock = await state.acquireLock(
-    indexLockKey(),
-    CONVERSATION_WORK_INDEX_LOCK_TTL_MS,
-  );
-  if (!lock) {
-    throw new Error("Could not acquire conversation work index lock");
+  const startedAtMs = now();
+  let lock: Lock | null;
+  while (true) {
+    lock = await state.acquireLock(
+      indexLockKey(),
+      CONVERSATION_WORK_INDEX_LOCK_TTL_MS,
+    );
+    if (lock) {
+      break;
+    }
+    if (now() - startedAtMs >= CONVERSATION_WORK_INDEX_LOCK_WAIT_MS) {
+      throw new Error("Could not acquire conversation work index lock");
+    }
+    await sleep(CONVERSATION_WORK_INDEX_LOCK_RETRY_MS);
   }
   try {
     return await callback();

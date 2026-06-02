@@ -15,7 +15,6 @@ import {
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
-  ensureSlackAdapterInitialized,
   runWithSlackInstallation,
   verifySlackSignature,
   type SlackInstallationContext,
@@ -92,6 +91,7 @@ interface SlackInteractivePayload {
 }
 
 export interface SlackWebhookServices {
+  getUserTokenStore?: () => UserTokenStore;
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   runtime: Pick<
@@ -102,11 +102,14 @@ export interface SlackWebhookServices {
     | "handleSubscribedMessage"
   >;
   state?: StateAdapter;
-  userTokenStore?: UserTokenStore;
 }
 
 function enqueue(waitUntil: WaitUntilFn, task: Promise<void>): void {
   waitUntil(task);
+}
+
+function getUserTokenStore(services: SlackWebhookServices): UserTokenStore {
+  return services.getUserTokenStore?.() ?? createUserTokenStore();
 }
 
 function parseJson(body: string): unknown {
@@ -292,14 +295,17 @@ async function handleSlackEvent(args: {
 
   const adapter = args.services.getSlackAdapter();
   const state = args.services.state ?? getStateAdapter();
-  const userTokenStore = args.services.userTokenStore ?? createUserTokenStore();
   await state.connect();
   const installation = installationFromEnvelope(args.body);
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
     try {
-      await publishAppHomeView(getSlackClient(), userId, userTokenStore);
+      await publishAppHomeView(
+        getSlackClient(),
+        userId,
+        getUserTokenStore(args.services),
+      );
     } catch (error) {
       logException(error, "slack_app_home_publish_failed", {
         slackUserId: userId,
@@ -570,8 +576,7 @@ async function handleSlackForm(args: {
       task: () =>
         handleInteractivePayload({
           payload,
-          userTokenStore:
-            args.services.userTokenStore ?? createUserTokenStore(),
+          userTokenStore: getUserTokenStore(args.services),
         }),
     }).catch((error) => {
       logException(error, "slack_interactive_payload_failed", {
@@ -590,10 +595,6 @@ export async function handleSlackWebhook(args: {
 }): Promise<Response> {
   const adapter = args.services.getSlackAdapter();
   const body = await args.request.text();
-  await ensureSlackAdapterInitialized({
-    adapter,
-    state: args.services.state,
-  });
 
   if (!verifySlackSignature({ adapter, body, request: args.request })) {
     return new Response("Invalid signature", { status: 401 });

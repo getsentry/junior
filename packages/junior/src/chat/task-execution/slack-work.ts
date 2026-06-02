@@ -248,16 +248,60 @@ export function createSlackConversationWorker(
           skipped,
           totalSinceLastHandler: messages.length,
         };
+        const initialInboundMessageIds = records.map(
+          (record) => record.inboundMessageId,
+        );
+        let initialMessagesPersisted = false;
+        const markInitialMessagesInjected = async (): Promise<boolean> => {
+          if (initialMessagesPersisted) {
+            return true;
+          }
+          const marked = await markConversationMessagesInjected({
+            conversationId: context.conversationId,
+            inboundMessageIds: initialInboundMessageIds,
+            leaseToken: context.leaseToken,
+            state,
+          });
+          initialMessagesPersisted = marked;
+          return marked;
+        };
+        const onTurnStatePersisted = async (): Promise<void> => {
+          if (!(await markInitialMessagesInjected())) {
+            throw new Error(
+              `Conversation work lease lost before Slack turn handoff for ${context.conversationId}`,
+            );
+          }
+        };
+        const drainSteeringMessages = async (
+          inject: (messages: Message[]) => Promise<void>,
+        ): Promise<Message[]> => {
+          let restoredMessages: Message[] | undefined;
+          const drained = await context.drainMailbox(async (pendingRecords) => {
+            const messages = pendingRecords.map((record) =>
+              restoreMessage({ adapter, record }),
+            );
+            restoredMessages = messages;
+            await inject(messages);
+          });
+          return (
+            restoredMessages ??
+            drained.map((record) => restoreMessage({ adapter, record }))
+          );
+        };
 
         if (route === "mention") {
           await options.runtime.handleNewMention(thread, latestMessage, {
             messageContext,
+            drainSteeringMessages,
+            onTurnStatePersisted,
           });
           return;
         }
 
         await options.runtime.handleSubscribedMessage(thread, latestMessage, {
           messageContext,
+          drainSteeringMessages,
+          onTurnStatePersisted,
         });
       },
     });

@@ -45,8 +45,12 @@ export interface AssistantLifecycleEvent {
 
 export interface ReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
+  drainSteeringMessages?: (
+    inject: (messages: Message[]) => Promise<void>,
+  ) => Promise<Message[]>;
   messageContext?: MessageContext;
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
+  onTurnStatePersisted?: () => Promise<void>;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -139,8 +143,12 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
+      onTurnStatePersisted?: () => Promise<void>;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
+      drainSteeringMessages?: (
+        inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+      ) => Promise<QueuedTurnMessage[]>;
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
@@ -181,6 +189,42 @@ function getQueuedMessages(
       userText: appendSlackLegacyAttachmentText(stripped, message.raw),
     };
   });
+}
+
+function getQueuedMessagesFromSlackMessages(
+  messages: Message[],
+  options: {
+    explicitMention: boolean;
+    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
+  },
+): QueuedTurnMessage[] {
+  return getQueuedMessages(
+    { skipped: messages, totalSinceLastHandler: messages.length },
+    options,
+  );
+}
+
+function createSteeringMessageDrain(
+  hooks: ReplyHooks | undefined,
+  options: {
+    explicitMention: boolean;
+    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
+  },
+):
+  | ((
+      inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+    ) => Promise<QueuedTurnMessage[]>)
+  | undefined {
+  if (!hooks?.drainSteeringMessages) {
+    return undefined;
+  }
+
+  return async (inject) => {
+    const drained = await hooks.drainSteeringMessages!(async (messages) => {
+      await inject(getQueuedMessagesFromSlackMessages(messages, options));
+    });
+    return getQueuedMessagesFromSlackMessages(drained, options);
+  };
 }
 
 export interface SlackTurnRuntime<
@@ -355,11 +399,17 @@ export function createSlackTurnRuntime<
             explicitMention: true,
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
+          const drainSteeringMessages = createSteeringMessageDrain(hooks, {
+            explicitMention: true,
+            stripLeadingBotMention: deps.stripLeadingBotMention,
+          });
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
             onToolInvocation: toolInvocationHook,
+            drainSteeringMessages,
+            onTurnStatePersisted: hooks?.onTurnStatePersisted,
           });
         });
       } catch (error) {
@@ -449,6 +499,10 @@ export function createSlackTurnRuntime<
             runId,
           };
           const queuedMessages = getQueuedMessages(hooks?.messageContext, {
+            explicitMention: Boolean(message.isMention),
+            stripLeadingBotMention: deps.stripLeadingBotMention,
+          });
+          const drainSteeringMessages = createSteeringMessageDrain(hooks, {
             explicitMention: Boolean(message.isMention),
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
@@ -554,6 +608,8 @@ export function createSlackTurnRuntime<
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
             onToolInvocation: toolInvocationHook,
+            drainSteeringMessages,
+            onTurnStatePersisted: hooks?.onTurnStatePersisted,
           });
         });
       } catch (error) {

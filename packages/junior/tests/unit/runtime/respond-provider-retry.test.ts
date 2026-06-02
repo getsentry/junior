@@ -1,7 +1,10 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { counters } = vi.hoisted(() => ({
+const { agentMode, counters } = vi.hoisted(() => ({
+  agentMode: {
+    value: "providerRetry" as "providerRetry" | "steering",
+  },
   counters: {
     continueCalls: 0,
     promptCalls: 0,
@@ -16,6 +19,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       systemPrompt: string;
       tools: unknown[];
     };
+    private prepareNextTurn?: () => Promise<unknown> | unknown;
+    private steeringMessages: unknown[] = [];
 
     constructor(input: {
       initialState: {
@@ -23,6 +28,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         systemPrompt: string;
         tools: unknown[];
       };
+      prepareNextTurn?: () => Promise<unknown> | unknown;
     }) {
       this.state = {
         messages: [],
@@ -30,10 +36,15 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      this.prepareNextTurn = input.prepareNextTurn;
     }
 
     subscribe() {
       return () => undefined;
+    }
+
+    steer(message: unknown) {
+      this.steeringMessages.push(message);
     }
 
     abort() {
@@ -43,6 +54,20 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
+      if (agentMode.value === "steering") {
+        await this.prepareNextTurn?.();
+        this.state.messages.push(...this.steeringMessages);
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "Steered." }],
+          stopReason: "stop",
+          usage: {
+            input: 2,
+            output: 2,
+          },
+        });
+        return {};
+      }
       this.state.messages.push({
         role: "toolResult",
         toolName: "bash",
@@ -176,6 +201,7 @@ import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
+    agentMode.value = "providerRetry";
     counters.continueCalls = 0;
     counters.promptCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -223,5 +249,39 @@ describe("generateAssistantReply provider retry", () => {
       "toolResult",
       "assistant",
     ]);
+  });
+
+  it("persists and queues steering messages at the next Pi boundary", async () => {
+    agentMode.value = "steering";
+    const injectedTexts: string[] = [];
+
+    const reply = await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-steering",
+        turnId: "turn-steering",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+      },
+      drainSteeringMessages: async (inject) => {
+        const messages = [
+          { text: "actually do the other thing", timestampMs: 2_000 },
+        ];
+        await inject(messages);
+        injectedTexts.push(...messages.map((message) => message.text));
+        return messages;
+      },
+    });
+
+    expect(reply.text).toBe("Steered.");
+    expect(injectedTexts).toEqual(["actually do the other thing"]);
+
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-steering",
+      "turn-steering",
+    );
+    const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
+    expect(serializedMessages).toContain("help me");
+    expect(serializedMessages).toContain("actually do the other thing");
   });
 });

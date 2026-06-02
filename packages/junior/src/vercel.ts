@@ -18,7 +18,7 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
       },
     ],
     functions: {
-      "server.ts": {
+      "api/internal/agent/continue.ts": {
         maxDuration: 300,
         experimentalTriggers: [
           {

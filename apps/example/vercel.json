@@ -6,5 +6,16 @@
       "path": "/api/internal/heartbeat",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/internal/agent/continue.ts": {
+      "maxDuration": 300,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "junior_conversation_work"
+        }
+      ]
+    }
+  }
 }

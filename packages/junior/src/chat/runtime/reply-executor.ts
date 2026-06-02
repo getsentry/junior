@@ -27,7 +27,10 @@ import {
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
-import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import {
+  generateAssistantReply as generateAssistantReplyImpl,
+  type ReplySteeringMessage,
+} from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAssistantThreadContext,
@@ -265,8 +268,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
+      onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
+      drainSteeringMessages?: (
+        inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+      ) => Promise<QueuedTurnMessage[]>;
     } = {},
   ) {
     if (message.author.isMe) {
@@ -511,6 +518,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         await persistThreadState(thread, {
           conversation: preparedState.conversation,
         });
+        await options.onTurnStatePersisted?.();
 
         const resolvedUserName =
           message.author.userName ?? fallbackIdentity?.userName;
@@ -629,6 +637,52 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
+          const resolveSteeringMessages = async (
+            queuedMessages: QueuedTurnMessage[],
+          ): Promise<ReplySteeringMessage[]> => {
+            return await Promise.all(
+              queuedMessages.map(async (queued) => {
+                const attachments = queued.message.attachments;
+                return {
+                  text: queued.userText,
+                  timestampMs: queued.message.metadata.dateSent.getTime(),
+                  omittedImageAttachmentCount:
+                    !isVisionEnabled() &&
+                    hasPotentialImageAttachment(attachments)
+                      ? countPotentialImageAttachments(attachments)
+                      : 0,
+                  userAttachments: await deps.resolveUserAttachments(
+                    attachments,
+                    {
+                      threadId,
+                      requesterId: queued.message.author.userId,
+                      channelId,
+                      runId,
+                      conversation: preparedState.conversation,
+                      messageTs: getSlackMessageTs(queued.message),
+                    },
+                  ),
+                };
+              }),
+            );
+          };
+          const drainSteeringMessages = options.drainSteeringMessages
+            ? async (
+                inject: (messages: ReplySteeringMessage[]) => Promise<void>,
+              ): Promise<ReplySteeringMessage[]> => {
+                let injectedMessages: ReplySteeringMessage[] | undefined;
+                const drained = await options.drainSteeringMessages!(
+                  async (queuedMessages) => {
+                    injectedMessages =
+                      await resolveSteeringMessages(queuedMessages);
+                    await inject(injectedMessages);
+                  },
+                );
+                return (
+                  injectedMessages ?? (await resolveSteeringMessages(drained))
+                );
+              }
+            : undefined;
           let reply = await deps.services.generateAssistantReply(
             effectiveUserText,
             {
@@ -693,6 +747,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
+              drainSteeringMessages,
             },
           );
           const diagnosticsContext = {

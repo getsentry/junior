@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message, Thread } from "chat";
+import type { Message, StateAdapter, Thread } from "chat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
@@ -79,6 +79,47 @@ function inboundMessage(
     },
     ...overrides,
   };
+}
+
+function delayIndexLockOnce(state: StateAdapter): StateAdapter {
+  let blocked = false;
+  return new Proxy(state, {
+    get(target, prop, receiver) {
+      if (prop === "acquireLock") {
+        return async (key: string, ttlMs: number) => {
+          if (!blocked && key === "junior:conversation-work:index:lock") {
+            blocked = true;
+            return null;
+          }
+          return target.acquireLock(key, ttlMs);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StateAdapter;
+}
+
+function delayMutationLockUntil(args: {
+  conversationId: string;
+  readyAtMs: number;
+  state: StateAdapter;
+}): StateAdapter {
+  const mutationLockKey = `junior:conversation-work:mutation:${args.conversationId}`;
+  return new Proxy(args.state, {
+    get(target, prop, receiver) {
+      if (prop === "acquireLock") {
+        return async (key: string, ttlMs: number) => {
+          if (key === mutationLockKey && Date.now() < args.readyAtMs) {
+            return null;
+          }
+          return target.acquireLock(key, ttlMs);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StateAdapter;
 }
 
 function signSlackBody(body: string, timestamp: string): string {
@@ -202,6 +243,51 @@ describe("conversation work execution", () => {
     expect(state?.messages).toHaveLength(1);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(queue.sent).toHaveLength(2);
+  });
+
+  it("retries transient conversation work index lock contention", async () => {
+    const queue = new FakeQueue();
+    const state = delayIndexLockOnce(getStateAdapter());
+
+    await expect(
+      appendAndEnqueueInboundMessage({
+        message: inboundMessage("m1"),
+        nowMs: 2_000,
+        queue,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(queue.sent).toHaveLength(1);
+  });
+
+  it("waits through same-conversation mutation lock contention", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = new FakeQueue();
+    const state = delayMutationLockUntil({
+      conversationId: CONVERSATION_ID,
+      readyAtMs: 3_500,
+      state: getStateAdapter(),
+    });
+
+    const append = appendAndEnqueueInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 2_000,
+      queue,
+      state,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await expect(append).resolves.toMatchObject({
+      status: "appended",
+      queueMessageId: "queue-1",
+    });
+    expect(queue.sent).toHaveLength(1);
   });
 
   it("repairs pending mailbox work when the initial queue send fails", async () => {
@@ -1014,6 +1100,85 @@ describe("conversation work execution", () => {
       conversationId: CONVERSATION_ID,
       state,
     });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("drains Slack messages that arrive during an active turn into steering", async () => {
+    const queue = new FakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createJuniorSlackAdapter({
+      botToken: "xoxb-test",
+      botUserId: SLACK_BOT_USER_ID,
+      signingSecret: SLACK_SIGNING_SECRET,
+    });
+    const ingressServices = {
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime: {
+        handleAssistantContextChanged: async () => {},
+        handleAssistantThreadStarted: async () => {},
+        handleNewMention: async () => {},
+        handleSubscribedMessage: async () => {},
+      },
+      state,
+    };
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+          ts: "1712345.0001",
+        }),
+      ),
+      services: ingressServices,
+    });
+
+    const injected: string[][] = [];
+    const drained: string[][] = [];
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async (_thread, _message, hooks) => {
+              await hooks?.onTurnStatePersisted?.();
+              await handleSlackWebhookAndFlush({
+                request: slackWebhookRequest(
+                  slackEnvelope({
+                    text: `<@${SLACK_BOT_USER_ID}> steer this`,
+                    ts: "1712345.0002",
+                    threadTs: "1712345.0001",
+                  }),
+                ),
+                services: ingressServices,
+              });
+              const messages =
+                (await hooks?.drainSteeringMessages?.(async (steering) => {
+                  injected.push(steering.map((message) => message.id));
+                })) ?? [];
+              drained.push(messages.map((message) => message.id));
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(injected).toEqual([["1712345.0002"]]);
+    expect(drained).toEqual([["1712345.0002"]]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages.map((message) => message.injectedAtMs)).toEqual([
+      expect.any(Number),
+      expect.any(Number),
+    ]);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
   });
 

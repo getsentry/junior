@@ -56,9 +56,9 @@ export function getProductionSlackRuntime(): ReturnType<
 export function getProductionSlackWebhookServices(): SlackWebhookServices {
   return {
     getSlackAdapter: getProductionSlackAdapter,
+    getUserTokenStore: createUserTokenStore,
     queue: getVercelConversationWorkQueue(),
     runtime: getProductionSlackRuntime(),
-    userTokenStore: createUserTokenStore(),
   };
 }
 

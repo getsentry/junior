@@ -58,7 +58,7 @@ describe("init cli", () => {
       },
     ]);
     expect(vercelConfig.functions).toEqual({
-      "server.ts": {
+      "api/internal/agent/continue.ts": {
         maxDuration: 300,
         experimentalTriggers: [
           {

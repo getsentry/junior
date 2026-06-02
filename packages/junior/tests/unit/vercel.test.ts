@@ -1,7 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
+
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const WORKSPACE_ROOT = path.resolve(TEST_DIR, "../../../..");
 
 describe("juniorVercelConfig", () => {
   it("returns config with default buildCommand", () => {
@@ -16,7 +22,7 @@ describe("juniorVercelConfig", () => {
       },
     ]);
     expect(config.functions).toEqual({
-      "server.ts": {
+      "api/internal/agent/continue.ts": {
         maxDuration: 300,
         experimentalTriggers: [
           {
@@ -32,6 +38,17 @@ describe("juniorVercelConfig", () => {
     const config = juniorVercelConfig({ buildCommand: null });
 
     expect(config.buildCommand).toBeUndefined();
+  });
+
+  it("keeps the example app Vercel config aligned with queue triggers", () => {
+    const config = JSON.parse(
+      fs.readFileSync(
+        path.join(WORKSPACE_ROOT, "apps/example/vercel.json"),
+        "utf8",
+      ),
+    );
+
+    expect(config).toEqual(juniorVercelConfig());
   });
 });
 

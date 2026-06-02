@@ -343,7 +343,7 @@ describe("Slack webhook: App Home events", () => {
           },
         },
         state,
-        userTokenStore,
+        getUserTokenStore: () => userTokenStore,
       },
     });
 
