@@ -35,18 +35,29 @@ function slackWebhookRequest(body: unknown): Request {
   });
 }
 
-type WaitUntilTask = () => Promise<unknown>;
+type WaitUntilTask = Promise<unknown>;
 
 function collectWaitUntil(tasks: WaitUntilTask[]): WaitUntilFn {
   return (task) => {
-    tasks.push(typeof task === "function" ? task : () => task);
+    tasks.push(typeof task === "function" ? task() : task);
   };
 }
 
 async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
   for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index]?.();
+    await tasks[index];
   }
+}
+
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 describe("Slack webhook: App Home events", () => {
@@ -116,15 +127,16 @@ describe("Slack webhook: App Home events", () => {
 
     expect(response.status).toBe(200);
     expect(waitUntilTasks).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(0);
     await flushWaitUntil(waitUntilTasks);
     expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(1);
   });
 
-  it("acknowledges message events before durable handoff work runs", async () => {
+  it("acknowledges message events before durable handoff work finishes", async () => {
     const state = createMemoryState();
     const waitUntilTasks: WaitUntilTask[] = [];
     const queueMessages: Array<{ conversationId: string }> = [];
+    const queueSendEntered = deferred();
+    const finishQueueSend = deferred();
     const slackAdapter = createJuniorSlackAdapter({
       botToken: "xoxb-test-token",
       botUserId: BOT_USER_ID,
@@ -151,6 +163,8 @@ describe("Slack webhook: App Home events", () => {
         queue: {
           send: async (message) => {
             queueMessages.push(message);
+            queueSendEntered.resolve();
+            await finishQueueSend.promise;
             return { messageId: "queue-1" };
           },
         },
@@ -174,12 +188,12 @@ describe("Slack webhook: App Home events", () => {
 
     expect(response.status).toBe(200);
     expect(waitUntilTasks).toHaveLength(1);
-    expect(queueMessages).toEqual([]);
-
-    await flushWaitUntil(waitUntilTasks);
-
+    await queueSendEntered.promise;
     expect(queueMessages).toEqual([
       { conversationId: "slack:C123:1712345.0001" },
     ]);
+
+    finishQueueSend.resolve();
+    await flushWaitUntil(waitUntilTasks);
   });
 });

@@ -81,10 +81,7 @@ export interface SlackWebhookServices {
   state?: StateAdapter;
 }
 
-function enqueue(
-  waitUntil: WaitUntilFn,
-  task: Promise<void> | (() => Promise<void>),
-): void {
+function enqueue(waitUntil: WaitUntilFn, task: Promise<void>): void {
   waitUntil(task);
 }
 
@@ -578,16 +575,15 @@ export async function handleSlackWebhook(args: {
   }
 
   if (parsed.type === "event_callback") {
-    enqueue(args.waitUntil, async () => {
-      try {
-        await handleSlackEvent({
-          body: parsed,
-          services: args.services,
-        });
-      } catch (error) {
+    enqueue(
+      args.waitUntil,
+      handleSlackEvent({
+        body: parsed,
+        services: args.services,
+      }).catch((error) => {
         logException(error, "slack_event_enqueue_failed");
-      }
-    });
+      }),
+    );
   }
 
   return new Response("ok", { status: 200 });
