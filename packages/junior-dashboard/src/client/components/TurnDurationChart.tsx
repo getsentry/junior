@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import {
@@ -41,7 +41,6 @@ import type {
 import { MetricValue } from "./Metric";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
-import { SectionTitle } from "./SectionTitle";
 import {
   DurationMetric,
   MessagesMetric,
@@ -55,7 +54,7 @@ export function TurnDurationChart(props: {
   sessions: Session[];
   timeZone: string;
 }) {
-  const [mode, setMode] = useState<DurationChartMode>("turns");
+  const [mode, setMode] = useState<DurationChartMode>("conversations");
   const navigate = useNavigate();
   const nowMs = Date.now();
   const rangeStartMs = nowMs - 7 * 24 * 60 * 60 * 1000;
@@ -109,10 +108,7 @@ export function TurnDurationChart(props: {
           </div>
         }
       >
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <SectionTitle>Durations</SectionTitle>
-          <ChartModeToggle mode={mode} onChange={setMode} />
-        </div>
+        <ChartModeToggle mode={mode} onChange={setMode} />
       </SectionHeader>
       <div
         className="min-h-48 px-3 pb-2 pt-4"
@@ -206,30 +202,36 @@ function ChartModeToggle(props: {
   onChange(mode: DurationChartMode): void;
 }) {
   const modes: Array<{ label: string; value: DurationChartMode }> = [
-    { label: "Turns", value: "turns" },
     { label: "Conversations", value: "conversations" },
+    { label: "Turns", value: "turns" },
   ];
   return (
     <div
       aria-label="Duration chart mode"
-      className="inline-flex items-center gap-3"
+      className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1"
       role="group"
     >
-      {modes.map((mode) => (
-        <button
-          aria-pressed={props.mode === mode.value}
-          className={cn(
-            "cursor-pointer border-0 border-b-2 bg-transparent px-0.5 pb-1 pt-0.5 text-[0.78rem] font-semibold leading-none transition-colors",
-            props.mode === mode.value
-              ? "border-[#b59cff] text-white"
-              : "border-transparent text-[#888] hover:border-white/25 hover:text-white",
-          )}
-          key={mode.value}
-          onClick={() => props.onChange(mode.value)}
-          type="button"
-        >
-          {mode.label}
-        </button>
+      {modes.map((mode, index) => (
+        <Fragment key={mode.value}>
+          {index > 0 ? (
+            <span className="text-[1.05rem] font-bold leading-tight text-[#666]">
+              /
+            </span>
+          ) : null}
+          <button
+            aria-pressed={props.mode === mode.value}
+            className={cn(
+              "cursor-pointer border-0 bg-transparent p-0 text-[1.05rem] font-bold leading-tight tracking-normal transition-colors",
+              props.mode === mode.value
+                ? "text-white"
+                : "text-[#888] hover:text-white",
+            )}
+            onClick={() => props.onChange(mode.value)}
+            type="button"
+          >
+            {mode.label}
+          </button>
+        </Fragment>
       ))}
     </div>
   );

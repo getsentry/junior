@@ -144,6 +144,11 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.  |
 | `GET /api/dashboard/me`                          | Signed-in dashboard identity.                       |
 
+Conversation transcript responses may synthesize the static system prompt only
+when the exposed transcript begins at a model run boundary. Follow-up turn
+transcripts that are scoped to the current user message must not repeat the
+system prompt.
+
 The current public diagnostics surfaces must move behind dashboard auth:
 
 - The HTML diagnostics page stays at `/` when the dashboard package is mounted, but requires dashboard auth.

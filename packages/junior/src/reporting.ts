@@ -588,7 +588,7 @@ function countConversationMessages(
   return transcript.filter(isConversationMessage).length;
 }
 
-/** Build the synthetic system-prompt message prepended to each exposed turn transcript. */
+/** Build the synthetic system-prompt message shown only at a run boundary. */
 function systemPromptMessage(): DashboardTranscriptMessage {
   return {
     role: "system",
@@ -596,14 +596,25 @@ function systemPromptMessage(): DashboardTranscriptMessage {
   };
 }
 
-function turnScopedMessages(messages: PiMessage[]): PiMessage[] {
+interface ScopedTurnMessages {
+  messages: PiMessage[];
+  startsAtRunBoundary: boolean;
+}
+
+function turnScopedMessages(messages: PiMessage[]): ScopedTurnMessages {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index] as unknown as Record<string, unknown>;
     if (record.role === "user") {
-      return messages.slice(index);
+      return {
+        messages: messages.slice(index),
+        startsAtRunBoundary: index === 0,
+      };
     }
   }
-  return messages;
+  return {
+    messages,
+    startsAtRunBoundary: messages.length > 0,
+  };
 }
 
 function traceIdFromTranscript(
@@ -658,15 +669,21 @@ async function readConversation(
       );
       const scopedMessages = sessionRecord?.piMessages
         ? turnScopedMessages(sessionRecord.piMessages)
-        : [];
+        : { messages: [], startsAtRunBoundary: false };
       const canExposeTranscript = canExposeConversationTranscript(summary);
-      const normalizedTranscript = scopedMessages.map(
+      const normalizedTranscript = scopedMessages.messages.map(
         normalizeTranscriptMessage,
       );
       const transcriptMessageCount =
         countConversationMessages(normalizedTranscript);
       const transcript = canExposeTranscript
-        ? [systemPromptMessage(), ...normalizedTranscript]
+        ? [
+            ...(scopedMessages.startsAtRunBoundary &&
+            normalizedTranscript.length > 0
+              ? [systemPromptMessage()]
+              : []),
+            ...normalizedTranscript,
+          ]
         : [];
       const transcriptMetadata = canExposeTranscript
         ? undefined

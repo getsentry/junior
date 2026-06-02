@@ -149,7 +149,6 @@ describe("dashboard reporting", () => {
       transcriptMessageCount: 2,
     });
     expect(report.turns[0]!.transcript).toEqual([
-      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 3,
@@ -305,7 +304,6 @@ describe("dashboard reporting", () => {
     ]);
     expect(report.turns[1]).toMatchObject({ id: "turn-two" });
     expect(report.turns[1]!.transcript).toEqual([
-      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 3,

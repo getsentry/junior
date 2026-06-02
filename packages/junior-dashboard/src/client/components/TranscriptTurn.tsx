@@ -643,7 +643,7 @@ function SystemMessageView(props: {
 
   return (
     <details
-      className={cn(transcriptMessageClass(role), !open && "gap-0")}
+      className={cn(transcriptMessageClass(role), !open && "gap-y-0")}
       onToggle={(event) => {
         if (event.currentTarget !== event.target) return;
         setOpen(event.currentTarget.open);

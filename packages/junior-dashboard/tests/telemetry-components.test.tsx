@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { TurnTranscript } from "../src/client/components/TranscriptTurn";
+import { TurnDurationChart } from "../src/client/components/TurnDurationChart";
 import { client } from "../src/client/api";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import type {
@@ -90,6 +91,65 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("View in Sentry");
     expect(html).toContain("https://sentry.example/trace/abc");
+  });
+
+  it("removes residual grid row gap from collapsed system prompts", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      title: "Turn turn-1",
+      transcript: [
+        {
+          role: "system",
+          parts: [{ type: "text", text: "System prompt" }],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TurnTranscript number={1} turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("gap-y-0");
+  });
+
+  it("uses chart mode links as the duration chart title", () => {
+    const session = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      completedAt: "2026-01-01T00:00:03.000Z",
+      lastProgressAt: "2026-01-01T00:00:03.000Z",
+      lastSeenAt: "2026-01-01T00:00:03.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      title: "Turn turn-1",
+    } satisfies Session;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TurnDurationChart sessions={[session]} timeZone="UTC" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).not.toContain("Durations");
+    expect(html).toContain("Turns");
+    expect(html).toContain("Conversations");
+    expect(html.indexOf("Conversations")).toBeLessThan(html.indexOf("Turns"));
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Conversations/);
+    expect(html).toContain(
+      'aria-label="conversations by duration over the last 7 days"',
+    );
   });
 
   it("omits empty tool-call summaries", () => {
