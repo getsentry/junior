@@ -316,6 +316,7 @@ describe("dashboard telemetry components", () => {
   it("caps dashboard route pages at a readable width", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -346,6 +347,7 @@ describe("dashboard telemetry components", () => {
   it("renders transcript copy as an icon-only control", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -457,6 +459,47 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("overflow-hidden");
     expect(html).toContain("overflow-wrap:anywhere");
     expect(html).toContain("[&amp;_.line]:block");
+    expect(html).toContain("[&amp;_.line]:whitespace-pre-wrap");
+    expect(html).toContain("[&amp;_code]:whitespace-normal");
+    expect(html).toContain("[&amp;_pre]:whitespace-normal");
+    expect(html).not.toContain("[&amp;_code]:whitespace-pre-wrap");
+  });
+
+  it("uses compact highlighted code spacing for raw XML transcripts", () => {
+    const rawText = "<root>\n  <message>Checking MCP output</message>\n</root>";
+    client.setQueryData(
+      ["highlight", "xml", rawText],
+      '<pre><code><span class="line"><span>&lt;root&gt;</span></span>\n<span class="line"><span>  &lt;message&gt;Checking MCP output&lt;/message&gt;</span></span>\n<span class="line"><span>&lt;/root&gt;</span></span></code></pre>',
+    );
+
+    const turn = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      title: "Raw XML",
+      transcript: [
+        {
+          parts: [{ text: rawText, type: "text" }],
+          role: "assistant",
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TurnTranscript number={1} turn={turn} view="raw" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("[&amp;_code]:whitespace-normal");
+    expect(html).toContain("[&amp;_pre]:whitespace-normal");
+    expect(html).toContain("Checking MCP output");
   });
 
   it("collapses four consecutive tool calls to a reveal divider", () => {

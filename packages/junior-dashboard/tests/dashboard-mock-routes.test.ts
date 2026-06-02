@@ -40,6 +40,7 @@ function reporting(): JuniorReporting {
         sessions: [
           {
             conversationId: "slack:C1:123",
+            cumulativeDurationMs: 0,
             id: "turn-1",
             status: "active",
             startedAt: "2026-05-29T00:00:00.000Z",
@@ -59,6 +60,7 @@ function reporting(): JuniorReporting {
         turns: [
           {
             conversationId,
+            cumulativeDurationMs: 0,
             id: "turn-1",
             status: "active",
             startedAt: "2026-05-29T00:00:00.000Z",
