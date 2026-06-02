@@ -539,17 +539,19 @@ async function handleSlackForm(args: {
     const installation = installationFromForm(params);
     enqueue(
       args.waitUntil,
-      runWithSlackInstallation({
-        adapter,
-        installation,
-        state,
-        task: () =>
-          handleSlashCommandForm({
-            adapter,
-            params,
-            state,
-          }),
-      }).catch((error) => {
+      runWithWorkspaceTeamId(installation.teamId, () =>
+        runWithSlackInstallation({
+          adapter,
+          installation,
+          state,
+          task: () =>
+            handleSlashCommandForm({
+              adapter,
+              params,
+              state,
+            }),
+        }),
+      ).catch((error) => {
         logException(error, "slash_command_failed", {
           slackUserId: params.get("user_id") ?? undefined,
         });
@@ -566,19 +568,22 @@ async function handleSlackForm(args: {
   if (!payload) {
     return new Response("Invalid payload JSON", { status: 400 });
   }
+  const installation = installationFromInteractive(payload);
 
   enqueue(
     args.waitUntil,
-    runWithSlackInstallation({
-      adapter,
-      installation: installationFromInteractive(payload),
-      state,
-      task: () =>
-        handleInteractivePayload({
-          payload,
-          userTokenStore: getUserTokenStore(args.services),
-        }),
-    }).catch((error) => {
+    runWithWorkspaceTeamId(installation.teamId, () =>
+      runWithSlackInstallation({
+        adapter,
+        installation,
+        state,
+        task: () =>
+          handleInteractivePayload({
+            payload,
+            userTokenStore: getUserTokenStore(args.services),
+          }),
+      }),
+    ).catch((error) => {
       logException(error, "slack_interactive_payload_failed", {
         slackUserId: buildAuthorFromInteractive(payload.user).userId,
       });

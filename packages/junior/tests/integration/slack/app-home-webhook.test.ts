@@ -4,6 +4,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
@@ -305,7 +306,9 @@ describe("Slack webhook: App Home events", () => {
   it("refreshes App Home after disconnect unlink failure", async () => {
     const state = createMemoryState();
     const waitUntilTasks: WaitUntilTask[] = [];
+    const workspaceTeamIds: Array<string | undefined> = [];
     const deleteToken = vi.fn(async () => {
+      workspaceTeamIds.push(getWorkspaceTeamId());
       throw new Error("token store unavailable");
     });
     const userTokenStore = createTokenStore({ delete: deleteToken });
@@ -351,6 +354,7 @@ describe("Slack webhook: App Home events", () => {
     expect(waitUntilTasks).toHaveLength(1);
     await flushWaitUntil(waitUntilTasks);
     expect(deleteToken).toHaveBeenCalledWith("U123", "notion");
+    expect(workspaceTeamIds).toEqual(["T123"]);
     expect(getCapturedSlackApiCalls("views.publish")).toHaveLength(1);
   });
 });

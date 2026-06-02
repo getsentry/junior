@@ -142,12 +142,12 @@ function latestTimeoutResume(
   );
 }
 
-async function resumeAwaitingTimeout(conversationId: string): Promise<boolean> {
+async function resumeAwaitingTimeout(conversationId: string): Promise<void> {
   const summary = latestTimeoutResume(
     await listAgentTurnSessionSummariesForConversation(conversationId),
   );
   if (!summary) {
-    return false;
+    return;
   }
 
   const request = await getAwaitingTurnContinuationRequest({
@@ -155,11 +155,10 @@ async function resumeAwaitingTimeout(conversationId: string): Promise<boolean> {
     sessionId: summary.sessionId,
   });
   if (!request) {
-    return false;
+    return;
   }
 
   await resumeTimedOutTurnWithLockRetry(request);
-  return true;
 }
 
 function getInstallation(
@@ -201,9 +200,7 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      if (await resumeAwaitingTimeout(context.conversationId)) {
-        return { status: "completed" };
-      }
+      await resumeAwaitingTimeout(context.conversationId);
       return { status: "completed" };
     }
 
