@@ -80,7 +80,7 @@ export function TranscriptToolView(props: {
             {toolName}
           </strong>
           {isPreviewableValue(input) ? (
-            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8]">
+            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8] max-md:hidden">
               ({args})
             </code>
           ) : null}

@@ -14,7 +14,7 @@ export function ToolFrame(props: {
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5 overflow-hidden">
         {props.signature}
       </span>
-      <span className="min-w-0 break-words text-right text-[0.8rem] text-[#888] max-md:text-left">
+      <span className="min-w-0 break-words text-right text-[0.8rem] text-[#888] max-md:hidden">
         {props.meta.join(" · ")}
       </span>
     </>
@@ -39,7 +39,7 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "border-l border-[#beaaff]/20 pl-3 transition-colors hover:border-[#beaaff]/40";
+  return "min-w-0";
 }
 
 function toolHeaderClass(interactive: boolean): string {

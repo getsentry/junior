@@ -112,8 +112,8 @@ function transcriptMessageClass(role: string): string {
   return cn(
     "grid min-w-0 gap-2 border-l-4 py-2 pl-3",
     kind === "assistant" &&
-      "border-l-violet-300 bg-[rgba(190,170,255,0.08)] pr-3 text-white",
-    kind === "user" && "border-l-white/70 bg-white/[0.04] pr-3 text-[#f4f4f4]",
+      "border-l-violet-300 bg-[rgba(190,170,255,0.14)] pr-3 text-white",
+    kind === "user" && "border-l-white/70 bg-white/[0.08] pr-3 text-[#f4f4f4]",
     kind === "system" &&
       "border-l-amber-300 bg-amber-300/[0.06] pr-3 text-[#f4f4f4]",
     kind === "tool" && "border-l-[#888] text-[#b8b8b8]",
@@ -536,7 +536,7 @@ function RedactedToolView(props: {
             {toolName}
           </strong>
           {props.call?.inputKeys?.length ? (
-            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8]">
+            <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8] max-md:hidden">
               ({props.call.inputKeys.join(", ")})
             </code>
           ) : null}
@@ -792,11 +792,11 @@ function TranscriptPartView(props: {
   return (
     <details className={toolFrameClass()}>
       <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8] transition-colors hover:text-[#d6d6d6] max-md:grid-cols-1 max-md:gap-1 [&::-webkit-details-marker]:hidden">
-        <span className="text-[#888]">{part.type}</span>
+        <span className="text-[#888] max-md:hidden">{part.type}</span>
         <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
           {part.name ?? part.id ?? "unknown"}
         </strong>
-        <span className="min-w-0 break-words text-right max-md:text-left">
+        <span className="min-w-0 break-words text-right max-md:hidden">
           {previewToolValue(value)}
         </span>
       </summary>
