@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { juniorNitro } from "@/nitro";
+import { defineJuniorPlugins } from "@/plugins";
 
 const tempDirs: string[] = [];
 
@@ -21,6 +23,45 @@ afterEach(async () => {
 });
 
 describe("juniorNitro plugin modules", () => {
+  it("rejects direct trusted plugin sets because hooks need a runtime import", () => {
+    const compiledHooks: Array<() => Promise<void> | void> = [];
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook(name: string, callback: () => Promise<void> | void) {
+          if (name === "compiled") {
+            compiledHooks.push(callback);
+          }
+        },
+      },
+      options: {
+        output: {
+          serverDir: "/tmp/junior-output",
+        },
+        rootDir: "/tmp/junior-app",
+        vercel: {},
+        virtual,
+      },
+    };
+
+    expect(() =>
+      juniorNitro({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            name: "trusted",
+            manifest: {
+              name: "trusted",
+              description: "Trusted plugin",
+            },
+            hooks: {},
+          }),
+        ]),
+      }).nitro.setup(nitro),
+    ).toThrow(
+      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with trusted plugin registration(s): trusted. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.',
+    );
+  });
+
   it("injects a runtime import for plugin module references", async () => {
     const tempRoot = await makeTempDir();
     await fs.writeFile(

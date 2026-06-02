@@ -44,4 +44,4 @@ Defined in: [nitro.ts:35](https://github.com/getsentry/junior/blob/main/packages
 
 Defined in: [nitro.ts:37](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L37)
 
-Plugin set or runtime-safe plugin module bundled into the app.
+Plugin catalog set or runtime-safe plugin module. Direct sets must not include trusted hooks.

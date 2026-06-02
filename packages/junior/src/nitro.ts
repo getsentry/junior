@@ -33,7 +33,7 @@ export type JuniorNitroPluginSource =
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
-  /** Plugin set or runtime-safe plugin module bundled into the app. */
+  /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include trusted hooks. */
   plugins?: JuniorNitroPluginSource;
   /**
    * Extra file patterns to copy into the server output for files that the
@@ -166,6 +166,19 @@ async function loadPluginSetFromModule(
   );
 }
 
+function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
+  const trustedPluginNames = trustedPluginRegistrationsFromPluginSet(
+    pluginSet,
+  ).map((plugin) => plugin.name);
+  if (trustedPluginNames.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with trusted plugin registration(s): ${trustedPluginNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.`,
+  );
+}
+
 /** Nitro module that copies app and plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void };
@@ -190,6 +203,9 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         const directPluginSet = isPluginSet(pluginSource)
           ? pluginSource
           : undefined;
+        if (directPluginSet) {
+          assertSerializableDirectPluginSet(directPluginSet);
+        }
         const pluginSetPromise: Promise<JuniorPluginSet | undefined> =
           pluginModule
             ? loadPluginSetFromModule(pluginModule)
