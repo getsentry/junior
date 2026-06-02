@@ -107,6 +107,18 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (redacted) {
+      appendRedactedTool(
+        lines,
+        turn,
+        entry.call,
+        entry.result,
+        entry.timestamp,
+        entry.resultTimestamp,
+      );
+      continue;
+    }
+
     appendTool(
       lines,
       turn,
@@ -171,6 +183,28 @@ function appendTool(
     addMetaLine(lines, "Result", "missing");
   }
   lines.push("", fencedBlock(stringifyPartValue({ call, result }), "json"));
+}
+
+function appendRedactedTool(
+  lines: string[],
+  turn: ConversationTurn,
+  call: TranscriptPart | undefined,
+  result: TranscriptPart | undefined,
+  timestamp: number | undefined,
+  resultTimestamp: number | undefined,
+): void {
+  lines.push("", `### Tool: ${headingText(toolName(call, result))}`);
+  addEventMeta(lines, turn, timestamp);
+  addMetaLine(lines, "Result timestamp", eventTimestamp(resultTimestamp));
+  addMetaLine(lines, "Duration", toolDuration(timestamp, resultTimestamp));
+  if (!result) {
+    addMetaLine(lines, "Result", "missing");
+  }
+
+  const redactedLines = [call, result]
+    .filter((part): part is TranscriptPart => part !== undefined)
+    .map(redactedPartLabel);
+  lines.push("", ...redactedLines.map((line) => `- ${line}`));
 }
 
 function addEventMeta(
@@ -314,10 +348,7 @@ function fencedBlock(value: string, language: string): string {
 }
 
 function trimMarkdown(lines: string[]): string {
-  return `${lines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()}\n`;
+  return `${lines.join("\n").trim()}\n`;
 }
 
 function isNonEmptyString(value: string): boolean {

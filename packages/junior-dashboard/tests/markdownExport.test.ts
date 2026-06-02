@@ -61,7 +61,12 @@ describe("dashboard markdown export", () => {
             {
               role: "assistant",
               timestamp: Date.parse(startedAt) + 5_000,
-              parts: [{ type: "text", text: "## Done\n\nCopied as Markdown." }],
+              parts: [
+                {
+                  type: "text",
+                  text: "## Done\n\n\n\nCopied as Markdown.",
+                },
+              ],
             },
           ],
         } as ConversationTurn,
@@ -80,7 +85,7 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("Need a deterministic export.");
     expect(markdown).toContain("### Tool: search");
     expect(markdown).toContain('"query": "copy markdown"');
-    expect(markdown).toContain("## Done\n\nCopied as Markdown.");
+    expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
   });
 
   it("exports only safe redaction metadata for private transcripts", () => {
@@ -123,12 +128,29 @@ describe("dashboard markdown export", () => {
               timestamp: 1_767_225_602_000,
               parts: [
                 {
+                  id: "call-1",
+                  input: { query: "private search value" },
                   inputKeys: ["query"],
                   inputSizeBytes: 42,
                   inputType: "object",
                   name: "search",
                   redacted: true,
                   type: "tool_call",
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              timestamp: 1_767_225_603_000,
+              parts: [
+                {
+                  id: "call-1",
+                  name: "search",
+                  output: "private tool result",
+                  outputSizeBytes: 19,
+                  outputType: "string",
+                  redacted: true,
+                  type: "tool_result",
                 },
               ],
             },
@@ -144,9 +166,15 @@ describe("dashboard markdown export", () => {
       "Transcript hidden because this conversation is not public.",
     );
     expect(markdown).toContain("<redacted> - 24 chars - 24 bytes");
-    expect(markdown).toContain('"inputKeys": [\n      "query"\n    ]');
-    expect(markdown).toContain('"name": "search"');
+    expect(markdown).toContain(
+      "<redacted> - tool_call - name: `search` - input: object - input keys: query",
+    );
+    expect(markdown).toContain(
+      "<redacted> - tool_result - name: `search` - output: string",
+    );
     expect(markdown).not.toContain("private question");
     expect(markdown).not.toContain("private answer");
+    expect(markdown).not.toContain("private search value");
+    expect(markdown).not.toContain("private tool result");
   });
 });
