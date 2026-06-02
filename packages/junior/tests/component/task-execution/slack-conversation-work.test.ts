@@ -7,6 +7,7 @@ import {
   countPendingConversationMessages,
   getConversationWorkState,
   markConversationMessagesInjected,
+  requestConversationWork,
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
@@ -525,6 +526,56 @@ describe("Slack conversation work execution", () => {
     });
     expect(recovered?.needsRun).toBe(false);
     expect(recovered ? countPendingConversationMessages(recovered) : 0).toBe(0);
+  });
+
+  it("keeps idle Slack work runnable when continuation metadata is invalid", async () => {
+    const queue = createFakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 1_000,
+      state,
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: CONVERSATION_ID,
+      sessionId: "turn-invalid-timeout",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [],
+    });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async () => {
+              throw new Error("injected messages should not replay");
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("injected messages should not replay");
+            },
+          },
+          state,
+        }),
+      }),
+    ).rejects.toThrow(
+      'Unable to build continuation request for turn session "turn-invalid-timeout"',
+    );
+
+    const recovered = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(recovered?.lease).toBeUndefined();
+    expect(recovered?.needsRun).toBe(true);
+    expect(recovered?.messages).toEqual([]);
   });
 
   it("keeps Slack mailbox records pending when the runtime handoff fails", async () => {

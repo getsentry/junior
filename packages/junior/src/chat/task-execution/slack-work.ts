@@ -159,7 +159,9 @@ async function resumeAwaitingContinuation(
     sessionId: summary.sessionId,
   });
   if (!request) {
-    return;
+    throw new Error(
+      `Unable to build continuation request for turn session "${summary.sessionId}" in conversation "${conversationId}"`,
+    );
   }
 
   await resumeTimedOutTurnWithLockRetry(request);
