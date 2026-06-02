@@ -138,23 +138,6 @@ export function formatMessageTimestamp(value: number | undefined): string {
   });
 }
 
-/** Format a transcript event as an offset from the current turn start. */
-export function formatMessageOffset(
-  turn: ConversationTurn,
-  value: number | undefined,
-): string | undefined {
-  const start = parseTime(turn.startedAt);
-  if (
-    start == null ||
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    value < start
-  ) {
-    return undefined;
-  }
-  return `+${formatMs(value - start)}`;
-}
-
 function formatNumber(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "0";
   const number = Math.max(0, Math.floor(value));

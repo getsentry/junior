@@ -10,7 +10,6 @@ import {
   detectLanguage,
   transcriptRoleKind,
   formatBytes,
-  formatMessageOffset,
   formatMessageTimestamp,
   formatMs,
   formatTurnDuration,
@@ -339,8 +338,7 @@ function RedactedMessageView(props: {
   message: TranscriptMessage;
   turn: ConversationTurn;
 }) {
-  const offset = formatMessageOffset(props.turn, props.message.timestamp);
-  const meta = [formatMessageTimestamp(props.message.timestamp), offset].filter(
+  const meta = [formatMessageTimestamp(props.message.timestamp)].filter(
     isString,
   );
 
@@ -395,12 +393,10 @@ function RedactedThinkingView(props: {
   timestamp?: number;
   turn: ConversationTurn;
 }) {
-  const offset = formatMessageOffset(props.turn, props.timestamp);
   const meta = [
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
-    offset,
   ].filter(isString);
   const metaText = meta.join(" · ");
 
@@ -445,11 +441,11 @@ function RedactedToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const meta = [
+    duration,
+    props.result ? undefined : "missing result",
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
-    duration,
-    props.result ? undefined : "missing result",
   ].filter(isString);
   const mobileSummaryMeta =
     duration ?? (props.call && !props.result ? "missing result" : undefined);
@@ -627,7 +623,6 @@ function TranscriptMessageView(props: {
     );
   }
 
-  const offset = formatMessageOffset(props.turn, props.message.timestamp);
   const renderedParts = groupTranscriptParts(props.message.parts);
   const rawText = messageRawText(props.message);
   const role = props.message.role;
@@ -647,7 +642,7 @@ function TranscriptMessageView(props: {
       }}
     >
       <TranscriptMessageHeader
-        meta={[formatMessageTimestamp(props.message.timestamp), offset]}
+        meta={[formatMessageTimestamp(props.message.timestamp)]}
         role={props.message.role}
         turn={props.turn}
       />

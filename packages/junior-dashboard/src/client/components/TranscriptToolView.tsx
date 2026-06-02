@@ -38,12 +38,12 @@ export function TranscriptToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const meta = [
-    typeof props.timestamp === "number"
-      ? formatMessageTimestamp(props.timestamp)
-      : undefined,
     duration,
     props.result ? formatBytes(outputBytes) : undefined,
     props.result ? undefined : "missing result",
+    typeof props.timestamp === "number"
+      ? formatMessageTimestamp(props.timestamp)
+      : undefined,
   ].filter(isString);
   const args = <ToolArgumentsPreview input={input} />;
   const hasExpandableContent = Boolean(props.call || props.result);

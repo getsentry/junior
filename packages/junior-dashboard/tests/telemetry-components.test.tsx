@@ -209,7 +209,7 @@ describe("dashboard telemetry components", () => {
     );
   });
 
-  it("aligns message metadata in a shared heading row", () => {
+  it("keeps message timestamps in a shared heading row without elapsed offsets", () => {
     const turn = {
       conversationId: "conversation-1",
       id: "turn-1",
@@ -237,7 +237,8 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("flex min-w-0 items-center justify-between gap-3");
     expect(html).toContain("font-mono leading-none text-[0.78rem] text-[#888]");
-    expect(html).toContain("· +10s");
+    expect(html).not.toContain("+10s");
+    expect(html).not.toContain("· +");
     expect(html).not.toContain("items-baseline gap-2 text-[0.88rem]");
   });
 
@@ -316,6 +317,7 @@ describe("dashboard telemetry components", () => {
   it("caps dashboard route pages at a readable width", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -346,6 +348,7 @@ describe("dashboard telemetry components", () => {
   it("renders transcript copy as an icon-only control", () => {
     const session = {
       conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -401,6 +404,7 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html.match(/·/g) ?? []).toHaveLength(5);
+    expect(html).toContain("5ms · 2b ·");
     expect(html).toContain("hidden text-[#777] max-md:inline");
     expect(html).toContain(
       'hidden min-w-0 break-words text-[#888] max-md:inline">5ms',
