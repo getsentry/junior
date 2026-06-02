@@ -171,7 +171,7 @@ export interface PluginBrokerDeps {
 export interface PluginDefinition {
   manifest: PluginManifest;
   dir: string;
-  skillsDir: string;
+  skillsDir?: string;
 }
 
 export interface InlinePluginManifestDefinition {

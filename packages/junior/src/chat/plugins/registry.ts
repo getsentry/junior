@@ -77,7 +77,7 @@ function registerPluginManifest(
   state: LoadedPluginState,
   manifest: PluginDefinition["manifest"],
   pluginDir: string,
-  skillsDir = path.join(pluginDir, "skills"),
+  skillsDir?: string,
 ): void {
   if (state.pluginsByName.has(manifest.name)) {
     throw new Error(`Duplicate plugin name "${manifest.name}"`);
@@ -103,7 +103,7 @@ function registerPluginManifest(
   const definition: PluginDefinition = {
     manifest,
     dir: pluginDir,
-    skillsDir,
+    ...(skillsDir ? { skillsDir } : {}),
   };
 
   state.pluginDefinitions.push(definition);
@@ -126,7 +126,12 @@ function registerYamlPluginManifest(
   pluginDir: string,
 ): void {
   const manifest = parsePluginManifest(raw, pluginDir, pluginConfig);
-  registerPluginManifest(state, manifest, pluginDir);
+  registerPluginManifest(
+    state,
+    manifest,
+    pluginDir,
+    path.join(pluginDir, "skills"),
+  );
 }
 
 function normalizePluginRoots(roots: string[]): string[] {
@@ -224,7 +229,7 @@ function registerInlineManifests(
     const dir = pkg?.dir ?? process.cwd();
     const skillsDir = pkg?.hasSkillsDir
       ? path.join(pkg.dir, "skills")
-      : path.join(dir, "skills");
+      : undefined;
     const manifest = parseInlinePluginManifest(
       definition.manifest,
       dir,
@@ -350,7 +355,9 @@ function logLoadedPlugins(state: LoadedPluginState): void {
         "app.plugin.config_key_count": plugin.manifest.configKeys.length,
         "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
         "file.directory": plugin.dir,
-        "app.file.skill_directory": plugin.skillsDir,
+        ...(plugin.skillsDir
+          ? { "app.file.skill_directory": plugin.skillsDir }
+          : {}),
       },
       "Loaded plugin",
     );
@@ -506,7 +513,9 @@ export function getPluginSkillRoots(): string[] {
   const state = ensurePluginsLoaded();
   return [
     ...new Set([
-      ...state.pluginDefinitions.map((plugin) => plugin.skillsDir),
+      ...state.pluginDefinitions.flatMap((plugin) =>
+        plugin.skillsDir ? [plugin.skillsDir] : [],
+      ),
       ...state.packageSkillRoots,
     ]),
   ];
@@ -519,6 +528,9 @@ export function getPluginForSkillPath(
   const resolvedSkillPath = path.resolve(skillPath);
 
   return state.pluginDefinitions.find((plugin) => {
+    if (!plugin.skillsDir) {
+      return false;
+    }
     const resolvedSkillsDir = path.resolve(plugin.skillsDir);
     return (
       resolvedSkillPath === resolvedSkillsDir ||

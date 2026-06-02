@@ -10,6 +10,7 @@ import {
 } from "@/chat/configuration/defaults";
 import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import {
+  getPluginSkillRoots,
   getPluginProviders,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
@@ -236,6 +237,66 @@ describe("createApp plugin config", () => {
       "trusted",
     ]);
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+  });
+
+  it("does not assign app skills to trusted inline plugins", async () => {
+    const tempRoot = await makeTempDir();
+    await fs.mkdir(path.join(tempRoot, "skills", "notes"), {
+      recursive: true,
+    });
+    process.chdir(tempRoot);
+
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "trusted",
+            description: "Trusted plugin",
+          },
+          hooks: {},
+        }),
+      ]),
+    });
+
+    expect(getPluginSkillRoots()).toEqual([]);
+  });
+
+  it("assigns package skills to trusted inline plugin packages", async () => {
+    const tempRoot = await makeTempDir();
+    const packageRoot = path.join(
+      tempRoot,
+      "node_modules",
+      "@acme",
+      "trusted-plugin",
+    );
+    await fs.mkdir(path.join(packageRoot, "skills", "triage"), {
+      recursive: true,
+    });
+    process.chdir(tempRoot);
+
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          packageName: "@acme/trusted-plugin",
+          manifest: {
+            name: "trusted",
+            description: "Trusted plugin",
+          },
+          hooks: {},
+        }),
+      ]),
+    });
+
+    const resolvedTempRoot = await fs.realpath(tempRoot);
+    expect(getPluginSkillRoots()).toEqual([
+      path.join(
+        resolvedTempRoot,
+        "node_modules",
+        "@acme",
+        "trusted-plugin",
+        "skills",
+      ),
+    ]);
   });
 
   it("applies manifest overrides to trusted plugin inline manifests", async () => {
