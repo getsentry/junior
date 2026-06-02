@@ -1123,23 +1123,24 @@ export async function generateAssistantReply(
       }
 
       try {
-        let piMessages: PiMessage[] = [];
+        let steeredMessageCount = 0;
         await context.drainSteeringMessages(async (messages) => {
-          piMessages = messages.map(buildSteeringPiMessage);
+          const piMessages = messages.map(buildSteeringPiMessage);
           if (piMessages.length === 0) {
             return;
           }
           await persistSafeBoundary([...agent!.state.messages, ...piMessages]);
+          for (const message of piMessages) {
+            agent!.steer(message);
+          }
+          steeredMessageCount += piMessages.length;
         });
-        for (const message of piMessages) {
-          agent!.steer(message);
-        }
-        if (piMessages.length > 0) {
+        if (steeredMessageCount > 0) {
           logInfo(
             "agent_turn_steering_messages_injected",
             spanContext,
             {
-              "app.ai.steering_message_count": piMessages.length,
+              "app.ai.steering_message_count": steeredMessageCount,
             },
             "Agent turn steering messages injected",
           );

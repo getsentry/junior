@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { agentMode, counters } = vi.hoisted(() => ({
   agentMode: {
-    value: "providerRetry" as "providerRetry" | "steering",
+    value: "providerRetry" as
+      | "providerRetry"
+      | "steering"
+      | "steeringSteerThrows",
   },
   counters: {
     continueCalls: 0,
@@ -44,6 +47,9 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     steer(message: unknown) {
+      if (agentMode.value === "steeringSteerThrows") {
+        throw new Error("steer failed");
+      }
       this.steeringMessages.push(message);
     }
 
@@ -54,7 +60,10 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
-      if (agentMode.value === "steering") {
+      if (
+        agentMode.value === "steering" ||
+        agentMode.value === "steeringSteerThrows"
+      ) {
         await this.prepareNextTurn?.();
         this.state.messages.push(...this.steeringMessages);
         this.state.messages.push({
@@ -283,5 +292,37 @@ describe("generateAssistantReply provider retry", () => {
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
+  });
+
+  it("rejects steering injection when Pi steer fails", async () => {
+    agentMode.value = "steeringSteerThrows";
+    let injectRejected = false;
+    let injectCompleted = false;
+
+    await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-steering-failure",
+        turnId: "turn-steering-failure",
+        channelId: "C123",
+        threadTs: "1712345.0002",
+      },
+      drainSteeringMessages: async (inject) => {
+        const messages = [
+          { text: "actually do the other thing", timestampMs: 2_000 },
+        ];
+        try {
+          await inject(messages);
+          injectCompleted = true;
+          return messages;
+        } catch {
+          injectRejected = true;
+          throw new Error("inject rejected");
+        }
+      },
+    });
+
+    expect(injectRejected).toBe(true);
+    expect(injectCompleted).toBe(false);
   });
 });
