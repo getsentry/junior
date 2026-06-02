@@ -175,17 +175,27 @@ function appendTool(
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
-  lines.push("", `### Tool: ${headingText(toolName(call, result))}`);
-  addEventMeta(lines, turn, timestamp);
-  addMetaLine(lines, "Result timestamp", eventTimestamp(resultTimestamp));
-  addMetaLine(lines, "Duration", toolDuration(timestamp, resultTimestamp));
-  if (!result) {
-    addMetaLine(lines, "Result", "missing");
-  }
+  appendToolHeader(lines, turn, call, result, timestamp, resultTimestamp);
   lines.push("", fencedBlock(stringifyPartValue({ call, result }), "json"));
 }
 
 function appendRedactedTool(
+  lines: string[],
+  turn: ConversationTurn,
+  call: TranscriptPart | undefined,
+  result: TranscriptPart | undefined,
+  timestamp: number | undefined,
+  resultTimestamp: number | undefined,
+): void {
+  appendToolHeader(lines, turn, call, result, timestamp, resultTimestamp);
+
+  const redactedLines = [call, result]
+    .filter((part): part is TranscriptPart => part !== undefined)
+    .map(redactedPartLabel);
+  lines.push("", ...redactedLines.map((line) => `- ${line}`));
+}
+
+function appendToolHeader(
   lines: string[],
   turn: ConversationTurn,
   call: TranscriptPart | undefined,
@@ -200,11 +210,6 @@ function appendRedactedTool(
   if (!result) {
     addMetaLine(lines, "Result", "missing");
   }
-
-  const redactedLines = [call, result]
-    .filter((part): part is TranscriptPart => part !== undefined)
-    .map(redactedPartLabel);
-  lines.push("", ...redactedLines.map((line) => `- ${line}`));
 }
 
 function addEventMeta(
