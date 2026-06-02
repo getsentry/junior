@@ -20,6 +20,7 @@ Define the durable `ctx.agent.dispatch` primitive used by trusted plugins to ask
 
 - Trusted plugin heartbeat mechanics; see [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md).
 - Scheduler task semantics; see [Scheduler Spec](./scheduler.md).
+- Event binding, matching, and prompt compilation semantics; see [Event Prompt Spec](./event-prompts.md).
 - Interactive Slack turn handling; see [Slack Agent Delivery Spec](./slack-agent-delivery.md).
 
 ## Plugin API
@@ -114,6 +115,8 @@ type Dispatch = {
 - Schedule-management tools are unavailable during system dispatches.
 
 Core derives and enforces system actor identity, auth mode, conversation identity, callback scheduling, timeout continuation, sandbox state persistence, delivery behavior, tool policy, logging, tracing, and redaction.
+
+Event prompt runs use the same core dispatch and recovery boundary, but event matching and prompt compilation are core-owned event prompt behavior rather than plugin-facing `ctx.agent.dispatch` calls. Dispatch storage and delivery must support event prompt metadata and platform-neutral destinations before event prompts deliver outside Slack.
 
 Dispatch conversation identity is scoped to the dispatch record, not to the Slack destination. A dispatch that posts a new Slack message must start with fresh persisted conversation state unless it is resuming the same dispatch id.
 
@@ -299,6 +302,7 @@ Use unit tests for:
 
 - `./trusted-plugin-heartbeat.md`
 - `./task-execution.md`
+- `./event-prompts.md`
 - `./scheduler.md`
 - `./agent-session-resumability.md`
 - `./chat-architecture.md`

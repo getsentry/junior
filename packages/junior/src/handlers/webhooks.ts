@@ -1,12 +1,13 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { getProductionSlackWebhookServices } from "@/chat/app/production";
-import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import { dispatchEventPromptRuns } from "@/chat/events/dispatch";
+import { extractSlackChannelMessageCreatedEnvelope } from "@/chat/events/slack";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
-import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
+import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import {
   createRequestContext,
@@ -17,6 +18,7 @@ import {
   withContext,
   withSpan,
 } from "@/chat/logging";
+import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface SlackWebhookAuthAdapter {
@@ -112,6 +114,38 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   authAdapter.requestContext.run(context, dispatch);
 }
 
+async function handleAuthenticatedSlackEventPrompt(args: {
+  body: unknown;
+  bot: LegacyChatSdkBot;
+  rawBody: string;
+  request: Request;
+}): Promise<void> {
+  const slackAdapter = args.bot.getAdapter("slack");
+  const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
+  const timestamp = args.request.headers.get("x-slack-request-timestamp");
+  const signature = args.request.headers.get("x-slack-signature");
+
+  if (!authAdapter.verifySignature(args.rawBody, timestamp, signature)) {
+    return;
+  }
+
+  await args.bot.initialize();
+
+  const botUserId = authAdapter.botUserId;
+  if (!botUserId) {
+    return;
+  }
+
+  const envelope = extractSlackChannelMessageCreatedEnvelope(args.body, {
+    botUserId,
+  });
+  if (!envelope) {
+    return;
+  }
+
+  await dispatchEventPromptRuns(envelope);
+}
+
 async function handleLegacyChatSdkWebhook(args: {
   bot: LegacyChatSdkBot;
   platform: string;
@@ -130,6 +164,23 @@ async function handleLegacyChatSdkWebhook(args: {
     const rawBody = await args.request.text();
     const parsedBody = parseJson(rawBody);
     slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
+
+    if (parsedBody) {
+      args.waitUntil(
+        runWithWorkspaceTeamId(slackWorkspaceTeamId, async () => {
+          try {
+            await handleAuthenticatedSlackEventPrompt({
+              body: parsedBody,
+              bot: args.bot,
+              rawBody,
+              request: args.request,
+            });
+          } catch (error) {
+            logException(error, "slack_event_prompt_dispatch_failed");
+          }
+        }),
+      );
+    }
 
     if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
       await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>

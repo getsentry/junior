@@ -1,4 +1,9 @@
-import { TEST_CHANNEL_ID, TEST_THREAD_TS, TEST_USER_ID, slackThreadId } from "./ids";
+import {
+  TEST_CHANNEL_ID,
+  TEST_THREAD_TS,
+  TEST_USER_ID,
+  slackThreadId,
+} from "./ids";
 
 /**
  * Behavior-event fixtures model the normalized Chat SDK handler payload shape used by
@@ -64,80 +69,95 @@ const DEFAULT_AUTHOR: SlackEventUser = {
   user_name: "testuser",
   full_name: "Test User",
   is_me: false,
-  is_bot: false
+  is_bot: false,
 };
 
-export function slackEventThread(input: Partial<SlackEventThreadFixture> = {}): SlackEventThreadFixture {
+export function slackEventThread(
+  input: Partial<SlackEventThreadFixture> = {},
+): SlackEventThreadFixture {
   const channelId = input.channel_id ?? TEST_CHANNEL_ID;
   const threadTs = input.thread_ts ?? TEST_THREAD_TS;
   return {
     id: input.id ?? slackThreadId(channelId, threadTs),
     channel_id: channelId,
-    thread_ts: threadTs
+    thread_ts: threadTs,
   };
 }
 
-export function slackEventMessage(input: Partial<SlackEventMessageFixture> = {}): SlackEventMessageFixture {
+export function slackEventMessage(
+  input: Partial<SlackEventMessageFixture> = {},
+): SlackEventMessageFixture {
   return {
     id: input.id ?? "m-test",
     text: input.text ?? "hello",
     is_mention: input.is_mention ?? false,
     author: {
       ...DEFAULT_AUTHOR,
-      ...(input.author ?? {})
-    }
+      ...(input.author ?? {}),
+    },
   };
 }
 
 // Normalized explicit-mention behavior fixture.
 // Chat SDK contract: https://chat-sdk.dev/docs/reference/chat/on-new-mention
-export function slackMentionEvent(input: {
-  thread?: Partial<SlackEventThreadFixture>;
-  message?: Partial<SlackEventMessageFixture>;
-} = {}): SlackMentionBehaviorEventFixture {
+export function slackMentionEvent(
+  input: {
+    thread?: Partial<SlackEventThreadFixture>;
+    message?: Partial<SlackEventMessageFixture>;
+  } = {},
+): SlackMentionBehaviorEventFixture {
   return {
     type: "new_mention",
     thread: slackEventThread(input.thread),
-    message: slackEventMessage({ ...input.message, is_mention: true })
+    message: slackEventMessage({ ...input.message, is_mention: true }),
   };
 }
 
 // Normalized "non-mention message in subscribed thread" behavior fixture.
 // Chat SDK contract: https://chat-sdk.dev/docs/reference/chat/on-subscribed-message
-export function slackSubscribedMessageEvent(input: {
-  thread?: Partial<SlackEventThreadFixture>;
-  message?: Partial<SlackEventMessageFixture>;
-} = {}): SlackSubscribedMessageBehaviorEventFixture {
+export function slackSubscribedMessageEvent(
+  input: {
+    thread?: Partial<SlackEventThreadFixture>;
+    message?: Partial<SlackEventMessageFixture>;
+  } = {},
+): SlackSubscribedMessageBehaviorEventFixture {
   return {
     type: "subscribed_message",
     thread: slackEventThread(input.thread),
-    message: slackEventMessage({ ...input.message, is_mention: input.message?.is_mention ?? false })
+    message: slackEventMessage({
+      ...input.message,
+      is_mention: input.message?.is_mention ?? false,
+    }),
   };
 }
 
 // Slack assistant lifecycle callback fixture.
 // Slack event reference: https://docs.slack.dev/reference/events/assistant_thread_started/
-export function slackAssistantThreadStartedEvent(input: {
-  thread?: Partial<SlackEventThreadFixture>;
-  user_id?: string;
-} = {}): SlackAssistantThreadStartedBehaviorEventFixture {
+export function slackAssistantThreadStartedEvent(
+  input: {
+    thread?: Partial<SlackEventThreadFixture>;
+    user_id?: string;
+  } = {},
+): SlackAssistantThreadStartedBehaviorEventFixture {
   return {
     type: "assistant_thread_started",
     thread: slackEventThread(input.thread),
-    user_id: input.user_id ?? TEST_USER_ID
+    user_id: input.user_id ?? TEST_USER_ID,
   };
 }
 
 // Slack assistant context callback fixture.
 // Slack event reference: https://docs.slack.dev/reference/events/assistant_thread_context_changed/
-export function slackAssistantContextChangedEvent(input: {
-  thread?: Partial<SlackEventThreadFixture>;
-  user_id?: string;
-} = {}): SlackAssistantContextChangedBehaviorEventFixture {
+export function slackAssistantContextChangedEvent(
+  input: {
+    thread?: Partial<SlackEventThreadFixture>;
+    user_id?: string;
+  } = {},
+): SlackAssistantContextChangedBehaviorEventFixture {
   return {
     type: "assistant_context_changed",
     thread: slackEventThread(input.thread),
-    user_id: input.user_id ?? TEST_USER_ID
+    user_id: input.user_id ?? TEST_USER_ID,
   };
 }
 
@@ -160,7 +180,9 @@ export interface SlackEventsApiEnvelope {
   };
 }
 
-function deriveChannelType(channel: string): "channel" | "group" | "im" | undefined {
+function deriveChannelType(
+  channel: string,
+): "channel" | "group" | "im" | undefined {
   if (channel.startsWith("D")) return "im";
   if (channel.startsWith("G")) return "group";
   if (channel.startsWith("C")) return "channel";
@@ -175,18 +197,21 @@ function deriveChannelType(channel: string): "channel" | "group" | "im" | undefi
  * - https://docs.slack.dev/reference/events/message.im/
  * - https://docs.slack.dev/reference/events/assistant_thread_started/
  */
-export function slackEventsApiEnvelope(input: {
-  eventType?: "app_mention" | "message";
-  user?: string;
-  text?: string;
-  channel?: string;
-  ts?: string;
-  eventTs?: string;
-  threadTs?: string;
-} = {}): SlackEventsApiEnvelope {
+export function slackEventsApiEnvelope(
+  input: {
+    eventType?: "app_mention" | "message";
+    user?: string;
+    text?: string;
+    channel?: string;
+    channelType?: "channel" | "group" | "im" | "mpim";
+    ts?: string;
+    eventTs?: string;
+    threadTs?: string;
+  } = {},
+): SlackEventsApiEnvelope {
   const ts = input.ts ?? TEST_THREAD_TS;
   const channel = input.channel ?? TEST_CHANNEL_ID;
-  const channelType = deriveChannelType(channel);
+  const channelType = input.channelType ?? deriveChannelType(channel);
 
   return {
     token: "test-token",
@@ -203,7 +228,7 @@ export function slackEventsApiEnvelope(input: {
       ts,
       event_ts: input.eventTs ?? ts,
       ...(channelType ? { channel_type: channelType } : {}),
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {})
-    }
+      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+    },
   };
 }

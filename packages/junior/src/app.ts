@@ -16,6 +16,7 @@ import {
   validateAgentPlugins,
 } from "@/chat/plugins/agent-hooks";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
+import { loadEventPromptRegistry } from "@/chat/events/registry";
 import type {
   AgentPluginRouteMethod,
   JuniorPluginRegistration,
@@ -284,6 +285,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
     }
     agentPluginRoutes = getAgentPluginRoutes();
+    await loadEventPromptRegistry();
   } catch (error) {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);

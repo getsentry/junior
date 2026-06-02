@@ -14,6 +14,8 @@ import {
   buildSlackInboundMessage,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
+import { dispatchEventPromptRuns } from "@/chat/events/dispatch";
+import { extractSlackChannelMessageCreatedEnvelope } from "@/chat/events/slack";
 import {
   runWithSlackInstallation,
   verifySlackSignature,
@@ -288,6 +290,25 @@ async function handleMessageChanged(args: {
   return true;
 }
 
+async function dispatchEventPrompt(args: {
+  adapter: SlackAdapter;
+  body: SlackEventEnvelope;
+}): Promise<void> {
+  const botUserId = args.adapter.botUserId;
+  if (!botUserId) {
+    return;
+  }
+
+  const envelope = extractSlackChannelMessageCreatedEnvelope(args.body, {
+    botUserId,
+  });
+  if (!envelope) {
+    return;
+  }
+
+  await dispatchEventPromptRuns(envelope);
+}
+
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -323,6 +344,15 @@ async function handleSlackEvent(args: {
       installation,
       state,
       task: async () => {
+        try {
+          await dispatchEventPrompt({
+            adapter,
+            body: args.body,
+          });
+        } catch (error) {
+          logException(error, "slack_event_prompt_dispatch_failed");
+        }
+
         if (
           await handleMessageChanged({
             adapter,

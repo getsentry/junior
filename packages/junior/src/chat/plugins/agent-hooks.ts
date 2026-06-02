@@ -1,4 +1,5 @@
 import type {
+  AgentEventDefinition,
   AgentPluginRequester,
   AgentPluginRoute,
   AgentPluginRouteMethod,
@@ -58,6 +59,20 @@ const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
   "OPTIONS",
   "ALL",
 ]);
+const AGENT_PLUGIN_EVENT_ID_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_]*)+$/;
+const AGENT_PLUGIN_EVENT_NAME_RE = /^[a-z][a-z0-9_]*$/;
+const AGENT_PLUGIN_EVENT_DEFINITION_KEYS = new Set([
+  "contextBlocks",
+  "deliveryTargets",
+  "filterKeys",
+  "scopeKeys",
+]);
+
+export interface RegisteredAgentEventDefinition {
+  definition: AgentEventDefinition;
+  event: string;
+  plugin: string;
+}
 
 function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
   const prefixes = plugin.legacyStatePrefixes;
@@ -120,6 +135,86 @@ export function setAgentPlugins(
 /** Return the current trusted agent plugins without exposing mutable state. */
 export function getAgentPlugins(): JuniorPluginRegistration[] {
   return [...agentPlugins];
+}
+
+function validateEventName(value: string, kind: string, plugin: string): void {
+  if (!AGENT_PLUGIN_EVENT_NAME_RE.test(value)) {
+    throw new Error(
+      `Trusted plugin ${kind} "${value}" from plugin "${plugin}" must be a lowercase event identifier`,
+    );
+  }
+}
+
+function validateEventDefinition(args: {
+  definition: AgentEventDefinition;
+  event: string;
+  plugin: string;
+}): void {
+  if (!AGENT_PLUGIN_EVENT_ID_RE.test(args.event)) {
+    throw new Error(
+      `Trusted plugin event "${args.event}" from plugin "${args.plugin}" must be a dotted lowercase identifier`,
+    );
+  }
+  if (!args.event.startsWith(`${args.plugin}.`)) {
+    throw new Error(
+      `Trusted plugin event "${args.event}" from plugin "${args.plugin}" must be prefixed with "${args.plugin}."`,
+    );
+  }
+  const unsupportedKey = Object.keys(
+    args.definition as unknown as Record<string, unknown>,
+  ).find((key) => !AGENT_PLUGIN_EVENT_DEFINITION_KEYS.has(key));
+  if (unsupportedKey) {
+    throw new Error(
+      `Trusted plugin event "${args.event}" from plugin "${args.plugin}" uses unsupported event definition field "${unsupportedKey}"`,
+    );
+  }
+  if (
+    !Array.isArray(args.definition.deliveryTargets) ||
+    args.definition.deliveryTargets.length === 0
+  ) {
+    throw new Error(
+      `Trusted plugin event "${args.event}" from plugin "${args.plugin}" must declare at least one delivery target`,
+    );
+  }
+  for (const target of args.definition.deliveryTargets) {
+    validateEventName(target.target, "delivery target", args.plugin);
+  }
+  for (const contextName of Object.keys(args.definition.contextBlocks ?? {})) {
+    validateEventName(contextName, "context block", args.plugin);
+  }
+}
+
+/** Collect event definitions exposed by trusted plugins for install bindings. */
+export function getAgentPluginEventDefinitions(): RegisteredAgentEventDefinition[] {
+  const events: RegisteredAgentEventDefinition[] = [];
+  const seen = new Map<string, string>();
+  for (const plugin of getAgentPlugins()) {
+    const hook = plugin.hooks?.events;
+    if (!hook) {
+      continue;
+    }
+    const log = createAgentPluginLogger(plugin.name);
+    const pluginEvents = hook({
+      plugin: { name: plugin.name },
+      log,
+    });
+    for (const [event, definition] of Object.entries(pluginEvents)) {
+      validateEventDefinition({ definition, event, plugin: plugin.name });
+      const existing = seen.get(event);
+      if (existing) {
+        throw new Error(
+          `Duplicate trusted plugin event "${event}" from plugin "${plugin.name}" already declared by plugin "${existing}"`,
+        );
+      }
+      seen.set(event, plugin.name);
+      events.push({
+        event,
+        plugin: plugin.name,
+        definition,
+      });
+    }
+  }
+  return events;
 }
 
 /** Collect turn-scoped tools exposed by trusted plugins. */

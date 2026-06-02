@@ -125,6 +125,36 @@ export interface AgentPluginCredentialSubject {
   allowedWhen: "private-direct-conversation";
 }
 
+export interface AgentEventEnvelope {
+  actor?: {
+    id?: string;
+    login?: string;
+    type?: string;
+  };
+  event: string;
+  occurredAtMs: number;
+  payload: Record<string, unknown>;
+  scope: Record<string, unknown>;
+  sourceEventId: string;
+  sourceUrl?: string;
+}
+
+export interface AgentEventContextBlockRenderContext {
+  envelope: AgentEventEnvelope;
+}
+
+export interface AgentEventContextBlockDefinition {
+  description: string;
+  render?(ctx: AgentEventContextBlockRenderContext): Promise<string> | string;
+}
+
+export interface AgentEventDefinition {
+  contextBlocks?: Record<string, AgentEventContextBlockDefinition>;
+  scopeKeys?: string[];
+}
+
+export interface EventRegistrationHookContext extends AgentPluginContext {}
+
 export interface DispatchOptions {
   credentialSubject?: AgentPluginCredentialSubject;
   destination: {
@@ -217,6 +247,9 @@ export interface AgentPluginHooks {
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, AgentPluginToolDefinition>;
+  events?(
+    ctx: EventRegistrationHookContext,
+  ): Record<string, AgentEventDefinition>;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
