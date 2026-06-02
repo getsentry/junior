@@ -187,7 +187,6 @@ function ConversationStats(props: {
     includeId: false,
   });
   const durationLabel = formatConversationDuration(props.conversation);
-  const turnCount = props.conversation.turns.length;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -195,10 +194,6 @@ function ConversationStats(props: {
           key: "location",
         }
       : undefined,
-    {
-      content: `${turnCount} ${turnCount === 1 ? "turn" : "turns"}`,
-      key: "turns",
-    },
     {
       content: (
         <MessagesMetric loading={!props.detail} summary={messageSummary} />

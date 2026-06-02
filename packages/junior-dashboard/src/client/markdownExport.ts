@@ -1,7 +1,6 @@
 import {
   conversationDisplayTitle,
   formatMs,
-  formatTurnDuration,
   formatUsageTotal,
   requesterLabel,
   slackLocationLabel,
@@ -38,7 +37,11 @@ export function buildConversationMarkdown(
     conversationRequester(conversation, firstTurn),
   );
   addMetaLine(lines, "Location", conversationLocation(conversation, firstTurn));
-  addMetaLine(lines, "Turns", String(detail.turns.length));
+  addMetaLine(
+    lines,
+    "Usage",
+    formatUsageTotal(detail.turns.map((turn) => turn.cumulativeUsage)),
+  );
   addMetaLine(
     lines,
     "Sentry conversation",
@@ -50,22 +53,8 @@ export function buildConversationMarkdown(
     return finishMarkdown(lines);
   }
 
-  detail.turns.forEach((turn, index) => {
-    lines.push("", `## ${turnHeading(turn, index)}`, "");
-    addMetaLine(lines, "Turn ID", inlineCode(turn.id));
-    addMetaLine(lines, "Status", inlineCode(turn.status));
-    addMetaLine(lines, "Started", turn.startedAt);
-    addMetaLine(lines, "Completed", turn.completedAt);
-    addMetaLine(lines, "Last seen", turn.lastSeenAt);
-    addMetaLine(lines, "Duration", formatTurnDuration(turn));
-    addMetaLine(lines, "Usage", formatUsageTotal([turn.cumulativeUsage]));
-    addMetaLine(
-      lines,
-      "Trace ID",
-      turn.traceId ? inlineCode(turn.traceId) : "",
-    );
-    addMetaLine(lines, "Sentry trace", turn.sentryTraceUrl);
-
+  lines.push("", "## Transcript");
+  detail.turns.forEach((turn) => {
     appendTurnTranscript(lines, turn);
   });
 
@@ -231,7 +220,11 @@ function conversationTitle(
 ): string {
   if (conversation) return conversationDisplayTitle(conversation);
   const firstTurn = detail.turns[0];
-  return firstTurn?.conversationTitle ?? firstTurn?.title ?? "Conversation";
+  return (
+    firstTurn?.conversationTitle ??
+    readableConversationTitle(firstTurn?.title, firstTurn?.id) ??
+    "Conversation"
+  );
 }
 
 function conversationRequester(
@@ -251,13 +244,6 @@ function conversationLocation(
 ): string {
   if (conversation) return slackLocationLabel(conversation) ?? "";
   return turn ? (slackLocationLabel(turn) ?? "") : "";
-}
-
-function turnHeading(turn: ConversationTurn, index: number): string {
-  const title = turn.title.trim();
-  const label = `Turn ${index + 1}`;
-  if (!title || title === turn.id || title === `Turn ${turn.id}`) return label;
-  return `${label}: ${headingText(title)}`;
 }
 
 function messageRoleLabel(
@@ -335,6 +321,20 @@ function addMetaLine(
 
 function headingText(value: string): string {
   return value.replace(/\s+/g, " ").trim() || "Untitled";
+}
+
+function readableConversationTitle(
+  title: string | undefined,
+  id: string | undefined,
+): string | undefined {
+  const normalized = title ? headingText(title) : "";
+  if (!normalized || normalized === id || normalized === `Turn ${id}`) {
+    return undefined;
+  }
+  if (/^Turn\s+\S+$/i.test(normalized)) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function inlineCode(value: string): string {

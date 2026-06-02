@@ -3,7 +3,7 @@ import { ConversationStack } from "../components/ConversationStack";
 import { Section } from "../components/Section";
 import { SectionHeader } from "../components/SectionHeader";
 import { SectionTitle } from "../components/SectionTitle";
-import { TurnDurationChart } from "../components/TurnDurationChart";
+import { ConversationDurationChart } from "../components/ConversationDurationChart";
 import { buildConversations } from "../format";
 import type { DashboardData } from "../types";
 
@@ -20,7 +20,7 @@ export function CommandCenter(props: {
       <CommandRail data={props.data} error={props.queryError} />
 
       <section className="min-w-0">
-        <TurnDurationChart
+        <ConversationDurationChart
           sessions={sessions}
           timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
         />

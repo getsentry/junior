@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { client } from "../src/client/api";
-import { TurnDurationChart } from "../src/client/components/TurnDurationChart";
+import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import type { Session } from "../src/client/types";
 
 const chartState = vi.hoisted(() => ({
@@ -39,13 +39,13 @@ function renderChart(sessions: Session[]): void {
   renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <TurnDurationChart sessions={sessions} timeZone="UTC" />
+        <ConversationDurationChart sessions={sessions} timeZone="UTC" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("turn duration chart", () => {
+describe("conversation duration chart", () => {
   it("plots conversation duration as summed turn runtime", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));

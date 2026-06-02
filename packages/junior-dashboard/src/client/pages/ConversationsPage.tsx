@@ -23,7 +23,7 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   const search = params.toString();
   const feedMeta =
     props.data?.sessions.source === "turn_session_records"
-      ? `${conversations.length} conversations / ${sessions.length} turns / ${formatTime(props.data.sessions.generatedAt)}`
+      ? `${conversations.length} conversations / ${formatTime(props.data.sessions.generatedAt)}`
       : "waiting for run history feed";
 
   function updateFilter(nextFilter: SessionFilter) {

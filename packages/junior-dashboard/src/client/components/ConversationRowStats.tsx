@@ -16,9 +16,7 @@ export function ConversationRowStats(props: {
   const runtime = formatDurationTotal(
     props.conversation.turns.map((turn) => turn.cumulativeDurationMs),
   );
-  const turnCount = props.conversation.turns.length;
   const primaryStats = [
-    `${turnCount} ${turnCount === 1 ? "turn" : "turns"}`,
     tokens,
     runtime ? `${runtime} runtime` : "",
   ].filter(Boolean);
@@ -29,9 +27,11 @@ export function ConversationRowStats(props: {
 
   return (
     <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
-      <div className="text-[0.84rem] leading-relaxed text-[#b8b8b8]">
-        {primaryStats.join(" · ")}
-      </div>
+      {primaryStats.length > 0 ? (
+        <div className="text-[0.84rem] leading-relaxed text-[#b8b8b8]">
+          {primaryStats.join(" · ")}
+        </div>
+      ) : null}
       {secondaryStats.length > 0 ? (
         <div className="max-w-full break-words text-[0.84rem] leading-relaxed text-[#888] md:truncate">
           {secondaryStats.join(" · ")}

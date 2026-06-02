@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import {
@@ -16,23 +16,19 @@ import {
   buildConversations,
   conversationDisplayTitle,
   conversationRequesterLabel,
-  conversationIdForSession,
   conversationPath,
   formatDurationTick,
   formatMs,
-  requesterLabel,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
-  visualStatusForSession,
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
 import type {
   Conversation,
   ConversationDetailFeed,
-  ConversationTurn,
   Session,
   VisualStatus,
 } from "../types";
@@ -47,12 +43,11 @@ import {
 } from "./TelemetryMetrics";
 import { statusBorderClass } from "./statusStyles";
 
-/** Render recent turns by start time and duration. */
-export function TurnDurationChart(props: {
+/** Render recent conversations by start time and duration. */
+export function ConversationDurationChart(props: {
   sessions: Session[];
   timeZone: string;
 }) {
-  const [mode, setMode] = useState<DurationChartMode>("conversations");
   const navigate = useNavigate();
   const nowMs = Date.now();
   const rangeStartMs = nowMs - 7 * 24 * 60 * 60 * 1000;
@@ -61,16 +56,11 @@ export function TurnDurationChart(props: {
   const chartRangeStartMs = rangeStartMs - chartEdgePaddingMs;
   const chartRangeEndMs = rangeEndMs + chartEdgePaddingMs;
   const conversations = useMemo(
-    () => (mode === "conversations" ? buildConversations(props.sessions) : []),
-    [mode, props.sessions],
+    () => buildConversations(props.sessions),
+    [props.sessions],
   );
-  const points = (
-    mode === "turns"
-      ? props.sessions.map((session) => turnPoint(session, props.timeZone))
-      : conversations.map((conversation) =>
-          conversationPoint(conversation, props.timeZone),
-        )
-  )
+  const points = conversations
+    .map((conversation) => conversationPoint(conversation, props.timeZone))
     .filter((point): point is DurationPoint => Boolean(point))
     .filter((point) => point.x >= rangeStartMs && point.x <= rangeEndMs)
     .sort((left, right) => left.x - right.x);
@@ -93,7 +83,6 @@ export function TurnDurationChart(props: {
   const openPoint = (point: DurationPoint) => {
     navigate(conversationPath(point.conversationId));
   };
-  const modeLabel = mode === "turns" ? "turns" : "conversations";
 
   return (
     <Section>
@@ -106,11 +95,11 @@ export function TurnDurationChart(props: {
           </div>
         }
       >
-        <ChartModeToggle mode={mode} onChange={setMode} />
+        <ChartTitle>Conversations</ChartTitle>
       </SectionHeader>
       <div
         className="min-h-48 px-3 pb-2 pt-4"
-        aria-label={`${modeLabel} by duration over the last 7 days`}
+        aria-label="conversations by duration over the last 7 days"
       >
         <ResponsiveContainer height={190} width="100%">
           <ScatterChart margin={{ bottom: 0, left: 0, right: 4, top: 14 }}>
@@ -149,7 +138,7 @@ export function TurnDurationChart(props: {
               width={48}
             />
             <Tooltip
-              content={<TurnDurationTooltip />}
+              content={<ConversationDurationTooltip />}
               cursor={{ stroke: "rgba(255, 255, 255, 0.22)" }}
             />
             <Scatter
@@ -162,9 +151,18 @@ export function TurnDurationChart(props: {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
-        {totals.total} {modeLabel} / {totals.hung} hung / {totals.failed} errors
+        {totals.total} conversations / {totals.hung} hung / {totals.failed}{" "}
+        errors
       </div>
     </Section>
+  );
+}
+
+function ChartTitle(props: { children: ReactNode }) {
+  return (
+    <div className="text-[1.05rem] font-bold leading-tight tracking-normal text-white">
+      {props.children}
+    </div>
   );
 }
 
@@ -178,7 +176,6 @@ function ChartLegendItem(props: { className: string; label: string }) {
 }
 
 type PlottedTurnStatus = Exclude<VisualStatus, "active">;
-type DurationChartMode = "conversations" | "turns";
 
 type DurationPoint = {
   conversation?: Conversation;
@@ -186,54 +183,12 @@ type DurationPoint = {
   durationLabel: string;
   durationMs: number;
   endedAt: string;
-  kind: DurationChartMode;
-  session?: Session;
   startedAt: string;
   status: PlottedTurnStatus;
   title: string;
   tooltipLabel: string;
   x: number;
 };
-
-function ChartModeToggle(props: {
-  mode: DurationChartMode;
-  onChange(mode: DurationChartMode): void;
-}) {
-  const modes: Array<{ label: string; value: DurationChartMode }> = [
-    { label: "Conversations", value: "conversations" },
-    { label: "Turns", value: "turns" },
-  ];
-  return (
-    <div
-      aria-label="Duration chart mode"
-      className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1"
-      role="group"
-    >
-      {modes.map((mode, index) => (
-        <Fragment key={mode.value}>
-          {index > 0 ? (
-            <span className="text-[1.05rem] font-bold leading-tight text-[#666]">
-              /
-            </span>
-          ) : null}
-          <button
-            aria-pressed={props.mode === mode.value}
-            className={cn(
-              "cursor-pointer border-0 bg-transparent p-0 text-[1.05rem] font-bold leading-tight tracking-normal transition-colors",
-              props.mode === mode.value
-                ? "text-white"
-                : "text-[#888] hover:text-white",
-            )}
-            onClick={() => props.onChange(mode.value)}
-            type="button"
-          >
-            {mode.label}
-          </button>
-        </Fragment>
-      ))}
-    </div>
-  );
-}
 
 function plottedStatus(status: VisualStatus): PlottedTurnStatus | null {
   return status === "active" ? null : status;
@@ -242,37 +197,6 @@ function plottedStatus(status: VisualStatus): PlottedTurnStatus | null {
 function finiteDurationMs(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return Math.max(0, Math.floor(value));
-}
-
-function turnPoint(session: Session, timeZone: string): DurationPoint | null {
-  const startedAtMs = Date.parse(session.startedAt);
-  if (!Number.isFinite(startedAtMs)) {
-    return null;
-  }
-  const status = plottedStatus(visualStatusForSession(session));
-  if (!status) {
-    return null;
-  }
-
-  const durationMs = finiteDurationMs(session.cumulativeDurationMs);
-  if (durationMs === undefined) {
-    return null;
-  }
-  return {
-    conversationId: conversationIdForSession(session),
-    durationLabel: formatMs(durationMs),
-    durationMs,
-    endedAt: session.completedAt ?? session.lastSeenAt,
-    kind: "turns",
-    session,
-    startedAt: session.startedAt,
-    status,
-    title: turnTooltipTitle(session),
-    tooltipLabel: new Date(startedAtMs).toLocaleString(undefined, {
-      timeZone,
-    }),
-    x: startedAtMs,
-  };
 }
 
 function conversationPoint(
@@ -301,7 +225,6 @@ function conversationPoint(
     durationLabel: formatMs(durationMs),
     durationMs,
     endedAt: conversation.lastSeenAt,
-    kind: "conversations",
     startedAt: conversation.startedAt,
     status,
     title: conversationDisplayTitle(conversation),
@@ -360,7 +283,7 @@ function durationDotFill(status: PlottedTurnStatus, active: boolean): string {
   return active ? "rgba(250, 250, 250, 0.96)" : "rgba(184, 184, 184, 0.82)";
 }
 
-function TurnDurationTooltip(props: {
+function ConversationDurationTooltip(props: {
   active?: boolean;
   payload?: Array<{ payload: DurationPoint }>;
 }) {
@@ -416,24 +339,18 @@ function chartTooltipRows(
   point: DurationPoint,
   detail: ConversationDetailFeed | undefined,
 ): Array<[string, ReactNode]> {
-  const session = point.session ?? point.conversation;
-  const requester =
-    point.kind === "conversations"
-      ? conversationRequesterLabel(point.conversation)
-      : requesterLabel(session?.requesterIdentity);
+  const session = point.conversation;
+  const requester = conversationRequesterLabel(point.conversation);
   const location = session
     ? slackLocationLabel(session, { includeId: false })
     : undefined;
-  const turns = chartTooltipTurns(point, detail);
   const tokenSummary = summarizeUsage(
-    point.kind === "turns"
-      ? [point.session?.cumulativeUsage]
-      : (detail?.turns ?? point.conversation?.turns ?? []).map(
-          (turn) => turn.cumulativeUsage,
-        ),
+    (detail?.turns ?? point.conversation?.turns ?? []).map(
+      (turn) => turn.cumulativeUsage,
+    ),
   );
-  const messageSummary = detail ? summarizeMessages(turns) : undefined;
-  const toolSummary = detail ? summarizeToolCalls(turns) : undefined;
+  const messageSummary = detail ? summarizeMessages(detail.turns) : undefined;
+  const toolSummary = detail ? summarizeToolCalls(detail.turns) : undefined;
   const rows: Array<[string, ReactNode] | null> = [
     [
       "duration",
@@ -465,21 +382,6 @@ function chartTooltipRows(
     location ? ["surface", location] : null,
   ];
   return rows.filter((row): row is [string, ReactNode] => row !== null);
-}
-
-function chartTooltipTurns(
-  point: DurationPoint,
-  detail: ConversationDetailFeed | undefined,
-): ConversationTurn[] {
-  if (point.kind === "conversations") {
-    return detail?.turns ?? [];
-  }
-  const turn = detail?.turns.find((item) => item.id === point.session?.id);
-  return turn ? [turn] : [];
-}
-
-function turnTooltipTitle(session: Session): string {
-  return session.conversationTitle ?? session.title;
 }
 
 function chartTooltipStatus(status: PlottedTurnStatus): ReactNode {

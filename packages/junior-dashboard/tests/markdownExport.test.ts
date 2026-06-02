@@ -87,6 +87,10 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("- Conversation ID: `slack:C1:222`");
     expect(markdown).toContain("- Requester: Alice");
     expect(markdown).toContain("- Location: #eng (C1)");
+    expect(markdown).toContain("## Transcript");
+    expect(markdown).not.toContain("## Turn");
+    expect(markdown).not.toContain("- Turns:");
+    expect(markdown).not.toContain("- Turn ID:");
     expect(markdown).toContain("### Alice");
     expect(markdown).toContain("  copy this conversation  \n");
     expect(markdown).toContain("### Thinking");
@@ -179,6 +183,8 @@ describe("dashboard markdown export", () => {
     const markdown = buildConversationMarkdown(detail);
 
     expect(markdown).toContain("# Direct Message");
+    expect(markdown).not.toContain("## Turn");
+    expect(markdown).not.toContain("- Turn ID:");
     expect(markdown).toContain(
       "Transcript hidden because this conversation is not public.",
     );

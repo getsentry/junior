@@ -10,8 +10,8 @@ import { FilterTabs } from "../src/client/components/FilterTabs";
 import { StatusBadge } from "../src/client/components/StatusBadge";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { TurnTranscript } from "../src/client/components/TranscriptTurn";
-import { TurnDurationChart } from "../src/client/components/TurnDurationChart";
+import { ConversationTranscriptSegment } from "../src/client/components/TranscriptTurn";
+import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
 import { CommandCenter } from "../src/client/pages/CommandCenter";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
@@ -152,7 +152,7 @@ describe("dashboard telemetry components", () => {
     );
   });
 
-  it("keeps the per-turn Sentry trace link in transcript headers", () => {
+  it("keeps the Sentry trace link in transcript headers", () => {
     const turn = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
@@ -169,7 +169,7 @@ describe("dashboard telemetry components", () => {
     } as ConversationTurn;
 
     const html = renderToStaticMarkup(
-      <TurnTranscript number={1} turn={turn} view="rich" />,
+      <ConversationTranscriptSegment turn={turn} view="rich" />,
     );
 
     expect(html).toContain("View in Sentry");
@@ -198,7 +198,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={turn} view="rich" />
+        <ConversationTranscriptSegment turn={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -231,7 +231,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={turn} view="rich" />
+        <ConversationTranscriptSegment turn={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -242,7 +242,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("items-baseline gap-2 text-[0.88rem]");
   });
 
-  it("uses chart mode links as the duration chart title", () => {
+  it("renders the conversation duration chart title", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 3_000,
@@ -259,16 +259,15 @@ describe("dashboard telemetry components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <MemoryRouter>
-          <TurnDurationChart sessions={[session]} timeZone="UTC" />
+          <ConversationDurationChart sessions={[session]} timeZone="UTC" />
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
     expect(html).not.toContain("Durations");
-    expect(html).toContain("Turns");
     expect(html).toContain("Conversations");
-    expect(html.indexOf("Conversations")).toBeLessThan(html.indexOf("Turns"));
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Conversations/);
+    expect(html).not.toContain("Turns");
+    expect(html).not.toContain('aria-label="Duration chart mode"');
     expect(html).toContain(
       'aria-label="conversations by duration over the last 7 days"',
     );
@@ -309,9 +308,8 @@ describe("dashboard telemetry components", () => {
 
     const html = renderConversationPage(dashboardData([session]));
 
-    expect(html).toContain("1 turn");
+    expect(html).not.toContain("turn");
     expect(html).not.toContain("tool call");
-    expect(html.match(/·/g) ?? []).toHaveLength(2);
   });
 
   it("caps dashboard route pages at a readable width", () => {
@@ -378,7 +376,7 @@ describe("dashboard telemetry components", () => {
     const html = renderConversationPage(dashboardData([session]));
     const controls = html.slice(
       html.indexOf('aria-label="Transcript view"'),
-      html.indexOf("Turn 1"),
+      html.indexOf("hello"),
     );
     const pageHeader = html.slice(
       0,
@@ -495,7 +493,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={turn} view="raw" />
+        <ConversationTranscriptSegment turn={turn} view="raw" />
       </QueryClientProvider>,
     );
 
@@ -507,7 +505,7 @@ describe("dashboard telemetry components", () => {
   it("collapses four consecutive tool calls to a reveal divider", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={toolRunTurn(4)} view="rich" />
+        <ConversationTranscriptSegment turn={toolRunTurn(4)} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -525,7 +523,7 @@ describe("dashboard telemetry components", () => {
   it("keeps three consecutive tool calls expanded", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={toolRunTurn(3)} view="rich" />
+        <ConversationTranscriptSegment turn={toolRunTurn(3)} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -562,7 +560,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={turn} view="rich" />
+        <ConversationTranscriptSegment turn={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -598,7 +596,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TurnTranscript number={1} turn={turn} view="rich" />
+        <ConversationTranscriptSegment turn={turn} view="rich" />
       </QueryClientProvider>,
     );
 

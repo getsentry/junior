@@ -65,9 +65,8 @@ type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
 type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
-/** Render one conversation turn as actor messages and tool events. */
-export function TurnTranscript(props: {
-  number: number;
+/** Render one conversation transcript segment as actor messages and tool events. */
+export function ConversationTranscriptSegment(props: {
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
@@ -80,8 +79,8 @@ export function TurnTranscript(props: {
         <span className="mt-2 w-px flex-1 bg-[#beaaff]/20" />
       </div>
       <div className="min-w-0">
-        <TurnHeader number={props.number} turn={props.turn} />
-        <TurnEvents turn={props.turn} view={props.view} />
+        <SegmentHeader turn={props.turn} />
+        <SegmentEvents turn={props.turn} view={props.view} />
       </div>
     </section>
   );
@@ -190,17 +189,14 @@ function TranscriptMessageHeader(props: {
   );
 }
 
-function TurnHeader(props: { number: number; turn: ConversationTurn }) {
+function SegmentHeader(props: { turn: ConversationTurn }) {
   const status = visualStatusForSession(props.turn);
 
   return (
     <div className="flex items-start justify-between gap-3 max-md:flex-col">
       <div className="min-w-0">
-        <div className="break-all text-[1.05rem] font-bold leading-tight tracking-normal">
-          Turn {props.number}
-        </div>
         <MetricList
-          className={cn(mutedTranscriptMetaClass(), "mt-1")}
+          className={mutedTranscriptMetaClass()}
           items={turnMeta(props.turn)}
         />
       </div>
@@ -209,7 +205,7 @@ function TurnHeader(props: { number: number; turn: ConversationTurn }) {
   );
 }
 
-function TurnEvents(props: {
+function SegmentEvents(props: {
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {

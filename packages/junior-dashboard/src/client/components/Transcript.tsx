@@ -2,11 +2,11 @@ import { useState, type ReactNode } from "react";
 
 import type { ConversationTurn } from "../types";
 import { TranscriptHeader } from "./TranscriptHeader";
-import { TurnTranscript } from "./TranscriptTurn";
+import { ConversationTranscriptSegment } from "./TranscriptTurn";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
-/** Render ordered conversation turns as message, thinking, and tool-call events. */
+/** Render ordered conversation transcript segments as message and tool events. */
 export function Transcript(props: {
   actions?: ReactNode;
   turns: ConversationTurn[];
@@ -30,10 +30,9 @@ export function Transcript(props: {
         value={view}
         onChange={setView}
       />
-      {props.turns.map((turn, index) => (
-        <TurnTranscript
+      {props.turns.map((turn) => (
+        <ConversationTranscriptSegment
           key={turn.id}
-          number={index + 1}
           turn={turn}
           view={view}
         />

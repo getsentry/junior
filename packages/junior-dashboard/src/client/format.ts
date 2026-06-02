@@ -546,10 +546,10 @@ function getConversationTitle(conversation: Conversation): string {
   if (conversation.surface === "slack") {
     return (
       slackLocationLabel(conversation, { includeId: false }) ??
-      conversation.title
+      "Conversation"
     );
   }
-  return conversation.title;
+  return "Conversation";
 }
 
 /** Choose the safe display title already prepared by the reporting API. */
@@ -640,12 +640,12 @@ export function unavailableTranscriptLabel(turn: ConversationTurn): string {
   }
   const status = visualStatusForSession(turn);
   if (status === "active") {
-    return "Transcript pending for this active turn.";
+    return "Transcript pending while this conversation is active.";
   }
   if (status === "hung") {
-    return "Transcript pending for this hung turn.";
+    return "Transcript pending while this conversation is hung.";
   }
-  return "Transcript unavailable for this turn.";
+  return "Transcript unavailable for this conversation.";
 }
 
 /** Build the canonical permalink route for a conversation id. */
