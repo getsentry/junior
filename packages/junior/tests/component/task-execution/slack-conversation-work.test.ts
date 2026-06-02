@@ -517,7 +517,7 @@ describe("Slack conversation work execution", () => {
           state,
         }),
       }),
-    ).resolves.toEqual({ status: "no_work" });
+    ).resolves.toEqual({ status: "completed" });
 
     const recovered = await getConversationWorkState({
       conversationId: CONVERSATION_ID,

@@ -803,6 +803,7 @@ export async function clearExpiredConversationLease(args: {
     await writeWorkState(state, {
       ...current,
       lease: undefined,
+      needsRun: true,
       updatedAtMs: nowMs,
     });
     return true;

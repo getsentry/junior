@@ -291,6 +291,56 @@ describe("trusted plugin heartbeat", () => {
     });
   });
 
+  it("reschedules stale cooperative yield resume records", async () => {
+    const queue = new FakeConversationWorkQueue();
+    const conversationId = "slack:C123:1712345.0008";
+    const sessionId = "turn-yield";
+    const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
+    vi.setSystemTime(staleNowMs);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "keep going" }],
+          timestamp: staleNowMs,
+        } as PiMessage,
+      ],
+    });
+    await persistActiveTurn(conversationId, sessionId);
+    vi.setSystemTime(TEST_NOW_MS);
+
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      collectWaitUntil(waitUntilTasks),
+      { conversationWorkQueue: queue },
+    );
+
+    expect(response.status).toBe(202);
+    await Promise.all(waitUntilTasks);
+    expect(queue.sent).toEqual([
+      {
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `timeout:${conversationId}:${sessionId}:`,
+        ),
+      },
+    ]);
+    await expect(
+      getConversationWorkState({ conversationId }),
+    ).resolves.toMatchObject({
+      conversationId,
+      needsRun: true,
+    });
+  });
+
   it("skips stale timeout resume records for inactive turns", async () => {
     const queue = new FakeConversationWorkQueue();
     const conversationId = "slack:C123:1712345.0007";

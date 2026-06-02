@@ -99,7 +99,7 @@ async function runWithTimeout<T>(
   }
 }
 
-/** Re-drive stale turn timeout continuations whose internal callback vanished. */
+/** Re-drive stale turn continuations whose internal callback vanished. */
 export async function recoverStaleTimeoutResumes(args: {
   conversationWorkQueue?: ConversationWorkQueue;
   limit?: number;
@@ -115,7 +115,8 @@ export async function recoverStaleTimeoutResumes(args: {
     }
     if (
       summary.state !== "awaiting_resume" ||
-      summary.resumeReason !== "timeout" ||
+      (summary.resumeReason !== "timeout" &&
+        summary.resumeReason !== "yield") ||
       summary.updatedAtMs + TIMEOUT_RESUME_STALE_MS > args.nowMs
     ) {
       continue;

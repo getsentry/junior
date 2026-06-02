@@ -330,12 +330,45 @@ describe("conversation work execution", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
     expect(queue.sent).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:92000`,
       },
     ]);
+  });
+
+  it("keeps an expired injected-message lease runnable for continuation recovery", async () => {
+    const queue = createFakeQueue();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    await markConversationMessagesInjected({
+      conversationId: CONVERSATION_ID,
+      inboundMessageIds: ["m1"],
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+    });
+
+    await expect(
+      recoverConversationWork({
+        nowMs: 2_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+        queue,
+      }),
+    ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        run: async () => ({ status: "completed" }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
   });
 
   it("requeues pending mailbox work with no recent queue marker", async () => {
