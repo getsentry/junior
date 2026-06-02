@@ -909,10 +909,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         compareTimeAsc(a.startedAt, b.startedAt),
       );
       const newest = [...turns].sort((a, b) =>
-        compareTimeDesc(
-          a.lastSeenAt ?? a.startedAt,
-          b.lastSeenAt ?? b.startedAt,
-        ),
+        compareTimeDesc(a.lastSeenAt, b.lastSeenAt),
       )[0]!;
       const oldest = sortedTurns.reduce((current, next) =>
         (parseTime(next.startedAt) ?? Number.MAX_SAFE_INTEGER) <

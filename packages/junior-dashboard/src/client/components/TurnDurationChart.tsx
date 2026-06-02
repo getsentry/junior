@@ -195,7 +195,6 @@ type DurationPoint = {
   session?: Session;
   startedAt: string;
   status: PlottedTurnStatus;
-  subtitle: string;
   title: string;
   tooltipLabel: string;
   x: number;
@@ -250,11 +249,10 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
   }
 
   const lastSeenAtMs = Date.parse(session.lastSeenAt);
-  const durationMs =
-    session.cumulativeDurationMs ??
-    (Number.isFinite(lastSeenAtMs)
-      ? Math.max(0, lastSeenAtMs - startedAtMs)
-      : 0);
+  if (!Number.isFinite(lastSeenAtMs)) {
+    return null;
+  }
+  const durationMs = Math.max(0, lastSeenAtMs - startedAtMs);
   return {
     conversationId: conversationIdForSession(session),
     durationLabel: formatMs(durationMs),
@@ -264,9 +262,6 @@ function turnPoint(session: Session, timeZone: string): DurationPoint | null {
     session,
     startedAt: session.startedAt,
     status,
-    subtitle: new Date(startedAtMs).toLocaleString(undefined, {
-      timeZone,
-    }),
     title: turnTooltipTitle(session),
     tooltipLabel: new Date(startedAtMs).toLocaleString(undefined, {
       timeZone,
@@ -302,9 +297,6 @@ function conversationPoint(
     kind: "conversations",
     startedAt: conversation.startedAt,
     status,
-    subtitle: new Date(startedAtMs).toLocaleString(undefined, {
-      timeZone,
-    }),
     title: conversationDisplayTitle(conversation),
     tooltipLabel: new Date(startedAtMs).toLocaleString(undefined, {
       timeZone,
