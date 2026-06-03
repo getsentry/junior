@@ -26,12 +26,8 @@ import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { conversationsInfoOk } from "../fixtures/slack/factories/api";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
-import {
-  getCapturedSlackApiCalls,
-  queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
