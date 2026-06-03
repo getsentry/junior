@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-02
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-03
 
 ## Purpose
 
@@ -386,7 +386,35 @@ Prompt wording is not sufficient enforcement for tools, credentials, delivery, o
 
 ## Observability
 
-Event prompt logs and spans should include safe metadata:
+Event prompt instrumentation must prefer spans for normal lifecycle work and
+logs for exceptional, auditable, or operator-actionable outcomes. Do not emit a
+separate info log for each successful phase when a parent span, child span, or
+span attribute can represent the same fact.
+
+Normal successful processing should be captured with spans:
+
+- One inbound event span for authenticated provider event normalization,
+  matching, and dispatch planning.
+- One dispatch span for creating or recovering dispatch records for all matched
+  bindings for the source event.
+- One context hydration span when selected context blocks require host-side
+  provider fetches. Use aggregate attributes for the block set; add child spans
+  only for materially independent or slow provider operations.
+- One delivery span for final platform delivery or silent completion.
+
+Avoid over-granular instrumentation:
+
+- Do not log ordinary `event_received`, `event_binding_matched`, or
+  `event_run_dispatched` success events. Put those counts and ids on spans.
+- Do not emit one success log per matched binding, context block, or delivery
+  chunk.
+- Do not add both start and finish logs for work that already has a span.
+- Duplicate provider deliveries, no-match events, self-event suppression, and
+  mention-conflict suppression should be span attributes by default. Emit a log
+  only when the skip is persisted, rate-limit-driven, or otherwise needs an
+  audit trail.
+
+Spans and the few emitted logs should include safe metadata:
 
 - `app.event.id`
 - `app.event.binding_id`
@@ -396,24 +424,26 @@ Event prompt logs and spans should include safe metadata:
 - `app.event.actor_type`
 - `app.event.actor_id`
 - `app.event.context_blocks`
+- `app.event.context_block_count`
 - `app.event.delivery_target`
 - `app.event.match_count`
 - `app.event.run_id`
 - `app.event.skip_reason`
+- `app.event.dispatched_count`
+- `app.event.skipped_count`
 
 Logs and spans must not include provider tokens, OAuth tokens, raw webhook signatures, raw event payloads, raw comments/messages, raw prompt text, private context block bodies, or raw conversation state.
 
-Important event names should include:
+Required event prompt log names are intentionally sparse:
 
-- `event_definitions_registered`
-- `event_bindings_loaded`
 - `event_binding_validation_failed`
-- `event_received`
-- `event_binding_matched`
-- `event_run_dispatched`
 - `event_run_skipped`
+- `event_run_dispatch_failed`
 - `event_context_hydration_failed`
 - `event_delivery_failed`
+
+Startup may emit one summary log for event definition and binding load results.
+It must not emit one log per definition or binding on ordinary success.
 
 ## Verification
 

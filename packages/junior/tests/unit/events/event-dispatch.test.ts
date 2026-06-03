@@ -128,9 +128,9 @@ describe("event prompt dispatch", () => {
       throw new Error("expected dispatch creation call");
     }
     const input = firstInput.options.input;
-    expect(input).toContain("<event-payload>");
-    expect(input).toContain('<event-context name="source_message">');
-    expect(input).toContain('<current-instruction priority="highest">');
+    expect(input).toContain("deploy started");
+    expect(input).toContain("channel_id: C123");
+    expect(input).toContain("Review the Slack channel message");
     expect(scheduleCallback).toHaveBeenCalledWith({
       id: "dispatch_event_1",
       expectedVersion: 1,

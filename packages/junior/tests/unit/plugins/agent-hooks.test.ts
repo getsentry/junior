@@ -336,6 +336,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
         hooks: {
           events(ctx) {
             expect(ctx.plugin.name).toBe("github");
@@ -377,6 +381,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
         hooks: {
           events() {
             return {
@@ -401,6 +409,10 @@ describe("agent plugin hooks", () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
         hooks: {
           events() {
             return {

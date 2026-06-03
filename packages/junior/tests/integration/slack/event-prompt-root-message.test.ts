@@ -3,7 +3,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { mswServer } from "../../msw/server";
@@ -23,13 +31,32 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
+const ENV_KEYS = [
+  "JUNIOR_BASE_URL",
+  "JUNIOR_SECRET",
+  "JUNIOR_STATE_ADAPTER",
+] as const;
 const { ORIGINAL_ENV } = vi.hoisted(() => {
-  const ORIGINAL_ENV = { ...process.env };
+  const envKeys = [
+    "JUNIOR_BASE_URL",
+    "JUNIOR_SECRET",
+    "JUNIOR_STATE_ADAPTER",
+  ] as const;
+  type EnvKey = (typeof envKeys)[number];
+  const ORIGINAL_ENV = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  ) as Record<EnvKey, string | undefined>;
+
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_BASE_URL = "https://example.test";
   process.env.JUNIOR_SECRET = "test-dispatch-secret";
+
   return { ORIGINAL_ENV };
 });
+const tempDirs: string[] = [];
+type EnvKey = (typeof ENV_KEYS)[number];
+
+let previousEnv: Record<EnvKey, string | undefined> | undefined;
 
 function signSlackBody(body: string, timestamp: string): string {
   const base = `v0:${timestamp}:${body}`;
@@ -83,14 +110,39 @@ async function writeEventBinding(root: string): Promise<void> {
   );
 }
 
+async function makeTempRoot(prefix: string): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirs.push(root);
+  return root;
+}
+
+function captureEnv(): Record<EnvKey, string | undefined> {
+  return Object.fromEntries(
+    ENV_KEYS.map((key) => [key, process.env[key]]),
+  ) as Record<EnvKey, string | undefined>;
+}
+
+function restoreEnv(values: Record<EnvKey, string | undefined>): void {
+  for (const key of ENV_KEYS) {
+    const value = values[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
 describe("Slack event prompts: root channel messages", () => {
+  afterAll(() => {
+    restoreEnv(ORIGINAL_ENV);
+  });
+
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_BASE_URL: "https://example.test",
-      JUNIOR_SECRET: "test-dispatch-secret",
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
+    previousEnv = captureEnv();
+    process.env.JUNIOR_BASE_URL = "https://example.test";
+    process.env.JUNIOR_SECRET = "test-dispatch-secret";
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
     resetSlackApiMockState();
     await disconnectStateAdapter();
     mswServer.use(
@@ -101,17 +153,24 @@ describe("Slack event prompts: root channel messages", () => {
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
-    const emptyRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-events-empty-"),
-    );
-    await loadEventPromptRegistry(emptyRoot);
-    await disconnectStateAdapter();
-    vi.restoreAllMocks();
+    try {
+      const emptyRoot = await makeTempRoot("junior-events-empty-");
+      await loadEventPromptRegistry(emptyRoot);
+      await disconnectStateAdapter();
+      vi.restoreAllMocks();
+    } finally {
+      if (previousEnv) {
+        restoreEnv(previousEnv);
+        previousEnv = undefined;
+      }
+      for (const tempDir of tempDirs.splice(0)) {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    }
   });
 
   it("dispatches root channel messages and ignores thread replies", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-events-"));
+    const root = await makeTempRoot("junior-events-");
     await writeEventBinding(root);
     await loadEventPromptRegistry(root);
     const bot = new JuniorChat({
@@ -215,7 +274,7 @@ describe("Slack event prompts: root channel messages", () => {
   });
 
   it("dispatches multi-workspace events inside the installed Slack bot context", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-events-"));
+    const root = await makeTempRoot("junior-events-");
     await writeEventBinding(root);
     await loadEventPromptRegistry(root);
     const bot = new JuniorChat({
@@ -281,7 +340,7 @@ describe("Slack event prompts: root channel messages", () => {
   });
 
   it("dispatches org-wide Enterprise Grid events from the enterprise installation", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-events-"));
+    const root = await makeTempRoot("junior-events-");
     await writeEventBinding(root);
     await loadEventPromptRegistry(root);
     const bot = new JuniorChat({
