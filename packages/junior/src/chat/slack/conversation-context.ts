@@ -4,7 +4,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 /** Slack Events API channel_type values relevant to message surfaces. */
 export type SlackEventChannelType = "channel" | "group" | "mpim" | "im";
 
-/** Privacy-preserving conversation categories Junior can share with agents. */
+/** Slack conversation categories Junior can share with agents. */
 export type SlackConversationType =
   | "public_channel"
   | "private_channel"
@@ -12,18 +12,26 @@ export type SlackConversationType =
   | "direct_message"
   | "private_channel_or_group_dm";
 
-/** Safe Slack conversation facts for runtime and model-facing context. */
+/** Slack conversation facts available to the bot for runtime context. */
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
 }
 
-function normalizeChannelName(
+function normalizeConversationName(
+  type: SlackConversationType,
   channelName: string | undefined,
 ): string | undefined {
   const trimmed = channelName?.trim();
   if (!trimmed) return undefined;
-  return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  if (
+    type === "public_channel" ||
+    type === "private_channel" ||
+    type === "private_channel_or_group_dm"
+  ) {
+    return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  }
+  return trimmed;
 }
 
 function typeFromSlackChannelType(
@@ -81,7 +89,7 @@ export function resolveSlackChannelTypeFromMessage(
     : undefined;
 }
 
-/** Build Slack conversation facts safe enough to share with runtime consumers. */
+/** Build Slack conversation facts available to runtime consumers. */
 export function resolveSlackConversationContext(input: {
   channelId?: string;
   channelName?: string;
@@ -92,10 +100,7 @@ export function resolveSlackConversationContext(input: {
     typeFromChannelId(input.channelId, input.channelName);
   if (!type) return undefined;
 
-  const name =
-    type === "public_channel"
-      ? normalizeChannelName(input.channelName)
-      : undefined;
+  const name = normalizeConversationName(type, input.channelName);
 
   return {
     type,

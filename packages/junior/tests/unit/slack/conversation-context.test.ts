@@ -20,28 +20,28 @@ describe("Slack conversation prompt context", () => {
     });
   });
 
-  it("omits private conversation names", () => {
+  it("includes private conversation names when Slack provides them", () => {
     expect(
       resolveSlackConversationContext({
         channelId: "G123",
         channelName: "private-roadmap",
         channelType: "group",
       }),
-    ).toEqual({ type: "private_channel" });
+    ).toEqual({ type: "private_channel", name: "#private-roadmap" });
     expect(
       resolveSlackConversationContext({
         channelId: "G456",
         channelName: "mpdm-alice--bob-1",
         channelType: "mpim",
       }),
-    ).toEqual({ type: "group_dm" });
+    ).toEqual({ type: "group_dm", name: "mpdm-alice--bob-1" });
     expect(
       resolveSlackConversationContext({
         channelId: "D123",
         channelName: "alice",
         channelType: "im",
       }),
-    ).toEqual({ type: "direct_message" });
+    ).toEqual({ type: "direct_message", name: "alice" });
   });
 
   it("uses a conservative type when only a G-prefixed ID is known", () => {
@@ -50,7 +50,7 @@ describe("Slack conversation prompt context", () => {
         channelId: "G123",
         channelName: "maybe-private",
       }),
-    ).toEqual({ type: "private_channel_or_group_dm" });
+    ).toEqual({ type: "private_channel_or_group_dm", name: "#maybe-private" });
   });
 
   it("extracts Slack channel type from message-like raw payloads", () => {
@@ -79,13 +79,19 @@ describe("Slack conversation prompt context", () => {
     ).toBe("Private Channel or Group DM");
   });
 
-  it("uses public names before falling back to type labels", () => {
+  it("uses conversation names before falling back to type labels", () => {
     expect(
       formatSlackConversationContextLabel({
         type: "public_channel",
         name: "#engineering",
       }),
     ).toBe("#engineering");
+    expect(
+      formatSlackConversationContextLabel({
+        type: "direct_message",
+        name: "alice",
+      }),
+    ).toBe("alice");
     expect(
       formatSlackConversationContextLabel({
         type: "direct_message",
