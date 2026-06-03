@@ -58,6 +58,25 @@ export function ensureBlockSpacing(text: string): string {
 export function renderSlackMrkdwn(text: string): string {
   let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
   normalized = ensureBlockSpacing(normalized);
+  // The body is sent as a Slack `markdown` block, which expects standard
+  // Markdown links ([label](url)), not Slack mrkdwn angle-bracket syntax
+  // (<URL> / <URL|label>). Convert to explicit Markdown links so the block
+  // renders them correctly and bold markers (**) can never collide with the
+  // angle brackets and corrupt the URL.
+  //
+  // Pass 1: repair malformed bold-wrapped angle autolinks produced by the
+  // model: **<https://url**> → [https://url](https://url)
+  normalized = normalized.replace(
+    /\*\*<(https?:\/\/[^*>\s]+)\*\*>/g,
+    "[$1]($1)",
+  );
+  // Pass 2: Slack labeled links → Markdown: <https://url|label> → [label](https://url)
+  normalized = normalized.replace(
+    /<(https?:\/\/[^|>\s]+)\|([^>]+)>/g,
+    "[$2]($1)",
+  );
+  // Pass 3: remaining angle autolinks → explicit Markdown links: <https://url> → [https://url](https://url)
+  normalized = normalized.replace(/<(https?:\/\/[^>\s]+)>/g, "[$1]($1)");
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 

@@ -15,6 +15,52 @@ describe("renderSlackMrkdwn", () => {
       "one\n\n- item a\n- item b\n\ntwo",
     );
   });
+
+  it("converts Slack angle-bracket URL to explicit Markdown link", () => {
+    expect(
+      renderSlackMrkdwn("See <https://example.com> for details."),
+    ).toBe("See [https://example.com](https://example.com) for details.");
+  });
+
+  it("converts Slack labeled links to Markdown format", () => {
+    expect(
+      renderSlackMrkdwn("<https://github.com/org/repo/pull/1|PR #1>"),
+    ).toBe("[PR #1](https://github.com/org/repo/pull/1)");
+  });
+
+  it("resolves bold+angle-bracket collision that broke GitHub PR links", () => {
+    // The model generated **<https://url**> — closing ** absorbed inside the
+    // angle brackets. Pass 1 catches this and converts to [url](url).
+    expect(
+      renderSlackMrkdwn(
+        "**<https://github.com/getsentry/sentry/pull/116765**>",
+      ),
+    ).toBe(
+      "[https://github.com/getsentry/sentry/pull/116765](https://github.com/getsentry/sentry/pull/116765)",
+    );
+  });
+
+  it("converts multiple angle-bracket URLs in one message", () => {
+    expect(
+      renderSlackMrkdwn(
+        "PR1: <https://github.com/org/repo/pull/1> and PR2: <https://github.com/org/repo/pull/2>",
+      ),
+    ).toBe(
+      "PR1: [https://github.com/org/repo/pull/1](https://github.com/org/repo/pull/1) and PR2: [https://github.com/org/repo/pull/2](https://github.com/org/repo/pull/2)",
+    );
+  });
+
+  it("leaves Markdown links unchanged", () => {
+    expect(
+      renderSlackMrkdwn("**[PR #123](https://github.com/org/repo/pull/123)**"),
+    ).toBe("**[PR #123](https://github.com/org/repo/pull/123)**");
+  });
+
+  it("leaves plain bold text unchanged", () => {
+    expect(renderSlackMrkdwn("**Root cause** is here.")).toBe(
+      "**Root cause** is here.",
+    );
+  });
 });
 
 describe("buildSlackOutputMessage", () => {
