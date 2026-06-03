@@ -3,9 +3,8 @@
  *
  * This module owns Junior's durable identity/world prompt and volatile per-turn
  * runtime context. Runtime context is session-scoped bootstrap data; it must
- * stay separate from durable conversation history. Timeout and auth resumes may
- * refresh the same turn's block, but later user turns should receive fresh
- * context instead of inheriting stale runtime instructions as user text.
+ * stay separate from durable conversation history so compaction does not retain
+ * runtime instructions as user text.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -601,8 +600,9 @@ export function buildTurnContextPrompt(
   params: TurnContextPromptInput,
 ): string | null {
   const includeSessionContext = params.includeSessionContext ?? true;
-  // Session context is bootstrap material. Once it is present in Pi history,
-  // ordinary follow-up user messages should carry only the user's input.
+  // Session context, including Slack conversation facts, is bootstrap material.
+  // Once recorded in Pi history, follow-up user messages should carry only the
+  // user's input.
   if (!includeSessionContext) {
     return null;
   }

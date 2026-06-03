@@ -9,10 +9,6 @@
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord } from "@/chat/coerce";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  coerceSlackConversationContext,
-  type SlackConversationContext,
-} from "@/chat/slack/conversation-context";
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
@@ -41,11 +37,6 @@ export interface AgentTurnRequester {
 export interface AgentTurnSessionRecord {
   channelName?: string;
   conversationTitle?: string;
-  /**
-   * Turn-scoped Slack context saved so timeout/OAuth resumes can refresh the
-   * original runtime prompt block for the same in-progress user request.
-   */
-  slackConversation?: SlackConversationContext;
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
@@ -195,9 +186,6 @@ function parseAgentTurnSessionFields(
     parsed.conversationTitle.trim()
       ? parsed.conversationTitle.trim()
       : undefined;
-  const slackConversation = coerceSlackConversationContext(
-    parsed.slackConversation,
-  );
   const conversationId = parsed.conversationId;
   const sessionId = parsed.sessionId;
   const sliceId = toFiniteNonNegativeNumber(parsed.sliceId);
@@ -225,7 +213,6 @@ function parseAgentTurnSessionFields(
     version,
     ...(channelName ? { channelName } : {}),
     ...(conversationTitle ? { conversationTitle } : {}),
-    ...(slackConversation ? { slackConversation } : {}),
     conversationId,
     sessionId,
     sliceId,
@@ -355,9 +342,6 @@ function materializeAgentTurnSessionRecord(
     ...(stored.conversationTitle
       ? { conversationTitle: stored.conversationTitle }
       : {}),
-    ...(stored.slackConversation
-      ? { slackConversation: stored.slackConversation }
-      : {}),
     conversationId: stored.conversationId,
     sessionId: stored.sessionId,
     sliceId: stored.sliceId,
@@ -435,7 +419,6 @@ export async function getAgentTurnSessionRecord(
 function buildStoredRecord(args: {
   channelName?: string;
   conversationTitle?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -460,9 +443,6 @@ function buildStoredRecord(args: {
     ...(args.channelName ? { channelName: args.channelName } : {}),
     ...(args.conversationTitle
       ? { conversationTitle: args.conversationTitle }
-      : {}),
-    ...(args.slackConversation
-      ? { slackConversation: args.slackConversation }
       : {}),
     conversationId: args.conversationId,
     sessionId: args.sessionId,
@@ -545,9 +525,6 @@ async function updateAgentTurnSessionState(args: {
       ...(parsed.conversationTitle
         ? { conversationTitle: parsed.conversationTitle }
         : {}),
-      ...(parsed.slackConversation
-        ? { slackConversation: parsed.slackConversation }
-        : {}),
       startedAtMs: parsed.startedAtMs,
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
@@ -580,7 +557,6 @@ async function updateAgentTurnSessionState(args: {
 export async function upsertAgentTurnSessionRecord(args: {
   channelName?: string;
   conversationTitle?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -619,12 +595,6 @@ export async function upsertAgentTurnSessionRecord(args: {
         ? {
             conversationTitle:
               args.conversationTitle ?? existingRecord?.conversationTitle,
-          }
-        : {}),
-      ...((args.slackConversation ?? existingRecord?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? existingRecord?.slackConversation,
           }
         : {}),
       conversationId: args.conversationId,
@@ -669,7 +639,6 @@ export async function upsertAgentTurnSessionRecord(args: {
 export async function recordAgentTurnSessionSummary(args: {
   channelName?: string;
   conversationTitle?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -700,12 +669,6 @@ export async function recordAgentTurnSessionSummary(args: {
         ? {
             conversationTitle:
               args.conversationTitle ?? existing?.conversationTitle,
-          }
-        : {}),
-      ...((args.slackConversation ?? existing?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? existing?.slackConversation,
           }
         : {}),
       conversationId: args.conversationId,

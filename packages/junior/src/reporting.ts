@@ -305,12 +305,10 @@ function sessionReportFromSummary(
   const privacy = resolveConversationPrivacy({
     conversationId: summary.conversationId,
   });
-  const slackConversation =
-    summary.slackConversation ??
-    resolveSlackConversationContextFromThreadId({
-      threadId: summary.conversationId,
-      channelName: summary.channelName,
-    });
+  const slackConversation = resolveSlackConversationContextFromThreadId({
+    threadId: summary.conversationId,
+    channelName: summary.channelName,
+  });
   const privateLabel =
     privacy !== "public"
       ? slackConversation

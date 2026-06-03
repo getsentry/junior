@@ -205,57 +205,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("preserves turn-scoped Slack conversation context across resume records", async () => {
-    const { persistTimeoutSessionRecord } =
-      await import("@/chat/services/turn-session-record");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-
-    await upsertAgentTurnSessionRecord({
-      conversationId: "slack:G123:1712345.0001",
-      sessionId: "turn-slack-context",
-      sliceId: 1,
-      state: "awaiting_resume",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "continue me" }],
-          timestamp: 1,
-        },
-      ],
-      channelName: "private-roadmap",
-      slackConversation: {
-        type: "private_channel",
-        name: "#private-roadmap",
-      },
-      resumeReason: "timeout",
-    });
-
-    await persistTimeoutSessionRecord({
-      conversationId: "slack:G123:1712345.0001",
-      sessionId: "turn-slack-context",
-      currentSliceId: 1,
-      messages: [],
-      errorMessage: "timed out again",
-      logContext: {
-        modelId: "test-model",
-      },
-    });
-
-    await expect(
-      getAgentTurnSessionRecord(
-        "slack:G123:1712345.0001",
-        "turn-slack-context",
-      ),
-    ).resolves.toMatchObject({
-      channelName: "private-roadmap",
-      slackConversation: {
-        type: "private_channel",
-        name: "#private-roadmap",
-      },
-    });
-  });
-
   it("falls back to the last stored safe boundary when auth pause captures a non-continuable tail", async () => {
     const { persistAuthPauseSessionRecord } =
       await import("@/chat/services/turn-session-record");

@@ -38,11 +38,6 @@ type McpOauthCallbackHarnessModule =
 type PluginRegistryModule = typeof import("@/chat/plugins/registry");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
-type AwaitingMcpSlackConversation = NonNullable<
-  Parameters<
-    TurnSessionStoreModule["upsertAgentTurnSessionRecord"]
-  >[0]["slackConversation"]
->;
 
 let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
@@ -92,18 +87,12 @@ async function createAwaitingMcpTurnRecord(args: {
   conversationId: string;
   sessionId: string;
   text: string;
-  channelName?: string;
-  slackConversation?: AwaitingMcpSlackConversation;
 }) {
   await turnSessionStoreModule.upsertAgentTurnSessionRecord({
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: 2,
     state: "awaiting_resume",
-    ...(args.channelName ? { channelName: args.channelName } : {}),
-    ...(args.slackConversation
-      ? { slackConversation: args.slackConversation }
-      : {}),
     piMessages: [
       {
         role: "user",
@@ -228,11 +217,6 @@ describe("mcp oauth callback slack integration", () => {
       conversationId: "conversation-1",
       sessionId,
       text: "what did i say about the budget?",
-      channelName: "engineering",
-      slackConversation: {
-        type: "public_channel",
-        name: "#engineering",
-      },
     });
 
     const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
@@ -319,13 +303,6 @@ describe("mcp oauth callback slack integration", () => {
       "what did i say about the budget?",
       expect.objectContaining({
         requester: expect.objectContaining({ userId: "U123" }),
-        correlation: expect.objectContaining({
-          channelName: "engineering",
-        }),
-        slackConversation: {
-          type: "public_channel",
-          name: "#engineering",
-        },
         toolChannelId: "C999",
         inboundAttachmentCount: 1,
         omittedImageAttachmentCount: 1,

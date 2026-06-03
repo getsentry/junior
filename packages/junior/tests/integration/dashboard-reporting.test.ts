@@ -330,15 +330,11 @@ describe("dashboard reporting", () => {
     );
 
     await upsertAgentTurnSessionRecord({
-      conversationId: "slack:G1:222",
+      conversationId: "slack:D1:222",
       sessionId: "turn-private",
       sliceId: 1,
       state: "completed",
-      channelName: "private-roadmap",
-      slackConversation: {
-        type: "private_channel",
-        name: "#private-roadmap",
-      },
+      channelName: "secret-dm-name",
       conversationTitle: "sensitive generated thread title",
       requester: {
         email: "david@sentry.io",
@@ -367,11 +363,11 @@ describe("dashboard reporting", () => {
     });
 
     const report =
-      await createJuniorReporting().getConversation("slack:G1:222");
+      await createJuniorReporting().getConversation("slack:D1:222");
 
     expect(report.turns[0]).toMatchObject({
-      conversationTitle: "Private Channel",
-      channelName: "Private Channel",
+      conversationTitle: "Direct Message",
+      channelName: "Direct Message",
       id: "turn-private",
       requesterIdentity: {
         email: "david@sentry.io",
@@ -391,7 +387,7 @@ describe("dashboard reporting", () => {
     expect(JSON.stringify(report)).not.toContain(
       "sensitive generated thread title",
     );
-    expect(JSON.stringify(report)).not.toContain("private-roadmap");
+    expect(JSON.stringify(report)).not.toContain("secret-dm-name");
     const toolCall = report.turns[0]!.transcriptMetadata?.[1]?.parts.find(
       (part) => part.type === "tool_call",
     );

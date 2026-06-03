@@ -506,7 +506,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // must not delay reply generation.
           void recordAgentTurnSessionSummary({
             channelName,
-            slackConversation,
             conversationId,
             sessionId: turnId,
             sliceId: 1,
@@ -856,7 +855,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (conversationId) {
             await recordAgentTurnSessionSummary({
               channelName,
-              slackConversation,
               conversationId,
               cumulativeDurationMs: reply.diagnostics.durationMs,
               cumulativeUsage: reply.diagnostics.usage,
@@ -1034,7 +1032,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               try {
                 await recordAgentTurnSessionSummary({
                   channelName,
-                  slackConversation,
                   conversationId,
                   sessionId: turnId,
                   sliceId: 1,

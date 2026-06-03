@@ -11,7 +11,6 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 
 export interface TurnSessionContext {
   conversationId?: string;
@@ -126,7 +125,6 @@ export async function loadTurnSessionRecord(
 /** Persist the latest safe in-progress boundary without scheduling continuation. */
 export async function persistRunningSessionRecord(args: {
   channelName?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   sessionId: string;
   sliceId: number;
@@ -148,12 +146,6 @@ export async function persistRunningSessionRecord(args: {
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
-      ...((args.slackConversation ?? latestSessionRecord?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? latestSessionRecord?.slackConversation,
-          }
-        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
@@ -167,7 +159,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -187,7 +179,6 @@ export async function persistRunningSessionRecord(args: {
 /** Persist a completed turn session record. */
 export async function persistCompletedSessionRecord(args: {
   channelName?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
@@ -206,12 +197,6 @@ export async function persistCompletedSessionRecord(args: {
     await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      ...((args.slackConversation ?? latestSessionRecord?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? latestSessionRecord?.slackConversation,
-          }
         : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
@@ -232,7 +217,7 @@ export async function persistCompletedSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -255,7 +240,6 @@ export async function persistCompletedSessionRecord(args: {
  */
 export async function persistAuthPauseSessionRecord(args: {
   channelName?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
@@ -284,12 +268,6 @@ export async function persistAuthPauseSessionRecord(args: {
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
-      ...((args.slackConversation ?? latestSessionRecord?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? latestSessionRecord?.slackConversation,
-          }
-        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestSessionRecord?.cumulativeDurationMs,
@@ -312,7 +290,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
@@ -337,7 +315,6 @@ export async function persistAuthPauseSessionRecord(args: {
  */
 export async function persistTimeoutSessionRecord(args: {
   channelName?: string;
-  slackConversation?: SlackConversationContext;
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
@@ -367,12 +344,6 @@ export async function persistTimeoutSessionRecord(args: {
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
-      ...((args.slackConversation ?? latestSessionRecord?.slackConversation)
-        ? {
-            slackConversation:
-              args.slackConversation ?? latestSessionRecord?.slackConversation,
-          }
-        : {}),
       conversationId: args.conversationId,
       cumulativeDurationMs: addDurationMs(
         latestSessionRecord?.cumulativeDurationMs,
@@ -395,7 +366,7 @@ export async function persistTimeoutSessionRecord(args: {
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+      ...(getActiveTraceId() ?? latestSessionRecord?.traceId
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
