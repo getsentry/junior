@@ -260,6 +260,39 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("nudges failed worker runs before releasing runnable work", async () => {
+    const queue = createFakeQueue();
+    let currentNowMs = 1_000;
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: currentNowMs,
+    });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => {
+          currentNowMs = 2_000;
+          throw new Error("runner failed");
+        },
+      }),
+    ).rejects.toThrow("runner failed");
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
+    expect(queue.sent).toMatchObject([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `error:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = createFakeQueue();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });

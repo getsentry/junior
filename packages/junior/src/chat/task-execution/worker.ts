@@ -286,17 +286,40 @@ export async function processConversationWork(
     );
     return { status: "completed" };
   } catch (error) {
+    const errorNowMs = now(options);
     try {
-      await requestConversationContinuation({
+      const continuationMarked = await requestConversationContinuation({
         conversationId,
         leaseToken: lease.leaseToken,
-        nowMs: now(options),
+        nowMs: errorNowMs,
         state: options.state,
       });
+      if (continuationMarked) {
+        await sendWakeNudge({
+          conversationId,
+          idempotencyKey: nudgeIdempotencyKey(
+            "error",
+            conversationId,
+            errorNowMs,
+          ),
+          nowMs: errorNowMs,
+          options,
+        });
+      }
+    } catch (requeueError) {
+      logException(
+        requeueError,
+        "conversation_work_requeue_failed",
+        { conversationId },
+        {},
+        "Conversation work requeue failed after runner error",
+      );
+    }
+    try {
       await releaseConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
-        nowMs: now(options),
+        nowMs: errorNowMs,
         state: options.state,
       });
     } catch (releaseError) {
