@@ -634,7 +634,9 @@ export async function handleSlackWebhook(args: {
       services: args.services,
     });
     if (shouldPersistBeforeAck(parsed)) {
-      await eventTask;
+      await eventTask.catch((error) => {
+        logException(error, "slack_event_persist_failed");
+      });
     } else {
       enqueue(
         args.waitUntil,
