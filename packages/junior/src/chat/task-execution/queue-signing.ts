@@ -4,6 +4,7 @@ import type { ConversationQueueMessage } from "./queue";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT =
   "junior.conversation_work_queue.v1";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION = "v1";
+const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 5 * 60 * 1000;
 
 interface SignedConversationQueueMessage extends ConversationQueueMessage {
   signature: string;
@@ -94,10 +95,17 @@ export function signConversationQueueMessage(
 /** Verify a signed conversation queue payload from the Vercel Queue callback. */
 export function verifySignedConversationQueueMessage(
   value: unknown,
+  nowMs = Date.now(),
 ): ConversationQueueMessage | undefined {
   const message = parseSignedConversationQueueMessage(value);
   const secret = getConversationWorkQueueSecret();
-  if (!message || !secret) {
+  if (
+    !message ||
+    !secret ||
+    !Number.isFinite(nowMs) ||
+    Math.abs(nowMs - message.signedAtMs) >
+      CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS
+  ) {
     return undefined;
   }
 

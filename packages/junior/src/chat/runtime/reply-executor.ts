@@ -397,7 +397,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
         };
-        const activeTurnId = preparedState.conversation.processing.activeTurnId;
+        let activeTurnId = preparedState.conversation.processing.activeTurnId;
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
@@ -434,6 +434,36 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               conversation: preparedState.conversation,
             });
             return;
+          }
+
+          const sessionRecord = await getAgentTurnSessionRecord(
+            conversationId,
+            activeTurnId,
+          );
+          if (sessionRecord?.state === "awaiting_resume") {
+            if (sessionRecord.resumeReason === "auth") {
+              await persistThreadState(thread, {
+                conversation: preparedState.conversation,
+              });
+              await options.onTurnStatePersisted?.();
+              return;
+            }
+
+            await failAgentTurnSessionRecord({
+              conversationId,
+              expectedVersion: sessionRecord.version,
+              sessionId: activeTurnId,
+              errorMessage:
+                "Awaiting turn continuation metadata could not be materialized",
+            });
+            markTurnFailed({
+              conversation: preparedState.conversation,
+              nowMs: Date.now(),
+              sessionId: activeTurnId,
+              markConversationMessage,
+              updateConversationStats,
+            });
+            activeTurnId = undefined;
           }
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({

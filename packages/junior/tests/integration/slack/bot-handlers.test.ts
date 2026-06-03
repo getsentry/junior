@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { RetryableTurnError } from "@/chat/runtime/turn";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import {
+  getAgentTurnSessionRecord,
+  upsertAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -96,12 +101,27 @@ function createAwaitingContinuationState(args: {
   };
 }
 
+function turnPiMessages(text: string) {
+  return [
+    {
+      role: "user" as const,
+      content: [{ type: "text" as const, text }],
+      timestamp: 1,
+    },
+  ];
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("bot handlers (integration)", () => {
-  afterEach(() => {
+  beforeEach(async () => {
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
     resetSlackApiMockState();
     vi.restoreAllMocks();
+    await disconnectStateAdapter();
   });
 
   it("handleNewMention: posts reply from generateAssistantReply", async () => {
@@ -848,6 +868,132 @@ describe("bot handlers (integration)", () => {
     expect(followUp).toBeDefined();
     expect(followUp?.meta?.replied).toBeUndefined();
     expect(followUp?.meta?.skippedReason).toBeUndefined();
+  });
+
+  it("parks auth-paused active turns without starting a new follow-up turn", async () => {
+    const conversationId = "slack:C_AUTH_PARKED:1700000000.000";
+    const activeSessionId = "turn_msg-auth-original";
+    const generateAssistantReply = vi.fn();
+    const onTurnStatePersisted = vi.fn();
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "auth",
+      piMessages: turnPiMessages("please use notion"),
+    });
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply,
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-auth-follow-up",
+        threadId: conversationId,
+        text: "any update?",
+        isMention: true,
+      }),
+      { onTurnStatePersisted },
+    );
+
+    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
+    expect(thread.posts).toEqual([]);
+    const state = thread.getState();
+    const conversation = (
+      state as {
+        conversation?: {
+          messages?: Array<{
+            id?: string;
+            meta?: { replied?: boolean; skippedReason?: string };
+          }>;
+          processing?: { activeTurnId?: string };
+        };
+      }
+    ).conversation;
+    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
+    const followUp = conversation?.messages?.find(
+      (message) => message.id === "msg-auth-follow-up",
+    );
+    expect(followUp).toBeDefined();
+    expect(followUp?.meta?.replied).toBeUndefined();
+    expect(followUp?.meta?.skippedReason).toBeUndefined();
+  });
+
+  it("fails malformed awaiting continuations before handling the follow-up", async () => {
+    const conversationId = "slack:C_BAD_CONTINUATION:1700000000.000";
+    const activeSessionId = "turn_msg-timeout-original";
+    const generateAssistantReply = vi.fn().mockResolvedValue({
+      text: "Recovered.",
+      diagnostics: {
+        assistantMessageCount: 1,
+        modelId: "test-model",
+        outcome: "success" as const,
+        toolCalls: [],
+        toolErrorCount: 0,
+        toolResultCount: 0,
+        usedPrimaryText: true,
+      },
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: turnPiMessages("please keep working"),
+    });
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply,
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-timeout-follow-up",
+        threadId: conversationId,
+        text: "what happened?",
+        isMention: true,
+      }),
+    );
+
+    expect(generateAssistantReply).toHaveBeenCalledOnce();
+    expect(postIncludes(thread, "Recovered.")).toBe(true);
+    const failedRecord = await getAgentTurnSessionRecord(
+      conversationId,
+      activeSessionId,
+    );
+    expect(failedRecord?.state).toBe("failed");
+    expect(failedRecord?.errorMessage).toBe(
+      "Awaiting turn continuation metadata could not be materialized",
+    );
+    const state = thread.getState();
+    const conversation = (
+      state as {
+        conversation?: { processing?: { activeTurnId?: string } };
+      }
+    ).conversation;
+    expect(conversation?.processing?.activeTurnId).toBeUndefined();
   });
 
   it("reschedules an awaiting continuation for repeated delivery of the active message", async () => {

@@ -674,25 +674,39 @@ describe("conversation work execution", () => {
 
   it("verifies signed Vercel Queue callback payloads", () => {
     process.env.JUNIOR_SECRET = "conversation-work-secret";
+    const signedAtMs = 12_345;
+    const maxSkewMs = 5 * 60 * 1000;
     const signed = signConversationQueueMessage(
       { conversationId: CONVERSATION_ID },
-      12_345,
+      signedAtMs,
     );
 
-    expect(verifySignedConversationQueueMessage(signed)).toEqual({
+    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
       conversationId: CONVERSATION_ID,
     });
     expect(
-      verifySignedConversationQueueMessage({
-        ...signed,
-        conversationId: "slack:C123:forged",
-      }),
+      verifySignedConversationQueueMessage(
+        {
+          ...signed,
+          conversationId: "slack:C123:forged",
+        },
+        signedAtMs,
+      ),
     ).toBeUndefined();
     expect(
-      verifySignedConversationQueueMessage({
-        ...signed,
-        signature: "deadbeef",
-      }),
+      verifySignedConversationQueueMessage(
+        {
+          ...signed,
+          signature: "deadbeef",
+        },
+        signedAtMs,
+      ),
+    ).toBeUndefined();
+    expect(
+      verifySignedConversationQueueMessage(signed, signedAtMs + maxSkewMs + 1),
+    ).toBeUndefined();
+    expect(
+      verifySignedConversationQueueMessage(signed, signedAtMs - maxSkewMs - 1),
     ).toBeUndefined();
   });
 
