@@ -133,6 +133,8 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
+    const privatePrompt =
+      "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
       base: base as unknown as StreamFn,
@@ -142,7 +144,7 @@ describe("createTracedStreamFn", () => {
       fakeModel("openai/gpt-5.4"),
       {
         systemPrompt: "private system",
-        messages: [{ role: "user", content: "private prompt", timestamp: 0 }],
+        messages: [{ role: "user", content: privatePrompt, timestamp: 0 }],
       },
       undefined,
     );
@@ -152,10 +154,18 @@ describe("createTracedStreamFn", () => {
     };
     expect(opts.attributes["app.conversation.privacy"]).toBe("private");
     expect(opts.attributes["app.ai.input.message_count"]).toBe(1);
-    expect(opts.attributes["app.ai.input.content_chars"]).toBe(14);
+    expect(opts.attributes["app.ai.input.content_chars"]).toBe(
+      privatePrompt.length,
+    );
     expect(opts.attributes["gen_ai.input.messages"]).toContain('"chars"');
     expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
       "private prompt",
+    );
+    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
+      "slack.conversation.name",
+    );
+    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
+      "#private-roadmap",
     );
     expect(opts.attributes["gen_ai.system_instructions"]).toContain('"chars"');
     expect(opts.attributes["gen_ai.system_instructions"]).not.toContain(

@@ -131,10 +131,18 @@ export function formatSlackConversationTypeLabel(
   return "Private Channel or Group DM";
 }
 
-/** Render the safest available Slack conversation label for UI surfaces. */
+/** Render a Slack conversation label for surfaces allowed to expose names. */
 export function formatSlackConversationContextLabel(
   context: SlackConversationContext | undefined,
 ): string | undefined {
   if (!context) return undefined;
   return context.name ?? formatSlackConversationTypeLabel(context.type);
+}
+
+/** Render a Slack conversation label without exposing conversation names. */
+export function formatSlackConversationRedactedLabel(
+  context: SlackConversationContext | undefined,
+): string | undefined {
+  if (!context) return undefined;
+  return formatSlackConversationTypeLabel(context.type);
 }

@@ -15,7 +15,7 @@ import {
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
 import {
-  formatSlackConversationTypeLabel,
+  formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
 import {
@@ -312,7 +312,7 @@ function sessionReportFromSummary(
   const privateLabel =
     privacy !== "public"
       ? slackConversation
-        ? formatSlackConversationTypeLabel(slackConversation.type)
+        ? formatSlackConversationRedactedLabel(slackConversation)
         : PRIVATE_CONVERSATION_LABEL
       : undefined;
   const conversationTitle = privateLabel ?? summary.conversationTitle;

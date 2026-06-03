@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatSlackConversationContextLabel,
+  formatSlackConversationRedactedLabel,
   formatSlackConversationTypeLabel,
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
@@ -97,5 +98,20 @@ describe("Slack conversation prompt context", () => {
         type: "direct_message",
       }),
     ).toBe("Direct Message");
+  });
+
+  it("redacts conversation names for trace and reporting labels", () => {
+    expect(
+      formatSlackConversationRedactedLabel({
+        type: "private_channel",
+        name: "#private-roadmap",
+      }),
+    ).toBe("Private Channel");
+    expect(
+      formatSlackConversationRedactedLabel({
+        type: "public_channel",
+        name: "#engineering",
+      }),
+    ).toBe("Public Channel");
   });
 });
