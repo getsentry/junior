@@ -53,6 +53,7 @@ function createRuntime(
 
 function createAwaitingContinuationState(args: {
   activeSessionId: string;
+  replied?: boolean;
   userMessageId?: string;
   userText?: string;
 }) {
@@ -74,6 +75,9 @@ function createAwaitingContinuationState(args: {
           author: {
             userId: "U-test",
           },
+          ...(args.replied === undefined
+            ? {}
+            : { meta: { replied: args.replied } }),
         },
       ],
       processing: {
@@ -890,6 +894,54 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
+  });
+
+  it("does not reschedule an awaiting continuation for an already-replied duplicate", async () => {
+    const conversationId = "slack:C_TIMEOUT_REPLIED_DUP:1700000000.000";
+    const activeSessionId = "turn_msg-replied-duplicate";
+    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+      conversationId,
+      sessionId: activeSessionId,
+      expectedVersion: 4,
+    });
+    const generateAssistantReply = vi.fn();
+    const onTurnStatePersisted = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply,
+          getAwaitingTurnContinuationRequest,
+          scheduleTurnTimeoutResume,
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({
+        activeSessionId,
+        replied: true,
+        userMessageId: "msg-replied-duplicate",
+      }),
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-replied-duplicate",
+        threadId: conversationId,
+        text: "please keep working",
+        isMention: true,
+      }),
+      { onTurnStatePersisted },
+    );
+
+    expect(getAwaitingTurnContinuationRequest).not.toHaveBeenCalled();
+    expect(scheduleTurnTimeoutResume).not.toHaveBeenCalled();
+    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
+    expect(thread.posts).toEqual([]);
   });
 
   it("keeps awaiting continuation state without a visible acknowledgement", async () => {

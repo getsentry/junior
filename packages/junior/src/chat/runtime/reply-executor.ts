@@ -398,6 +398,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         const activeTurnId = preparedState.conversation.processing.activeTurnId;
+        if (preparedState.userMessageAlreadyReplied) {
+          await persistThreadState(thread, {
+            conversation: preparedState.conversation,
+          });
+          await options.onTurnStatePersisted?.();
+          return;
+        }
         if (conversationId && activeTurnId) {
           const resumeRequest =
             await deps.services.getAwaitingTurnContinuationRequest({
@@ -428,13 +435,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             return;
           }
-        }
-        if (preparedState.userMessageAlreadyReplied) {
-          await persistThreadState(thread, {
-            conversation: preparedState.conversation,
-          });
-          await options.onTurnStatePersisted?.();
-          return;
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,

@@ -1577,26 +1577,23 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
-      if (!sessionRecord) {
-        throw new Error(
-          `Failed to persist auth continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
+      if (sessionRecord) {
+        throw new RetryableTurnError(
+          error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
+          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId}`,
+          {
+            authDisposition: error.disposition,
+            authDurationMs: Date.now() - replyStartedAtMs,
+            authKind: error.kind,
+            authProvider: error.provider,
+            authThinkingLevel: thinkingSelection?.thinkingLevel,
+            authUsage: turnUsage,
+            conversationId: timeoutResumeConversationId,
+            sessionId: timeoutResumeSessionId,
+            sliceId: sessionRecord.sliceId,
+          },
         );
       }
-      throw new RetryableTurnError(
-        error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
-        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId}`,
-        {
-          authDisposition: error.disposition,
-          authDurationMs: Date.now() - replyStartedAtMs,
-          authKind: error.kind,
-          authProvider: error.provider,
-          authThinkingLevel: thinkingSelection?.thinkingLevel,
-          authUsage: turnUsage,
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: sessionRecord.sliceId,
-        },
-      );
     }
 
     if (isRetryableTurnError(error)) {
