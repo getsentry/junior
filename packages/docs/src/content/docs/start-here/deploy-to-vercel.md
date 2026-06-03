@@ -41,9 +41,9 @@ The scaffolded `package.json` includes the production build script:
 
 Keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts.
 
-## Enable the heartbeat cron
+## Keep Vercel runtime entries
 
-Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. The scheduler plugin uses this heartbeat when scheduled tasks are enabled. The scaffolded `vercel.json` should include this cron:
+Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. The scheduler plugin uses this heartbeat when scheduled tasks are enabled. The scaffolded `vercel.json` should include these runtime entries:
 
 ```json title="vercel.json"
 {
@@ -54,11 +54,24 @@ Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and
       "path": "/api/internal/heartbeat",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/internal/agent/continue.ts": {
+      "maxDuration": 300,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "junior_conversation_work"
+        }
+      ]
+    }
+  }
 }
 ```
 
-If you maintain `vercel.json` manually, keep the `/api/internal/heartbeat` cron entry. The endpoint returns `401` unless the incoming Vercel Cron request has a bearer token that matches `CRON_SECRET`.
+If you maintain `vercel.json` manually, keep the `/api/internal/heartbeat` cron entry and the queue trigger for `api/internal/agent/continue.ts`. The scaffolded `api/internal/agent/continue.ts` file delegates queue delivery to `server.ts`, and Vercel requires the `functions` key to match a concrete source file.
+
+The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has a bearer token that matches `CRON_SECRET`.
 
 ## Configure production environment
 

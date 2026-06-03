@@ -50,6 +50,17 @@ describe("juniorVercelConfig", () => {
 
     expect(config).toEqual(juniorVercelConfig());
   });
+
+  it("keeps the example queue trigger pointed at a concrete function source", () => {
+    const config = juniorVercelConfig();
+    const functionSources = Object.keys(config.functions as object);
+
+    for (const source of functionSources) {
+      expect(
+        fs.existsSync(path.join(WORKSPACE_ROOT, "apps/example", source)),
+      ).toBe(true);
+    }
+  });
 });
 
 describe("resolveConversationWorkVisibilityTimeoutSeconds", () => {

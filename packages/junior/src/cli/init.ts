@@ -17,6 +17,18 @@ export default app;
   );
 }
 
+function writeQueueConsumerEntry(targetDir: string): void {
+  const queueConsumerDir = path.join(targetDir, "api", "internal", "agent");
+  fs.mkdirSync(queueConsumerDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(queueConsumerDir, "continue.ts"),
+    `import app from "../../../server.ts";
+
+export const POST = (request: Request) => app.fetch(request);
+`,
+  );
+}
+
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
@@ -188,6 +200,7 @@ SENTRY_ORG_SLUG=
   );
 
   writeServerEntry(target);
+  writeQueueConsumerEntry(target);
   writeNitroConfig(target);
   writeViteConfig(target);
   writeVercelJson(target);

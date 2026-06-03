@@ -32,7 +32,7 @@ cd my-bot
 pnpm install
 ```
 
-`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, CI workflow, app context files, local plugin and skill directories, and `.env.example`.
+`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, and `.env.example`.
 
 The generated `app/` files have separate jobs:
 
