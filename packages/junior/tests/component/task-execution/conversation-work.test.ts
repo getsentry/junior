@@ -352,6 +352,37 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("releases and requeues runnable work when the runner reports lost lease", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => {
+          currentNowMs = 2_000;
+          return { status: "lost_lease" };
+        },
+      }),
+    ).resolves.toEqual({ status: "lost_lease" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `lost_lease:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });

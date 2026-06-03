@@ -84,6 +84,42 @@ async function sendWakeNudge(args: {
   });
 }
 
+async function requestLostLeaseRecovery(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs: number;
+  options: ProcessConversationWorkOptions;
+}): Promise<void> {
+  const continuationMarked = await requestConversationContinuation({
+    conversationId: args.conversationId,
+    leaseToken: args.leaseToken,
+    nowMs: args.nowMs,
+    state: args.options.state,
+  });
+  if (!continuationMarked) {
+    return;
+  }
+  const released = await releaseConversationWork({
+    conversationId: args.conversationId,
+    leaseToken: args.leaseToken,
+    nowMs: args.nowMs,
+    state: args.options.state,
+  });
+  if (!released) {
+    return;
+  }
+  await sendWakeNudge({
+    conversationId: args.conversationId,
+    idempotencyKey: nudgeIdempotencyKey(
+      "lost_lease",
+      args.conversationId,
+      args.nowMs,
+    ),
+    nowMs: args.nowMs,
+    options: args.options,
+  });
+}
+
 function startLeaseCheckIn(args: {
   conversationId: string;
   leaseToken: string;
@@ -223,9 +259,21 @@ export async function processConversationWork(
   try {
     const result = await options.run(workerContext);
     if (result.status === "lost_lease") {
+      await requestLostLeaseRecovery({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        nowMs: now(options),
+        options,
+      });
       return { status: "lost_lease" };
     }
     if (leaseLost) {
+      await requestLostLeaseRecovery({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        nowMs: now(options),
+        options,
+      });
       return { status: "lost_lease" };
     }
     if (result.status === "yielded") {
