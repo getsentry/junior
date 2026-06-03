@@ -6,6 +6,7 @@ import type {
   ConversationQueueSendResult,
   ConversationWorkQueue,
 } from "./queue";
+import { signConversationQueueMessage } from "./queue-signing";
 
 export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
 
@@ -54,11 +55,15 @@ export function createVercelConversationWorkQueue(
       message: ConversationQueueMessage,
       sendOptions?: ConversationQueueSendOptions,
     ): Promise<ConversationQueueSendResult> {
-      const result = await client.send(topic, message, {
-        idempotencyKey: sendOptions?.idempotencyKey,
-        delaySeconds: toDelaySeconds(sendOptions),
-        retentionSeconds: options.retentionSeconds,
-      });
+      const result = await client.send(
+        topic,
+        signConversationQueueMessage(message),
+        {
+          idempotencyKey: sendOptions?.idempotencyKey,
+          delaySeconds: toDelaySeconds(sendOptions),
+          retentionSeconds: options.retentionSeconds,
+        },
+      );
       return result.messageId ? { messageId: result.messageId } : {};
     },
   };

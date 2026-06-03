@@ -21,6 +21,10 @@ import {
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import {
+  signConversationQueueMessage,
+  verifySignedConversationQueueMessage,
+} from "@/chat/task-execution/queue-signing";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
@@ -32,12 +36,19 @@ import {
 } from "../../fixtures/conversation-work";
 
 describe("conversation work execution", () => {
+  const originalJuniorSecret = process.env.JUNIOR_SECRET;
+
   beforeEach(async () => {
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
+    if (originalJuniorSecret === undefined) {
+      delete process.env.JUNIOR_SECRET;
+    } else {
+      process.env.JUNIOR_SECRET = originalJuniorSecret;
+    }
     vi.useRealTimers();
   });
 
@@ -587,6 +598,7 @@ describe("conversation work execution", () => {
   });
 
   it("maps the generic queue port to Vercel Queue send options", async () => {
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
     const sends: Array<{
       message: unknown;
       options: unknown;
@@ -612,7 +624,12 @@ describe("conversation work execution", () => {
     expect(sends).toEqual([
       {
         topic: "junior_test_work",
-        message: { conversationId: CONVERSATION_ID },
+        message: expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          signature: expect.any(String),
+          signatureVersion: "v1",
+          signedAtMs: expect.any(Number),
+        }),
         options: {
           delaySeconds: 16,
           idempotencyKey: "idem-1",
@@ -620,6 +637,30 @@ describe("conversation work execution", () => {
         },
       },
     ]);
+  });
+
+  it("verifies signed Vercel Queue callback payloads", () => {
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    const signed = signConversationQueueMessage(
+      { conversationId: CONVERSATION_ID },
+      12_345,
+    );
+
+    expect(verifySignedConversationQueueMessage(signed)).toEqual({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(
+      verifySignedConversationQueueMessage({
+        ...signed,
+        conversationId: "slack:C123:forged",
+      }),
+    ).toBeUndefined();
+    expect(
+      verifySignedConversationQueueMessage({
+        ...signed,
+        signature: "deadbeef",
+      }),
+    ).toBeUndefined();
   });
 
   it("processes Vercel Queue payloads through the leased worker", async () => {

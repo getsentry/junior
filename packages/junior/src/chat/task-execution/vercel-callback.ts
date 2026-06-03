@@ -10,6 +10,7 @@ import {
   type ConversationWorkerResult,
   type ConversationWorkerContext,
 } from "./worker";
+import { verifySignedConversationQueueMessage } from "./queue-signing";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
 
@@ -75,8 +76,12 @@ export function createVercelConversationWorkCallback(
 ): (request: Request) => Promise<Response> {
   return handleCallback(
     async (message: unknown) => {
+      const verified = verifySignedConversationQueueMessage(message);
+      if (!verified) {
+        throw new Error("Unauthorized conversation queue message");
+      }
       await runWithTurnRequestDeadline(() =>
-        processConversationQueueMessage(message, options),
+        processConversationQueueMessage(verified, options),
       );
     },
     {
