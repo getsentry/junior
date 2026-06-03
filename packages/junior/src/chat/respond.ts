@@ -120,6 +120,7 @@ import {
   persistTimeoutSessionRecord,
 } from "@/chat/services/turn-session-record";
 import type { AgentTurnRequester } from "@/chat/state/turn-session";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import {
@@ -179,11 +180,7 @@ function waitForAbortSettlement(
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
-  credentialSubject?: {
-    type: "user";
-    userId: string;
-    allowedWhen: "private-direct-conversation";
-  };
+  credentialContext?: CredentialContext;
   requester?: {
     userId?: string;
     userName?: string;
@@ -201,8 +198,6 @@ export interface ReplyRequestContext {
     messageTs?: string;
     threadTs?: string;
     requesterId?: string;
-    actorType?: string;
-    actorId?: string;
   };
   toolChannelId?: string;
   conversationContext?: string;
@@ -432,6 +427,16 @@ export async function generateAssistantReply(
     context.requester,
     context.correlation?.requesterId,
   );
+  const credentialActor = context.credentialContext?.actor;
+  const credentialActorLogContext = credentialActor
+    ? {
+        actorType: credentialActor.type,
+        actorId:
+          credentialActor.type === "user"
+            ? credentialActor.userId
+            : credentialActor.id,
+      }
+    : {};
   const conversationPrivacy = resolveConversationPrivacy({
     channelId: context.correlation?.channelId,
     conversationId:
@@ -444,8 +449,7 @@ export async function generateAssistantReply(
     requesterId: context.correlation?.requesterId,
     channelId: context.correlation?.channelId,
     runId: context.correlation?.runId,
-    actorType: context.correlation?.actorType,
-    actorId: context.correlation?.actorId,
+    ...credentialActorLogContext,
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
   };
@@ -496,8 +500,7 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
-      actorType: context.correlation?.actorType,
-      actorId: context.correlation?.actorId,
+      ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     };
@@ -583,10 +586,10 @@ export async function generateAssistantReply(
       ...persistedConfigurationValues,
     };
     // ── Sandbox ──────────────────────────────────────────────────────
-    const credentialRequesterId =
-      context.credentialSubject?.type === "user"
-        ? context.credentialSubject.userId
-        : context.requester?.userId;
+    const authRequesterId =
+      context.credentialContext?.actor.type === "user"
+        ? context.credentialContext.actor.userId
+        : undefined;
     const userTokenStore = createUserTokenStore();
     const agentPluginHooks = createAgentPluginHookRunner({
       requester: context.requester,
@@ -596,11 +599,7 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      credentialEgress: credentialRequesterId
-        ? {
-            requesterId: credentialRequesterId,
-          }
-        : undefined,
+      credentialEgress: context.credentialContext,
       agentHooks: agentPluginHooks,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
@@ -784,7 +783,7 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: credentialRequesterId,
+        requesterId: authRequesterId,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
@@ -803,7 +802,7 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: credentialRequesterId,
+        requesterId: authRequesterId,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,
@@ -829,8 +828,7 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
-      actorType: context.correlation?.actorType,
-      actorId: context.correlation?.actorId,
+      ...credentialActorLogContext,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     });
@@ -1452,8 +1450,7 @@ export async function generateAssistantReply(
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
         runId: context.correlation?.runId,
-        actorType: context.correlation?.actorType,
-        actorId: context.correlation?.actorId,
+        ...credentialActorLogContext,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId,
       },

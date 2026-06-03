@@ -9,11 +9,11 @@ import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
   clearSandboxEgressCredentialLease,
   getSandboxEgressCredentialLease,
-  parseSandboxEgressRequesterToken,
+  parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialLease,
-  type SandboxEgressRequesterContext,
+  type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress-session";
 import type { JWTPayload } from "jose";
 
@@ -98,7 +98,7 @@ function egressAttributes(input: {
   };
 }
 
-function requesterTokenFromRequest(request: Request): string | undefined {
+function credentialTokenFromRequest(request: Request): string | undefined {
   const pathname = new URL(request.url).pathname;
   const prefix = `${SANDBOX_EGRESS_PROXY_PATH}/`;
   if (!pathname.startsWith(prefix)) {
@@ -321,7 +321,7 @@ function responseHeaders(upstream: Response): Headers {
 
 async function credentialLease(
   provider: string,
-  context: SandboxEgressRequesterContext,
+  context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease> {
   const cached = await getSandboxEgressCredentialLease(provider, context);
   if (cached) {
@@ -329,8 +329,8 @@ async function credentialLease(
   }
 
   const lease = await issueProviderCredentialLease({
+    context: context.credentials,
     provider,
-    requesterId: context.requesterId,
     reason: `sandbox-egress:${provider}`,
   });
   const headerTransforms = lease.headerTransforms ?? [];
@@ -453,14 +453,14 @@ export async function proxySandboxEgressRequest(
   }
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's signed
-  // requester context identifies which user-backed credentials to issue lazily
-  // for that session.
-  const requesterContext = parseSandboxEgressRequesterToken(
-    requesterTokenFromRequest(request),
+  // credential context identifies which provider credentials may be issued
+  // lazily for that session.
+  const credentialContext = parseSandboxEgressCredentialToken(
+    credentialTokenFromRequest(request),
   );
-  if (!requesterContext || requesterContext.egressId !== activeEgressId) {
+  if (!credentialContext || credentialContext.egressId !== activeEgressId) {
     logWarn(
-      "sandbox_egress_requester_context_unauthorized",
+      "sandbox_egress_credential_context_unauthorized",
       {},
       {
         ...egressAttributes({
@@ -473,14 +473,17 @@ export async function proxySandboxEgressRequest(
         }),
         ...routingAttributes(request, upstreamUrl),
       },
-      "Sandbox egress request did not include a valid requester context for the VM session",
+      "Sandbox egress request did not include a valid credential context for the VM session",
     );
-    return jsonError("Sandbox egress requester context is not authorized", 403);
+    return jsonError(
+      "Sandbox egress credential context is not authorized",
+      403,
+    );
   }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(provider, requesterContext);
+    lease = await credentialLease(provider, credentialContext);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       logWarn(
@@ -598,7 +601,7 @@ export async function proxySandboxEgressRequest(
       },
       "Sandbox egress upstream auth rejected",
     );
-    await clearSandboxEgressCredentialLease(provider, requesterContext);
+    await clearSandboxEgressCredentialLease(provider, credentialContext);
   }
 
   return new Response(upstream.body, {

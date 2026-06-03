@@ -8,7 +8,10 @@ import {
 } from "./store";
 import { scheduleDispatchCallback } from "./signing";
 import type { DispatchRecord } from "./types";
-import { validateDispatchOptions } from "./validation";
+import {
+  validateDispatchOptions,
+  verifyDispatchCredentialSubjectAccess,
+} from "./validation";
 
 const MAX_DISPATCHES_PER_HEARTBEAT = 25;
 
@@ -46,6 +49,7 @@ export function createHeartbeatContext(args: {
         if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
           throw new Error("Plugin heartbeat exceeded the dispatch limit");
         }
+        await verifyDispatchCredentialSubjectAccess(options);
         const result = await createOrGetDispatch({
           plugin: args.plugin,
           options,

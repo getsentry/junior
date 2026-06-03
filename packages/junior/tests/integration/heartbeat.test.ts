@@ -21,6 +21,11 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import type { WaitUntilFn } from "@/handlers/types";
+import { conversationsInfoOk } from "../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -91,6 +96,24 @@ function createDailyTask(
     updatedAtMs: nextRunAtMs,
     ...overrides,
   });
+}
+
+function mockDispatchCallbackFetch(originalFetch: typeof fetch) {
+  const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+    const input = args[0];
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.startsWith("https://slack.com/api/")) {
+      return await originalFetch(...args);
+    }
+    return new Response("Accepted", { status: 202 });
+  });
+  global.fetch = fetchMock as typeof fetch;
+  return fetchMock;
 }
 
 describe("trusted plugin heartbeat", () => {
@@ -310,6 +333,43 @@ describe("trusted plugin heartbeat", () => {
     ).resolves.toMatchObject({ status: "created" });
   });
 
+  it("rejects delegated credential subjects that do not own the destination DM", async () => {
+    mockDispatchCallbackFetch(originalFetch);
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "D123",
+        isIm: true,
+        userId: "U999",
+      }),
+    });
+
+    const ctx = createHeartbeatContext({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    });
+
+    await expect(
+      ctx.agent.dispatch({
+        idempotencyKey: "run-delegated-mismatch",
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        input: "Run the scheduled task.",
+      }),
+    ).rejects.toThrow(
+      "Dispatch credentialSubject must match the private direct Slack destination",
+    );
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    await expect(listIncompleteDispatchIds()).resolves.toEqual([]);
+  });
+
   it("fails stale dispatches that exceed retry attempts", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
@@ -488,10 +548,14 @@ describe("trusted plugin heartbeat", () => {
   });
 
   it("carries scheduled task credential subjects into dispatch records", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
+    mockDispatchCallbackFetch(originalFetch);
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "D123",
+        isIm: true,
+        userId: "U123",
+      }),
     });
-    global.fetch = fetchMock as typeof fetch;
     setAgentPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(

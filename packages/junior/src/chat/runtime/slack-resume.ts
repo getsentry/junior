@@ -307,6 +307,18 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     if (!runArgs.replyContext?.requester?.userId) {
       throw new Error("Resumed turn requires replyContext.requester.userId");
     }
+    const credentialContext = runArgs.replyContext.credentialContext;
+    if (!credentialContext) {
+      throw new Error("Resumed turn requires replyContext.credentialContext");
+    }
+    if (
+      credentialContext.actor.type !== "user" ||
+      credentialContext.actor.userId !== runArgs.replyContext.requester.userId
+    ) {
+      throw new Error(
+        "Resumed turn credential actor must match replyContext.requester.userId",
+      );
+    }
 
     if (runArgs.messageTs) {
       processingReaction = await startSlackProcessingReactionForMessage({

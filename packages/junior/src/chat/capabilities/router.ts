@@ -2,12 +2,13 @@ import type {
   CredentialBroker,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import type { CredentialContext } from "@/chat/credentials/context";
 
 export interface CredentialRouter {
   issue(input: {
+    context: CredentialContext;
     provider: string;
     reason: string;
-    requesterId?: string;
   }): Promise<CredentialLease>;
 }
 
@@ -19,9 +20,9 @@ export class ProviderCredentialRouter implements CredentialRouter {
   }
 
   async issue(input: {
+    context: CredentialContext;
     provider: string;
     reason: string;
-    requesterId?: string;
   }): Promise<CredentialLease> {
     const broker = this.brokersByProvider[input.provider];
     if (!broker) {
@@ -31,8 +32,8 @@ export class ProviderCredentialRouter implements CredentialRouter {
     }
 
     return await broker.issue({
+      context: input.context,
       reason: input.reason,
-      requesterId: input.requesterId,
     });
   }
 }

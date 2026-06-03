@@ -28,9 +28,9 @@ This policy applies to:
 
 - Production should use explicit network policy and minimal allowlists.
 - Credential-capable provider domains should route through the Junior sandbox egress proxy instead of receiving long-lived sandbox secrets.
-- Proxied sandbox egress requests must verify the Vercel-signed Sandbox OIDC token, use its sandbox claim as the active VM session id, resolve the provider from the Vercel forwarded host/path headers, and require a signed requester-bound context token in the forwarding route that matches the OIDC sandbox claim. Cached provider leases must be scoped to one requester/sandbox context and lease expiry.
+- Proxied sandbox egress requests must verify the Vercel-signed Sandbox OIDC token, use its sandbox claim as the active VM session id, resolve the provider from the Vercel forwarded host/path headers, and require a signed credential-context token in the forwarding route that matches the OIDC sandbox claim. Cached provider leases must be scoped to one credential/sandbox context and lease expiry.
 - The egress handler must verify Vercel Sandbox OIDC before returning configuration, provider, or session-specific responses.
-- The egress proxy must not reject duplicate method/URL/body requests as replay; duplicate request shapes can be legitimate retries. Requester-bound credential issuance is the security boundary.
+- The egress proxy must not reject duplicate method/URL/body requests as replay; duplicate request shapes can be legitimate retries. Credential-context-bound issuance is the security boundary.
 
 ### Harness-owned tool targeting
 
@@ -53,7 +53,7 @@ This policy applies to:
 - Runtime issues short-lived provider credentials when sandbox traffic reaches a registered provider domain.
 - Registered plugin provider declarations determine which provider credentials may be injected for matching forwarded provider domains.
 - A registered provider authorizes its declared domains for sandbox egress; registration must not mint credentials by itself.
-- Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
+- Credential issuance for user-owned provider access must be bound to a credential context with a user actor or explicit user subject; runtime paths without credential context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, sandbox credentials are issued lazily only when a sandbox request reaches a declared provider domain. The runtime must not pre-provision provider credentials merely because a plugin is loaded or a command might need auth.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`us.sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
@@ -66,6 +66,7 @@ This policy applies to:
 - Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
+- For system actors, request an explicit read-only installation-token permission body. Use GitHub App `credentials.system-read-permissions` when configured, otherwise derive the safe default read subset from the installation permissions.
 - Configure `GITHUB_APP_BOT_NAME` and `GITHUB_APP_BOT_EMAIL` as host env vars.
   They are public git author metadata, not credentials.
 - Declare both `api.github.com` and `github.com` in the GitHub plugin manifest
@@ -94,7 +95,7 @@ This policy applies to:
 - Keep `SENTRY_CLIENT_SECRET` on host only.
 - Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
 - Refresh tokens on host, deliver short-lived access tokens via header transforms.
-- Fall back to static `SENTRY_AUTH_TOKEN` env var only for local/dev/test paths outside requester-bound turn execution.
+- Fall back to static `SENTRY_AUTH_TOKEN` env var only for local/dev/test paths outside credential-context-bound turn execution.
 - Inject `Authorization` header transforms for Sentry region API domains such as `us.sentry.io` and `de.sentry.io`.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - See [OAuth Flows Spec](./oauth-flows.md) for full flow details.

@@ -371,68 +371,118 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       sandboxId: string;
       sandboxDependencyProfileHash?: string;
     }) => void | Promise<void>;
-  }) => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => {
-      createSandboxCallCount.value += 1;
-      const sandboxVersion = activeSandboxVersion.value;
-      if (
-        agentMode.value === "attachFileBashRaceAttachFile" &&
-        createSandboxCallCount.value === 1
-      ) {
-        await new Promise<void>((resolve) => {
-          pendingWorkspaceRelease.value = resolve;
+  }) => {
+    return {
+      configureSkills: () => undefined,
+      configureReferenceFiles: () => undefined,
+      createSandbox: async () => {
+        createSandboxCallCount.value += 1;
+        const sandboxVersion = activeSandboxVersion.value;
+        if (
+          agentMode.value === "attachFileBashRaceAttachFile" &&
+          createSandboxCallCount.value === 1
+        ) {
+          await new Promise<void>((resolve) => {
+            pendingWorkspaceRelease.value = resolve;
+          });
+          pendingWorkspaceRelease.value = undefined;
+        }
+        await options?.onSandboxAcquired?.({
+          sandboxId:
+            sandboxVersion === 1
+              ? "sandbox-test"
+              : `sandbox-test-${sandboxVersion}`,
+          sandboxDependencyProfileHash: "hash-test",
         });
-        pendingWorkspaceRelease.value = undefined;
-      }
-      await options?.onSandboxAcquired?.({
-        sandboxId:
-          sandboxVersion === 1
-            ? "sandbox-test"
-            : `sandbox-test-${sandboxVersion}`,
-        sandboxDependencyProfileHash: "hash-test",
-      });
-      return {
-        sandboxId:
-          sandboxVersion === 1
-            ? "sandbox-test"
-            : `sandbox-test-${sandboxVersion}`,
-        readFileToBuffer: async () => {
-          attachFileReadVersions.value.push(sandboxVersion);
-          return Buffer.from(
-            [
-              "---",
-              "name: demo-skill",
-              "description: Demo skill",
-              "---",
-              "",
-              "Skill instructions",
-            ].join("\n"),
-            "utf8",
+        return {
+          sandboxId:
+            sandboxVersion === 1
+              ? "sandbox-test"
+              : `sandbox-test-${sandboxVersion}`,
+          readFileToBuffer: async () => {
+            attachFileReadVersions.value.push(sandboxVersion);
+            return Buffer.from(
+              [
+                "---",
+                "name: demo-skill",
+                "description: Demo skill",
+                "---",
+                "",
+                "Skill instructions",
+              ].join("\n"),
+              "utf8",
+            );
+          },
+          runCommand: async () => ({
+            exitCode: 0,
+            stdout: async () => "text/plain\n",
+            stderr: async () => "",
+          }),
+        };
+      },
+      canExecute: (toolName: string) =>
+        (agentMode.value === "bashThenError" ||
+          agentMode.value === "attachFileBashRecoverAttachFile" ||
+          agentMode.value === "attachFileBashRaceAttachFile") &&
+        toolName === "bash",
+      execute: async ({ toolName }: { toolName: string; input: unknown }) => {
+        if (toolName !== "bash") {
+          throw new Error(
+            "sandbox executor should not handle tools in this test",
           );
-        },
-        runCommand: async () => ({
-          exitCode: 0,
-          stdout: async () => "text/plain\n",
-          stderr: async () => "",
-        }),
-      };
-    },
-    canExecute: (toolName: string) =>
-      (agentMode.value === "bashThenError" ||
-        agentMode.value === "attachFileBashRecoverAttachFile" ||
-        agentMode.value === "attachFileBashRaceAttachFile") &&
-      toolName === "bash",
-    execute: async ({ toolName }: { toolName: string; input: unknown }) => {
-      if (toolName !== "bash") {
-        throw new Error(
-          "sandbox executor should not handle tools in this test",
-        );
-      }
+        }
 
-      if (agentMode.value === "attachFileBashRecoverAttachFile") {
-        activeSandboxVersion.value += 1;
+        if (agentMode.value === "attachFileBashRecoverAttachFile") {
+          activeSandboxVersion.value += 1;
+          return {
+            result: {
+              ok: true,
+              command: "pwd",
+              cwd: "/workspace",
+              exit_code: 0,
+              signal: null,
+              timed_out: false,
+              stdout: "/workspace\n",
+              stderr: "",
+              stdout_truncated: false,
+              stderr_truncated: false,
+            },
+          };
+        }
+
+        if (agentMode.value === "attachFileBashRaceAttachFile") {
+          activeSandboxVersion.value += 1;
+          pendingWorkspaceRelease.value?.();
+          return {
+            result: {
+              ok: true,
+              command: "pwd",
+              cwd: "/workspace",
+              exit_code: 0,
+              signal: null,
+              timed_out: false,
+              stdout: "/workspace\n",
+              stderr: "",
+              stdout_truncated: false,
+              stderr_truncated: false,
+            },
+          };
+        }
+
+        if (agentMode.value !== "bashThenError") {
+          throw new Error(
+            "sandbox executor should not handle tools in this test",
+          );
+        }
+
+        createSandboxCallCount.value += 1;
+        await options?.onSandboxAcquired?.({
+          sandboxId:
+            activeSandboxVersion.value === 1
+              ? "sandbox-test"
+              : `sandbox-test-${activeSandboxVersion.value}`,
+          sandboxDependencyProfileHash: "hash-test",
+        });
         return {
           result: {
             ok: true,
@@ -447,65 +497,17 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
             stderr_truncated: false,
           },
         };
-      }
-
-      if (agentMode.value === "attachFileBashRaceAttachFile") {
-        activeSandboxVersion.value += 1;
-        pendingWorkspaceRelease.value?.();
-        return {
-          result: {
-            ok: true,
-            command: "pwd",
-            cwd: "/workspace",
-            exit_code: 0,
-            signal: null,
-            timed_out: false,
-            stdout: "/workspace\n",
-            stderr: "",
-            stdout_truncated: false,
-            stderr_truncated: false,
-          },
-        };
-      }
-
-      if (agentMode.value !== "bashThenError") {
-        throw new Error(
-          "sandbox executor should not handle tools in this test",
-        );
-      }
-
-      createSandboxCallCount.value += 1;
-      await options?.onSandboxAcquired?.({
-        sandboxId:
-          activeSandboxVersion.value === 1
+      },
+      getSandboxId: () =>
+        createSandboxCallCount.value > 0
+          ? activeSandboxVersion.value === 1
             ? "sandbox-test"
-            : `sandbox-test-${activeSandboxVersion.value}`,
-        sandboxDependencyProfileHash: "hash-test",
-      });
-      return {
-        result: {
-          ok: true,
-          command: "pwd",
-          cwd: "/workspace",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "/workspace\n",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
-      };
-    },
-    getSandboxId: () =>
-      createSandboxCallCount.value > 0
-        ? activeSandboxVersion.value === 1
-          ? "sandbox-test"
-          : `sandbox-test-${activeSandboxVersion.value}`
-        : undefined,
-    getDependencyProfileHash: () => "hash-test",
-    dispose: async () => undefined,
-  }),
+            : `sandbox-test-${activeSandboxVersion.value}`
+          : undefined,
+      getDependencyProfileHash: () => "hash-test",
+      dispose: async () => undefined,
+    };
+  },
 }));
 
 import { generateAssistantReply } from "@/chat/respond";

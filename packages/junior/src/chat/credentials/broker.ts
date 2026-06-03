@@ -1,3 +1,5 @@
+import type { CredentialContext } from "@/chat/credentials/context";
+
 export class CredentialUnavailableError extends Error {
   readonly provider: string;
 
@@ -24,7 +26,7 @@ export interface CredentialLease {
 
 export interface CredentialBroker {
   issue(input: {
+    context: CredentialContext;
     reason: string;
-    requesterId?: string;
   }): Promise<CredentialLease>;
 }

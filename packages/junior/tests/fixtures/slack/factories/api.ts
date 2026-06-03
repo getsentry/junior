@@ -309,6 +309,7 @@ export function conversationsInfoOk(
     isIm?: boolean;
     isMpim?: boolean;
     isGroup?: boolean;
+    userId?: string;
   } = {},
 ): {
   ok: true;
@@ -319,6 +320,7 @@ export function conversationsInfoOk(
     is_im: boolean;
     is_mpim: boolean;
     is_group: boolean;
+    user?: string;
   };
 } {
   const isPrivate = input.isPrivate ?? false;
@@ -333,6 +335,7 @@ export function conversationsInfoOk(
       is_im: isIm,
       is_mpim: isMpim,
       is_group: isGroup,
+      ...(input.userId ? { user: input.userId } : {}),
     },
   });
 }

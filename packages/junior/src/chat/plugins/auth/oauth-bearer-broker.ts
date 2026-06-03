@@ -4,6 +4,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -105,6 +106,7 @@ export function createOAuthBearerBroker(
     async issue(input) {
       const envToken = process.env[authTokenEnv]?.trim();
       const oauth = manifest.oauth;
+      const userSubjectId = credentialUserSubjectId(input.context);
       if (!oauth) {
         if (envToken) {
           return buildLease(envToken, Date.now() + MAX_LEASE_MS, input.reason);
@@ -116,11 +118,8 @@ export function createOAuthBearerBroker(
         );
       }
 
-      if (input.requesterId) {
-        const stored = await deps.userTokenStore.get(
-          input.requesterId,
-          provider,
-        );
+      if (userSubjectId) {
+        const stored = await deps.userTokenStore.get(userSubjectId, provider);
         if (stored) {
           if (!hasRequiredOAuthScope(stored.scope, oauth.scope)) {
             throw new CredentialUnavailableError(
@@ -146,11 +145,7 @@ export function createOAuthBearerBroker(
                   `Your ${provider} connection needs to be reauthorized.`,
                 );
               }
-              await deps.userTokenStore.set(
-                input.requesterId,
-                provider,
-                refreshed,
-              );
+              await deps.userTokenStore.set(userSubjectId, provider, refreshed);
               return buildLease(
                 refreshed.accessToken,
                 getLeaseExpiry(refreshed.expiresAt),

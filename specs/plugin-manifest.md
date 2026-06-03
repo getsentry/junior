@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-03
 
 ## Purpose
 
@@ -74,8 +74,9 @@ target:
 - `api-headers`: headers injected for matching `domains`. Secret values must come from `${NAME}` placeholders declared in `env-vars` without defaults.
 - `credentials.type`: `"oauth-bearer"` or `"github-app"`.
 - `credentials.domains`: domains that receive runtime-managed credential headers. Include every host that needs credentials, such as both `api.github.com` and `github.com` for GitHub App git HTTPS auth.
-- `credentials.auth-token-env`: host env var for static token fallback outside requester-bound turns and for sandbox placeholder naming.
+- `credentials.auth-token-env`: host env var for static token fallback outside credential-context-bound turns and for sandbox placeholder naming.
 - `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility.
+- `credentials.system-read-permissions`: optional GitHub App-only list of read scopes for system actors. Manifest entries may use dashes for readability and are normalized to GitHub API permission names at load. If omitted, the broker derives a safe read-only subset from the installation permissions.
 - `oauth`: required for OAuth bearer providers. Endpoints must be HTTPS.
 - `target.config-key`: must appear in `config-keys`.
 - `runtime-dependencies`: optional sandbox dependencies. `type` is `"npm"` or `"system"`.

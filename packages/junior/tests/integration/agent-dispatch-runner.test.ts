@@ -85,8 +85,9 @@ describe("agent dispatch runner", () => {
         threadId: dispatchConversationId,
         channelId: "C123",
         teamId: "T123",
-        actorType: "system",
-        actorId: "scheduler",
+      });
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
       });
       return createReply();
     });
@@ -279,16 +280,15 @@ describe("agent dispatch runner", () => {
     });
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
-      expect(context.credentialSubject).toEqual({
-        type: "user",
-        userId: "U123",
-        allowedWhen: "private-direct-conversation",
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
       });
       expect(context.authorizationFlowMode).toBe("disabled");
-      expect(context.correlation).toMatchObject({
-        actorType: "system",
-        actorId: "scheduler",
-      });
       return createReply();
     });
 

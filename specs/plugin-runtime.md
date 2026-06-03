@@ -54,7 +54,7 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 
 `createPluginBroker(provider, deps)` constructs brokers from manifest config:
 
-- `oauth-bearer`: generic OAuth bearer broker for per-user OAuth tokens, refresh, static fallback outside requester-bound turns, command env, and header transforms.
+- `oauth-bearer`: generic OAuth bearer broker for per-user OAuth tokens, refresh, static fallback outside credential-context-bound turns, command env, and header transforms.
 - `github-app`: GitHub App broker that signs JWTs and exchanges them for short-lived installation tokens.
 - plugin-level `api-headers`: API header broker for providers that need header injection without OAuth/App credentials.
 - no credentials/no headers: provider-scoped no-credentials error when authenticated work needs that provider.
@@ -133,7 +133,7 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 ## Security Properties
 
 - Plugin manifests are committed YAML files, not dynamically loaded remote code.
-- Credential delivery uses host-managed headers and requester-bound leases.
+- Credential delivery uses host-managed headers and credential-context-bound leases.
 - Real secret values never enter sandbox env vars, files, command args, skill text, or model-visible tool args.
 - Plugin manifests are parsed once at startup and are not mutated at runtime.
 - Plugin prompt behavior must be local to the loaded skill or trusted tool guidance.

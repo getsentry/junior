@@ -13,6 +13,12 @@ import type {
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
 const SENTRY_SCOPE = "event:read org:read project:read team:read";
+const USER_CREDENTIAL_CONTEXT = {
+  actor: { type: "user" as const, userId: "U123" },
+};
+const SYSTEM_CREDENTIAL_CONTEXT = {
+  actor: { type: "system" as const, id: "scheduler" },
+};
 
 const SENTRY_MANIFEST: PluginManifest = {
   name: "sentry",
@@ -81,8 +87,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:oauth",
-      requesterId: "U123",
     });
 
     expect(lease.provider).toBe("sentry");
@@ -103,6 +109,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     process.env.SENTRY_AUTH_TOKEN = "static-env-token";
     const broker = createBroker();
     const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
       reason: "test:env-fallback",
     });
 
@@ -138,6 +145,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       { userTokenStore: createMockTokenStore() },
     );
     const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
       reason: "test:plugin-api-headers",
     });
 
@@ -169,6 +177,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
 
     await expect(
       broker.issue({
+        context: SYSTEM_CREDENTIAL_CONTEXT,
         reason: "test:unavailable",
       }),
     ).rejects.toThrow(CredentialUnavailableError);
@@ -198,8 +207,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:refresh",
-      requesterId: "U123",
     });
 
     expect(lease.headerTransforms).toEqual([
@@ -231,9 +240,44 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const broker = createBroker(tokenStore);
     await expect(
       broker.issue({
+        context: USER_CREDENTIAL_CONTEXT,
         reason: "test:scope-mismatch",
-        requesterId: "U123",
       }),
     ).rejects.toThrow(CredentialUnavailableError);
+  });
+
+  it("uses a delegated user subject for OAuth lookup under a system actor", async () => {
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "delegated-access-token",
+        refreshToken: "delegated-refresh-token",
+        expiresAt: Date.now() + 60 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+
+    const broker = createBroker(tokenStore);
+    const lease = await broker.issue({
+      context: {
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      },
+      reason: "test:delegated-subject",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer delegated-access-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer delegated-access-token" },
+      },
+    ]);
   });
 });

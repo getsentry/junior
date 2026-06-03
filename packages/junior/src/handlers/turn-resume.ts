@@ -192,6 +192,12 @@ async function resumeTimedOutTurn(
         messageText: userMessage.text,
         messageTs: getTurnUserSlackMessageTs(userMessage),
         replyContext: {
+          credentialContext: {
+            actor: {
+              type: "user",
+              userId: userMessage.author.userId,
+            },
+          },
           requester: {
             userId: userMessage.author.userId,
             userName: userMessage.author.userName,

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 
+const USER_CREDENTIAL_CONTEXT = {
+  actor: { type: "user" as const, userId: "U123" },
+};
+
 describe("provider credential router", () => {
   it("routes provider issuance to the matching broker", async () => {
     const broker: CredentialBroker = {
@@ -20,6 +24,7 @@ describe("provider credential router", () => {
 
     await expect(
       router.issue({
+        context: USER_CREDENTIAL_CONTEXT,
         provider: "github",
         reason: "test",
       }),
@@ -27,11 +32,12 @@ describe("provider credential router", () => {
       provider: "github",
     });
     expect(broker.issue).toHaveBeenCalledWith({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test",
     });
   });
 
-  it("forwards requester context", async () => {
+  it("forwards credential context", async () => {
     const broker: CredentialBroker = {
       issue: vi.fn(async () => ({
         id: "lease-1",
@@ -47,13 +53,27 @@ describe("provider credential router", () => {
     });
 
     await router.issue({
+      context: {
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      },
       provider: "github",
-      requesterId: "U123",
       reason: "test",
     });
 
     expect(broker.issue).toHaveBeenCalledWith({
-      requesterId: "U123",
+      context: {
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+        },
+      },
       reason: "test",
     });
   });
@@ -65,6 +85,7 @@ describe("provider credential router", () => {
 
     await expect(
       router.issue({
+        context: USER_CREDENTIAL_CONTEXT,
         provider: "github",
         reason: "test",
       }),

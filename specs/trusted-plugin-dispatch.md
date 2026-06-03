@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-31
+- Last Edited: 2026-06-03
 
 ## Purpose
 
@@ -47,6 +47,11 @@ Argument shape:
 ```ts
 type DispatchOptions = {
   idempotencyKey: string;
+  credentialSubject?: {
+    type: "user";
+    userId: string;
+    allowedWhen: "private-direct-conversation";
+  };
   destination: {
     platform: "slack";
     teamId: string;
@@ -101,7 +106,8 @@ type Dispatch = {
 - Destination uses a Slack channel id; it must not accept a user id.
 - Input is plain text inserted as user-role synthetic conversation content.
 - Metadata is correlation-only and must not affect authorization.
-- System dispatches have no requester, no user OAuth token access, and no interactive auth continuation.
+- System dispatches have no requester, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
+- Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting the dispatch record, core must verify through Slack conversation metadata that `destination.channelId` is an IM whose owner is `credentialSubject.userId`; channel-id prefixes and scheduler stored creation context are not sufficient authority.
 - Schedule-management tools are unavailable during system dispatches.
 
 Core derives and enforces system actor identity, auth mode, conversation identity, callback scheduling, timeout continuation, sandbox state persistence, delivery behavior, tool policy, logging, tracing, and redaction.

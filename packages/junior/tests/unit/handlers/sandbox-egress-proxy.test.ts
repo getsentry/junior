@@ -52,7 +52,7 @@ import {
   proxySandboxEgressRequest,
 } from "@/chat/sandbox/egress-proxy";
 import {
-  createSandboxEgressRequesterToken,
+  createSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
 } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -62,7 +62,7 @@ import { ALL } from "@/handlers/sandbox-egress-proxy";
 const EGRESS_ID = "junior-sbx";
 const REQUESTER_ID = "U123";
 
-let activeRequesterToken: string | undefined;
+let activeCredentialToken: string | undefined;
 
 function sentryPlugin() {
   return {
@@ -109,9 +109,26 @@ function githubPlugin() {
   };
 }
 
-function setSandboxEgressRequester(requesterId = REQUESTER_ID): void {
-  activeRequesterToken = createSandboxEgressRequesterToken({
-    requesterId,
+function setSandboxEgressUserActor(userId = REQUESTER_ID): void {
+  activeCredentialToken = createSandboxEgressCredentialToken({
+    credentials: { actor: { type: "user", userId } },
+    egressId: EGRESS_ID,
+    ttlMs: 60_000,
+  });
+}
+
+function setSandboxEgressSystemActor(input?: {
+  subject?: {
+    type: "user";
+    userId: string;
+    allowedWhen: "private-direct-conversation";
+  };
+}): void {
+  activeCredentialToken = createSandboxEgressCredentialToken({
+    credentials: {
+      actor: { type: "system", id: "scheduler" },
+      ...(input?.subject ? { subject: input.subject } : {}),
+    },
     egressId: EGRESS_ID,
     ttlMs: 60_000,
   });
@@ -125,6 +142,21 @@ function mockSentryLease(domain = "sentry.io", token = "sentry-token"): void {
     headerTransforms: [
       {
         domain,
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    ],
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+}
+
+function mockGitHubLease(token = "github-token"): void {
+  issueProviderCredentialLeaseMock.mockResolvedValue({
+    id: "lease-github",
+    provider: "github",
+    env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
+    headerTransforms: [
+      {
+        domain: "api.github.com",
         headers: { Authorization: `Bearer ${token}` },
       },
     ],
@@ -148,8 +180,8 @@ function egressRequest(
   const upstreamPath = input.path ?? "/api/0/issues/";
   const proxyPath =
     input.proxyPath ??
-    (activeRequesterToken
-      ? `${SANDBOX_EGRESS_PROXY_PATH}/${activeRequesterToken}`
+    (activeCredentialToken
+      ? `${SANDBOX_EGRESS_PROXY_PATH}/${activeCredentialToken}`
       : upstreamPath);
   const forwardedPath =
     input.forwardedPath === undefined ? upstreamPath : input.forwardedPath;
@@ -188,7 +220,7 @@ describe("sandbox egress proxy", () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "test-secret";
-    activeRequesterToken = undefined;
+    activeCredentialToken = undefined;
     getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
     createRemoteJWKSetMock.mockClear();
     createRemoteJWKSetMock.mockReturnValue(async () => null);
@@ -228,13 +260,13 @@ describe("sandbox egress proxy", () => {
       },
     });
 
-    const token = createSandboxEgressRequesterToken({
-      requesterId: REQUESTER_ID,
+    const token = createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
     expect(
-      buildSandboxEgressNetworkPolicy({ requesterToken: token }),
+      buildSandboxEgressNetworkPolicy({ credentialToken: token }),
     ).toMatchObject({
       allow: {
         "sentry.io": [
@@ -262,8 +294,8 @@ describe("sandbox egress proxy", () => {
     process.env.SLACK_SIGNING_SECRET = "test-slack-signing-secret";
 
     expect(() =>
-      createSandboxEgressRequesterToken({
-        requesterId: REQUESTER_ID,
+      createSandboxEgressCredentialToken({
+        credentials: { actor: { type: "user", userId: REQUESTER_ID } },
         egressId: EGRESS_ID,
         ttlMs: 60_000,
       }),
@@ -310,7 +342,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("forwards repeated authorized sandbox requests with credential headers", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease();
 
     const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
@@ -348,8 +380,8 @@ describe("sandbox egress proxy", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
       provider: "sentry",
-      requesterId: REQUESTER_ID,
       reason: "sandbox-egress:sentry",
     });
 
@@ -367,8 +399,41 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves delegated credential subjects under system actor contexts", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressSystemActor({
+      subject: {
+        type: "user",
+        userId: REQUESTER_ID,
+        allowedWhen: "private-direct-conversation",
+      },
+    });
+    mockGitHubLease();
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        path: "/repos/getsentry/junior/issues/449",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: {
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: REQUESTER_ID,
+          allowedWhen: "private-direct-conversation",
+        },
+      },
+      provider: "github",
+      reason: "sandbox-egress:github",
+    });
+  });
+
   it("prefers Vercel forwarded path over the normalized proxy URL path", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease();
 
     const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
@@ -399,13 +464,13 @@ describe("sandbox egress proxy", () => {
   });
 
   it("rejects sandbox egress requests without a forwarded path", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
 
     const fetchMock = vi.fn();
     const response = await proxy(
       egressRequest({
         forwardedPath: null,
-        proxyPath: `${SANDBOX_EGRESS_PROXY_PATH}/${activeRequesterToken}`,
+        proxyPath: `${SANDBOX_EGRESS_PROXY_PATH}/${activeCredentialToken}`,
       }),
       fetchMock as typeof fetch,
     );
@@ -433,7 +498,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("does not synthesize an empty body for bodyless methods", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease();
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
@@ -451,8 +516,8 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("scopes cached credential leases to the requester", async () => {
-    setSandboxEgressRequester();
+  it("scopes cached credential leases to the actor", async () => {
+    setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
         id: "lease-1",
@@ -489,7 +554,7 @@ describe("sandbox egress proxy", () => {
     );
     await expect(firstResponse.text()).resolves.toBe("Bearer token-u123");
 
-    setSandboxEgressRequester("U456");
+    setSandboxEgressUserActor("U456");
     const secondResponse = await proxy(
       egressRequest({
         path: "/api/0/issues/2",
@@ -500,19 +565,19 @@ describe("sandbox egress proxy", () => {
     await expect(secondResponse.text()).resolves.toBe("Bearer token-u456");
 
     expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(1, {
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
       provider: "sentry",
-      requesterId: REQUESTER_ID,
       reason: "sandbox-egress:sentry",
     });
     expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(2, {
+      context: { actor: { type: "user", userId: "U456" } },
       provider: "sentry",
-      requesterId: "U456",
       reason: "sandbox-egress:sentry",
     });
   });
 
-  it("does not reuse cached credential leases across renewed requester contexts", async () => {
-    setSandboxEgressRequester();
+  it("does not reuse cached credential leases across renewed credential contexts", async () => {
+    setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
         id: "lease-1",
@@ -551,7 +616,7 @@ describe("sandbox egress proxy", () => {
       "Bearer token-first-session",
     );
 
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
       fetchMock as typeof fetch,
@@ -564,7 +629,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("clears cached credential leases after upstream auth rejection", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
         id: "lease-1",
@@ -615,7 +680,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("applies provider header transforms to matching upstream hosts", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease("us.sentry.io");
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
@@ -635,7 +700,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("does not apply subdomain transforms to the apex host", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease("us.sentry.io");
 
     const fetchMock = vi.fn();
@@ -650,7 +715,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("forwards upstream response headers to the sandbox", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease();
 
     const upstreamHeaders = new Headers();
@@ -670,7 +735,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("drops upstream encoding headers after host fetch decodes the body", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     mockSentryLease();
 
     const response = await proxy(
@@ -792,7 +857,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("returns a command-readable auth marker when provider credentials are missing", async () => {
-    setSandboxEgressRequester();
+    setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock.mockRejectedValue(
       new CredentialUnavailableError(
         "sentry",
@@ -808,7 +873,7 @@ describe("sandbox egress proxy", () => {
     );
   });
 
-  it("requires a signed requester context", async () => {
+  it("requires a signed credential context", async () => {
     mockSentryLease();
 
     const response = await proxy(egressRequest());
@@ -817,9 +882,9 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });
 
-  it("rejects requester context tokens from a different sandbox session", async () => {
-    activeRequesterToken = createSandboxEgressRequesterToken({
-      requesterId: REQUESTER_ID,
+  it("rejects credential context tokens from a different sandbox session", async () => {
+    activeCredentialToken = createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
       egressId: "different-egress-session",
       ttlMs: 60_000,
     });
@@ -831,9 +896,9 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });
 
-  it("rejects tampered requester tokens", async () => {
-    setSandboxEgressRequester();
-    activeRequesterToken = `${activeRequesterToken ?? ""}tampered`;
+  it("rejects tampered credential tokens", async () => {
+    setSandboxEgressUserActor();
+    activeCredentialToken = `${activeCredentialToken ?? ""}tampered`;
     mockSentryLease();
 
     const response = await proxy(egressRequest());

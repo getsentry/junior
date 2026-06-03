@@ -93,6 +93,9 @@ function makeReplyContext(args: {
   turnId: string;
 }) {
   return {
+    credentialContext: {
+      actor: { type: "user" as const, userId: "U123" },
+    },
     requester: { userId: "U123" },
     correlation: {
       channelId: "C123",
@@ -1078,6 +1081,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
       });
 
     const context = {
+      credentialContext: {
+        actor: { type: "user" as const, userId: "U123" },
+      },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-3",
@@ -1160,6 +1166,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     const firstError = await generateAssistantReply("help me", {
+      credentialContext: {
+        actor: { type: "user", userId: "U123" },
+      },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-5",
@@ -1188,6 +1197,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     completeEmptyAssistantOnAbort.value = true;
 
     const firstError = await generateAssistantReply("help me", {
+      credentialContext: {
+        actor: { type: "user", userId: "U123" },
+      },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-6",

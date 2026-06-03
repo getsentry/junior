@@ -277,9 +277,12 @@ export async function runAgentDispatchSlice(
 
     let reply = await generateAssistantReply(dispatch.input, {
       authorizationFlowMode: "disabled",
-      ...(dispatch.credentialSubject
-        ? { credentialSubject: dispatch.credentialSubject }
-        : {}),
+      credentialContext: {
+        actor: dispatch.actor,
+        ...(dispatch.credentialSubject
+          ? { subject: dispatch.credentialSubject }
+          : {}),
+      },
       configuration,
       channelConfiguration,
       conversationContext,
@@ -292,8 +295,6 @@ export async function runAgentDispatchSlice(
         runId: dispatch.id,
         channelId: dispatch.destination.channelId,
         teamId: dispatch.destination.teamId,
-        actorType: dispatch.actor.type,
-        actorId: dispatch.actor.id,
       },
       toolChannelId: dispatch.destination.channelId,
       sandbox: {

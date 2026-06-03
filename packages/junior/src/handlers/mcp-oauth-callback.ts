@@ -308,6 +308,9 @@ async function resumeAuthorizedMcpTurn(args: {
         messageText: lockedUserMessage.text,
         messageTs: getTurnUserSlackMessageTs(lockedUserMessage),
         replyContext: {
+          credentialContext: {
+            actor: { type: "user", userId: authSession.userId },
+          },
           requester: {
             userId: authSession.userId,
             userName: lockedUserMessage.author?.userName,
