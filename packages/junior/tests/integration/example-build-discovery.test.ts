@@ -10,10 +10,6 @@ const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
-const exampleQueueConsumerEntry = path.join(
-  exampleRoot,
-  "api/internal/agent/continue.ts",
-);
 const examplePluginsModule = path.join(exampleRoot, "plugins.ts");
 const exampleDashboardConfig = path.join(exampleRoot, "dashboard.ts");
 const exampleRequire = createRequire(exampleEntry);
@@ -83,13 +79,6 @@ async function importExampleApp() {
   const href = `${pathToFileURL(exampleEntry).href}?t=${Date.now()}`;
   return (await import(href)).default as {
     fetch: (request: Request) => Promise<Response>;
-  };
-}
-
-async function importExampleQueueConsumer() {
-  const href = `${pathToFileURL(exampleQueueConsumerEntry).href}?t=${Date.now()}`;
-  return (await import(href)) as {
-    POST: (request: Request) => Promise<Response>;
   };
 }
 
@@ -163,14 +152,14 @@ describe.sequential("example build discovery integration", () => {
     expect(await oauth.text()).toContain("missing required parameters");
   }, 15_000);
 
-  it("routes the concrete Vercel queue consumer source through the app", async () => {
+  it("routes the queue consumer endpoint through the app", async () => {
     process.chdir(exampleRoot);
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
       await getExamplePluginPackages(),
     );
 
-    const { POST } = await importExampleQueueConsumer();
-    const response = await POST(
+    const app = await importExampleApp();
+    const response = await app.fetch(
       new Request("http://localhost/api/internal/agent/continue", {
         method: "POST",
         body: "{}",
