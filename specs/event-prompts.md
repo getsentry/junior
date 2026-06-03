@@ -124,7 +124,7 @@ Event definitions own:
 4. Supported context block names and hydration/rendering functions.
 5. Supported delivery targets.
 
-The current implementation must reject unsupported event definition fields. Schema-backed value validation, default tool policy, default constraints, and default limits are future extensions that must wait for executor-level enforcement.
+The current implementation must reject unsupported event definition fields. Schema-backed value validation and event-level policy controls are future extensions that must wait for executor-level enforcement.
 
 Plugins must not:
 
@@ -180,14 +180,6 @@ Optional frontmatter fields:
 - `context.include`: list of event-definition-supported context block names.
 - `delivery`: event-definition-supported delivery target.
 
-Reserved future frontmatter fields:
-
-- `tools`: event run tool policy overrides.
-- `constraints`: event run safety constraints.
-- `limits`: event run limits.
-
-The current implementation must reject `tools`, `constraints`, and `limits` in binding files until executor-level enforcement exists. Prompt wording is not enough enforcement for these fields.
-
 The Markdown body must be non-empty after frontmatter removal. It is the event run instruction and must not contain secrets.
 
 Event binding files must be static install content. If Junior helps an operator create or change a binding, it must propose a file edit or pull request. It must not silently mutate event binding state through a runtime tool.
@@ -202,7 +194,7 @@ Validation must reject:
 2. Duplicate binding ids across files.
 3. Binding ids that do not match the lowercase binding id format.
 4. Bindings that reference unknown events.
-5. `scope`, `when`, `context.include`, `delivery`, `tools`, `constraints`, or `limits` values unsupported by the referenced event definition.
+5. `scope`, `when`, `context.include`, or `delivery` values unsupported by the referenced event definition.
 6. Markdown bodies that are empty after trimming.
 7. Frontmatter values that require code execution, environment expansion, or secret interpolation.
 
@@ -366,7 +358,7 @@ Core must enforce:
 2. No use of user OAuth tokens unless a future explicit credential-subject contract permits it for the event run.
 3. No schedule-management or event-binding-management tools during event runs.
 4. No Slack mutating tools during event runs until binding-level tool policy is implemented below the model; final event output goes through the delivery adapter.
-5. Rejection of binding and event-definition policy fields until tool filtering, executor-level rejection, run limits, and repository mutation constraints are implemented below the model.
+5. Rejection of unsupported binding and event-definition fields until new policy controls are implemented below the model.
 
 Prompt wording is not sufficient enforcement for tools, credentials, delivery, or repository mutation policy.
 
@@ -468,7 +460,7 @@ Use integration tests for:
 - One event can intentionally match multiple bindings.
 - Self-authored provider events are suppressed by default.
 - Selected context blocks render as data and not as instruction text.
-- Event runs enforce tool policy and constraints below the model.
+- Event runs enforce tool availability and policy controls below the model.
 - Platform delivery posts to the configured target exactly once best effort.
 - Empty successful event prompt runs complete silently without platform delivery.
 

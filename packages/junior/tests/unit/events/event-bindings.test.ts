@@ -124,42 +124,24 @@ describe("event binding files", () => {
     ]);
   });
 
-  it("rejects runtime policy overrides until they are enforced", () => {
-    const base: ParsedEventBinding = {
-      id: "github-policy",
-      event: "github.pull_request.comment.created",
-      enabled: true,
+  it("rejects unsupported policy frontmatter before validation", () => {
+    const parsed = parseEventBindingFile({
       path: "/repo/app/events/github/policy.md",
-      body: "Review the event.",
-      contextInclude: [],
-    };
+      raw: bindingMarkdown([
+        "id: github-policy",
+        "event: github.pull_request.comment.created",
+        "tools:",
+        "  allow:",
+        "    - github.comments.write",
+      ]),
+    });
 
-    expect(
-      validateEventBindings(
-        [{ ...base, tools: { allow: ["github.comments.write"] } }],
-        definitions,
-      ).errors,
-    ).toEqual([
-      '/repo/app/events/github/policy.md: event binding "github-policy" uses tools, but event prompt tool policy overrides are not supported yet',
-    ]);
-
-    expect(
-      validateEventBindings(
-        [{ ...base, constraints: { requireDraftPullRequest: true } }],
-        definitions,
-      ).errors,
-    ).toEqual([
-      '/repo/app/events/github/policy.md: event binding "github-policy" uses constraints, but event prompt constraint overrides are not supported yet',
-    ]);
-
-    expect(
-      validateEventBindings(
-        [{ ...base, limits: { maxToolCalls: 10 } }],
-        definitions,
-      ).errors,
-    ).toEqual([
-      '/repo/app/events/github/policy.md: event binding "github-policy" uses limits, but event prompt limit overrides are not supported yet',
-    ]);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) {
+      throw new Error("expected event binding parse to fail");
+    }
+    expect(parsed.error).toContain("Unrecognized key");
+    expect(parsed.error).toContain("tools");
   });
 
   it("returns parse and validation errors without dropping valid bindings", () => {

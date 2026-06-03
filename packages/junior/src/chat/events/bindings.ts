@@ -43,15 +43,6 @@ const eventBindingFrontmatterSchema = z
       })
       .strict()
       .optional(),
-    tools: z
-      .object({
-        allow: stringArraySchema.optional(),
-        deny: stringArraySchema.optional(),
-      })
-      .strict()
-      .optional(),
-    constraints: recordSchema.optional(),
-    limits: recordSchema.optional(),
   })
   .strict();
 
@@ -62,19 +53,13 @@ export interface EventBindingFile {
 
 export interface ParsedEventBinding {
   body: string;
-  constraints?: Record<string, unknown>;
   contextInclude: string[];
   delivery?: Record<string, unknown> & { target: string };
   enabled: boolean;
   event: string;
   id: string;
-  limits?: Record<string, unknown>;
   path: string;
   scope?: Record<string, unknown>;
-  tools?: {
-    allow?: string[];
-    deny?: string[];
-  } & Record<string, unknown>;
   when?: Record<string, unknown>;
 }
 
@@ -149,11 +134,6 @@ export function parseEventBindingFile(file: EventBindingFile): ParseResult {
       ...(result.data.scope ? { scope: result.data.scope } : {}),
       ...(result.data.when ? { when: result.data.when } : {}),
       ...(result.data.delivery ? { delivery: result.data.delivery } : {}),
-      ...(result.data.tools ? { tools: result.data.tools } : {}),
-      ...(result.data.constraints
-        ? { constraints: result.data.constraints }
-        : {}),
-      ...(result.data.limits ? { limits: result.data.limits } : {}),
     },
   };
 }
@@ -209,18 +189,6 @@ function validateBindingAgainstDefinition(args: {
     if (invalid) {
       return `${args.binding.path}: event binding "${args.binding.id}" uses unsupported when field "${invalid}" for event "${args.binding.event}"`;
     }
-  }
-
-  if (args.binding.tools) {
-    return `${args.binding.path}: event binding "${args.binding.id}" uses tools, but event prompt tool policy overrides are not supported yet`;
-  }
-
-  if (args.binding.constraints) {
-    return `${args.binding.path}: event binding "${args.binding.id}" uses constraints, but event prompt constraint overrides are not supported yet`;
-  }
-
-  if (args.binding.limits) {
-    return `${args.binding.path}: event binding "${args.binding.id}" uses limits, but event prompt limit overrides are not supported yet`;
   }
 
   return undefined;
