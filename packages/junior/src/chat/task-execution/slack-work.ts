@@ -358,7 +358,10 @@ export function createSlackConversationWorker(
         }
       },
     });
-    if (turnResult?.status === "yielded") {
+    if (
+      turnResult?.status === "yielded" ||
+      turnResult?.status === "lost_lease"
+    ) {
       return turnResult;
     }
 

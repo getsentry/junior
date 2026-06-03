@@ -1506,9 +1506,12 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
-      if (sessionRecord) {
-        throw error;
+      if (!sessionRecord) {
+        throw new Error(
+          `Failed to persist cooperative yield continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
+        );
       }
+      throw error;
     }
 
     if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
@@ -1529,7 +1532,12 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
-      if (sessionRecord) {
+      if (!sessionRecord) {
+        throw new Error(
+          `Failed to persist timeout continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
+        );
+      }
+      if (sessionRecord.state === "awaiting_resume") {
         throw new RetryableTurnError(
           "turn_timeout_resume",
           `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId} version=${sessionRecord.version}`,
@@ -1569,23 +1577,26 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
-      if (sessionRecord) {
-        throw new RetryableTurnError(
-          error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
-          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId}`,
-          {
-            authDisposition: error.disposition,
-            authDurationMs: Date.now() - replyStartedAtMs,
-            authKind: error.kind,
-            authProvider: error.provider,
-            authThinkingLevel: thinkingSelection?.thinkingLevel,
-            authUsage: turnUsage,
-            conversationId: timeoutResumeConversationId,
-            sessionId: timeoutResumeSessionId,
-            sliceId: sessionRecord.sliceId,
-          },
+      if (!sessionRecord) {
+        throw new Error(
+          `Failed to persist auth continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
         );
       }
+      throw new RetryableTurnError(
+        error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
+        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId}`,
+        {
+          authDisposition: error.disposition,
+          authDurationMs: Date.now() - replyStartedAtMs,
+          authKind: error.kind,
+          authProvider: error.provider,
+          authThinkingLevel: thinkingSelection?.thinkingLevel,
+          authUsage: turnUsage,
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: sessionRecord.sliceId,
+        },
+      );
     }
 
     if (isRetryableTurnError(error)) {

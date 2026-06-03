@@ -313,7 +313,7 @@ export async function persistAuthPauseSessionRecord(args: {
 
 /**
  * Persist a timeout session record at the last safe boundary. Returns the durable
- * record when persistence succeeds so callers can enqueue a continuation.
+ * record so callers can distinguish scheduled continuations from terminal caps.
  */
 export async function persistTimeoutSessionRecord(args: {
   channelName?: string;
@@ -351,7 +351,7 @@ export async function persistTimeoutSessionRecord(args: {
       args.currentUsage,
     );
     if (nextSliceId > AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES) {
-      await upsertAgentTurnSessionRecord({
+      return await upsertAgentTurnSessionRecord({
         ...((args.channelName ?? latestSessionRecord?.channelName)
           ? {
               channelName: args.channelName ?? latestSessionRecord?.channelName,
@@ -377,7 +377,6 @@ export async function persistTimeoutSessionRecord(args: {
           ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
           : {}),
       });
-      return undefined;
     }
     return await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)

@@ -243,7 +243,13 @@ describe("persistAuthPauseSessionRecord", () => {
           modelId: "test-model",
         },
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      state: "failed",
+      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      cumulativeDurationMs: 15_000,
+      errorMessage: expect.stringContaining("slice limit"),
+      piMessages,
+    });
 
     await expect(
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),

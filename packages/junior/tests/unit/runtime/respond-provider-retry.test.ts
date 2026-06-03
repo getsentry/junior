@@ -210,7 +210,7 @@ import { generateAssistantReply } from "@/chat/respond";
 import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import * as turnSessionState from "@/chat/state/turn-session";
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
@@ -252,7 +252,7 @@ describe("generateAssistantReply provider retry", () => {
     expect(counters.promptCalls).toBe(1);
     expect(counters.continueCalls).toBe(1);
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-1",
       "turn-1",
     );
@@ -289,7 +289,7 @@ describe("generateAssistantReply provider retry", () => {
     expect(reply.text).toBe("Steered.");
     expect(injectedTexts).toEqual(["actually do the other thing"]);
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-steering",
       "turn-steering",
     );
@@ -316,7 +316,7 @@ describe("generateAssistantReply provider retry", () => {
     );
 
     expect(isCooperativeTurnYieldError(error)).toBe(true);
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-yield",
       "turn-yield",
     );
@@ -338,6 +338,40 @@ describe("generateAssistantReply provider retry", () => {
       sessionId: "turn-yield",
       expectedVersion: sessionRecord?.version,
     });
+  });
+
+  it("throws when a cooperative yield cannot persist its resumable boundary", async () => {
+    agentMode.value = "cooperativeYield";
+    const upsertSpy = vi
+      .spyOn(turnSessionState, "upsertAgentTurnSessionRecord")
+      .mockRejectedValue(new Error("storage unavailable"));
+
+    const error = await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-yield-persist-failure",
+        turnId: "turn-yield-persist-failure",
+        channelId: "C123",
+        threadTs: "1712345.0004",
+      },
+      shouldYield: () => true,
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    upsertSpy.mockRestore();
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(
+      "Failed to persist cooperative yield continuation",
+    );
+    expect(isCooperativeTurnYieldError(error)).toBe(false);
+    await expect(
+      turnSessionState.getAgentTurnSessionRecord(
+        "conversation-yield-persist-failure",
+        "turn-yield-persist-failure",
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects steering injection when Pi steer fails", async () => {

@@ -844,6 +844,70 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
+  it("reports lost lease when Slack turn handoff loses the mailbox lease", async () => {
+    const queue = createFakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    let currentNowMs = 1_000;
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> follow-up during lease loss`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    queue.sent = [];
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => currentNowMs,
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          runtime: {
+            handleNewMention: async (_thread, _message, hooks) => {
+              currentNowMs = 1_000 + CONVERSATION_WORK_LEASE_TTL_MS + 1;
+              await recoverConversationWork({
+                nowMs: currentNowMs,
+                queue,
+                state,
+              });
+              await hooks?.onTurnStatePersisted?.();
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "lost_lease" });
+
+    expect(queue.sent).toEqual([
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:${currentNowMs}`,
+      }),
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(true);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
+  });
+
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
     const queue = createFakeQueue();
     const state = getStateAdapter();
