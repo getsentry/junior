@@ -47,6 +47,7 @@ function createSchedulerToolContext(
       canPostToChannel: false,
     },
     channelId: ctx.channelId,
+    credentialSubject: ctx.credentialSubject,
     messageTs: ctx.messageTs,
     requester: ctx.requester,
     state: ctx.state,

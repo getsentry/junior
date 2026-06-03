@@ -21,11 +21,8 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import type { WaitUntilFn } from "@/handlers/types";
-import { conversationsInfoOk } from "../fixtures/slack/factories/api";
-import {
-  getCapturedSlackApiCalls,
-  queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -114,6 +111,24 @@ function mockDispatchCallbackFetch(originalFetch: typeof fetch) {
   });
   global.fetch = fetchMock as typeof fetch;
   return fetchMock;
+}
+
+function createCredentialSubject(
+  input: {
+    channelId?: string;
+    teamId?: string;
+    userId?: string;
+  } = {},
+) {
+  const subject = createSlackDirectCredentialSubject({
+    channelId: input.channelId ?? "D123",
+    teamId: input.teamId ?? "T123",
+    userId: input.userId ?? "U123",
+  });
+  if (!subject) {
+    throw new Error("Expected test credential subject to be created");
+  }
+  return subject;
 }
 
 describe("trusted plugin heartbeat", () => {
@@ -333,15 +348,8 @@ describe("trusted plugin heartbeat", () => {
     ).resolves.toMatchObject({ status: "created" });
   });
 
-  it("rejects delegated credential subjects that do not own the destination DM", async () => {
+  it("rejects plugin credential subjects that include runtime bindings", async () => {
     mockDispatchCallbackFetch(originalFetch);
-    queueSlackApiResponse("conversations.info", {
-      body: conversationsInfoOk({
-        channelId: "D123",
-        isIm: true,
-        userId: "U999",
-      }),
-    });
 
     const ctx = createHeartbeatContext({
       plugin: "scheduler",
@@ -352,10 +360,14 @@ describe("trusted plugin heartbeat", () => {
       ctx.agent.dispatch({
         idempotencyKey: "run-delegated-mismatch",
         credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        },
+          ...createCredentialSubject(),
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D999",
+            signature: "v1=test",
+          },
+        } as any,
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -363,11 +375,43 @@ describe("trusted plugin heartbeat", () => {
         },
         input: "Run the scheduled task.",
       }),
-    ).rejects.toThrow(
-      "Dispatch credentialSubject must match the private direct Slack destination",
-    );
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
     await expect(listIncompleteDispatchIds()).resolves.toEqual([]);
+  });
+
+  it("binds delegated credential subjects before persistence", async () => {
+    mockDispatchCallbackFetch(originalFetch);
+    const ctx = createHeartbeatContext({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    });
+
+    const result = await ctx.agent.dispatch({
+      idempotencyKey: "run-delegated",
+      credentialSubject: createCredentialSubject(),
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "D123",
+      },
+      input: "Run the scheduled task.",
+    });
+
+    await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
+      credentialSubject: {
+        type: "user",
+        userId: "U123",
+        allowedWhen: "private-direct-conversation",
+        binding: {
+          type: "slack-direct-conversation",
+          teamId: "T123",
+          channelId: "D123",
+          signature: expect.any(String),
+        },
+      },
+    });
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
 
   it("fails stale dispatches that exceed retry attempts", async () => {
@@ -549,13 +593,6 @@ describe("trusted plugin heartbeat", () => {
 
   it("carries scheduled task credential subjects into dispatch records", async () => {
     mockDispatchCallbackFetch(originalFetch);
-    queueSlackApiResponse("conversations.info", {
-      body: conversationsInfoOk({
-        channelId: "D123",
-        isIm: true,
-        userId: "U123",
-      }),
-    });
     setAgentPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(
@@ -592,8 +629,15 @@ describe("trusted plugin heartbeat", () => {
         type: "user",
         userId: "U123",
         allowedWhen: "private-direct-conversation",
+        binding: {
+          type: "slack-direct-conversation",
+          teamId: "T123",
+          channelId: "D123",
+          signature: expect.any(String),
+        },
       },
     });
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
 
   it("fails scheduled runs when their dispatch record disappeared", async () => {

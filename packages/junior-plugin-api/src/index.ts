@@ -110,6 +110,7 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
     canPostToChannel: boolean;
   };
   channelId?: string;
+  credentialSubject?: AgentPluginCredentialSubject;
   messageTs?: string;
   requester?: AgentPluginRequester;
   state: AgentPluginState;
@@ -118,12 +119,14 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
   userText?: string;
 }
 
+export interface AgentPluginCredentialSubject {
+  type: "user";
+  userId: string;
+  allowedWhen: "private-direct-conversation";
+}
+
 export interface DispatchOptions {
-  credentialSubject?: {
-    type: "user";
-    userId: string;
-    allowedWhen: "private-direct-conversation";
-  };
+  credentialSubject?: AgentPluginCredentialSubject;
   destination: {
     platform: "slack";
     teamId: string;

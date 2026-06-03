@@ -9,6 +9,17 @@ describe("credential context", () => {
     type: "user" as const,
     userId: "U123",
     allowedWhen: "private-direct-conversation" as const,
+    binding: {
+      type: "slack-direct-conversation" as const,
+      teamId: "T123",
+      channelId: "D123",
+      signature: "v1=test",
+    },
+  };
+  const unboundDelegatedSubject = {
+    type: "user" as const,
+    userId: "U123",
+    allowedWhen: "private-direct-conversation" as const,
   };
 
   it("resolves the user OAuth subject from the current actor or delegated subject", () => {
@@ -46,6 +57,12 @@ describe("credential context", () => {
       actor: { type: "system", id: "scheduler" },
       subject: delegatedSubject,
     });
+    expect(
+      parseCredentialContext({
+        actor: { type: "system", id: "scheduler" },
+        subject: unboundDelegatedSubject,
+      }),
+    ).toBeUndefined();
   });
 
   it("rejects malformed untrusted credential contexts", () => {

@@ -107,7 +107,10 @@ type Dispatch = {
 - Input is plain text inserted as user-role synthetic conversation content.
 - Metadata is correlation-only and must not affect authorization.
 - System dispatches have no requester, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
-- Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting the dispatch record, core must verify through Slack conversation metadata that `destination.channelId` is an IM whose owner is `credentialSubject.userId`; channel-id prefixes and scheduler stored creation context are not sufficient authority.
+- Plugin-provided user credential subjects use the stable unbound shape: `type`, `userId`, and `allowedWhen`. Plugin input must not include a binding or signature; bindings are runtime-owned.
+- Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting a dispatch record, core binds the subject to the dispatch destination with the current runtime secret and verifies the signed `teamId`/`channelId` proof locally. Dispatch must not make Slack API calls just to re-check a subject from an already verified turn context.
+- Scheduler tasks should store the stable unbound subject shape and let dispatch bind with the current runtime secret. Signed bindings belong in dispatch records, not long-lived scheduler task state.
+- Persisted dispatch records and sandbox egress credential contexts require the bound internal subject shape. Existing records or signed egress contexts that stored unbound system credential subjects are invalid and must be recreated or migrated.
 - Schedule-management tools are unavailable during system dispatches.
 
 Core derives and enforces system actor identity, auth mode, conversation identity, callback scheduling, timeout continuation, sandbox state persistence, delivery behavior, tool policy, logging, tracing, and redaction.

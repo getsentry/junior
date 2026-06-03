@@ -14,6 +14,10 @@ import { RetryableTurnError } from "@/chat/runtime/turn";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AssistantReply } from "@/chat/respond";
+import {
+  bindSlackDirectCredentialSubject,
+  createSlackDirectCredentialSubject,
+} from "@/chat/credentials/subject";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -46,13 +50,35 @@ function createReply(): AssistantReply {
   };
 }
 
+function createCredentialSubject() {
+  const subject = createSlackDirectCredentialSubject({
+    channelId: "D123",
+    teamId: "T123",
+    userId: "U123",
+  });
+  if (!subject) {
+    throw new Error("Expected test credential subject to be created");
+  }
+  const boundSubject = bindSlackDirectCredentialSubject({
+    channelId: "D123",
+    teamId: "T123",
+    subject,
+  });
+  if (!boundSubject) {
+    throw new Error("Expected test credential subject to be bound");
+  }
+  return boundSubject;
+}
+
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
+    process.env.JUNIOR_SECRET = "dispatch-runner-secret";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
+    delete process.env.JUNIOR_SECRET;
   });
 
   it("runs a system dispatch and persists Slack delivery", async () => {
@@ -265,11 +291,7 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-delegated",
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        },
+        credentialSubject: createCredentialSubject(),
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -286,6 +308,12 @@ describe("agent dispatch runner", () => {
           type: "user",
           userId: "U123",
           allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D123",
+            signature: expect.any(String),
+          },
         },
       });
       expect(context.authorizationFlowMode).toBe("disabled");

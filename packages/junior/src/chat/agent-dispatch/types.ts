@@ -1,3 +1,4 @@
+import type { DispatchOptions as AgentPluginDispatchOptions } from "@sentry/junior-plugin-api";
 import type {
   CredentialSubject,
   CredentialSystemActor,
@@ -11,18 +12,15 @@ export type DispatchStatus =
   | "failed"
   | "blocked";
 
-export interface DispatchDestination {
-  platform: "slack";
-  teamId: string;
-  channelId: string;
-}
+export type DispatchOptions = AgentPluginDispatchOptions;
 
-export interface DispatchOptions {
+export type DispatchDestination = DispatchOptions["destination"];
+
+export interface BoundDispatchOptions extends Omit<
+  DispatchOptions,
+  "credentialSubject"
+> {
   credentialSubject?: CredentialSubject;
-  destination: DispatchDestination;
-  idempotencyKey: string;
-  input: string;
-  metadata?: Record<string, string>;
 }
 
 export interface DispatchRecord {

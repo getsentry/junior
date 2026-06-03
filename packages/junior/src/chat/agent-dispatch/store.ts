@@ -3,8 +3,8 @@ import type { Lock, StateAdapter } from "chat";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type {
+  BoundDispatchOptions,
   DispatchCreateResult,
-  DispatchOptions,
   DispatchProjection,
   DispatchRecord,
   DispatchStatus,
@@ -189,7 +189,7 @@ export async function getDispatchRecord(
 /** Create a plugin dispatch idempotently from the plugin's idempotency key. */
 export async function createOrGetDispatch(args: {
   nowMs: number;
-  options: DispatchOptions;
+  options: BoundDispatchOptions;
   plugin: string;
 }): Promise<DispatchCreateResult> {
   const id = buildDispatchId(args.plugin, args.options.idempotencyKey);

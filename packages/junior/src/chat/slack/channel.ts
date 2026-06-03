@@ -36,39 +36,6 @@ export interface SlackThreadReply {
   attachments?: unknown[];
 }
 
-interface SlackConversationInfo {
-  id?: string;
-  is_im?: boolean;
-  is_mpim?: boolean;
-  user?: string;
-}
-
-/** Verify that a Slack conversation is the one-to-one DM owned by a user. */
-export async function isSlackDirectConversationForUser(input: {
-  channelId: string;
-  userId: string;
-}): Promise<boolean> {
-  const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack conversation lookup requires a valid channel ID");
-  }
-
-  const response = await withSlackRetries(
-    () => client.conversations.info({ channel: channelId }),
-    3,
-    { action: "conversations.info" },
-  );
-  const channel = (response as { channel?: SlackConversationInfo }).channel;
-
-  return (
-    channel?.id === channelId &&
-    channel.is_im === true &&
-    channel.is_mpim !== true &&
-    channel.user === input.userId
-  );
-}
-
 export async function listChannelMessages(input: {
   channelId: string;
   limit: number;

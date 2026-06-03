@@ -1,12 +1,19 @@
+import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+
+export interface CredentialSubjectBinding {
+  type: "slack-direct-conversation";
+  teamId: string;
+  channelId: string;
+  signature: string;
+}
+
 export type CredentialSystemActor = {
   type: "system";
   id: string;
 };
 
-export type CredentialSubject = {
-  type: "user";
-  userId: string;
-  allowedWhen: "private-direct-conversation";
+export type CredentialSubject = AgentPluginCredentialSubject & {
+  binding: CredentialSubjectBinding;
 };
 
 export type CredentialContext =
@@ -95,10 +102,31 @@ function parseSubject(
       record.userId &&
       record.allowedWhen === "private-direct-conversation"
     ) {
+      if (!record.binding || typeof record.binding !== "object") {
+        return undefined;
+      }
+      const binding = record.binding as Partial<CredentialSubjectBinding>;
+      if (
+        binding.type !== "slack-direct-conversation" ||
+        typeof binding.teamId !== "string" ||
+        !binding.teamId ||
+        typeof binding.channelId !== "string" ||
+        !binding.channelId ||
+        typeof binding.signature !== "string" ||
+        !binding.signature
+      ) {
+        return undefined;
+      }
       return {
         type: "user",
         userId: record.userId,
         allowedWhen: "private-direct-conversation",
+        binding: {
+          type: "slack-direct-conversation",
+          teamId: binding.teamId,
+          channelId: binding.channelId,
+          signature: binding.signature,
+        },
       };
     }
   }

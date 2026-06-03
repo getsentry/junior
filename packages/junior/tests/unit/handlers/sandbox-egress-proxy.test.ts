@@ -57,6 +57,7 @@ import {
 } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import { ALL } from "@/handlers/sandbox-egress-proxy";
 
 const EGRESS_ID = "junior-sbx";
@@ -118,11 +119,7 @@ function setSandboxEgressUserActor(userId = REQUESTER_ID): void {
 }
 
 function setSandboxEgressSystemActor(input?: {
-  subject?: {
-    type: "user";
-    userId: string;
-    allowedWhen: "private-direct-conversation";
-  };
+  subject?: CredentialSubject;
 }): void {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: {
@@ -399,6 +396,35 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects unbound delegated credential subjects under signed egress contexts", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    activeCredentialToken = createSandboxEgressCredentialToken({
+      credentials: {
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: REQUESTER_ID,
+          allowedWhen: "private-direct-conversation",
+        } as any,
+      },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        path: "/repos/getsentry/junior/issues/449",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Sandbox egress credential context is not authorized",
+    });
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
   it("preserves delegated credential subjects under system actor contexts", async () => {
     getPluginProvidersMock.mockReturnValue([githubPlugin()]);
     setSandboxEgressSystemActor({
@@ -406,6 +432,12 @@ describe("sandbox egress proxy", () => {
         type: "user",
         userId: REQUESTER_ID,
         allowedWhen: "private-direct-conversation",
+        binding: {
+          type: "slack-direct-conversation",
+          teamId: "T123",
+          channelId: "D123",
+          signature: "v1=test",
+        },
       },
     });
     mockGitHubLease();
@@ -425,6 +457,12 @@ describe("sandbox egress proxy", () => {
           type: "user",
           userId: REQUESTER_ID,
           allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D123",
+            signature: "v1=test",
+          },
         },
       },
       provider: "github",

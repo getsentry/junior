@@ -1,4 +1,5 @@
 import type { HeartbeatHookContext } from "@sentry/junior-plugin-api";
+import { bindSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createAgentPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import {
@@ -7,7 +8,11 @@ import {
   isTerminalDispatchStatus,
 } from "./store";
 import { scheduleDispatchCallback } from "./signing";
-import type { DispatchRecord } from "./types";
+import type {
+  BoundDispatchOptions,
+  DispatchOptions,
+  DispatchRecord,
+} from "./types";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -29,6 +34,34 @@ function shouldScheduleDispatch(
   );
 }
 
+function bindDispatchCredentialSubject(
+  options: DispatchOptions,
+): BoundDispatchOptions {
+  const { credentialSubject, ...baseOptions } = options;
+  if (!credentialSubject) {
+    return baseOptions;
+  }
+  if ("binding" in credentialSubject) {
+    throw new Error("Dispatch credentialSubject binding is runtime-owned");
+  }
+
+  const boundSubject = bindSlackDirectCredentialSubject({
+    channelId: options.destination.channelId,
+    teamId: options.destination.teamId,
+    subject: credentialSubject,
+  });
+  if (!boundSubject) {
+    throw new Error(
+      "Dispatch credentialSubject must match the private direct Slack destination",
+    );
+  }
+
+  return {
+    ...baseOptions,
+    credentialSubject: boundSubject,
+  };
+}
+
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   legacyStatePrefixes?: string[];
@@ -46,13 +79,14 @@ export function createHeartbeatContext(args: {
     agent: {
       async dispatch(options) {
         validateDispatchOptions(options);
+        const dispatchOptions = bindDispatchCredentialSubject(options);
         if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
           throw new Error("Plugin heartbeat exceeded the dispatch limit");
         }
-        await verifyDispatchCredentialSubjectAccess(options);
+        await verifyDispatchCredentialSubjectAccess(dispatchOptions);
         const result = await createOrGetDispatch({
           plugin: args.plugin,
-          options,
+          options: dispatchOptions,
           nowMs: args.nowMs,
         });
         dispatchCount += 1;

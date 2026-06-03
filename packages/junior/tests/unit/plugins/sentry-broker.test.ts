@@ -264,6 +264,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
           type: "user",
           userId: "U123",
           allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D123",
+            signature: "v1=test",
+          },
         },
       },
       reason: "test:delegated-subject",

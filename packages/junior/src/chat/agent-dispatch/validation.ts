@@ -1,5 +1,5 @@
-import type { DispatchOptions } from "./types";
-import { isSlackDirectConversationForUser } from "@/chat/slack/channel";
+import type { BoundDispatchOptions, DispatchOptions } from "./types";
+import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
 
@@ -74,15 +74,16 @@ export function validateDispatchOptions(options: DispatchOptions): void {
 
 /** Verify runtime-owned access requirements for delegated dispatch credentials. */
 export async function verifyDispatchCredentialSubjectAccess(
-  options: DispatchOptions,
+  options: BoundDispatchOptions,
 ): Promise<void> {
   if (!options.credentialSubject) {
     return;
   }
 
-  const verified = await isSlackDirectConversationForUser({
+  const verified = verifySlackDirectCredentialSubject({
     channelId: options.destination.channelId,
-    userId: options.credentialSubject.userId,
+    teamId: options.destination.teamId,
+    subject: options.credentialSubject,
   });
   if (!verified) {
     throw new Error(
