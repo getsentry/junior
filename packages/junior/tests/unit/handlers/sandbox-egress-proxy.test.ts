@@ -666,7 +666,28 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
-  it("clears cached credential leases after upstream auth rejection", async () => {
+  it("returns a command-readable auth marker when upstream rejects the injected credential", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("Bad credentials", { status: 401 }));
+
+    const response = await proxy(
+      egressRequest({ path: "/api/0/issues/1" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.text()).resolves.toContain(
+      "junior-auth-required provider=sentry 401 unauthorized",
+    );
+  });
+
+  it("clears the cached credential lease so the next request re-issues after upstream 401", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -707,6 +728,7 @@ describe("sandbox egress proxy", () => {
       fetchMock as typeof fetch,
     );
     expect(firstResponse.status).toBe(401);
+    await expect(firstResponse.text()).resolves.toContain("junior-auth-required provider=sentry");
 
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
@@ -715,6 +737,29 @@ describe("sandbox egress proxy", () => {
     await expect(secondResponse.text()).resolves.toBe("Bearer fresh-token");
 
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes through upstream 403 responses without overriding the body", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("Permission denied for this organization", {
+          status: 403,
+        }),
+      );
+
+    const response = await proxy(
+      egressRequest({ path: "/api/0/issues/1" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.text();
+    expect(body).toBe("Permission denied for this organization");
+    expect(body).not.toContain("junior-auth-required");
   });
 
   it("applies provider header transforms to matching upstream hosts", async () => {

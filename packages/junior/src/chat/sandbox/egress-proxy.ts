@@ -44,7 +44,7 @@ const DECODED_RESPONSE_HEADERS = new Set([
   "content-encoding",
   "content-length",
 ]);
-const AUTH_REJECTION_STATUS = new Set([401, 403]);
+const AUTH_REJECTION_UPSTREAM_STATUS = 401;
 
 /** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
 export type SandboxEgressHttpInterceptor = (input: {
@@ -584,7 +584,7 @@ export async function proxySandboxEgressRequest(
       `Sandbox egress upstream returned HTTP ${upstream.status}`,
     );
   }
-  if (AUTH_REJECTION_STATUS.has(upstream.status)) {
+  if (upstream.status === AUTH_REJECTION_UPSTREAM_STATUS) {
     logWarn(
       "sandbox_egress_upstream_auth_rejected",
       {},
@@ -598,10 +598,23 @@ export async function proxySandboxEgressRequest(
           status: upstream.status,
         }),
         ...routingAttributes(request, upstreamUrl),
+        "app.sandbox.egress.www_authenticate":
+          upstream.headers.get("www-authenticate") ?? undefined,
       },
-      "Sandbox egress upstream auth rejected",
+      "Sandbox egress upstream auth rejected injected credential",
     );
     await clearSandboxEgressCredentialLease(provider, credentialContext);
+    await upstream.body?.cancel().catch(() => undefined);
+    return new Response(
+      `junior-auth-required provider=${provider} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
+      {
+        status: 401,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      },
+    );
   }
 
   return new Response(upstream.body, {

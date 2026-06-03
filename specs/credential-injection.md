@@ -97,6 +97,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - `OAuthBearerBroker` checks for a per-user OAuth token stored by the credential user subject ID, which is the current user actor or an explicit delegated user subject.
 - If the token is near expiry, runtime refreshes it server-side.
 - Missing or stale auth triggers the private OAuth resume flow defined in the OAuth Flows Spec.
+- When the Sentry upstream returns `401` for a request where Junior injected the bearer credential, the egress proxy clears the cached sandbox egress lease and returns a `junior-auth-required provider=sentry 401 unauthorized` response to the sandbox command. Plugin auth orchestration reads this sentinel, unlinks the stored token, and starts the private OAuth reconnect flow.
 
 ## Observability
 
