@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, realpathSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,6 +18,7 @@ const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
 const examplePluginsModule = path.join(exampleRoot, "plugins.ts");
 const exampleDashboardConfig = path.join(exampleRoot, "dashboard.ts");
+const examplePackageJson = path.join(exampleRoot, "package.json");
 const exampleRequire = createRequire(exampleEntry);
 const vercelEnvNames = [
   "VERCEL",
@@ -120,6 +127,28 @@ describe.sequential("example build discovery integration", () => {
     };
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
+    process.env = {
+      ...originalEnv,
+      JUNIOR_DASHBOARD_AUTH_REQUIRED: "false",
+    };
+    clearVercelEnv();
+    expect(config.exampleDashboardAuthRequired()).toBe(false);
+
+    process.env = {
+      ...originalEnv,
+      JUNIOR_DASHBOARD_AUTH_REQUIRED: "false",
+      VERCEL: "1",
+    };
+    expect(config.exampleDashboardAuthRequired()).toBe(true);
+
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "development",
+      JUNIOR_DASHBOARD_AUTH_REQUIRED: "true",
+    };
+    clearVercelEnv();
+    expect(config.exampleDashboardAuthRequired()).toBe(true);
+
     process.env = { ...originalEnv, NODE_ENV: "production" };
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
@@ -128,6 +157,28 @@ describe.sequential("example build discovery integration", () => {
     delete process.env.NODE_ENV;
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
+  });
+
+  it("does not include top-level Vercel api source files", () => {
+    expect(existsSync(path.join(exampleRoot, "api"))).toBe(false);
+  });
+
+  it("runs deployment build guards around the Vercel app build", () => {
+    const packageJson = JSON.parse(
+      readFileSync(examplePackageJson, "utf8"),
+    ) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(packageJson.scripts?.prebuild).toContain(
+      "pnpm --filter @sentry/junior build",
+    );
+    expect(packageJson.scripts?.prebuild).toContain(
+      "pnpm --filter @sentry/junior-dashboard build",
+    );
+    expect(packageJson.scripts?.postbuild).toBe(
+      "node scripts/check-vercel-output.mjs",
+    );
   });
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {

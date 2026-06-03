@@ -34,6 +34,7 @@ export function initSentry(): void {
     sendDefaultPii: true,
     enabled: Boolean(dsn),
     enableLogs,
+    registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
     integrations: [
       Sentry.vercelAIIntegration({

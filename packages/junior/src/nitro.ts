@@ -58,6 +58,10 @@ interface ResolvedPluginModuleReference {
   runtimeModule: RuntimePluginModule;
 }
 
+type RollupLikeConfig = {
+  plugins?: unknown[];
+};
+
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
 
@@ -328,7 +332,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           trustedPluginRegistrations,
         });
 
-        nitro.hooks.hook("compiled", async () => {
+        const copyBuildContent = async () => {
           const pluginSet = await loadConfiguredPluginSet();
           const compiledPluginCatalogConfig =
             pluginCatalogConfigFromPluginSet(pluginSet);
@@ -342,6 +346,17 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             options.includeFiles,
           );
+        };
+
+        nitro.hooks.hook("rollup:before", (_nitro, config) => {
+          const buildConfig = config as RollupLikeConfig;
+          buildConfig.plugins ??= [];
+          buildConfig.plugins.push({
+            name: "junior:copy-build-content",
+            async writeBundle() {
+              await copyBuildContent();
+            },
+          });
         });
       },
     },

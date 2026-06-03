@@ -9,6 +9,14 @@ function isVercelEnvironment(): boolean {
 
 /** Return whether the example dashboard should require browser auth. */
 export function exampleDashboardAuthRequired(): boolean {
+  const authRequired = process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED?.trim();
+  if (authRequired === "true") {
+    return true;
+  }
+  if (authRequired === "false" && !isVercelEnvironment()) {
+    return false;
+  }
+
   return process.env.NODE_ENV !== "development" || isVercelEnvironment();
 }
 
