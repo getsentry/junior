@@ -350,7 +350,6 @@ describe("agent plugin hooks", () => {
                     description: "Triggering GitHub comment",
                   },
                 },
-                deliveryTargets: [{ target: "source_thread" }],
               },
             };
           },
@@ -368,7 +367,6 @@ describe("agent plugin hooks", () => {
                 description: "Triggering GitHub comment",
               },
             },
-            deliveryTargets: [{ target: "source_thread" }],
           },
         },
       ]);
@@ -388,9 +386,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           events() {
             return {
-              "slack.channel.message.created": {
-                deliveryTargets: [{ target: "source_thread" }],
-              },
+              "slack.channel.message.created": {},
             };
           },
         },
@@ -418,7 +414,6 @@ describe("agent plugin hooks", () => {
             return {
               "github.pull_request.comment.created": {
                 defaultTools: { allow: ["github.comments.write"] },
-                deliveryTargets: [{ target: "source_thread" }],
               } as any,
             };
           },

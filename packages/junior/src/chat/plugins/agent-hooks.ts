@@ -63,8 +63,6 @@ const AGENT_PLUGIN_EVENT_ID_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_]*)+$/;
 const AGENT_PLUGIN_EVENT_NAME_RE = /^[a-z][a-z0-9_]*$/;
 const AGENT_PLUGIN_EVENT_DEFINITION_KEYS = new Set([
   "contextBlocks",
-  "deliveryTargets",
-  "filterKeys",
   "scopeKeys",
 ]);
 
@@ -167,17 +165,6 @@ function validateEventDefinition(args: {
     throw new Error(
       `Trusted plugin event "${args.event}" from plugin "${args.plugin}" uses unsupported event definition field "${unsupportedKey}"`,
     );
-  }
-  if (
-    !Array.isArray(args.definition.deliveryTargets) ||
-    args.definition.deliveryTargets.length === 0
-  ) {
-    throw new Error(
-      `Trusted plugin event "${args.event}" from plugin "${args.plugin}" must declare at least one delivery target`,
-    );
-  }
-  for (const target of args.definition.deliveryTargets) {
-    validateEventName(target.target, "delivery target", args.plugin);
   }
   for (const contextName of Object.keys(args.definition.contextBlocks ?? {})) {
     validateEventName(contextName, "context block", args.plugin);

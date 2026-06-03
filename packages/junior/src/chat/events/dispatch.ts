@@ -71,7 +71,6 @@ function findMatches(args: {
       (binding) => binding.enabled && binding.event === args.envelope.event,
     )
     .filter((binding) => recordMatches(binding.scope, args.envelope.scope))
-    .filter((binding) => recordMatches(binding.when, args.envelope.payload))
     .map((binding) => ({ binding, definition }));
 }
 

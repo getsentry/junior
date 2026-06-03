@@ -30,16 +30,9 @@ const eventBindingFrontmatterSchema = z
       })
       .optional(),
     scope: recordSchema.optional(),
-    when: recordSchema.optional(),
     context: z
       .object({
         include: stringArraySchema.optional(),
-      })
-      .strict()
-      .optional(),
-    delivery: z
-      .object({
-        target: z.string().min(1),
       })
       .strict()
       .optional(),
@@ -54,13 +47,11 @@ export interface EventBindingFile {
 export interface ParsedEventBinding {
   body: string;
   contextInclude: string[];
-  delivery?: Record<string, unknown> & { target: string };
   enabled: boolean;
   event: string;
   id: string;
   path: string;
   scope?: Record<string, unknown>;
-  when?: Record<string, unknown>;
 }
 
 type ParseResult =
@@ -132,8 +123,6 @@ export function parseEventBindingFile(file: EventBindingFile): ParseResult {
       body,
       contextInclude: result.data.context?.include ?? [],
       ...(result.data.scope ? { scope: result.data.scope } : {}),
-      ...(result.data.when ? { when: result.data.when } : {}),
-      ...(result.data.delivery ? { delivery: result.data.delivery } : {}),
     },
   };
 }
@@ -154,15 +143,6 @@ function validateBindingAgainstDefinition(args: {
     }
   }
 
-  if (args.binding.delivery) {
-    const deliveryTargets = new Set(
-      args.definition.definition.deliveryTargets.map((target) => target.target),
-    );
-    if (!deliveryTargets.has(args.binding.delivery.target)) {
-      return `${args.binding.path}: event binding "${args.binding.id}" references unsupported delivery target "${args.binding.delivery.target}" for event "${args.binding.event}"`;
-    }
-  }
-
   if (args.binding.scope) {
     const allowedScopeKeys = args.definition.definition.scopeKeys ?? [];
     if (allowedScopeKeys.length === 0) {
@@ -174,20 +154,6 @@ function validateBindingAgainstDefinition(args: {
     );
     if (invalid) {
       return `${args.binding.path}: event binding "${args.binding.id}" uses unsupported scope field "${invalid}" for event "${args.binding.event}"`;
-    }
-  }
-
-  if (args.binding.when) {
-    const allowedFilterKeys = args.definition.definition.filterKeys ?? [];
-    if (allowedFilterKeys.length === 0) {
-      return `${args.binding.path}: event binding "${args.binding.id}" uses when fields but event "${args.binding.event}" does not support filters`;
-    }
-    const allowed = new Set(allowedFilterKeys);
-    const invalid = Object.keys(args.binding.when).find(
-      (key) => !allowed.has(key),
-    );
-    if (invalid) {
-      return `${args.binding.path}: event binding "${args.binding.id}" uses unsupported when field "${invalid}" for event "${args.binding.event}"`;
     }
   }
 

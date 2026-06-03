@@ -16,7 +16,6 @@ const definitions: RegisteredAgentEventDefinition[] = [
         source_comment: { description: "Triggering GitHub comment" },
         pull_request: { description: "GitHub pull request metadata" },
       },
-      deliveryTargets: [{ target: "source_thread" }],
     },
   },
 ];
@@ -34,14 +33,10 @@ describe("event binding files", () => {
         "event: github.pull_request.comment.created",
         "scope:",
         "  repository: getsentry/junior",
-        "when:",
-        "  actor: sentry-warden[bot]",
         "context:",
         "  include:",
         "    - source_comment",
         "    - pull_request",
-        "delivery:",
-        "  target: source_thread",
       ]),
     });
 
@@ -54,9 +49,7 @@ describe("event binding files", () => {
         path: "/repo/app/events/github/warden.md",
         body: "Review the event.",
         scope: { repository: "getsentry/junior" },
-        when: { actor: "sentry-warden[bot]" },
         contextInclude: ["source_comment", "pull_request"],
-        delivery: { target: "source_thread" },
       },
     });
   });
@@ -68,7 +61,7 @@ describe("event binding files", () => {
         "id: github-typo",
         "event: github.pull_request.comment.created",
         "delivrey:",
-        "  target: source_thread",
+        "  value: typo",
       ]),
     });
 
@@ -87,7 +80,6 @@ describe("event binding files", () => {
       path: "/repo/app/events/github/warden.md",
       body: "Review the event.",
       contextInclude: ["source_comment"],
-      delivery: { target: "source_thread" },
     };
 
     expect(validateEventBindings([binding], definitions)).toEqual({
@@ -155,8 +147,6 @@ describe("event binding files", () => {
             "context:",
             "  include:",
             "    - source_comment",
-            "delivery:",
-            "  target: source_thread",
           ]),
         },
         {

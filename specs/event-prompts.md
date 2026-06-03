@@ -16,7 +16,7 @@ Define how Junior runs install-owned, version-controlled prompts in response to 
 - Startup validation for event bindings.
 - Normalized inbound event envelopes, matching, idempotency, and dispatch.
 - Prompt compilation for event payloads and hydrated event context.
-- Runtime policy and delivery boundaries for event-triggered runs.
+- Runtime policy and Slack delivery boundaries for event-triggered runs.
 
 ## Non-Goals
 
@@ -36,7 +36,7 @@ As an operator who customizes a Junior install, I want to add a Markdown file un
 Acceptance criteria:
 
 1. The event binding lives in version control.
-2. Startup fails if the binding references an unknown event, unsupported context block, unsupported delivery target, unsupported selector, or empty prompt body.
+2. Startup fails if the binding references an unknown event, unsupported context block, unsupported selector, or empty prompt body.
 3. The plugin or platform integration supplies functionality and context; the install-owned Markdown body supplies the instruction.
 4. Unsupported frontmatter is rejected instead of ignored so typos do not create surprising behavior.
 
@@ -78,7 +78,7 @@ As a trusted plugin author, I want to expose new event functionality without own
 
 Acceptance criteria:
 
-1. The plugin registers an event definition, supported selectors, context blocks, and delivery targets.
+1. The plugin registers an event definition, supported scope selectors, and context blocks.
 2. The plugin does not read `app/events/**/*.md` directly.
 3. The plugin does not choose which install bindings run.
 4. Raw provider payloads and credentials stay outside the model and binding frontmatter.
@@ -99,7 +99,7 @@ An **event run** is one core-created dispatched agent run for a matching `(bindi
 
 ### Plugin Event Definitions
 
-Junior platform integrations may register built-in event definitions. Trusted plugins may register additional event definitions from app code. Declarative `plugin.yaml` manifests must not register event definitions because event definitions may own provider-specific normalization, filtering, hydration, and delivery behavior.
+Junior platform integrations may register built-in event definitions. Trusted plugins may register additional event definitions from app code. Declarative `plugin.yaml` manifests must not register event definitions because event definitions may own provider-specific normalization and hydration behavior.
 
 The plugin-facing shape is:
 
@@ -108,8 +108,6 @@ type EventDefinitions = Record<string, AgentEventDefinition>;
 
 interface AgentEventDefinition {
   contextBlocks?: Record<string, AgentEventContextBlockDefinition>;
-  deliveryTargets: AgentEventDeliveryTargetDefinition[];
-  filterKeys?: string[];
   scopeKeys?: string[];
 }
 ```
@@ -120,11 +118,9 @@ Event definitions own:
 
 1. The normalized event payload shape.
 2. Supported binding `scope` keys.
-3. Supported binding `when` filter keys.
-4. Supported context block names and hydration/rendering functions.
-5. Supported delivery targets.
+3. Supported context block names and hydration/rendering functions.
 
-The current implementation must reject unsupported event definition fields. Schema-backed value validation and event-level policy controls are future extensions that must wait for executor-level enforcement.
+Unsupported event definition fields must be rejected instead of treated as reserved behavior.
 
 Plugins must not:
 
@@ -155,9 +151,6 @@ scope:
 context:
   include:
     - source_message
-
-delivery:
-  target: channel
 ---
 
 A new root message was posted in the configured Slack channel.
@@ -176,9 +169,7 @@ Optional frontmatter fields:
 
 - `enabled`: boolean, default `true`.
 - `scope`: event-definition-validated scope selector.
-- `when`: event-definition-validated declarative filters.
 - `context.include`: list of event-definition-supported context block names.
-- `delivery`: event-definition-supported delivery target.
 
 The Markdown body must be non-empty after frontmatter removal. It is the event run instruction and must not contain secrets.
 
@@ -194,7 +185,7 @@ Validation must reject:
 2. Duplicate binding ids across files.
 3. Binding ids that do not match the lowercase binding id format.
 4. Bindings that reference unknown events.
-5. `scope`, `when`, `context.include`, or `delivery` values unsupported by the referenced event definition.
+5. `scope` or `context.include` values unsupported by the referenced event definition.
 6. Markdown bodies that are empty after trimming.
 7. Frontmatter values that require code execution, environment expansion, or secret interpolation.
 
@@ -259,9 +250,7 @@ The envelope scope is `{teamId, channelId}`. The payload includes `teamId`, `cha
 
 ### Matching And Idempotency
 
-Core matches an event envelope against enabled bindings whose `event` matches the envelope event id. Matching is deterministic and uses only event-definition-owned `scope` and `when` filter logic.
-
-V1 filters must stay declarative and bounded. Exact matches, set membership, and substring filters are acceptable. Arbitrary code, model calls, shell commands, and remote fetches are not filter mechanisms.
+Core matches an event envelope against enabled bindings whose `event` matches the envelope event id and whose `scope` selectors match the envelope scope. Matching is deterministic and must not use arbitrary code, model calls, shell commands, or remote fetches.
 
 Multiple matching bindings are allowed. Each matching binding creates at most one event run for the source event. The idempotency key is:
 
@@ -271,11 +260,9 @@ event:{binding_id}:{source_event_id}
 
 Duplicate provider deliveries must return or recover the same event run for the same `(bindingId, sourceEventId)` pair.
 
-Self-event suppression is required by default. Events authored by Junior's own bot, app, or delivery identity must not trigger event runs unless the event definition and binding explicitly allow that case.
+Self-event suppression is required. Events authored by Junior's own bot or app identity must not trigger event runs.
 
 Directed user-message entry points preempt ambient event prompts. For example, a Slack root channel message that contains Junior's bot mention must route through the explicit mention path and must not also create a `slack.channel.message.created` event prompt run.
-
-Event definitions may define per-event actor allowlists, actor denylists, and rate-limit controls. Core must enforce them before dispatch.
 
 ### Context Hydration
 
@@ -325,7 +312,7 @@ The compiled prompt must make these facts explicit:
 
 ### Dispatch And Delivery
 
-Event runs use the core dispatch mechanism, but dispatch must be platform-neutral before event prompts can deliver outside Slack.
+Event runs use the core dispatch mechanism.
 
 An event run dispatch record must store:
 
@@ -339,12 +326,9 @@ An event run dispatch record must store:
 - safe correlation metadata
 - run mode `event_prompt`
 
-Event run destinations are derived from the binding delivery target and event envelope. Delivery adapters own platform-specific final output behavior:
+V1 event run destinations are derived from the normalized Slack event envelope. Slack delivery posts to the configured Slack conversation using Slack `mrkdwn`.
 
-- Slack delivery posts to configured Slack conversations using Slack `mrkdwn`.
-- GitHub delivery posts to configured source issue, PR, or review-comment targets using GitHub-flavored Markdown.
-
-Delivery adapters must enforce final delivery idempotency using stable assistant message ids derived from the event run dispatch id.
+Delivery must enforce final Slack idempotency using stable assistant message ids derived from the event run dispatch id.
 
 Event prompt runs may complete silently when the run succeeds with no assistant-visible text and no files. Silent success is an executor-level event-run behavior: Junior marks the dispatch completed and records the skipped delivery state without calling the platform delivery adapter. Ordinary user-message turns must continue to treat empty non-side-effect output as an execution failure.
 
@@ -355,10 +339,10 @@ Event runs are autonomous system-actor runs.
 Core must enforce:
 
 1. Disabled interactive auth continuation for system actors.
-2. No use of user OAuth tokens unless a future explicit credential-subject contract permits it for the event run.
+2. No use of user OAuth tokens during event runs.
 3. No schedule-management or event-binding-management tools during event runs.
-4. No Slack mutating tools during event runs until binding-level tool policy is implemented below the model; final event output goes through the delivery adapter.
-5. Rejection of unsupported binding and event-definition fields until new policy controls are implemented below the model.
+4. No Slack mutating tools during event runs; final event output goes through the delivery adapter.
+5. Rejection of unsupported binding and event-definition fields.
 
 Prompt wording is not sufficient enforcement for tools, credentials, delivery, or repository mutation policy.
 
@@ -460,8 +444,8 @@ Use integration tests for:
 - One event can intentionally match multiple bindings.
 - Self-authored provider events are suppressed by default.
 - Selected context blocks render as data and not as instruction text.
-- Event runs enforce tool availability and policy controls below the model.
-- Platform delivery posts to the configured target exactly once best effort.
+- Event runs enforce fixed tool availability below the model.
+- Slack delivery posts to the event envelope destination exactly once best effort.
 - Empty successful event prompt runs complete silently without platform delivery.
 
 Use evals only when the behavior contract depends on model interpretation of the binding prompt or event context.

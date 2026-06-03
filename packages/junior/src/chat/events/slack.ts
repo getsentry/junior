@@ -39,8 +39,6 @@ const slackChannelMessageCreatedDefinition: AgentEventDefinition = {
       },
     },
   },
-  deliveryTargets: [{ target: "channel" }],
-  filterKeys: ["actor", "text", "userId"],
   scopeKeys: ["channelId", "teamId"],
 };
 
