@@ -10,7 +10,8 @@ import {
   buildSandboxEgressNetworkPolicy,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import { createSandboxEgressRequesterToken } from "@/chat/sandbox/egress-session";
+import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress-session";
+import type { CredentialContext } from "@/chat/credentials/context";
 import {
   isSandboxCommandStreamInterruptedError,
   throwSandboxOperationError,
@@ -126,9 +127,7 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  credentialEgress?: {
-    requesterId: string;
-  };
+  credentialEgress?: CredentialContext;
   agentHooks?: AgentPluginHookRunner;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
@@ -143,12 +142,12 @@ export function createSandboxExecutor(options?: {
     1,
     options?.timeoutMs ?? 1000 * 60 * 30,
   );
-  const sandboxEgressRequesterTokens = new Map<
+  const sandboxEgressCredentialTokens = new Map<
     string,
     { expiresAtMs: number; token: string }
   >();
-  const sandboxEgressRequesterTokenFor = (egressId: string): string => {
-    const cached = sandboxEgressRequesterTokens.get(egressId);
+  const sandboxEgressCredentialTokenFor = (egressId: string): string => {
+    const cached = sandboxEgressCredentialTokens.get(egressId);
     if (cached && cached.expiresAtMs > Date.now()) {
       return cached.token;
     }
@@ -156,12 +155,12 @@ export function createSandboxExecutor(options?: {
       throw new Error("Sandbox credential egress is not configured");
     }
     const now = Date.now();
-    const token = createSandboxEgressRequesterToken({
-      requesterId: credentialEgress.requesterId,
+    const token = createSandboxEgressCredentialToken({
+      credentials: credentialEgress,
       egressId,
       ttlMs: sandboxEgressTokenTtlMs,
     });
-    sandboxEgressRequesterTokens.set(egressId, {
+    sandboxEgressCredentialTokens.set(egressId, {
       expiresAtMs: now + sandboxEgressTokenTtlMs,
       token,
     });
@@ -178,7 +177,7 @@ export function createSandboxExecutor(options?: {
     createNetworkPolicy: credentialEgress
       ? (egressId) =>
           buildSandboxEgressNetworkPolicy({
-            requesterToken: sandboxEgressRequesterTokenFor(egressId),
+            credentialToken: sandboxEgressCredentialTokenFor(egressId),
           })
       : undefined,
     onSandboxPrepare: async (sandbox) => {

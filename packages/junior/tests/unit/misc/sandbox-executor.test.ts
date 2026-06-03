@@ -89,7 +89,7 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import {
-  parseSandboxEgressRequesterToken,
+  parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
 } from "@/chat/sandbox/egress-session";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
@@ -161,7 +161,7 @@ function sentryForwardURLFromPolicy(policy: unknown): string | undefined {
   return allow?.["sentry.io"]?.[0]?.forwardURL;
 }
 
-function requesterTokenFromForwardURL(
+function credentialTokenFromForwardURL(
   forwardURL: string | undefined,
 ): string | undefined {
   if (!forwardURL) {
@@ -799,18 +799,18 @@ describe("createSandboxExecutor", () => {
     );
   });
 
-  it("configures lazy requester auth for sandbox egress", async () => {
+  it("configures lazy user actor auth for sandbox egress", async () => {
     const sandbox = makeSandbox("sbx_authorize_credentials");
     sandbox.runCommand.mockImplementationOnce(async () => {
       const activePolicy = sandbox.update.mock.calls.at(-1)?.[0].networkPolicy;
-      const activeRequesterToken = requesterTokenFromForwardURL(
+      const activeCredentialToken = credentialTokenFromForwardURL(
         sentryForwardURLFromPolicy(activePolicy),
       );
 
       expect(
-        parseSandboxEgressRequesterToken(activeRequesterToken),
+        parseSandboxEgressCredentialToken(activeCredentialToken),
       ).toMatchObject({
-        requesterId: "U123",
+        credentials: { actor: { type: "user", userId: "U123" } },
         egressId: "sbx_authorize_credentials_session",
       });
       return {
@@ -830,7 +830,7 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor({
       sandboxId: "sbx_authorize_credentials",
       credentialEgress: {
-        requesterId: "U123",
+        actor: { type: "user", userId: "U123" },
       },
     });
     executor.configureSkills([]);
@@ -844,12 +844,63 @@ describe("createSandboxExecutor", () => {
 
     expect(sandbox.update).toHaveBeenCalledTimes(1);
     expect(
-      requesterTokenFromForwardURL(
+      credentialTokenFromForwardURL(
         sentryForwardURLFromPolicy(
           sandbox.update.mock.calls[0]?.[0].networkPolicy,
         ),
       ),
     ).toBeTruthy();
+    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation.args?.[1]).toContain(
+      "export SENTRY_AUTH_TOKEN='host_managed_credential'",
+    );
+    expect(invocation.args?.[1]).toContain("sentry-cli issues list");
+  });
+
+  it("configures lazy system actor credential context for sandbox egress", async () => {
+    const sandbox = makeSandbox("sbx_authorize_system_credentials");
+    sandbox.runCommand.mockImplementationOnce(async () => {
+      const activePolicy = sandbox.update.mock.calls.at(-1)?.[0].networkPolicy;
+      const activeCredentialToken = credentialTokenFromForwardURL(
+        sentryForwardURLFromPolicy(activePolicy),
+      );
+
+      expect(
+        parseSandboxEgressCredentialToken(activeCredentialToken),
+      ).toMatchObject({
+        credentials: { actor: { type: "system", id: "scheduler" } },
+        egressId: "sbx_authorize_system_credentials_session",
+      });
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_authorize_system_credentials",
+      credentialEgress: {
+        actor: { type: "system", id: "scheduler" },
+      },
+    });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "sentry-cli issues list",
+      },
+    });
+
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
     const invocation = sandbox.runCommand.mock.calls[0]?.[0];
     expect(invocation.args?.[1]).toContain(
       "export SENTRY_AUTH_TOKEN='host_managed_credential'",
@@ -870,7 +921,7 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor({
       sandboxId: "sbx_registered_credentials",
       credentialEgress: {
-        requesterId: "U123",
+        actor: { type: "user", userId: "U123" },
       },
     });
     executor.configureSkills([]);
@@ -884,7 +935,7 @@ describe("createSandboxExecutor", () => {
 
     expect(sandbox.update).toHaveBeenCalledTimes(1);
     expect(
-      requesterTokenFromForwardURL(
+      credentialTokenFromForwardURL(
         sentryForwardURLFromPolicy(
           sandbox.update.mock.calls[0]?.[0].networkPolicy,
         ),

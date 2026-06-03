@@ -14,6 +14,7 @@ import { RetryableTurnError } from "@/chat/runtime/turn";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AssistantReply } from "@/chat/respond";
+import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -44,6 +45,18 @@ function createReply(): AssistantReply {
       usedPrimaryText: true,
     },
   };
+}
+
+function createCredentialSubject() {
+  const subject = createSlackDirectCredentialSubject({
+    channelId: "D123",
+    teamId: "T123",
+    userId: "U123",
+  });
+  if (!subject) {
+    throw new Error("Expected test credential subject to be created");
+  }
+  return subject;
 }
 
 describe("agent dispatch runner", () => {
@@ -85,8 +98,9 @@ describe("agent dispatch runner", () => {
         threadId: dispatchConversationId,
         channelId: "C123",
         teamId: "T123",
-        actorType: "system",
-        actorId: "scheduler",
+      });
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
       });
       return createReply();
     });
@@ -264,11 +278,7 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-delegated",
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        },
+        credentialSubject: createCredentialSubject(),
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -279,16 +289,21 @@ describe("agent dispatch runner", () => {
     });
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
-      expect(context.credentialSubject).toEqual({
-        type: "user",
-        userId: "U123",
-        allowedWhen: "private-direct-conversation",
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D123",
+            signature: expect.any(String),
+          },
+        },
       });
       expect(context.authorizationFlowMode).toBe("disabled");
-      expect(context.correlation).toMatchObject({
-        actorType: "system",
-        actorId: "scheduler",
-      });
       return createReply();
     });
 

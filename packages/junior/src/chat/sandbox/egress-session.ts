@@ -1,4 +1,8 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  parseCredentialContext,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -9,8 +13,8 @@ const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
-export interface SandboxEgressRequesterContext {
-  requesterId: string;
+export interface SandboxEgressCredentialContext {
+  credentials: CredentialContext;
   egressId: string;
   expiresAtMs: number;
   contextId: string;
@@ -24,9 +28,12 @@ export interface SandboxEgressCredentialLease {
 
 function leaseKey(
   provider: string,
-  context: SandboxEgressRequesterContext,
+  context: SandboxEgressCredentialContext,
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${context.requesterId}:${context.egressId}:${context.contextId}`;
+  const actor = context.credentials.actor;
+  const actorKey =
+    actor.type === "user" ? `user:${actor.userId}` : `system:${actor.id}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
 function getSandboxEgressSecret(): string {
@@ -60,16 +67,16 @@ function timingSafeMatch(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-function parseRequesterContext(
+function parseSandboxEgressContext(
   value: unknown,
-): SandboxEgressRequesterContext | undefined {
+): SandboxEgressCredentialContext | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
-  const record = value as Partial<SandboxEgressRequesterContext>;
+  const record = value as Partial<SandboxEgressCredentialContext>;
+  const credentials = parseCredentialContext(record.credentials);
   if (
-    typeof record.requesterId !== "string" ||
-    !record.requesterId ||
+    !credentials ||
     typeof record.egressId !== "string" ||
     !record.egressId ||
     typeof record.expiresAtMs !== "number" ||
@@ -83,7 +90,7 @@ function parseRequesterContext(
     return undefined;
   }
   return {
-    requesterId: record.requesterId,
+    credentials,
     egressId: record.egressId,
     expiresAtMs: record.expiresAtMs,
     contextId: record.contextId,
@@ -125,16 +132,16 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-/** Create a signed requester/sandbox context token for lazy sandbox egress auth. */
-export function createSandboxEgressRequesterToken(input: {
-  requesterId: string;
+/** Create a signed actor/sandbox context token for lazy sandbox egress auth. */
+export function createSandboxEgressCredentialToken(input: {
+  credentials: CredentialContext;
   egressId: string;
   ttlMs?: number;
 }): string {
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
-  const context: SandboxEgressRequesterContext = {
-    requesterId: input.requesterId,
+  const context: SandboxEgressCredentialContext = {
+    credentials: input.credentials,
     egressId: input.egressId,
     expiresAtMs: now + ttlMs,
     contextId: randomUUID(),
@@ -145,10 +152,10 @@ export function createSandboxEgressRequesterToken(input: {
   return `${payload}.${signPayload(payload)}`;
 }
 
-/** Verify a signed requester/sandbox context token from the proxy URL. */
-export function parseSandboxEgressRequesterToken(
+/** Verify a signed actor/sandbox context token from the proxy URL. */
+export function parseSandboxEgressCredentialToken(
   token: string | undefined,
-): SandboxEgressRequesterContext | undefined {
+): SandboxEgressCredentialContext | undefined {
   if (!token) {
     return undefined;
   }
@@ -166,15 +173,15 @@ export function parseSandboxEgressRequesterToken(
     return undefined;
   }
   try {
-    return parseRequesterContext(JSON.parse(fromBase64Url(encodedSession)));
+    return parseSandboxEgressContext(JSON.parse(fromBase64Url(encodedSession)));
   } catch {
     return undefined;
   }
 }
 
-/** Cache a short-lived credential lease for repeated forwarded requests for one requester/sandbox context. */
+/** Cache a short-lived credential lease for repeated forwarded requests for one actor/sandbox context. */
 export async function setSandboxEgressCredentialLease(
-  context: SandboxEgressRequesterContext,
+  context: SandboxEgressCredentialContext,
   lease: SandboxEgressCredentialLease,
 ): Promise<void> {
   const leaseExpiresAtMs = Date.parse(lease.expiresAt);
@@ -190,10 +197,10 @@ export async function setSandboxEgressCredentialLease(
   await state.set(leaseKey(lease.provider, context), lease, ttlMs);
 }
 
-/** Load a cached egress credential lease for a requester/sandbox context/provider pair. */
+/** Load a cached egress credential lease for an actor/sandbox context/provider pair. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
-  context: SandboxEgressRequesterContext,
+  context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
@@ -203,7 +210,7 @@ export async function getSandboxEgressCredentialLease(
 /** Clear a cached egress credential lease after the provider rejects its headers. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
-  context: SandboxEgressRequesterContext,
+  context: SandboxEgressCredentialContext,
 ): Promise<void> {
   const state = getStateAdapter();
   await state.connect();

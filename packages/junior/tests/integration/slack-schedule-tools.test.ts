@@ -9,6 +9,7 @@ import {
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
+import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
@@ -21,7 +22,7 @@ const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
 function createContext(
   overrides: Partial<SchedulerToolContext> = {},
 ): SchedulerToolContext {
-  return {
+  const context: SchedulerToolContext = {
     channelId: "C123",
     teamId: TEST_TEAM_ID,
     requester: {
@@ -37,6 +38,17 @@ function createContext(
     userText: "schedule this weekly",
     state: createPluginState("scheduler"),
     ...overrides,
+  };
+  const credentialSubject =
+    context.credentialSubject ??
+    createSlackDirectCredentialSubject({
+      channelId: context.channelId,
+      teamId: context.teamId,
+      userId: context.requester?.userId,
+    });
+  return {
+    ...context,
+    ...(credentialSubject ? { credentialSubject } : {}),
   };
 }
 
@@ -217,6 +229,12 @@ describe("Slack schedule tools", () => {
           type: "user",
           userId: "U123",
           allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: TEST_TEAM_ID,
+            channelId: "D123",
+            signature: expect.any(String),
+          },
         },
         destination: { channelId: "D123" },
         nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),

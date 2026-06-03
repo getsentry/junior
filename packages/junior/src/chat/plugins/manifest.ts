@@ -17,6 +17,7 @@ import type {
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
 import { inlineManifestSource } from "./inline-manifest-source";
+import { normalizeGitHubSystemReadPermissionScopes } from "./github-permissions";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
@@ -186,6 +187,9 @@ const githubAppCredentialsSchema = baseCredentialsSchema.extend({
   "app-id-env": envVarString,
   "private-key-env": envVarString,
   "installation-id-env": envVarString,
+  "system-read-permissions": nonEmptyStringArraySchema(
+    "system-read-permissions",
+  ).optional(),
 });
 
 const runtimeDependencyEntrySchema = z
@@ -363,6 +367,11 @@ function manifestConfigPatch(
         credentials,
         "installation-id-env",
         config.credentials.installationIdEnv,
+      );
+      setDefined(
+        credentials,
+        "system-read-permissions",
+        config.credentials.systemReadPermissions,
       );
       result.credentials = credentials;
     }
@@ -647,9 +656,7 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
 
   for (const [key, value] of Object.entries(commandEnv)) {
     for (const name of envReferences(value)) {
-      const declaration = envVars[name] as
-        | PluginEnvVarDeclaration
-        | undefined;
+      const declaration = envVars[name] as PluginEnvVarDeclaration | undefined;
       if (
         declaration &&
         declaration.default === undefined &&
@@ -717,6 +724,12 @@ function normalizeCredentials(
         { forbiddenKeys: FORBIDDEN_API_HEADER_NAMES },
       )
     : undefined;
+  const systemReadPermissions = result.data["system-read-permissions"]
+    ? normalizeGitHubSystemReadPermissionScopes(
+        result.data["system-read-permissions"],
+        `Plugin ${name} credentials.system-read-permissions`,
+      )
+    : undefined;
 
   return {
     type: "github-app",
@@ -729,6 +742,7 @@ function normalizeCredentials(
     appIdEnv: result.data["app-id-env"],
     privateKeyEnv: result.data["private-key-env"],
     installationIdEnv: result.data["installation-id-env"],
+    ...(systemReadPermissions ? { systemReadPermissions } : {}),
   } satisfies GitHubAppCredentials;
 }
 

@@ -5,6 +5,12 @@ import type {
 } from "@/chat/credentials/broker";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
+import {
+  DEFAULT_GITHUB_SYSTEM_READ_SCOPES,
+  githubCapabilitiesToPermissions,
+  githubInstallationReadPermissions,
+  githubSystemReadPermissionsFromScopes,
+} from "@/chat/plugins/github-permissions";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { GitHubAppCredentials, PluginManifest } from "../types";
@@ -161,69 +167,6 @@ function resolveGitHubApiDomain(credentials: GitHubAppCredentials): string {
   return apiDomain;
 }
 
-/**
- * GitHub App permission scopes that plugin manifests may request.
- * Manifest capabilities follow `<plugin>.<scope>.<read|write>` where the
- * scope name uses dashes in capabilities and underscores in the GitHub API.
- */
-const KNOWN_SCOPES = new Set([
-  "actions",
-  "administration",
-  "checks",
-  "codespaces",
-  "contents",
-  "deployments",
-  "environments",
-  "issues",
-  "metadata",
-  "packages",
-  "pages",
-  "pull_requests",
-  "repository_hooks",
-  "repository_projects",
-  "secret_scanning_alerts",
-  "secrets",
-  "security_events",
-  "statuses",
-  "vulnerability_alerts",
-  "workflows",
-]);
-
-function capabilitiesToPermissions(
-  capabilities: string[],
-  pluginName: string,
-): Record<string, "read" | "write"> {
-  const permissions: Record<string, "read" | "write"> = {};
-  const prefix = `${pluginName}.`;
-  for (const capability of capabilities) {
-    if (!capability.startsWith(prefix)) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-    const suffix = capability.slice(prefix.length);
-
-    const lastDot = suffix.lastIndexOf(".");
-    if (lastDot === -1) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-    const scopeRaw = suffix.slice(0, lastDot);
-    const level = suffix.slice(lastDot + 1);
-    if (level !== "read" && level !== "write") {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-
-    const scope = scopeRaw.replace(/-/g, "_");
-    if (!KNOWN_SCOPES.has(scope)) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-
-    const existing = permissions[scope];
-    permissions[scope] =
-      existing === "write" || level === "write" ? "write" : "read";
-  }
-
-  return permissions;
-}
-
 /** Create a broker that keeps GitHub App tokens on the host while authorizing provider traffic. */
 export function createGitHubAppBroker(
   manifest: PluginManifest,
@@ -269,8 +212,34 @@ export function createGitHubAppBroker(
   }
 
   const permissions = manifest.capabilities?.length
-    ? capabilitiesToPermissions(manifest.capabilities, provider)
+    ? githubCapabilitiesToPermissions(manifest.capabilities, provider)
     : undefined;
+  const systemReadPermissions = credentials.systemReadPermissions?.length
+    ? githubSystemReadPermissionsFromScopes(credentials.systemReadPermissions)
+    : undefined;
+
+  async function resolveTokenPermissions(params: {
+    appJwt: string;
+    installationId: number;
+    systemActor: boolean;
+  }) {
+    if (!params.systemActor) {
+      return permissions;
+    }
+    if (systemReadPermissions) {
+      return systemReadPermissions;
+    }
+
+    const installation = await githubRequest<{
+      permissions?: Record<string, string>;
+    }>(apiBase, `/app/installations/${params.installationId}`, {
+      token: params.appJwt,
+    });
+    return githubInstallationReadPermissions(
+      installation.permissions,
+      DEFAULT_GITHUB_SYSTEM_READ_SCOPES,
+    );
+  }
 
   function createLease(params: {
     installationId: number;
@@ -316,14 +285,18 @@ export function createGitHubAppBroker(
   }
 
   return {
-    async issue(input: { reason: string }): Promise<CredentialLease> {
+    async issue(input): Promise<CredentialLease> {
       const installationId = resolveInstallationId();
-      const tokenRequestBody: Record<string, unknown> = permissions
-        ? { permissions }
-        : {};
-
       const appId = resolveAppId(appIdEnv);
       const appJwt = createAppJwt(appId, privateKeyEnv);
+      const tokenPermissions = await resolveTokenPermissions({
+        appJwt,
+        installationId,
+        systemActor: input.context.actor.type === "system",
+      });
+      const tokenRequestBody: Record<string, unknown> = tokenPermissions
+        ? { permissions: tokenPermissions }
+        : {};
 
       const accessTokenResponse = await githubRequest<{
         token: string;

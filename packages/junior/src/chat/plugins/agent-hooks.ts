@@ -16,6 +16,7 @@ import type {
   SandboxCommandInput,
   SandboxInstance,
 } from "@/chat/sandbox/workspace";
+import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 
 /** Signal that a trusted plugin intentionally denied a tool execution. */
 export class AgentPluginHookDeniedError extends Error {
@@ -132,12 +133,18 @@ export function getAgentPluginTools(
       continue;
     }
     const log = createAgentPluginLogger(plugin.name);
+    const credentialSubject = createSlackDirectCredentialSubject({
+      channelId: context.channelId,
+      teamId: context.teamId,
+      userId: context.requester?.userId,
+    });
     const pluginTools = hook({
       plugin: { name: plugin.name },
       log,
       requester: context.requester,
       channelCapabilities: context.channelCapabilities,
       channelId: context.channelId,
+      ...(credentialSubject ? { credentialSubject } : {}),
       teamId: context.teamId,
       messageTs: context.messageTs,
       threadTs: context.threadTs,

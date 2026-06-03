@@ -21,6 +21,8 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import type { WaitUntilFn } from "@/handlers/types";
+import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -91,6 +93,42 @@ function createDailyTask(
     updatedAtMs: nextRunAtMs,
     ...overrides,
   });
+}
+
+function mockDispatchCallbackFetch(originalFetch: typeof fetch) {
+  const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+    const input = args[0];
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.startsWith("https://slack.com/api/")) {
+      return await originalFetch(...args);
+    }
+    return new Response("Accepted", { status: 202 });
+  });
+  global.fetch = fetchMock as typeof fetch;
+  return fetchMock;
+}
+
+function createCredentialSubject(
+  input: {
+    channelId?: string;
+    teamId?: string;
+    userId?: string;
+  } = {},
+) {
+  const subject = createSlackDirectCredentialSubject({
+    channelId: input.channelId ?? "D123",
+    teamId: input.teamId ?? "T123",
+    userId: input.userId ?? "U123",
+  });
+  if (!subject) {
+    throw new Error("Expected test credential subject to be created");
+  }
+  return subject;
 }
 
 describe("trusted plugin heartbeat", () => {
@@ -310,6 +348,32 @@ describe("trusted plugin heartbeat", () => {
     ).resolves.toMatchObject({ status: "created" });
   });
 
+  it("rejects delegated credential subjects not signed for the destination DM", async () => {
+    mockDispatchCallbackFetch(originalFetch);
+
+    const ctx = createHeartbeatContext({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    });
+
+    await expect(
+      ctx.agent.dispatch({
+        idempotencyKey: "run-delegated-mismatch",
+        credentialSubject: createCredentialSubject({ channelId: "D999" }),
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        input: "Run the scheduled task.",
+      }),
+    ).rejects.toThrow(
+      "Dispatch credentialSubject must match the private direct Slack destination",
+    );
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    await expect(listIncompleteDispatchIds()).resolves.toEqual([]);
+  });
+
   it("fails stale dispatches that exceed retry attempts", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
@@ -488,10 +552,7 @@ describe("trusted plugin heartbeat", () => {
   });
 
   it("carries scheduled task credential subjects into dispatch records", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
+    mockDispatchCallbackFetch(originalFetch);
     setAgentPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(
@@ -501,11 +562,7 @@ describe("trusted plugin heartbeat", () => {
           teamId: "T123",
           channelId: "D123",
         },
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        },
+        credentialSubject: createCredentialSubject(),
       }),
     );
 
@@ -528,8 +585,15 @@ describe("trusted plugin heartbeat", () => {
         type: "user",
         userId: "U123",
         allowedWhen: "private-direct-conversation",
+        binding: {
+          type: "slack-direct-conversation",
+          teamId: "T123",
+          channelId: "D123",
+          signature: expect.any(String),
+        },
       },
     });
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
 
   it("fails scheduled runs when their dispatch record disappeared", async () => {

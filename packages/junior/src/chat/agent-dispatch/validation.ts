@@ -1,4 +1,5 @@
 import type { DispatchOptions } from "./types";
+import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
 
@@ -68,5 +69,25 @@ export function validateDispatchOptions(options: DispatchOptions): void {
     if (value.length > MAX_METADATA_VALUE_LENGTH) {
       throw new Error("Dispatch metadata value exceeds the maximum length");
     }
+  }
+}
+
+/** Verify runtime-owned access requirements for delegated dispatch credentials. */
+export async function verifyDispatchCredentialSubjectAccess(
+  options: DispatchOptions,
+): Promise<void> {
+  if (!options.credentialSubject) {
+    return;
+  }
+
+  const verified = verifySlackDirectCredentialSubject({
+    channelId: options.destination.channelId,
+    teamId: options.destination.teamId,
+    subject: options.credentialSubject,
+  });
+  if (!verified) {
+    throw new Error(
+      "Dispatch credentialSubject must match the private direct Slack destination",
+    );
   }
 }

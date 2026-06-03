@@ -654,6 +654,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           let reply = await deps.services.generateAssistantReply(
             effectiveUserText,
             {
+              credentialContext: {
+                actor: { type: "user", userId: message.author.userId },
+              },
               requester: {
                 userId: message.author.userId,
                 userName: message.author.userName ?? fallbackIdentity?.userName,

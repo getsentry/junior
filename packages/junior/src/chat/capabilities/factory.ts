@@ -5,6 +5,7 @@ import type {
   CredentialBroker,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import {
@@ -55,8 +56,8 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
 
 /** Issue one provider credential lease for host-side sandbox egress proxying. */
 export async function issueProviderCredentialLease(input: {
+  context: CredentialContext;
   provider: string;
-  requesterId: string;
   reason: string;
 }): Promise<CredentialLease> {
   return await getSandboxEgressRouter().issue(input);

@@ -3,6 +3,9 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 
 const createPluginBrokerMock = vi.fn();
 const getPluginProvidersMock = vi.fn<() => PluginDefinition[]>();
+const USER_CREDENTIAL_CONTEXT = {
+  actor: { type: "user" as const, userId: "U123" },
+};
 
 vi.mock("@/chat/capabilities/catalog", () => ({
   logCapabilityCatalogLoadedOnce: vi.fn(),
@@ -10,10 +13,6 @@ vi.mock("@/chat/capabilities/catalog", () => ({
 
 vi.mock("@/chat/plugins/registry", () => ({
   createPluginBroker: (...args: unknown[]) => createPluginBrokerMock(...args),
-  getPluginDefinition: (provider: string) =>
-    getPluginProvidersMock().find(
-      (plugin) => plugin.manifest.name === provider,
-    ),
   getPluginProviders: () => getPluginProvidersMock(),
 }));
 
@@ -66,8 +65,8 @@ describe("capability factory", () => {
     const { issueProviderCredentialLease } =
       await import("@/chat/capabilities/factory");
     const lease = await issueProviderCredentialLease({
+      context: USER_CREDENTIAL_CONTEXT,
       provider: "example",
-      requesterId: "U123",
       reason: "test:api-headers",
     });
 
@@ -75,7 +74,7 @@ describe("capability factory", () => {
       userTokenStore: expect.any(Object),
     });
     expect(broker.issue).toHaveBeenCalledWith({
-      requesterId: "U123",
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:api-headers",
     });
     expect(lease.provider).toBe("example");

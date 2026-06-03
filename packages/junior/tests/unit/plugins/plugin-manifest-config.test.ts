@@ -41,6 +41,63 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.scope).toBe("repo read:org workflow");
   });
 
+  it("overrides GitHub App system read permissions through manifest config", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: github",
+        "description: GitHub",
+        "credentials:",
+        "  type: github-app",
+        "  domains:",
+        "    - api.github.com",
+        "  auth-token-env: GITHUB_TOKEN",
+        "  app-id-env: GITHUB_APP_ID",
+        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+        "  installation-id-env: GITHUB_INSTALLATION_ID",
+      ].join("\n"),
+      "/plugins/github",
+      {
+        manifests: {
+          github: {
+            credentials: {
+              systemReadPermissions: ["contents", "pull-requests"],
+            },
+          },
+        },
+      },
+    );
+
+    expect(
+      manifest.credentials?.type === "github-app"
+        ? manifest.credentials.systemReadPermissions
+        : undefined,
+    ).toEqual(["contents", "pull_requests"]);
+  });
+
+  it("rejects invalid GitHub App system read permissions during manifest parsing", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: github",
+          "description: GitHub",
+          "credentials:",
+          "  type: github-app",
+          "  domains:",
+          "    - api.github.com",
+          "  auth-token-env: GITHUB_TOKEN",
+          "  app-id-env: GITHUB_APP_ID",
+          "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+          "  installation-id-env: GITHUB_INSTALLATION_ID",
+          "  system-read-permissions:",
+          "    - typo-scope",
+        ].join("\n"),
+        "/plugins/github",
+      ),
+    ).toThrow(
+      'Plugin github credentials.system-read-permissions contains unsupported scope "typo-scope"',
+    );
+  });
+
   it("removes optional map entries with null config values", () => {
     const manifest = parsePluginManifest(
       [

@@ -1,3 +1,8 @@
+import type {
+  CredentialSubject,
+  CredentialSystemActor,
+} from "@/chat/credentials/context";
+
 export type DispatchStatus =
   | "pending"
   | "running"
@@ -6,25 +11,14 @@ export type DispatchStatus =
   | "failed"
   | "blocked";
 
-export interface DispatchActor {
-  type: "system";
-  id: string;
-}
-
 export interface DispatchDestination {
   platform: "slack";
   teamId: string;
   channelId: string;
 }
 
-export interface DispatchCredentialSubject {
-  type: "user";
-  userId: string;
-  allowedWhen: "private-direct-conversation";
-}
-
 export interface DispatchOptions {
-  credentialSubject?: DispatchCredentialSubject;
+  credentialSubject?: CredentialSubject;
   destination: DispatchDestination;
   idempotencyKey: string;
   input: string;
@@ -32,10 +26,10 @@ export interface DispatchOptions {
 }
 
 export interface DispatchRecord {
-  actor: DispatchActor;
+  actor: CredentialSystemActor;
   attempt: number;
   createdAtMs: number;
-  credentialSubject?: DispatchCredentialSubject;
+  credentialSubject?: CredentialSubject;
   destination: DispatchDestination;
   errorMessage?: string;
   id: string;

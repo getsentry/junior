@@ -55,6 +55,11 @@ function inlineCredentialsSource(
     setDefined(result, "app-id-env", credentials.appIdEnv);
     setDefined(result, "private-key-env", credentials.privateKeyEnv);
     setDefined(result, "installation-id-env", credentials.installationIdEnv);
+    setDefined(
+      result,
+      "system-read-permissions",
+      credentials.systemReadPermissions,
+    );
   }
   return result;
 }

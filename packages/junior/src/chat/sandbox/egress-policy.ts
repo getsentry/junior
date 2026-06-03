@@ -41,22 +41,22 @@ export function resolveSandboxEgressProviderForHost(
   )?.provider;
 }
 
-function sandboxProxyUrl(requesterToken?: string): string {
+function sandboxProxyUrl(credentialToken?: string): string {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
     );
   }
-  const path = requesterToken
-    ? `${SANDBOX_EGRESS_PROXY_PATH}/${requesterToken}`
+  const path = credentialToken
+    ? `${SANDBOX_EGRESS_PROXY_PATH}/${credentialToken}`
     : SANDBOX_EGRESS_PROXY_PATH;
   return new URL(path, baseUrl).toString();
 }
 
 /** Build the policy that forwards provider requests back to Junior for credentials. */
 export function buildSandboxEgressNetworkPolicy(input?: {
-  requesterToken?: string;
+  credentialToken?: string;
 }): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
@@ -66,7 +66,7 @@ export function buildSandboxEgressNetworkPolicy(input?: {
     return { allow };
   }
 
-  const forwardURL = sandboxProxyUrl(input?.requesterToken);
+  const forwardURL = sandboxProxyUrl(input?.credentialToken);
   for (const entry of entries) {
     for (const domain of entry.domains) {
       allow[domain] = [{ forwardURL }];

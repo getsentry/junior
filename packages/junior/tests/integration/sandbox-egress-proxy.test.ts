@@ -106,18 +106,18 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("injects provider credentials through real plugin and broker wiring without command session state", async () => {
-    const requesterToken = modules.session.createSandboxEgressRequesterToken({
-      requesterId: REQUESTER_ID,
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
     const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
-      requesterToken,
+      credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
 
     expect(forwardURL).toBe(
-      `${BASE_URL}/api/internal/sandbox-egress/${requesterToken}`,
+      `${BASE_URL}/api/internal/sandbox-egress/${credentialToken}`,
     );
 
     const upstreamFetch = vi.fn(
@@ -148,13 +148,13 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("intercepts credential-injected provider traffic before live forwarding", async () => {
-    const requesterToken = modules.session.createSandboxEgressRequesterToken({
-      requesterId: REQUESTER_ID,
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
     const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
-      requesterToken,
+      credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
     const upstreamFetch = vi.fn();

@@ -28,7 +28,7 @@ Define the plugin model for provider integrations. Plugins package declarative r
 2. Plugin discovery is explicit. Runtime must not scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to find plugins.
 3. `plugin.yaml` owns runtime setup: provider domains, credentials, API headers, command env, runtime dependencies, postinstall commands, OAuth, MCP endpoints, config keys, and skill roots.
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
-5. Credential delivery is host-owned and requester-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
+5. Credential delivery is host-owned and credential-context-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
 7. Trusted runtime behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
 8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for trusted plugins. Do not split one plugin definition across both.
@@ -48,7 +48,7 @@ plugins/sentry/
 
 - [Plugin Manifest Spec](./plugin-manifest.md): `plugin.yaml` fields, env-var expansion, runtime dependency declarations, and validation.
 - [Plugin Runtime Spec](./plugin-runtime.md): discovery/loading, capability catalog integration, MCP activation, plugin skills, and security invariants.
-- [Credential Injection Spec](./credential-injection.md): requester-bound provider leases and sandbox egress auth.
+- [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and turn-resume behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
 - [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md): trusted heartbeat and tool hooks.

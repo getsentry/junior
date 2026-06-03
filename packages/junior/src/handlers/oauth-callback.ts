@@ -331,6 +331,12 @@ async function resumeOAuthSessionRecordTurn(
         messageText: stored.pendingMessage ?? lockedUserMessage.text,
         messageTs: getTurnUserSlackMessageTs(lockedUserMessage),
         replyContext: {
+          credentialContext: {
+            actor: {
+              type: "user",
+              userId: lockedUserMessage.author.userId,
+            },
+          },
           requester: {
             userId: lockedUserMessage.author.userId,
             userName: lockedUserMessage.author.userName,
@@ -453,6 +459,9 @@ async function resumePendingOAuthMessage(
     messageTs: getTurnUserSlackMessageTs(latestUserMessage),
     connectedText: "",
     replyContext: {
+      credentialContext: {
+        actor: { type: "user", userId: stored.userId },
+      },
       requester: { userId: stored.userId },
       conversationContext,
       piMessages: conversation.piMessages,

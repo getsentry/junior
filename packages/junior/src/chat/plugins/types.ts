@@ -32,6 +32,7 @@ export interface GitHubAppCredentials {
   appIdEnv: string;
   privateKeyEnv: string;
   installationIdEnv: string;
+  systemReadPermissions?: string[];
 }
 
 export type PluginCredentials = OAuthBearerCredentials | GitHubAppCredentials;
@@ -141,6 +142,7 @@ export interface PluginManifestConfig {
     appIdEnv?: string;
     privateKeyEnv?: string;
     installationIdEnv?: string;
+    systemReadPermissions?: string[];
   } | null;
   runtimeDependencies?: PluginRuntimeDependencyConfig[] | null;
   runtimePostinstall?: PluginRuntimePostinstallCommand[] | null;

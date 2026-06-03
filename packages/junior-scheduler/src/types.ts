@@ -1,3 +1,5 @@
+import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+
 export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
 
 export type ScheduledRunStatus =
@@ -35,11 +37,7 @@ export interface ScheduledTaskConversationAccess {
   visibility: "private" | "public" | "unknown";
 }
 
-export interface ScheduledTaskCredentialSubject {
-  type: "user";
-  userId: string;
-  allowedWhen: "private-direct-conversation";
-}
+export type ScheduledTaskCredentialSubject = AgentPluginCredentialSubject;
 
 export type ScheduledCalendarFrequency =
   | "daily"

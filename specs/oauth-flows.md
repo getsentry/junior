@@ -50,7 +50,7 @@ Agent: loads the matching plugin skill and runs the real provider command
   │
   ├─ Runtime resolves provider from the proxied sandbox request host
   ├─ Runtime keeps any provider defaults (for example a repo config) available for command construction
-  ├─ Broker checks requester-bound stored tokens
+  ├─ Broker checks stored user OAuth tokens
   ├─ If auth is missing or stale:
   │    • runtime creates OAuth state
   │    • runtime privately delivers the authorization link
@@ -112,7 +112,7 @@ After a user has connected their account:
 
 1. Agent runs an authenticated provider command.
 2. Runtime resolves the provider from the proxied sandbox request host.
-3. Broker loads stored requester-bound tokens.
+3. Broker loads stored user OAuth tokens for the credential context.
 4. If the token is near expiry, broker refreshes it server-side.
 5. Broker returns a short-lived `CredentialLease`.
 6. Runtime injects provider headers at the sandbox egress proxy boundary and exposes only declared sandbox command env or placeholder values inside the sandbox.
@@ -196,7 +196,7 @@ Providers define OAuth through plugin manifests:
 - The runtime must not post the authorization URL into the public thread. Slack-thread acknowledgements for auth pauses must stay URL-free and only say that authorization is needed and the private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
-- Leases are requester-bound; sandbox egress leases are issued lazily when forwarded provider traffic needs them and are scoped to the signed requester/sandbox context plus lease expiry.
+- Leases are credential-context-bound; sandbox egress leases are issued lazily when forwarded provider traffic needs them and are scoped to the signed credential/sandbox context plus lease expiry.
 - Target-aware providers may narrow leases only from explicit provider/request context, not guessed command intent.
 
 ## Disconnect behavior

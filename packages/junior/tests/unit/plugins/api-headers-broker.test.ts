@@ -3,6 +3,9 @@ import { createApiHeadersBroker } from "@/chat/plugins/auth/api-headers-broker";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 const ORIGINAL_ENV = { ...process.env };
+const SYSTEM_CREDENTIAL_CONTEXT = {
+  actor: { type: "system" as const, id: "scheduler" },
+};
 
 const MANIFEST: PluginManifest = {
   name: "example",
@@ -26,7 +29,10 @@ describe("API headers broker", () => {
     process.env.EXAMPLE_AUTH_HEADER = "Basic abc123";
 
     const broker = createApiHeadersBroker(MANIFEST);
-    const lease = await broker.issue({ reason: "test:api-headers" });
+    const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:api-headers",
+    });
 
     expect(lease.provider).toBe("example");
     expect(lease.env).toEqual({});
@@ -50,7 +56,10 @@ describe("API headers broker", () => {
         EXAMPLE_API_KEY: "host_managed_credential",
       },
     });
-    const lease = await broker.issue({ reason: "test:command-env" });
+    const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:command-env",
+    });
 
     expect(lease.env).toEqual({
       EXAMPLE_API_KEY: "host_managed_credential",
@@ -63,7 +72,10 @@ describe("API headers broker", () => {
     const broker = createApiHeadersBroker(MANIFEST);
 
     await expect(
-      broker.issue({ reason: "test:missing-api-header-env" }),
+      broker.issue({
+        context: SYSTEM_CREDENTIAL_CONTEXT,
+        reason: "test:missing-api-header-env",
+      }),
     ).rejects.toThrow(
       'Missing EXAMPLE_AUTH_HEADER for API header provider "example"',
     );

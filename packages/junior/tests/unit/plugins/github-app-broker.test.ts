@@ -30,6 +30,12 @@ const TEST_MANIFEST: PluginManifest = {
     commandFlags: ["--repo", "-R"],
   },
 };
+const USER_CREDENTIAL_CONTEXT = {
+  actor: { type: "user" as const, userId: "U123" },
+};
+const SYSTEM_CREDENTIAL_CONTEXT = {
+  actor: { type: "system" as const, id: "scheduler" },
+};
 
 function setupValidEnv() {
   const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
@@ -49,6 +55,7 @@ function mockJsonResponse(body: unknown) {
 }
 
 function mockGitHubApi(options?: {
+  installationPermissions?: Record<string, string>;
   token?: string;
   onRequest?: (url: string, init?: RequestInit) => void;
 }) {
@@ -66,6 +73,16 @@ function mockGitHubApi(options?: {
       return mockJsonResponse({
         token,
         expires_at: "2099-01-01T00:00:00Z",
+      });
+    }
+    if (url.includes("/app/installations/42")) {
+      return mockJsonResponse({
+        permissions: options?.installationPermissions ?? {
+          contents: "write",
+          issues: "write",
+          metadata: "read",
+          pull_requests: "write",
+        },
       });
     }
     throw new Error(`Unexpected fetch request: ${url}`);
@@ -93,6 +110,7 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:lease-shape",
     });
 
@@ -128,6 +146,7 @@ describe("github app credential broker", () => {
       authTokenPlaceholder: "github_host_managed_credential",
     });
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:custom-placeholder",
     });
 
@@ -150,6 +169,7 @@ describe("github app credential broker", () => {
       credentials,
     );
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:configured-domains",
     });
 
@@ -186,6 +206,7 @@ describe("github app credential broker", () => {
       credentials,
     );
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:service-domains",
     });
 
@@ -223,6 +244,7 @@ describe("github app credential broker", () => {
       credentials,
     );
     const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:reordered-domains",
     });
 
@@ -264,9 +286,11 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const firstLease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:first-token",
     });
     const secondLease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:second-token",
     });
 
@@ -290,6 +314,7 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:permissions",
     });
 
@@ -309,11 +334,119 @@ describe("github app credential broker", () => {
     };
     const broker = createGitHubAppBroker(manifestWithCaps, TEST_CREDENTIALS);
     await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
       reason: "test:scoped-permissions",
     });
 
     const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({ issues: "write" });
+  });
+
+  it("downgrades GitHub App installation permissions for system actors", async () => {
+    setupValidEnv();
+    mockGitHubApi({
+      installationPermissions: {
+        actions: "write",
+        administration: "write",
+        checks: "write",
+        contents: "write",
+        issues: "write",
+        metadata: "read",
+        pull_requests: "write",
+        secrets: "write",
+        security_events: "write",
+        statuses: "write",
+        unknown_preview_permission: "write",
+      },
+    });
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:system-read-only",
+    });
+
+    const calls = vi.mocked(globalThis.fetch).mock.calls;
+    expect(String(calls[0]?.[0])).toBe(
+      "https://api.github.com/app/installations/42",
+    );
+    const accessTokenCall = findAccessTokenCall();
+    const body = JSON.parse(accessTokenCall[1]?.body as string);
+    expect(body.permissions).toEqual({
+      actions: "read",
+      checks: "read",
+      contents: "read",
+      issues: "read",
+      metadata: "read",
+      pull_requests: "read",
+      statuses: "read",
+    });
+  });
+
+  it("does not use manifest capabilities as the system permission override", async () => {
+    setupValidEnv();
+    mockGitHubApi({
+      installationPermissions: {
+        contents: "write",
+        deployments: "write",
+        issues: "write",
+        metadata: "read",
+      },
+    });
+
+    const manifestWithCaps: PluginManifest = {
+      ...TEST_MANIFEST,
+      capabilities: ["github.deployments.write"],
+    };
+    const broker = createGitHubAppBroker(manifestWithCaps, TEST_CREDENTIALS);
+    await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:system-default-permissions",
+    });
+
+    const calls = vi.mocked(globalThis.fetch).mock.calls;
+    expect(String(calls[0]?.[0])).toBe(
+      "https://api.github.com/app/installations/42",
+    );
+    const fetchCall = findAccessTokenCall();
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({
+      contents: "read",
+      issues: "read",
+      metadata: "read",
+    });
+  });
+
+  it("uses configured system read permissions as the system permission override", async () => {
+    setupValidEnv();
+    mockGitHubApi();
+    const credentials: GitHubAppCredentials = {
+      ...TEST_CREDENTIALS,
+      systemReadPermissions: ["deployments", "pull-requests"],
+    };
+    const manifestWithCaps: PluginManifest = {
+      ...TEST_MANIFEST,
+      capabilities: ["github.secrets.write"],
+      credentials,
+    };
+
+    const broker = createGitHubAppBroker(manifestWithCaps, credentials);
+    await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:system-configured-permissions",
+    });
+
+    const calls = vi.mocked(globalThis.fetch).mock.calls;
+    expect(calls.map((call) => String(call[0]))).not.toContain(
+      "https://api.github.com/app/installations/42",
+    );
+    const fetchCall = findAccessTokenCall();
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({
+      deployments: "read",
+      metadata: "read",
+      pull_requests: "read",
+    });
   });
 });

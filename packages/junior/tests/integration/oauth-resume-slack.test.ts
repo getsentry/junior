@@ -49,6 +49,9 @@ describe("oauth resume slack integration", () => {
       connectedText:
         "Your eval-auth MCP access is now connected. Continuing the original request...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>
@@ -149,6 +152,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.007",
       connectedText: "",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
         correlation: {
           conversationId: "conversation-1",
@@ -215,6 +221,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.002",
       connectedText: "Connected. Continuing...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>
@@ -250,6 +259,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.003",
       connectedText: "Connected. Continuing...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>
@@ -282,6 +294,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.006",
       connectedText: "Connected. Continuing...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>
@@ -315,6 +330,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.004",
       connectedText: "Connected. Continuing...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>
@@ -369,6 +387,9 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.005",
       connectedText: "Connected. Continuing...",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
         requester: { userId: "U123" },
       },
       generateReply: async () =>

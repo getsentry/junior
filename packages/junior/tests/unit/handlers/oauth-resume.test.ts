@@ -84,6 +84,9 @@ describe("resumeAuthorizedRequest", () => {
       threadTs: "1700000000.0001",
       connectedText: "connected",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U-test" },
+        },
         requester: { userId: "U-test" },
       },
       generateReply: () => new Promise<never>(() => {}),
@@ -117,6 +120,9 @@ describe("resumeAuthorizedRequest", () => {
         threadTs: "1700000000.0004",
         connectedText: "connected",
         replyContext: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
           requester: { userId: "U-test" },
         },
         generateReply: async () => {
@@ -155,6 +161,9 @@ describe("resumeAuthorizedRequest", () => {
         channelId: "C-test",
         threadTs: "1700000000.0005",
         replyContext: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
           requester: { userId: "U-test" },
         },
         generateReply: async () => ({
@@ -214,6 +223,9 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0002",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U-test" },
+        },
         requester: { userId: "U-test" },
       },
       generateReply: async () => {
@@ -244,6 +256,9 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0003",
       replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U-test" },
+        },
         requester: { userId: "U-test" },
       },
       generateReply: async () => {
