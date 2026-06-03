@@ -35,7 +35,7 @@ describe("createWebSearchTool", () => {
   });
 
   it("uses AI Gateway parallel search and maps tool results", async () => {
-    process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
+    process.env.AI_WEB_SEARCH_MODEL = "openai/gpt-5.4";
     vi.mocked(generateText).mockResolvedValueOnce({
       toolResults: [
         {
@@ -71,7 +71,7 @@ describe("createWebSearchTool", () => {
     });
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: { model: "xai/grok-4-fast-reasoning" },
+        model: { model: "openai/gpt-5.4" },
         prompt: "vercel ai gateway",
         toolChoice: { type: "tool", toolName: "parallelSearch" },
         abortSignal: expect.any(AbortSignal),
@@ -79,7 +79,7 @@ describe("createWebSearchTool", () => {
     );
     expect(result).toEqual({
       ok: true,
-      model: "xai/grok-4-fast-reasoning",
+      model: "openai/gpt-5.4",
       query: "vercel ai gateway",
       result_count: 1,
       results: [
@@ -105,9 +105,7 @@ describe("createWebSearchTool", () => {
 
     await tool.execute({ query: "anything" }, {} as never);
 
-    expect(gatewayProvider.chat).toHaveBeenCalledWith(
-      "xai/grok-4-fast-reasoning",
-    );
+    expect(gatewayProvider.chat).toHaveBeenCalledWith("openai/gpt-5.4");
   });
 
   it("wraps AI SDK errors in web search error message", async () => {

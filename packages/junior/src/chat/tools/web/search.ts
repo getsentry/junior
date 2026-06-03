@@ -1,6 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { getModel } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
@@ -8,7 +9,7 @@ import type { WebSearchToolDeps } from "@/chat/tools/types";
 
 const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;
-const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
+const DEFAULT_SEARCH_MODEL = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
 const SEARCH_TOOL_NAME = "parallelSearch";
 
 function asString(value: unknown): string | undefined {
@@ -102,10 +103,8 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
       }
 
       const maxResults = max_results ?? 3;
-      // Pinned. General-purpose models (AI_MODEL / AI_FAST_MODEL) aren't
-      // reliable at forced provider-tool calls on AI Gateway; keep the
-      // search tool on a search-tuned model and only allow an explicit
-      // override.
+      // Keep web search pinned to a provider-tool capable model instead of
+      // inheriting the main turn model.
       const model = process.env.AI_WEB_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
       const controller = new AbortController();
 
