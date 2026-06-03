@@ -44,7 +44,8 @@ const DECODED_RESPONSE_HEADERS = new Set([
   "content-encoding",
   "content-length",
 ]);
-const AUTH_REJECTION_UPSTREAM_STATUS = 401;
+const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
+const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 
 /** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
 export type SandboxEgressHttpInterceptor = (input: {
@@ -584,7 +585,10 @@ export async function proxySandboxEgressRequest(
       `Sandbox egress upstream returned HTTP ${upstream.status}`,
     );
   }
-  if (upstream.status === AUTH_REJECTION_UPSTREAM_STATUS) {
+  if (
+    upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
+    upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS
+  ) {
     logWarn(
       "sandbox_egress_upstream_auth_rejected",
       {},
@@ -598,23 +602,31 @@ export async function proxySandboxEgressRequest(
           status: upstream.status,
         }),
         ...routingAttributes(request, upstreamUrl),
-        "app.sandbox.egress.www_authenticate":
-          upstream.headers.get("www-authenticate") ?? undefined,
+        ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
+          ? {
+              "app.sandbox.egress.www_authenticate":
+                upstream.headers.get("www-authenticate") ?? undefined,
+            }
+          : {}),
       },
-      "Sandbox egress upstream auth rejected injected credential",
+      upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
+        ? "Sandbox egress upstream auth rejected injected credential"
+        : "Sandbox egress upstream permission denied",
     );
     await clearSandboxEgressCredentialLease(provider, credentialContext);
-    await upstream.body?.cancel().catch(() => undefined);
-    return new Response(
-      `junior-auth-required provider=${provider} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
-      {
-        status: 401,
-        headers: {
-          "content-type": "text/plain; charset=utf-8",
-          "cache-control": "no-store",
+    if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
+      await upstream.body?.cancel().catch(() => undefined);
+      return new Response(
+        `junior-auth-required provider=${provider} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
+        {
+          status: 401,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+          },
         },
-      },
-    );
+      );
+    }
   }
 
   return new Response(upstream.body, {
