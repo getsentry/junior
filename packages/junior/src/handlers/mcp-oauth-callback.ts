@@ -28,6 +28,7 @@ import {
   getTurnUserMessageId,
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
+import { slackConversationContextForResume } from "@/chat/runtime/slack-resume-context";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -317,9 +318,12 @@ async function resumeAuthorizedMcpTurn(args: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,
             channelId: authSession.channelId,
+            channelName: lockedSessionRecord.channelName,
             threadTs: authSession.threadTs,
             requesterId: authSession.userId,
           },
+          slackConversation:
+            slackConversationContextForResume(lockedSessionRecord),
           toolChannelId:
             authSession.toolChannelId ??
             lockedArtifacts.assistantContextChannelId ??

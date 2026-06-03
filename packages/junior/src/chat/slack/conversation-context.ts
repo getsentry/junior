@@ -12,10 +12,24 @@ export type SlackConversationType =
   | "direct_message"
   | "private_channel_or_group_dm";
 
-/** Slack conversation facts available to the bot for runtime context. */
+const SLACK_CONVERSATION_TYPES = new Set<string>([
+  "public_channel",
+  "private_channel",
+  "group_dm",
+  "direct_message",
+  "private_channel_or_group_dm",
+]);
+
+/** Slack facts injected into a turn-scoped runtime context block. */
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
+}
+
+function isSlackConversationType(
+  value: unknown,
+): value is SlackConversationType {
+  return typeof value === "string" && SLACK_CONVERSATION_TYPES.has(value);
 }
 
 function normalizeConversationName(
@@ -104,6 +118,23 @@ export function resolveSlackConversationContext(input: {
 
   return {
     type,
+    ...(name ? { name } : {}),
+  };
+}
+
+/** Parse persisted Slack conversation context while dropping invalid fields. */
+export function coerceSlackConversationContext(
+  value: unknown,
+): SlackConversationContext | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (!isSlackConversationType(record.type)) return undefined;
+  const name =
+    typeof record.name === "string" && record.name.trim()
+      ? record.name.trim()
+      : undefined;
+  return {
+    type: record.type,
     ...(name ? { name } : {}),
   };
 }

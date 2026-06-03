@@ -1076,6 +1076,7 @@ export async function generateAssistantReply(
 
       await persistRunningSessionRecord({
         channelName: context.correlation?.channelName,
+        slackConversation: context.slackConversation,
         conversationId: sessionConversationId,
         sessionId,
         sliceId: currentSliceId,
@@ -1331,6 +1332,7 @@ export async function generateAssistantReply(
       await recordActiveMcpProviders();
       await persistCompletedSessionRecord({
         channelName: context.correlation?.channelName,
+        slackConversation: context.slackConversation,
         conversationId: sessionConversationId,
         currentDurationMs: Date.now() - replyStartedAtMs,
         currentUsage: turnUsage,
@@ -1370,6 +1372,7 @@ export async function generateAssistantReply(
       await recordActiveMcpProviders();
       const sessionRecord = await persistTimeoutSessionRecord({
         channelName: context.correlation?.channelName,
+        slackConversation: context.slackConversation,
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
@@ -1410,6 +1413,7 @@ export async function generateAssistantReply(
       await recordActiveMcpProviders();
       const sessionRecord = await persistAuthPauseSessionRecord({
         channelName: context.correlation?.channelName,
+        slackConversation: context.slackConversation,
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,

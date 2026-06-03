@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  coerceSlackConversationContext,
   formatSlackConversationContextLabel,
   formatSlackConversationRedactedLabel,
   formatSlackConversationTypeLabel,
@@ -113,5 +114,23 @@ describe("Slack conversation prompt context", () => {
         name: "#engineering",
       }),
     ).toBe("Public Channel");
+  });
+
+  it("coerces persisted Slack conversation context", () => {
+    expect(
+      coerceSlackConversationContext({
+        type: "private_channel",
+        name: "  #private-roadmap  ",
+      }),
+    ).toEqual({
+      type: "private_channel",
+      name: "#private-roadmap",
+    });
+    expect(
+      coerceSlackConversationContext({
+        type: "unsupported",
+        name: "#private-roadmap",
+      }),
+    ).toBeUndefined();
   });
 });

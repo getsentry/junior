@@ -38,6 +38,7 @@ import {
   getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
+import { slackConversationContextForResume } from "@/chat/runtime/slack-resume-context";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
@@ -340,9 +341,12 @@ async function resumeOAuthSessionRecordTurn(
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,
             channelId: stored.channelId!,
+            channelName: lockedSessionRecord.channelName,
             threadTs: stored.threadTs!,
             requesterId: lockedUserMessage.author.userId,
           },
+          slackConversation:
+            slackConversationContextForResume(lockedSessionRecord),
           toolChannelId:
             lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
           artifactState: lockedArtifacts,

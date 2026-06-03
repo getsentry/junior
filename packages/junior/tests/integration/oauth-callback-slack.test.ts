@@ -176,6 +176,11 @@ describe("oauth callback slack integration", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      channelName: "engineering",
+      slackConversation: {
+        type: "public_channel",
+        name: "#engineering",
+      },
       piMessages: [
         {
           role: "user",
@@ -275,9 +280,14 @@ describe("oauth callback slack integration", () => {
         requester: expect.objectContaining({ userId: "U123" }),
         correlation: expect.objectContaining({
           channelId: "C123",
+          channelName: "engineering",
           threadTs: "1700000000.009",
           requesterId: "U123",
         }),
+        slackConversation: {
+          type: "public_channel",
+          name: "#engineering",
+        },
         toolChannelId: "C999",
         conversationContext: expect.stringContaining(
           "You need the budget by Friday.",

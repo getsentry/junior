@@ -29,6 +29,7 @@ import {
   getTurnUserReplyAttachmentContext,
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
+import { slackConversationContextForResume } from "@/chat/runtime/slack-resume-context";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -201,9 +202,11 @@ async function resumeTimedOutTurn(
             conversationId: payload.conversationId,
             turnId: payload.sessionId,
             channelId: thread.channelId,
+            channelName: sessionRecord.channelName,
             threadTs: thread.threadTs,
             requesterId: userMessage.author.userId,
           },
+          slackConversation: slackConversationContextForResume(sessionRecord),
           toolChannelId:
             artifacts.assistantContextChannelId ?? thread.channelId,
           artifactState: artifacts,

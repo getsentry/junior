@@ -110,6 +110,11 @@ describe("turn resume slack integration", () => {
         sessionId,
         sliceId: 2,
         state: "awaiting_resume",
+        channelName: "engineering",
+        slackConversation: {
+          type: "public_channel",
+          name: "#engineering",
+        },
         piMessages: [
           {
             role: "user",
@@ -190,6 +195,13 @@ describe("turn resume slack integration", () => {
           userId: "U123",
           userName: "alice",
         }),
+        correlation: expect.objectContaining({
+          channelName: "engineering",
+        }),
+        slackConversation: {
+          type: "public_channel",
+          name: "#engineering",
+        },
         toolChannelId: "C999",
         inboundAttachmentCount: 2,
         omittedImageAttachmentCount: 1,
