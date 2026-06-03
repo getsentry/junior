@@ -337,9 +337,20 @@ async function addToIndex(
     if (existing.includes(conversationId)) {
       return;
     }
+    const indexed = [...existing, conversationId];
+    const remove = new Set<string>();
+    for (const id of indexed) {
+      if (indexed.length - remove.size <= CONVERSATION_WORK_INDEX_MAX_LENGTH) {
+        break;
+      }
+      const work = await readWorkState(state, id);
+      if (!work || !shouldKeepIndexed(work)) {
+        remove.add(id);
+      }
+    }
     await state.set(
       indexKey(),
-      [...existing, conversationId].slice(-CONVERSATION_WORK_INDEX_MAX_LENGTH),
+      indexed.filter((id) => !remove.has(id)),
       JUNIOR_THREAD_STATE_TTL_MS,
     );
   });

@@ -10,8 +10,10 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  listConversationWorkIds,
   markConversationMessagesInjected,
   requestConversationWork,
+  releaseConversationWork,
   startConversationWork,
   type InboundMessageRecord,
 } from "@/chat/task-execution/store";
@@ -150,6 +152,38 @@ describe("conversation work execution", () => {
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
+  });
+
+  it("keeps runnable conversation ids when the recovery index overflows", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const activeConversationId = "conversation-active";
+    const newConversationId = "conversation-new";
+    await requestConversationWork({
+      conversationId: activeConversationId,
+      nowMs: 1_000,
+      state,
+    });
+    await state.set(
+      "junior:conversation-work:index",
+      [
+        activeConversationId,
+        ...Array.from({ length: 9_999 }, (_, index) => `stale-${index}`),
+      ],
+      60_000,
+    );
+
+    await requestConversationWork({
+      conversationId: newConversationId,
+      nowMs: 2_000,
+      state,
+    });
+
+    const ids = await listConversationWorkIds({ state });
+    expect(ids).toContain(activeConversationId);
+    expect(ids).toContain(newConversationId);
+    expect(ids).not.toContain("stale-0");
+    expect(ids).toHaveLength(10_000);
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -415,6 +449,43 @@ describe("conversation work execution", () => {
 
     finish.resolve();
     await expect(running).resolves.toEqual({ status: "completed" });
+  });
+
+  it("reports lost lease after periodic check-in loses ownership", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const entered = deferred<{
+      leaseToken: string;
+      shouldYield: () => boolean;
+    }>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(CONVERSATION_ID, {
+      checkInIntervalMs: 15_000,
+      queue,
+      run: async (context) => {
+        await context.drainMailbox(async () => {});
+        entered.resolve({
+          leaseToken: context.leaseToken,
+          shouldYield: context.shouldYield,
+        });
+        await finish.promise;
+        return { status: context.shouldYield() ? "yielded" : "completed" };
+      },
+    });
+    const runningContext = await entered.promise;
+
+    await releaseConversationWork({
+      conversationId: CONVERSATION_ID,
+      leaseToken: runningContext.leaseToken,
+      nowMs: 2_000,
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(runningContext.shouldYield()).toBe(true);
+    finish.resolve();
+    await expect(running).resolves.toEqual({ status: "lost_lease" });
   });
 
   it("requeues an expired conversation lease from heartbeat", async () => {

@@ -87,6 +87,7 @@ async function sendWakeNudge(args: {
 function startLeaseCheckIn(args: {
   conversationId: string;
   leaseToken: string;
+  onLostLease: () => void;
   options: ProcessConversationWorkOptions;
 }): ReturnType<typeof setInterval> {
   const timer = setInterval(() => {
@@ -99,6 +100,7 @@ function startLeaseCheckIn(args: {
     }).then(
       (checkedIn) => {
         if (!checkedIn) {
+          args.onLostLease();
           logWarn(
             "conversation_work_check_in_failed",
             { conversationId: args.conversationId },
@@ -172,9 +174,14 @@ export async function processConversationWork(
   const softYieldDeadlineMs =
     startedAtMs +
     (options.softYieldAfterMs ?? CONVERSATION_WORK_SOFT_YIELD_AFTER_MS);
+  let leaseLost = false;
+  const markLeaseLost = (): void => {
+    leaseLost = true;
+  };
   const timer = startLeaseCheckIn({
     conversationId,
     leaseToken: lease.leaseToken,
+    onLostLease: markLeaseLost,
     options,
   });
   logInfo(
@@ -190,14 +197,19 @@ export async function processConversationWork(
   const workerContext: ConversationWorkerContext = {
     conversationId,
     leaseToken: lease.leaseToken,
-    shouldYield: () => now(options) >= softYieldDeadlineMs,
-    checkIn: () =>
-      checkInConversationWork({
+    shouldYield: () => leaseLost || now(options) >= softYieldDeadlineMs,
+    checkIn: async () => {
+      const checkedIn = await checkInConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
         nowMs: now(options),
         state: options.state,
-      }),
+      });
+      if (!checkedIn) {
+        markLeaseLost();
+      }
+      return checkedIn;
+    },
     drainMailbox: (inject) =>
       drainConversationMailbox({
         conversationId,
@@ -211,6 +223,9 @@ export async function processConversationWork(
   try {
     const result = await options.run(workerContext);
     if (result.status === "lost_lease") {
+      return { status: "lost_lease" };
+    }
+    if (leaseLost) {
       return { status: "lost_lease" };
     }
     if (result.status === "yielded") {
