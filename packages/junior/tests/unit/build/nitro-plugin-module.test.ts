@@ -21,6 +21,8 @@ interface TestFunctionRule {
     type: string;
     topic: string;
     consumer?: string;
+    initialDelaySeconds?: number;
+    retryAfterSeconds?: number;
   }>;
 }
 
@@ -194,6 +196,53 @@ describe("juniorNitro plugin modules", () => {
       {
         type: "queue/v2beta",
         topic: "custom_work",
+      },
+    ]);
+  });
+
+  it("replaces stale Vercel conversation work queue triggers", () => {
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: "/tmp/junior-output",
+        },
+        rootDir: "/tmp/junior-app",
+        vercel: {
+          functionRules: {
+            [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: "old_work",
+                  retryAfterSeconds: 45,
+                },
+                {
+                  type: "queue/v2beta",
+                  topic: "duplicate_work",
+                },
+              ],
+            },
+          },
+        },
+        virtual,
+      },
+    };
+
+    juniorNitro({ conversationWorkQueueTopic: "new_work" }).nitro.setup(nitro);
+    const vercel = getVercelOptions(nitro);
+
+    expect(
+      vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
+        ?.experimentalTriggers,
+    ).toEqual([
+      {
+        type: "queue/v2beta",
+        topic: "new_work",
+        retryAfterSeconds: 45,
       },
     ]);
   });

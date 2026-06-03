@@ -12,7 +12,7 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -190,20 +190,12 @@ function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   );
 }
 
-function resolveConversationWorkQueueTopic(
-  options: JuniorNitroOptions,
-): string {
-  return (
-    options.conversationWorkQueueTopic?.trim() ||
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
-    DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
-  );
-}
-
 function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const defaultMaxDuration =
     options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  const queueTopic = resolveConversationWorkQueueTopic(options);
+  const queueTopic = resolveConversationWorkQueueTopic(
+    options.conversationWorkQueueTopic,
+  );
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
@@ -232,25 +224,25 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
     ? existingRule.experimentalTriggers
     : [];
-  const hasConversationWorkTrigger = existingTriggers.some(
-    (trigger) =>
-      trigger.type === VERCEL_QUEUE_TRIGGER_TYPE &&
-      trigger.topic === queueTopic,
+  const existingQueueTrigger = existingTriggers.find(
+    (trigger) => trigger.type === VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+  const nonQueueTriggers = existingTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
   );
 
   nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
     {
       maxDuration: callbackMaxDuration,
       ...existingRule,
-      experimentalTriggers: hasConversationWorkTrigger
-        ? existingTriggers
-        : [
-            ...existingTriggers,
-            {
-              type: VERCEL_QUEUE_TRIGGER_TYPE,
-              topic: queueTopic,
-            },
-          ],
+      experimentalTriggers: [
+        ...nonQueueTriggers,
+        {
+          ...existingQueueTrigger,
+          type: VERCEL_QUEUE_TRIGGER_TYPE,
+          topic: queueTopic,
+        },
+      ],
     };
 }
 

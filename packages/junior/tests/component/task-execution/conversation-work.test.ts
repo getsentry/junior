@@ -22,7 +22,10 @@ import {
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import {
+  createVercelConversationWorkQueue,
+  DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
+} from "@/chat/task-execution/vercel-queue";
 import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
@@ -40,6 +43,8 @@ import {
 
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  const originalConversationWorkQueueTopic =
+    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -51,6 +56,12 @@ describe("conversation work execution", () => {
       delete process.env.JUNIOR_SECRET;
     } else {
       process.env.JUNIOR_SECRET = originalJuniorSecret;
+    }
+    if (originalConversationWorkQueueTopic === undefined) {
+      delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+    } else {
+      process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC =
+        originalConversationWorkQueueTopic;
     }
     vi.useRealTimers();
   });
@@ -876,6 +887,33 @@ describe("conversation work execution", () => {
           idempotencyKey: "idem-1",
           retentionSeconds: undefined,
         },
+      },
+    ]);
+  });
+
+  it("falls back to the default Vercel Queue topic for empty topic config", async () => {
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = "   ";
+    const sends: Array<{ topic: string }> = [];
+    const queue = createVercelConversationWorkQueue({
+      topic: " ",
+      client: {
+        async send(topic) {
+          sends.push({ topic });
+          return { messageId: "msg_123" };
+        },
+      },
+    });
+
+    await expect(
+      queue.send({ conversationId: CONVERSATION_ID }),
+    ).resolves.toEqual({
+      messageId: "msg_123",
+    });
+
+    expect(sends).toEqual([
+      {
+        topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
       },
     ]);
   });
