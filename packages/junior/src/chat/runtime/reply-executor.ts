@@ -437,6 +437,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });
+            await options.onTurnStatePersisted?.();
+            await options.onInputCommitted?.();
             return;
           }
 

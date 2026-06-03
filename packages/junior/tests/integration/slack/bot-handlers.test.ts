@@ -810,6 +810,8 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
+    const onInputCommitted = vi.fn();
+    const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -834,6 +836,7 @@ describe("bot handlers (integration)", () => {
           text: "what happened?",
           isMention: true,
         }),
+        { onInputCommitted, onTurnStatePersisted },
       ),
     ).resolves.toBeUndefined();
 
@@ -847,6 +850,8 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
+    expect(onInputCommitted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
