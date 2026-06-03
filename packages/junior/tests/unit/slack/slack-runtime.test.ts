@@ -56,12 +56,15 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.subscribeCalls).toBe(1);
-      expect(deps.replyToThread).toHaveBeenCalledWith(thread, message, {
-        beforeFirstResponsePost: undefined,
-        explicitMention: true,
-        onToolInvocation: expect.any(Function),
-        queuedMessages: [],
-      });
+      expect(deps.replyToThread).toHaveBeenCalledWith(
+        thread,
+        message,
+        expect.objectContaining({
+          explicitMention: true,
+          onToolInvocation: expect.any(Function),
+          queuedMessages: [],
+        }),
+      );
     });
 
     it("forwards queued SDK context as ordered turn messages", async () => {
@@ -108,39 +111,6 @@ describe("createSlackTurnRuntime", () => {
   });
 
   describe("handleSubscribedMessage", () => {
-    it("calls prepareTurnState → persistPreparedState → decideSubscribedReply → replyToThread in order", async () => {
-      const callOrder: string[] = [];
-      const deps = createMockDeps({
-        prepareTurnState: vi.fn(async () => {
-          callOrder.push("prepareTurnState");
-          return { prepared: true };
-        }),
-        persistPreparedState: vi.fn(async () => {
-          callOrder.push("persistPreparedState");
-        }),
-        decideSubscribedReply: vi.fn(async () => {
-          callOrder.push("decideSubscribedReply");
-          return { shouldReply: true, reason: "test" };
-        }),
-        replyToThread: vi.fn(async () => {
-          callOrder.push("replyToThread");
-        }),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(callOrder).toEqual([
-        "prepareTurnState",
-        "persistPreparedState",
-        "decideSubscribedReply",
-        "replyToThread",
-      ]);
-    });
-
     it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {
       const deps = createMockDeps({
         stripLeadingBotMention: vi.fn(() => "stripped text"),

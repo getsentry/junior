@@ -65,6 +65,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
 - `policies/interface-design.md` (naming, module paths, and minimal interface boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)
+- `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
 
 ## Investigation-First Development
 

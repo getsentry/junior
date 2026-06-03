@@ -3,24 +3,25 @@ import type { StateAdapter } from "chat";
 import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
-  createFakeQueue,
+  createConversationWorkQueueTestAdapter,
   deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
-import {
-  getCapturedSlackApiCalls,
-  resetSlackApiMockState,
-} from "../../msw/handlers/slack-api";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import type { ReplySteeringMessage } from "@/chat/respond";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
-import { getConversationWorkState } from "@/chat/task-execution/store";
-import { processConversationWork } from "@/chat/task-execution/worker";
+import {
+  countPendingConversationMessages,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 
 const CHANNEL_ID = "C_STEER";
 const THREAD_TS = "1712345.000100";
@@ -55,7 +56,7 @@ function createTurnHarness(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
   state: StateAdapter;
 }) {
-  const queue = createFakeQueue();
+  const queue = createConversationWorkQueueTestAdapter();
   const adapter = createJuniorSlackAdapter({
     botToken: "slack-bot-fixture",
     botUserId: SLACK_BOT_USER_ID,
@@ -79,8 +80,9 @@ function createTurnHarness(args: {
     channel: CHANNEL_ID,
     threadTs: THREAD_TS,
   });
-  const runWorker = () =>
-    processConversationWork(conversationId, {
+  const runNextQueuedWork = () => {
+    const message = queue.takeMessage();
+    return processConversationQueueMessage(message, {
       queue,
       run: createSlackConversationWorker({
         getSlackAdapter: () => adapter,
@@ -89,11 +91,12 @@ function createTurnHarness(args: {
       }),
       state: args.state,
     });
+  };
 
   return {
     conversationId,
     queue,
-    runWorker,
+    runNextQueuedWork,
     services,
   };
 }
@@ -119,6 +122,7 @@ describe("Slack behavior: durable turn steering", () => {
     const state = getStateAdapter();
     const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
       async (prompt, context) => {
+        await context?.onInputCommitted?.();
         agentEntered.resolve();
         await releaseAgent.promise;
 
@@ -142,10 +146,11 @@ describe("Slack behavior: durable turn steering", () => {
           diagnostics: makeDiagnostics(),
         };
       };
-    const { conversationId, queue, runWorker, services } = createTurnHarness({
-      generateAssistantReply,
-      state,
-    });
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply,
+        state,
+      });
 
     const firstResponse = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
@@ -158,9 +163,9 @@ describe("Slack behavior: durable turn steering", () => {
       services,
     });
     expect(firstResponse.status).toBe(200);
-    expect(queue.sent).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(1);
 
-    const activeTurn = runWorker();
+    const activeTurn = runNextQueuedWork();
     await agentEntered.promise;
 
     for (const followUp of [
@@ -183,7 +188,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(queue.sent).toHaveLength(4);
+    expect(queue.sentRecords()).toHaveLength(4);
 
     expect(agentCalls).toEqual([
       {
@@ -196,7 +201,7 @@ describe("Slack behavior: durable turn steering", () => {
       },
     ]);
 
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    const postCalls = slackApiOutbox.messages();
     expect(postCalls).toHaveLength(1);
     expect(postCalls[0]?.params).toEqual(
       expect.objectContaining({
@@ -206,13 +211,12 @@ describe("Slack behavior: durable turn steering", () => {
       }),
     );
 
-    const queuedWakeups = queue.sent.length;
-    for (let index = 1; index < queuedWakeups; index += 1) {
-      await expect(runWorker()).resolves.toEqual({ status: "no_work" });
+    while (queue.hasQueuedMessages()) {
+      await expect(runNextQueuedWork()).resolves.toEqual({ status: "no_work" });
     }
 
     expect(agentCalls).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
     const work = await getConversationWorkState({
       conversationId,
       state,
@@ -222,5 +226,51 @@ describe("Slack behavior: durable turn steering", () => {
       work?.messages.every((message) => message.injectedAtMs !== undefined),
     ).toBe(true);
     expect(work?.needsRun).toBe(false);
+  });
+
+  it("keeps the mailbox pending when the agent fails before input commit", async () => {
+    const state = getStateAdapter();
+    const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
+      async (_prompt, context) => {
+        expect(context?.onInputCommitted).toEqual(expect.any(Function));
+        throw new Error("agent crashed before input commit");
+      };
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply,
+        state,
+      });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "pending_requeued",
+    });
+
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work?.needsRun).toBe(true);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId }),
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(`pending:${conversationId}:`),
+      }),
+    ]);
   });
 });

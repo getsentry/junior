@@ -642,19 +642,28 @@ export async function drainConversationMailbox(args: {
   state?: StateAdapter;
 }): Promise<InboundMessageRecord[]> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  const pending = await withConversationMutation(args, async (state) => {
     const current = await readWorkState(state, args.conversationId);
     if (!current || current.lease?.leaseToken !== args.leaseToken) {
       throw new Error(
         `Conversation work lease is not held for ${args.conversationId}`,
       );
     }
-    const pending = pendingMessages(current);
-    if (pending.length === 0) {
-      return [];
-    }
+    return pendingMessages(current);
+  });
+  if (pending.length === 0) {
+    return [];
+  }
 
-    await args.inject(pending);
+  await args.inject(pending);
+
+  await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current || current.lease?.leaseToken !== args.leaseToken) {
+      throw new Error(
+        `Conversation work lease is not held for ${args.conversationId}`,
+      );
+    }
     const drainedIds = new Set(
       pending.map((message) => message.inboundMessageId),
     );
@@ -672,8 +681,8 @@ export async function drainConversationMailbox(args: {
       needsRun: hasPending,
       updatedAtMs: nowMs,
     });
-    return pending;
   });
+  return pending;
 }
 
 /** Mark selected leased mailbox entries after their session-log injection succeeds. */

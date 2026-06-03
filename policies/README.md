@@ -10,6 +10,7 @@ Good policy topics:
 - code comments and docstrings
 - frontend component styling
 - testing expectations
+- test adapters and harnesses
 - naming conventions
 - interface design
 - migration hygiene

@@ -4,12 +4,10 @@ const {
   resumeSlackTurnMock,
   scheduleTurnTimeoutResumeMock,
   verifyTurnTimeoutResumeRequestMock,
-  waitUntilCallbacks,
 } = vi.hoisted(() => ({
   resumeSlackTurnMock: vi.fn(),
   scheduleTurnTimeoutResumeMock: vi.fn(),
   verifyTurnTimeoutResumeRequestMock: vi.fn(),
-  waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
 vi.mock("@/chat/config", async (importOriginal) => {
@@ -27,7 +25,6 @@ vi.mock("@/chat/config", async (importOriginal) => {
 
 vi.mock("@/chat/services/timeout-resume", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/services/timeout-resume")>()),
-  scheduleTurnTimeoutResume: scheduleTurnTimeoutResumeMock,
   verifyTurnTimeoutResumeRequest: verifyTurnTimeoutResumeRequestMock,
 }));
 
@@ -46,15 +43,26 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { POST } from "@/handlers/turn-resume";
-import type { WaitUntilFn } from "@/handlers/types";
+import {
+  createWaitUntilCollector,
+  type WaitUntilCollector,
+} from "../../fixtures/wait-until";
 
-const testWaitUntil: WaitUntilFn = (task) => {
-  waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
-};
+let waitUntil: WaitUntilCollector;
+
+function postTurnResumeRequest(): Promise<Response> {
+  return POST(
+    new Request("https://example.com/api/internal/turn-resume", {
+      method: "POST",
+    }),
+    waitUntil.fn,
+    { scheduleTurnTimeoutResume: scheduleTurnTimeoutResumeMock },
+  );
+}
 
 describe("turn resume handler", () => {
   beforeEach(async () => {
-    waitUntilCallbacks.length = 0;
+    waitUntil = createWaitUntilCollector();
     resumeSlackTurnMock.mockReset();
     scheduleTurnTimeoutResumeMock.mockReset();
     verifyTurnTimeoutResumeRequestMock.mockReset();
@@ -75,15 +83,10 @@ describe("turn resume handler", () => {
   it("rejects unauthenticated internal resume callbacks", async () => {
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue(undefined);
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(401);
-    expect(waitUntilCallbacks).toHaveLength(0);
+    expect(waitUntil.pendingCount()).toBe(0);
   });
 
   it("drops stale callbacks after the resume lock is acquired", async () => {
@@ -158,15 +161,10 @@ describe("turn resume handler", () => {
       expect(await args.beforeStart?.()).toBe(false);
     });
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
     expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
   });
@@ -246,15 +244,10 @@ describe("turn resume handler", () => {
       );
     });
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
@@ -328,17 +321,12 @@ describe("turn resume handler", () => {
       .mockRejectedValueOnce(new ResumeTurnBusyError(conversationId))
       .mockResolvedValueOnce(undefined);
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    const task = waitUntilCallbacks[0]?.();
+    const flush = waitUntil.flush();
     await vi.runOnlyPendingTimersAsync();
-    await task;
+    await flush;
 
     expect(resumeSlackTurnMock).toHaveBeenCalledTimes(2);
   });
@@ -408,17 +396,12 @@ describe("turn resume handler", () => {
       new ResumeTurnBusyError(conversationId),
     );
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    const task = waitUntilCallbacks[0]?.();
+    const flush = waitUntil.flush();
     await vi.runAllTimersAsync();
-    await task;
+    await flush;
 
     expect(resumeSlackTurnMock).toHaveBeenCalledTimes(4);
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
@@ -512,15 +495,10 @@ describe("turn resume handler", () => {
       await runArgs.onSuccess?.(reply);
     });
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
     expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
 
@@ -623,15 +601,10 @@ describe("turn resume handler", () => {
       }
     });
 
-    const response = await POST(
-      new Request("https://example.com/api/internal/turn-resume", {
-        method: "POST",
-      }),
-      testWaitUntil,
-    );
+    const response = await postTurnResumeRequest();
 
     expect(response.status).toBe(202);
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,

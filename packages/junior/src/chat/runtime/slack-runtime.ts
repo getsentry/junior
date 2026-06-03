@@ -10,6 +10,7 @@ import type { Message, MessageContext, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import {
   isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
@@ -52,6 +53,7 @@ export interface ReplyHooks {
     inject: (messages: Message[]) => Promise<void>,
   ) => Promise<Message[]>;
   messageContext?: MessageContext;
+  onInputCommitted?: () => Promise<void>;
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
   onTurnStatePersisted?: () => Promise<void>;
   shouldYield?: () => boolean;
@@ -146,6 +148,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     options?: {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
+      onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: TPreparedState;
@@ -413,6 +416,7 @@ export function createSlackTurnRuntime<
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
+            onInputCommitted: hooks?.onInputCommitted,
             onToolInvocation: toolInvocationHook,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
@@ -420,7 +424,10 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (isCooperativeTurnYieldError(error)) {
+        if (
+          isCooperativeTurnYieldError(error) ||
+          isTurnInputCommitLostError(error)
+        ) {
           throw error;
         }
         const errorContext = logContext({
@@ -617,6 +624,7 @@ export function createSlackTurnRuntime<
             preparedState,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
+            onInputCommitted: hooks?.onInputCommitted,
             onToolInvocation: toolInvocationHook,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
@@ -624,7 +632,10 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (isCooperativeTurnYieldError(error)) {
+        if (
+          isCooperativeTurnYieldError(error) ||
+          isTurnInputCommitLostError(error)
+        ) {
           throw error;
         }
         const errorContext = logContext({

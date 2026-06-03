@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message, Thread } from "chat";
+import type { Message, StateAdapter, Thread } from "chat";
 import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
@@ -11,6 +11,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -20,14 +21,51 @@ import {
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   CONVERSATION_ID,
-  createFakeQueue,
+  createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
+  type ConversationWorkQueueTestAdapter,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+
+type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
+
+interface ProcessQueuedSlackWorkArgs {
+  getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
+  nowMs?: () => number;
+  queue: ConversationWorkQueueTestAdapter;
+  resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
+  runtime: SlackWorkerOptions["runtime"];
+  state: StateAdapter;
+}
+
+function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
+  return processConversationQueueMessage(args.queue.takeMessage(), {
+    nowMs: args.nowMs,
+    queue: args.queue,
+    run: createSlackConversationWorker({
+      getSlackAdapter: args.getSlackAdapter,
+      resumeAwaitingContinuation: args.resumeAwaitingContinuation,
+      runtime: args.runtime,
+      state: args.state,
+    }),
+    state: args.state,
+  });
+}
+
+/** Prove redundant queue deliveries do not replay already-drained Slack work. */
+async function expectRemainingQueuedSlackWorkIsNoop(
+  args: ProcessQueuedSlackWorkArgs,
+): Promise<void> {
+  while (args.queue.hasQueuedMessages()) {
+    await expect(processNextQueuedSlackWork(args)).resolves.toEqual({
+      status: "no_work",
+    });
+  }
+}
 
 describe("Slack conversation work execution", () => {
   beforeEach(async () => {
@@ -39,7 +77,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("persists Slack mentions into the durable mailbox and wakes the queue", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -59,10 +97,13 @@ describe("Slack conversation work execution", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: CONVERSATION_ID,
       }),
+    ]);
+    expect(queue.queuedMessages()).toEqual([
+      { conversationId: CONVERSATION_ID },
     ]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -85,7 +126,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("routes edited Slack mentions through the durable mailbox", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -127,7 +168,7 @@ describe("Slack conversation work execution", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: `slack:C123:${editedTs}`,
         idempotencyKey: `slack:T123:slack:C123:${editedTs}:${editedTs}:message_changed_mention`,
@@ -136,22 +177,19 @@ describe("Slack conversation work execution", () => {
 
     const calls: Array<{ message: Message; thread: Thread }> = [];
     await expect(
-      processConversationWork(`slack:C123:${editedTs}`, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (thread, message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              calls.push({ thread, message });
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async (thread, message, hooks) => {
+            await hooks?.onInputCommitted?.();
+            calls.push({ thread, message });
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -163,7 +201,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -203,27 +241,25 @@ describe("Slack conversation work execution", () => {
       },
     });
 
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (thread, message, hooks) => {
+        await hooks?.onInputCommitted?.();
+        calls.push({
+          thread,
+          message,
+          skipped: hooks?.messageContext?.skipped ?? [],
+        });
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("unexpected subscribed route");
+      },
+    };
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
+        runtime,
         state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (thread, message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              calls.push({
-                thread,
-                message,
-                skipped: hooks?.messageContext?.skipped ?? [],
-              });
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
-          },
-          state,
-        }),
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -239,10 +275,16 @@ describe("Slack conversation work execution", () => {
       state,
     });
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    await expectRemainingQueuedSlackWorkIsNoop({
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime,
+      state,
+    });
   });
 
   it("keeps restored thread context aligned with promoted mention routing", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -292,30 +334,26 @@ describe("Slack conversation work execution", () => {
     ]);
     await state.unsubscribe(CONVERSATION_ID);
 
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (thread, message, hooks) => {
+        await hooks?.onInputCommitted?.();
+        subscribedValues.push(await thread.isSubscribed());
+        calls.push({
+          thread,
+          message,
+          skipped: hooks?.messageContext?.skipped ?? [],
+        });
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("mixed mention batches should promote to mention");
+      },
+    };
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
+        runtime,
         state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (thread, message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              subscribedValues.push(await thread.isSubscribed());
-              calls.push({
-                thread,
-                message,
-                skipped: hooks?.messageContext?.skipped ?? [],
-              });
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error(
-                "mixed mention batches should promote to mention",
-              );
-            },
-          },
-          state,
-        }),
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -325,10 +363,16 @@ describe("Slack conversation work execution", () => {
       "1712345.0001",
     ]);
     expect(subscribedValues).toEqual([false]);
+    await expectRemainingQueuedSlackWorkIsNoop({
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime,
+      state,
+    });
   });
 
   it("processes pending Slack follow-ups when no continuation starts", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -352,23 +396,20 @@ describe("Slack conversation work execution", () => {
 
     const calls: string[] = [];
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation,
-          runtime: {
-            handleNewMention: async (_thread, message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              calls.push(message.text);
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        resumeAwaitingContinuation,
+        runtime: {
+          handleNewMention: async (_thread, message, hooks) => {
+            await hooks?.onInputCommitted?.();
+            calls.push(message.text);
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -382,7 +423,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("resumes awaiting continuations before routing pending Slack follow-ups", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -403,31 +444,28 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queue.sent = [];
+    queue.clearSentRecords();
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         nowMs: () => 3_500,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation,
-          runtime: {
-            handleNewMention: async () => {
-              throw new Error("pending follow-up should wait for resume");
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        resumeAwaitingContinuation,
+        runtime: {
+          handleNewMention: async () => {
+            throw new Error("pending follow-up should wait for resume");
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
     expect(resumeAwaitingContinuation).toHaveBeenCalledWith(CONVERSATION_ID);
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: CONVERSATION_ID,
         idempotencyKey: `pending:${CONVERSATION_ID}:3500`,
@@ -444,7 +482,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("drains Slack messages that arrive during an active turn into steering", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -466,37 +504,35 @@ describe("Slack conversation work execution", () => {
 
     const injected: string[][] = [];
     const drained: string[][] = [];
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (_thread, _message, hooks) => {
+        await hooks?.onInputCommitted?.();
+        await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              text: `<@${SLACK_BOT_USER_ID}> steer this`,
+              ts: "1712345.0002",
+              threadTs: "1712345.0001",
+            }),
+          ),
+          services: ingressServices,
+        });
+        const messages =
+          (await hooks?.drainSteeringMessages?.(async (steering) => {
+            injected.push(steering.map((message) => message.id));
+          })) ?? [];
+        drained.push(messages.map((message) => message.id));
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("unexpected subscribed route");
+      },
+    };
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
+        runtime,
         state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (_thread, _message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              await handleSlackWebhookAndFlush({
-                request: slackWebhookRequest(
-                  slackEnvelope({
-                    text: `<@${SLACK_BOT_USER_ID}> steer this`,
-                    ts: "1712345.0002",
-                    threadTs: "1712345.0001",
-                  }),
-                ),
-                services: ingressServices,
-              });
-              const messages =
-                (await hooks?.drainSteeringMessages?.(async (steering) => {
-                  injected.push(steering.map((message) => message.id));
-                })) ?? [];
-              drained.push(messages.map((message) => message.id));
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
-          },
-          state,
-        }),
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -511,10 +547,16 @@ describe("Slack conversation work execution", () => {
       expect.any(Number),
     ]);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    await expectRemainingQueuedSlackWorkIsNoop({
+      getSlackAdapter: () => slackAdapter,
+      queue,
+      runtime,
+      state,
+    });
   });
 
   it("does not replay injected Slack mailbox records after lease recovery", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -561,21 +603,18 @@ describe("Slack conversation work execution", () => {
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async () => {
-              throw new Error("injected messages should not replay");
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("injected messages should not replay");
-            },
+        runtime: {
+          handleNewMention: async () => {
+            throw new Error("injected messages should not replay");
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("injected messages should not replay");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
@@ -588,7 +627,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("terminalizes invalid idle continuation metadata", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -643,7 +682,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("terminalizes stale idle continuations skipped by resume startup", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -737,8 +776,8 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("keeps Slack mailbox records pending when the runtime handoff fails", async () => {
-    const queue = createFakeQueue();
+  it("keeps Slack mailbox records pending when input commit fails", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -758,23 +797,20 @@ describe("Slack conversation work execution", () => {
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async () => {
-              throw new Error("runtime failed before durable handoff");
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async () => {
+            throw new Error("runtime failed before input commit");
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
-    ).rejects.toThrow("runtime failed before durable handoff");
+    ).rejects.toThrow("runtime failed before input commit");
 
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -785,8 +821,8 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
-  it("requeues Slack mailbox records when the runtime returns without durable handoff", async () => {
-    const queue = createFakeQueue();
+  it("requeues Slack mailbox records when the runtime returns without input commit", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -804,31 +840,28 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queue.sent = [];
+    queue.clearSentRecords();
 
     let handled = 0;
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         nowMs: () => 3_000,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async () => {
-              handled += 1;
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async () => {
+            handled += 1;
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
     expect(handled).toBe(1);
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: CONVERSATION_ID,
         idempotencyKey: `pending:${CONVERSATION_ID}:3000`,
@@ -844,8 +877,8 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
-  it("reports lost lease when Slack turn handoff loses the mailbox lease", async () => {
-    const queue = createFakeQueue();
+  it("reports lost lease when input commit loses the mailbox lease", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -864,35 +897,32 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queue.sent = [];
+    queue.clearSentRecords();
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         nowMs: () => currentNowMs,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (_thread, _message, hooks) => {
-              currentNowMs = 1_000 + CONVERSATION_WORK_LEASE_TTL_MS + 1;
-              await recoverConversationWork({
-                nowMs: currentNowMs,
-                queue,
-                state,
-              });
-              await hooks?.onTurnStatePersisted?.();
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async (_thread, _message, hooks) => {
+            currentNowMs = 1_000 + CONVERSATION_WORK_LEASE_TTL_MS + 1;
+            await recoverConversationWork({
+              nowMs: currentNowMs,
+              queue,
+              state,
+            });
+            await hooks?.onInputCommitted?.();
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "lost_lease" });
 
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: CONVERSATION_ID,
         idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:${currentNowMs}`,
@@ -909,7 +939,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -928,30 +958,27 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queue.sent = [];
+    queue.clearSentRecords();
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         nowMs: () => currentNowMs,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (_thread, _message, hooks) => {
-              currentNowMs = 242_000;
-              await hooks?.onTurnStatePersisted?.();
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async (_thread, _message, hooks) => {
+            currentNowMs = 242_000;
+            await hooks?.onInputCommitted?.();
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(queue.sent).toEqual([]);
+    expect(queue.sentRecords()).toEqual([]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
@@ -961,7 +988,7 @@ describe("Slack conversation work execution", () => {
   });
 
   it("yields Slack mailbox work after a persisted safe boundary", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
@@ -980,31 +1007,28 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queue.sent = [];
+    queue.clearSentRecords();
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
         nowMs: () => currentNowMs,
         queue,
-        state,
-        run: createSlackConversationWorker({
-          getSlackAdapter: () => slackAdapter,
-          runtime: {
-            handleNewMention: async (_thread, _message, hooks) => {
-              await hooks?.onTurnStatePersisted?.();
-              currentNowMs = 242_000;
-              throw new CooperativeTurnYieldError();
-            },
-            handleSubscribedMessage: async () => {
-              throw new Error("unexpected subscribed route");
-            },
+        runtime: {
+          handleNewMention: async (_thread, _message, hooks) => {
+            await hooks?.onInputCommitted?.();
+            currentNowMs = 242_000;
+            throw new CooperativeTurnYieldError();
           },
-          state,
-        }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
       }),
     ).resolves.toEqual({ status: "yielded" });
 
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `yield:${CONVERSATION_ID}:242000`,

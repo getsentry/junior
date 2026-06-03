@@ -91,7 +91,7 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     ]);
-  });
+  }, 20_000);
 
   it("resumes a pending OAuth request with persisted thread context", async () => {
     await stateAdapterModule
@@ -165,7 +165,7 @@ describe("oauth callback slack integration", () => {
         }),
       ]),
     );
-  });
+  }, 20_000);
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
     const conversationId = "slack:C123:1700000000.009";

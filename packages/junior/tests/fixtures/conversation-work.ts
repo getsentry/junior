@@ -1,5 +1,4 @@
-import { createHmac } from "node:crypto";
-import type { StateAdapter } from "chat";
+import type { Lock, StateAdapter } from "chat";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -8,43 +7,145 @@ import type {
 import type { InboundMessageRecord } from "@/chat/task-execution/store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import type { WaitUntilFn } from "@/handlers/types";
+import { createSlackWebhookTestClient } from "./slack/webhook-client";
+import { createWaitUntilCollector } from "./wait-until";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_BOT_USER_ID = "U_BOT";
 export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
-/** Queue fixture state exposed for recovery and idempotency assertions. */
-export interface FakeConversationWorkQueue extends ConversationWorkQueue {
-  fail: boolean;
-  sent: Array<{
-    conversationId: string;
-    delayMs?: number;
-    idempotencyKey?: string;
-  }>;
+export interface ConversationQueueSendRecord {
+  conversationId: string;
+  delayMs?: number;
+  idempotencyKey?: string;
 }
 
-/** Create a queue port fixture that records durable wake-up sends. */
-export function createFakeQueue(): FakeConversationWorkQueue {
-  const queue: FakeConversationWorkQueue = {
-    fail: false,
-    sent: [],
-    async send(
-      message: ConversationQueueMessage,
-      options?: ConversationQueueSendOptions,
-    ): Promise<{ messageId: string }> {
-      if (queue.fail) {
-        throw new Error("queue unavailable");
-      }
-      queue.sent.push({
-        conversationId: message.conversationId,
-        delayMs: options?.delayMs,
-        idempotencyKey: options?.idempotencyKey,
-      });
-      return { messageId: `queue-${queue.sent.length}` };
-    },
+interface QueueSendHold {
+  entered: () => void;
+  release: Promise<unknown>;
+}
+
+/**
+ * In-memory queue adapter for tests that need queue delivery plus send introspection.
+ *
+ * `send` behaves like the production queue handoff: it records send metadata and
+ * makes the payload available for callback-style delivery through `takeMessage`.
+ */
+export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
+  #queuedMessages: ConversationQueueMessage[] = [];
+  #rejectSends = false;
+  #sendHolds: QueueSendHold[] = [];
+  #sentRecords: ConversationQueueSendRecord[] = [];
+
+  allowSends(): void {
+    this.#rejectSends = false;
+  }
+
+  clearSentRecords(): void {
+    this.#sentRecords = [];
+  }
+
+  hasQueuedMessages(): boolean {
+    return this.#queuedMessages.length > 0;
+  }
+
+  queuedMessages(): ConversationQueueMessage[] {
+    return this.#queuedMessages.map((message) => ({ ...message }));
+  }
+
+  rejectSends(): void {
+    this.#rejectSends = true;
+  }
+
+  sentRecords(): ConversationQueueSendRecord[] {
+    return this.#sentRecords.map((record) => ({ ...record }));
+  }
+
+  /** Hold the next send open after it records the queued payload. */
+  holdNextSendUntil(release: Promise<unknown>): Promise<void> {
+    return new Promise((entered) => {
+      this.#sendHolds.push({ entered, release });
+    });
+  }
+
+  async send(
+    message: ConversationQueueMessage,
+    options?: ConversationQueueSendOptions,
+  ): Promise<{ messageId: string }> {
+    if (this.#rejectSends) {
+      throw new Error("queue unavailable");
+    }
+    this.#queuedMessages.push({ ...message });
+    const record: ConversationQueueSendRecord = {
+      conversationId: message.conversationId,
+    };
+    if (options?.delayMs !== undefined) {
+      record.delayMs = options.delayMs;
+    }
+    if (options?.idempotencyKey !== undefined) {
+      record.idempotencyKey = options.idempotencyKey;
+    }
+    this.#sentRecords.push(record);
+    const hold = this.#sendHolds.shift();
+    if (hold) {
+      hold.entered();
+      await hold.release;
+    }
+    return { messageId: `queue-${this.#sentRecords.length}` };
+  }
+
+  takeMessage(): ConversationQueueMessage {
+    const message = this.#queuedMessages.shift();
+    if (!message) {
+      throw new Error("Expected queued conversation work payload");
+    }
+    return message;
+  }
+}
+
+/** Create a durable queue adapter for component and integration tests. */
+export function createConversationWorkQueueTestAdapter(): ConversationWorkQueueTestAdapter {
+  return new ConversationWorkQueueTestAdapter();
+}
+
+/** Observe whether one conversation's mutation lock is currently held. */
+export function observeConversationMutationLock(args: {
+  conversationId: string;
+  state: StateAdapter;
+}): { isHeld: () => boolean; state: StateAdapter } {
+  const mutationLockKey = `junior:conversation-work:mutation:${args.conversationId}`;
+  const locks = new WeakSet<Lock>();
+  let held = false;
+  return {
+    isHeld: () => held,
+    state: new Proxy(args.state, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            const lock = await target.acquireLock(key, ttlMs);
+            if (lock && key === mutationLockKey) {
+              locks.add(lock);
+              held = true;
+            }
+            return lock;
+          };
+        }
+        if (prop === "releaseLock") {
+          return async (lock: Lock) => {
+            try {
+              return await target.releaseLock(lock);
+            } finally {
+              if (locks.delete(lock)) {
+                held = false;
+              }
+            }
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter,
   };
-  return queue;
 }
 
 /** Build a durable mailbox record for component-level conversation work tests. */
@@ -109,25 +210,11 @@ export function delayMutationLockUntil(args: {
   }) as StateAdapter;
 }
 
-function signSlackBody(body: string, timestamp: string): string {
-  return `v0=${createHmac("sha256", SLACK_SIGNING_SECRET)
-    .update(`v0:${timestamp}:${body}`)
-    .digest("hex")}`;
-}
-
 /** Build a signed Slack JSON webhook request for Slack ingress tests. */
 export function slackWebhookRequest(body: unknown): Request {
-  const serialized = JSON.stringify(body);
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(serialized, timestamp),
-    },
-    body: serialized,
-  });
+  return createSlackWebhookTestClient({
+    signingSecret: SLACK_SIGNING_SECRET,
+  }).event(body);
 }
 
 /** Build the minimal Slack Events API envelope used by durable ingress tests. */
@@ -168,30 +255,16 @@ export function deferred<T = void>(): {
   return { promise, resolve };
 }
 
-type WaitUntilTask = () => Promise<unknown>;
-
-function collectWaitUntil(tasks: WaitUntilTask[]): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task : () => task);
-  };
-}
-
-async function flushWaitUntil(tasks: WaitUntilTask[]): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index]?.();
-  }
-}
-
 /** Run Slack webhook ingress and flush every scheduled waitUntil task. */
 export async function handleSlackWebhookAndFlush(
   args: Omit<Parameters<typeof handleSlackWebhook>[0], "waitUntil">,
 ): Promise<Response> {
-  const waitUntilTasks: WaitUntilTask[] = [];
+  const waitUntil = createWaitUntilCollector();
   const response = await handleSlackWebhook({
     ...args,
-    waitUntil: collectWaitUntil(waitUntilTasks),
+    waitUntil: waitUntil.fn,
   });
-  await flushWaitUntil(waitUntilTasks);
+  await waitUntil.flush();
   return response;
 }
 

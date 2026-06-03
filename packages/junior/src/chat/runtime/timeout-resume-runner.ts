@@ -29,7 +29,7 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import {
-  scheduleTurnTimeoutResume,
+  scheduleTurnTimeoutResume as defaultScheduleTurnTimeoutResume,
   type TurnContinuationRequest,
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -41,6 +41,13 @@ import {
 } from "@/chat/services/pending-auth";
 
 const TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
+
+/** Runtime ports for timeout continuation scheduling. */
+export interface TimeoutResumeRunnerOptions {
+  scheduleTurnTimeoutResume?: (
+    request: TurnContinuationRequest,
+  ) => Promise<void>;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -132,6 +139,7 @@ async function persistFailedReplyState(
  */
 export async function resumeTimedOutTurn(
   payload: TurnContinuationRequest,
+  options: TimeoutResumeRunnerOptions = {},
 ): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   if (!thread) {
@@ -139,6 +147,8 @@ export async function resumeTimedOutTurn(
       `Timeout resume requires a Slack thread conversation id, got "${payload.conversationId}"`,
     );
   }
+  const scheduleTurnTimeoutResume =
+    options.scheduleTurnTimeoutResume ?? defaultScheduleTurnTimeoutResume;
 
   return await resumeSlackTurn({
     messageText: "",
@@ -280,13 +290,16 @@ export async function resumeTimedOutTurn(
  */
 export async function resumeTimedOutTurnWithLockRetry(
   payload: TurnContinuationRequest,
+  options: TimeoutResumeRunnerOptions = {},
 ): Promise<boolean> {
+  const scheduleTurnTimeoutResume =
+    options.scheduleTurnTimeoutResume ?? defaultScheduleTurnTimeoutResume;
   for (const [attempt, delayMs] of [
     ...TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS,
     undefined,
   ].entries()) {
     try {
-      return await resumeTimedOutTurn(payload);
+      return await resumeTimedOutTurn(payload, options);
     } catch (error) {
       if (!(error instanceof ResumeTurnBusyError)) {
         throw error;

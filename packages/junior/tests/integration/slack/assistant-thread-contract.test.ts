@@ -1,19 +1,16 @@
-import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
-import {
-  getCapturedSlackApiCalls,
-  resetSlackApiMockState,
-} from "../../msw/handlers/slack-api";
+import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";
-import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -22,17 +19,15 @@ const DM_CHANNEL_ID = "D12345";
 const DM_THREAD_TS = "1700000000.000001";
 const CHANNEL_ID = "C12345";
 const CHANNEL_ROOT_TS = "1700000200.000200";
-
-function signSlackBody(body: string, timestamp: string): string {
-  const base = `v0:${timestamp}:${body}`;
-  return `v0=${createHmac("sha256", SIGNING_SECRET).update(base).digest("hex")}`;
-}
+const slackWebhookClient = createSlackWebhookTestClient({
+  signingSecret: SIGNING_SECRET,
+});
 
 function createDirectMessageRequest(
   text: string,
   options?: { threadTs?: string },
 ): Request {
-  const body = JSON.stringify(
+  return slackWebhookClient.event(
     slackEventsApiEnvelope({
       eventType: "message",
       channel: DM_CHANNEL_ID,
@@ -41,24 +36,13 @@ function createDirectMessageRequest(
       ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
     }),
   );
-  const timestamp = String(Math.floor(Date.now() / 1000));
-
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(body, timestamp),
-    },
-    body,
-  });
 }
 
 function createChannelMentionRequest(
   text: string,
   options?: { threadTs?: string; ts?: string },
 ): Request {
-  const body = JSON.stringify(
+  return slackWebhookClient.event(
     slackEventsApiEnvelope({
       eventType: "app_mention",
       channel: CHANNEL_ID,
@@ -67,29 +51,6 @@ function createChannelMentionRequest(
       ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
     }),
   );
-  const timestamp = String(Math.floor(Date.now() / 1000));
-
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(body, timestamp),
-    },
-    body,
-  });
-}
-
-async function flushWaitUntil(tasks: Array<Promise<unknown>>): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index];
-  }
-}
-
-function collectWaitUntil(tasks: Array<Promise<unknown>>): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task() : task);
-  };
 }
 
 function makeDiagnostics() {
@@ -192,19 +153,19 @@ describe("Slack contract: assistant-thread delivery", () => {
         };
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createDirectMessageRequest("run a command"),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
+    expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual([]);
   });
 
   it("posts assistant status with a raw DM channel id when thread_ts is present", async () => {
@@ -217,21 +178,21 @@ describe("Slack contract: assistant-thread delivery", () => {
         };
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createDirectMessageRequest("run a command", {
         threadTs: DM_THREAD_TS,
       }),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
+    expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           params: expect.objectContaining({
@@ -261,19 +222,19 @@ describe("Slack contract: assistant-thread delivery", () => {
         };
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createChannelMentionRequest("<@U_BOT> run a command"),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
+    expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           params: expect.objectContaining({
@@ -305,22 +266,21 @@ describe("Slack contract: assistant-thread delivery", () => {
         diagnostics: makeDiagnostics(),
       }),
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?", {
         threadTs: DM_THREAD_TS,
       }),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setTitle")).toEqual([
+    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
@@ -349,21 +309,21 @@ describe("Slack contract: assistant-thread delivery", () => {
         diagnostics: makeDiagnostics(),
       }),
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?", {
         threadTs: DM_THREAD_TS,
       }),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setTitle")).toEqual([
+    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
@@ -386,19 +346,18 @@ describe("Slack contract: assistant-thread delivery", () => {
         diagnostics: makeDiagnostics(),
       }),
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?"),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setTitle")).toEqual([]);
+    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([]);
   });
 });

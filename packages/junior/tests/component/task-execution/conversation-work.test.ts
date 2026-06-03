@@ -28,11 +28,12 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
-  createFakeQueue,
+  createConversationWorkQueueTestAdapter,
   deferred,
   delayIndexLockOnce,
   delayMutationLockUntil,
   inboundMessage,
+  observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
 
 describe("conversation work execution", () => {
@@ -53,7 +54,7 @@ describe("conversation work execution", () => {
   });
 
   it("stores inbound mailbox messages idempotently", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await expect(
       appendAndEnqueueInboundMessage({
         message: inboundMessage("m1"),
@@ -77,11 +78,11 @@ describe("conversation work execution", () => {
     });
     expect(state?.messages).toHaveLength(1);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
-    expect(queue.sent).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(2);
   });
 
   it("retries transient conversation work index lock contention", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = delayIndexLockOnce(getStateAdapter());
 
     await expect(
@@ -98,12 +99,12 @@ describe("conversation work execution", () => {
       state,
     });
     expect(work?.messages).toHaveLength(1);
-    expect(queue.sent).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("waits through same-conversation mutation lock contention", async () => {
     vi.useFakeTimers({ now: 1_000 });
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const state = delayMutationLockUntil({
       conversationId: CONVERSATION_ID,
       readyAtMs: 3_500,
@@ -122,12 +123,12 @@ describe("conversation work execution", () => {
       status: "appended",
       queueMessageId: "queue-1",
     });
-    expect(queue.sent).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("repairs pending mailbox work when the initial queue send fails", async () => {
-    const queue = createFakeQueue();
-    queue.fail = true;
+    const queue = createConversationWorkQueueTestAdapter();
+    queue.rejectSends();
     await expect(
       appendAndEnqueueInboundMessage({
         message: inboundMessage("m1"),
@@ -136,14 +137,14 @@ describe("conversation work execution", () => {
       }),
     ).rejects.toThrow("queue unavailable");
 
-    queue.fail = false;
+    queue.allowSends();
     await expect(
       recoverConversationWork({
         nowMs: 62_000,
         queue,
       }),
     ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
@@ -152,7 +153,7 @@ describe("conversation work execution", () => {
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
     const finish = deferred<void>();
@@ -180,7 +181,7 @@ describe("conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "active" });
     expect(runs).toBe(1);
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
@@ -192,7 +193,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues work requested while a lease is running", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -218,7 +219,7 @@ describe("conversation work execution", () => {
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `pending:${CONVERSATION_ID}:2000`,
@@ -227,7 +228,7 @@ describe("conversation work execution", () => {
   });
 
   it("uses fresh queue idempotency keys for repeated worker requeues", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -254,14 +255,14 @@ describe("conversation work execution", () => {
     await runSlice(2_000);
     await runSlice(63_000);
 
-    expect(queue.sent.map((send) => send.idempotencyKey)).toEqual([
+    expect(queue.sentRecords().map((send) => send.idempotencyKey)).toEqual([
       `pending:${CONVERSATION_ID}:2000`,
       `pending:${CONVERSATION_ID}:63000`,
     ]);
   });
 
   it("nudges failed worker runs before releasing runnable work", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -285,7 +286,7 @@ describe("conversation work execution", () => {
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
     expect(state?.lastEnqueuedAtMs).toBe(2_000);
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `error:${CONVERSATION_ID}:2000`,
@@ -294,7 +295,7 @@ describe("conversation work execution", () => {
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: InboundMessageRecord[][] = [];
 
@@ -319,9 +320,68 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
   });
 
+  it("does not block new mailbox appends while injection is in progress", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const observed = observeConversationMutationLock({
+      conversationId: CONVERSATION_ID,
+      state: getStateAdapter(),
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state: observed.state,
+    });
+    const injectionStarted = deferred<void>();
+    const finishInjection = deferred<void>();
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        queue,
+        state: observed.state,
+        run: async (context) => {
+          const drain = context.drainMailbox(async () => {
+            expect(observed.isHeld()).toBe(false);
+            injectionStarted.resolve();
+            await finishInjection.promise;
+          });
+          await injectionStarted.promise;
+
+          const append = appendInboundMessage({
+            message: inboundMessage("m2", {
+              createdAtMs: 2_000,
+              receivedAtMs: 2_100,
+            }),
+            nowMs: 2_100,
+            state: observed.state,
+          });
+
+          finishInjection.resolve();
+          await drain;
+          await append;
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: observed.state,
+    });
+    expect(state?.needsRun).toBe(true);
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
+    expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
+      "m1",
+      "m2",
+    ]);
+    expect(state?.messages.map((message) => message.injectedAtMs)).toEqual([
+      expect.any(Number),
+      undefined,
+    ]);
+  });
+
   it("extends the lease with worker check-ins during long execution", async () => {
     vi.useFakeTimers({ now: 1_000 });
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
     const finish = deferred<void>();
@@ -358,7 +418,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues an expired conversation lease from heartbeat", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     await expect(
       startConversationWork({ conversationId: CONVERSATION_ID, nowMs: 2_000 }),
@@ -375,7 +435,7 @@ describe("conversation work execution", () => {
     });
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:92000`,
@@ -384,7 +444,7 @@ describe("conversation work execution", () => {
   });
 
   it("keeps an expired injected-message lease runnable for continuation recovery", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const lease = await startConversationWork({
       conversationId: CONVERSATION_ID,
@@ -416,7 +476,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues pending mailbox work with no recent queue marker", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -425,11 +485,11 @@ describe("conversation work execution", () => {
         queue,
       }),
     ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
-    expect(queue.sent).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("uses fresh queue idempotency keys for repeated heartbeat recovery", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -445,14 +505,14 @@ describe("conversation work execution", () => {
       }),
     ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
 
-    expect(queue.sent.map((send) => send.idempotencyKey)).toEqual([
+    expect(queue.sentRecords().map((send) => send.idempotencyKey)).toEqual([
       `heartbeat:pending:${CONVERSATION_ID}:62000`,
       `heartbeat:pending:${CONVERSATION_ID}:122001`,
     ]);
   });
 
   it("runs conversation work recovery from the core heartbeat", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await runHeartbeat({
@@ -460,7 +520,7 @@ describe("conversation work execution", () => {
       conversationWorkQueue: queue,
     });
 
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
@@ -469,7 +529,7 @@ describe("conversation work execution", () => {
   });
 
   it("injects messages that arrive during active execution at a safe boundary", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: string[][] = [];
 
@@ -497,7 +557,7 @@ describe("conversation work execution", () => {
   });
 
   it("clears the run marker after draining messages that arrived during active execution", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -526,7 +586,7 @@ describe("conversation work execution", () => {
   });
 
   it("requeues instead of completing when final mailbox work remains", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -548,7 +608,7 @@ describe("conversation work execution", () => {
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `pending:${CONVERSATION_ID}:2100`,
@@ -557,7 +617,7 @@ describe("conversation work execution", () => {
   });
 
   it("yields cooperatively and leaves the conversation resumable", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -579,7 +639,7 @@ describe("conversation work execution", () => {
     });
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
-    expect(queue.sent).toMatchObject([
+    expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `yield:${CONVERSATION_ID}:242000`,
@@ -675,7 +735,7 @@ describe("conversation work execution", () => {
   it("verifies signed Vercel Queue callback payloads", () => {
     process.env.JUNIOR_SECRET = "conversation-work-secret";
     const signedAtMs = 12_345;
-    const maxSkewMs = 5 * 60 * 1000;
+    const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
       { conversationId: CONVERSATION_ID },
       signedAtMs,
@@ -710,8 +770,23 @@ describe("conversation work execution", () => {
     ).toBeUndefined();
   });
 
+  it("keeps queue signatures valid across default visibility redelivery", () => {
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    const signedAtMs = 12_345;
+    const signed = signConversationQueueMessage(
+      { conversationId: CONVERSATION_ID },
+      signedAtMs,
+    );
+
+    expect(
+      verifySignedConversationQueueMessage(signed, signedAtMs + 330_000),
+    ).toEqual({
+      conversationId: CONVERSATION_ID,
+    });
+  });
+
   it("processes Vercel Queue payloads through the leased worker", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const injected: string[] = [];
 
@@ -735,7 +810,7 @@ describe("conversation work execution", () => {
   });
 
   it("rejects malformed Vercel Queue payloads", async () => {
-    const queue = createFakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
       processConversationQueueMessage(

@@ -270,6 +270,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
+      onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
@@ -403,6 +404,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
+          await options.onInputCommitted?.();
           return;
         }
         if (conversationId && activeTurnId) {
@@ -446,6 +448,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversation: preparedState.conversation,
               });
               await options.onTurnStatePersisted?.();
+              await options.onInputCommitted?.();
               return;
             }
 
@@ -499,6 +502,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
+          await options.onInputCommitted?.();
           return;
         }
         startActiveTurn({
@@ -776,6 +780,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
+              onInputCommitted: options.onInputCommitted,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
             },

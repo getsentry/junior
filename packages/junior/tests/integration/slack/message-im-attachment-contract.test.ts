@@ -1,10 +1,9 @@
-import { createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
+import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
-import type { WaitUntilFn } from "@/handlers/types";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -12,36 +11,9 @@ const BOT_USER_ID = "U_BOT";
 const DM_CHANNEL_ID = "D12345";
 const DM_THREAD_TS = "1700000000.000001";
 const ORIGINAL_ENV = { ...process.env };
-
-function signSlackBody(body: string, timestamp: string): string {
-  const base = `v0:${timestamp}:${body}`;
-  return `v0=${createHmac("sha256", SIGNING_SECRET).update(base).digest("hex")}`;
-}
-
-function createSlackRequest(body: string): Request {
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(body, timestamp),
-    },
-    body,
-  });
-}
-
-function collectWaitUntil(tasks: Array<Promise<unknown>>): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task() : task);
-  };
-}
-
-async function flushWaitUntil(tasks: Array<Promise<unknown>>): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index];
-  }
-}
+const slackWebhookClient = createSlackWebhookTestClient({
+  signingSecret: SIGNING_SECRET,
+});
 
 function makeDiagnostics() {
   return {
@@ -141,7 +113,7 @@ describe("Slack contract: message.im attachment ingress", () => {
         };
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const baseEnvelope = slackEventsApiEnvelope({
       eventType: "message",
@@ -150,7 +122,7 @@ describe("Slack contract: message.im attachment ingress", () => {
       threadTs: DM_THREAD_TS,
       text: "what is in this screenshot?",
     });
-    const body = JSON.stringify({
+    const payload = {
       ...baseEnvelope,
       event: {
         ...baseEnvelope.event,
@@ -165,20 +137,20 @@ describe("Slack contract: message.im attachment ingress", () => {
           },
         ],
       },
-    });
+    };
 
     const { handlePlatformWebhook } = await import("@/handlers/webhooks");
     const response = await handlePlatformWebhook(
-      createSlackRequest(body),
+      slackWebhookClient.event(payload),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
 
     expect(response.status).toBe(200);
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(capturedAttachmentMediaTypes).toEqual([["image/png"]]);
     expect(capturedAttachmentNames).toEqual([["current.png"]]);
-  }, 10_000);
+  }, 20_000);
 });

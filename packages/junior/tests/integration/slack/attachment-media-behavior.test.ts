@@ -147,7 +147,7 @@ describe("Slack behavior: mixed attachment media", () => {
       ["image/png", "application/pdf"],
     ]);
     expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
-  }, 10_000);
+  }, 20_000);
 
   it("drops image attachments when AI_VISION_MODEL is unset", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));

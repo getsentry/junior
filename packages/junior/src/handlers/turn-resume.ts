@@ -7,7 +7,10 @@
  */
 import { logException } from "@/chat/logging";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { resumeTimedOutTurnWithLockRetry } from "@/chat/runtime/timeout-resume-runner";
+import {
+  resumeTimedOutTurnWithLockRetry,
+  type TimeoutResumeRunnerOptions,
+} from "@/chat/runtime/timeout-resume-runner";
 import { verifyTurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -15,6 +18,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 export async function POST(
   request: Request,
   waitUntil: WaitUntilFn,
+  options: TimeoutResumeRunnerOptions = {},
 ): Promise<Response> {
   const payload = await verifyTurnTimeoutResumeRequest(request);
   if (!payload) {
@@ -23,7 +27,7 @@ export async function POST(
 
   waitUntil(() =>
     runWithTurnRequestDeadline(() =>
-      resumeTimedOutTurnWithLockRetry(payload).catch((error) => {
+      resumeTimedOutTurnWithLockRetry(payload, options).catch((error) => {
         logException(
           error,
           "timeout_resume_handler_failed",

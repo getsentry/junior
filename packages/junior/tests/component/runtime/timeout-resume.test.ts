@@ -1,12 +1,12 @@
-import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   scheduleTurnTimeoutResume,
   verifyTurnTimeoutResumeRequest,
 } from "@/chat/services/timeout-resume";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
+import { createTurnResumeTestClient } from "../../fixtures/turn-resume";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
@@ -18,43 +18,6 @@ const ORIGINAL_ENV = vi.hoisted(() => {
   process.env.JUNIOR_SECRET = "resume-secret";
   return original;
 });
-
-class FakeQueue implements ConversationWorkQueue {
-  sent: Array<{
-    conversationId: string;
-    delayMs?: number;
-    idempotencyKey?: string;
-  }> = [];
-
-  async send(
-    message: { conversationId: string },
-    options?: { delayMs?: number; idempotencyKey?: string },
-  ): Promise<{ messageId: string }> {
-    this.sent.push({
-      conversationId: message.conversationId,
-      delayMs: options?.delayMs,
-      idempotencyKey: options?.idempotencyKey,
-    });
-    return { messageId: `queue-${this.sent.length}` };
-  }
-}
-
-function makeSignedResumeRequest(body: Record<string, unknown>): Request {
-  const timestamp = Date.now().toString();
-  const serializedBody = JSON.stringify(body);
-  const signature = createHmac("sha256", "resume-secret")
-    .update(`junior.turn_timeout_resume.v1:${timestamp}:${serializedBody}`)
-    .digest("hex");
-  return new Request("https://junior.example.com/api/internal/turn-resume", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-junior-resume-timestamp": timestamp,
-      "x-junior-resume-signature": `v1=${signature}`,
-    },
-    body: serializedBody,
-  });
-}
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -80,7 +43,7 @@ describe("timeout resume callback signing", () => {
   });
 
   it("marks timeout continuations runnable and wakes the durable queue", async () => {
-    const queue = new FakeQueue();
+    const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
 
     await scheduleTurnTimeoutResume(
@@ -92,7 +55,7 @@ describe("timeout resume callback signing", () => {
       { queue, nowMs: 1_000 },
     );
 
-    expect(queue.sent).toEqual([
+    expect(queue.sentRecords()).toEqual([
       {
         conversationId,
         idempotencyKey: `timeout:${conversationId}:turn_msg_1:3`,
@@ -108,7 +71,10 @@ describe("timeout resume callback signing", () => {
   });
 
   it("still verifies signed callbacks that were already in flight", async () => {
-    const request = makeSignedResumeRequest({
+    const client = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    const request = client.request({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
       expectedVersion: 3,
@@ -122,10 +88,13 @@ describe("timeout resume callback signing", () => {
   });
 
   it("accepts the previous expected checkpoint version field", async () => {
-    const request = makeSignedResumeRequest({
+    const client = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    const request = client.legacyRequest({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
-      expectedCheckpointVersion: 3,
+      expectedVersion: 3,
     });
 
     await expect(verifyTurnTimeoutResumeRequest(request)).resolves.toEqual({
@@ -136,26 +105,25 @@ describe("timeout resume callback signing", () => {
   });
 
   it("rejects requests whose signature does not match the body", async () => {
-    const request = makeSignedResumeRequest({
+    const client = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    const request = client.invalidSignature({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
-    const headers = new Headers(request.headers);
-    headers.set("x-junior-resume-signature", "v1=deadbeef");
-    const tampered = new Request(request.url, {
-      method: request.method,
-      headers,
-      body: await request.text(),
-    });
 
     await expect(
-      verifyTurnTimeoutResumeRequest(tampered),
+      verifyTurnTimeoutResumeRequest(request),
     ).resolves.toBeUndefined();
   });
 
   it("requires the Junior secret to verify legacy callbacks", async () => {
-    const request = makeSignedResumeRequest({
+    const client = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    const request = client.request({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
       expectedVersion: 3,

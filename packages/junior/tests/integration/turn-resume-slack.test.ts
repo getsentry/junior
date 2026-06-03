@@ -1,39 +1,23 @@
 import { Buffer } from "node:buffer";
-import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WaitUntilFn } from "@/handlers/types";
 import {
-  getCapturedSlackApiCalls,
-  getCapturedSlackFileUploadCalls,
-  resetSlackApiMockState,
-} from "../msw/handlers/slack-api";
+  createConversationWorkQueueTestAdapter,
+  type ConversationWorkQueueTestAdapter,
+} from "../fixtures/conversation-work";
+import { slackApiOutbox } from "../fixtures/slack-api-outbox";
+import {
+  createTurnResumeTestClient,
+  type TurnResumeTestClient,
+} from "../fixtures/turn-resume";
+import type { WaitUntilCollector } from "../fixtures/wait-until";
+import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
-const { generateAssistantReplyMock, queueSends } = vi.hoisted(() => ({
+const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
-  queueSends: [] as Array<{
-    conversationId: string;
-    idempotencyKey?: string;
-  }>,
 }));
 
 vi.mock("@/chat/respond", () => ({
   generateAssistantReply: generateAssistantReplyMock,
-}));
-
-vi.mock("@/chat/task-execution/vercel-queue", () => ({
-  DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC: "junior_conversation_work",
-  getVercelConversationWorkQueue: () => ({
-    send: async (
-      message: { conversationId: string },
-      options?: { idempotencyKey?: string },
-    ) => {
-      queueSends.push({
-        conversationId: message.conversationId,
-        idempotencyKey: options?.idempotencyKey,
-      });
-      return { messageId: `queue-${queueSends.length}` };
-    },
-  }),
 }));
 
 const ORIGINAL_ENV = { ...process.env };
@@ -42,43 +26,42 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type TurnResumeHandlerModule = typeof import("@/handlers/turn-resume");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TimeoutResumeServiceModule =
+  typeof import("@/chat/services/timeout-resume");
 
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
 let turnResumeHandlerModule: TurnResumeHandlerModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
+let timeoutResumeServiceModule: TimeoutResumeServiceModule;
+let queue: ConversationWorkQueueTestAdapter;
+let turnResumeClient: TurnResumeTestClient;
+let waitUntil: WaitUntilCollector;
 
-const waitUntilCallbacks: Array<() => Promise<unknown> | void> = [];
-
-const testWaitUntil: WaitUntilFn = (task) => {
-  waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
-};
-
-async function buildSignedTurnResumeRequest(args: {
+function postResumeRequest(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
-}): Promise<Request> {
-  const timestamp = Date.now().toString();
-  const body = JSON.stringify(args);
-  const digest = createHmac("sha256", "resume-secret")
-    .update(`junior.turn_timeout_resume.v1:${timestamp}:${body}`)
-    .digest("hex");
-  return new Request("https://junior.example.com/api/internal/turn-resume", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-junior-resume-timestamp": timestamp,
-      "x-junior-resume-signature": `v1=${digest}`,
+}): Promise<Response> {
+  return turnResumeHandlerModule.POST(
+    turnResumeClient.request(args),
+    waitUntil.fn,
+    {
+      scheduleTurnTimeoutResume: (request) =>
+        timeoutResumeServiceModule.scheduleTurnTimeoutResume(request, {
+          queue,
+        }),
     },
-    body,
-  });
+  );
 }
 
 describe("turn resume slack integration", () => {
   beforeEach(async () => {
-    waitUntilCallbacks.length = 0;
-    queueSends.length = 0;
+    queue = createConversationWorkQueueTestAdapter();
+    turnResumeClient = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    waitUntil = turnResumeClient.waitUntil();
     generateAssistantReplyMock.mockReset();
     generateAssistantReplyMock.mockResolvedValue({
       text: "Final resumed answer",
@@ -101,6 +84,7 @@ describe("turn resume slack integration", () => {
     threadStateModule = await import("@/chat/runtime/thread-state");
     turnResumeHandlerModule = await import("@/handlers/turn-resume");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
+    timeoutResumeServiceModule = await import("@/chat/services/timeout-resume");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -180,19 +164,16 @@ describe("turn resume slack integration", () => {
       source: "test",
     });
 
-    const response = await turnResumeHandlerModule.POST(
-      await buildSignedTurnResumeRequest({
-        conversationId,
-        sessionId,
-        expectedVersion: sessionRecord.version,
-      }),
-      testWaitUntil,
-    );
+    const response = await postResumeRequest({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
 
     expect(response.status).toBe(202);
-    expect(waitUntilCallbacks).toHaveLength(1);
+    expect(waitUntil.pendingCount()).toBe(1);
 
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "resume this request",
@@ -222,7 +203,7 @@ describe("turn resume slack integration", () => {
       "acme",
     );
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
+    expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           params: expect.objectContaining({
@@ -241,7 +222,7 @@ describe("turn resume slack integration", () => {
         }),
       ]),
     );
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+    expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
@@ -330,22 +311,19 @@ describe("turn resume slack integration", () => {
       }),
     );
 
-    const response = await turnResumeHandlerModule.POST(
-      await buildSignedTurnResumeRequest({
-        conversationId,
-        sessionId,
-        expectedVersion: sessionRecord.version,
-      }),
-      testWaitUntil,
-    );
+    const response = await postResumeRequest({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
 
     expect(response.status).toBe(202);
-    expect(waitUntilCallbacks).toHaveLength(1);
+    expect(waitUntil.pendingCount()).toBe(1);
 
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
-    expect(queueSends).toEqual([
+    expect(slackApiOutbox.messages()).toEqual([]);
+    expect(queue.sentRecords()).toEqual([
       {
         conversationId,
         idempotencyKey: expect.stringContaining(
@@ -428,23 +406,20 @@ describe("turn resume slack integration", () => {
       }),
     );
 
-    const response = await turnResumeHandlerModule.POST(
-      await buildSignedTurnResumeRequest({
-        conversationId,
-        sessionId,
-        expectedVersion: sessionRecord.version,
-      }),
-      testWaitUntil,
-    );
+    const response = await postResumeRequest({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
 
     expect(response.status).toBe(202);
-    expect(waitUntilCallbacks).toHaveLength(1);
+    expect(waitUntil.pendingCount()).toBe(1);
 
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    const postCalls = slackApiOutbox.messages();
     expect(postCalls).toEqual([]);
-    expect(queueSends).toEqual([
+    expect(queue.sentRecords()).toEqual([
       {
         conversationId,
         idempotencyKey: expect.stringContaining(
@@ -526,21 +501,18 @@ describe("turn resume slack integration", () => {
       },
     });
 
-    const response = await turnResumeHandlerModule.POST(
-      await buildSignedTurnResumeRequest({
-        conversationId,
-        sessionId,
-        expectedVersion: sessionRecord.version,
-      }),
-      testWaitUntil,
-    );
+    const response = await postResumeRequest({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
 
     expect(response.status).toBe(202);
-    expect(waitUntilCallbacks).toHaveLength(1);
+    expect(waitUntil.pendingCount()).toBe(1);
 
-    await waitUntilCallbacks[0]?.();
+    await waitUntil.flush();
 
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+    expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
@@ -549,10 +521,8 @@ describe("turn resume slack integration", () => {
         }),
       }),
     ]);
-    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
-      1,
-    );
-    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual([
+    expect(slackApiOutbox.calls("files.getUploadURLExternal")).toHaveLength(1);
+    expect(slackApiOutbox.calls("files.completeUploadExternal")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel_id: "C123",
@@ -560,7 +530,7 @@ describe("turn resume slack integration", () => {
         }),
       }),
     ]);
-    expect(getCapturedSlackFileUploadCalls()).toHaveLength(1);
+    expect(slackApiOutbox.fileUploads()).toHaveLength(1);
 
     const persisted =
       await threadStateModule.getPersistedThreadState(conversationId);

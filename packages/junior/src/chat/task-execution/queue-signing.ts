@@ -4,7 +4,7 @@ import type { ConversationQueueMessage } from "./queue";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT =
   "junior.conversation_work_queue.v1";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION = "v1";
-const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 5 * 60 * 1000;
+const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 60 * 60 * 1000;
 
 interface SignedConversationQueueMessage extends ConversationQueueMessage {
   signature: string;

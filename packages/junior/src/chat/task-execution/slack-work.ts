@@ -8,7 +8,11 @@ import {
   type StateAdapter,
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
-import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
+import {
+  isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
@@ -242,7 +246,7 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      await resumeAwaitingContinuation(context.conversationId);
+      await resumeContinuation(context.conversationId);
       return { status: "completed" };
     }
 
@@ -291,7 +295,6 @@ export function createSlackConversationWorker(
           (record) => record.inboundMessageId,
         );
         let initialMessagesPersisted = false;
-        let leaseLostDuringTurnHandoff = false;
         const markInitialMessagesInjected = async (): Promise<boolean> => {
           if (initialMessagesPersisted) {
             return true;
@@ -305,11 +308,10 @@ export function createSlackConversationWorker(
           initialMessagesPersisted = marked;
           return marked;
         };
-        const onTurnStatePersisted = async (): Promise<void> => {
+        const onInputCommitted = async (): Promise<void> => {
           if (!(await markInitialMessagesInjected())) {
-            leaseLostDuringTurnHandoff = true;
-            throw new Error(
-              `Conversation work lease lost before Slack turn handoff for ${context.conversationId}`,
+            throw new TurnInputCommitLostError(
+              `Conversation work lease lost before Slack input commit for ${context.conversationId}`,
             );
           }
         };
@@ -335,7 +337,7 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               messageContext,
               drainSteeringMessages,
-              onTurnStatePersisted,
+              onInputCommitted,
               shouldYield: context.shouldYield,
             });
             return;
@@ -344,14 +346,14 @@ export function createSlackConversationWorker(
           await options.runtime.handleSubscribedMessage(thread, latestMessage, {
             messageContext,
             drainSteeringMessages,
-            onTurnStatePersisted,
+            onInputCommitted,
             shouldYield: context.shouldYield,
           });
         } catch (error) {
           if (isCooperativeTurnYieldError(error)) {
             return { status: "yielded" } satisfies ConversationWorkerResult;
           }
-          if (leaseLostDuringTurnHandoff) {
+          if (isTurnInputCommitLostError(error)) {
             return { status: "lost_lease" } satisfies ConversationWorkerResult;
           }
           throw error;

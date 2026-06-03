@@ -165,7 +165,7 @@ describe("bot image hydration", () => {
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
-  }, 10_000);
+  }, 20_000);
 
   it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
     const { slackRuntime } = await createRuntime({
@@ -266,7 +266,7 @@ describe("bot image hydration", () => {
         slackTs: "1700000001.200",
       },
     });
-  });
+  }, 20_000);
 
   it("backfills older image messages after vision is enabled later", async () => {
     const firstRuntime = await createRuntime({

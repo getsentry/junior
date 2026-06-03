@@ -85,6 +85,7 @@ import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import {
   CooperativeTurnYieldError,
   RetryableTurnError,
+  isTurnInputCommitLostError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
 import {
@@ -228,6 +229,7 @@ export interface ReplyRequestContext {
   onArtifactStateUpdated?: (
     artifactState: ThreadArtifactsState,
   ) => void | Promise<void>;
+  onInputCommitted?: () => void | Promise<void>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;
@@ -469,6 +471,7 @@ export async function generateAssistantReply(
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
   let yielded = false;
+  let inputCommitted = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
   const requester = requesterFromContext(
@@ -1105,15 +1108,22 @@ export async function generateAssistantReply(
     // ── Agent execution ──────────────────────────────────────────────
     let hasEmittedText = false;
     let needsSeparator = false;
+    const commitInput = async (): Promise<void> => {
+      if (inputCommitted) {
+        return;
+      }
+      await context.onInputCommitted?.();
+      inputCommitted = true;
+    };
     const persistSafeBoundary = async (
       messages: PiMessage[],
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       if (
         !turnSessionState.canUseTurnSession ||
         !sessionConversationId ||
         !sessionId
       ) {
-        return;
+        return false;
       }
 
       await persistRunningSessionRecord({
@@ -1127,6 +1137,7 @@ export async function generateAssistantReply(
         requester,
       });
       latestSafeBoundaryMessages = [...messages];
+      return true;
     };
     const drainSteeringMessages = async (): Promise<void> => {
       if (
@@ -1206,7 +1217,9 @@ export async function generateAssistantReply(
 
     const unsubscribe = agent.subscribe((event) => {
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        return persistSafeBoundary([...agent!.state.messages]);
+        return persistSafeBoundary([...agent!.state.messages]).then(
+          () => undefined,
+        );
       }
       if (event.type === "message_start") {
         Promise.resolve(context.onAssistantMessageStart?.()).catch((error) => {
@@ -1274,10 +1287,13 @@ export async function generateAssistantReply(
             timestamp: Date.now(),
           } as PiMessage;
           if (!resumedFromSessionRecord) {
-            await persistSafeBoundary([
+            const promptPersisted = await persistSafeBoundary([
               ...agent.state.messages,
               freshPromptMessage,
             ]);
+            if (promptPersisted) {
+              await commitInput();
+            }
           }
 
           const runAgentStep = async (
@@ -1607,7 +1623,13 @@ export async function generateAssistantReply(
     if (isRetryableTurnError(error)) {
       throw error;
     }
+    if (isTurnInputCommitLostError(error)) {
+      throw error;
+    }
     if (error instanceof AuthorizationFlowDisabledError) {
+      throw error;
+    }
+    if (context.onInputCommitted && !inputCommitted) {
       throw error;
     }
 

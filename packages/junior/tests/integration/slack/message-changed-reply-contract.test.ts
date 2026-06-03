@@ -1,35 +1,20 @@
-import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
-import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
-
-function signSlackBody(body: string, timestamp: string): string {
-  const base = `v0:${timestamp}:${body}`;
-  return `v0=${createHmac("sha256", SIGNING_SECRET).update(base).digest("hex")}`;
-}
-
-async function flushWaitUntil(tasks: Array<Promise<unknown>>): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index];
-  }
-}
-
-function collectWaitUntil(tasks: Array<Promise<unknown>>): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task() : task);
-  };
-}
+const slackWebhookClient = createSlackWebhookTestClient({
+  signingSecret: SIGNING_SECRET,
+});
 
 function makeDiagnostics() {
   return {
@@ -48,7 +33,7 @@ function createEditedMentionRequest(args: {
   newText: string;
   prevText: string;
 }): Request {
-  const body = JSON.stringify({
+  return slackWebhookClient.event({
     ...slackEventsApiEnvelope({
       eventType: "message",
       channel: "D12345",
@@ -73,17 +58,6 @@ function createEditedMentionRequest(args: {
         ts: args.messageTs,
       },
     },
-  });
-  const timestamp = String(Math.floor(Date.now() / 1000));
-
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      "x-slack-signature": signSlackBody(body, timestamp),
-    },
-    body,
   });
 }
 
@@ -130,7 +104,7 @@ describe("Slack contract: edited-message reply delivery", () => {
         };
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createEditedMentionRequest({
@@ -139,13 +113,13 @@ describe("Slack contract: edited-message reply delivery", () => {
         prevText: "hello there",
       }),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+    expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           blocks: [
@@ -184,7 +158,7 @@ describe("Slack contract: edited-message reply delivery", () => {
         diagnostics: makeDiagnostics(),
       }),
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handlePlatformWebhook(
       createEditedMentionRequest({
@@ -193,13 +167,13 @@ describe("Slack contract: edited-message reply delivery", () => {
         prevText: "hello there",
       }),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    const postCalls = slackApiOutbox.messages();
     expect(postCalls.length).toBeGreaterThan(1);
     expect(postCalls[0]).toEqual(
       expect.objectContaining({

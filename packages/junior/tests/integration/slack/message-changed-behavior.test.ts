@@ -1,51 +1,23 @@
-import { createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
-import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
 const ORIGINAL_ENV = { ...process.env };
-
-function signSlackBody(body: string, timestamp: string): string {
-  const base = `v0:${timestamp}:${body}`;
-  return `v0=${createHmac("sha256", SIGNING_SECRET).update(base).digest("hex")}`;
-}
-
-function createSlackRequest(body: string, signature?: string): Request {
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  return new Request("https://example.test/api/webhooks/slack", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-slack-request-timestamp": timestamp,
-      ...(signature ? { "x-slack-signature": signature } : {}),
-    },
-    body,
-  });
-}
-
-async function flushWaitUntil(tasks: Array<Promise<unknown>>): Promise<void> {
-  for (let index = 0; index < tasks.length; index += 1) {
-    await tasks[index];
-  }
-}
-
-function collectWaitUntil(tasks: Array<Promise<unknown>>): WaitUntilFn {
-  return (task) => {
-    tasks.push(typeof task === "function" ? task() : task);
-  };
-}
+const slackWebhookClient = createSlackWebhookTestClient({
+  signingSecret: SIGNING_SECRET,
+});
 
 function makeDiagnostics() {
   return {
@@ -79,7 +51,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     const handledMessages: Array<
       Pick<Message, "id" | "text" | "isMention" | "raw">
     > = [];
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     bot.onDirectMessage(async (_thread, message) => {
       handledMessages.push({
@@ -90,35 +62,20 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       });
     });
 
-    const originalBody = JSON.stringify(
-      slackEventsApiEnvelope({
-        eventType: "message",
-        channel: "D12345",
-        ts: "1700000100.000100",
-        text: "hello there",
-      }),
-    );
-    const originalTimestamp = String(Math.floor(Date.now() / 1000));
-    const originalRequest = new Request(
-      "https://example.test/api/webhooks/slack",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-slack-request-timestamp": originalTimestamp,
-          "x-slack-signature": signSlackBody(originalBody, originalTimestamp),
-        },
-        body: originalBody,
-      },
-    );
-
     const originalResponse = await handlePlatformWebhook(
-      originalRequest,
+      slackWebhookClient.event(
+        slackEventsApiEnvelope({
+          eventType: "message",
+          channel: "D12345",
+          ts: "1700000100.000100",
+          text: "hello there",
+        }),
+      ),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     const editedPayload = {
       ...slackEventsApiEnvelope({
@@ -146,28 +103,14 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         },
       },
     };
-    const editedBody = JSON.stringify(editedPayload);
-    const editedTimestamp = String(Math.floor(Date.now() / 1000));
-    const editedRequest = new Request(
-      "https://example.test/api/webhooks/slack",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-slack-request-timestamp": editedTimestamp,
-          "x-slack-signature": signSlackBody(editedBody, editedTimestamp),
-        },
-        body: editedBody,
-      },
-    );
 
     const editedResponse = await handlePlatformWebhook(
-      editedRequest,
+      slackWebhookClient.event(editedPayload),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(originalResponse.status).toBe(200);
     expect(editedResponse.status).toBe(200);
@@ -214,7 +157,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       },
       state,
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
     const handledMessages: Array<
       Pick<Message, "attachments" | "id" | "isMention" | "text">
     > = [];
@@ -228,7 +170,8 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       });
     });
 
-    const editedBody = JSON.stringify({
+    const waitUntil = slackWebhookClient.waitUntil();
+    const editedPayload = {
       ...slackEventsApiEnvelope({
         eventType: "message",
         channel: "D12345",
@@ -262,28 +205,15 @@ describe("Slack behavior: message_changed webhook ingress", () => {
           ts: "1700000100.000102",
         },
       },
-    });
-    const editedTimestamp = String(Math.floor(Date.now() / 1000));
-    const editedRequest = new Request(
-      "https://example.test/api/webhooks/slack",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-slack-request-timestamp": editedTimestamp,
-          "x-slack-signature": signSlackBody(editedBody, editedTimestamp),
-        },
-        body: editedBody,
-      },
-    );
+    };
 
     const response = await handlePlatformWebhook(
-      editedRequest,
+      slackWebhookClient.event(editedPayload),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(response.status).toBe(200);
     expect(handledMessages).toHaveLength(1);
@@ -333,13 +263,13 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         },
       },
     });
-    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const waitUntil = slackWebhookClient.waitUntil();
 
     bot.onDirectMessage((thread, message) =>
       slackRuntime.handleNewMention(thread, message),
     );
 
-    const editedBody = JSON.stringify({
+    const editedPayload = {
       ...slackEventsApiEnvelope({
         eventType: "message",
         channel: "D12345",
@@ -364,31 +294,18 @@ describe("Slack behavior: message_changed webhook ingress", () => {
           ts: "1700000100.000100",
         },
       },
-    });
-    const editedTimestamp = String(Math.floor(Date.now() / 1000));
-    const editedRequest = new Request(
-      "https://example.test/api/webhooks/slack",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-slack-request-timestamp": editedTimestamp,
-          "x-slack-signature": signSlackBody(editedBody, editedTimestamp),
-        },
-        body: editedBody,
-      },
-    );
+    };
 
     const response = await handlePlatformWebhook(
-      editedRequest,
+      slackWebhookClient.event(editedPayload),
       "slack",
-      collectWaitUntil(waitUntilTasks),
+      waitUntil.fn,
       bot,
     );
-    await flushWaitUntil(waitUntilTasks);
+    await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    const postCalls = slackApiOutbox.messages();
 
     expect(postCalls).toHaveLength(1);
     expect(postCalls[0]).toEqual(
@@ -420,7 +337,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       handledMessages.push(message);
     });
 
-    const body = JSON.stringify({
+    const payload = {
       ...slackEventsApiEnvelope({
         eventType: "message",
         channel: "D12345",
@@ -440,11 +357,10 @@ describe("Slack behavior: message_changed webhook ingress", () => {
           text: "hello there",
         },
       },
-    });
-    const request = createSlackRequest(body, "v0=forged");
+    };
 
     const response = await handlePlatformWebhook(
-      request,
+      slackWebhookClient.invalidSignature(payload),
       "slack",
       () => undefined,
       bot,

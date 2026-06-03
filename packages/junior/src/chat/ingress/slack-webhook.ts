@@ -180,6 +180,10 @@ function shouldIgnoreMessage(message: Message): boolean {
   );
 }
 
+function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
+  return body.event?.type === "app_mention" || body.event?.type === "message";
+}
+
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
@@ -625,15 +629,20 @@ export async function handleSlackWebhook(args: {
   }
 
   if (parsed.type === "event_callback") {
-    enqueue(
-      args.waitUntil,
-      handleSlackEvent({
-        body: parsed,
-        services: args.services,
-      }).catch((error) => {
-        logException(error, "slack_event_enqueue_failed");
-      }),
-    );
+    const eventTask = handleSlackEvent({
+      body: parsed,
+      services: args.services,
+    });
+    if (shouldPersistBeforeAck(parsed)) {
+      await eventTask;
+    } else {
+      enqueue(
+        args.waitUntil,
+        eventTask.catch((error) => {
+          logException(error, "slack_event_enqueue_failed");
+        }),
+      );
+    }
   }
 
   return new Response("ok", { status: 200 });
