@@ -71,6 +71,10 @@ import {
 } from "@/chat/slack/assistant-thread/status";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
+import {
+  resolveSlackChannelTypeFromMessage,
+  resolveSlackConversationContext,
+} from "@/chat/slack/conversation-context";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -275,6 +279,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const channelName = channelId
       ? await resolveChannelName(thread)
       : undefined;
+    const slackConversation = resolveSlackConversationContext({
+      channelId,
+      channelName,
+      channelType: resolveSlackChannelTypeFromMessage(message),
+    });
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
@@ -669,6 +678,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,
               userAttachments,
+              slackConversation,
               correlation: {
                 conversationId,
                 threadId,

@@ -22,6 +22,7 @@ import {
   SANDBOX_WORKSPACE_ROOT,
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
+import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
@@ -445,10 +446,17 @@ function buildWorldSection(): string | null {
 
 function buildRuntimeSection(params: {
   conversationId?: string;
+  slackConversation?: SlackConversationContext;
 }): string | null {
   const lines = [
     params.conversationId
       ? `- gen_ai.conversation.id: ${escapeXml(params.conversationId)}`
+      : "",
+    params.slackConversation?.type
+      ? `- slack.conversation.type: ${escapeXml(params.slackConversation.type)}`
+      : "",
+    params.slackConversation?.name
+      ? `- slack.conversation.name: ${escapeXml(params.slackConversation.name)}`
       : "",
   ].filter(Boolean);
 
@@ -559,6 +567,7 @@ type TurnContextPromptInput = {
   toolGuidance?: ToolPromptContext[];
   runtime?: {
     conversationId?: string;
+    slackConversation?: SlackConversationContext;
   };
   invocation: SkillInvocation | null;
   requester?: {

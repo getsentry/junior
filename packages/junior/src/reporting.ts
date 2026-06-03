@@ -15,6 +15,10 @@ import {
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
 import {
+  formatSlackConversationContextLabel,
+  resolveSlackConversationContextFromThreadId,
+} from "@/chat/slack/conversation-context";
+import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
 } from "@/chat/conversation-privacy";
@@ -30,6 +34,7 @@ import { GET as healthGET } from "@/handlers/health";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
+const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 
 export interface HealthReport {
   status: "ok";
@@ -250,19 +255,6 @@ function titleFromSummary(summary: AgentTurnSessionSummary): string {
   return `Turn ${summary.sessionId}`;
 }
 
-function safePrivateLabel(summary: AgentTurnSessionSummary): string {
-  const slackThread = parseSlackThreadId(summary.conversationId);
-  if (slackThread?.channelId.startsWith("D")) {
-    return "Direct Message";
-  }
-  if (slackThread?.channelId.startsWith("G")) {
-    return summary.channelName?.startsWith("mpdm-")
-      ? "Group DM"
-      : "Private Channel";
-  }
-  return "Private Channel";
-}
-
 function requesterIdentityReport(
   requester: AgentTurnRequester | undefined,
 ): DashboardRequesterIdentity | undefined {
@@ -313,8 +305,15 @@ function sessionReportFromSummary(
   const privacy = resolveConversationPrivacy({
     conversationId: summary.conversationId,
   });
+  const slackConversation = resolveSlackConversationContextFromThreadId({
+    threadId: summary.conversationId,
+    channelName: summary.channelName,
+  });
   const privateLabel =
-    privacy !== "public" ? safePrivateLabel(summary) : undefined;
+    privacy !== "public"
+      ? (formatSlackConversationContextLabel(slackConversation) ??
+        PRIVATE_CONVERSATION_LABEL)
+      : undefined;
   const conversationTitle = privateLabel ?? summary.conversationTitle;
   const channelName = privateLabel ?? summary.channelName;
   const sentryConversationUrl = buildSentryConversationUrl(

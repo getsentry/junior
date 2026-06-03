@@ -1,0 +1,135 @@
+import { normalizeSlackConversationId } from "@/chat/slack/client";
+import { parseSlackThreadId } from "@/chat/slack/context";
+
+/** Slack Events API channel_type values relevant to message surfaces. */
+export type SlackEventChannelType = "channel" | "group" | "mpim" | "im";
+
+/** Privacy-preserving conversation categories Junior can share with agents. */
+export type SlackConversationType =
+  | "public_channel"
+  | "private_channel"
+  | "group_dm"
+  | "direct_message"
+  | "private_channel_or_group_dm";
+
+/** Safe Slack conversation facts for runtime and model-facing context. */
+export interface SlackConversationContext {
+  type: SlackConversationType;
+  name?: string;
+}
+
+function normalizeChannelName(
+  channelName: string | undefined,
+): string | undefined {
+  const trimmed = channelName?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+}
+
+function typeFromSlackChannelType(
+  channelType: SlackEventChannelType | undefined,
+): SlackConversationType | undefined {
+  if (channelType === "channel") return "public_channel";
+  if (channelType === "group") return "private_channel";
+  if (channelType === "mpim") return "group_dm";
+  if (channelType === "im") return "direct_message";
+  return undefined;
+}
+
+function typeFromChannelId(
+  channelId: string | undefined,
+  channelName: string | undefined,
+): SlackConversationType | undefined {
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return undefined;
+  if (normalized.startsWith("C")) return "public_channel";
+  if (normalized.startsWith("D")) return "direct_message";
+  if (normalized.startsWith("G")) {
+    return channelName?.trim().startsWith("mpdm-")
+      ? "group_dm"
+      : "private_channel_or_group_dm";
+  }
+  return undefined;
+}
+
+function toSlackEventChannelType(
+  channelType: string | undefined,
+): SlackEventChannelType | undefined {
+  if (
+    channelType === "channel" ||
+    channelType === "group" ||
+    channelType === "mpim" ||
+    channelType === "im"
+  ) {
+    return channelType;
+  }
+  return undefined;
+}
+
+/** Resolve Slack's raw event channel type from a Chat SDK message-like object. */
+export function resolveSlackChannelTypeFromMessage(
+  message: unknown,
+): SlackEventChannelType | undefined {
+  const raw = (message as { raw?: unknown }).raw;
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const channelType = (raw as Record<string, unknown>).channel_type;
+  return typeof channelType === "string"
+    ? toSlackEventChannelType(channelType.trim())
+    : undefined;
+}
+
+/** Build Slack conversation facts safe enough to share with runtime consumers. */
+export function resolveSlackConversationContext(input: {
+  channelId?: string;
+  channelName?: string;
+  channelType?: SlackEventChannelType;
+}): SlackConversationContext | undefined {
+  const type =
+    typeFromSlackChannelType(input.channelType) ??
+    typeFromChannelId(input.channelId, input.channelName);
+  if (!type) return undefined;
+
+  const name =
+    type === "public_channel"
+      ? normalizeChannelName(input.channelName)
+      : undefined;
+
+  return {
+    type,
+    ...(name ? { name } : {}),
+  };
+}
+
+/** Build Slack conversation facts from Junior's persisted Slack thread id. */
+export function resolveSlackConversationContextFromThreadId(input: {
+  threadId?: string;
+  channelName?: string;
+}): SlackConversationContext | undefined {
+  const slackThread = parseSlackThreadId(input.threadId);
+  return resolveSlackConversationContext({
+    channelId: slackThread?.channelId,
+    channelName: input.channelName,
+  });
+}
+
+/** Render a human label for a privacy-preserving Slack conversation type. */
+export function formatSlackConversationTypeLabel(
+  type: SlackConversationType,
+): string {
+  if (type === "public_channel") return "Public Channel";
+  if (type === "private_channel") return "Private Channel";
+  if (type === "group_dm") return "Group DM";
+  if (type === "direct_message") return "Direct Message";
+  return "Private Channel or Group DM";
+}
+
+/** Render the safest available Slack conversation label for UI surfaces. */
+export function formatSlackConversationContextLabel(
+  context: SlackConversationContext | undefined,
+): string | undefined {
+  if (!context) return undefined;
+  return context.name ?? formatSlackConversationTypeLabel(context.type);
+}

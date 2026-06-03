@@ -79,6 +79,7 @@ import {
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
+import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
@@ -190,6 +191,7 @@ export interface ReplyRequestContext {
     fullName?: string;
     email?: string;
   };
+  slackConversation?: SlackConversationContext;
   correlation?: {
     conversationId?: string;
     threadId?: string;
@@ -970,6 +972,7 @@ export async function generateAssistantReply(
       toolGuidance,
       runtime: {
         conversationId: spanContext.conversationId,
+        slackConversation: context.slackConversation,
       },
       invocation: skillInvocation,
       requester: context.requester,
