@@ -134,9 +134,9 @@ export async function persistRunningSessionRecord(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
-}): Promise<void> {
+}): Promise<boolean> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
-    return;
+    return false;
   }
 
   try {
@@ -165,6 +165,7 @@ export async function persistRunningSessionRecord(args: {
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
     });
+    return true;
   } catch (recordError) {
     logSessionRecordError(
       recordError,
@@ -175,6 +176,7 @@ export async function persistRunningSessionRecord(args: {
       },
       "Failed to persist running turn session record",
     );
+    return false;
   }
 }
 

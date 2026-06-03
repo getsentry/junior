@@ -511,25 +511,29 @@ describe("persistAuthPauseSessionRecord", () => {
       } as PiMessage,
     ];
 
-    await persistRunningSessionRecord({
-      conversationId: "conversation-1",
-      sessionId: "turn-1",
-      sliceId: 1,
-      messages: userBoundary,
-      logContext: {
-        modelId: "test-model",
-      },
-    });
+    await expect(
+      persistRunningSessionRecord({
+        conversationId: "conversation-1",
+        sessionId: "turn-1",
+        sliceId: 1,
+        messages: userBoundary,
+        logContext: {
+          modelId: "test-model",
+        },
+      }),
+    ).resolves.toBe(true);
 
-    await persistRunningSessionRecord({
-      conversationId: "conversation-1",
-      sessionId: "turn-1",
-      sliceId: 1,
-      messages: unsafeAssistantBoundary,
-      logContext: {
-        modelId: "test-model",
-      },
-    });
+    await expect(
+      persistRunningSessionRecord({
+        conversationId: "conversation-1",
+        sessionId: "turn-1",
+        sliceId: 1,
+        messages: unsafeAssistantBoundary,
+        logContext: {
+          modelId: "test-model",
+        },
+      }),
+    ).resolves.toBe(false);
 
     let sessionRecord = await getAgentTurnSessionRecord(
       "conversation-1",
@@ -540,21 +544,56 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: userBoundary,
     });
 
-    await persistRunningSessionRecord({
-      conversationId: "conversation-1",
-      sessionId: "turn-1",
-      sliceId: 1,
-      messages: toolResultBoundary,
-      logContext: {
-        modelId: "test-model",
-      },
-    });
+    await expect(
+      persistRunningSessionRecord({
+        conversationId: "conversation-1",
+        sessionId: "turn-1",
+        sliceId: 1,
+        messages: toolResultBoundary,
+        logContext: {
+          modelId: "test-model",
+        },
+      }),
+    ).resolves.toBe(true);
 
     sessionRecord = await getAgentTurnSessionRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "running",
       piMessages: toolResultBoundary,
     });
+  });
+
+  it("reports running record storage failures", async () => {
+    vi.doMock("@/chat/state/turn-session", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("@/chat/state/turn-session")>();
+      return {
+        ...actual,
+        upsertAgentTurnSessionRecord: vi.fn(async () => {
+          throw new Error("storage unavailable");
+        }),
+      };
+    });
+    const { persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+
+    await expect(
+      persistRunningSessionRecord({
+        conversationId: "conversation-storage-failure",
+        sessionId: "turn-storage-failure",
+        sliceId: 1,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "help me" }],
+            timestamp: 1,
+          },
+        ],
+        logContext: {
+          modelId: "test-model",
+        },
+      }),
+    ).resolves.toBe(false);
   });
 
   it("promotes the latest running record when timeout capture has no messages", async () => {

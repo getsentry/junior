@@ -187,7 +187,10 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { generateAssistantReply } from "@/chat/respond";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  isRetryableTurnError,
+  isTurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
@@ -204,6 +207,17 @@ describe("generateAssistantReply timeout resume", () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
+  });
+
+  it("rejects durable input when no prompt checkpoint can be persisted", async () => {
+    const onInputCommitted = vi.fn();
+
+    const error = await generateAssistantReply("help me", {
+      onInputCommitted,
+    }).catch((caught) => caught);
+
+    expect(isTurnInputCommitLostError(error)).toBe(true);
+    expect(onInputCommitted).not.toHaveBeenCalled();
   });
 
   it("stores the last safe boundary and throws a retryable timeout error", async () => {

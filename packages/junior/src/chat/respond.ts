@@ -85,6 +85,7 @@ import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import {
   CooperativeTurnYieldError,
   RetryableTurnError,
+  TurnInputCommitLostError,
   isTurnInputCommitLostError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
@@ -1126,7 +1127,7 @@ export async function generateAssistantReply(
         return false;
       }
 
-      await persistRunningSessionRecord({
+      const persisted = await persistRunningSessionRecord({
         channelName: context.correlation?.channelName,
         conversationId: sessionConversationId,
         sessionId,
@@ -1136,8 +1137,23 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
+      if (!persisted) {
+        return false;
+      }
+
       latestSafeBoundaryMessages = [...messages];
       return true;
+    };
+    const requireDurableInputCheckpoint = async (
+      messages: PiMessage[],
+    ): Promise<boolean> => {
+      const persisted = await persistSafeBoundary(messages);
+      if (!persisted && context.onInputCommitted) {
+        throw new TurnInputCommitLostError(
+          `Durable turn input could not be checkpointed for conversation=${sessionConversationId ?? "unknown"} session=${sessionId ?? "unknown"}`,
+        );
+      }
+      return persisted;
     };
     const drainSteeringMessages = async (): Promise<void> => {
       if (
@@ -1156,7 +1172,10 @@ export async function generateAssistantReply(
           if (piMessages.length === 0) {
             return;
           }
-          await persistSafeBoundary([...agent!.state.messages, ...piMessages]);
+          await requireDurableInputCheckpoint([
+            ...agent!.state.messages,
+            ...piMessages,
+          ]);
           for (const message of piMessages) {
             agent!.steer(message);
           }
@@ -1173,6 +1192,9 @@ export async function generateAssistantReply(
           );
         }
       } catch (error) {
+        if (isTurnInputCommitLostError(error)) {
+          throw error;
+        }
         logWarn(
           "agent_turn_steering_messages_drain_failed",
           spanContext,
@@ -1287,7 +1309,7 @@ export async function generateAssistantReply(
             timestamp: Date.now(),
           } as PiMessage;
           if (!resumedFromSessionRecord) {
-            const promptPersisted = await persistSafeBoundary([
+            const promptPersisted = await requireDurableInputCheckpoint([
               ...agent.state.messages,
               freshPromptMessage,
             ]);
