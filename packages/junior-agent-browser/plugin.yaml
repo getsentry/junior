@@ -1,0 +1,58 @@
+name: agent-browser
+description: Browser automation workflows powered by agent-browser CLI
+
+runtime-dependencies:
+  - type: npm
+    package: agent-browser
+  - type: system
+    package: alsa-lib
+  - type: system
+    package: atk
+  - type: system
+    package: at-spi2-atk
+  - type: system
+    package: at-spi2-core
+  - type: system
+    package: cairo
+  - type: system
+    package: cups-libs
+  - type: system
+    package: dbus-libs
+  - type: system
+    package: glib2
+  - type: system
+    package: gtk3
+  - type: system
+    package: libdrm
+  - type: system
+    package: mesa-libgbm
+  - type: system
+    package: nspr
+  - type: system
+    package: nss
+  - type: system
+    package: pango
+  - type: system
+    package: libX11
+  - type: system
+    package: libX11-xcb
+  - type: system
+    package: libxcb
+  - type: system
+    package: libXcomposite
+  - type: system
+    package: libXdamage
+  - type: system
+    package: libXext
+  - type: system
+    package: libXfixes
+  - type: system
+    package: libXrandr
+  - type: system
+    package: libxshmfence
+  - type: system
+    package: libxkbcommon
+
+runtime-postinstall:
+  - cmd: agent-browser
+    args: [install]

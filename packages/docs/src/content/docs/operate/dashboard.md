@@ -1,0 +1,138 @@
+---
+title: Dashboard
+description: Mount the authenticated Junior dashboard with Google domain auth.
+type: tutorial
+summary: Add the dashboard package to a Nitro deployment and protect diagnostics with Better Auth and Google domain authorization.
+prerequisites:
+  - /start-here/existing-app/
+  - /reference/config-and-env/
+related:
+  - /reference/handler-surface/
+  - /operate/security-hardening/
+  - /start-here/verify-and-troubleshoot/
+---
+
+Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior, but its Better Auth session only protects dashboard routes.
+
+## Install
+
+Install the dashboard package next to `@sentry/junior`:
+
+```bash
+pnpm add @sentry/junior-dashboard
+```
+
+## Register the plugin
+
+Register `juniorDashboardPlugin()` in the runtime-safe plugin set. Configure the
+Google Workspace domain that should be allowed to view the dashboard:
+
+```ts title="plugins.ts"
+import { defineJuniorPlugins } from "@sentry/junior";
+import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
+
+export const plugins = defineJuniorPlugins([
+  juniorDashboardPlugin({
+    allowedGoogleDomains: ["sentry.io"],
+    trustedOrigins: ["https://<your-domain>"],
+  }),
+]);
+```
+
+`createApp()` reads that plugin set from Nitro's virtual config:
+
+```ts title="server.ts"
+import { createApp } from "@sentry/junior";
+
+export default await createApp();
+```
+
+Point the Junior Nitro module at the same plugin module:
+
+```ts title="nitro.config.ts"
+import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
+
+export default defineConfig({
+  preset: "vercel",
+  modules: [
+    juniorNitro({
+      plugins: "./plugins",
+    }),
+  ],
+  routes: {
+    "/**": { handler: "./server.ts" },
+  },
+});
+```
+
+You can also provide the same authorization policy through deployment environment variables:
+
+| Variable                           | Purpose                                                       |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | Comma-separated or JSON array of allowed Google domains.      |
+| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | Comma-separated or JSON array of explicit email allowlist.    |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | Comma-separated or JSON array of Better Auth trusted origins. |
+| `JUNIOR_DASHBOARD_AUTH_REQUIRED`   | Set to `false` only for explicit local dashboard auth bypass. |
+
+The dashboard package owns these routes:
+
+| Route              | Purpose                                 |
+| ------------------ | --------------------------------------- |
+| `/`                | Authenticated command-center UI.        |
+| `/conversations`   | Authenticated conversation-history UI.  |
+| `/api/dashboard/*` | Authenticated dashboard JSON APIs.      |
+| `/api/auth/*`      | Better Auth Google login and callbacks. |
+
+`/health` remains the public minimal Junior runtime health response.
+
+The current dashboard API slices are:
+
+| Endpoint                                     | Purpose                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `/api/dashboard/health`                      | Health status for the command center pulse.                                            |
+| `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.                                        |
+| `/api/dashboard/plugins`                     | Loaded plugin list.                                                                    |
+| `/api/dashboard/skills`                      | Discovered skill list.                                                                 |
+| `/api/dashboard/sessions`                    | Recent conversation feed from turn-session checkpoints.                                |
+| `/api/dashboard/conversations/:conversation` | Expiring conversation transcript; private conversations return redacted metadata only. |
+| `/api/dashboard/config`                      | Safe dashboard config signals and feature readiness.                                   |
+| `/api/dashboard/me`                          | Signed-in dashboard identity.                                                          |
+
+The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health and recent turn durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and turn/tool-call detail for one conversation. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The conversation feed is a bounded metadata index with the same expiration policy as turn-session checkpoints. Conversation detail reads transcript data from the expiring checkpoint message store, so old transcripts disappear when checkpoint state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the turn metadata.
+Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
+
+For local dashboard visual QA, pass `mockConversations: true` to `juniorDashboardPlugin()` or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real session records.
+
+## Configure Google auth
+
+Create a Google OAuth client for the deployment origin. Add this redirect URI:
+
+```text
+https://<your-domain>/api/auth/callback/google
+```
+
+Set the required environment variables:
+
+| Variable               | Purpose                     |
+| ---------------------- | --------------------------- |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID.     |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
+
+Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
+Dashboard callbacks use `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `BETTER_AUTH_URL` only when dashboard auth needs a different public origin.
+
+## Verify
+
+After deployment:
+
+1. `GET https://<your-domain>/health` returns a minimal health JSON response.
+2. `GET https://<your-domain>/api/info` returns `404`.
+3. Opening `https://<your-domain>/` starts Google login.
+4. A user from the configured Google Workspace domain reaches the dashboard.
+5. A user outside the configured domain receives `403`.
+
+## Next step
+
+Use [Security Hardening](/operate/security-hardening/) to review production auth boundaries, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for deployment smoke checks.

@@ -1,0 +1,7 @@
+name: eval-mcp
+description: Eval-only MCP lookup fixture
+
+mcp:
+  url: https://eval-mcp.example.test/mcp
+  allowed-tools:
+    - handbook-search

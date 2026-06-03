@@ -1,0 +1,726 @@
+import type {
+  DashboardConversationReport,
+  DashboardSessionFeed,
+  DashboardSessionReport,
+  DashboardTranscriptMessage,
+  DashboardTurnReport,
+  JuniorReporting,
+} from "@sentry/junior/reporting";
+
+import { longReleaseConversation } from "./mock-release-conversation";
+
+const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
+const HUNG_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
+const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
+
+function iso(nowMs: number, offsetMs = 0): string {
+  return new Date(nowMs + offsetMs).toISOString();
+}
+
+function sentryConversationUrl(conversationId: string): string {
+  return `https://sentry.example.com/organizations/acme/explore/conversations/${encodeURIComponent(conversationId)}/`;
+}
+
+function sentryTraceUrl(traceId: string): string {
+  return `https://sentry.example.com/performance/trace/${traceId}/`;
+}
+
+function sessionFromTurn(turn: DashboardTurnReport): DashboardSessionReport {
+  const {
+    transcript,
+    transcriptAvailable,
+    transcriptMessageCount,
+    transcriptMetadata,
+    transcriptRedacted,
+    transcriptRedactionReason,
+    ...session
+  } = turn;
+  return session;
+}
+
+function publicIncidentConversation(
+  nowMs: number,
+): DashboardConversationReport {
+  const traceId = "5f2c7f7df83e4a37a03c9d4a14f4c991";
+  const startedAt = iso(nowMs, -58 * 60_000);
+  const secondStartedAt = iso(nowMs, -44 * 60_000);
+
+  return {
+    conversationId: INCIDENT_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: INCIDENT_CONVERSATION_ID,
+        conversationTitle: "Checkout latency triage",
+        id: "mock-incident-turn-1",
+        status: "completed",
+        startedAt,
+        lastProgressAt: iso(nowMs, -56 * 60_000),
+        lastSeenAt: iso(nowMs, -55 * 60_000),
+        completedAt: iso(nowMs, -55 * 60_000),
+        cumulativeDurationMs: 181_000,
+        cumulativeUsage: {
+          cachedInputTokens: 2200,
+          inputTokens: 6900,
+          outputTokens: 1400,
+          totalTokens: 9700,
+        },
+        surface: "slack",
+        title: "Turn mock-incident-turn-1",
+        requesterIdentity: {
+          fullName: "Avery Stone",
+          slackUserId: "UQA111",
+          slackUserName: "avery",
+        },
+        channel: "CQA123",
+        channelName: "proj-checkout",
+        sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
+        sentryTraceUrl: sentryTraceUrl(traceId),
+        traceId,
+        transcriptAvailable: true,
+        transcriptMessageCount: 4,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(startedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Can you check why checkout p95 jumped after the last deploy? Keep it short but include the likely next owner.",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 19_000,
+            parts: [
+              {
+                type: "thinking",
+                output:
+                  "Correlate deploy timing, Sentry issue volume, and endpoint latency before assigning ownership.",
+              },
+              {
+                id: "toolu_mock_trace_search",
+                name: "sentry.search_traces",
+                input: {
+                  project: "checkout-api",
+                  query: "transaction:/api/checkout p95:>2s",
+                  window: "30m",
+                },
+                type: "tool_call",
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            timestamp: Date.parse(startedAt) + 51_000,
+            parts: [
+              {
+                id: "toolu_mock_trace_search",
+                name: "sentry.search_traces",
+                output: {
+                  examples: [
+                    {
+                      durationMs: 2840,
+                      operation: "POST /api/checkout",
+                      traceId,
+                    },
+                  ],
+                  p95Ms: 2310,
+                  suspectedSpan: "stripe.payment_intents.create",
+                },
+                type: "tool_result",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 163_000,
+            parts: [
+              {
+                type: "text",
+                text: [
+                  "Checkout p95 is tracking the Stripe payment intent span, not app CPU. The jump starts within five minutes of the `payments-v42` deploy.",
+                  "",
+                  "Suggested owner: payments platform. I would ask them to compare Stripe idempotency-key behavior between `v41` and `v42` before rolling back.",
+                ].join("\n"),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        conversationId: INCIDENT_CONVERSATION_ID,
+        conversationTitle: "Checkout latency triage",
+        id: "mock-incident-turn-2",
+        status: "completed",
+        startedAt: secondStartedAt,
+        lastProgressAt: iso(nowMs, -42 * 60_000),
+        lastSeenAt: iso(nowMs, -41 * 60_000),
+        completedAt: iso(nowMs, -41 * 60_000),
+        cumulativeDurationMs: 206_000,
+        cumulativeUsage: {
+          cachedInputTokens: 3100,
+          inputTokens: 5200,
+          outputTokens: 950,
+          totalTokens: 9250,
+        },
+        surface: "slack",
+        title: "Turn mock-incident-turn-2",
+        requesterIdentity: {
+          fullName: "Morgan Lee",
+          slackUserId: "UQA222",
+          slackUserName: "morgan",
+        },
+        channel: "CQA123",
+        channelName: "proj-checkout",
+        sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
+        sentryTraceUrl: sentryTraceUrl(traceId),
+        traceId,
+        transcriptAvailable: true,
+        transcriptMessageCount: 3,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(secondStartedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Can you draft the rollback note with the exact evidence?",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(secondStartedAt) + 12_000,
+            parts: [
+              {
+                id: "toolu_mock_issue_lookup",
+                name: "sentry.get_issue",
+                input: {
+                  issue: "CHECKOUT-9B2",
+                  project: "checkout-api",
+                },
+                type: "tool_call",
+              },
+              {
+                id: "toolu_mock_release_lookup",
+                name: "vercel.get_deployment",
+                input: {
+                  deployment: "payments-v42",
+                  team: "acme",
+                },
+                type: "tool_call",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(secondStartedAt) + 188_000,
+            parts: [
+              {
+                type: "text",
+                text: [
+                  "Rollback note:",
+                  "",
+                  "```md",
+                  "Rolling back payments-v42. Evidence: checkout p95 rose from 740ms to 2.3s, traces isolate the regression to stripe.payment_intents.create, and CHECKOUT-9B2 began after the deployment window.",
+                  "```",
+                  "",
+                  "Keep the rollback scoped to payments; frontend traffic and auth spans look stable.",
+                ].join("\n"),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function activeConversation(nowMs: number): DashboardConversationReport {
+  const startedAt = iso(nowMs, -6 * 60_000);
+
+  return {
+    conversationId: ACTIVE_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: ACTIVE_CONVERSATION_ID,
+        conversationTitle: "Deploy rollout watch",
+        id: "mock-active-turn-1",
+        status: "active",
+        startedAt,
+        lastProgressAt: iso(nowMs, -18_000),
+        lastSeenAt: iso(nowMs, -12_000),
+        cumulativeDurationMs: 348_000,
+        cumulativeUsage: {
+          inputTokens: 7800,
+          outputTokens: 620,
+          totalTokens: 8420,
+        },
+        surface: "slack",
+        title: "Turn mock-active-turn-1",
+        requesterIdentity: {
+          fullName: "Sam Rivera",
+          slackUserId: "UQA333",
+          slackUserName: "sam",
+        },
+        channel: "CQA123",
+        channelName: "proj-checkout",
+        sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
+        transcriptAvailable: true,
+        transcriptMessageCount: 2,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(startedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Watch the rollout for the next few minutes and call out anything that looks unsafe.",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 41_000,
+            parts: [
+              {
+                type: "thinking",
+                output:
+                  "Keep the user updated only if the rollout crosses the agreed error-budget threshold.",
+              },
+              {
+                id: "toolu_mock_datacat_rollout",
+                name: "datacat.search_logs",
+                input: {
+                  query: "service:checkout-api env:prod rollout:v42",
+                  window: "15m",
+                },
+                type: "tool_call",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function privateConversation(nowMs: number): DashboardConversationReport {
+  const startedAt = iso(nowMs, -24 * 60_000);
+
+  return {
+    conversationId: PRIVATE_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: PRIVATE_CONVERSATION_ID,
+        conversationTitle: "Direct Message",
+        id: "mock-private-turn-1",
+        status: "completed",
+        startedAt,
+        lastProgressAt: iso(nowMs, -23 * 60_000),
+        lastSeenAt: iso(nowMs, -22 * 60_000),
+        completedAt: iso(nowMs, -22 * 60_000),
+        cumulativeDurationMs: 94_000,
+        cumulativeUsage: {
+          inputTokens: 3100,
+          outputTokens: 440,
+          totalTokens: 3540,
+        },
+        surface: "slack",
+        title: "Turn mock-private-turn-1",
+        requesterIdentity: {
+          slackUserId: "UQA444",
+          slackUserName: "private-user",
+        },
+        channel: "DQA123",
+        channelName: "Direct Message",
+        transcriptAvailable: false,
+        transcriptMessageCount: 4,
+        transcriptMetadata: redactedPrivateTranscript(Date.parse(startedAt)),
+        transcriptRedacted: true,
+        transcriptRedactionReason: "non_public_conversation",
+        transcript: [],
+      },
+    ],
+  };
+}
+
+function redactedPrivateTranscript(
+  startedAtMs: number,
+): DashboardTranscriptMessage[] {
+  return [
+    {
+      role: "user",
+      timestamp: startedAtMs,
+      parts: [
+        {
+          bytes: 174,
+          chars: 172,
+          redacted: true,
+          type: "text",
+        },
+      ],
+    },
+    {
+      role: "assistant",
+      timestamp: startedAtMs + 18_000,
+      parts: [
+        {
+          outputKeys: ["strategy", "risk"],
+          outputSizeBytes: 188,
+          outputSizeChars: 188,
+          outputType: "object",
+          redacted: true,
+          type: "thinking",
+        },
+      ],
+    },
+    {
+      role: "assistant",
+      timestamp: startedAtMs + 29_000,
+      parts: [
+        {
+          id: "toolu_mock_private_thread",
+          inputKeys: ["channel", "ts"],
+          inputSizeBytes: 58,
+          inputSizeChars: 58,
+          inputType: "object",
+          name: "slack.fetch_thread",
+          redacted: true,
+          type: "tool_call",
+        },
+      ],
+    },
+    {
+      role: "toolResult",
+      timestamp: startedAtMs + 47_000,
+      parts: [
+        {
+          id: "toolu_mock_private_thread",
+          name: "slack.fetch_thread",
+          outputKeys: ["messages"],
+          outputSizeBytes: 962,
+          outputSizeChars: 950,
+          outputType: "object",
+          redacted: true,
+          type: "tool_result",
+        },
+      ],
+    },
+  ];
+}
+
+function hungConversation(nowMs: number): DashboardConversationReport {
+  const startedAt = iso(nowMs, -18 * 60_000);
+
+  return {
+    conversationId: HUNG_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: HUNG_CONVERSATION_ID,
+        conversationTitle: "Sandbox QA run",
+        id: "mock-hung-turn-1",
+        status: "hung",
+        startedAt,
+        lastProgressAt: iso(nowMs, -11 * 60_000),
+        lastSeenAt: iso(nowMs, -10 * 60_000),
+        cumulativeDurationMs: 480_000,
+        cumulativeUsage: {
+          inputTokens: 11_200,
+          outputTokens: 800,
+          totalTokens: 12_000,
+        },
+        surface: "slack",
+        title: "Turn mock-hung-turn-1",
+        requesterIdentity: {
+          fullName: "Dana Chen",
+          slackUserId: "UQA555",
+          slackUserName: "dana",
+        },
+        channel: "CQA999",
+        channelName: "quality",
+        sentryConversationUrl: sentryConversationUrl(HUNG_CONVERSATION_ID),
+        transcriptAvailable: true,
+        transcriptMessageCount: 3,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(startedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Run the checkout smoke test in the sandbox and tell me if the redirect loop still reproduces.",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 35_000,
+            parts: [
+              {
+                id: "toolu_mock_sandbox_run",
+                name: "sandbox.run_command",
+                input: {
+                  args: ["pnpm", "test", "checkout-smoke"],
+                  cwd: "/repo",
+                  timeoutMs: 600000,
+                },
+                type: "tool_call",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 2 * 60_000,
+            parts: [
+              {
+                type: "text",
+                text: "The sandbox command started. I am waiting on the browser trace before calling the result.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function failedConversation(nowMs: number): DashboardConversationReport {
+  const traceId = "29bbf789f14b469cb4f6ed830a47224d";
+  const startedAt = iso(nowMs, -36 * 60_000);
+
+  return {
+    conversationId: FAILED_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: FAILED_CONVERSATION_ID,
+        conversationTitle: "OAuth callback investigation",
+        id: "mock-failed-turn-1",
+        status: "failed",
+        startedAt,
+        lastProgressAt: iso(nowMs, -35 * 60_000),
+        lastSeenAt: iso(nowMs, -35 * 60_000),
+        cumulativeDurationMs: 72_000,
+        cumulativeUsage: {
+          inputTokens: 4500,
+          outputTokens: 390,
+          totalTokens: 4890,
+        },
+        surface: "slack",
+        title: "Turn mock-failed-turn-1",
+        requesterIdentity: {
+          fullName: "Riley Patel",
+          slackUserId: "UQA666",
+          slackUserName: "riley",
+        },
+        channel: "CQA777",
+        channelName: "platform-auth",
+        sentryConversationUrl: sentryConversationUrl(FAILED_CONVERSATION_ID),
+        sentryTraceUrl: sentryTraceUrl(traceId),
+        traceId,
+        transcriptAvailable: true,
+        transcriptMessageCount: 3,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(startedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Why are new Notion OAuth callbacks failing in staging?",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 15_000,
+            parts: [
+              {
+                id: "toolu_mock_oauth_logs",
+                name: "sentry.search_errors",
+                input: {
+                  environment: "staging",
+                  query: "OAuth callback Notion status:500",
+                },
+                type: "tool_call",
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            timestamp: Date.parse(startedAt) + 53_000,
+            parts: [
+              {
+                id: "toolu_mock_oauth_logs",
+                name: "sentry.search_errors",
+                output: {
+                  error:
+                    "Provider token exchange failed: invalid_client for staging callback origin",
+                  traceId,
+                },
+                type: "tool_result",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function schedulerConversation(nowMs: number): DashboardConversationReport {
+  const startedAt = iso(nowMs, -2 * 60 * 60_000);
+
+  return {
+    conversationId: SCHEDULER_CONVERSATION_ID,
+    generatedAt: iso(nowMs),
+    turns: [
+      {
+        conversationId: SCHEDULER_CONVERSATION_ID,
+        conversationTitle: "Daily operations digest",
+        id: "mock-scheduler-turn-1",
+        status: "completed",
+        startedAt,
+        lastProgressAt: iso(nowMs, -119 * 60_000),
+        lastSeenAt: iso(nowMs, -118 * 60_000),
+        completedAt: iso(nowMs, -118 * 60_000),
+        cumulativeDurationMs: 115_000,
+        cumulativeUsage: {
+          inputTokens: 6200,
+          outputTokens: 760,
+          totalTokens: 6960,
+        },
+        surface: "scheduler",
+        title: "Turn mock-scheduler-turn-1",
+        transcriptAvailable: true,
+        transcriptMessageCount: 2,
+        transcript: [
+          {
+            role: "user",
+            timestamp: Date.parse(startedAt),
+            parts: [
+              {
+                type: "text",
+                text: "Scheduled task: summarize overnight production risk for the checkout team.",
+              },
+            ],
+          },
+          {
+            role: "assistant",
+            timestamp: Date.parse(startedAt) + 109_000,
+            parts: [
+              {
+                type: "text",
+                text: "Overnight risk stayed low. One staging OAuth regression is still open; checkout production latency returned to baseline after the payments rollback.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function mockConversations(nowMs: number): DashboardConversationReport[] {
+  return [
+    activeConversation(nowMs),
+    longReleaseConversation(nowMs),
+    publicIncidentConversation(nowMs),
+    privateConversation(nowMs),
+    failedConversation(nowMs),
+    hungConversation(nowMs),
+    schedulerConversation(nowMs),
+  ];
+}
+
+function mockConversationMap(
+  nowMs: number,
+): Map<string, DashboardConversationReport> {
+  return new Map(
+    mockConversations(nowMs).map((conversation) => [
+      conversation.conversationId,
+      conversation,
+    ]),
+  );
+}
+
+function mockSessionFeed(nowMs: number): DashboardSessionFeed {
+  return {
+    source: "turn_session_records",
+    generatedAt: iso(nowMs),
+    sessions: mockConversations(nowMs).flatMap((conversation) =>
+      conversation.turns.map(sessionFromTurn),
+    ),
+  };
+}
+
+function mergeSessionFeeds(
+  mockFeed: DashboardSessionFeed,
+  realFeed: DashboardSessionFeed,
+): DashboardSessionFeed {
+  const mockSessionKeys = new Set(
+    mockFeed.sessions.map(
+      (session) => `${session.conversationId}:${session.id}`,
+    ),
+  );
+
+  return {
+    source: realFeed.source,
+    generatedAt: realFeed.generatedAt,
+    sessions: [
+      ...mockFeed.sessions,
+      ...realFeed.sessions.filter(
+        (session) =>
+          !mockSessionKeys.has(`${session.conversationId}:${session.id}`),
+      ),
+    ],
+  };
+}
+
+function isLocalPersistenceUnavailable(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(
+      "REDIS_URL is required for durable Slack thread state",
+    )
+  );
+}
+
+/** Layer visual-QA conversation fixtures over a real read-only reporting source. */
+export function createMockConversationReporting(
+  reporting: JuniorReporting,
+): JuniorReporting {
+  return {
+    getHealth: reporting.getHealth,
+    getRuntimeInfo: reporting.getRuntimeInfo,
+    getPlugins: reporting.getPlugins,
+    getSkills: reporting.getSkills,
+    async getSessions() {
+      const mockFeed = mockSessionFeed(Date.now());
+      try {
+        return mergeSessionFeeds(mockFeed, await reporting.getSessions());
+      } catch (error) {
+        if (!isLocalPersistenceUnavailable(error)) {
+          throw error;
+        }
+        return mockFeed;
+      }
+    },
+    async getConversation(conversationId: string) {
+      const conversation = mockConversationMap(Date.now()).get(conversationId);
+      if (conversation) {
+        return conversation;
+      }
+      return reporting.getConversation(conversationId);
+    },
+  };
+}

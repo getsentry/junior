@@ -1,0 +1,13 @@
+name: hex
+description: Hex analytics platform — run data warehouse queries for customer usage data
+
+env-vars:
+  HEX_MCP_URL:
+    default: https://app.hex.tech/mcp
+
+mcp:
+  url: ${HEX_MCP_URL}
+  allowed-tools:
+    - create_thread
+    - get_thread
+    - continue_thread

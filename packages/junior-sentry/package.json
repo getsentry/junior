@@ -1,0 +1,18 @@
+{
+  "name": "@sentry/junior-sentry",
+  "version": "0.65.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-sentry"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

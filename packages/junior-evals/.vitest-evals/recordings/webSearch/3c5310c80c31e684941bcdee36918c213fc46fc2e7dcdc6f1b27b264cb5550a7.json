@@ -1,0 +1,36 @@
+{
+  "writtenAt": "2026-05-20T22:02:29.310Z",
+  "toolName": "webSearch",
+  "input": {
+    "query": "site:docs.slack.dev developing agents AI streaming overview",
+    "max_results": 3
+  },
+  "output": {
+    "ok": true,
+    "model": "openai/gpt-5.4",
+    "query": "site:docs.slack.dev developing agents AI streaming overview",
+    "result_count": 3,
+    "results": [
+      {
+        "title": "Slack developer docs | Slack Developer Docs",
+        "url": "docs.slack.dev",
+        "snippet": ""
+      },
+      {
+        "title": "Slack platform overview | Slack Developer Docs",
+        "url": "https://docs.slack.dev/concepts/overview",
+        "snippet": ""
+      },
+      {
+        "title": "AI Assistant | Slack Developer Docs",
+        "url": "https://docs.slack.dev/tools/bolt-js/tutorials/ai-assistant/",
+        "snippet": ""
+      }
+    ]
+  },
+  "metadata": {
+    "cacheKey": "3c5310c80c31e684941bcdee36918c213fc46fc2e7dcdc6f1b27b264cb5550a7",
+    "version": "web-search-v1",
+    "mode": "record"
+  }
+}

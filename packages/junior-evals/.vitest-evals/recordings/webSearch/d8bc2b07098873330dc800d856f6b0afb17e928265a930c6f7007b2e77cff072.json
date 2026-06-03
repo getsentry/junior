@@ -1,0 +1,36 @@
+{
+  "writtenAt": "2026-05-20T22:18:10.775Z",
+  "toolName": "webSearch",
+  "input": {
+    "query": "weather in San Francisco today",
+    "max_results": 3
+  },
+  "output": {
+    "ok": true,
+    "model": "openai/gpt-5.4",
+    "query": "weather in San Francisco today",
+    "result_count": 3,
+    "results": [
+      {
+        "title": "Zone Area Forecast for San Francisco County",
+        "url": "https://forecast.weather.gov/MapClick.php?zoneid=CAZ006",
+        "snippet": ""
+      },
+      {
+        "title": "Zone Area Forecast for San Francisco Peninsula Coast",
+        "url": "https://forecast.weather.gov/MapClick.php?zoneid=CAZ509",
+        "snippet": ""
+      },
+      {
+        "title": "Zone Area Forecast for San Francisco Bay Shoreline",
+        "url": "https://forecast.weather.gov/MapClick.php?zoneid=CAZ508",
+        "snippet": ""
+      }
+    ]
+  },
+  "metadata": {
+    "cacheKey": "d8bc2b07098873330dc800d856f6b0afb17e928265a930c6f7007b2e77cff072",
+    "version": "web-search-v1",
+    "mode": "auto"
+  }
+}

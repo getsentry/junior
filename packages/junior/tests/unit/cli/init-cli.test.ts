@@ -1,0 +1,112 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { runInit } from "@/cli/init";
+
+const tempRoots: string[] = [];
+
+function makeTempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  tempRoots.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  for (const root of tempRoots.splice(0)) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+describe("init cli", () => {
+  it("writes the scaffold into an empty directory", async () => {
+    const target = makeTempDir("junior-init-empty-");
+
+    await runInit(target, () => undefined);
+
+    expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(target, "api", "internal", "agent", "continue.ts"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "WORLD.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "DESCRIPTION.md"))).toBe(
+      true,
+    );
+    expect(
+      fs.existsSync(path.join(target, ".github", "workflows", "ci.yml")),
+    ).toBe(true);
+
+    const workflow = fs.readFileSync(
+      path.join(target, ".github", "workflows", "ci.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("pnpm check");
+    expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain("pnpm install --frozen-lockfile");
+
+    const vercelConfig = JSON.parse(
+      fs.readFileSync(path.join(target, "vercel.json"), "utf8"),
+    );
+    expect(vercelConfig.framework).toBe("nitro");
+    expect(vercelConfig.buildCommand).toBe("pnpm build");
+    expect(vercelConfig.crons).toEqual([
+      {
+        path: "/api/internal/heartbeat",
+        schedule: "* * * * *",
+      },
+    ]);
+    expect(vercelConfig.functions).toEqual({
+      "api/internal/agent/continue.ts": {
+        maxDuration: 300,
+        experimentalTriggers: [
+          {
+            type: "queue/v2beta",
+            topic: "junior_conversation_work",
+          },
+        ],
+      },
+    });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(target, "package.json"), "utf8"),
+    );
+    expect(pkg.devDependencies.nitro).toBeDefined();
+    expect(pkg.devDependencies.vite).toBeDefined();
+    expect(pkg.devDependencies.vercel).toBeUndefined();
+    expect(pkg.scripts.dev).toBe("vite dev");
+    expect(pkg.scripts.check).toBe("junior check");
+    expect(pkg.scripts.build).toBe("junior snapshot create && vite build");
+
+    const envExample = fs.readFileSync(
+      path.join(target, ".env.example"),
+      "utf8",
+    );
+    expect(envExample).toContain("CRON_SECRET=");
+  });
+
+  it("refuses to initialize a non-empty directory", async () => {
+    const target = makeTempDir("junior-init-non-empty-");
+    fs.writeFileSync(path.join(target, "README.md"), "# existing\n");
+
+    await expect(runInit(target, () => undefined)).rejects.toThrow(
+      "refusing to initialize non-empty directory",
+    );
+  });
+
+  it("refuses to initialize a file path", async () => {
+    const targetRoot = makeTempDir("junior-init-file-path-");
+    const filePath = path.join(targetRoot, "not-a-dir.txt");
+    fs.writeFileSync(filePath, "hello");
+
+    await expect(runInit(filePath, () => undefined)).rejects.toThrow(
+      "refusing to initialize non-directory path",
+    );
+  });
+});
