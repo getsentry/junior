@@ -825,6 +825,13 @@ export async function generateAssistantReply(
     const toolCalls: string[] = [];
     let advisorTools: AgentTool[] = [];
     let agent: Agent | undefined;
+    let latestSafeBoundaryMessages: PiMessage[] = [];
+    const getResumeSnapshot = (): PiMessage[] => {
+      const currentMessages = agent ? [...agent.state.messages] : [];
+      return latestSafeBoundaryMessages.length > currentMessages.length
+        ? [...latestSafeBoundaryMessages]
+        : currentMessages;
+    };
 
     // ── MCP auth orchestration ───────────────────────────────────────
     const mcpAuth = createMcpAuthOrchestration(
@@ -1119,6 +1126,7 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
       });
+      latestSafeBoundaryMessages = [...messages];
     };
     const drainSteeringMessages = async (): Promise<void> => {
       if (
@@ -1171,7 +1179,7 @@ export async function generateAssistantReply(
       }
 
       yielded = true;
-      timeoutResumeMessages = [...agent!.state.messages];
+      timeoutResumeMessages = getResumeSnapshot();
       throw new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${
           Date.now() - replyStartedAtMs
@@ -1334,10 +1342,10 @@ export async function generateAssistantReply(
                     "Timed-out agent run did not settle after abort before resume snapshot",
                   );
                 }
-                timeoutResumeMessages = [...agent.state.messages];
+                timeoutResumeMessages = getResumeSnapshot();
               }
               if (getPendingAuthPause()) {
-                timeoutResumeMessages = [...agent.state.messages];
+                timeoutResumeMessages = getResumeSnapshot();
                 throw getPendingAuthPause()!;
               }
               throw error;
@@ -1382,7 +1390,7 @@ export async function generateAssistantReply(
               ...extractGenAiUsageAttributes(usageSummary),
             });
             if (getPendingAuthPause()) {
-              timeoutResumeMessages = [...agent.state.messages];
+              timeoutResumeMessages = getResumeSnapshot();
               throw getPendingAuthPause()!;
             }
 

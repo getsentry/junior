@@ -340,6 +340,49 @@ describe("generateAssistantReply provider retry", () => {
     });
   });
 
+  it("keeps steered messages when yielding after steering drain", async () => {
+    agentMode.value = "cooperativeYield";
+
+    const error = await generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-yield-steering",
+        turnId: "turn-yield-steering",
+        channelId: "C123",
+        threadTs: "1712345.0005",
+      },
+      drainSteeringMessages: async (inject) => {
+        const messages = [
+          { text: "actually do the other thing", timestampMs: 2_000 },
+        ];
+        await inject(messages);
+        return messages;
+      },
+      shouldYield: () => true,
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(isCooperativeTurnYieldError(error)).toBe(true);
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+      "conversation-yield-steering",
+      "turn-yield-steering",
+    );
+    expect(sessionRecord).toMatchObject({
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      sliceId: 1,
+    });
+    expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
+      "user",
+    ]);
+    const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
+    expect(serializedMessages).toContain("help me");
+    expect(serializedMessages).toContain("actually do the other thing");
+  });
+
   it("throws when a cooperative yield cannot persist its resumable boundary", async () => {
     agentMode.value = "cooperativeYield";
     const upsertSpy = vi
