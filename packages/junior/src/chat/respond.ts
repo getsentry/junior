@@ -213,6 +213,10 @@ export interface ReplyRequestContext {
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
   authorizationFlowMode?: AuthorizationFlowMode;
+  /** Allow autonomous event runs to complete without visible Slack delivery. */
+  allowSilentSuccess?: boolean;
+  /** Hide specific runtime tools from the agent for system-owned runs. */
+  blockedToolNames?: readonly string[];
   configuration?: Record<string, unknown>;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
   piMessages?: PiMessage[];
@@ -956,6 +960,9 @@ export async function generateAssistantReply(
       },
       {
         channelId: toolChannelId,
+        ...(context.blockedToolNames
+          ? { blockedToolNames: context.blockedToolNames }
+          : {}),
         channelCapabilities,
         requester: context.requester,
         teamId: context.correlation?.teamId,
@@ -1513,6 +1520,7 @@ export async function generateAssistantReply(
     return buildTurnResult({
       newMessages,
       userInput,
+      allowSilentSuccess: context.allowSilentSuccess,
       replyFiles,
       artifactStatePatch,
       toolCalls,

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
@@ -10,13 +10,18 @@ import { mswServer } from "../../msw/server";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
-const ORIGINAL_ENV = { ...process.env };
 const slackWebhookClient = createSlackWebhookTestClient({
   signingSecret: SIGNING_SECRET,
+});
+const { ORIGINAL_ENV } = vi.hoisted(() => {
+  const ORIGINAL_ENV = { ...process.env };
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  return { ORIGINAL_ENV };
 });
 
 function makeDiagnostics() {
@@ -32,7 +37,16 @@ function makeDiagnostics() {
 }
 
 describe("Slack behavior: message_changed webhook ingress", () => {
-  afterEach(() => {
+  beforeEach(async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      JUNIOR_STATE_ADAPTER: "memory",
+    };
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
     process.env = { ...ORIGINAL_ENV };
   });
 

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -22,7 +22,12 @@ const vercelEnvNames = [
 
 function isSamePath(left: string, right: string): boolean {
   try {
-    return realpathSync(left) === realpathSync(right);
+    if (realpathSync(left) === realpathSync(right)) {
+      return true;
+    }
+    const leftStat = statSync(left);
+    const rightStat = statSync(right);
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
   } catch {
     return false;
   }
@@ -45,7 +50,10 @@ async function getExamplePluginPackages(): Promise<string[]> {
   ];
 }
 
-function buildJuniorPackage(): void {
+function buildExampleWorkspacePackage(args: {
+  packageName: string;
+  packageRoot: string;
+}): void {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CI: "true",
@@ -53,18 +61,18 @@ function buildJuniorPackage(): void {
   };
   delete env.SKILL_DIRS;
 
-  execFileSync("pnpm", ["--filter", "@sentry/junior", "build"], {
+  execFileSync("pnpm", ["--filter", args.packageName, "build"], {
     cwd: repoRoot,
     env,
     stdio: "pipe",
   });
 
   const installedPackageRoot = path.dirname(
-    path.dirname(exampleRequire.resolve("@sentry/junior")),
+    path.dirname(exampleRequire.resolve(args.packageName)),
   );
-  const sourceDist = path.join(repoRoot, "packages/junior/dist");
+  const sourceDist = path.join(args.packageRoot, "dist");
   const installedDist = path.join(installedPackageRoot, "dist");
-  if (isSamePath(installedDist, sourceDist)) {
+  if (isSamePath(installedPackageRoot, args.packageRoot)) {
     return;
   }
 
@@ -73,6 +81,22 @@ function buildJuniorPackage(): void {
     recursive: true,
   });
   cpSync(sourceDist, installedDist, { recursive: true });
+  const sourcePackageJson = path.join(args.packageRoot, "package.json");
+  const installedPackageJson = path.join(installedPackageRoot, "package.json");
+  if (!isSamePath(sourcePackageJson, installedPackageJson)) {
+    cpSync(sourcePackageJson, installedPackageJson);
+  }
+}
+
+function buildExampleRuntimePackages(): void {
+  buildExampleWorkspacePackage({
+    packageName: "@sentry/junior",
+    packageRoot: path.join(repoRoot, "packages/junior"),
+  });
+  buildExampleWorkspacePackage({
+    packageName: "@sentry/junior-dashboard",
+    packageRoot: path.join(repoRoot, "packages/junior-dashboard"),
+  });
 }
 
 async function importExampleApp() {
@@ -97,8 +121,8 @@ function clearVercelEnv(): void {
 
 describe.sequential("example build discovery integration", () => {
   beforeAll(() => {
-    buildJuniorPackage();
-  }, 60_000);
+    buildExampleRuntimePackages();
+  }, 120_000);
 
   afterEach(() => {
     process.chdir(originalCwd);

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-02
 
 ## Purpose
 
@@ -15,6 +15,7 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 - Capability catalog and broker integration.
 - MCP activation.
 - Plugin-backed skill loading.
+- Built-in platform and trusted plugin event definition loading for install-owned event prompts.
 - Security invariants for host-trusted plugin content.
 
 ## Non-Goals
@@ -22,6 +23,7 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 - Manifest field syntax; see [Plugin Manifest Spec](./plugin-manifest.md).
 - Provider credential issuance; see [Credential Injection Spec](./credential-injection.md).
 - Trusted heartbeat/dispatch hooks; see [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md).
+- Event binding file semantics; see [Event Prompt Spec](./event-prompts.md).
 
 ## Discovery And Loading
 
@@ -44,6 +46,7 @@ getPluginCapabilityProviders(): CapabilityProviderDefinition[]
 getPluginProviders(): PluginDefinition[]
 getPluginOAuthConfig(provider): OAuthProviderConfig | undefined
 getPluginSkillRoots(): string[]
+getPluginEventDefinitions(): PluginEventDefinition[]
 isPluginProvider(provider): boolean
 isPluginCapability(capability): boolean
 isPluginConfigKey(key): boolean
@@ -130,6 +133,8 @@ Trusted plugins may provide `routes` to mount host-owned HTTP handlers inside `c
 
 Trusted plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
 
+Built-in platform integrations and trusted plugins may register event definitions for install-owned event prompts. The runtime must collect event definitions before validating `app/events/**/*.md` binding files. Event definitions are functionality surfaces; the binding files decide which prompts run for which scopes and filters.
+
 ## Security Properties
 
 - Plugin manifests are committed YAML files, not dynamically loaded remote code.
@@ -137,6 +142,7 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 - Real secret values never enter sandbox env vars, files, command args, skill text, or model-visible tool args.
 - Plugin manifests are parsed once at startup and are not mutated at runtime.
 - Plugin prompt behavior must be local to the loaded skill or trusted tool guidance.
+- Event prompt behavior must be local to install-owned binding files and plugin-registered event definitions; plugins must not claim or dispatch event behavior directly from inbound events.
 
 ## Observability
 
@@ -149,6 +155,7 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 - Registry load order is deterministic.
 - Manifest validation fails before partial registration.
 - Plugin-backed skill loading rejects forged plugin metadata.
+- Built-in and trusted plugin event definition loading rejects duplicate event ids before binding validation.
 - No MCP connections are made at turn start unless restoring providers from session-log connection events.
 - `searchMcpTools` and `callMcpTool` cannot reach tools from providers that are not configured or failed activation.
 
@@ -158,5 +165,6 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 - `./plugin-manifest.md`
 - `./credential-injection.md`
 - `./agent-prompt.md`
+- `./event-prompts.md`
 - `./trusted-plugin-heartbeat.md`
 - `./trusted-plugin-dispatch.md`

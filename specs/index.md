@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-03
 
 ## Purpose
 
@@ -41,6 +41,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/context-compaction.md`
 - `specs/advisor-tool.md`
 - `specs/scheduler.md`
+- `specs/event-prompts.md`
 - `specs/trusted-plugin-heartbeat.md`
 - `specs/trusted-plugin-dispatch.md`
 - `specs/harness-agent.md`
@@ -75,6 +76,7 @@ For chat/agent/Slack turn behavior:
 - `specs/harness-tool-context.md` owns context-bound tool targeting and missing-context failure behavior.
 - `specs/agent-session-resumability.md` owns session record schema, Pi session continuation, timeout callbacks, and slice lifecycle.
 - `specs/context-compaction.md` owns reusable Pi history compaction, internal context forks, and visible-thread compaction bounds.
+- `specs/event-prompts.md` owns install-owned event binding files, built-in/plugin event definitions, event matching, event prompt compilation, and event-run dispatch boundaries.
 - `specs/slack-agent-delivery.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
 

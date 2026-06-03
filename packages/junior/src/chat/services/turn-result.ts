@@ -60,6 +60,7 @@ export interface AssistantReply {
 export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
+  allowSilentSuccess?: boolean;
   replyFiles: FileUpload[];
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
@@ -187,8 +188,20 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       ? lastAssistant.errorMessage
       : undefined;
   const isProviderError = stopReason === "error";
+  const silentSuccess =
+    input.allowSilentSuccess === true &&
+    terminalAssistantMessages.length > 0 &&
+    !primaryText &&
+    toolErrorCount === 0 &&
+    replyFiles.length === 0 &&
+    !isProviderError;
 
-  if (!primaryText && !sideEffectOnlySuccess && !isProviderError) {
+  if (
+    !primaryText &&
+    !sideEffectOnlySuccess &&
+    !silentSuccess &&
+    !isProviderError
+  ) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -212,7 +225,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (primaryText || sideEffectOnlySuccess) {
+  } else if (primaryText || sideEffectOnlySuccess || silentSuccess) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
@@ -242,7 +255,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     resolvedOutcome === "success" &&
     !resolvedText &&
     replyFiles.length === 0 &&
-    (reactionPerformed || channelPostPerformed)
+    (reactionPerformed || channelPostPerformed || silentSuccess)
       ? {
           ...baseDeliveryPlan,
           postThreadText: false,

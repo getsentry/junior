@@ -121,6 +121,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/context-compaction.md` (reusable Pi history compaction, internal context forks, and visible-thread compaction bounds)
 - `specs/advisor-tool.md` (provider-agnostic advisor tool contract)
 - `specs/scheduler.md` (scheduled Junior task contract)
+- `specs/event-prompts.md` (install-owned event prompt bindings and plugin event definition contract)
 - `specs/trusted-plugin-heartbeat.md` (trusted plugin heartbeat and tool hook contract)
 - `specs/trusted-plugin-dispatch.md` (durable trusted plugin agent dispatch contract)
 - `specs/harness-agent.md` (agent loop and output contract)

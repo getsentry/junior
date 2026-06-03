@@ -77,8 +77,18 @@ function createToolState(
   };
 }
 
+function removeBlockedTools(
+  tools: Record<string, ToolDefinition<any>>,
+  blockedToolNames: readonly string[] | undefined,
+): void {
+  for (const name of blockedToolNames ?? []) {
+    delete tools[name];
+  }
+}
+
 export type { ToolHooks, ToolRuntimeContext };
 
+/** Build the agent-visible tool map for the current runtime context. */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -158,5 +168,6 @@ export function createTools(
     tools[name] = pluginTool;
   }
 
+  removeBlockedTools(tools, context.blockedToolNames);
   return tools;
 }

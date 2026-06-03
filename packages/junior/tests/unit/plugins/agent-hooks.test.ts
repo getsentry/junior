@@ -2,6 +2,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   createAgentPluginHookRunner,
+  getAgentPluginEventDefinitions,
   getAgentPluginRoutes,
   getAgentPluginSlackConversationLink,
   getAgentPluginTools,
@@ -325,6 +326,103 @@ describe("agent plugin hooks", () => {
     try {
       expect(() => getAgentPluginSlackConversationLink("slack:C1:123")).toThrow(
         'Trusted plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
+      );
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("collects event definitions from configured plugins", () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
+        hooks: {
+          events(ctx) {
+            expect(ctx.plugin.name).toBe("github");
+            return {
+              "github.pull_request.comment.created": {
+                contextBlocks: {
+                  source_comment: {
+                    description: "Triggering GitHub comment",
+                  },
+                },
+              },
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(getAgentPluginEventDefinitions()).toEqual([
+        {
+          event: "github.pull_request.comment.created",
+          plugin: "github",
+          definition: {
+            contextBlocks: {
+              source_comment: {
+                description: "Triggering GitHub comment",
+              },
+            },
+          },
+        },
+      ]);
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("rejects event definitions outside the plugin namespace", () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
+        hooks: {
+          events() {
+            return {
+              "slack.channel.message.created": {},
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(() => getAgentPluginEventDefinitions()).toThrow(
+        'must be prefixed with "github."',
+      );
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("rejects unsupported event definition fields", () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "github",
+        manifest: {
+          name: "github",
+          description: "GitHub plugin",
+        },
+        hooks: {
+          events() {
+            return {
+              "github.pull_request.comment.created": {
+                defaultTools: { allow: ["github.comments.write"] },
+              } as any,
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(() => getAgentPluginEventDefinitions()).toThrow(
+        'uses unsupported event definition field "defaultTools"',
       );
     } finally {
       setAgentPlugins(previous);

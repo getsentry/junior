@@ -7,6 +7,7 @@ import type {
   DispatchCreateResult,
   DispatchProjection,
   DispatchRecord,
+  DispatchRunMode,
   DispatchStatus,
 } from "./types";
 
@@ -191,6 +192,7 @@ export async function createOrGetDispatch(args: {
   nowMs: number;
   options: BoundDispatchOptions;
   plugin: string;
+  runMode?: DispatchRunMode;
 }): Promise<DispatchCreateResult> {
   const id = buildDispatchId(args.plugin, args.options.idempotencyKey);
   return await withDispatchLock(id, async (state) => {
@@ -215,6 +217,7 @@ export async function createOrGetDispatch(args: {
       maxAttempts: DEFAULT_MAX_ATTEMPTS,
       ...(metadata ? { metadata } : {}),
       plugin: args.plugin,
+      runMode: args.runMode ?? "standard",
       status: "pending",
       updatedAtMs: args.nowMs,
       version: 1,

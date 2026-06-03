@@ -14,6 +14,8 @@ export type DispatchStatus =
 
 export type DispatchOptions = AgentPluginDispatchOptions;
 
+export type DispatchRunMode = "standard" | "event_prompt";
+
 export type DispatchDestination = DispatchOptions["destination"];
 
 export interface BoundDispatchOptions extends Omit<
@@ -39,6 +41,7 @@ export interface DispatchRecord {
   metadata?: Record<string, string>;
   plugin: string;
   resultMessageTs?: string;
+  runMode: DispatchRunMode;
   status: DispatchStatus;
   updatedAtMs: number;
   version: number;

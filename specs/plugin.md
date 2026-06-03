@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-02
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Define the plugin model for provider integrations. Plugins package declarative r
 ## Scope
 
 - Plugin package/directory shape.
-- Ownership boundaries between manifests, skills, runtime loading, credentials, and trusted hooks.
+- Ownership boundaries between manifests, skills, runtime loading, credentials, event definitions, and trusted hooks.
 - Links to detailed contracts for manifests, runtime loading, credential injection, and trusted heartbeat/dispatch behavior.
 
 ## Non-Goals
@@ -33,6 +33,7 @@ Define the plugin model for provider integrations. Plugins package declarative r
 7. Trusted runtime behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
 8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for trusted plugins. Do not split one plugin definition across both.
 9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
+10. Trusted plugin code may register event definitions, but install-owned event bindings live in version-controlled Markdown files under `app/events/**/*.md`.
 
 ## File Shape
 
@@ -53,6 +54,7 @@ plugins/sentry/
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
 - [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md): trusted heartbeat and tool hooks.
 - [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
+- [Event Prompt Spec](./event-prompts.md): plugin event definitions, install-owned event bindings, prompt compilation, and event-run dispatch.
 
 ## What Stays Core
 
@@ -83,4 +85,5 @@ plugins/sentry/
 - `./credential-injection.md`
 - `./trusted-plugin-heartbeat.md`
 - `./trusted-plugin-dispatch.md`
+- `./event-prompts.md`
 - `./sandbox-snapshots.md`
