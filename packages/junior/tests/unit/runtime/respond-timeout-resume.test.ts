@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
 
 const { promptAborted, promptMode } = vi.hoisted(() => ({
   promptAborted: { value: false },
@@ -7,6 +8,7 @@ const { promptAborted, promptMode } = vi.hoisted(() => ({
     value: "settlesAfterAbort" as
       | "settlesAfterAbort"
       | "hangsAfterAbort"
+      | "continueSettlesAfterAbort"
       | "providerRetryThenHangs",
   },
 }));
@@ -46,6 +48,16 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     async continue() {
+      if (promptMode.value === "continueSettlesAfterAbort") {
+        await new Promise<void>((resolve) => {
+          this.resolveAbort = resolve;
+        });
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "continued partial" }],
+        });
+        return {};
+      }
       if (promptMode.value === "providerRetryThenHangs") {
         await new Promise<void>((resolve) => {
           this.resolveAbort = resolve;
@@ -191,8 +203,12 @@ import {
   isRetryableTurnError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
+import { AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import {
+  getAgentTurnSessionRecord,
+  upsertAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 
 describe("generateAssistantReply timeout resume", () => {
   beforeEach(async () => {
@@ -258,6 +274,54 @@ describe("generateAssistantReply timeout resume", () => {
         role: "user",
       }),
     ]);
+  });
+
+  it("throws terminal timeout failures instead of returning an error reply after the slice cap", async () => {
+    promptMode.value = "continueSettlesAfterAbort";
+    const piMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "keep trying" }],
+        timestamp: 1,
+      } as PiMessage,
+    ];
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-timeout-cap",
+      sessionId: "turn-timeout-cap",
+      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      state: "awaiting_resume",
+      piMessages,
+      resumeReason: "timeout",
+    });
+
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-timeout-cap",
+        turnId: "turn-timeout-cap",
+        channelId: "C123",
+        threadTs: "1712345.0006",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const error = await replyPromise;
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toHaveProperty("text");
+    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(false);
+    expect(error.message).toContain("slice limit");
+
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-timeout-cap",
+      "turn-timeout-cap",
+    );
+    expect(sessionRecord).toMatchObject({
+      state: "failed",
+      resumeReason: "timeout",
+      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      errorMessage: expect.stringContaining("slice limit"),
+    });
   });
 
   it("records the effective request deadline timeout budget", async () => {

@@ -1595,6 +1595,10 @@ export async function generateAssistantReply(
           },
         );
       }
+      throw new Error(
+        sessionRecord.errorMessage ??
+          (error instanceof Error ? error.message : String(error)),
+      );
     }
 
     // ── MCP auth pause → session continuation ────────────────────────
