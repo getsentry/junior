@@ -87,6 +87,23 @@ export interface RequestConversationWorkResult {
   status: "created" | "updated";
 }
 
+function duplicateInboundNudgeIdempotencyKey(
+  message: InboundMessageRecord,
+  nowMs: number,
+): string {
+  return `duplicate:${message.conversationId}:${message.inboundMessageId}:${nowMs}`;
+}
+
+function hasRecentEnqueueMarker(
+  state: ConversationWorkState,
+  nowMs: number,
+): boolean {
+  return (
+    typeof state.lastEnqueuedAtMs === "number" &&
+    state.lastEnqueuedAtMs + CONVERSATION_WORK_STALE_ENQUEUE_MS > nowMs
+  );
+}
+
 function stateKey(conversationId: string): string {
   return `${CONVERSATION_WORK_PREFIX}:state:${conversationId}`;
 }
@@ -517,9 +534,20 @@ export async function appendAndEnqueueInboundMessage(args: {
     nowMs,
     state: args.state,
   });
+  let idempotencyKey = args.message.inboundMessageId;
+  if (appendResult.status === "duplicate") {
+    const work = await getConversationWorkState({
+      conversationId: args.message.conversationId,
+      state: args.state,
+    });
+    if (!work || hasRecentEnqueueMarker(work, nowMs)) {
+      return appendResult;
+    }
+    idempotencyKey = duplicateInboundNudgeIdempotencyKey(args.message, nowMs);
+  }
   const queueResult = await args.queue.send(
     { conversationId: args.message.conversationId },
-    { idempotencyKey: args.message.inboundMessageId },
+    { idempotencyKey },
   );
   await markConversationWorkEnqueued({
     conversationId: args.message.conversationId,

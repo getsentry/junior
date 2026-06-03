@@ -55,7 +55,7 @@ describe("conversation work execution", () => {
     vi.useRealTimers();
   });
 
-  it("stores inbound mailbox messages idempotently", async () => {
+  it("stores inbound mailbox messages idempotently without duplicate queue attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await expect(
       appendAndEnqueueInboundMessage({
@@ -72,7 +72,6 @@ describe("conversation work execution", () => {
       }),
     ).resolves.toMatchObject({
       status: "duplicate",
-      queueMessageId: "queue-2",
     });
 
     const state = await getConversationWorkState({
@@ -80,7 +79,32 @@ describe("conversation work execution", () => {
     });
     expect(state?.messages).toHaveLength(1);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
-    expect(queue.sentRecords()).toHaveLength(2);
+    expect(queue.sendAttempts()).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(1);
+  });
+
+  it("repairs duplicate inbound work when no queue marker was recorded", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      appendAndEnqueueInboundMessage({
+        message: inboundMessage("m1"),
+        nowMs: 62_000,
+        queue,
+      }),
+    ).resolves.toMatchObject({
+      status: "duplicate",
+      queueMessageId: "queue-1",
+    });
+
+    expect(queue.sendAttempts()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `duplicate:${CONVERSATION_ID}:m1:62000`,
+      },
+    ]);
+    expect(queue.sentRecords()).toEqual(queue.sendAttempts());
   });
 
   it("retries transient conversation work index lock contention", async () => {
@@ -759,6 +783,28 @@ describe("conversation work execution", () => {
         nowMs: 3_000,
       }),
     ).resolves.toBe(false);
+  });
+
+  it("deduplicates accepted fake queue payloads by idempotency key", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+
+    await expect(
+      queue.send({ conversationId: CONVERSATION_ID }, { idempotencyKey: "m1" }),
+    ).resolves.toEqual({ messageId: "queue-1" });
+    await expect(
+      queue.send({ conversationId: CONVERSATION_ID }, { idempotencyKey: "m1" }),
+    ).resolves.toEqual({ messageId: "queue-1" });
+
+    expect(queue.sendAttempts()).toEqual([
+      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
+      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
+    ]);
+    expect(queue.sentRecords()).toEqual([
+      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
+    ]);
+    expect(queue.queuedMessages()).toEqual([
+      { conversationId: CONVERSATION_ID },
+    ]);
   });
 
   it("maps the generic queue port to Vercel Queue send options", async () => {

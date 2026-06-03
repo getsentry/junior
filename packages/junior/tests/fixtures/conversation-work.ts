@@ -28,13 +28,16 @@ interface QueueSendHold {
 /**
  * In-memory queue adapter for tests that need queue delivery plus send introspection.
  *
- * `send` behaves like the production queue handoff: it records send metadata and
- * makes the payload available for callback-style delivery through `takeMessage`.
+ * `send` behaves like the production queue handoff: it records send attempts and
+ * makes accepted payloads available for callback-style delivery through
+ * `takeMessage`.
  */
 export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
+  #idempotentMessageIds = new Map<string, string>();
   #queuedMessages: ConversationQueueMessage[] = [];
   #rejectSends = false;
   #sendHolds: QueueSendHold[] = [];
+  #sendAttempts: ConversationQueueSendRecord[] = [];
   #sentRecords: ConversationQueueSendRecord[] = [];
 
   allowSends(): void {
@@ -42,6 +45,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   }
 
   clearSentRecords(): void {
+    this.#sendAttempts = [];
     this.#sentRecords = [];
   }
 
@@ -55,6 +59,10 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
 
   rejectSends(): void {
     this.#rejectSends = true;
+  }
+
+  sendAttempts(): ConversationQueueSendRecord[] {
+    return this.#sendAttempts.map((record) => ({ ...record }));
   }
 
   sentRecords(): ConversationQueueSendRecord[] {
@@ -75,7 +83,6 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     if (this.#rejectSends) {
       throw new Error("queue unavailable");
     }
-    this.#queuedMessages.push({ ...message });
     const record: ConversationQueueSendRecord = {
       conversationId: message.conversationId,
     };
@@ -85,13 +92,25 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     if (options?.idempotencyKey !== undefined) {
       record.idempotencyKey = options.idempotencyKey;
     }
+    this.#sendAttempts.push(record);
+    const duplicateMessageId = options?.idempotencyKey
+      ? this.#idempotentMessageIds.get(options.idempotencyKey)
+      : undefined;
+    if (duplicateMessageId) {
+      return { messageId: duplicateMessageId };
+    }
+    const messageId = `queue-${this.#sentRecords.length + 1}`;
+    this.#queuedMessages.push({ ...message });
     this.#sentRecords.push(record);
+    if (options?.idempotencyKey) {
+      this.#idempotentMessageIds.set(options.idempotencyKey, messageId);
+    }
     const hold = this.#sendHolds.shift();
     if (hold) {
       hold.entered();
       await hold.release;
     }
-    return { messageId: `queue-${this.#sentRecords.length}` };
+    return { messageId };
   }
 
   takeMessage(): ConversationQueueMessage {

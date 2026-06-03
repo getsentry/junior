@@ -134,6 +134,58 @@ describe("Slack behavior: durable turn steering", () => {
     await disconnectStateAdapter();
   });
 
+  it("does not enqueue duplicate Slack event retries for a persisted message", async () => {
+    const state = getStateAdapter();
+    const { conversationId, queue, services } = createTurnHarness({
+      generateAssistantReply: async () => ({
+        text: "not used",
+        diagnostics: makeDiagnostics(),
+      }),
+      state,
+    });
+    const event = makeMessageEvent({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+      ts: THREAD_TS,
+    });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(event),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(event),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const inboundMessageId = `slack:T123:${conversationId}:${THREAD_TS}`;
+    expect(queue.sendAttempts()).toEqual([
+      {
+        conversationId,
+        idempotencyKey: inboundMessageId,
+      },
+    ]);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId,
+        idempotencyKey: inboundMessageId,
+      },
+    ]);
+
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work?.messages.map((message) => message.inboundMessageId)).toEqual([
+      inboundMessageId,
+    ]);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+  });
+
   it("steers rapid Slack webhook follow-ups into one active worker turn", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
