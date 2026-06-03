@@ -6,8 +6,8 @@ import {
 import { scheduleDispatchCallback } from "@/chat/agent-dispatch/signing";
 import { validateDispatchOptions } from "@/chat/agent-dispatch/validation";
 import type {
+  BoundDispatchOptions,
   DispatchCreateResult,
-  DispatchOptions,
   DispatchRecord,
 } from "@/chat/agent-dispatch/types";
 import type { ParsedEventBinding } from "@/chat/events/bindings";
@@ -146,7 +146,7 @@ function buildEventRunPrompt(args: {
 
 function resolveSlackDestination(
   envelope: AgentEventEnvelope,
-): DispatchOptions["destination"] {
+): BoundDispatchOptions["destination"] {
   const teamId =
     typeof envelope.scope.teamId === "string" ? envelope.scope.teamId : "";
   const channelId =
@@ -208,7 +208,7 @@ export async function dispatchEventPromptRuns(
       definition: match.definition,
       envelope,
     });
-    const options: DispatchOptions = {
+    const options: BoundDispatchOptions = {
       idempotencyKey: `event:${match.binding.id}:${envelope.sourceEventId}`,
       destination: resolveSlackDestination(envelope),
       input: buildEventRunPrompt({
