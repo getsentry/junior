@@ -422,7 +422,11 @@ export async function resumeSlackTurn(
       };
     }
   } finally {
-    await processingReaction?.stop();
+    if (finalReplyDelivered) {
+      await processingReaction?.complete();
+    } else {
+      await processingReaction?.stop();
+    }
     await stateAdapter.releaseLock(lock);
   }
 

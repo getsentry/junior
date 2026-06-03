@@ -57,14 +57,14 @@ describe("oauth callback slack integration", () => {
     turnSessionStoreModule = await import("@/chat/state/turn-session");
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
-  });
+  }, 45_000);
 
   afterEach(async () => {
     await stateAdapterModule?.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
-  });
+  }, 45_000);
 
   it("publishes app home through the Slack MSW harness after generic OAuth callback", async () => {
     await stateAdapterModule
@@ -324,6 +324,13 @@ describe("oauth callback slack integration", () => {
           name: "eyes",
         }),
       }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          timestamp: "1700000000.010",
+          name: "white_check_mark",
+        }),
+      }),
     ]);
     expect(getCapturedSlackApiCalls("reactions.remove")).toEqual([
       expect.objectContaining({
@@ -490,6 +497,13 @@ describe("oauth callback slack integration", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           timestamp: "1700000000.0112",
+          name: "eyes",
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          timestamp: "1700000000.0112",
+          name: "white_check_mark",
         }),
       }),
     ]);

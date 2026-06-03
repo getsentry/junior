@@ -18,8 +18,18 @@ function successDiagnostics(toolCalls: string[] = []) {
   };
 }
 
+function reactionCall(name: string, timestamp: string) {
+  return expect.objectContaining({
+    params: expect.objectContaining({
+      channel: "C_PROCESSING",
+      timestamp,
+      name,
+    }),
+  });
+}
+
 describe("Slack behavior: processing reaction", () => {
-  it("adds eyes before mention work and removes it after the reply", async () => {
+  it("adds eyes before mention work and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -54,22 +64,11 @@ describe("Slack behavior: processing reaction", () => {
     );
 
     expect(slackApiOutbox.reactionAdds()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C_PROCESSING",
-          timestamp: "1700007001.000000",
-          name: "eyes",
-        }),
-      }),
+      reactionCall("eyes", "1700007001.000000"),
+      reactionCall("white_check_mark", "1700007001.000000"),
     ]);
     expect(slackApiOutbox.reactionRemovals()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C_PROCESSING",
-          timestamp: "1700007001.000000",
-          name: "eyes",
-        }),
-      }),
+      reactionCall("eyes", "1700007001.000000"),
     ]);
   });
 
@@ -121,7 +120,7 @@ describe("Slack behavior: processing reaction", () => {
     expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
   });
 
-  it("adds eyes after a subscribed message is approved and removes it after the reply", async () => {
+  it("adds eyes after a subscribed message is approved and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -170,22 +169,11 @@ describe("Slack behavior: processing reaction", () => {
     );
 
     expect(slackApiOutbox.reactionAdds()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C_PROCESSING",
-          timestamp: "1700007151.000000",
-          name: "eyes",
-        }),
-      }),
+      reactionCall("eyes", "1700007151.000000"),
+      reactionCall("white_check_mark", "1700007151.000000"),
     ]);
     expect(slackApiOutbox.reactionRemovals()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C_PROCESSING",
-          timestamp: "1700007151.000000",
-          name: "eyes",
-        }),
-      }),
+      reactionCall("eyes", "1700007151.000000"),
     ]);
   });
 

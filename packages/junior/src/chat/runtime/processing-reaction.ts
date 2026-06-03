@@ -9,14 +9,17 @@ import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
 import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
 
 const PROCESSING_REACTION_EMOJI = "eyes";
+const COMPLETED_REACTION_EMOJI = "white_check_mark";
 
 /** Controls the automatic Slack processing reaction lifecycle for one message. */
 export interface ProcessingReactionSession {
+  complete: () => Promise<void>;
   keep: () => void;
   stop: () => Promise<void>;
 }
 
 const noProcessingReaction: ProcessingReactionSession = {
+  complete: async () => undefined,
   keep: () => undefined,
   stop: async () => undefined,
 };
@@ -104,34 +107,65 @@ export async function startSlackProcessingReactionForMessage(args: {
   }
 
   let shouldRemove = true;
+  const removeProcessingReaction = async (): Promise<boolean> => {
+    if (!shouldRemove) {
+      return false;
+    }
+
+    try {
+      await removeReactionFromMessage({
+        channelId: args.channelId,
+        timestamp: args.timestamp,
+        emoji: PROCESSING_REACTION_EMOJI,
+      });
+      return true;
+    } catch (error) {
+      args.logException(
+        error,
+        "slack_processing_reaction_remove_failed",
+        args.logContext,
+        {
+          "app.slack.action": "reactions.remove",
+          "messaging.message.id": args.timestamp,
+          ...getSlackErrorObservabilityAttributes(error),
+        },
+        "Failed to remove Slack processing reaction",
+      );
+      return false;
+    }
+  };
+
   return {
-    keep: () => {
-      shouldRemove = false;
-    },
-    stop: async () => {
-      if (!shouldRemove) {
+    complete: async () => {
+      if (!(await removeProcessingReaction())) {
         return;
       }
 
       try {
-        await removeReactionFromMessage({
+        await addReactionToMessage({
           channelId: args.channelId,
           timestamp: args.timestamp,
-          emoji: PROCESSING_REACTION_EMOJI,
+          emoji: COMPLETED_REACTION_EMOJI,
         });
       } catch (error) {
         args.logException(
           error,
-          "slack_processing_reaction_remove_failed",
+          "slack_processing_reaction_complete_failed",
           args.logContext,
           {
-            "app.slack.action": "reactions.remove",
+            "app.slack.action": "reactions.add",
             "messaging.message.id": args.timestamp,
             ...getSlackErrorObservabilityAttributes(error),
           },
-          "Failed to remove Slack processing reaction",
+          "Failed to add Slack completed reaction",
         );
       }
+    },
+    keep: () => {
+      shouldRemove = false;
+    },
+    stop: async () => {
+      await removeProcessingReaction();
     },
   };
 }

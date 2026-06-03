@@ -130,12 +130,14 @@ Current rules:
 
 1. DM and explicit-mention handlers add `:eyes:` before turn preparation or assistant execution.
 2. Subscribed-thread handlers add `:eyes:` only after preflight and passive reply routing return `shouldReply: true`, immediately before assistant execution.
-3. Skipped subscribed-thread messages, including passive no-reply and opt-out decisions, do not add or remove the automatic processing reaction.
-4. Junior removes an automatic `:eyes:` reaction when the handler completes after the reaction has started, including reply, auth-pause, timeout-continuation, and fallback-error paths.
-5. When an OAuth/MCP callback resumes an auth-paused request, Junior re-adds `:eyes:` to the original triggering Slack message while resumed processing runs, then removes it when the resumed handler completes.
-6. Processing-reaction add and remove calls are best effort. Failures are observable but must not fail the turn or change reply routing.
-7. The automatic processing reaction is runtime-owned. It must not be exposed as model progress, and it must not count as a successful user-requested reaction tool call.
-8. If the assistant explicitly uses the Slack reaction tool to add `:eyes:` to the same inbound message, Junior leaves the reaction in place instead of removing the automatic acknowledgement.
+3. Batched or steered Slack messages that Junior durably accepts into an active turn also get `:eyes:` so each handled user message has the same visible acknowledgement.
+4. When the accepted message completes with a final delivered reply or successful side effect, Junior replaces the automatic `:eyes:` with `:white_check_mark:`.
+5. Skipped subscribed-thread messages, including passive no-reply and opt-out decisions, do not add or remove an automatic reaction.
+6. Junior removes an automatic `:eyes:` reaction without adding `:white_check_mark:` when the handler stops before completion, including auth-pause, timeout-continuation, cooperative-yield, and fallback-error paths.
+7. When an OAuth/MCP callback resumes an auth-paused request, Junior re-adds `:eyes:` to the original triggering Slack message while resumed processing runs, then replaces it with `:white_check_mark:` only after the resumed final reply is delivered.
+8. Processing-reaction add, remove, and completion calls are best effort. Failures are observable but must not fail the turn or change reply routing.
+9. The automatic processing reaction is runtime-owned. It must not be exposed as model progress, and it must not count as a successful user-requested reaction tool call.
+10. If the assistant explicitly uses the Slack reaction tool to add `:eyes:` to the same inbound message, Junior leaves the reaction in place instead of replacing the automatic acknowledgement.
 
 ### 6. Primary Reply Contract
 

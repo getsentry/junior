@@ -52,6 +52,28 @@ function makeDiagnostics() {
   };
 }
 
+function reactionTargets(
+  calls: ReturnType<typeof slackApiOutbox.reactionAdds>,
+) {
+  return calls
+    .map((call) => ({
+      channel: call.params.channel,
+      name: call.params.name,
+      timestamp: call.params.timestamp,
+    }))
+    .sort((left, right) =>
+      `${left.channel}:${left.timestamp}:${left.name}`.localeCompare(
+        `${right.channel}:${right.timestamp}:${right.name}`,
+      ),
+    );
+}
+
+function reactionTargetsByName(name: string) {
+  return reactionTargets(
+    slackApiOutbox.reactionAdds().filter((call) => call.params.name === name),
+  );
+}
+
 function createTurnHarness(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
   state: StateAdapter;
@@ -226,6 +248,26 @@ describe("Slack behavior: durable turn steering", () => {
       work?.messages.every((message) => message.injectedAtMs !== undefined),
     ).toBe(true);
     expect(work?.needsRun).toBe(false);
+
+    const expectedReactionTargets = (name: string) =>
+      [THREAD_TS, "1712345.000200", "1712345.000300", "1712345.000400"].map(
+        (timestamp) => ({
+          channel: CHANNEL_ID,
+          name,
+          timestamp,
+        }),
+      );
+    const expectedProcessingReactions = expectedReactionTargets("eyes");
+    const expectedCompletedReactions =
+      expectedReactionTargets("white_check_mark");
+
+    expect(reactionTargetsByName("eyes")).toEqual(expectedProcessingReactions);
+    expect(reactionTargets(slackApiOutbox.reactionRemovals())).toEqual(
+      expectedProcessingReactions,
+    );
+    expect(reactionTargetsByName("white_check_mark")).toEqual(
+      expectedCompletedReactions,
+    );
   });
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {

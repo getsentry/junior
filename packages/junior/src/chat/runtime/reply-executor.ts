@@ -272,6 +272,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
+      onTurnCompleted?: () => Promise<void>;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
@@ -405,6 +406,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           });
           await options.onTurnStatePersisted?.();
           await options.onInputCommitted?.();
+          await options.onTurnCompleted?.();
           return;
         }
         if (conversationId && activeTurnId) {
@@ -944,6 +946,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Agent turn completed",
             );
           }
+          await options.onTurnCompleted?.();
         } catch (error) {
           if (isCooperativeTurnYieldError(error)) {
             shouldPersistFailureState = false;

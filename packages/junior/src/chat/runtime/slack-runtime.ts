@@ -28,6 +28,7 @@ import {
   startSlackProcessingReaction,
   type ProcessingReactionSession,
 } from "@/chat/runtime/processing-reaction";
+import { getMessageTs } from "@/chat/runtime/thread-context";
 import {
   combineTurnText,
   type PrepareTurnStateInput,
@@ -150,6 +151,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
+      onTurnCompleted?: () => Promise<void>;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
@@ -217,6 +219,7 @@ function createSteeringMessageDrain(
   hooks: ReplyHooks | undefined,
   options: {
     explicitMention: boolean;
+    onMessagesAccepted?: (messages: Message[]) => Promise<void>;
     stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
   },
 ):
@@ -229,9 +232,15 @@ function createSteeringMessageDrain(
   }
 
   return async (inject) => {
+    let acceptedMessages: Message[] | undefined;
     const drained = await hooks.drainSteeringMessages!(async (messages) => {
       await inject(getQueuedMessagesFromSlackMessages(messages, options));
+      acceptedMessages = messages;
+      await options.onMessagesAccepted?.(messages);
     });
+    if (!acceptedMessages) {
+      await options.onMessagesAccepted?.(drained);
+    }
     return getQueuedMessagesFromSlackMessages(drained, options);
   };
 }
@@ -303,6 +312,60 @@ export function createSlackTurnRuntime<
         processingReaction.keep();
       }
       hooks?.onToolInvocation?.(invocation);
+    };
+  };
+
+  const stopProcessingReactions = async (
+    processingReactions: ProcessingReactionSession[],
+  ): Promise<void> => {
+    await Promise.all(processingReactions.map((reaction) => reaction.stop()));
+  };
+
+  const completeProcessingReactions = async (
+    processingReactions: ProcessingReactionSession[],
+  ): Promise<void> => {
+    await Promise.all(
+      processingReactions.map((reaction) => reaction.complete()),
+    );
+  };
+
+  const createProcessingReactionTracker = (thread: Thread) => {
+    const processingReactions: ProcessingReactionSession[] = [];
+    const processingReactionByMessage = new Map<
+      string,
+      ProcessingReactionSession
+    >();
+
+    return {
+      start: async (
+        context: RuntimeLogContext,
+        targetMessage: Message,
+      ): Promise<ProcessingReactionSession> => {
+        const channelId = deps.getChannelId(thread, targetMessage);
+        const messageTs = getMessageTs(targetMessage);
+        const reactionKey =
+          channelId && messageTs ? `${channelId}:${messageTs}` : undefined;
+        if (reactionKey) {
+          const existing = processingReactionByMessage.get(reactionKey);
+          if (existing) {
+            return existing;
+          }
+        }
+
+        const started = await startSlackProcessingReaction({
+          thread,
+          message: targetMessage,
+          logException: deps.logException,
+          logContext: context,
+        });
+        processingReactions.push(started);
+        if (reactionKey) {
+          processingReactionByMessage.set(reactionKey, started);
+        }
+        return started;
+      },
+      completeAll: () => completeProcessingReactions(processingReactions),
+      stopAll: () => stopProcessingReactions(processingReactions),
     };
   };
 
@@ -379,7 +442,12 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks?: ReplyHooks,
     ): Promise<void> {
+      const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
+      let completed = false;
+      const onTurnCompleted = async (): Promise<void> => {
+        completed = true;
+      };
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -391,12 +459,7 @@ export function createSlackTurnRuntime<
           requesterUserName: message.author.userName,
           runId,
         });
-        processingReaction = await startSlackProcessingReaction({
-          thread,
-          message,
-          logException: deps.logException,
-          logContext: context,
-        });
+        processingReaction = await processingReactions.start(context, message);
         const toolInvocationHook = createToolInvocationHook(
           processingReaction,
           hooks,
@@ -408,16 +471,40 @@ export function createSlackTurnRuntime<
             explicitMention: true,
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
+          let queuedProcessingReactionsStarted = false;
+          const startQueuedProcessingReactions = async (): Promise<void> => {
+            if (queuedProcessingReactionsStarted) {
+              return;
+            }
+            queuedProcessingReactionsStarted = true;
+            await Promise.all(
+              queuedMessages.map((queued) =>
+                processingReactions.start(context, queued.message),
+              ),
+            );
+          };
+          const onInputCommitted = async (): Promise<void> => {
+            await hooks?.onInputCommitted?.();
+            await startQueuedProcessingReactions();
+          };
           const drainSteeringMessages = createSteeringMessageDrain(hooks, {
             explicitMention: true,
+            onMessagesAccepted: async (messages) => {
+              await Promise.all(
+                messages.map((drainedMessage) =>
+                  processingReactions.start(context, drainedMessage),
+                ),
+              );
+            },
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
-            onInputCommitted: hooks?.onInputCommitted,
+            onInputCommitted,
             onToolInvocation: toolInvocationHook,
+            onTurnCompleted,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
             shouldYield: hooks?.shouldYield,
@@ -472,7 +559,11 @@ export function createSlackTurnRuntime<
             "Failed to post fallback error reply for mention handler",
         });
       } finally {
-        await processingReaction?.stop();
+        if (completed) {
+          await processingReactions.completeAll();
+        } else {
+          await processingReactions.stopAll();
+        }
       }
     },
 
@@ -481,7 +572,12 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks?: ReplyHooks,
     ): Promise<void> {
+      const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
+      let completed = false;
+      const onTurnCompleted = async (): Promise<void> => {
+        completed = true;
+      };
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -521,6 +617,13 @@ export function createSlackTurnRuntime<
           });
           const drainSteeringMessages = createSteeringMessageDrain(hooks, {
             explicitMention: Boolean(message.isMention),
+            onMessagesAccepted: async (messages) => {
+              await Promise.all(
+                messages.map((drainedMessage) =>
+                  processingReactions.start(turnContext, drainedMessage),
+                ),
+              );
+            },
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           const combinedText = combineTurnText(queuedMessages, currentText);
@@ -608,12 +711,26 @@ export function createSlackTurnRuntime<
             return;
           }
 
-          processingReaction = await startSlackProcessingReaction({
-            thread,
+          processingReaction = await processingReactions.start(
+            turnContext,
             message,
-            logException: deps.logException,
-            logContext: turnContext,
-          });
+          );
+          let queuedProcessingReactionsStarted = false;
+          const startQueuedProcessingReactions = async (): Promise<void> => {
+            if (queuedProcessingReactionsStarted) {
+              return;
+            }
+            queuedProcessingReactionsStarted = true;
+            await Promise.all(
+              queuedMessages.map((queued) =>
+                processingReactions.start(turnContext, queued.message),
+              ),
+            );
+          };
+          const onInputCommitted = async (): Promise<void> => {
+            await hooks?.onInputCommitted?.();
+            await startQueuedProcessingReactions();
+          };
           const toolInvocationHook = createToolInvocationHook(
             processingReaction,
             hooks,
@@ -624,8 +741,9 @@ export function createSlackTurnRuntime<
             preparedState,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,
-            onInputCommitted: hooks?.onInputCommitted,
+            onInputCommitted,
             onToolInvocation: toolInvocationHook,
+            onTurnCompleted,
             drainSteeringMessages,
             onTurnStatePersisted: hooks?.onTurnStatePersisted,
             shouldYield: hooks?.shouldYield,
@@ -681,7 +799,11 @@ export function createSlackTurnRuntime<
             "Failed to post fallback error reply for subscribed message handler",
         });
       } finally {
-        await processingReaction?.stop();
+        if (completed) {
+          await processingReactions.completeAll();
+        } else {
+          await processingReactions.stopAll();
+        }
       }
     },
 

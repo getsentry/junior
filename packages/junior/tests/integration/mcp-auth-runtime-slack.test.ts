@@ -269,21 +269,28 @@ async function mirrorThreadStateToAdapter(thread: TestThread): Promise<void> {
 
 function expectProcessingReactionLifecycles(args: {
   channel: string;
+  completedCount?: number;
   count: number;
   timestamp: string;
 }): void {
-  const call = () =>
+  const call = (name: string) =>
     expect.objectContaining({
       params: expect.objectContaining({
         channel: args.channel,
         timestamp: args.timestamp,
-        name: "eyes",
+        name,
       }),
     });
-  const expected = Array.from({ length: args.count }, call);
+  const eyes = Array.from({ length: args.count }, () => call("eyes"));
+  const completed = Array.from({ length: args.completedCount ?? 0 }, () =>
+    call("white_check_mark"),
+  );
 
-  expect(getCapturedSlackApiCalls("reactions.add")).toEqual(expected);
-  expect(getCapturedSlackApiCalls("reactions.remove")).toEqual(expected);
+  expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
+    ...eyes,
+    ...completed,
+  ]);
+  expect(getCapturedSlackApiCalls("reactions.remove")).toEqual(eyes);
 }
 
 describe("mcp auth runtime slack integration", () => {
@@ -311,14 +318,14 @@ describe("mcp auth runtime slack integration", () => {
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
-  });
+  }, 45_000);
 
   afterEach(async () => {
     await stateAdapterModule?.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
-  });
+  }, 45_000);
 
   it("parks an MCP auth challenge from the real Slack runtime and resumes after OAuth callback", async () => {
     const threadId = "slack:C123:1700000000.001";
@@ -546,6 +553,7 @@ describe("mcp auth runtime slack integration", () => {
       channel: "C123",
       timestamp: "1700000000.002",
       count: 2,
+      completedCount: 1,
     });
   });
 

@@ -530,6 +530,13 @@ describe("mcp oauth callback slack integration", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           timestamp: "1700000000.0052",
+          name: "eyes",
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          timestamp: "1700000000.0052",
+          name: "white_check_mark",
         }),
       }),
     ]);
