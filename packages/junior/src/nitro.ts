@@ -232,25 +232,21 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
     ? existingRule.experimentalTriggers
     : [];
-  const hasConversationWorkTrigger = existingTriggers.some(
-    (trigger) =>
-      trigger.type === VERCEL_QUEUE_TRIGGER_TYPE &&
-      trigger.topic === queueTopic,
+  const otherTriggers = existingTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
   );
 
   nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
     {
       maxDuration: callbackMaxDuration,
       ...existingRule,
-      experimentalTriggers: hasConversationWorkTrigger
-        ? existingTriggers
-        : [
-            ...existingTriggers,
-            {
-              type: VERCEL_QUEUE_TRIGGER_TYPE,
-              topic: queueTopic,
-            },
-          ],
+      experimentalTriggers: [
+        ...otherTriggers,
+        {
+          type: VERCEL_QUEUE_TRIGGER_TYPE,
+          topic: queueTopic,
+        },
+      ],
     };
 }
 

@@ -198,6 +198,47 @@ describe("juniorNitro plugin modules", () => {
     ]);
   });
 
+  it("replaces a stale queue trigger when the topic changes", () => {
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: "/tmp/junior-output",
+        },
+        rootDir: "/tmp/junior-app",
+        vercel: {
+          functionRules: {
+            [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: "old_topic",
+                },
+              ],
+            },
+          },
+        },
+        virtual,
+      },
+    };
+
+    juniorNitro({ conversationWorkQueueTopic: "new_topic" }).nitro.setup(nitro);
+    const vercel = getVercelOptions(nitro);
+
+    expect(
+      vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
+        ?.experimentalTriggers,
+    ).toEqual([
+      {
+        type: "queue/v2beta",
+        topic: "new_topic",
+      },
+    ]);
+  });
+
   it("preserves Vercel max function duration settings", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {

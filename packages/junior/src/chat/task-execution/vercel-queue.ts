@@ -28,8 +28,8 @@ let defaultQueue: ConversationWorkQueue | undefined;
 
 function getTopic(options: VercelConversationWorkQueueOptions): string {
   return (
-    options.topic ??
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ??
+    options.topic ||
+    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
     DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
   );
 }
