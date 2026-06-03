@@ -601,8 +601,8 @@ export function buildTurnContextPrompt(
 ): string | null {
   const includeSessionContext = params.includeSessionContext ?? true;
   // Session context, including Slack conversation facts, is bootstrap material.
-  // Once recorded in Pi history, follow-up user messages should carry only the
-  // user's input.
+  // Once recorded in Pi history, follow-up and resumed user messages should
+  // carry only the user's input.
   if (!includeSessionContext) {
     return null;
   }

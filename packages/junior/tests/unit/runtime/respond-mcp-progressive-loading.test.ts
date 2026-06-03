@@ -694,10 +694,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     ]);
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
-    expect(turnContextInputs[1]?.includeSessionContext).toBe(true);
-    expect(turnContextInputs[1]?.activeMcpCatalogs).toEqual([
-      { provider: "demo", available_tool_count: 1 },
-    ]);
+    expect(turnContextInputs).toHaveLength(1);
     expect(searchMcpToolNames).toEqual([]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -787,7 +784,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(listToolsMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps prior Pi history and the current request when inferred provider restore pauses for auth", async () => {
+  it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
     const priorMessages = [
       {
         role: "user",
@@ -857,6 +854,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       ],
     });
     expect(resumeTurnContextCounts).toEqual([1]);
+    expect(turnContextInputs).toHaveLength(1);
+    expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
   });
 
   it("injects session context when persisted Pi history has no runtime context", async () => {
@@ -977,7 +976,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(false);
+    expect(turnContextInputs).toHaveLength(0);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<runtime-turn-context>",
     );

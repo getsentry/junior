@@ -14,13 +14,6 @@ import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
-const RUNTIME_CONTEXT_CLOSE = `</${TURN_CONTEXT_TAG}>`;
-const RUNTIME_SECTION_OPEN = "<runtime>";
-const RUNTIME_SECTION_CLOSE = "</runtime>";
-const STABLE_RUNTIME_CONTEXT_LINE_PREFIXES = [
-  "- slack.conversation.type:",
-  "- slack.conversation.name:",
-] as const;
 
 /** Extract conversation and session identifiers from correlation context. */
 export function getSessionIdentifiers(context: {
@@ -281,70 +274,7 @@ function isRuntimeTurnContextPart(part: unknown, marker: string): boolean {
   );
 }
 
-function getStableRuntimeContextLinePrefix(line: string): string | undefined {
-  const trimmed = line.trimStart();
-  return STABLE_RUNTIME_CONTEXT_LINE_PREFIXES.find((prefix) =>
-    trimmed.startsWith(prefix),
-  );
-}
-
-function preserveStableRuntimeContextLines(
-  existingText: string,
-  turnContextPrompt: string,
-): string {
-  const seenPrefixes = new Set(
-    turnContextPrompt
-      .split("\n")
-      .map(getStableRuntimeContextLinePrefix)
-      .filter((prefix): prefix is string => Boolean(prefix)),
-  );
-  const missingLines: string[] = [];
-
-  for (const line of existingText.split("\n")) {
-    const prefix = getStableRuntimeContextLinePrefix(line);
-    if (!prefix || seenPrefixes.has(prefix)) {
-      continue;
-    }
-    seenPrefixes.add(prefix);
-    missingLines.push(line);
-  }
-
-  if (missingLines.length === 0) {
-    return turnContextPrompt;
-  }
-
-  const lines = turnContextPrompt.split("\n");
-  const runtimeCloseIndex = lines.findIndex(
-    (line) => line.trim() === RUNTIME_SECTION_CLOSE,
-  );
-  if (runtimeCloseIndex >= 0) {
-    lines.splice(runtimeCloseIndex, 0, ...missingLines);
-    return lines.join("\n");
-  }
-
-  const contextCloseIndex = lines.findIndex(
-    (line) => line.trim() === RUNTIME_CONTEXT_CLOSE,
-  );
-  if (contextCloseIndex >= 0) {
-    lines.splice(
-      contextCloseIndex,
-      0,
-      RUNTIME_SECTION_OPEN,
-      ...missingLines,
-      RUNTIME_SECTION_CLOSE,
-    );
-    return lines.join("\n");
-  }
-
-  return [
-    turnContextPrompt,
-    RUNTIME_SECTION_OPEN,
-    ...missingLines,
-    RUNTIME_SECTION_CLOSE,
-  ].join("\n");
-}
-
-function replaceRuntimeTurnContext(
+function prependRuntimeTurnContext(
   message: PiMessage,
   turnContextPrompt: string,
 ): PiMessage | undefined {
@@ -353,44 +283,32 @@ function replaceRuntimeTurnContext(
     return undefined;
   }
 
-  const marker = turnContextPrompt.split("\n", 1)[0];
   const contextIndex = content.findIndex((part) =>
-    isRuntimeTurnContextPart(part, marker),
+    isRuntimeTurnContextPart(part, RUNTIME_TURN_CONTEXT_START),
   );
-  if (contextIndex < 0) {
+  if (contextIndex >= 0) {
     return undefined;
   }
 
-  const nextContent = [...content];
-  const existingContextText = (nextContent[contextIndex] as { text: string })
-    .text;
-  nextContent[contextIndex] = {
-    ...(nextContent[contextIndex] as object),
-    text: preserveStableRuntimeContextLines(
-      existingContextText,
-      turnContextPrompt,
-    ),
-  };
   return {
     ...message,
-    content: nextContent,
+    content: [{ type: "text", text: turnContextPrompt }, ...content],
   } as PiMessage;
 }
 
 /**
- * Refresh volatile runtime context in session history before continuing Pi.
- *
- * Static bootstrap facts already recorded in the first prompt block, such as
- * Slack conversation identity, stay in Pi history. Resume code should preserve
- * those lines from the recorded message instead of storing a parallel copy on
- * turn-session metadata.
+ * Add bootstrap context only for stored boundaries captured before prompt().
  */
-export function refreshRuntimeTurnContext(
+export function prependMissingRuntimeTurnContext(
   messages: PiMessage[],
   turnContextPrompt: string,
 ): PiMessage[] {
-  for (let index = 0; index < messages.length; index += 1) {
-    const updated = replaceRuntimeTurnContext(
+  if (hasRuntimeTurnContext(messages)) {
+    return messages;
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const updated = prependRuntimeTurnContext(
       messages[index],
       turnContextPrompt,
     );
@@ -400,20 +318,6 @@ export function refreshRuntimeTurnContext(
 
     const nextMessages = [...messages];
     nextMessages[index] = updated;
-    return nextMessages;
-  }
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const content = getUserMessageContent(messages[index]);
-    if (!content) {
-      continue;
-    }
-
-    const nextMessages = [...messages];
-    nextMessages[index] = {
-      ...messages[index],
-      content: [{ type: "text", text: turnContextPrompt }, ...content],
-    } as PiMessage;
     return nextMessages;
   }
 

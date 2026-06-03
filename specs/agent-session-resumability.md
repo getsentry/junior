@@ -267,8 +267,11 @@ event or define the projection/filtering rule.
 Slack conversation type/name supplied in the first runtime-context block is
 bootstrap prompt material already recorded in the Pi user message. Timeout and
 OAuth resumes must not persist a second copy or re-send the original prompt
-context; any resume-time runtime-context refresh preserves those static facts
-from the projected Pi history before calling `continue()`.
+context; existing runtime-context blocks in projected Pi history must be left
+unchanged before calling `continue()`. If a pause is captured before `prompt()`
+has sent bootstrap context, the runtime may attach that missing block once to
+the stored user boundary; that is first-prompt construction, not replacement of
+an existing block.
 
 ### Compaction Projection
 
