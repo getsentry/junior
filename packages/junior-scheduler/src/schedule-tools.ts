@@ -341,6 +341,7 @@ export function createSlackScheduleCreateTaskTool(
   return tool({
     description:
       "Create a future or recurring Junior task in the active Slack conversation. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
+    executionMode: "sequential",
     inputSchema: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 4000 }),
       schedule: Type.String({ minLength: 1, maxLength: 300 }),
@@ -468,6 +469,7 @@ export function createSlackScheduleUpdateTaskTool(
   return tool({
     description:
       "Edit, pause, resume, or reschedule an existing Junior scheduled task in the active Slack conversation. Use only task IDs returned for this destination. Do not move scheduled tasks across conversations.",
+    executionMode: "sequential",
     inputSchema: Type.Object({
       task_id: Type.String({
         minLength: 1,
@@ -585,6 +587,7 @@ export function createSlackScheduleDeleteTaskTool(
   return tool({
     description:
       "Delete one scheduled Junior task from the active Slack conversation. Use only task IDs returned for this destination. Do not delete schedules from threads, other channels, or another user's DM.",
+    executionMode: "sequential",
     inputSchema: Type.Object({
       task_id: Type.String({
         minLength: 1,
@@ -620,6 +623,7 @@ export function createSlackScheduleRunTaskNowTool(
   return tool({
     description:
       "Queue an existing active scheduled Junior task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled task now. Use only task IDs returned for this destination.",
+    executionMode: "sequential",
     inputSchema: Type.Object({
       task_id: Type.String({
         minLength: 1,
