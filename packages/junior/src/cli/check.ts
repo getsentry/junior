@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
+import {
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_HEARTBEAT_ROUTE,
+  LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION,
+} from "@/deployment";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
 import type { PluginManifest } from "@/chat/plugins/types";
 
@@ -106,6 +111,14 @@ async function pathIsFile(targetPath: string): Promise<boolean> {
 async function readJsonFile<T>(targetPath: string): Promise<T | undefined> {
   try {
     return JSON.parse(await fs.readFile(targetPath, "utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readTextFile(targetPath: string): Promise<string | undefined> {
+  try {
+    return await fs.readFile(targetPath, "utf8");
   } catch {
     return undefined;
   }
@@ -555,6 +568,133 @@ interface AppFileValidationResult {
   warnings: string[];
 }
 
+interface DeploymentConfigValidationResult extends AppFileValidationResult {
+  checked: boolean;
+}
+
+interface VercelProjectConfig {
+  crons?: unknown;
+  functions?: unknown;
+  framework?: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+async function hasJuniorDeploymentMarkers(
+  rootDir: string,
+  packages: DeclaredPackage[],
+  nitroConfig: string | undefined,
+): Promise<boolean> {
+  if (
+    packages.some(
+      (declaredPackage) => declaredPackage.name === "@sentry/junior",
+    )
+  ) {
+    return true;
+  }
+
+  for (const source of [
+    nitroConfig,
+    await readTextFile(path.join(rootDir, "server.ts")),
+    await readTextFile(path.join(rootDir, "server.js")),
+  ]) {
+    if (
+      source?.includes("@sentry/junior") ||
+      /\bjuniorNitro\s*\(/.test(source ?? "")
+    ) {
+      return true;
+    }
+  }
+
+  const appDir = path.resolve(rootDir, "app");
+  return (await pathIsDirectory(appDir)) && (await hasJuniorAppMarkers(appDir));
+}
+
+async function validateDeploymentConfig(
+  rootDir: string,
+  packages: DeclaredPackage[],
+): Promise<DeploymentConfigValidationResult> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let checked = false;
+
+  const nitroConfigPath = path.join(rootDir, "nitro.config.ts");
+  const nitroConfig = await readTextFile(nitroConfigPath);
+  const hasJuniorMarkers = await hasJuniorDeploymentMarkers(
+    rootDir,
+    packages,
+    nitroConfig,
+  );
+  if (nitroConfig !== undefined && hasJuniorMarkers) {
+    checked = true;
+    if (!/\bjuniorNitro\s*\(/.test(nitroConfig)) {
+      errors.push(
+        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron into the deployed build output.`,
+      );
+    }
+  }
+
+  const vercelConfigPath = path.join(rootDir, "vercel.json");
+  const vercelConfigText = await readTextFile(vercelConfigPath);
+  if (vercelConfigText === undefined) {
+    return { checked, errors, warnings };
+  }
+  const containsLegacyJuniorQueuePath = vercelConfigText.includes(
+    LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION,
+  );
+  if (!hasJuniorMarkers && !containsLegacyJuniorQueuePath) {
+    return { checked, errors, warnings };
+  }
+
+  let vercelConfig: VercelProjectConfig;
+  try {
+    vercelConfig = JSON.parse(vercelConfigText) as VercelProjectConfig;
+  } catch (error) {
+    errors.push(
+      `${vercelConfigPath}: invalid JSON (${error instanceof Error ? error.message : String(error)})`,
+    );
+    return { checked, errors, warnings };
+  }
+
+  if (
+    hasJuniorMarkers &&
+    vercelConfig.framework !== undefined &&
+    vercelConfig.framework !== "nitro"
+  ) {
+    checked = true;
+    errors.push(
+      `${vercelConfigPath}: framework must be "nitro" for Junior's Vercel deployment wiring.`,
+    );
+  }
+
+  if (isRecord(vercelConfig.functions)) {
+    const legacyFunctionConfig =
+      vercelConfig.functions[LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION];
+    if (legacyFunctionConfig !== undefined) {
+      checked = true;
+      errors.push(
+        `${vercelConfigPath}: functions.${LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION} targets a source file that Nitro does not deploy. Remove it; juniorNitro() emits the ${JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE} queue trigger through Nitro functionRules.`,
+      );
+    }
+  }
+
+  if (hasJuniorMarkers && Array.isArray(vercelConfig.crons)) {
+    const hasHeartbeatCron = vercelConfig.crons.some(
+      (cron) => isRecord(cron) && cron.path === JUNIOR_HEARTBEAT_ROUTE,
+    );
+    if (hasHeartbeatCron) {
+      checked = true;
+      warnings.push(
+        `${vercelConfigPath}: ${JUNIOR_HEARTBEAT_ROUTE} cron is now emitted by juniorNitro() into Nitro's Vercel Build Output config. Remove the root cron entry to avoid deployment drift.`,
+      );
+    }
+  }
+
+  return { checked, errors, warnings };
+}
+
 async function validateAppSourceFiles(
   rootDir: string,
   registeredConfigKeys: Set<string>,
@@ -721,6 +861,12 @@ export async function runCheck(
   const pluginResults: PluginValidationResult[] = [];
   const skillResultsByDir = new Map<string, SkillValidationResult>();
   warnings.push(...packageWarnings);
+  const deploymentConfigResult = await validateDeploymentConfig(
+    resolvedRoot,
+    packages,
+  );
+  warnings.push(...deploymentConfigResult.warnings);
+  errors.push(...deploymentConfigResult.errors);
 
   for (const { pluginDir, packageName } of pluginDirs) {
     const pluginNameMap = packageName
@@ -824,6 +970,13 @@ export async function runCheck(
       appFileResult.warnings.length,
     );
     io.info(formatHeading(appFileStatus, "app files"));
+  }
+  if (deploymentConfigResult.checked) {
+    const deploymentConfigStatus = formatStatus(
+      deploymentConfigResult.errors.length,
+      deploymentConfigResult.warnings.length,
+    );
+    io.info(formatHeading(deploymentConfigStatus, "deployment config"));
   }
 
   for (const pluginResult of pluginResults) {

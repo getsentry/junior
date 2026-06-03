@@ -9,7 +9,7 @@ title: "juniorVercelConfig"
 
 Defined in: [vercel.ts:6](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L6)
 
-Return a minimal Vercel config for scaffolded Junior apps.
+Return the root Vercel project config for scaffolded Junior apps.
 
 ## Parameters
 

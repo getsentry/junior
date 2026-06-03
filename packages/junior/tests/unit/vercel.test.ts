@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
-import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -15,23 +14,8 @@ describe("juniorVercelConfig", () => {
 
     expect(config.framework).toBe("nitro");
     expect(config.buildCommand).toBe("pnpm build");
-    expect(config.crons).toEqual([
-      {
-        path: "/api/internal/heartbeat",
-        schedule: "* * * * *",
-      },
-    ]);
-    expect(config.functions).toEqual({
-      "api/internal/agent/continue.ts": {
-        maxDuration: 300,
-        experimentalTriggers: [
-          {
-            type: "queue/v2beta",
-            topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
-          },
-        ],
-      },
-    });
+    expect(config.crons).toBeUndefined();
+    expect(config.functions).toBeUndefined();
   });
 
   it("omits buildCommand when set to null", () => {
@@ -40,7 +24,7 @@ describe("juniorVercelConfig", () => {
     expect(config.buildCommand).toBeUndefined();
   });
 
-  it("keeps the example app Vercel config aligned with queue triggers", () => {
+  it("keeps the example app Vercel config aligned with the root project config", () => {
     const config = JSON.parse(
       fs.readFileSync(
         path.join(WORKSPACE_ROOT, "apps/example/vercel.json"),
@@ -51,15 +35,10 @@ describe("juniorVercelConfig", () => {
     expect(config).toEqual(juniorVercelConfig());
   });
 
-  it("keeps the example queue trigger pointed at a concrete function source", () => {
+  it("keeps queue triggers out of the root Vercel source-function config", () => {
     const config = juniorVercelConfig();
-    const functionSources = Object.keys(config.functions as object);
 
-    for (const source of functionSources) {
-      expect(
-        fs.existsSync(path.join(WORKSPACE_ROOT, "apps/example", source)),
-      ).toBe(true);
-    }
+    expect(config.functions).toBeUndefined();
   });
 });
 

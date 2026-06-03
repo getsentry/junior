@@ -12,6 +12,12 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+import {
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_HEARTBEAT_CRON_SCHEDULE,
+  JUNIOR_HEARTBEAT_ROUTE,
+} from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
   trustedPluginRegistrationsFromPluginSet,
@@ -33,6 +39,8 @@ export type JuniorNitroPluginSource =
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
+  /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
+  conversationWorkQueueTopic?: string;
   /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include trusted hooks. */
   plugins?: JuniorNitroPluginSource;
   /**
@@ -49,6 +57,9 @@ interface ResolvedPluginModuleReference {
   importUrl: string;
   runtimeModule: RuntimePluginModule;
 }
+
+const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
+const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
 
 const PLUGIN_MODULE_EXTENSIONS = [
   "",
@@ -179,7 +190,71 @@ function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   );
 }
 
-/** Nitro module that copies app and plugin content into the Vercel build output. */
+function resolveConversationWorkQueueTopic(
+  options: JuniorNitroOptions,
+): string {
+  return (
+    options.conversationWorkQueueTopic?.trim() ||
+    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
+    DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
+  );
+}
+
+function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
+  const defaultMaxDuration =
+    options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
+  const queueTopic = resolveConversationWorkQueueTopic(options);
+
+  nitro.options.vercel ??= {};
+  nitro.options.vercel.config ??= { version: 3 };
+  nitro.options.vercel.config.crons ??= [];
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_HEARTBEAT_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_HEARTBEAT_ROUTE,
+      schedule: JUNIOR_HEARTBEAT_CRON_SCHEDULE,
+    });
+  }
+
+  nitro.options.vercel.functions ??= {};
+  nitro.options.vercel.functions.maxDuration ??= defaultMaxDuration;
+  const callbackMaxDuration =
+    nitro.options.vercel.functions.maxDuration ?? defaultMaxDuration;
+
+  nitro.options.vercel.functionRules ??= {};
+  const existingRule =
+    nitro.options.vercel.functionRules[
+      JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE
+    ] ?? {};
+  const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
+    ? existingRule.experimentalTriggers
+    : [];
+  const hasConversationWorkTrigger = existingTriggers.some(
+    (trigger) =>
+      trigger.type === VERCEL_QUEUE_TRIGGER_TYPE &&
+      trigger.topic === queueTopic,
+  );
+
+  nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
+    {
+      maxDuration: callbackMaxDuration,
+      ...existingRule,
+      experimentalTriggers: hasConversationWorkTrigger
+        ? existingTriggers
+        : [
+            ...existingTriggers,
+            {
+              type: VERCEL_QUEUE_TRIGGER_TYPE,
+              topic: queueTopic,
+            },
+          ],
+    };
+}
+
+/** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void };
 } {
@@ -190,10 +265,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
 
-        nitro.options.vercel ??= {};
-        nitro.options.vercel.functions ??= {};
-        nitro.options.vercel.functions.maxDuration ??=
-          options.maxDuration ?? 300;
+        configureVercelDeployment(nitro, options);
 
         applyRolldownTreeshakeWorkaround(nitro);
         const pluginSource = options.plugins;

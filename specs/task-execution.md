@@ -203,7 +203,14 @@ internal push endpoint is `/api/internal/agent/continue`, because each queue
 delivery asks Junior to continue the latest durable agent state for that
 conversation. The app must wire the concrete conversation runner before
 registering the queue trigger; otherwise queue messages could be acknowledged
-without advancing agent state.
+without advancing agent state. For Nitro/Vercel deployments, `juniorNitro()`
+must attach that trigger with Nitro `vercel.functionRules`; root
+`vercel.json.functions` entries for source files are not deployable functions
+and must not be used for the conversation work consumer.
+
+`juniorNitro()` must also emit the `/api/internal/heartbeat` one-minute cron
+into Nitro's Vercel Build Output config so trusted plugin heartbeats and stale
+dispatch recovery run in production.
 
 ### Lease And Check-In Contract
 

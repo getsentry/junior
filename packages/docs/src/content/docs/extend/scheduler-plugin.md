@@ -32,20 +32,19 @@ import { schedulerPlugin } from "@sentry/junior-scheduler";
 export const plugins = defineJuniorPlugins([schedulerPlugin()]);
 ```
 
-The scaffolded `vercel.json` includes the internal heartbeat route:
+`juniorNitro()` emits the internal heartbeat route into Nitro's Vercel Build Output config:
 
-```json title="vercel.json"
-{
-  "crons": [
-    {
-      "path": "/api/internal/heartbeat",
-      "schedule": "* * * * *"
-    }
-  ]
-}
+```ts title="nitro.config.ts"
+import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
+
+export default defineConfig({
+  preset: "vercel",
+  modules: [juniorNitro()],
+});
 ```
 
-If you manage routes manually, call the heartbeat route on a one-minute cadence:
+If you deploy outside Vercel, call the heartbeat route on a one-minute cadence:
 
 | Route                     | Purpose                         |
 | ------------------------- | ------------------------------- |

@@ -1,6 +1,6 @@
 ---
 title: "junior check"
-description: "Validate Junior plugin manifests and skill files under app/ before build or deploy."
+description: "Validate Junior content and deployment config before build or deploy."
 type: reference
 prerequisites:
   - /start-here/quickstart/
@@ -11,7 +11,7 @@ related:
   - /cli/snapshot-create/
 ---
 
-`junior check` validates local app content and installed plugin package content before build or deploy. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.
+`junior check` validates local app content, installed plugin package content, and Junior deployment config before build or deploy. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.
 
 ## Usage
 
@@ -64,6 +64,10 @@ When the target already contains Junior app markers such as `app/SOUL.md`, `app/
 - Other `app/*.md` files are allowed and stay available at runtime as optional sandbox reference documents.
 
 If a skill file has frontmatter but no instructions after it, the command emits a warning instead of failing.
+
+For Nitro/Vercel apps, the command checks deployment wiring when it sees Junior markers such as `@sentry/junior`, `juniorNitro()`, or app content files. It fails when `nitro.config.ts` omits `juniorNitro()`, because that module emits Junior's heartbeat cron and Vercel Queue trigger into the Nitro build output. It also fails when root `vercel.json` still targets `functions["api/internal/agent/continue.ts"]`; Nitro does not deploy that source file as a Vercel function.
+
+Root `vercel.json` heartbeat crons emit a warning. `juniorNitro()` now emits `/api/internal/heartbeat` into `.vercel/output/config.json`, so keeping the root cron can drift from the deployed Nitro config.
 
 ## Example output
 

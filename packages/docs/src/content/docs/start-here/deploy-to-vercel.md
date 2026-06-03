@@ -12,7 +12,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-The scaffolded app is already shaped for Vercel. Deployment mainly means linking the project, setting env vars, enabling the heartbeat cron, enabling snapshot warmup support, and pointing Slack at the production URL.
+The scaffolded app is already shaped for Vercel. Deployment mainly means linking the project, keeping `juniorNitro()` in Nitro config, setting env vars, enabling snapshot warmup support, and pointing Slack at the production URL.
 
 ## Link the project
 
@@ -41,35 +41,26 @@ The scaffolded `package.json` includes the production build script:
 
 Keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts.
 
-## Keep Vercel runtime entries
+## Enable Junior's Nitro deployment module
 
-Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. The scheduler plugin uses this heartbeat when scheduled tasks are enabled. The scaffolded `vercel.json` should include these runtime entries:
+Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. Durable agent work is also resumed by a Vercel Queue consumer. Both pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
 
-```json title="vercel.json"
-{
-  "framework": "nitro",
-  "buildCommand": "pnpm build",
-  "crons": [
-    {
-      "path": "/api/internal/heartbeat",
-      "schedule": "* * * * *"
-    }
-  ],
-  "functions": {
-    "api/internal/agent/continue.ts": {
-      "maxDuration": 300,
-      "experimentalTriggers": [
-        {
-          "type": "queue/v2beta",
-          "topic": "junior_conversation_work"
-        }
-      ]
-    }
-  }
-}
+Keep `juniorNitro()` installed in `nitro.config.ts`:
+
+```ts title="nitro.config.ts"
+import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
+
+export default defineConfig({
+  preset: "vercel",
+  modules: [juniorNitro()],
+  routes: {
+    "/**": { handler: "./server.ts" },
+  },
+});
 ```
 
-If you maintain `vercel.json` manually, keep the `/api/internal/heartbeat` cron entry and the queue trigger for `api/internal/agent/continue.ts`. The scaffolded `api/internal/agent/continue.ts` file delegates queue delivery to `server.ts`, and Vercel requires the `functions` key to match a concrete source file.
+Do not configure `functions["api/internal/agent/continue.ts"]` in root `vercel.json`; Nitro does not deploy that source file as a Vercel function. `juniorNitro()` attaches the queue trigger to `/api/internal/agent/continue` with Nitro `vercel.functionRules`, and emits the `/api/internal/heartbeat` cron into `.vercel/output/config.json`.
 
 The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has a bearer token that matches `CRON_SECRET`.
 
@@ -125,11 +116,13 @@ Reinstall the Slack app if scopes changed.
 Run these checks after deployment:
 
 1. `GET https://<your-domain>/health` returns `status: "ok"`.
-2. The Vercel deployment has a cron entry for `/api/internal/heartbeat`.
-3. A Slack mention produces a thread reply in the expected workspace.
-4. App Home opens without an error.
-5. Queue callback and turn logs show successful processing.
-6. One enabled plugin workflow succeeds end to end.
+2. `junior check` passes without deployment config errors.
+3. The Vercel deployment has a cron entry for `/api/internal/heartbeat`.
+4. The Vercel deployment has a Queue trigger for `/api/internal/agent/continue`.
+5. A Slack mention produces a thread reply in the expected workspace.
+6. App Home opens without an error.
+7. Queue callback and turn logs show successful processing.
+8. One enabled plugin workflow succeeds end to end.
 
 ## Next step
 

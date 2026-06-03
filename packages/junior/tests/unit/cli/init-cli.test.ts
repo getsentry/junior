@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runCheck } from "@/cli/check";
 import { runInit } from "@/cli/init";
 
 const tempRoots: string[] = [];
@@ -56,23 +57,17 @@ describe("init cli", () => {
     );
     expect(vercelConfig.framework).toBe("nitro");
     expect(vercelConfig.buildCommand).toBe("pnpm build");
-    expect(vercelConfig.crons).toEqual([
-      {
-        path: "/api/internal/heartbeat",
-        schedule: "* * * * *",
-      },
-    ]);
-    expect(vercelConfig.functions).toEqual({
-      "api/internal/agent/continue.ts": {
-        maxDuration: 300,
-        experimentalTriggers: [
-          {
-            type: "queue/v2beta",
-            topic: "junior_conversation_work",
-          },
-        ],
-      },
-    });
+    expect(vercelConfig.crons).toBeUndefined();
+    expect(vercelConfig.functions).toBeUndefined();
+
+    const nitroConfig = fs.readFileSync(
+      path.join(target, "nitro.config.ts"),
+      "utf8",
+    );
+    expect(nitroConfig).toContain(
+      'import { juniorNitro } from "@sentry/junior/nitro";',
+    );
+    expect(nitroConfig).toContain("modules: [juniorNitro()]");
 
     const pkg = JSON.parse(
       fs.readFileSync(path.join(target, "package.json"), "utf8"),
@@ -89,6 +84,14 @@ describe("init cli", () => {
       "utf8",
     );
     expect(envExample).toContain("CRON_SECRET=");
+
+    const checkLines: string[] = [];
+    await runCheck(target, {
+      info: (line) => checkLines.push(line),
+      warn: (line) => checkLines.push(line),
+      error: (line) => checkLines.push(line),
+    });
+    expect(checkLines).toContain("✓ deployment config");
   });
 
   it("refuses to initialize a non-empty directory", async () => {
