@@ -49,6 +49,7 @@ export interface SlackConversationMessageMetadata {
 
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
+  resumeAwaitingContinuation?: (conversationId: string) => Promise<boolean>;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     "handleNewMention" | "handleSubscribedMessage"
@@ -158,7 +159,7 @@ async function failUnresumableContinuation(args: {
 
 async function resumeAwaitingContinuation(
   conversationId: string,
-): Promise<void> {
+): Promise<boolean> {
   const summaries =
     await listAgentTurnSessionSummariesForConversation(conversationId);
 
@@ -182,7 +183,7 @@ async function resumeAwaitingContinuation(
     }
 
     if (await resumeTimedOutTurnWithLockRetry(request)) {
-      return;
+      return true;
     }
 
     await failUnresumableContinuation({
@@ -192,6 +193,8 @@ async function resumeAwaitingContinuation(
       errorMessage: "Awaiting turn continuation was stale before resuming",
     });
   }
+
+  return false;
 }
 
 function getInstallation(
@@ -225,6 +228,12 @@ export function createSlackConversationWorker(
     const adapter = options.getSlackAdapter();
     const state = getConnectedState(options.state);
     await state.connect();
+
+    const resumeContinuation =
+      options.resumeAwaitingContinuation ?? resumeAwaitingContinuation;
+    if (await resumeContinuation(context.conversationId)) {
+      return { status: "completed" };
+    }
 
     const records = getPendingRecords(
       await getConversationWorkState({

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message, Thread } from "chat";
 import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -327,25 +327,12 @@ describe("Slack conversation work execution", () => {
     expect(subscribedValues).toEqual([false]);
   });
 
-  it("processes pending Slack follow-ups before timeout continuation", async () => {
+  it("processes pending Slack follow-ups when no continuation starts", async () => {
     const queue = createFakeQueue();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    await upsertAgentTurnSessionRecord({
-      conversationId: CONVERSATION_ID,
-      sessionId: "turn-timeout",
-      sliceId: 2,
-      state: "awaiting_resume",
-      resumeReason: "timeout",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "original request" }],
-          timestamp: 1_000,
-        },
-      ],
-    });
+    const resumeAwaitingContinuation = vi.fn(async () => false);
 
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
@@ -370,6 +357,7 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
+          resumeAwaitingContinuation,
           runtime: {
             handleNewMention: async (_thread, message, hooks) => {
               await hooks?.onTurnStatePersisted?.();
@@ -384,12 +372,75 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
+    expect(resumeAwaitingContinuation).toHaveBeenCalledWith(CONVERSATION_ID);
     expect(calls).toEqual([expect.stringContaining("follow-up")]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
     });
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+  });
+
+  it("resumes awaiting continuations before routing pending Slack follow-ups", async () => {
+    const queue = createFakeQueue();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const resumeAwaitingContinuation = vi.fn(async () => true);
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> follow-up`,
+          ts: "1712345.0002",
+          threadTs: "1712345.0001",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    queue.sent = [];
+
+    await expect(
+      processConversationWork(CONVERSATION_ID, {
+        nowMs: () => 3_500,
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          resumeAwaitingContinuation,
+          runtime: {
+            handleNewMention: async () => {
+              throw new Error("pending follow-up should wait for resume");
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    expect(resumeAwaitingContinuation).toHaveBeenCalledWith(CONVERSATION_ID);
+    expect(queue.sent).toEqual([
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `pending:${CONVERSATION_ID}:3500`,
+      }),
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(true);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
   it("drains Slack messages that arrive during an active turn into steering", async () => {
