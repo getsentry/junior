@@ -1,6 +1,7 @@
 import { QueryClient, useQuery } from "@tanstack/react-query";
 
 import type {
+  ConversationStatsReport,
   ConversationDetailFeed,
   DashboardConfig,
   DashboardData,
@@ -16,11 +17,17 @@ import type {
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
 const CORE_DASHBOARD_REFETCH_INTERVAL_MS = 5_000;
+const CONVERSATION_STATS_REFETCH_INTERVAL_MS = 30_000;
 const PLUGIN_REPORT_REFETCH_INTERVAL_MS = 30_000;
 
 type DashboardCoreData = Omit<
   DashboardData,
-  "pluginReports" | "pluginReportsError" | "pluginReportsLoading"
+  | "conversationStats"
+  | "conversationStatsError"
+  | "conversationStatsLoading"
+  | "pluginReports"
+  | "pluginReportsError"
+  | "pluginReportsLoading"
 >;
 
 class DashboardApiError extends Error {
@@ -71,6 +78,33 @@ function emptyPluginReportFeed(): PluginReportFeed {
   };
 }
 
+function emptyConversationStatsReport(): ConversationStatsReport {
+  const nowMs = Date.now();
+  return {
+    active: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    generatedAt: new Date(nowMs).toISOString(),
+    hung: 0,
+    locations: [],
+    requesters: [],
+    sampleLimit: 0,
+    sampleSize: 0,
+    source: "turn_session_records",
+    truncated: false,
+    turns: 0,
+    windowEnd: new Date(nowMs).toISOString(),
+    windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+async function readConversationStats(): Promise<ConversationStatsReport> {
+  return await read<ConversationStatsReport>(
+    "/api/dashboard/conversation-stats",
+  );
+}
+
 async function readPluginReports(): Promise<PluginReportFeed> {
   return await read<PluginReportFeed>("/api/dashboard/plugin-reports");
 }
@@ -104,6 +138,13 @@ export function useDashboardData() {
     refetchIntervalInBackground: false,
     retry: false,
   });
+  const conversationStatsQuery = useQuery({
+    queryKey: ["dashboard", "conversation-stats"],
+    queryFn: readConversationStats,
+    refetchInterval: CONVERSATION_STATS_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
   const pluginReportsQuery = useQuery({
     queryKey: ["dashboard", "plugin-reports"],
     queryFn: readPluginReports,
@@ -116,6 +157,11 @@ export function useDashboardData() {
     data: coreQuery.data
       ? {
           ...coreQuery.data,
+          conversationStats:
+            conversationStatsQuery.data ?? emptyConversationStatsReport(),
+          conversationStatsError: Boolean(conversationStatsQuery.error),
+          conversationStatsLoading:
+            conversationStatsQuery.isPending && !conversationStatsQuery.data,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
           pluginReportsLoading:

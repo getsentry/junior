@@ -1,5 +1,6 @@
 import type {
   DashboardConversationReport,
+  DashboardConversationStatsReport,
   DashboardSessionFeed,
   DashboardSessionReport,
   DashboardTranscriptMessage,
@@ -686,6 +687,56 @@ function mergeSessionFeeds(
   };
 }
 
+function conversationStatsReportFromSessions(
+  nowMs: number,
+  sessions: DashboardSessionReport[],
+): DashboardConversationStatsReport {
+  const conversationIds = new Set(
+    sessions.map((session) => session.conversationId),
+  );
+  return {
+    active: countConversationStatus(sessions, "active"),
+    conversations: conversationIds.size,
+    durationMs: sessions.reduce(
+      (sum, session) => sum + session.cumulativeDurationMs,
+      0,
+    ),
+    failed: countConversationStatus(sessions, "failed"),
+    generatedAt: iso(nowMs),
+    hung: countConversationStatus(sessions, "hung"),
+    locations: [],
+    requesters: [],
+    sampleLimit: sessions.length,
+    sampleSize: sessions.length,
+    source: "turn_session_records",
+    tokens: sessions.reduce(
+      (sum, session) =>
+        sum +
+        (session.cumulativeUsage?.inputTokens ?? 0) +
+        (session.cumulativeUsage?.outputTokens ?? 0) +
+        (session.cumulativeUsage?.cachedInputTokens ?? 0) +
+        (session.cumulativeUsage?.cacheCreationTokens ?? 0),
+      0,
+    ),
+    truncated: false,
+    turns: sessions.length,
+    windowEnd: iso(nowMs),
+    windowStart: iso(nowMs, -7 * 24 * 60 * 60 * 1000),
+  };
+}
+
+function countConversationStatus(
+  sessions: DashboardSessionReport[],
+  status: DashboardSessionReport["status"],
+): number {
+  const matching = new Set(
+    sessions
+      .filter((session) => session.status === status)
+      .map((session) => session.conversationId),
+  );
+  return matching.size;
+}
+
 function isLocalPersistenceUnavailable(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -713,6 +764,22 @@ export function createMockConversationReporting(
           throw error;
         }
         return mockFeed;
+      }
+    },
+    async getConversationStats() {
+      const nowMs = Date.now();
+      const mockFeed = mockSessionFeed(nowMs);
+      try {
+        const mergedFeed = mergeSessionFeeds(
+          mockFeed,
+          await reporting.getSessions(),
+        );
+        return conversationStatsReportFromSessions(nowMs, mergedFeed.sessions);
+      } catch (error) {
+        if (!isLocalPersistenceUnavailable(error)) {
+          throw error;
+        }
+        return conversationStatsReportFromSessions(nowMs, mockFeed.sessions);
       }
     },
     async getConversation(conversationId: string) {

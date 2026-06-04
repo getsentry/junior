@@ -53,7 +53,8 @@ export interface JuniorReporting {
   getPlugins(): Promise<PluginReport[]>;
   getSkills(): Promise<SkillReport[]>;
   getSessions(): Promise<DashboardSessionFeed>;
-  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
+  getConversationStats?(): Promise<DashboardConversationStatsReport>;
+  getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   getConversation(conversationId: string): Promise<DashboardConversationReport>;
 }
 
@@ -139,17 +140,18 @@ The dashboard package owns browser-facing routes:
 
 Dashboard JSON APIs are split by view concern:
 
-| Route                                            | Contract                                            |
-| ------------------------------------------------ | --------------------------------------------------- |
-| `GET /api/dashboard/health`                      | Command-center health pulse.                        |
-| `GET /api/dashboard/runtime`                     | Sanitized runtime paths, packages, and providers.   |
-| `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                            |
-| `GET /api/dashboard/skills`                      | Discovered skill inventory.                         |
-| `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records. |
-| `GET /api/dashboard/plugin-reports`              | Sanitized trusted-plugin operational summaries.     |
-| `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs. |
-| `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.  |
-| `GET /api/dashboard/me`                          | Signed-in dashboard identity.                       |
+| Route                                            | Contract                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------ |
+| `GET /api/dashboard/health`                      | Command-center health pulse.                                       |
+| `GET /api/dashboard/runtime`                     | Sanitized runtime paths, packages, and providers.                  |
+| `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                                           |
+| `GET /api/dashboard/skills`                      | Discovered skill inventory.                                        |
+| `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records.                |
+| `GET /api/dashboard/conversation-stats`          | Aggregate conversation stats, leaderboards, and sampling metadata. |
+| `GET /api/dashboard/plugin-reports`              | Sanitized trusted-plugin operational summaries.                    |
+| `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs.                |
+| `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.                 |
+| `GET /api/dashboard/me`                          | Signed-in dashboard identity.                                      |
 
 Conversation transcript responses may synthesize the static system prompt only
 when the exposed transcript begins at a model run boundary. Follow-up turn
@@ -236,6 +238,7 @@ Reporting data may include:
 - configured plugin names
 - skill names and owning plugin provider
 - conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
+- aggregate conversation stats from a dedicated reporting endpoint
 - trusted plugin operational summaries made of bounded string metrics and record sets
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
@@ -249,6 +252,17 @@ Session reporting must not include conversation text, Pi messages, tool results,
 Dashboard transcript and title redaction must follow `./data-redaction-policy.md`.
 
 Public health responses must not include runtime discovery data such as cwd, home directory, plugin names, skill names, or packaged content.
+
+### Conversation Stats Reports
+
+Conversation stats must be exposed through `GET /api/dashboard/conversation-stats`,
+not reconstructed from the recent session feed in the React client. The report
+must include `windowStart`, `windowEnd`, `sampleLimit`, `sampleSize`, and
+`truncated` so consumers can distinguish complete seven-day aggregates from a
+bounded sample. `truncated` means the report reached the sample cap and should
+be treated as bounded, even when the backing index cannot prove an additional
+record exists. A stats-reporting failure must not make the core dashboard health,
+conversation feed, or plugin inventory unavailable.
 
 ### Trusted Plugin Operational Reports
 
@@ -348,7 +362,8 @@ Dashboard implementation requires integration tests for:
 8. `/api/info` no longer exposes public runtime diagnostics.
 9. Slack webhook, provider OAuth callback, internal, and sandbox egress routes are not intercepted by dashboard auth.
 10. dashboard reporting cannot return secret-bearing values.
-11. authenticated users can read sanitized trusted-plugin operational reports.
+11. authenticated users can read aggregate conversation stats.
+12. authenticated users can read sanitized trusted-plugin operational reports.
 
 Tests must follow `./testing.md`: route wiring and auth behavior belong in integration tests.
 

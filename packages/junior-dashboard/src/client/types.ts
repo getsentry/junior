@@ -1,5 +1,7 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  DashboardConversationStatsItem,
+  DashboardConversationStatsReport,
   DashboardConversationReport,
   PluginOperationalReportFeed,
   PluginOperationalReport,
@@ -25,6 +27,10 @@ export type Skill = SkillReport;
 export type PluginReport = PluginOperationalReport;
 
 export type PluginReportFeed = PluginOperationalReportFeed;
+
+export type ConversationStatsReport = DashboardConversationStatsReport;
+
+export type ConversationStatsItem = DashboardConversationStatsItem;
 
 export type RequesterIdentity = DashboardRequesterIdentity;
 
@@ -75,6 +81,9 @@ export type DashboardConfig = {
 
 export type DashboardData = {
   config: DashboardConfig;
+  conversationStats: ConversationStatsReport;
+  conversationStatsError: boolean;
+  conversationStatsLoading: boolean;
   health: Health;
   me: Identity;
   pluginReportsError: boolean;

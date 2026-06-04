@@ -25,7 +25,11 @@ export function CommandCenter(props: {
       <CommandRail data={props.data} error={props.queryError} />
 
       <section className="min-w-0">
-        <ConversationStats nowMs={nowMs} sessions={sessions} />
+        <ConversationStats
+          stats={props.data?.conversationStats}
+          statsError={props.data?.conversationStatsError}
+          statsLoading={props.data?.conversationStatsLoading}
+        />
 
         <ConversationDurationChart
           nowMs={nowMs}

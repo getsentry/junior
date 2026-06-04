@@ -115,6 +115,45 @@ function reporting(): JuniorReporting {
         ],
       };
     },
+    async getConversationStats() {
+      return {
+        active: 1,
+        conversations: 1,
+        durationMs: 0,
+        failed: 0,
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        hung: 0,
+        locations: [
+          {
+            active: 1,
+            conversations: 1,
+            durationMs: 0,
+            failed: 0,
+            hung: 0,
+            label: "Public Channel",
+            turns: 1,
+          },
+        ],
+        requesters: [
+          {
+            active: 1,
+            conversations: 1,
+            durationMs: 0,
+            failed: 0,
+            hung: 0,
+            label: "Unknown",
+            turns: 1,
+          },
+        ],
+        sampleLimit: 1,
+        sampleSize: 1,
+        source: "turn_session_records",
+        truncated: false,
+        turns: 1,
+        windowEnd: "2026-05-29T00:00:00.000Z",
+        windowStart: "2026-05-22T00:00:00.000Z",
+      };
+    },
     async getPluginOperationalReports() {
       return {
         source: "trusted_plugins",
@@ -376,6 +415,7 @@ describe("dashboard routes", () => {
       "/api/dashboard/plugins",
       "/api/dashboard/skills",
       "/api/dashboard/sessions",
+      "/api/dashboard/conversation-stats",
       "/api/dashboard/plugin-reports",
       "/api/dashboard/conversations/slack%3AC1%3A123",
       "/api/dashboard/config",
@@ -512,6 +552,20 @@ describe("dashboard routes", () => {
       { name: "triage", pluginProvider: "github" },
     ]);
 
+    const conversationStats = await app.fetch(
+      new Request("http://localhost/api/dashboard/conversation-stats"),
+    );
+    expect(conversationStats.status).toBe(200);
+    expect(await conversationStats.json()).toMatchObject({
+      active: 1,
+      conversations: 1,
+      requesters: [{ label: "Unknown", conversations: 1 }],
+      sampleLimit: 1,
+      sampleSize: 1,
+      source: "turn_session_records",
+      truncated: false,
+    });
+
     const pluginReports = await app.fetch(
       new Request("http://localhost/api/dashboard/plugin-reports"),
     );
@@ -524,6 +578,64 @@ describe("dashboard routes", () => {
         },
       ],
       source: "trusted_plugins",
+    });
+  });
+
+  it("returns empty conversation stats for legacy reporting providers", async () => {
+    const { getConversationStats: _getConversationStats, ...legacyReporting } =
+      reporting();
+    expect(_getConversationStats).toBeTypeOf("function");
+    const app = dashboard(
+      {
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      },
+      legacyReporting,
+    );
+
+    const conversationStats = await app.fetch(
+      new Request("http://localhost/api/dashboard/conversation-stats"),
+    );
+
+    expect(conversationStats.status).toBe(200);
+    expect(await conversationStats.json()).toMatchObject({
+      conversations: 0,
+      requesters: [],
+      sampleLimit: 0,
+      sampleSize: 0,
+      source: "turn_session_records",
+      truncated: false,
+    });
+  });
+
+  it("returns a failure status when conversation stats reporting throws", async () => {
+    const customReporting = {
+      ...reporting(),
+      async getConversationStats() {
+        throw new Error("conversation stats unavailable");
+      },
+    };
+    const app = dashboard(
+      {
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      },
+      customReporting,
+    );
+
+    const conversationStats = await app.fetch(
+      new Request("http://localhost/api/dashboard/conversation-stats"),
+    );
+
+    expect(conversationStats.status).toBe(500);
+    expect(await conversationStats.json()).toEqual({
+      error: "Conversation stats failed to load.",
     });
   });
 

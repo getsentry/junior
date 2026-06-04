@@ -55,70 +55,68 @@ describe("conversation duration chart", () => {
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
     const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
-    const html = renderChart(
-      [
-        {
-          completedAt: "2026-06-02T09:05:00.000Z",
-          conversationId: "conversation-1",
-          cumulativeDurationMs: 1_000,
-          id: "turn-1",
-          lastProgressAt: "2026-06-02T09:05:00.000Z",
-          lastSeenAt: "2026-06-02T09:05:00.000Z",
-          startedAt: "2026-06-02T09:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          title: "Turn turn-1",
-        },
-        {
-          completedAt: "2026-06-02T11:03:00.000Z",
-          conversationId: "conversation-1",
-          cumulativeDurationMs: 2_500,
-          id: "turn-2",
-          lastProgressAt: "2026-06-02T11:03:00.000Z",
-          lastSeenAt: "2026-06-02T11:03:00.000Z",
-          startedAt: "2026-06-02T11:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          title: "Turn turn-2",
-        },
-        {
-          conversationId: "conversation-active",
-          cumulativeDurationMs: 3_000,
-          id: "active-turn",
-          lastProgressAt: "2026-06-02T11:30:00.000Z",
-          lastSeenAt: "2026-06-02T11:30:00.000Z",
-          startedAt: "2026-06-02T11:30:00.000Z",
-          status: "active",
-          surface: "slack",
-          title: "Turn active-turn",
-        },
-        {
-          completedAt: "2026-06-02T10:10:00.000Z",
-          conversationId: "conversation-carryover",
-          cumulativeDurationMs: 9_000,
-          id: "carryover-turn",
-          lastProgressAt: "2026-06-02T10:10:00.000Z",
-          lastSeenAt: "2026-06-02T10:10:00.000Z",
-          startedAt: "2026-05-20T09:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          title: "Turn carryover-turn",
-        },
-        {
-          completedAt: "2026-05-20T09:05:00.000Z",
-          conversationId: "conversation-old",
-          cumulativeDurationMs: 9_000,
-          id: "old-turn",
-          lastProgressAt: "2026-05-20T09:05:00.000Z",
-          lastSeenAt: "2026-05-20T09:05:00.000Z",
-          startedAt: "2026-05-20T09:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          title: "Turn old-turn",
-        },
-      ],
-      nowMs,
-    );
+    const sessions: Session[] = [
+      {
+        completedAt: "2026-06-02T09:05:00.000Z",
+        conversationId: "conversation-1",
+        cumulativeDurationMs: 1_000,
+        id: "turn-1",
+        lastProgressAt: "2026-06-02T09:05:00.000Z",
+        lastSeenAt: "2026-06-02T09:05:00.000Z",
+        startedAt: "2026-06-02T09:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+      {
+        completedAt: "2026-06-02T11:03:00.000Z",
+        conversationId: "conversation-1",
+        cumulativeDurationMs: 2_500,
+        id: "turn-2",
+        lastProgressAt: "2026-06-02T11:03:00.000Z",
+        lastSeenAt: "2026-06-02T11:03:00.000Z",
+        startedAt: "2026-06-02T11:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-2",
+      },
+      {
+        conversationId: "conversation-active",
+        cumulativeDurationMs: 3_000,
+        id: "active-turn",
+        lastProgressAt: "2026-06-02T11:30:00.000Z",
+        lastSeenAt: "2026-06-02T11:30:00.000Z",
+        startedAt: "2026-06-02T11:30:00.000Z",
+        status: "active",
+        surface: "slack",
+        title: "Turn active-turn",
+      },
+      {
+        completedAt: "2026-06-02T10:10:00.000Z",
+        conversationId: "conversation-carryover",
+        cumulativeDurationMs: 9_000,
+        id: "carryover-turn",
+        lastProgressAt: "2026-06-02T10:10:00.000Z",
+        lastSeenAt: "2026-06-02T10:10:00.000Z",
+        startedAt: "2026-05-20T09:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn carryover-turn",
+      },
+      {
+        completedAt: "2026-05-20T09:05:00.000Z",
+        conversationId: "conversation-old",
+        cumulativeDurationMs: 9_000,
+        id: "old-turn",
+        lastProgressAt: "2026-05-20T09:05:00.000Z",
+        lastSeenAt: "2026-05-20T09:05:00.000Z",
+        startedAt: "2026-05-20T09:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn old-turn",
+      },
+    ];
+    const html = renderChart(sessions, nowMs);
 
     expect(chartState.scatterData).toHaveLength(2);
     expect(chartState.scatterData[0]).toMatchObject({
@@ -132,6 +130,8 @@ describe("conversation duration chart", () => {
       durationLabel: "2.5s",
       durationMs: 2_500,
     });
-    expect(html).toContain("3 conversations / 1 active / 0 hung / 0 errors");
+    expect(html).toContain(
+      "3 recent conversations / 1 active / 0 hung / 0 errors",
+    );
   });
 });

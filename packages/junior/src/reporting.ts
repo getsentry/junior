@@ -37,6 +37,9 @@ import type { PluginOperationalReport } from "@sentry/junior-plugin-api";
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
+const DASHBOARD_SESSION_FEED_LIMIT = 50;
+const DASHBOARD_CONVERSATION_STATS_LIMIT = 5_000;
+const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface HealthReport {
   status: "ok";
@@ -170,6 +173,36 @@ export interface DashboardSessionFeed {
   generatedAt: string;
 }
 
+export interface DashboardConversationStatsItem {
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  hung: number;
+  label: string;
+  tokens?: number;
+  turns: number;
+}
+
+export interface DashboardConversationStatsReport {
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  generatedAt: string;
+  hung: number;
+  locations: DashboardConversationStatsItem[];
+  requesters: DashboardConversationStatsItem[];
+  sampleLimit: number;
+  sampleSize: number;
+  source: "turn_session_records";
+  tokens?: number;
+  truncated: boolean;
+  turns: number;
+  windowEnd: string;
+  windowStart: string;
+}
+
 export type { PluginOperationalReport } from "@sentry/junior-plugin-api";
 
 export interface PluginOperationalReportFeed {
@@ -194,6 +227,8 @@ export interface JuniorReporting {
    * actor, route, usage, and links that can later be reconstructed from spans.
    */
   getSessions(): Promise<DashboardSessionFeed>;
+  /** Read aggregate conversation stats for authenticated dashboard views. */
+  getConversationStats?(): Promise<DashboardConversationStatsReport>;
   /** Read sanitized operational summaries contributed by trusted plugins. */
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   /**
@@ -239,11 +274,12 @@ async function readPlugins(): Promise<PluginReport[]> {
 
 function statusFromCheckpoint(
   summary: AgentTurnSessionSummary,
+  nowMs = Date.now(),
 ): DashboardSessionReport["status"] {
   const state = summary.state;
   if (
     state === "running" &&
-    Date.now() - summary.lastProgressAtMs > HUNG_TURN_PROGRESS_MS
+    nowMs - summary.lastProgressAtMs > HUNG_TURN_PROGRESS_MS
   ) {
     return "hung";
   }
@@ -312,6 +348,7 @@ function turnUsageReport(
 
 function sessionReportFromSummary(
   summary: AgentTurnSessionSummary,
+  nowMs = Date.now(),
 ): DashboardSessionReport {
   const slackThread = parseSlackThreadId(summary.conversationId);
   const privacy = resolveConversationPrivacy({
@@ -341,7 +378,7 @@ function sessionReportFromSummary(
     conversationId: summary.conversationId,
     ...(conversationTitle ? { conversationTitle } : {}),
     id: summary.sessionId,
-    status: statusFromCheckpoint(summary),
+    status: statusFromCheckpoint(summary, nowMs),
     startedAt: new Date(summary.startedAtMs).toISOString(),
     lastProgressAt: new Date(summary.lastProgressAtMs).toISOString(),
     lastSeenAt: new Date(summary.updatedAtMs).toISOString(),
@@ -358,6 +395,314 @@ function sessionReportFromSummary(
     ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
     ...(summary.traceId ? { traceId: summary.traceId } : {}),
     ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
+  };
+}
+
+function reportTime(value: string): number | undefined {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : undefined;
+}
+
+function usageTokenTotal(
+  usage: DashboardTurnUsage | undefined,
+): number | undefined {
+  if (!usage) return undefined;
+  const components = [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationTokens,
+  ].reduce<number | undefined>((sum, value) => {
+    const count =
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, Math.floor(value))
+        : undefined;
+    return count === undefined ? sum : (sum ?? 0) + count;
+  }, undefined);
+  if (components !== undefined) {
+    return components;
+  }
+  return typeof usage.totalTokens === "number" &&
+    Number.isFinite(usage.totalTokens)
+    ? Math.max(0, Math.floor(usage.totalTokens))
+    : undefined;
+}
+
+type TurnContribution = {
+  durationMs: number;
+  tokens?: number;
+  turn: DashboardSessionReport;
+};
+
+function turnDurationSnapshot(
+  turn: DashboardSessionReport,
+): number | undefined {
+  return typeof turn.cumulativeDurationMs === "number" &&
+    Number.isFinite(turn.cumulativeDurationMs)
+    ? Math.max(0, Math.floor(turn.cumulativeDurationMs))
+    : undefined;
+}
+
+function turnContributions(
+  turns: DashboardSessionReport[],
+): TurnContribution[] {
+  let previousDuration = 0;
+  let previousTokens = 0;
+  return turns.map((turn) => {
+    const duration = turnDurationSnapshot(turn);
+    const tokens = usageTokenTotal(turn.cumulativeUsage);
+    const contribution: TurnContribution = {
+      durationMs:
+        duration === undefined ? 0 : Math.max(0, duration - previousDuration),
+      turn,
+    };
+    if (tokens !== undefined) {
+      contribution.tokens = Math.max(0, tokens - previousTokens);
+    }
+    if (duration !== undefined) {
+      previousDuration = Math.max(previousDuration, duration);
+    }
+    if (tokens !== undefined) {
+      previousTokens = Math.max(previousTokens, tokens);
+    }
+    return contribution;
+  });
+}
+
+function contributionDurationTotal(contributions: TurnContribution[]): number {
+  return contributions.reduce(
+    (sum, contribution) => sum + contribution.durationMs,
+    0,
+  );
+}
+
+function addTokenTotal(
+  total: number | undefined,
+  tokens: number | undefined,
+): number | undefined {
+  return tokens === undefined ? total : (total ?? 0) + tokens;
+}
+
+function contributionTokenTotal(
+  contributions: TurnContribution[],
+): number | undefined {
+  return contributions.reduce(
+    (sum, contribution) => addTokenTotal(sum, contribution.tokens),
+    undefined as number | undefined,
+  );
+}
+
+function requesterLabel(
+  requester: DashboardRequesterIdentity | undefined,
+): string | undefined {
+  const email = requester?.email?.trim() || undefined;
+  const fullName = requester?.fullName?.trim() || undefined;
+  const slackUserName = requester?.slackUserName?.trim() || undefined;
+  return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
+}
+
+function slackStatsLocationLabel(
+  input: Pick<DashboardSessionReport, "channel" | "channelName">,
+): string | undefined {
+  const channelId = input.channel;
+  if (!channelId) return undefined;
+
+  const name = input.channelName?.replace(/^#/, "");
+  if (channelId.startsWith("D")) {
+    return "Direct Message";
+  }
+  if (channelId.startsWith("C")) {
+    return name ? `#${name}` : "Public Channel";
+  }
+  if (channelId.startsWith("G")) {
+    if (name?.startsWith("mpdm-")) return "Group DM";
+    return "Private Channel";
+  }
+  return name || channelId;
+}
+
+function locationLabel(turn: DashboardSessionReport): string {
+  return (
+    slackStatsLocationLabel(turn) ??
+    (turn.surface === "scheduler"
+      ? "Scheduler"
+      : turn.surface === "api"
+        ? "API"
+        : turn.surface === "internal"
+          ? "Internal"
+          : "Unknown")
+  );
+}
+
+function emptyStatsItem(label: string): DashboardConversationStatsItem {
+  return {
+    active: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    label,
+    turns: 0,
+  };
+}
+
+function addItemTokens(
+  item: DashboardConversationStatsItem,
+  tokens: number | undefined,
+): void {
+  if (tokens !== undefined) {
+    item.tokens = (item.tokens ?? 0) + tokens;
+  }
+}
+
+function statusSignals(turns: DashboardSessionReport[]) {
+  return {
+    active: turns.some((turn) => turn.status === "active"),
+    failed: turns.some((turn) => turn.status === "failed"),
+    hung: turns.some((turn) => turn.status === "hung"),
+  };
+}
+
+function statsItems(map: Map<string, DashboardConversationStatsItem>) {
+  return [...map.values()].sort(
+    (left, right) =>
+      right.conversations - left.conversations ||
+      right.turns - left.turns ||
+      right.durationMs - left.durationMs ||
+      left.label.localeCompare(right.label),
+  );
+}
+
+function newestTurn(turns: DashboardSessionReport[]): DashboardSessionReport {
+  return [...turns].sort(
+    (left, right) =>
+      (reportTime(right.lastSeenAt) ?? 0) -
+        (reportTime(left.lastSeenAt) ?? 0) || right.id.localeCompare(left.id),
+  )[0]!;
+}
+
+function recentConversationGroups(args: {
+  nowMs: number;
+  sessions: DashboardSessionReport[];
+}): DashboardSessionReport[][] {
+  const startMs = args.nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
+  const groups = new Map<string, DashboardSessionReport[]>();
+  for (const session of args.sessions) {
+    groups.set(session.conversationId, [
+      ...(groups.get(session.conversationId) ?? []),
+      session,
+    ]);
+  }
+
+  return [...groups.values()]
+    .map((turns) =>
+      [...turns].sort(
+        (left, right) =>
+          (reportTime(left.startedAt) ?? 0) -
+            (reportTime(right.startedAt) ?? 0) ||
+          left.id.localeCompare(right.id),
+      ),
+    )
+    .filter((turns) => {
+      const activityAt = reportTime(newestTurn(turns).lastSeenAt);
+      return (
+        activityAt !== undefined &&
+        activityAt >= startMs &&
+        activityAt <= args.nowMs
+      );
+    });
+}
+
+function conversationDurationMs(turns: DashboardSessionReport[]): number {
+  if (!turns.some((turn) => turnDurationSnapshot(turn) !== undefined)) {
+    return 0;
+  }
+  return contributionDurationTotal(turnContributions(turns));
+}
+
+function buildConversationStatsReport(args: {
+  generatedAt: string;
+  nowMs: number;
+  sampleLimit: number;
+  sampleSize: number;
+  sessions: DashboardSessionReport[];
+  truncated: boolean;
+}): DashboardConversationStatsReport {
+  const conversations = recentConversationGroups(args);
+  const requesters = new Map<string, DashboardConversationStatsItem>();
+  const locations = new Map<string, DashboardConversationStatsItem>();
+  let durationMs = 0;
+  let tokens: number | undefined;
+  let active = 0;
+  let failed = 0;
+  let hung = 0;
+
+  for (const turns of conversations) {
+    const contributions = turnContributions(turns);
+    const conversationSignals = statusSignals(turns);
+    const conversationTokens = contributionTokenTotal(contributions);
+    durationMs += contributionDurationTotal(contributions);
+    tokens = addTokenTotal(tokens, conversationTokens);
+    active += conversationSignals.active ? 1 : 0;
+    failed += conversationSignals.failed ? 1 : 0;
+    hung += conversationSignals.hung ? 1 : 0;
+
+    const requesterTurns = new Map<string, TurnContribution[]>();
+    for (const contribution of contributions) {
+      const requester =
+        requesterLabel(contribution.turn.requesterIdentity) ?? "Unknown";
+      requesterTurns.set(requester, [
+        ...(requesterTurns.get(requester) ?? []),
+        contribution,
+      ]);
+    }
+
+    for (const [requester, requesterContributions] of requesterTurns) {
+      const item = requesters.get(requester) ?? emptyStatsItem(requester);
+      const signals = statusSignals(
+        requesterContributions.map((contribution) => contribution.turn),
+      );
+      item.conversations += 1;
+      item.turns += requesterContributions.length;
+      item.durationMs += contributionDurationTotal(requesterContributions);
+      item.active += signals.active ? 1 : 0;
+      item.failed += signals.failed ? 1 : 0;
+      item.hung += signals.hung ? 1 : 0;
+      addItemTokens(item, contributionTokenTotal(requesterContributions));
+      requesters.set(requester, item);
+    }
+
+    const location = locationLabel(newestTurn(turns));
+    const locationItem = locations.get(location) ?? emptyStatsItem(location);
+    locationItem.conversations += 1;
+    locationItem.turns += turns.length;
+    locationItem.durationMs += conversationDurationMs(turns);
+    locationItem.active += conversationSignals.active ? 1 : 0;
+    locationItem.failed += conversationSignals.failed ? 1 : 0;
+    locationItem.hung += conversationSignals.hung ? 1 : 0;
+    addItemTokens(locationItem, conversationTokens);
+    locations.set(location, locationItem);
+  }
+
+  return {
+    active,
+    conversations: conversations.length,
+    durationMs,
+    failed,
+    generatedAt: args.generatedAt,
+    hung,
+    locations: statsItems(locations),
+    requesters: statsItems(requesters),
+    sampleLimit: args.sampleLimit,
+    sampleSize: args.sampleSize,
+    source: "turn_session_records",
+    ...(tokens !== undefined ? { tokens } : {}),
+    truncated: args.truncated,
+    turns: conversations.reduce((sum, turns) => sum + turns.length, 0),
+    windowEnd: new Date(args.nowMs).toISOString(),
+    windowStart: new Date(
+      args.nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS,
+    ).toISOString(),
   };
 }
 
@@ -651,12 +996,40 @@ function traceIdFromTranscript(
 }
 
 async function readSessions(): Promise<DashboardSessionFeed> {
-  const summaries = await listAgentTurnSessionSummaries(50);
+  const nowMs = Date.now();
+  const summaries = await listAgentTurnSessionSummaries(
+    DASHBOARD_SESSION_FEED_LIMIT,
+  );
   return {
     source: "turn_session_records",
-    generatedAt: new Date().toISOString(),
-    sessions: summaries.map(sessionReportFromSummary),
+    generatedAt: new Date(nowMs).toISOString(),
+    sessions: summaries.map((summary) =>
+      sessionReportFromSummary(summary, nowMs),
+    ),
   };
+}
+
+async function readConversationStats(): Promise<DashboardConversationStatsReport> {
+  const nowMs = Date.now();
+  const generatedAt = new Date(nowMs).toISOString();
+  const summaries = await listAgentTurnSessionSummaries(
+    DASHBOARD_CONVERSATION_STATS_LIMIT + 1,
+  );
+  const truncated = summaries.length >= DASHBOARD_CONVERSATION_STATS_LIMIT;
+  const sampledSummaries = summaries.slice(
+    0,
+    DASHBOARD_CONVERSATION_STATS_LIMIT,
+  );
+  return buildConversationStatsReport({
+    generatedAt,
+    nowMs,
+    sampleLimit: DASHBOARD_CONVERSATION_STATS_LIMIT,
+    sampleSize: sampledSummaries.length,
+    sessions: sampledSummaries.map((summary) =>
+      sessionReportFromSummary(summary, nowMs),
+    ),
+    truncated,
+  });
 }
 
 async function readPluginOperationalReports(): Promise<PluginOperationalReportFeed> {
@@ -741,6 +1114,7 @@ async function readConversation(
 
 /** Create the read-only reporting boundary used by authenticated dashboard routes. */
 export function createJuniorReporting(): JuniorReporting & {
+  getConversationStats(): Promise<DashboardConversationStatsReport>;
   getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
   return {
@@ -763,6 +1137,7 @@ export function createJuniorReporting(): JuniorReporting & {
     getPlugins: readPlugins,
     getSkills: readSkills,
     getSessions: readSessions,
+    getConversationStats: readConversationStats,
     getPluginOperationalReports: readPluginOperationalReports,
     getConversation: readConversation,
   };

@@ -23,7 +23,6 @@ import {
   formatMs,
   recentConversationRange,
   slackLocationLabel,
-  summarizeConversationStats,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -72,10 +71,7 @@ export function ConversationDurationChart(props: {
     .map((conversation) => conversationPoint(conversation, props.timeZone))
     .filter((point): point is DurationPoint => Boolean(point))
     .sort((left, right) => left.x - right.x);
-  const stats = useMemo(
-    () => summarizeConversationStats(props.sessions, props.nowMs),
-    [props.nowMs, props.sessions],
-  );
+  const recentFeedStats = conversationStatusSummary(conversations);
   const maxDurationMs = points.reduce(
     (max, point) => Math.max(max, point.durationMs),
     0,
@@ -155,8 +151,9 @@ export function ConversationDurationChart(props: {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
-        {plural("conversation", stats.conversations)} / {stats.active} active /{" "}
-        {stats.hung} hung / {plural("error", stats.failed)}
+        {plural("recent conversation", recentFeedStats.conversations)} /{" "}
+        {recentFeedStats.active} active / {recentFeedStats.hung} hung /{" "}
+        {plural("error", recentFeedStats.failed)}
       </div>
     </Section>
   );
@@ -164,6 +161,26 @@ export function ConversationDurationChart(props: {
 
 function plural(label: string, count: number): string {
   return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function conversationStatusSummary(conversations: Conversation[]) {
+  return conversations.reduce(
+    (summary, conversation) => {
+      const turns = conversation.turns;
+      return {
+        active:
+          summary.active +
+          (turns.some((turn) => turn.status === "active") ? 1 : 0),
+        conversations: summary.conversations + 1,
+        failed:
+          summary.failed +
+          (turns.some((turn) => turn.status === "failed") ? 1 : 0),
+        hung:
+          summary.hung + (turns.some((turn) => turn.status === "hung") ? 1 : 0),
+      };
+    },
+    { active: 0, conversations: 0, failed: 0, hung: 0 },
+  );
 }
 
 function ChartTitle(props: { children: ReactNode }) {

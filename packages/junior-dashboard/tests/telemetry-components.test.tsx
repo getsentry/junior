@@ -46,6 +46,25 @@ function dashboardData(sessions: Session[]): DashboardData {
       status: "ok",
       timestamp: "2026-01-01T00:00:00.000Z",
     },
+    conversationStats: {
+      active: 0,
+      conversations: 0,
+      durationMs: 0,
+      failed: 0,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      hung: 0,
+      locations: [],
+      requesters: [],
+      sampleLimit: 0,
+      sampleSize: 0,
+      source: "turn_session_records",
+      truncated: false,
+      turns: 0,
+      windowEnd: "2026-01-01T00:00:00.000Z",
+      windowStart: "2025-12-25T00:00:00.000Z",
+    },
+    conversationStatsError: false,
+    conversationStatsLoading: false,
     me: { user: {} },
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
@@ -460,6 +479,43 @@ describe("dashboard telemetry components", () => {
       },
     ];
     const data = dashboardData(sessions);
+    data.conversationStats = {
+      active: 0,
+      conversations: 2,
+      durationMs: 3_000,
+      failed: 1,
+      generatedAt: "2026-01-05T00:00:00.000Z",
+      hung: 0,
+      locations: [
+        {
+          active: 0,
+          conversations: 1,
+          durationMs: 1_000,
+          failed: 0,
+          hung: 0,
+          label: "#proj-alpha",
+          turns: 1,
+        },
+      ],
+      requesters: [
+        {
+          active: 0,
+          conversations: 2,
+          durationMs: 3_000,
+          failed: 1,
+          hung: 0,
+          label: "Avery",
+          turns: 2,
+        },
+      ],
+      sampleLimit: 2,
+      sampleSize: 2,
+      source: "turn_session_records",
+      truncated: false,
+      turns: 2,
+      windowEnd: "2026-01-05T00:00:00.000Z",
+      windowStart: "2025-12-29T00:00:00.000Z",
+    };
     data.plugins = [{ name: "github" }];
     data.pluginReports.reports = [
       {
@@ -595,6 +651,34 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("Trusted plugin stats failed to load.");
     expect(html).toContain(">Scheduler<");
+  });
+
+  it("shows conversation stats failures without hiding the command center", () => {
+    const data = dashboardData([]);
+    data.conversationStatsError = true;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <CommandCenter data={data} queryError={null} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(">Stats<");
+    expect(html).toContain(">degraded<");
+    expect(html).toContain(">Conversations<");
+  });
+
+  it("marks sampled conversation stats as limited", () => {
+    const data = dashboardData([]);
+    data.conversationStats.truncated = true;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <CommandCenter data={data} queryError={null} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(">limited sample<");
   });
 
   it("renders transcript copy as an icon-only control", () => {

@@ -53,6 +53,25 @@ function reporting(): JuniorReporting {
         ],
       };
     },
+    async getConversationStats() {
+      return {
+        active: 1,
+        conversations: 1,
+        durationMs: 0,
+        failed: 0,
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        hung: 0,
+        locations: [],
+        requesters: [],
+        sampleLimit: 1,
+        sampleSize: 1,
+        source: "turn_session_records",
+        truncated: false,
+        turns: 1,
+        windowEnd: "2026-05-29T00:00:00.000Z",
+        windowStart: "2026-05-22T00:00:00.000Z",
+      };
+    },
     async getPluginOperationalReports() {
       return {
         source: "trusted_plugins",
@@ -110,6 +129,22 @@ describe("dashboard mock conversation routes", () => {
     expect(
       sessionBody.sessions.map((session) => session.conversationId),
     ).toContain("slack:CQA456:1770021600.000600");
+    const conversationStats = await app.fetch(
+      new Request("http://localhost/api/dashboard/conversation-stats"),
+    );
+    expect(conversationStats.status).toBe(200);
+    const statsBody = (await conversationStats.json()) as {
+      conversations: number;
+      sampleSize: number;
+      truncated: boolean;
+    };
+    expect(statsBody).toMatchObject({
+      conversations: new Set(
+        sessionBody.sessions.map((session) => session.conversationId),
+      ).size,
+      sampleSize: sessionBody.sessions.length,
+      truncated: false,
+    });
 
     const activeConversation = await app.fetch(
       new Request(
@@ -237,6 +272,14 @@ describe("dashboard mock conversation routes", () => {
     expect(body.sessions[0]).toMatchObject({
       conversationId: "slack:CQA123:1770003600.000200",
       status: "active",
+    });
+    const stats = await app.fetch(
+      new Request("http://localhost/api/dashboard/conversation-stats"),
+    );
+    expect(stats.status).toBe(200);
+    expect(await stats.json()).toMatchObject({
+      conversations: expect.any(Number),
+      truncated: false,
     });
   });
 

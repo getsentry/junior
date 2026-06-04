@@ -29,6 +29,7 @@ describe("dashboard reporting", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
+    vi.useRealTimers();
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });
@@ -86,6 +87,170 @@ describe("dashboard reporting", () => {
       sessionId: "turn-2",
       state: "awaiting_resume",
       resumeReason: "timeout",
+    });
+  });
+
+  it("reports aggregate conversation stats beyond the session feed cap", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    for (let index = 0; index < 55; index += 1) {
+      await recordAgentTurnSessionSummary({
+        channelName: "proj-alpha",
+        conversationId: `slack:C1:${index}`,
+        cumulativeDurationMs: index + 1,
+        requester: { fullName: "Avery" },
+        sessionId: `turn-${index}`,
+        sliceId: 1,
+        startedAtMs: Date.now() - index * 1000,
+        state: "completed",
+      });
+    }
+
+    const reporting = createJuniorReporting();
+    const sessions = await reporting.getSessions();
+    const stats = await reporting.getConversationStats();
+
+    expect(sessions.sessions).toHaveLength(50);
+    expect(stats).toMatchObject({
+      conversations: 55,
+      requesters: [
+        expect.objectContaining({
+          conversations: 55,
+          label: "Avery",
+        }),
+      ],
+      sampleLimit: 5_000,
+      sampleSize: 55,
+      source: "turn_session_records",
+      truncated: false,
+      turns: 55,
+    });
+  });
+
+  it("reports aggregate conversation stats by requester and location", async () => {
+    vi.useFakeTimers();
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    vi.setSystemTime(new Date("2026-06-01T10:02:00.000Z"));
+    await recordAgentTurnSessionSummary({
+      channelName: "proj-alpha",
+      conversationId: "slack:C1:100",
+      cumulativeDurationMs: 1_000,
+      cumulativeUsage: { inputTokens: 10, outputTokens: 5 },
+      requester: { fullName: "Avery" },
+      sessionId: "turn-1",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-01T10:00:00.000Z"),
+      state: "completed",
+    });
+    vi.setSystemTime(new Date("2026-06-01T10:04:00.000Z"));
+    await recordAgentTurnSessionSummary({
+      channelName: "proj-alpha",
+      conversationId: "slack:C1:100",
+      cumulativeDurationMs: 2_000,
+      cumulativeUsage: { totalTokens: 20 },
+      requester: { fullName: "Blake" },
+      sessionId: "turn-2",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-01T10:03:00.000Z"),
+      state: "failed",
+    });
+    vi.setSystemTime(new Date("2026-06-04T11:02:00.000Z"));
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:D1:200",
+      cumulativeDurationMs: 3_000,
+      requester: { fullName: "Avery" },
+      sessionId: "turn-3",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-04T11:00:00.000Z"),
+      state: "awaiting_resume",
+    });
+    vi.setSystemTime(new Date("2026-05-20T10:02:00.000Z"));
+    await recordAgentTurnSessionSummary({
+      channelName: "old-project",
+      conversationId: "slack:C2:300",
+      cumulativeDurationMs: 8_000,
+      cumulativeUsage: { totalTokens: 500 },
+      requester: { fullName: "Casey" },
+      sessionId: "old-turn",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
+      state: "completed",
+    });
+
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats).toMatchObject({
+      active: 1,
+      conversations: 2,
+      durationMs: 5_000,
+      failed: 1,
+      requesters: [
+        {
+          active: 1,
+          conversations: 2,
+          durationMs: 4_000,
+          failed: 0,
+          hung: 0,
+          label: "Avery",
+          tokens: 15,
+          turns: 2,
+        },
+        {
+          active: 0,
+          conversations: 1,
+          durationMs: 1_000,
+          failed: 1,
+          hung: 0,
+          label: "Blake",
+          tokens: 5,
+          turns: 1,
+        },
+      ],
+      tokens: 20,
+      turns: 3,
+    });
+    expect(
+      stats.locations.map((item) => ({
+        conversations: item.conversations,
+        durationMs: item.durationMs,
+        label: item.label,
+      })),
+    ).toEqual([
+      { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
+      { conversations: 1, durationMs: 3_000, label: "Direct Message" },
+    ]);
+  });
+
+  it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    for (let index = 0; index < 5_001; index += 1) {
+      await recordAgentTurnSessionSummary({
+        conversationId: `slack:C1:${index}`,
+        sessionId: `turn-${index}`,
+        sliceId: 1,
+        state: "completed",
+      });
+    }
+
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats).toMatchObject({
+      sampleLimit: 5_000,
+      sampleSize: 5_000,
+      truncated: true,
     });
   });
 

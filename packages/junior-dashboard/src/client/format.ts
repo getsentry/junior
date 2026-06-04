@@ -964,58 +964,6 @@ export function buildConversations(sessions: Session[]): Conversation[] {
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }
 
-export type ConversationStatsItem = {
-  active: number;
-  conversations: number;
-  durationMs: number;
-  failed: number;
-  hung: number;
-  label: string;
-  tokens?: number;
-  turns: number;
-};
-
-export type ConversationStats = {
-  active: number;
-  conversations: number;
-  durationMs: number;
-  failed: number;
-  hung: number;
-  locations: ConversationStatsItem[];
-  requesters: ConversationStatsItem[];
-  tokens?: number;
-  turns: number;
-};
-
-function emptyStatsItem(label: string): ConversationStatsItem {
-  return {
-    active: 0,
-    conversations: 0,
-    durationMs: 0,
-    failed: 0,
-    hung: 0,
-    label,
-    turns: 0,
-  };
-}
-
-function addItemTokens(
-  item: ConversationStatsItem,
-  tokens: number | undefined,
-): void {
-  if (tokens === undefined) {
-    return;
-  }
-  item.tokens = (item.tokens ?? 0) + tokens;
-}
-
-function addTokenTotal(
-  total: number | undefined,
-  tokens: number | undefined,
-): number | undefined {
-  return tokens === undefined ? total : (total ?? 0) + tokens;
-}
-
 function durationSnapshot(turn: Session): number | undefined {
   const duration = turn.cumulativeDurationMs;
   return typeof duration === "number" && Number.isFinite(duration)
@@ -1023,35 +971,22 @@ function durationSnapshot(turn: Session): number | undefined {
     : undefined;
 }
 
-function tokenSnapshot(turn: Session): number | undefined {
-  return summarizeUsage([turn.cumulativeUsage])?.totalTokens;
-}
-
 type TurnContribution = {
   durationMs: number;
-  tokens?: number;
   turn: Session;
 };
 
 function turnContributions(turns: Session[]): TurnContribution[] {
   let previousDuration = 0;
-  let previousTokens = 0;
   return turns.map((turn) => {
     const duration = durationSnapshot(turn);
-    const tokens = tokenSnapshot(turn);
     const contribution: TurnContribution = {
       durationMs:
         duration === undefined ? 0 : Math.max(0, duration - previousDuration),
       turn,
     };
-    if (tokens !== undefined) {
-      contribution.tokens = Math.max(0, tokens - previousTokens);
-    }
     if (duration !== undefined) {
       previousDuration = Math.max(previousDuration, duration);
-    }
-    if (tokens !== undefined) {
-      previousTokens = Math.max(previousTokens, tokens);
     }
     return contribution;
   });
@@ -1062,151 +997,6 @@ function contributionDurationTotal(contributions: TurnContribution[]): number {
     (sum, contribution) => sum + contribution.durationMs,
     0,
   );
-}
-
-function contributionTokenTotal(
-  contributions: TurnContribution[],
-): number | undefined {
-  return contributions.reduce(
-    (sum, contribution) => addTokenTotal(sum, contribution.tokens),
-    undefined as number | undefined,
-  );
-}
-
-function statusSignals(turns: Session[]) {
-  return {
-    active: turns.some(isActiveSession),
-    failed: turns.some(isFailedSession),
-    hung: turns.some(isHungSession),
-  };
-}
-
-function statusCounts(conversations: Conversation[]) {
-  return conversations.reduce(
-    (sum, conversation) => {
-      const signals = statusSignals(conversation.turns);
-      return {
-        active: sum.active + (signals.active ? 1 : 0),
-        failed: sum.failed + (signals.failed ? 1 : 0),
-        hung: sum.hung + (signals.hung ? 1 : 0),
-      };
-    },
-    { active: 0, failed: 0, hung: 0 },
-  );
-}
-
-function addConversationToStatsItem(
-  item: ConversationStatsItem,
-  conversation: Conversation,
-  contributions: TurnContribution[],
-): void {
-  const durationMs = conversationRuntimeMs(conversation) ?? 0;
-  const tokens = contributionTokenTotal(contributions);
-  const signals = statusSignals(conversation.turns);
-  item.conversations += 1;
-  item.turns += conversation.turns.length;
-  item.durationMs += durationMs;
-  item.active += signals.active ? 1 : 0;
-  item.failed += signals.failed ? 1 : 0;
-  item.hung += signals.hung ? 1 : 0;
-  addItemTokens(item, tokens);
-}
-
-function addRequesterContributionsToStatsItem(args: {
-  contributions: TurnContribution[];
-  item: ConversationStatsItem;
-}): void {
-  const durationMs = contributionDurationTotal(args.contributions);
-  const tokens = contributionTokenTotal(args.contributions);
-  args.item.conversations += 1;
-  args.item.turns += args.contributions.length;
-  args.item.durationMs += durationMs;
-  const signals = statusSignals(
-    args.contributions.map((contribution) => contribution.turn),
-  );
-  args.item.active += signals.active ? 1 : 0;
-  args.item.failed += signals.failed ? 1 : 0;
-  args.item.hung += signals.hung ? 1 : 0;
-  addItemTokens(args.item, tokens);
-}
-
-function statsItems(map: Map<string, ConversationStatsItem>) {
-  return [...map.values()].sort(
-    (left, right) =>
-      right.conversations - left.conversations ||
-      right.turns - left.turns ||
-      right.durationMs - left.durationMs ||
-      left.label.localeCompare(right.label),
-  );
-}
-
-/** Summarize recent conversations into dashboard aggregate groups. */
-export function summarizeConversationStats(
-  sessions: Session[],
-  nowMs = Date.now(),
-): ConversationStats {
-  const conversations = filterRecentConversations(
-    buildConversations(sessions),
-    nowMs,
-  );
-  const requesters = new Map<string, ConversationStatsItem>();
-  const locations = new Map<string, ConversationStatsItem>();
-  let durationMs = 0;
-  let tokens: number | undefined;
-
-  for (const conversation of conversations) {
-    const contributions = turnContributions(conversation.turns);
-    durationMs += contributionDurationTotal(contributions);
-    tokens = addTokenTotal(tokens, contributionTokenTotal(contributions));
-
-    const location =
-      slackLocationLabel(conversation, { includeId: false }) ??
-      (conversation.surface === "scheduler"
-        ? "Scheduler"
-        : conversation.surface === "api"
-          ? "API"
-          : conversation.surface === "internal"
-            ? "Internal"
-            : "Unknown");
-
-    const requesterTurns = new Map<string, TurnContribution[]>();
-    for (const contribution of contributions) {
-      const turn = contribution.turn;
-      const requester = requesterLabel(turn.requesterIdentity) ?? "Unknown";
-      requesterTurns.set(requester, [
-        ...(requesterTurns.get(requester) ?? []),
-        contribution,
-      ]);
-    }
-
-    for (const [requester, requesterContributions] of requesterTurns) {
-      const requesterItem =
-        requesters.get(requester) ?? emptyStatsItem(requester);
-      addRequesterContributionsToStatsItem({
-        contributions: requesterContributions,
-        item: requesterItem,
-      });
-      requesters.set(requester, requesterItem);
-    }
-
-    const locationItem = locations.get(location) ?? emptyStatsItem(location);
-    addConversationToStatsItem(locationItem, conversation, contributions);
-    locations.set(location, locationItem);
-  }
-
-  const counts = statusCounts(conversations);
-  return {
-    ...counts,
-    conversations: conversations.length,
-    durationMs,
-    locations: statsItems(locations),
-    requesters: statsItems(requesters),
-    tokens,
-    turns: conversations.reduce(
-      (sum, conversation) => sum + conversation.turns.length,
-      0,
-    ),
-  };
 }
 
 /** Apply the dashboard conversation filter to grouped conversation rows. */

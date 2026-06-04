@@ -1,12 +1,5 @@
-import { useMemo } from "react";
-
-import {
-  formatCompactNumber,
-  formatMs,
-  summarizeConversationStats,
-  type ConversationStatsItem,
-} from "../format";
-import type { Session } from "../types";
+import { formatCompactNumber, formatMs } from "../format";
+import type { ConversationStatsItem, ConversationStatsReport } from "../types";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
@@ -15,19 +8,54 @@ function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
 }
 
-/** Render aggregate conversation stats derived from recent turn summaries. */
+const EMPTY_STATS: Pick<
+  ConversationStatsReport,
+  | "active"
+  | "conversations"
+  | "durationMs"
+  | "failed"
+  | "hung"
+  | "locations"
+  | "requesters"
+  | "tokens"
+  | "turns"
+> = {
+  active: 0,
+  conversations: 0,
+  durationMs: 0,
+  failed: 0,
+  hung: 0,
+  locations: [],
+  requesters: [],
+  turns: 0,
+};
+
+/** Render aggregate conversation stats returned by the reporting API. */
 export function ConversationStats(props: {
-  nowMs: number;
-  sessions: Session[];
+  stats?: ConversationStatsReport;
+  statsError?: boolean;
+  statsLoading?: boolean;
 }) {
-  const stats = useMemo(
-    () => summarizeConversationStats(props.sessions, props.nowMs),
-    [props.nowMs, props.sessions],
-  );
+  const stats = props.stats ?? EMPTY_STATS;
+  const stateLabel = props.statsError
+    ? "degraded"
+    : props.statsLoading
+      ? "loading"
+      : props.stats?.truncated
+        ? "limited sample"
+        : undefined;
 
   return (
     <Section>
-      <SectionHeader>
+      <SectionHeader
+        actions={
+          stateLabel ? (
+            <div className="text-right text-[0.76rem] font-semibold uppercase leading-tight text-[#888]">
+              {stateLabel}
+            </div>
+          ) : null
+        }
+      >
         <SectionTitle>Stats</SectionTitle>
       </SectionHeader>
       <div className="grid border-b border-white/10 sm:grid-cols-2 lg:grid-cols-4">
