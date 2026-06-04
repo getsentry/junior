@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -7,53 +6,18 @@ import {
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
-import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import {
+  createSlackBehaviorRuntime,
+  threadHasPostText,
+} from "../../fixtures/slack-behavior";
 import {
   createAwaitingSlackTurnState,
   createPiUserTurn,
 } from "../../fixtures/slack-turn-state";
 import {
-  FakeSlackAdapter,
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-const emptyThreadReplies = async () => [];
-
-function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
-  return thread.posts.some((post) => {
-    if (typeof post === "string") {
-      return post.includes(text);
-    }
-    if (
-      post &&
-      typeof post === "object" &&
-      "markdown" in (post as Record<string, unknown>)
-    ) {
-      return String((post as { markdown: string }).markdown).includes(text);
-    }
-    return false;
-  });
-}
-
-function createRuntime(
-  args: {
-    services?: JuniorRuntimeServiceOverrides;
-    slackAdapter?: FakeSlackAdapter;
-  } = {},
-) {
-  const services = args.services ?? {};
-  return createTestChatRuntime({
-    slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
-    },
-  });
-}
 
 describe("Slack behavior: turn continuation", () => {
   beforeEach(async () => {
@@ -69,7 +33,7 @@ describe("Slack behavior: turn continuation", () => {
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C_TIMEOUT:1700000000.000";
     const sessionId = "turn_msg-timeout";
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           scheduleTurnTimeoutResume,
@@ -132,7 +96,7 @@ describe("Slack behavior: turn continuation", () => {
     const generateAssistantReply = vi.fn();
     const onInputCommitted = vi.fn();
     const onTurnStatePersisted = vi.fn();
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,
@@ -209,7 +173,7 @@ describe("Slack behavior: turn continuation", () => {
       resumeReason: "timeout",
       piMessages: createPiUserTurn("please keep working"),
     });
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,
@@ -233,7 +197,7 @@ describe("Slack behavior: turn continuation", () => {
     );
 
     expect(generateAssistantReply).toHaveBeenCalledOnce();
-    expect(postIncludes(thread, "Recovered.")).toBe(true);
+    expect(threadHasPostText(thread, "Recovered.")).toBe(true);
     const failedRecord = await getAgentTurnSessionRecord(
       conversationId,
       activeSessionId,
@@ -261,7 +225,7 @@ describe("Slack behavior: turn continuation", () => {
       expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,
@@ -308,7 +272,7 @@ describe("Slack behavior: turn continuation", () => {
     });
     const generateAssistantReply = vi.fn();
     const onTurnStatePersisted = vi.fn();
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,
@@ -357,7 +321,7 @@ describe("Slack behavior: turn continuation", () => {
       expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,

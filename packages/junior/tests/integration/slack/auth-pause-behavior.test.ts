@@ -1,39 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { createSlackBehaviorRuntime } from "../../fixtures/slack-behavior";
 import {
   createAwaitingSlackTurnState,
   createPiUserTurn,
 } from "../../fixtures/slack-turn-state";
 import {
-  FakeSlackAdapter,
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-const emptyThreadReplies = async () => [];
-
-function createRuntime(
-  args: {
-    services?: JuniorRuntimeServiceOverrides;
-    slackAdapter?: FakeSlackAdapter;
-  } = {},
-) {
-  const services = args.services ?? {};
-  return createTestChatRuntime({
-    slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
-    },
-  });
-}
 
 describe("Slack behavior: auth-pause turns", () => {
   beforeEach(async () => {
@@ -46,7 +23,7 @@ describe("Slack behavior: auth-pause turns", () => {
   });
 
   it("parks MCP auth resume turns without rethrowing to the queue", async () => {
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
@@ -118,7 +95,7 @@ describe("Slack behavior: auth-pause turns", () => {
   });
 
   it("parks plugin auth resume turns without rethrowing to the queue", async () => {
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
@@ -204,7 +181,7 @@ describe("Slack behavior: auth-pause turns", () => {
       resumeReason: "auth",
       piMessages: createPiUserTurn("please use notion"),
     });
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,

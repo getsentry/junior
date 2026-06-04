@@ -1,34 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
-import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { createSlackBehaviorRuntime } from "../../fixtures/slack-behavior";
 import {
-  FakeSlackAdapter,
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-const emptyThreadReplies = async () => [];
-
-function createRuntime(
-  args: {
-    services?: JuniorRuntimeServiceOverrides;
-    slackAdapter?: FakeSlackAdapter;
-  } = {},
-) {
-  const services = args.services ?? {};
-  return createTestChatRuntime({
-    slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
-    },
-  });
-}
 
 describe("Slack behavior: runtime turns", () => {
   beforeEach(async () => {
@@ -43,7 +20,7 @@ describe("Slack behavior: runtime turns", () => {
   it("does not replay a message that already has a delivered reply", async () => {
     const conversationId = "slack:C_REPLAY:1700000000.000";
     const generateAssistantReply = vi.fn();
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply,
@@ -120,7 +97,7 @@ describe("Slack behavior: runtime turns", () => {
   });
 
   it("posts a safe error message when assistant reply generation throws", async () => {
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
@@ -153,7 +130,7 @@ describe("Slack behavior: runtime turns", () => {
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
     const finalText = "This reply never reaches Slack.";
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async () =>
@@ -221,7 +198,7 @@ describe("Slack behavior: runtime turns", () => {
       turnId?: string;
       runId?: string;
     }> = [];
-    const { slackRuntime } = createRuntime({
+    const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
