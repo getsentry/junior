@@ -7,7 +7,7 @@ import type {
   Health,
   Identity,
   Plugin,
-  PluginDashboardReportFeed,
+  PluginReportFeed,
   Runtime,
   SessionFeed,
   Skill,
@@ -63,7 +63,7 @@ async function read<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function emptyPluginReportFeed(): PluginDashboardReportFeed {
+function emptyPluginReportFeed(): PluginReportFeed {
   return {
     generatedAt: new Date().toISOString(),
     reports: [],
@@ -71,8 +71,8 @@ function emptyPluginReportFeed(): PluginDashboardReportFeed {
   };
 }
 
-async function readPluginReports(): Promise<PluginDashboardReportFeed> {
-  return await read<PluginDashboardReportFeed>("/api/dashboard/plugin-reports");
+async function readPluginReports(): Promise<PluginReportFeed> {
+  return await read<PluginReportFeed>("/api/dashboard/plugin-reports");
 }
 
 /** Poll the dashboard summary feed used by command center and conversation lists. */

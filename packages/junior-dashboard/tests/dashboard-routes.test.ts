@@ -115,7 +115,7 @@ function reporting(): JuniorReporting {
         ],
       };
     },
-    async getPluginReports() {
+    async getPluginOperationalReports() {
       return {
         source: "trusted_plugins",
         generatedAt: "2026-05-29T00:00:00.000Z",
@@ -123,7 +123,7 @@ function reporting(): JuniorReporting {
           {
             pluginName: "scheduler",
             title: "Scheduler",
-            summary: [{ label: "active", value: "1" }],
+            metrics: [{ label: "active", value: "1" }],
           },
         ],
       };
@@ -520,7 +520,7 @@ describe("dashboard routes", () => {
       reports: [
         {
           pluginName: "scheduler",
-          summary: [{ label: "active", value: "1" }],
+          metrics: [{ label: "active", value: "1" }],
         },
       ],
       source: "trusted_plugins",
@@ -528,9 +528,11 @@ describe("dashboard routes", () => {
   });
 
   it("returns an empty plugin report feed for legacy reporting providers", async () => {
-    const { getPluginReports: _getPluginReports, ...legacyReporting } =
-      reporting();
-    expect(_getPluginReports).toBeTypeOf("function");
+    const {
+      getPluginOperationalReports: _getPluginOperationalReports,
+      ...legacyReporting
+    } = reporting();
+    expect(_getPluginOperationalReports).toBeTypeOf("function");
     const app = dashboard(
       {
         user: {
@@ -556,7 +558,7 @@ describe("dashboard routes", () => {
   it("returns a failed plugin report feed when plugin reporting throws", async () => {
     const customReporting = {
       ...reporting(),
-      async getPluginReports() {
+      async getPluginOperationalReports() {
         throw new Error("plugin reporting unavailable");
       },
     };
@@ -580,7 +582,7 @@ describe("dashboard routes", () => {
       reports: [
         {
           pluginName: "dashboard",
-          summary: [{ label: "report", tone: "danger", value: "failed" }],
+          metrics: [{ label: "report", tone: "danger", value: "failed" }],
         },
       ],
       source: "trusted_plugins",

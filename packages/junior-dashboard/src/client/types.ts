@@ -1,15 +1,15 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   DashboardConversationReport,
-  DashboardPluginReport,
-  DashboardPluginReportFeed,
+  PluginOperationalReportFeed,
+  PluginOperationalReport,
   DashboardRequesterIdentity,
   DashboardSessionFeed,
   DashboardSessionReport,
   DashboardTurnReport,
   DashboardTurnUsage,
   HealthReport,
-  PluginReport,
+  PluginReport as RuntimePluginReport,
   RuntimeInfoReport,
   SkillReport,
 } from "@sentry/junior/reporting";
@@ -18,13 +18,13 @@ export type Health = HealthReport;
 
 export type Runtime = RuntimeInfoReport;
 
-export type Plugin = PluginReport;
+export type Plugin = RuntimePluginReport;
 
 export type Skill = SkillReport;
 
-export type PluginDashboardReport = DashboardPluginReport;
+export type PluginReport = PluginOperationalReport;
 
-export type PluginDashboardReportFeed = DashboardPluginReportFeed;
+export type PluginReportFeed = PluginOperationalReportFeed;
 
 export type RequesterIdentity = DashboardRequesterIdentity;
 
@@ -78,7 +78,7 @@ export type DashboardData = {
   health: Health;
   me: Identity;
   pluginReportsError: boolean;
-  pluginReports: PluginDashboardReportFeed;
+  pluginReports: PluginReportFeed;
   pluginReportsLoading: boolean;
   plugins: Plugin[];
   runtime: Runtime;

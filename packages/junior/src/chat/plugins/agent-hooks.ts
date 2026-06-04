@@ -4,9 +4,9 @@ import type {
   AgentPluginRoute,
   AgentPluginRouteMethod,
   AgentPluginSandbox,
-  DashboardPluginReport,
-  DashboardPluginReportContent,
-  DashboardPluginMetricTone,
+  PluginOperationalReport,
+  PluginOperationalReportContent,
+  PluginOperationalTone,
   SlackConversationLink,
   JuniorPluginRegistration,
 } from "@sentry/junior-plugin-api";
@@ -52,12 +52,12 @@ export interface AgentPluginHookRunner {
 let agentPlugins: JuniorPluginRegistration[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
-const DASHBOARD_REPORT_MAX_SUMMARY_ITEMS = 8;
-const DASHBOARD_REPORT_MAX_SECTIONS = 8;
-const DASHBOARD_REPORT_MAX_COLUMNS = 8;
-const DASHBOARD_REPORT_MAX_ROWS = 25;
-const DASHBOARD_REPORT_MAX_LABEL_LENGTH = 80;
-const DASHBOARD_REPORT_MAX_VALUE_LENGTH = 160;
+const OPERATIONAL_REPORT_MAX_METRICS = 8;
+const OPERATIONAL_REPORT_MAX_RECORD_SETS = 8;
+const OPERATIONAL_REPORT_MAX_FIELDS = 8;
+const OPERATIONAL_REPORT_MAX_RECORDS = 25;
+const OPERATIONAL_REPORT_MAX_LABEL_LENGTH = 80;
+const OPERATIONAL_REPORT_MAX_VALUE_LENGTH = 160;
 const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
   "GET",
   "POST",
@@ -334,7 +334,7 @@ function pluginReadState(state: { get: AgentPluginReadState["get"] }) {
   } satisfies AgentPluginReadState;
 }
 
-function dashboardReportText(
+function operationalReportText(
   value: string | undefined,
   maxLength: number,
 ): string | undefined {
@@ -350,9 +350,9 @@ function dashboardReportText(
     : `${trimmed.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-function dashboardReportTone(
-  tone: DashboardPluginMetricTone | undefined,
-): DashboardPluginMetricTone | undefined {
+function operationalReportTone(
+  tone: PluginOperationalTone | undefined,
+): PluginOperationalTone | undefined {
   return tone === "danger" ||
     tone === "good" ||
     tone === "neutral" ||
@@ -361,128 +361,130 @@ function dashboardReportTone(
     : undefined;
 }
 
-function sanitizeDashboardReport(args: {
+function sanitizeOperationalReport(args: {
   pluginName: string;
-  report: DashboardPluginReportContent;
-}): DashboardPluginReport {
-  const summary = args.report.summary
-    ?.slice(0, DASHBOARD_REPORT_MAX_SUMMARY_ITEMS)
+  report: PluginOperationalReportContent;
+}): PluginOperationalReport {
+  const metrics = args.report.metrics
+    ?.slice(0, OPERATIONAL_REPORT_MAX_METRICS)
     .map((metric) => {
-      const label = dashboardReportText(
+      const label = operationalReportText(
         metric.label,
-        DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+        OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
       );
-      const value = dashboardReportText(
+      const value = operationalReportText(
         metric.value,
-        DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+        OPERATIONAL_REPORT_MAX_VALUE_LENGTH,
       );
       if (!label || !value) {
         return undefined;
       }
       const sanitizedMetric: NonNullable<
-        DashboardPluginReport["summary"]
+        PluginOperationalReport["metrics"]
       >[number] = { label, value };
-      const tone = dashboardReportTone(metric.tone);
+      const tone = operationalReportTone(metric.tone);
       if (tone) {
         sanitizedMetric.tone = tone;
       }
       return sanitizedMetric;
     })
     .filter((metric): metric is NonNullable<typeof metric> => Boolean(metric));
-  const sections = args.report.sections
-    ?.slice(0, DASHBOARD_REPORT_MAX_SECTIONS)
-    .map((section, sectionIndex) => {
-      const title = dashboardReportText(
-        section.title,
-        DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+  const recordSets = args.report.recordSets
+    ?.slice(0, OPERATIONAL_REPORT_MAX_RECORD_SETS)
+    .map((recordSet, recordSetIndex) => {
+      const title = operationalReportText(
+        recordSet.title,
+        OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
       );
       if (!title) {
         return undefined;
       }
-      const columns = section.columns
-        ?.slice(0, DASHBOARD_REPORT_MAX_COLUMNS)
-        .map((column) => {
-          const key = dashboardReportText(
-            column.key,
-            DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+      const fields = recordSet.fields
+        ?.slice(0, OPERATIONAL_REPORT_MAX_FIELDS)
+        .map((field) => {
+          const key = operationalReportText(
+            field.key,
+            OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
           );
-          const label = dashboardReportText(
-            column.label,
-            DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+          const label = operationalReportText(
+            field.label,
+            OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
           );
           return key && label ? { key, label } : undefined;
         })
-        .filter((column): column is NonNullable<typeof column> =>
-          Boolean(column),
-        );
-      const rows = section.rows
-        ?.slice(0, DASHBOARD_REPORT_MAX_ROWS)
-        .map((row, rowIndex) => {
+        .filter((field): field is NonNullable<typeof field> => Boolean(field));
+      const records = recordSet.records
+        ?.slice(0, OPERATIONAL_REPORT_MAX_RECORDS)
+        .map((record, recordIndex) => {
           const id =
-            dashboardReportText(row.id, DASHBOARD_REPORT_MAX_LABEL_LENGTH) ??
-            `${sectionIndex}:${rowIndex}`;
-          const cells = Object.fromEntries(
-            (columns ?? []).map((column) => [
-              column.key,
-              dashboardReportText(
-                row.cells[column.key],
-                DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+            operationalReportText(
+              record.id,
+              OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
+            ) ?? `${recordSetIndex}:${recordIndex}`;
+          const values = Object.fromEntries(
+            (fields ?? []).map((field) => [
+              field.key,
+              operationalReportText(
+                record.values[field.key],
+                OPERATIONAL_REPORT_MAX_VALUE_LENGTH,
               ) ?? "",
             ]),
           );
-          const sanitizedRow: NonNullable<
-            NonNullable<DashboardPluginReport["sections"]>[number]["rows"]
+          const sanitizedRecord: NonNullable<
+            NonNullable<
+              PluginOperationalReport["recordSets"]
+            >[number]["records"]
           >[number] = {
-            cells,
             id,
+            values,
           };
-          const tone = dashboardReportTone(row.tone);
+          const tone = operationalReportTone(record.tone);
           if (tone) {
-            sanitizedRow.tone = tone;
+            sanitizedRecord.tone = tone;
           }
-          return sanitizedRow;
+          return sanitizedRecord;
         });
-      const sanitizedSection: NonNullable<
-        DashboardPluginReport["sections"]
+      const sanitizedRecordSet: NonNullable<
+        PluginOperationalReport["recordSets"]
       >[number] = { title };
-      if (columns?.length) {
-        sanitizedSection.columns = columns;
+      if (fields?.length) {
+        sanitizedRecordSet.fields = fields;
       }
-      const emptyText = dashboardReportText(
-        section.emptyText,
-        DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+      const emptyText = operationalReportText(
+        recordSet.emptyText,
+        OPERATIONAL_REPORT_MAX_VALUE_LENGTH,
       );
       if (emptyText) {
-        sanitizedSection.emptyText = emptyText;
+        sanitizedRecordSet.emptyText = emptyText;
       }
-      if (rows?.length) {
-        sanitizedSection.rows = rows;
+      if (records?.length) {
+        sanitizedRecordSet.records = records;
       }
-      return sanitizedSection;
+      return sanitizedRecordSet;
     })
-    .filter((section): section is NonNullable<typeof section> =>
-      Boolean(section),
+    .filter((recordSet): recordSet is NonNullable<typeof recordSet> =>
+      Boolean(recordSet),
     );
 
-  const sanitized: DashboardPluginReport = {
+  const sanitized: PluginOperationalReport = {
     pluginName: args.pluginName,
   };
-  const generatedAt = dashboardReportText(
+  const generatedAt = operationalReportText(
     args.report.generatedAt,
-    DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+    OPERATIONAL_REPORT_MAX_VALUE_LENGTH,
   );
   if (generatedAt) {
     sanitized.generatedAt = generatedAt;
   }
-  if (sections?.length) {
-    sanitized.sections = sections;
+  if (recordSets?.length) {
+    sanitized.recordSets = recordSets;
   }
-  if (summary?.length) {
-    sanitized.summary = summary;
+  if (metrics?.length) {
+    sanitized.metrics = metrics;
   }
-  const title = dashboardReportText(
+  const title = operationalReportText(
     args.report.title,
-    DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+    OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
   );
   if (title) {
     sanitized.title = title;
@@ -490,16 +492,16 @@ function sanitizeDashboardReport(args: {
   return sanitized;
 }
 
-function failedDashboardReport(args: {
+function failedOperationalReport(args: {
   nowMs: number;
   pluginName: string;
-}): DashboardPluginReport {
+}): PluginOperationalReport {
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
     pluginName: args.pluginName,
-    summary: [{ label: "report", tone: "danger", value: "failed" }],
+    metrics: [{ label: "report", tone: "danger", value: "failed" }],
     title: args.pluginName,
-    sections: [
+    recordSets: [
       {
         emptyText: "This plugin report failed to load.",
         title: "Error",
@@ -508,13 +510,13 @@ function failedDashboardReport(args: {
   };
 }
 
-/** Collect read-only dashboard summaries exposed by trusted plugins. */
-export async function getAgentPluginDashboardReports(
+/** Collect read-only operational summaries exposed by trusted plugins. */
+export async function getAgentPluginOperationalReports(
   nowMs = Date.now(),
-): Promise<DashboardPluginReport[]> {
-  const reports: DashboardPluginReport[] = [];
+): Promise<PluginOperationalReport[]> {
+  const reports: PluginOperationalReport[] = [];
   for (const plugin of getAgentPlugins()) {
-    const hook = plugin.hooks?.dashboardReport;
+    const hook = plugin.hooks?.operationalReport;
     if (!hook) {
       continue;
     }
@@ -533,16 +535,16 @@ export async function getAgentPluginDashboardReports(
         continue;
       }
       reports.push(
-        sanitizeDashboardReport({
+        sanitizeOperationalReport({
           pluginName: plugin.name,
           report,
         }),
       );
     } catch (error) {
-      log.error("Trusted plugin dashboard report failed", {
+      log.error("Trusted plugin operational report failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      reports.push(failedDashboardReport({ nowMs, pluginName: plugin.name }));
+      reports.push(failedOperationalReport({ nowMs, pluginName: plugin.name }));
     }
   }
   return reports;

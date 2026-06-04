@@ -2,14 +2,14 @@ import {
   defineJuniorPlugin,
   type Dispatch,
   type AgentPluginToolDefinition,
-  type DashboardPluginReportContent,
+  type PluginOperationalReportContent,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { buildScheduledTaskRunPrompt } from "./prompt";
 import {
-  createSchedulerDashboardStore,
+  createSchedulerOperationalStore,
   createSchedulerStore,
-  type SchedulerDashboardStore,
+  type SchedulerOperationalStore,
   type SchedulerStore,
 } from "./store";
 import type { ScheduledRun, ScheduledTask } from "./types";
@@ -238,10 +238,10 @@ function isDue(task: ScheduledTask, nowMs: number): boolean {
   );
 }
 
-async function buildSchedulerDashboardReport(args: {
+async function buildSchedulerOperationalReport(args: {
   nowMs: number;
-  store: SchedulerDashboardStore;
-}): Promise<DashboardPluginReportContent> {
+  store: SchedulerOperationalStore;
+}): Promise<PluginOperationalReportContent> {
   const tasks = await args.store.listTasks();
   const incompleteRuns = await args.store.listIncompleteRunsForTasks(tasks);
   const taskById = new Map(tasks.map((task) => [task.id, task]));
@@ -263,7 +263,7 @@ async function buildSchedulerDashboardReport(args: {
   return {
     title: "Scheduler",
     generatedAt: new Date(args.nowMs).toISOString(),
-    summary: [
+    metrics: [
       {
         label: "active",
         tone: counts.active > 0 ? "good" : "neutral",
@@ -286,20 +286,20 @@ async function buildSchedulerDashboardReport(args: {
         value: formatCount(runningCount),
       },
     ],
-    sections: [
+    recordSets: [
       {
         title: "Upcoming",
         emptyText: "No active scheduled tasks.",
-        columns: [
+        fields: [
           { key: "task", label: "Task" },
           { key: "author", label: "Author" },
           { key: "destination", label: "Destination" },
           { key: "nextRun", label: "Next Run" },
           { key: "cadence", label: "Cadence" },
         ],
-        rows: upcomingTasks.map((task) => ({
+        records: upcomingTasks.map((task) => ({
           id: task.id,
-          cells: {
+          values: {
             task: task.id,
             author: authorLabel(task.createdBy),
             destination: destinationLabel(task.destination),
@@ -311,16 +311,16 @@ async function buildSchedulerDashboardReport(args: {
       {
         title: "Blocked",
         emptyText: "No blocked scheduled tasks.",
-        columns: [
+        fields: [
           { key: "task", label: "Task" },
           { key: "author", label: "Author" },
           { key: "destination", label: "Destination" },
           { key: "updated", label: "Updated" },
         ],
-        rows: blockedTasks.map((task) => ({
+        records: blockedTasks.map((task) => ({
           id: task.id,
           tone: "danger",
-          cells: {
+          values: {
             task: task.id,
             author: authorLabel(task.createdBy),
             destination: destinationLabel(task.destination),
@@ -331,19 +331,19 @@ async function buildSchedulerDashboardReport(args: {
       {
         title: "Running",
         emptyText: "No scheduler runs in flight.",
-        columns: [
+        fields: [
           { key: "run", label: "Run" },
           { key: "task", label: "Task" },
           { key: "author", label: "Author" },
           { key: "scheduledFor", label: "Scheduled For" },
           { key: "status", label: "Status" },
         ],
-        rows: runningRuns.map((run) => {
+        records: runningRuns.map((run) => {
           const task = taskById.get(run.taskId);
           return {
             id: run.id,
             tone: run.status === "pending" ? "warning" : "neutral",
-            cells: {
+            values: {
               run: run.id,
               task: run.taskId,
               author: task ? authorLabel(task.createdBy) : "unknown",
@@ -495,10 +495,10 @@ export function createSchedulerPlugin() {
 
         return { dispatchCount };
       },
-      async dashboardReport(ctx) {
-        return buildSchedulerDashboardReport({
+      async operationalReport(ctx) {
+        return buildSchedulerOperationalReport({
           nowMs: ctx.nowMs,
-          store: createSchedulerDashboardStore(ctx.state),
+          store: createSchedulerOperationalStore(ctx.state),
         });
       },
     },

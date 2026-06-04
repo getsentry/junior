@@ -58,7 +58,7 @@ export interface SchedulerStore {
   }): Promise<void>;
 }
 
-export interface SchedulerDashboardStore {
+export interface SchedulerOperationalStore {
   listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
   listTasks(): Promise<ScheduledTask[]>;
 }
@@ -399,7 +399,7 @@ async function listIncompleteRunsForTasksFromState(
   return runs;
 }
 
-class PluginStateSchedulerDashboardStore implements SchedulerDashboardStore {
+class PluginStateSchedulerOperationalStore implements SchedulerOperationalStore {
   private readonly state: AgentPluginReadState;
 
   constructor(state: AgentPluginReadState) {
@@ -875,9 +875,9 @@ export function createSchedulerStore(state: AgentPluginState): SchedulerStore {
   return new PluginStateSchedulerStore(state);
 }
 
-/** Create a read-only scheduler store for dashboard reporting. */
-export function createSchedulerDashboardStore(
+/** Create a read-only scheduler store for operational reporting. */
+export function createSchedulerOperationalStore(
   state: AgentPluginReadState,
-): SchedulerDashboardStore {
-  return new PluginStateSchedulerDashboardStore(state);
+): SchedulerOperationalStore {
+  return new PluginStateSchedulerOperationalStore(state);
 }

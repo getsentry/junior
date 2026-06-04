@@ -31,8 +31,8 @@ import {
 } from "@/chat/state/turn-session";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { GET as healthGET } from "@/handlers/health";
-import { getAgentPluginDashboardReports } from "@/chat/plugins/agent-hooks";
-import type { DashboardPluginReport } from "@sentry/junior-plugin-api";
+import { getAgentPluginOperationalReports } from "@/chat/plugins/agent-hooks";
+import type { PluginOperationalReport } from "@sentry/junior-plugin-api";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
@@ -170,11 +170,11 @@ export interface DashboardSessionFeed {
   generatedAt: string;
 }
 
-export type { DashboardPluginReport } from "@sentry/junior-plugin-api";
+export type { PluginOperationalReport } from "@sentry/junior-plugin-api";
 
-export interface DashboardPluginReportFeed {
+export interface PluginOperationalReportFeed {
   generatedAt: string;
-  reports: DashboardPluginReport[];
+  reports: PluginOperationalReport[];
   source: "trusted_plugins";
 }
 
@@ -195,7 +195,7 @@ export interface JuniorReporting {
    */
   getSessions(): Promise<DashboardSessionFeed>;
   /** Read sanitized operational summaries contributed by trusted plugins. */
-  getPluginReports?(): Promise<DashboardPluginReportFeed>;
+  getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   /**
    * Read one conversation transcript for the dashboard.
    *
@@ -659,12 +659,12 @@ async function readSessions(): Promise<DashboardSessionFeed> {
   };
 }
 
-async function readPluginReports(): Promise<DashboardPluginReportFeed> {
+async function readPluginOperationalReports(): Promise<PluginOperationalReportFeed> {
   const nowMs = Date.now();
   return {
     source: "trusted_plugins",
     generatedAt: new Date(nowMs).toISOString(),
-    reports: await getAgentPluginDashboardReports(nowMs),
+    reports: await getAgentPluginOperationalReports(nowMs),
   };
 }
 
@@ -741,7 +741,7 @@ async function readConversation(
 
 /** Create the read-only reporting boundary used by authenticated dashboard routes. */
 export function createJuniorReporting(): JuniorReporting & {
-  getPluginReports(): Promise<DashboardPluginReportFeed>;
+  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
   return {
     getHealth: readHealth,
@@ -763,7 +763,7 @@ export function createJuniorReporting(): JuniorReporting & {
     getPlugins: readPlugins,
     getSkills: readSkills,
     getSessions: readSessions,
-    getPluginReports: readPluginReports,
+    getPluginOperationalReports: readPluginOperationalReports,
     getConversation: readConversation,
   };
 }

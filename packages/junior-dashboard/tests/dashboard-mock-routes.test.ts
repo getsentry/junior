@@ -53,7 +53,7 @@ function reporting(): JuniorReporting {
         ],
       };
     },
-    async getPluginReports() {
+    async getPluginOperationalReports() {
       return {
         source: "trusted_plugins",
         generatedAt: "2026-05-29T00:00:00.000Z",

@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type {
-  DashboardPluginReportFeed,
+  PluginOperationalReportFeed,
   JuniorReporting,
 } from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
@@ -124,7 +124,7 @@ function dashboardLoginUrl(request: Request, basePath: string): string {
   return url.toString();
 }
 
-function emptyPluginReportFeed(): DashboardPluginReportFeed {
+function emptyPluginReportFeed(): PluginOperationalReportFeed {
   return {
     generatedAt: new Date().toISOString(),
     reports: [],
@@ -132,19 +132,19 @@ function emptyPluginReportFeed(): DashboardPluginReportFeed {
   };
 }
 
-function failedPluginReportFeed(): DashboardPluginReportFeed {
+function failedPluginReportFeed(): PluginOperationalReportFeed {
   return {
     generatedAt: new Date().toISOString(),
     reports: [
       {
         pluginName: "dashboard",
-        sections: [
+        recordSets: [
           {
             emptyText: "Trusted plugin stats failed to load.",
             title: "Error",
           },
         ],
-        summary: [{ label: "report", tone: "danger", value: "failed" }],
+        metrics: [{ label: "report", tone: "danger", value: "failed" }],
         title: "Plugin Reports",
       },
     ],
@@ -154,12 +154,12 @@ function failedPluginReportFeed(): DashboardPluginReportFeed {
 
 async function readPluginReports(
   reporting: JuniorReporting,
-): Promise<DashboardPluginReportFeed> {
-  if (!reporting.getPluginReports) {
+): Promise<PluginOperationalReportFeed> {
+  if (!reporting.getPluginOperationalReports) {
     return emptyPluginReportFeed();
   }
   try {
-    return await reporting.getPluginReports();
+    return await reporting.getPluginOperationalReports();
   } catch {
     return failedPluginReportFeed();
   }

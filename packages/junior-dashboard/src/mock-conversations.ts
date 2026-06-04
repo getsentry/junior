@@ -723,8 +723,8 @@ export function createMockConversationReporting(
       return reporting.getConversation(conversationId);
     },
   };
-  if (reporting.getPluginReports) {
-    overlay.getPluginReports = reporting.getPluginReports;
+  if (reporting.getPluginOperationalReports) {
+    overlay.getPluginOperationalReports = reporting.getPluginOperationalReports;
   }
   return overlay;
 }

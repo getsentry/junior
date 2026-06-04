@@ -2,7 +2,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   createAgentPluginHookRunner,
-  getAgentPluginDashboardReports,
+  getAgentPluginOperationalReports,
   getAgentPluginRoutes,
   getAgentPluginSlackConversationLink,
   getAgentPluginTools,
@@ -332,7 +332,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects dashboard reports from configured plugins", async () => {
+  it("collects operational reports from configured plugins", async () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
@@ -341,7 +341,7 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          async dashboardReport(ctx) {
+          async operationalReport(ctx) {
             expect(ctx.nowMs).toBe(123);
             expect("set" in ctx.state).toBe(false);
             await expect(ctx.state.get("dashboard-test")).resolves.toBe(
@@ -349,18 +349,18 @@ describe("agent plugin hooks", () => {
             );
             return {
               title: "Agent Demo",
-              summary: [{ label: "active", value: "1" }],
+              metrics: [{ label: "active", value: "1" }],
             };
           },
         },
       }),
     ]);
     try {
-      await expect(getAgentPluginDashboardReports(123)).resolves.toEqual([
+      await expect(getAgentPluginOperationalReports(123)).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
-          summary: [{ label: "active", value: "1" }],
+          metrics: [{ label: "active", value: "1" }],
         },
       ]);
     } finally {
@@ -368,7 +368,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("contains failed dashboard reports per plugin", async () => {
+  it("contains failed operational reports per plugin", async () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
@@ -377,10 +377,10 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          dashboardReport() {
+          operationalReport() {
             return {
               title: "Agent Demo",
-              summary: [{ label: "active", value: "1" }],
+              metrics: [{ label: "active", value: "1" }],
             };
           },
         },
@@ -392,29 +392,29 @@ describe("agent plugin hooks", () => {
           description: "Broken demo",
         },
         hooks: {
-          dashboardReport() {
+          operationalReport() {
             throw new Error("database unavailable");
           },
         },
       }),
     ]);
     try {
-      await expect(getAgentPluginDashboardReports(123)).resolves.toEqual([
+      await expect(getAgentPluginOperationalReports(123)).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
-          summary: [{ label: "active", value: "1" }],
+          metrics: [{ label: "active", value: "1" }],
         },
         {
           generatedAt: "1970-01-01T00:00:00.123Z",
           pluginName: "broken-demo",
-          sections: [
+          recordSets: [
             {
               emptyText: "This plugin report failed to load.",
               title: "Error",
             },
           ],
-          summary: [{ label: "report", tone: "danger", value: "failed" }],
+          metrics: [{ label: "report", tone: "danger", value: "failed" }],
           title: "broken-demo",
         },
       ]);

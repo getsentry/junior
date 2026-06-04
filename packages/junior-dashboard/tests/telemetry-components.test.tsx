@@ -443,12 +443,12 @@ describe("dashboard telemetry components", () => {
       {
         pluginName: "scheduler",
         title: "Scheduler",
-        summary: [{ label: "active", value: "2" }],
-        sections: [
+        metrics: [{ label: "active", value: "2" }],
+        recordSets: [
           {
             title: "Upcoming",
-            columns: [{ key: "task", label: "Task" }],
-            rows: [{ id: "sched_1", cells: { task: "sched_1" } }],
+            fields: [{ key: "task", label: "Task" }],
+            records: [{ id: "sched_1", values: { task: "sched_1" } }],
           },
         ],
       },
@@ -477,16 +477,16 @@ describe("dashboard telemetry components", () => {
     expect(pluginHtml).toContain("sched_1");
   });
 
-  it("renders a clear fallback for plugin rows without columns", () => {
+  it("renders a clear fallback for plugin records without fields", () => {
     const html = renderToStaticMarkup(
       <PluginReports
         reports={[
           {
             pluginName: "scheduler",
-            sections: [
+            recordSets: [
               {
                 title: "Malformed",
-                rows: [{ id: "row-1", cells: { task: "sched_1" } }],
+                records: [{ id: "row-1", values: { task: "sched_1" } }],
               },
             ],
           },
@@ -495,7 +495,7 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain(
-      "Report rows are unavailable because no columns were declared.",
+      "Report records are unavailable because no fields were declared.",
     );
   });
 

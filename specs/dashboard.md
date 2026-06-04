@@ -53,7 +53,7 @@ export interface JuniorReporting {
   getPlugins(): Promise<PluginReport[]>;
   getSkills(): Promise<SkillReport[]>;
   getSessions(): Promise<DashboardSessionFeed>;
-  getPluginReports(): Promise<DashboardPluginReportFeed>;
+  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
   getConversation(conversationId: string): Promise<DashboardConversationReport>;
 }
 
@@ -236,7 +236,7 @@ Reporting data may include:
 - configured plugin names
 - skill names and owning plugin provider
 - conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
-- trusted plugin dashboard summaries made of bounded string metrics and tables
+- trusted plugin operational summaries made of bounded string metrics and record sets
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links for conversation summaries when Sentry DSN and org slug configuration are present
@@ -250,14 +250,14 @@ Dashboard transcript and title redaction must follow `./data-redaction-policy.md
 
 Public health responses must not include runtime discovery data such as cwd, home directory, plugin names, skill names, or packaged content.
 
-### Trusted Plugin Dashboard Reports
+### Trusted Plugin Operational Reports
 
-Trusted plugins may expose a read-only `dashboardReport(ctx)` hook. The context
+Trusted plugins may expose a read-only `operationalReport(ctx)` hook. The context
 contains only the plugin name, plugin logger, current timestamp, and that
 plugin's namespaced durable state.
 
-Plugin dashboard reports must be operational metadata only. They may include
-small string metrics, table columns, table rows, and sanitized creator labels
+Plugin operational reports must be operational metadata only. They may include
+small string metrics, record-set fields, records, and sanitized creator labels
 for audit-oriented operational records. They must not include raw conversation
 text, scheduled task text, original user utterances, provider tokens, raw tool
 payloads, private channel names, or authorization URLs.
@@ -348,7 +348,7 @@ Dashboard implementation requires integration tests for:
 8. `/api/info` no longer exposes public runtime diagnostics.
 9. Slack webhook, provider OAuth callback, internal, and sandbox egress routes are not intercepted by dashboard auth.
 10. dashboard reporting cannot return secret-bearing values.
-11. authenticated users can read sanitized trusted-plugin dashboard reports.
+11. authenticated users can read sanitized trusted-plugin operational reports.
 
 Tests must follow `./testing.md`: route wiring and auth behavior belong in integration tests.
 

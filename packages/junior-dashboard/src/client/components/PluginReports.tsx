@@ -1,14 +1,14 @@
 import { formatTime } from "../format";
 import { cn } from "../styles";
-import type { PluginDashboardReport } from "../types";
+import type { PluginReport } from "../types";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
 
-/** Render trusted plugin dashboard summaries without plugin-specific UI code. */
+/** Render trusted plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
-  reports: PluginDashboardReport[];
+  reports: PluginReport[];
 }) {
   if (props.reports.length === 0 && !props.emptyText) {
     return null;
@@ -36,7 +36,7 @@ export function PluginReports(props: {
   );
 }
 
-function PluginReportView(props: { report: PluginDashboardReport }) {
+function PluginReportView(props: { report: PluginReport }) {
   const title = props.report.title ?? props.report.pluginName;
   return (
     <Section>
@@ -54,9 +54,9 @@ function PluginReportView(props: { report: PluginDashboardReport }) {
           {props.report.pluginName}
         </div>
       </SectionHeader>
-      {props.report.summary?.length ? (
+      {props.report.metrics?.length ? (
         <div className="grid border-t border-white/10 sm:grid-cols-2 lg:grid-cols-4">
-          {props.report.summary.map((metric) => (
+          {props.report.metrics.map((metric) => (
             <div
               className={cn(
                 "min-w-0 border-r border-t border-white/10 bg-[#050505] px-4 py-3 first:border-t-0 sm:[&:nth-child(-n+2)]:border-t-0 lg:border-t-0",
@@ -74,61 +74,63 @@ function PluginReportView(props: { report: PluginDashboardReport }) {
           ))}
         </div>
       ) : null}
-      {props.report.sections?.map((section) => (
-        <PluginReportSection
-          key={`${props.report.pluginName}:${section.title}`}
-          section={section}
+      {props.report.recordSets?.map((recordSet) => (
+        <PluginReportRecordSet
+          key={`${props.report.pluginName}:${recordSet.title}`}
+          recordSet={recordSet}
         />
       ))}
     </Section>
   );
 }
 
-type PluginReportSectionType = NonNullable<
-  PluginDashboardReport["sections"]
+type PluginReportRecordSetType = NonNullable<
+  PluginReport["recordSets"]
 >[number];
 
-function PluginReportSection(props: { section: PluginReportSectionType }) {
-  const columns = props.section.columns ?? [];
-  const rows = props.section.rows ?? [];
+function PluginReportRecordSet(props: {
+  recordSet: PluginReportRecordSetType;
+}) {
+  const fields = props.recordSet.fields ?? [];
+  const records = props.recordSet.records ?? [];
   return (
     <div className="border-t border-white/10">
       <div className="px-4 py-2.5 text-[0.76rem] font-bold uppercase leading-none text-[#888]">
-        {props.section.title}
+        {props.recordSet.title}
       </div>
-      {rows.length === 0 ? (
+      {records.length === 0 ? (
         <div className="px-4 pb-4 text-[0.84rem] leading-relaxed text-[#888]">
-          {props.section.emptyText ?? "No rows."}
+          {props.recordSet.emptyText ?? "No records."}
         </div>
-      ) : columns.length === 0 ? (
+      ) : fields.length === 0 ? (
         <div className="px-4 pb-4 text-[0.84rem] leading-relaxed text-[#888]">
-          Report rows are unavailable because no columns were declared.
+          Report records are unavailable because no fields were declared.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[36rem] border-collapse text-left text-[0.82rem] leading-tight">
             <thead className="text-[0.7rem] uppercase text-[#888]">
               <tr>
-                {columns.map((column) => (
+                {fields.map((field) => (
                   <th
                     className="border-b border-white/10 px-4 py-2 font-semibold"
-                    key={column.key}
+                    key={field.key}
                     scope="col"
                   >
-                    {column.label}
+                    {field.label}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr className={rowToneClass(row.tone)} key={row.id}>
-                  {columns.map((column) => (
+              {records.map((record) => (
+                <tr className={rowToneClass(record.tone)} key={record.id}>
+                  {fields.map((field) => (
                     <td
                       className="max-w-72 truncate border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]"
-                      key={column.key}
+                      key={field.key}
                     >
-                      {row.cells[column.key] ?? ""}
+                      {record.values[field.key] ?? ""}
                     </td>
                   ))}
                 </tr>

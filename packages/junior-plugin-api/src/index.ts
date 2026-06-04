@@ -184,48 +184,44 @@ export interface HeartbeatResult {
   dispatchCount?: number;
 }
 
-export type DashboardPluginMetricTone =
-  | "danger"
-  | "good"
-  | "neutral"
-  | "warning";
+export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";
 
-export interface DashboardPluginMetric {
+export interface PluginOperationalMetric {
   label: string;
-  tone?: DashboardPluginMetricTone;
+  tone?: PluginOperationalTone;
   value: string;
 }
 
-export interface DashboardPluginTableColumn {
+export interface PluginOperationalField {
   key: string;
   label: string;
 }
 
-export interface DashboardPluginTableRow {
-  cells: Record<string, string>;
+export interface PluginOperationalRecord {
   id: string;
-  tone?: DashboardPluginMetricTone;
+  tone?: PluginOperationalTone;
+  values: Record<string, string>;
 }
 
-export interface DashboardPluginSection {
-  columns?: DashboardPluginTableColumn[];
+export interface PluginOperationalRecordSet {
+  fields?: PluginOperationalField[];
   emptyText?: string;
-  rows?: DashboardPluginTableRow[];
+  records?: PluginOperationalRecord[];
   title: string;
 }
 
-export interface DashboardPluginReportContent {
+export interface PluginOperationalReportContent {
   generatedAt?: string;
-  sections?: DashboardPluginSection[];
-  summary?: DashboardPluginMetric[];
+  metrics?: PluginOperationalMetric[];
+  recordSets?: PluginOperationalRecordSet[];
   title?: string;
 }
 
-export interface DashboardPluginReport extends DashboardPluginReportContent {
+export interface PluginOperationalReport extends PluginOperationalReportContent {
   pluginName: string;
 }
 
-export interface DashboardReportHookContext extends AgentPluginContext {
+export interface OperationalReportHookContext extends AgentPluginContext {
   nowMs: number;
   state: AgentPluginReadState;
 }
@@ -270,11 +266,11 @@ export interface AgentPluginHooks {
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
-  dashboardReport?(
-    ctx: DashboardReportHookContext,
+  operationalReport?(
+    ctx: OperationalReportHookContext,
   ):
-    | Promise<DashboardPluginReportContent | undefined>
-    | DashboardPluginReportContent
+    | Promise<PluginOperationalReportContent | undefined>
+    | PluginOperationalReportContent
     | undefined;
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,

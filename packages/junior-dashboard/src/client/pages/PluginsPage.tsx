@@ -2,21 +2,16 @@ import { PluginReports } from "../components/PluginReports";
 import { Section } from "../components/Section";
 import { SectionHeader } from "../components/SectionHeader";
 import { SectionTitle } from "../components/SectionTitle";
-import type {
-  DashboardData,
-  Plugin,
-  PluginDashboardReport,
-  Skill,
-} from "../types";
+import type { DashboardData, Plugin, PluginReport, Skill } from "../types";
 
 type PluginRow = {
   name: string;
   plugin?: Plugin;
-  report?: PluginDashboardReport;
+  report?: PluginReport;
   skills: Skill[];
 };
 
-/** Render plugin inventory and trusted-plugin dashboard summaries. */
+/** Render plugin inventory and trusted-plugin operational summaries. */
 export function PluginsPage(props: { data?: DashboardData }) {
   const plugins = props.data?.plugins ?? [];
   const reports = props.data?.pluginReports?.reports ?? [];
@@ -140,7 +135,7 @@ function PluginMetric(props: { label: string; value: number }) {
 
 function buildPluginRows(input: {
   plugins: Plugin[];
-  reports: PluginDashboardReport[];
+  reports: PluginReport[];
   skills: Skill[];
 }): PluginRow[] {
   const names = new Set<string>();
