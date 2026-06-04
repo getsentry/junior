@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefCallback,
   type RefObject,
 } from "react";
 
@@ -26,7 +27,7 @@ export type ScrollSnapshot = {
 
 type BottomPinResult = {
   anchorRef: RefObject<HTMLDivElement | null>;
-  contentRef: RefObject<HTMLDivElement | null>;
+  contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
   showJumpToLatest: boolean;
@@ -101,7 +102,7 @@ export function usePinnedTranscriptBottom(input: {
   version: string;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
+  const contentElementRef = useRef<HTMLDivElement | null>(null);
   const enabledRef = useRef(input.enabled);
   const everEnabledRef = useRef(input.enabled);
   const followingRef = useRef(false);
@@ -109,6 +110,14 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+
+  const contentRef = useCallback((node: HTMLDivElement | null) => {
+    contentElementRef.current = node;
+    setContentElement(node);
+  }, []);
 
   useEffect(() => {
     enabledRef.current = input.enabled;
@@ -128,7 +137,7 @@ export function usePinnedTranscriptBottom(input: {
 
   const measurePosition = useCallback(
     (source: PositionMeasureSource) => {
-      const root = scrollRootFor(contentRef.current);
+      const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
       const snapshot = scrollSnapshot(root);
@@ -156,6 +165,20 @@ export function usePinnedTranscriptBottom(input: {
   const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
     anchorRef.current?.scrollIntoView({ behavior, block: "end" });
   }, []);
+
+  const syncAfterLayoutChange = useCallback(() => {
+    if (
+      shouldAutoPinTranscriptBottom({
+        enabled: enabledRef.current,
+        following: followingRef.current,
+      })
+    ) {
+      scrollToBottom("auto");
+      return;
+    }
+
+    measurePosition("measure");
+  }, [measurePosition, scrollToBottom]);
 
   useBrowserLayoutEffect(() => {
     const wasEnabled = enabledRef.current;
@@ -189,43 +212,31 @@ export function usePinnedTranscriptBottom(input: {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const root = scrollRootFor(contentRef.current);
+    const root = scrollRootFor(contentElement);
     if (!root) return;
 
     const target: HTMLElement | Window = root === window ? window : root;
     const onScroll = () => measurePosition("scroll");
-    const onResize = () => measurePosition("measure");
 
     measurePosition("measure");
     target.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", syncAfterLayoutChange);
     return () => {
       target.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", syncAfterLayoutChange);
     };
-  }, [measurePosition]);
+  }, [contentElement, measurePosition, syncAfterLayoutChange]);
 
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
-    const content = contentRef.current;
-    if (!content) return;
+    if (!contentElement) return;
 
     const observer = new ResizeObserver(() => {
-      if (
-        shouldAutoPinTranscriptBottom({
-          enabled: enabledRef.current,
-          following: followingRef.current,
-        })
-      ) {
-        scrollToBottom("auto");
-        return;
-      }
-
-      measurePosition("measure");
+      syncAfterLayoutChange();
     });
-    observer.observe(content);
+    observer.observe(contentElement);
     return () => observer.disconnect();
-  }, [measurePosition, scrollToBottom]);
+  }, [contentElement, syncAfterLayoutChange]);
 
   const jumpToBottom = useCallback(() => {
     setFollowingIntent(true);
