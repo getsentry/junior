@@ -1073,14 +1073,22 @@ function contributionTokenTotal(
   );
 }
 
+function statusSignals(turns: Session[]) {
+  return {
+    active: turns.some(isActiveSession),
+    failed: turns.some(isFailedSession),
+    hung: turns.some(isHungSession),
+  };
+}
+
 function statusCounts(conversations: Conversation[]) {
   return conversations.reduce(
     (sum, conversation) => {
-      const status = visualStatusForConversation(conversation);
+      const signals = statusSignals(conversation.turns);
       return {
-        active: sum.active + (status === "active" ? 1 : 0),
-        failed: sum.failed + (status === "failed" ? 1 : 0),
-        hung: sum.hung + (status === "hung" ? 1 : 0),
+        active: sum.active + (signals.active ? 1 : 0),
+        failed: sum.failed + (signals.failed ? 1 : 0),
+        hung: sum.hung + (signals.hung ? 1 : 0),
       };
     },
     { active: 0, failed: 0, hung: 0 },
@@ -1094,13 +1102,13 @@ function addConversationToStatsItem(
 ): void {
   const durationMs = conversationRuntimeMs(conversation) ?? 0;
   const tokens = contributionTokenTotal(contributions);
-  const status = visualStatusForConversation(conversation);
+  const signals = statusSignals(conversation.turns);
   item.conversations += 1;
   item.turns += conversation.turns.length;
   item.durationMs += durationMs;
-  item.active += status === "active" ? 1 : 0;
-  item.failed += status === "failed" ? 1 : 0;
-  item.hung += status === "hung" ? 1 : 0;
+  item.active += signals.active ? 1 : 0;
+  item.failed += signals.failed ? 1 : 0;
+  item.hung += signals.hung ? 1 : 0;
   addItemTokens(item, tokens);
 }
 
@@ -1113,12 +1121,12 @@ function addRequesterContributionsToStatsItem(args: {
   args.item.conversations += 1;
   args.item.turns += args.contributions.length;
   args.item.durationMs += durationMs;
-  for (const contribution of args.contributions) {
-    const status = visualStatusForSession(contribution.turn);
-    args.item.active += status === "active" ? 1 : 0;
-    args.item.failed += status === "failed" ? 1 : 0;
-    args.item.hung += status === "hung" ? 1 : 0;
-  }
+  const signals = statusSignals(
+    args.contributions.map((contribution) => contribution.turn),
+  );
+  args.item.active += signals.active ? 1 : 0;
+  args.item.failed += signals.failed ? 1 : 0;
+  args.item.hung += signals.hung ? 1 : 0;
   addItemTokens(args.item, tokens);
 }
 

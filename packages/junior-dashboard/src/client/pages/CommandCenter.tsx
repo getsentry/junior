@@ -5,7 +5,7 @@ import { SectionHeader } from "../components/SectionHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import { ConversationDurationChart } from "../components/ConversationDurationChart";
 import { ConversationStats } from "../components/ConversationStats";
-import { buildConversations } from "../format";
+import { buildConversations, filterRecentConversations } from "../format";
 import type { DashboardData } from "../types";
 
 /** Render the dashboard home view with runtime pulse and recent conversations. */
@@ -14,7 +14,7 @@ export function CommandCenter(props: {
   queryError: Error | null;
 }) {
   const sessions = props.data?.sessions.sessions ?? [];
-  const conversations = buildConversations(sessions);
+  const conversations = filterRecentConversations(buildConversations(sessions));
 
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-screen-xl gap-4 px-4 py-4 md:px-8 lg:grid-cols-[minmax(21rem,0.32fr)_minmax(0,1fr)]">

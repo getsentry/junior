@@ -181,6 +181,10 @@ describe("dashboard token formatting", () => {
       },
     ]);
 
+    expect(stats).toMatchObject({
+      active: 1,
+      failed: 1,
+    });
     expect(stats.requesters).toEqual([
       expect.objectContaining({
         active: 1,

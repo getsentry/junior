@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HighlightedCode } from "../src/client/code";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
@@ -27,6 +27,7 @@ import type {
 
 afterEach(() => {
   client.clear();
+  vi.useRealTimers();
 });
 
 function dashboardData(sessions: Session[]): DashboardData {
@@ -408,6 +409,9 @@ describe("dashboard telemetry components", () => {
   });
 
   it("renders aggregate stats and trusted plugin reports", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
+
     const sessions: Session[] = [
       {
         channel: "C1",
@@ -435,6 +439,20 @@ describe("dashboard telemetry components", () => {
         status: "failed",
         surface: "slack",
         title: "Turn turn-2",
+      },
+      {
+        channel: "C2",
+        channelName: "old-project",
+        conversationId: "slack:C2:300",
+        cumulativeDurationMs: 5_000,
+        id: "old-turn",
+        lastProgressAt: "2025-12-20T00:00:01.000Z",
+        lastSeenAt: "2025-12-20T00:00:02.000Z",
+        requesterIdentity: { fullName: "Casey" },
+        startedAt: "2025-12-20T00:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Old thread",
       },
     ];
     const data = dashboardData(sessions);
@@ -469,6 +487,8 @@ describe("dashboard telemetry components", () => {
     expect(commandHtml).toContain(">Stats<");
     expect(commandHtml).toContain(">People<");
     expect(commandHtml).toContain("Avery");
+    expect(commandHtml).not.toContain("Casey");
+    expect(commandHtml).not.toContain("Old thread");
     expect(pluginHtml).toContain(">Plugins<");
     expect(pluginHtml).toContain(">Scheduler<");
     expect(pluginHtml).toContain("github");
