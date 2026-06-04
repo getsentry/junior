@@ -34,16 +34,16 @@ Use `SLACK_BOT_TOKEN` for normal bot replies. Use `SLACK_BOT_USER_TOKEN` only wh
 
 Grant the smallest scopes that cover the Slack features you enable. A typical Junior installation needs scopes for mentions, posting replies, reading thread context, reactions, user lookup, file workflows, and slash command handling.
 
-| Capability                                        | Slack scopes to verify                                                       |
-| ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Mentions                                          | `app_mentions:read`                                                          |
-| Thread replies and private auth prompts           | `chat:write`                                                                 |
-| Processing reactions                              | `reactions:write`                                                            |
-| User lookup and App Home ownership                | `users:read`                                                                 |
-| Slash command `/jr`                               | `commands`                                                                   |
-| Thread context in public/private channels and DMs | `channels:history`, `groups:history`, `im:history`, `mpim:history` as needed |
-| File/image context and generated files            | `files:read`, `files:write` when file workflows are enabled                  |
-| Slack assistant status/title surfaces             | Assistant scopes required by your Slack app configuration                    |
+| Capability                                         | Slack scopes to verify                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Mentions                                           | `app_mentions:read`                                                          |
+| Thread replies and private auth prompts            | `chat:write`                                                                 |
+| Processing reactions                               | `reactions:write`                                                            |
+| User lookup and App Home ownership                 | `users:read`                                                                 |
+| Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                   |
+| Thread context in public/private channels and DMs  | `channels:history`, `groups:history`, `im:history`, `mpim:history` as needed |
+| File/image context and generated files             | `files:read`, `files:write` when file workflows are enabled                  |
+| Slack assistant status/title surfaces              | Assistant scopes required by your Slack app configuration                    |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 
@@ -78,15 +78,15 @@ https://<your-domain>/api/webhooks/slack
 
 Junior uses interactivity for App Home actions such as disconnecting provider accounts.
 
-## Add the `/jr` slash command
+## Add the slash command
 
-Create a `/jr` slash command with this request URL:
+Create the slash command configured by `JUNIOR_SLASH_COMMAND` with this request URL. The default command is `/jr`:
 
 ```text
 https://<your-domain>/api/webhooks/slack
 ```
 
-Junior uses `/jr link` and `/jr unlink` for provider account management flows.
+Junior uses `<command> link` and `<command> unlink` for provider account management flows.
 
 ## Verify locally
 
@@ -96,7 +96,7 @@ For local development, expose your dev server with a tunnel:
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Then set Slack Event Subscriptions, Interactivity, and `/jr` to the tunnel URL plus `/api/webhooks/slack`.
+Then set Slack Event Subscriptions, Interactivity, and the configured slash command to the tunnel URL plus `/api/webhooks/slack`.
 
 Verify the setup:
 

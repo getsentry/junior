@@ -19,6 +19,7 @@ related:
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                      |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal timeout-resume and agent-dispatch callbacks, plus sandbox egress requester context.                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |
+| `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                     |
 | `AI_MODEL`                                  | No          | Primary model selection override for main assistant turns. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per turn automatically.  |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-5.4-mini`.                  |
 | `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                  |

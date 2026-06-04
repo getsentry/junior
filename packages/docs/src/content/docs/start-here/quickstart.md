@@ -63,6 +63,7 @@ Set these values before running real turns:
 | `REDIS_URL`               | Yes                    | Queue and runtime state storage.                               |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox requester context. |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                       |
+| `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                   |
 | `AI_MODEL`                | No                     | Primary assistant model override.                              |
 | `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.             |
 | `AI_VISION_MODEL`         | No                     | Enables image understanding when set.                          |
