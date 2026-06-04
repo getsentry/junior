@@ -91,12 +91,21 @@ export function ConversationPage(props: { data?: DashboardData }) {
                 detail={detail.data}
               />
             }
+            live={conversationIsLive(visualStatus, detail.data)}
             turns={detail.data?.turns ?? []}
           />
         )}
       </section>
     </div>
   );
+}
+
+function conversationIsLive(
+  visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
+  detail: ConversationDetailFeed | undefined,
+): boolean {
+  if (detail) return detail.turns.some((turn) => turn.status === "active");
+  return visualStatus === "active";
 }
 
 function CopyMarkdownButton(props: {
