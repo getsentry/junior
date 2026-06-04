@@ -31,7 +31,17 @@ function restartDashboardSignIn(): void {
 
   const loginPath = "/api/dashboard/login";
   if (window.location.pathname !== loginPath) {
-    window.location.assign(loginPath);
+    const returnPath = `${window.location.pathname}${
+      window.location.search || ""
+    }`;
+    const loginParams = new URLSearchParams();
+    if (returnPath !== "/") {
+      loginParams.set("next", returnPath);
+    }
+    const loginSearch = loginParams.toString();
+    window.location.assign(
+      loginSearch ? `${loginPath}?${loginSearch}` : loginPath,
+    );
   }
 }
 

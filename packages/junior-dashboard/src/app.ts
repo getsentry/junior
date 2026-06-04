@@ -18,6 +18,7 @@ import { createMockConversationReporting } from "./mock-conversations";
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
+const LOGIN_NEXT_PARAM = "next";
 
 export interface JuniorDashboardOptions {
   basePath?: string;
@@ -69,17 +70,69 @@ function isJsonRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-function dashboardLoginUrl(request: Request): string {
+function isDashboardPagePath(pathname: string, basePath: string): boolean {
+  for (const path of dashboardPagePaths(basePath)) {
+    if (
+      pathname === path ||
+      (path !== "/" && pathname.startsWith(`${path}/`))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function dashboardReturnPath(url: URL, basePath: string): string | undefined {
+  if (!isDashboardPagePath(url.pathname, basePath)) {
+    return undefined;
+  }
+
+  const path = `${url.pathname}${url.search}`;
+  return path === basePath ? undefined : path;
+}
+
+function requestedReturnPath(url: URL, basePath: string): string | undefined {
+  const next = url.searchParams.get(LOGIN_NEXT_PARAM);
+  if (!next?.startsWith("/") || next.startsWith("//")) {
+    return undefined;
+  }
+
+  const returnUrl = new URL(next, url.origin);
+  if (
+    returnUrl.origin !== url.origin ||
+    !isDashboardPagePath(returnUrl.pathname, basePath)
+  ) {
+    return undefined;
+  }
+
+  return `${returnUrl.pathname}${returnUrl.search}`;
+}
+
+function dashboardLoginUrl(request: Request, basePath: string): string {
+  const requestUrl = new URL(request.url);
   const url = new URL(request.url);
   url.pathname = "/api/dashboard/login";
   url.search = "";
+  const returnPath = dashboardReturnPath(requestUrl, basePath);
+  if (returnPath) {
+    url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
+  }
   return url.toString();
 }
 
 function callbackUrl(request: Request, basePath: string): string {
+  const requestUrl = new URL(request.url);
+  const returnPath = requestedReturnPath(requestUrl, basePath);
   const url = new URL(request.url);
-  url.pathname = basePath;
-  url.search = "";
+  if (returnPath) {
+    const returnUrl = new URL(returnPath, requestUrl.origin);
+    url.pathname = returnUrl.pathname;
+    url.search = returnUrl.search;
+  } else {
+    url.pathname = basePath;
+    url.search = "";
+  }
   return url.toString();
 }
 
@@ -100,11 +153,11 @@ function isAuthorized(
   );
 }
 
-function unauthorized(request: Request): Response {
+function unauthorized(request: Request, basePath: string): Response {
   if (isJsonRoute(new URL(request.url).pathname)) {
     return Response.json({ error: "unauthenticated" }, { status: 401 });
   }
-  return Response.redirect(dashboardLoginUrl(request), 302);
+  return Response.redirect(dashboardLoginUrl(request, basePath), 302);
 }
 
 function forbidden(request: Request): Response {
@@ -346,10 +399,15 @@ export function createDashboardApp(
   app.get("/favicon.ico", () => renderFavicon());
 
   app.get("/api/dashboard/login", async (c) => {
+    const returnUrl = callbackUrl(c.req.raw, basePath);
     if (!auth) {
-      return Response.redirect(callbackUrl(c.req.raw, basePath), 302);
+      return Response.redirect(returnUrl, 302);
     }
-    return auth.signInWithGoogle(c.req.raw, callbackUrl(c.req.raw, basePath));
+    const session = await auth.getSession(c.req.raw);
+    if (session && isAuthorized(session, allowedDomains, allowedEmails)) {
+      return Response.redirect(returnUrl, 302);
+    }
+    return auth.signInWithGoogle(c.req.raw, returnUrl);
   });
 
   const requireDashboardSession = async (
@@ -363,11 +421,11 @@ export function createDashboardApp(
     }
 
     if (!auth) {
-      return unauthorized(c.req.raw);
+      return unauthorized(c.req.raw, basePath);
     }
     const session = await auth.getSession(c.req.raw);
     if (!session) {
-      return unauthorized(c.req.raw);
+      return unauthorized(c.req.raw, basePath);
     }
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw);

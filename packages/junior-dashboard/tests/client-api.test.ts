@@ -17,6 +17,7 @@ describe("dashboard client API", () => {
       location: {
         assign,
         pathname: "/conversations",
+        search: "?filter=recent",
       },
     });
 
@@ -28,7 +29,9 @@ describe("dashboard client API", () => {
       "/api/dashboard/conversations/slack%3AC1%3A123",
       { credentials: "same-origin" },
     );
-    expect(assign).toHaveBeenCalledWith("/api/dashboard/login");
+    expect(assign).toHaveBeenCalledWith(
+      "/api/dashboard/login?next=%2Fconversations%3Ffilter%3Drecent",
+    );
   });
 
   it("does not redirect for non-auth dashboard API failures", async () => {
@@ -41,6 +44,7 @@ describe("dashboard client API", () => {
       location: {
         assign,
         pathname: "/conversations",
+        search: "",
       },
     });
 

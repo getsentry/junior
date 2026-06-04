@@ -152,7 +152,10 @@ function reporting(): JuniorReporting {
   };
 }
 
-function auth(session: DashboardSession | null): DashboardAuth {
+function auth(
+  session: DashboardSession | null,
+  onSignIn?: (callbackURL: string) => void,
+): DashboardAuth {
   return {
     async handler() {
       return Response.json({ ok: true });
@@ -160,7 +163,8 @@ function auth(session: DashboardSession | null): DashboardAuth {
     async getSession() {
       return session;
     },
-    async signInWithGoogle() {
+    async signInWithGoogle(_request, callbackURL) {
+      onSignIn?.(callbackURL);
       return Response.redirect(
         "https://accounts.google.com/o/oauth2/v2/auth",
         302,
@@ -207,15 +211,122 @@ describe("dashboard routes", () => {
     for (const path of [
       "/conversations",
       "/conversations/slack%3AC1%3A123",
+      "/conversations/slack%3AC1%3A123?view=tools",
       "/sessions",
       "/sessions/some-session",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status, path).toBe(302);
-      expect(response.headers.get("location"), path).toBe(
-        `http://localhost/api/dashboard/login`,
+      const location = new URL(response.headers.get("location")!);
+      expect(`${location.origin}${location.pathname}`, path).toBe(
+        "http://localhost/api/dashboard/login",
       );
+      expect(location.searchParams.get("next"), path).toBe(path);
     }
+  });
+
+  it("uses the requested dashboard path as the Google sign-in callback", async () => {
+    let callbackURL: string | undefined;
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+      reporting: reporting(),
+    });
+
+    const unauthenticated = await app.fetch(
+      new Request("http://localhost/conversations/slack%3AC1%3A123?view=tools"),
+    );
+    const loginUrl = unauthenticated.headers.get("location");
+    expect(loginUrl).toBeTruthy();
+
+    const signIn = await app.fetch(new Request(loginUrl!));
+
+    expect(signIn.status).toBe(302);
+    expect(callbackURL).toBe(
+      "http://localhost/conversations/slack%3AC1%3A123?view=tools",
+    );
+  });
+
+  it("preserves non-root dashboard base paths through Google sign-in", async () => {
+    let callbackURL: string | undefined;
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+      basePath: "/ops",
+      reporting: reporting(),
+    });
+
+    const unauthenticated = await app.fetch(
+      new Request("http://localhost/ops/conversations/slack%3AC1%3A123"),
+    );
+    const loginUrl = unauthenticated.headers.get("location");
+    expect(loginUrl).toBeTruthy();
+    expect(new URL(loginUrl!).searchParams.get("next")).toBe(
+      "/ops/conversations/slack%3AC1%3A123",
+    );
+
+    const signIn = await app.fetch(new Request(loginUrl!));
+
+    expect(signIn.status).toBe(302);
+    expect(callbackURL).toBe(
+      "http://localhost/ops/conversations/slack%3AC1%3A123",
+    );
+  });
+
+  it("falls back to the dashboard root for unsafe login return paths", async () => {
+    let callbackURL: string | undefined;
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+      reporting: reporting(),
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/dashboard/login?next=https%3A%2F%2Fevil.example%2Fconversations",
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(callbackURL).toBe("http://localhost/");
+  });
+
+  it("does not restart Google sign-in for an already authorized session", async () => {
+    let startedGoogleSignIn = false;
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(
+        {
+          user: {
+            email: "person@sentry.io",
+            emailVerified: true,
+            hostedDomain: "sentry.io",
+          },
+        },
+        () => {
+          startedGoogleSignIn = true;
+        },
+      ),
+      reporting: reporting(),
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/dashboard/login?next=%2Fconversations%2Fslack%253AC1%253A123",
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/conversations/slack%3AC1%3A123",
+    );
+    expect(startedGoogleSignIn).toBe(false);
   });
 
   it("can explicitly disable dashboard auth for local development", async () => {
