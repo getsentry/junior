@@ -555,7 +555,7 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("returns a failed plugin report feed when plugin reporting throws", async () => {
+  it("returns a failure status when plugin reporting throws", async () => {
     const customReporting = {
       ...reporting(),
       async getPluginOperationalReports() {
@@ -577,15 +577,9 @@ describe("dashboard routes", () => {
       new Request("http://localhost/api/dashboard/plugin-reports"),
     );
 
-    expect(pluginReports.status).toBe(200);
-    expect(await pluginReports.json()).toMatchObject({
-      reports: [
-        {
-          pluginName: "dashboard",
-          metrics: [{ label: "report", tone: "danger", value: "failed" }],
-        },
-      ],
-      source: "trusted_plugins",
+    expect(pluginReports.status).toBe(500);
+    expect(await pluginReports.json()).toEqual({
+      error: "Trusted plugin stats failed to load.",
     });
   });
 

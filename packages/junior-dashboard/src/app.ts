@@ -132,37 +132,13 @@ function emptyPluginReportFeed(): PluginOperationalReportFeed {
   };
 }
 
-function failedPluginReportFeed(): PluginOperationalReportFeed {
-  return {
-    generatedAt: new Date().toISOString(),
-    reports: [
-      {
-        pluginName: "dashboard",
-        recordSets: [
-          {
-            emptyText: "Trusted plugin stats failed to load.",
-            title: "Error",
-          },
-        ],
-        metrics: [{ label: "report", tone: "danger", value: "failed" }],
-        title: "Plugin Reports",
-      },
-    ],
-    source: "trusted_plugins",
-  };
-}
-
 async function readPluginReports(
   reporting: JuniorReporting,
 ): Promise<PluginOperationalReportFeed> {
   if (!reporting.getPluginOperationalReports) {
     return emptyPluginReportFeed();
   }
-  try {
-    return await reporting.getPluginOperationalReports();
-  } catch {
-    return failedPluginReportFeed();
-  }
+  return await reporting.getPluginOperationalReports();
 }
 
 function callbackUrl(request: Request, basePath: string): string {
@@ -512,7 +488,14 @@ export function createDashboardApp(
     return Response.json(await reporting.getSessions());
   });
   app.get("/api/dashboard/plugin-reports", async () => {
-    return Response.json(await readPluginReports(reporting));
+    try {
+      return Response.json(await readPluginReports(reporting));
+    } catch {
+      return Response.json(
+        { error: "Trusted plugin stats failed to load." },
+        { status: 500 },
+      );
+    }
   });
   app.get("/api/dashboard/conversations/:conversationId", async (c) => {
     return Response.json(
