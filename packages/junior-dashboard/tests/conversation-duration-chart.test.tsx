@@ -35,8 +35,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderChart(sessions: Session[]): void {
-  renderToStaticMarkup(
+function renderChart(sessions: Session[]): string {
+  return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ConversationDurationChart sessions={sessions} timeZone="UTC" />
@@ -50,7 +50,7 @@ describe("conversation duration chart", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
-    renderChart([
+    const html = renderChart([
       {
         completedAt: "2026-06-02T09:05:00.000Z",
         conversationId: "conversation-1",
@@ -76,8 +76,19 @@ describe("conversation duration chart", () => {
         title: "Turn turn-2",
       },
       {
+        conversationId: "conversation-active",
+        cumulativeDurationMs: 3_000,
+        id: "active-turn",
+        lastProgressAt: "2026-06-02T11:30:00.000Z",
+        lastSeenAt: "2026-06-02T11:30:00.000Z",
+        startedAt: "2026-06-02T11:30:00.000Z",
+        status: "active",
+        surface: "slack",
+        title: "Turn active-turn",
+      },
+      {
         completedAt: "2026-05-20T09:05:00.000Z",
-        conversationId: "conversation-2",
+        conversationId: "conversation-old",
         cumulativeDurationMs: 9_000,
         id: "old-turn",
         lastProgressAt: "2026-05-20T09:05:00.000Z",
@@ -95,5 +106,6 @@ describe("conversation duration chart", () => {
       durationLabel: "2.5s",
       durationMs: 2_500,
     });
+    expect(html).toContain("2 conversations / 1 active / 0 hung / 0 errors");
   });
 });

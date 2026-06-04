@@ -23,6 +23,7 @@ import {
   formatMs,
   recentConversationRange,
   slackLocationLabel,
+  summarizeConversationStats,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -66,13 +67,9 @@ export function ConversationDurationChart(props: {
     .map((conversation) => conversationPoint(conversation, props.timeZone))
     .filter((point): point is DurationPoint => Boolean(point))
     .sort((left, right) => left.x - right.x);
-  const totals = points.reduce(
-    (sum, point) => ({
-      failed: sum.failed + (point.status === "failed" ? 1 : 0),
-      hung: sum.hung + (point.status === "hung" ? 1 : 0),
-      total: sum.total + 1,
-    }),
-    { failed: 0, hung: 0, total: 0 },
+  const stats = useMemo(
+    () => summarizeConversationStats(props.sessions, nowMs),
+    [nowMs, props.sessions],
   );
   const maxDurationMs = points.reduce(
     (max, point) => Math.max(max, point.durationMs),
@@ -153,8 +150,8 @@ export function ConversationDurationChart(props: {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
-        {plural("conversation", totals.total)} / {totals.hung} hung /{" "}
-        {plural("error", totals.failed)}
+        {plural("conversation", stats.conversations)} / {stats.active} active /{" "}
+        {stats.hung} hung / {plural("error", stats.failed)}
       </div>
     </Section>
   );
