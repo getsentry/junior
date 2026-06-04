@@ -51,6 +51,7 @@ function dashboardData(sessions: Session[]): DashboardData {
       reports: [],
       source: "trusted_plugins",
     },
+    pluginReportsError: false,
     pluginReportsLoading: false,
     plugins: [],
     runtime: {
@@ -525,6 +526,22 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain("Loading trusted plugin stats.");
+    expect(html).not.toContain(
+      "No trusted plugin stats have been reported yet.",
+    );
+  });
+
+  it("shows plugin report failures without looking empty", () => {
+    const data = dashboardData([]);
+    data.pluginReportsError = true;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Trusted plugin stats failed to load.");
     expect(html).not.toContain(
       "No trusted plugin stats have been reported yet.",
     );

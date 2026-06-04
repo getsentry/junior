@@ -825,6 +825,40 @@ describe("trusted plugin heartbeat", () => {
     expect(JSON.stringify(feed)).not.toContain("Secret");
   });
 
+  it("counts all running scheduler runs in dashboard summaries", async () => {
+    setAgentPlugins([schedulerPlugin()]);
+    const store = schedulerStore();
+    for (let index = 0; index < 6; index += 1) {
+      await store.saveTask(
+        createTask({
+          id: `sched_running_${index}`,
+          createdAtMs: TEST_RUN_AT_MS + index,
+          updatedAtMs: TEST_RUN_AT_MS + index,
+        }),
+      );
+    }
+    for (let index = 0; index < 6; index += 1) {
+      await expect(
+        store.claimDueRun({ nowMs: TEST_NOW_MS + index }),
+      ).resolves.toBeDefined();
+    }
+
+    const { createJuniorReporting } = await import("@/reporting");
+    const feed = await createJuniorReporting().getPluginReports();
+    const scheduler = feed.reports.find(
+      (report) => report.pluginName === "scheduler",
+    );
+    const runningSummary = scheduler?.summary?.find(
+      (metric) => metric.label === "running",
+    );
+    const runningSection = scheduler?.sections?.find(
+      (section) => section.title === "Running",
+    );
+
+    expect(runningSummary).toMatchObject({ value: "6" });
+    expect(runningSection?.rows).toHaveLength(5);
+  });
+
   it("carries scheduled task credential subjects into dispatch records", async () => {
     mockDispatchCallbackFetch(originalFetch);
     setAgentPlugins([schedulerPlugin()]);

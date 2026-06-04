@@ -21,6 +21,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
   const plugins = props.data?.plugins ?? [];
   const reports = props.data?.pluginReports?.reports ?? [];
   const skills = props.data?.skills ?? [];
+  const reportsError = props.data?.pluginReportsError ?? false;
   const reportsLoading = props.data?.pluginReportsLoading ?? false;
   const rows = buildPluginRows({
     plugins,
@@ -111,9 +112,11 @@ export function PluginsPage(props: { data?: DashboardData }) {
 
         <PluginReports
           emptyText={
-            reportsLoading
-              ? "Loading trusted plugin stats."
-              : "No trusted plugin stats have been reported yet."
+            reportsError
+              ? "Trusted plugin stats failed to load."
+              : reportsLoading
+                ? "Loading trusted plugin stats."
+                : "No trusted plugin stats have been reported yet."
           }
           reports={reports}
         />

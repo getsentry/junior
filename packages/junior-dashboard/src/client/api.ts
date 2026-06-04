@@ -20,7 +20,7 @@ const PLUGIN_REPORT_REFETCH_INTERVAL_MS = 30_000;
 
 type DashboardCoreData = Omit<
   DashboardData,
-  "pluginReports" | "pluginReportsLoading"
+  "pluginReports" | "pluginReportsError" | "pluginReportsLoading"
 >;
 
 class DashboardApiError extends Error {
@@ -72,16 +72,7 @@ function emptyPluginReportFeed(): PluginDashboardReportFeed {
 }
 
 async function readPluginReports(): Promise<PluginDashboardReportFeed> {
-  try {
-    return await read<PluginDashboardReportFeed>(
-      "/api/dashboard/plugin-reports",
-    );
-  } catch (error) {
-    if (error instanceof DashboardApiError && error.status === 401) {
-      throw error;
-    }
-    return emptyPluginReportFeed();
-  }
+  return await read<PluginDashboardReportFeed>("/api/dashboard/plugin-reports");
 }
 
 /** Poll the dashboard summary feed used by command center and conversation lists. */
@@ -125,6 +116,9 @@ export function useDashboardData() {
     data: coreQuery.data
       ? {
           ...coreQuery.data,
+          pluginReportsError: Boolean(
+            pluginReportsQuery.error && !pluginReportsQuery.data,
+          ),
           pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
           pluginReportsLoading:
             pluginReportsQuery.isPending && !pluginReportsQuery.data,

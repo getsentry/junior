@@ -77,6 +77,7 @@ export type DashboardData = {
   config: DashboardConfig;
   health: Health;
   me: Identity;
+  pluginReportsError: boolean;
   pluginReports: PluginDashboardReportFeed;
   pluginReportsLoading: boolean;
   plugins: Plugin[];

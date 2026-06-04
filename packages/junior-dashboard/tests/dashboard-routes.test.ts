@@ -553,6 +553,40 @@ describe("dashboard routes", () => {
     });
   });
 
+  it("returns a failed plugin report feed when plugin reporting throws", async () => {
+    const customReporting = {
+      ...reporting(),
+      async getPluginReports() {
+        throw new Error("plugin reporting unavailable");
+      },
+    };
+    const app = dashboard(
+      {
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      },
+      customReporting,
+    );
+
+    const pluginReports = await app.fetch(
+      new Request("http://localhost/api/dashboard/plugin-reports"),
+    );
+
+    expect(pluginReports.status).toBe(200);
+    expect(await pluginReports.json()).toMatchObject({
+      reports: [
+        {
+          pluginName: "dashboard",
+          summary: [{ label: "report", tone: "danger", value: "failed" }],
+        },
+      ],
+      source: "trusted_plugins",
+    });
+  });
+
   it("returns the signed-in identity and session feed", async () => {
     const app = dashboard({
       session: {

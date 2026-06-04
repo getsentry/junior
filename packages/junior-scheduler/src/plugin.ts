@@ -255,6 +255,7 @@ async function buildSchedulerDashboardReport(args: {
     .filter((task) => task.status === "blocked")
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     .slice(0, DASHBOARD_TABLE_LIMIT);
+  const runningCount = incompleteRuns.length;
   const runningRuns = incompleteRuns
     .sort((left, right) => right.claimedAtMs - left.claimedAtMs)
     .slice(0, DASHBOARD_TABLE_LIMIT);
@@ -281,8 +282,8 @@ async function buildSchedulerDashboardReport(args: {
       },
       {
         label: "running",
-        tone: runningRuns.length > 0 ? "warning" : "neutral",
-        value: formatCount(runningRuns.length),
+        tone: runningCount > 0 ? "warning" : "neutral",
+        value: formatCount(runningCount),
       },
     ],
     sections: [
