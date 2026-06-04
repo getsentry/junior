@@ -263,6 +263,54 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("hydrates capped aggregate samples before attributing cumulative turn metrics", async () => {
+    vi.useFakeTimers();
+    const startedAtMs = Date.parse("2026-06-04T10:00:00.000Z");
+    vi.setSystemTime(new Date(startedAtMs));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:baseline",
+      cumulativeDurationMs: 1_000,
+      requester: { fullName: "Avery" },
+      sessionId: "turn-baseline",
+      sliceId: 1,
+      startedAtMs,
+      state: "completed",
+    });
+    for (let index = 0; index < 4_999; index += 1) {
+      vi.setSystemTime(new Date(startedAtMs + (index + 1) * 1000));
+      await recordAgentTurnSessionSummary({
+        conversationId: `slack:C_FILL:${index}`,
+        cumulativeDurationMs: 1,
+        requester: { fullName: "Filler" },
+        sessionId: `turn-${index}`,
+        sliceId: 1,
+        state: "completed",
+      });
+    }
+    vi.setSystemTime(new Date(startedAtMs + 5_000 * 1000));
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:baseline",
+      cumulativeDurationMs: 1_500,
+      requester: { fullName: "Blake" },
+      sessionId: "turn-latest",
+      sliceId: 1,
+      state: "completed",
+    });
+
+    const stats = await createJuniorReporting().getConversationStats();
+    const avery = stats.requesters.find((item) => item.label === "Avery");
+    const blake = stats.requesters.find((item) => item.label === "Blake");
+
+    expect(stats.truncated).toBe(true);
+    expect(stats.sampleSize).toBe(5_000);
+    expect(avery).toMatchObject({ durationMs: 1_000, turns: 1 });
+    expect(blake).toMatchObject({ durationMs: 500, turns: 1 });
+  });
+
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));

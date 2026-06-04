@@ -716,6 +716,37 @@ function buildConversationStatsReport(args: {
   };
 }
 
+async function completeSampledConversationSummaries(args: {
+  summaries: AgentTurnSessionSummary[];
+  truncated: boolean;
+}): Promise<AgentTurnSessionSummary[]> {
+  if (!args.truncated) {
+    return args.summaries;
+  }
+
+  const conversationIds = [
+    ...new Set(args.summaries.map((summary) => summary.conversationId)),
+  ];
+  const groups = await Promise.all(
+    conversationIds.map((conversationId) =>
+      listAgentTurnSessionSummariesForConversation(conversationId),
+    ),
+  );
+  const summariesByTurn = new Map<string, AgentTurnSessionSummary>();
+  for (const group of groups) {
+    for (const summary of group) {
+      summariesByTurn.set(
+        `${summary.conversationId}:${summary.sessionId}`,
+        summary,
+      );
+    }
+  }
+
+  return [...summariesByTurn.values()].sort(
+    (left, right) => right.updatedAtMs - left.updatedAtMs,
+  );
+}
+
 function canExposeConversationTranscript(
   summary: AgentTurnSessionSummary,
 ): boolean {
@@ -1030,12 +1061,16 @@ async function readConversationStats(): Promise<DashboardConversationStatsReport
     0,
     DASHBOARD_CONVERSATION_STATS_LIMIT,
   );
+  const reportSummaries = await completeSampledConversationSummaries({
+    summaries: sampledSummaries,
+    truncated,
+  });
   return buildConversationStatsReport({
     generatedAt,
     nowMs,
     sampleLimit: DASHBOARD_CONVERSATION_STATS_LIMIT,
     sampleSize: sampledSummaries.length,
-    sessions: sampledSummaries.map((summary) =>
+    sessions: reportSummaries.map((summary) =>
       sessionReportFromSummary(summary, nowMs),
     ),
     truncated,
