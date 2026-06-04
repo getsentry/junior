@@ -1,28 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { createRemoteJWKSetMock, decodeJwtMock, jwtVerifyMock } = vi.hoisted(
-  () => ({
-    createRemoteJWKSetMock: vi.fn(() => async () => null),
-    decodeJwtMock: vi.fn(),
-    jwtVerifyMock: vi.fn(),
-  }),
-);
-
-vi.mock("jose", () => ({
-  createRemoteJWKSet: createRemoteJWKSetMock,
-  decodeJwt: decodeJwtMock,
-  jwtVerify: jwtVerifyMock,
-}));
-
-import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanupSandboxEgressProxyTest,
+  createRemoteJWKSetMock,
+  decodeJwtMock,
+  EGRESS_ID,
+  jwtVerifyMock,
+  setupSandboxEgressProxyTest,
+  verifyVercelSandboxOidcToken,
+} from "../../fixtures/sandbox-egress-proxy";
 
 describe("sandbox egress OIDC verification", () => {
-  afterEach(() => {
-    createRemoteJWKSetMock.mockClear();
-    createRemoteJWKSetMock.mockReturnValue(async () => null);
-    decodeJwtMock.mockReset();
-    jwtVerifyMock.mockReset();
-    vi.unstubAllGlobals();
+  beforeEach(async () => {
+    await setupSandboxEgressProxyTest();
+  });
+
+  afterEach(async () => {
+    await cleanupSandboxEgressProxyTest();
   });
 
   it("caches Vercel OIDC discovery metadata by issuer", async () => {
@@ -31,7 +24,7 @@ describe("sandbox egress OIDC verification", () => {
     });
     jwtVerifyMock.mockResolvedValue({
       payload: {
-        sandbox_id: "junior-sbx",
+        sandbox_id: EGRESS_ID,
       },
     });
     const fetchMock = vi.fn(async (_url: URL | string, _init?: RequestInit) =>
@@ -58,7 +51,7 @@ describe("sandbox egress OIDC verification", () => {
         aud: "sandbox-proxy-audience",
         owner_id: "different-team",
         project_id: "different-project",
-        sandbox_id: "junior-sbx",
+        sandbox_id: EGRESS_ID,
       },
     });
     vi.stubGlobal(
