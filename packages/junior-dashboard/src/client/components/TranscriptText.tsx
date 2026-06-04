@@ -182,21 +182,22 @@ function readMarkdownDestination(
 function findNextBareLink(text: string, start: number): InlineLink | undefined {
   const bareUrlPattern = /(https?:\/\/[^\s<>"']+|mailto:[^\s<>"']+)/gi;
   bareUrlPattern.lastIndex = start;
-  const match = bareUrlPattern.exec(text);
-  if (!match) return undefined;
 
-  const rawHref = match[0];
-  const bareLink = trimBareUrl(rawHref);
-  const href = safeMarkdownHref(bareLink.href);
-  if (!href) return undefined;
+  let match: RegExpExecArray | null;
+  while ((match = bareUrlPattern.exec(text))) {
+    const rawHref = match[0];
+    const bareLink = trimBareUrl(rawHref);
+    const href = safeMarkdownHref(bareLink.href);
+    if (!href) continue;
 
-  return {
-    end: match.index + rawHref.length,
-    href,
-    label: href,
-    start: match.index,
-    ...(bareLink.suffix ? { suffix: bareLink.suffix } : {}),
-  };
+    return {
+      end: match.index + rawHref.length,
+      href,
+      label: href,
+      start: match.index,
+      ...(bareLink.suffix ? { suffix: bareLink.suffix } : {}),
+    };
+  }
 }
 
 function safeMarkdownHref(href: string): string | undefined {

@@ -260,7 +260,7 @@ describe("dashboard telemetry components", () => {
           parts: [
             {
               type: "text",
-              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., [local](/api/dashboard/me), and [bad](javascript:alert).",
+              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [local](/api/dashboard/me), and [bad](javascript:alert).",
             },
           ],
         },
@@ -282,6 +282,9 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">wiki</a>");
     expect(html).toContain('href="https://docs.example/Foo_(bar)"');
     expect(html).toContain(">https://docs.example/Foo_(bar)</a>.");
+    expect(html).toContain("https://.");
+    expect(html).toContain('href="https://after-invalid.example/ok"');
+    expect(html).toContain(">https://after-invalid.example/ok</a>");
     expect(html).toContain("[local](/api/dashboard/me)");
     expect(html).toContain("[bad](javascript:alert)");
     expect(html).not.toContain('href="/api/dashboard/me"');
