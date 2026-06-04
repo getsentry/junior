@@ -497,6 +497,22 @@ describe("dashboard telemetry components", () => {
     );
   });
 
+  it("renders plugins page when plugin reports are absent", () => {
+    const data = dashboardData([]) as Partial<DashboardData>;
+    data.plugins = [{ name: "github" }];
+    delete data.pluginReports;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data as DashboardData} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(">Plugins<");
+    expect(html).toContain("github");
+    expect(html).toContain("No trusted plugin stats have been reported yet.");
+  });
+
   it("renders transcript copy as an icon-only control", () => {
     const session = {
       conversationId: "conversation-1",

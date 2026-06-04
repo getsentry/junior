@@ -18,14 +18,17 @@ type PluginRow = {
 
 /** Render plugin inventory and trusted-plugin dashboard summaries. */
 export function PluginsPage(props: { data?: DashboardData }) {
+  const plugins = props.data?.plugins ?? [];
+  const reports = props.data?.pluginReports?.reports ?? [];
+  const skills = props.data?.skills ?? [];
   const rows = buildPluginRows({
-    plugins: props.data?.plugins ?? [],
-    reports: props.data?.pluginReports.reports ?? [],
-    skills: props.data?.skills ?? [],
+    plugins,
+    reports,
+    skills,
   });
-  const reportCount = props.data?.pluginReports.reports.length ?? 0;
-  const loadedCount = props.data?.plugins.length ?? 0;
-  const skillCount = props.data?.skills.length ?? 0;
+  const reportCount = reports.length;
+  const loadedCount = plugins.length;
+  const skillCount = skills.length;
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
@@ -107,7 +110,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
 
         <PluginReports
           emptyText="No trusted plugin stats have been reported yet."
-          reports={props.data?.pluginReports.reports ?? []}
+          reports={reports}
         />
       </section>
     </div>
