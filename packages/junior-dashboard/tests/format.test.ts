@@ -41,7 +41,7 @@ describe("dashboard token formatting", () => {
     expect(formatDurationTotal([1_000, 2_500])).toBe("3.5s");
   });
 
-  it("summarizes conversations by requester and location", () => {
+  it("summarizes conversations by requester and location without double-counting cumulative totals", () => {
     const sessions: Session[] = [
       {
         channel: "C1",
@@ -91,7 +91,7 @@ describe("dashboard token formatting", () => {
     expect(summarizeConversationStats(sessions)).toMatchObject({
       active: 1,
       conversations: 2,
-      durationMs: 6_000,
+      durationMs: 5_000,
       failed: 1,
       requesters: [
         {
@@ -106,24 +106,25 @@ describe("dashboard token formatting", () => {
         {
           active: 0,
           conversations: 1,
-          durationMs: 2_000,
+          durationMs: 1_000,
           failed: 1,
           label: "Blake",
-          tokens: 20,
+          tokens: 5,
           turns: 1,
         },
       ],
-      tokens: 35,
+      tokens: 20,
       turns: 3,
     });
     expect(
       summarizeConversationStats(sessions).locations.map((item) => ({
         conversations: item.conversations,
+        durationMs: item.durationMs,
         label: item.label,
       })),
     ).toEqual([
-      { conversations: 1, label: "#proj-alpha" },
-      { conversations: 1, label: "Direct Message" },
+      { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
+      { conversations: 1, durationMs: 3_000, label: "Direct Message" },
     ]);
   });
 

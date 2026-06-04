@@ -972,17 +972,68 @@ function addItemTokens(
   item.tokens = (item.tokens ?? 0) + tokens;
 }
 
-function durationTotal(turns: Session[]): number {
-  return turns.reduce((sum, turn) => {
-    const duration = turn.cumulativeDurationMs;
-    return typeof duration === "number" && Number.isFinite(duration)
-      ? sum + Math.max(0, Math.floor(duration))
-      : sum;
-  }, 0);
+function addTokenTotal(
+  total: number | undefined,
+  tokens: number | undefined,
+): number | undefined {
+  return tokens === undefined ? total : (total ?? 0) + tokens;
 }
 
-function tokenTotal(turns: Session[]): number | undefined {
-  return summarizeUsage(turns.map((turn) => turn.cumulativeUsage))?.totalTokens;
+function durationSnapshot(turn: Session): number | undefined {
+  const duration = turn.cumulativeDurationMs;
+  return typeof duration === "number" && Number.isFinite(duration)
+    ? Math.max(0, Math.floor(duration))
+    : undefined;
+}
+
+function tokenSnapshot(turn: Session): number | undefined {
+  return summarizeUsage([turn.cumulativeUsage])?.totalTokens;
+}
+
+type TurnContribution = {
+  durationMs: number;
+  tokens?: number;
+  turn: Session;
+};
+
+function turnContributions(turns: Session[]): TurnContribution[] {
+  let previousDuration = 0;
+  let previousTokens = 0;
+  return turns.map((turn) => {
+    const duration = durationSnapshot(turn);
+    const tokens = tokenSnapshot(turn);
+    const contribution: TurnContribution = {
+      durationMs:
+        duration === undefined ? 0 : Math.max(0, duration - previousDuration),
+      turn,
+    };
+    if (tokens !== undefined) {
+      contribution.tokens = Math.max(0, tokens - previousTokens);
+    }
+    if (duration !== undefined) {
+      previousDuration = Math.max(previousDuration, duration);
+    }
+    if (tokens !== undefined) {
+      previousTokens = Math.max(previousTokens, tokens);
+    }
+    return contribution;
+  });
+}
+
+function contributionDurationTotal(contributions: TurnContribution[]): number {
+  return contributions.reduce(
+    (sum, contribution) => sum + contribution.durationMs,
+    0,
+  );
+}
+
+function contributionTokenTotal(
+  contributions: TurnContribution[],
+): number | undefined {
+  return contributions.reduce(
+    (sum, contribution) => addTokenTotal(sum, contribution.tokens),
+    undefined as number | undefined,
+  );
 }
 
 function statusCounts(conversations: Conversation[]) {
@@ -1015,9 +1066,10 @@ function visualStatusForSessions(turns: Session[]): VisualStatus {
 function addConversationToStatsItem(
   item: ConversationStatsItem,
   conversation: Conversation,
+  contributions: TurnContribution[],
 ): void {
-  const durationMs = durationTotal(conversation.turns);
-  const tokens = tokenTotal(conversation.turns);
+  const durationMs = contributionDurationTotal(contributions);
+  const tokens = contributionTokenTotal(contributions);
   const status = visualStatusForConversation(conversation);
   item.conversations += 1;
   item.turns += conversation.turns.length;
@@ -1028,15 +1080,17 @@ function addConversationToStatsItem(
   addItemTokens(item, tokens);
 }
 
-function addRequesterTurnsToStatsItem(args: {
+function addRequesterContributionsToStatsItem(args: {
+  contributions: TurnContribution[];
   item: ConversationStatsItem;
-  turns: Session[];
 }): void {
-  const durationMs = durationTotal(args.turns);
-  const tokens = tokenTotal(args.turns);
-  const status = visualStatusForSessions(args.turns);
+  const durationMs = contributionDurationTotal(args.contributions);
+  const tokens = contributionTokenTotal(args.contributions);
+  const status = visualStatusForSessions(
+    args.contributions.map((contribution) => contribution.turn),
+  );
   args.item.conversations += 1;
-  args.item.turns += args.turns.length;
+  args.item.turns += args.contributions.length;
   args.item.durationMs += durationMs;
   args.item.active += status === "active" ? 1 : 0;
   args.item.failed += status === "failed" ? 1 : 0;
@@ -1061,8 +1115,14 @@ export function summarizeConversationStats(
   const conversations = buildConversations(sessions);
   const requesters = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
+  let durationMs = 0;
+  let tokens: number | undefined;
 
   for (const conversation of conversations) {
+    const contributions = turnContributions(conversation.turns);
+    durationMs += contributionDurationTotal(contributions);
+    tokens = addTokenTotal(tokens, contributionTokenTotal(contributions));
+
     const location =
       slackLocationLabel(conversation, { includeId: false }) ??
       (conversation.surface === "scheduler"
@@ -1073,27 +1133,28 @@ export function summarizeConversationStats(
             ? "Internal"
             : "Unknown");
 
-    const requesterTurns = new Map<string, Session[]>();
-    for (const turn of conversation.turns) {
+    const requesterTurns = new Map<string, TurnContribution[]>();
+    for (const contribution of contributions) {
+      const turn = contribution.turn;
       const requester = requesterLabel(turn.requesterIdentity) ?? "Unknown";
       requesterTurns.set(requester, [
         ...(requesterTurns.get(requester) ?? []),
-        turn,
+        contribution,
       ]);
     }
 
-    for (const [requester, turns] of requesterTurns) {
+    for (const [requester, requesterContributions] of requesterTurns) {
       const requesterItem =
         requesters.get(requester) ?? emptyStatsItem(requester);
-      addRequesterTurnsToStatsItem({
+      addRequesterContributionsToStatsItem({
+        contributions: requesterContributions,
         item: requesterItem,
-        turns,
       });
       requesters.set(requester, requesterItem);
     }
 
     const locationItem = locations.get(location) ?? emptyStatsItem(location);
-    addConversationToStatsItem(locationItem, conversation);
+    addConversationToStatsItem(locationItem, conversation, contributions);
     locations.set(location, locationItem);
   }
 
@@ -1101,10 +1162,10 @@ export function summarizeConversationStats(
   return {
     ...counts,
     conversations: conversations.length,
-    durationMs: durationTotal(sessions),
+    durationMs,
     locations: statsItems(locations),
     requesters: statsItems(requesters),
-    tokens: tokenTotal(sessions),
+    tokens,
     turns: sessions.length,
   };
 }

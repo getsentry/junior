@@ -26,6 +26,11 @@ export function PluginsPage(props: { data?: DashboardData }) {
   const reportCount = reports.length;
   const loadedCount = plugins.length;
   const skillCount = skills.length;
+  const reportEmptyText = reportsError
+    ? undefined
+    : reportsLoading
+      ? "Loading trusted plugin stats."
+      : "No trusted plugin stats have been reported yet.";
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
@@ -105,16 +110,18 @@ export function PluginsPage(props: { data?: DashboardData }) {
           </div>
         </Section>
 
-        <PluginReports
-          emptyText={
-            reportsError
-              ? "Trusted plugin stats failed to load."
-              : reportsLoading
-                ? "Loading trusted plugin stats."
-                : "No trusted plugin stats have been reported yet."
-          }
-          reports={reports}
-        />
+        {reportsError ? (
+          <Section>
+            <SectionHeader>
+              <SectionTitle>Plugin Reports</SectionTitle>
+            </SectionHeader>
+            <div className="px-4 pb-4 text-[0.84rem] leading-relaxed text-[#fca5a5]">
+              Trusted plugin stats failed to load.
+            </div>
+          </Section>
+        ) : null}
+
+        <PluginReports emptyText={reportEmptyText} reports={reports} />
       </section>
     </div>
   );

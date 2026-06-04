@@ -547,6 +547,27 @@ describe("dashboard telemetry components", () => {
     );
   });
 
+  it("shows plugin report failures while keeping stale reports visible", () => {
+    const data = dashboardData([]);
+    data.pluginReportsError = true;
+    data.pluginReports.reports = [
+      {
+        metrics: [{ label: "active", value: "1" }],
+        pluginName: "scheduler",
+        title: "Scheduler",
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Trusted plugin stats failed to load.");
+    expect(html).toContain(">Scheduler<");
+  });
+
   it("renders transcript copy as an icon-only control", () => {
     const session = {
       conversationId: "conversation-1",

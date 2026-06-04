@@ -116,9 +116,7 @@ export function useDashboardData() {
     data: coreQuery.data
       ? {
           ...coreQuery.data,
-          pluginReportsError: Boolean(
-            pluginReportsQuery.error && !pluginReportsQuery.data,
-          ),
+          pluginReportsError: Boolean(pluginReportsQuery.error),
           pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
           pluginReportsLoading:
             pluginReportsQuery.isPending && !pluginReportsQuery.data,
