@@ -229,6 +229,40 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("reports aggregate scheduler and API locations from stored turn surfaces", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await recordAgentTurnSessionSummary({
+      conversationId: "agent-dispatch:dispatch_scheduler",
+      cumulativeDurationMs: 2_000,
+      requester: { fullName: "Scheduler" },
+      sessionId: "dispatch:scheduler",
+      sliceId: 1,
+      state: "completed",
+      surface: "scheduler",
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId: "agent-dispatch:dispatch_api",
+      cumulativeDurationMs: 1_000,
+      requester: { fullName: "API" },
+      sessionId: "dispatch:api",
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
+    });
+
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats.locations.map((item) => item.label)).toEqual([
+      "Scheduler",
+      "API",
+    ]);
+  });
+
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));

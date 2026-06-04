@@ -524,6 +524,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             sliceId: 1,
             startedAtMs: message.metadata.dateSent.getTime(),
             state: "running",
+            surface: "slack",
             requester,
             traceId: getActiveTraceId(),
           }).catch((error) => {
@@ -742,6 +743,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               omittedImageAttachmentCount,
               userAttachments,
               slackConversation,
+              surface: "slack",
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
                 conversationId,

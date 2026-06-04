@@ -295,6 +295,7 @@ export async function runAgentDispatchSlice(
         channelId: dispatch.destination.channelId,
         teamId: dispatch.destination.teamId,
       },
+      surface: dispatch.actor.id === "scheduler" ? "scheduler" : "api",
       toolChannelId: dispatch.destination.channelId,
       sandbox: {
         sandboxId,

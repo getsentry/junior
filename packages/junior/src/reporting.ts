@@ -27,6 +27,7 @@ import {
   listAgentTurnSessionSummaries,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnRequester,
+  type AgentTurnSurface,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { buildSystemPrompt } from "@/chat/prompt";
@@ -72,7 +73,7 @@ export type DashboardSessionStatus =
   | "hung"
   | "superseded";
 
-export type DashboardSurface = "slack" | "api" | "scheduler" | "internal";
+export type DashboardSurface = AgentTurnSurface;
 
 export interface DashboardTurnUsage {
   inputTokens?: number;
@@ -293,7 +294,16 @@ function statusFromCheckpoint(
 }
 
 function surfaceFromConversationId(conversationId: string): DashboardSurface {
-  return parseSlackThreadId(conversationId) ? "slack" : "internal";
+  if (parseSlackThreadId(conversationId)) return "slack";
+  if (conversationId.startsWith("scheduler:")) return "scheduler";
+  if (conversationId.startsWith("api:")) return "api";
+  return "internal";
+}
+
+function surfaceFromSummary(
+  summary: AgentTurnSessionSummary,
+): DashboardSurface {
+  return summary.surface ?? surfaceFromConversationId(summary.conversationId);
 }
 
 function titleFromSummary(summary: AgentTurnSessionSummary): string {
@@ -387,7 +397,7 @@ function sessionReportFromSummary(
       : {}),
     cumulativeDurationMs: summary.cumulativeDurationMs,
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
-    surface: surfaceFromConversationId(summary.conversationId),
+    surface: surfaceFromSummary(summary),
     title: titleFromSummary(summary),
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),

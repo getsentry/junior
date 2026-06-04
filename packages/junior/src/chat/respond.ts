@@ -127,8 +127,12 @@ import {
   persistTimeoutSessionRecord,
   persistYieldSessionRecord,
 } from "@/chat/services/turn-session-record";
-import type { AgentTurnRequester } from "@/chat/state/turn-session";
+import type {
+  AgentTurnRequester,
+  AgentTurnSurface,
+} from "@/chat/state/turn-session";
 import type { CredentialContext } from "@/chat/credentials/context";
+import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import {
@@ -196,6 +200,7 @@ export interface ReplyRequestContext {
     email?: string;
   };
   slackConversation?: SlackConversationContext;
+  surface?: AgentTurnSurface;
   correlation?: {
     conversationId?: string;
     threadId?: string;
@@ -322,6 +327,32 @@ function requesterFromContext(
     ...(requester?.userName ? { slackUserName: requester.userName } : {}),
   };
   return Object.keys(identity).length > 0 ? identity : undefined;
+}
+
+function surfaceFromContext(
+  context: ReplyRequestContext,
+): AgentTurnSurface | undefined {
+  if (context.surface) {
+    return context.surface;
+  }
+  const conversationId =
+    context.correlation?.conversationId ??
+    context.correlation?.threadId ??
+    context.correlation?.runId;
+  if (
+    context.slackConversation ||
+    (conversationId ? parseSlackThreadId(conversationId) : undefined)
+  ) {
+    return "slack";
+  }
+  const actor = context.credentialContext?.actor;
+  if (actor?.type === "system" && actor.id === "scheduler") {
+    return "scheduler";
+  }
+  if (conversationId) {
+    return "api";
+  }
+  return undefined;
 }
 
 function supportsRouterTextPreview(mediaType: string): boolean {
@@ -479,6 +510,7 @@ export async function generateAssistantReply(
     context.requester,
     context.correlation?.requesterId,
   );
+  const surface = surfaceFromContext(context);
   const credentialActor = context.credentialContext?.actor;
   const credentialActorLogContext = credentialActor
     ? {
@@ -1136,6 +1168,7 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
+        ...(surface ? { surface } : {}),
       });
       if (!persisted) {
         return false;
@@ -1509,6 +1542,7 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
+        ...(surface ? { surface } : {}),
       });
     }
 
@@ -1554,6 +1588,7 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
+        ...(surface ? { surface } : {}),
       });
       if (!sessionRecord) {
         throw new Error(
@@ -1580,6 +1615,7 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
+        ...(surface ? { surface } : {}),
       });
       if (!sessionRecord) {
         throw new Error(
@@ -1629,6 +1665,7 @@ export async function generateAssistantReply(
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
+        ...(surface ? { surface } : {}),
       });
       if (sessionRecord) {
         throw new RetryableTurnError(

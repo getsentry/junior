@@ -3,6 +3,7 @@ import {
   upsertAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
   type AgentTurnRequester,
+  type AgentTurnSurface,
 } from "@/chat/state/turn-session";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -134,6 +135,7 @@ export async function persistRunningSessionRecord(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
+  surface?: AgentTurnSurface;
 }): Promise<boolean> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return false;
@@ -155,6 +157,9 @@ export async function persistRunningSessionRecord(args: {
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
+      ...((args.surface ?? latestSessionRecord?.surface)
+        ? { surface: args.surface ?? latestSessionRecord?.surface }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -192,6 +197,7 @@ export async function persistCompletedSessionRecord(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
+  surface?: AgentTurnSurface;
 }): Promise<void> {
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
@@ -215,6 +221,9 @@ export async function persistCompletedSessionRecord(args: {
       sliceId: args.sliceId,
       state: "completed",
       piMessages: args.allMessages,
+      ...((args.surface ?? latestSessionRecord?.surface)
+        ? { surface: args.surface ?? latestSessionRecord?.surface }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -254,6 +263,7 @@ export async function persistAuthPauseSessionRecord(args: {
   errorMessage: string;
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
+  surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
   try {
@@ -285,6 +295,9 @@ export async function persistAuthPauseSessionRecord(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
+      ...((args.surface ?? latestSessionRecord?.surface)
+        ? { surface: args.surface ?? latestSessionRecord?.surface }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -329,6 +342,7 @@ export async function persistTimeoutSessionRecord(args: {
   errorMessage: string;
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
+  surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
 
@@ -366,6 +380,9 @@ export async function persistTimeoutSessionRecord(args: {
         sliceId: args.currentSliceId,
         state: "failed",
         piMessages,
+        ...((args.surface ?? latestSessionRecord?.surface)
+          ? { surface: args.surface ?? latestSessionRecord?.surface }
+          : {}),
         ...(args.loadedSkillNames
           ? { loadedSkillNames: args.loadedSkillNames }
           : {}),
@@ -391,6 +408,9 @@ export async function persistTimeoutSessionRecord(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
+      ...((args.surface ?? latestSessionRecord?.surface)
+        ? { surface: args.surface ?? latestSessionRecord?.surface }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -434,6 +454,7 @@ export async function persistYieldSessionRecord(args: {
   errorMessage: string;
   logContext: SessionRecordLogContext;
   requester?: AgentTurnRequester;
+  surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
@@ -464,6 +485,9 @@ export async function persistYieldSessionRecord(args: {
       sliceId: args.currentSliceId,
       state: "awaiting_resume",
       piMessages,
+      ...((args.surface ?? latestSessionRecord?.surface)
+        ? { surface: args.surface ?? latestSessionRecord?.surface }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),

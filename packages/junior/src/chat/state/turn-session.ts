@@ -25,6 +25,8 @@ export type AgentTurnSessionStatus =
   | "failed"
   | "abandoned";
 
+export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
+
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
 export interface AgentTurnRequester {
@@ -52,6 +54,7 @@ export interface AgentTurnSessionRecord {
   sliceId: number;
   startedAtMs: number;
   state: AgentTurnSessionStatus;
+  surface?: AgentTurnSurface;
   traceId?: string;
   updatedAtMs: number;
 }
@@ -169,6 +172,15 @@ function parseAgentTurnSessionStatus(
   return undefined;
 }
 
+function parseAgentTurnSurface(value: unknown): AgentTurnSurface | undefined {
+  return value === "slack" ||
+    value === "api" ||
+    value === "scheduler" ||
+    value === "internal"
+    ? value
+    : undefined;
+}
+
 function parseAgentTurnSessionFields(
   parsed: Record<string, unknown>,
 ): ParsedAgentTurnSessionFields | undefined {
@@ -199,6 +211,7 @@ function parseAgentTurnSessionFields(
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
   const requester = parseAgentTurnRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
+  const surface = parseAgentTurnSurface(parsed.surface);
   if (
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
@@ -242,6 +255,7 @@ function parseAgentTurnSessionFields(
     ...(typeof parsed.resumedFromSliceId === "number"
       ? { resumedFromSliceId: parsed.resumedFromSliceId }
       : {}),
+    ...(surface ? { surface } : {}),
     ...(typeof parsed.traceId === "string" ? { traceId: parsed.traceId } : {}),
   };
 }
@@ -365,6 +379,7 @@ function materializeAgentTurnSessionRecord(
     ...(stored.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: stored.resumedFromSliceId }
       : {}),
+    ...(stored.surface ? { surface: stored.surface } : {}),
     ...(stored.traceId ? { traceId: stored.traceId } : {}),
   };
 }
@@ -434,6 +449,7 @@ function buildStoredRecord(args: {
   sliceId: number;
   startedAtMs?: number;
   state: AgentTurnSessionStatus;
+  surface?: AgentTurnSurface;
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -470,6 +486,7 @@ function buildStoredRecord(args: {
     ...(typeof args.resumedFromSliceId === "number"
       ? { resumedFromSliceId: args.resumedFromSliceId }
       : {}),
+    ...(args.surface ? { surface: args.surface } : {}),
     ...(args.traceId ? { traceId: args.traceId } : {}),
   };
 }
@@ -547,6 +564,7 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.resumedFromSliceId !== undefined
         ? { resumedFromSliceId: args.existing.resumedFromSliceId }
         : {}),
+      ...(args.existing.surface ? { surface: args.existing.surface } : {}),
       ...(args.existing.traceId ? { traceId: args.existing.traceId } : {}),
       ...((args.errorMessage ?? args.existing.errorMessage)
         ? { errorMessage: args.errorMessage ?? args.existing.errorMessage }
@@ -567,6 +585,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
+  surface?: AgentTurnSurface;
   piMessages: PiMessage[];
   requester?: AgentTurnRequester;
   resumeReason?: AgentTurnResumeReason;
@@ -630,6 +649,9 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.resumedFromSliceId !== undefined
         ? { resumedFromSliceId: args.resumedFromSliceId }
         : {}),
+      ...((args.surface ?? existingRecord?.surface)
+        ? { surface: args.surface ?? existingRecord?.surface }
+        : {}),
       ...((args.traceId ?? existingRecord?.traceId)
         ? { traceId: args.traceId ?? existingRecord?.traceId }
         : {}),
@@ -652,6 +674,7 @@ export async function recordAgentTurnSessionSummary(args: {
   sliceId: number;
   startedAtMs?: number;
   state: AgentTurnSessionStatus;
+  surface?: AgentTurnSurface;
   traceId?: string;
   ttlMs?: number;
 }): Promise<void> {
@@ -700,6 +723,9 @@ export async function recordAgentTurnSessionSummary(args: {
           ? { loadedSkillNames: existing.loadedSkillNames }
           : {}),
       ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
+      ...((args.surface ?? existing?.surface)
+        ? { surface: args.surface ?? existing?.surface }
+        : {}),
       ...((args.traceId ?? existing?.traceId)
         ? { traceId: args.traceId ?? existing?.traceId }
         : {}),
