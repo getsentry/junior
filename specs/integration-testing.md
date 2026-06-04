@@ -66,6 +66,12 @@ Both of the following remain integration tests when they use the real runtime pa
 
 Do not let low-level stream ordering or request-shape assertions dominate general `*-behavior.test.ts` files.
 
+## Suite Organization
+
+Keep integration files organized by the behavior contract users or runtime owners would name. Avoid catch-all suites such as broad runtime, service, or handler buckets once they accumulate distinct auth, continuation, delivery, thread-context, or transport contracts.
+
+When a behavior suite grows multiple contracts, split it by domain before adding more cases. Put shared setup in narrowly named fixtures only when two or more files need the same state shape or adapter wrapper.
+
 ## Classification Guidance
 
 If a test relies on module mocks to drive control-flow branches, classify it as unit or component instead of integration.

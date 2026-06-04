@@ -316,10 +316,13 @@ describe("Slack behavior: finalized thread replies", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: longReply,
-            diagnostics: makeDiagnostics({ outcome: "provider_error" }),
-          }),
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(partialStart);
+            return {
+              text: longReply,
+              diagnostics: makeDiagnostics({ outcome: "provider_error" }),
+            };
+          },
         },
       },
     });
