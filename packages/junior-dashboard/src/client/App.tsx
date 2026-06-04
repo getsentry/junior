@@ -15,6 +15,7 @@ import { conversationPath, setDashboardTimeZone } from "./format";
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
+import { PluginsPage } from "./pages/PluginsPage";
 import { cn } from "./styles";
 
 /** Render the dashboard SPA shell and route-level loading states. */
@@ -65,6 +66,9 @@ export function DashboardShell() {
               <NavLink className={navLinkClass} to="/conversations">
                 Conversations
               </NavLink>
+              <NavLink className={navLinkClass} to="/plugins">
+                Plugins
+              </NavLink>
             </nav>
             {loggedIn ? (
               <Button
@@ -100,6 +104,16 @@ export function DashboardShell() {
             )
           }
           path="/conversations"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading plugins" />
+            ) : (
+              <PluginsPage data={data} />
+            )
+          }
+          path="/plugins"
         />
         <Route
           element={

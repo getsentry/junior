@@ -115,6 +115,19 @@ function reporting(): JuniorReporting {
         ],
       };
     },
+    async getPluginReports() {
+      return {
+        source: "trusted_plugins",
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        reports: [
+          {
+            pluginName: "scheduler",
+            title: "Scheduler",
+            summary: [{ label: "active", value: "1" }],
+          },
+        ],
+      };
+    },
     async getConversation(conversationId: string) {
       return {
         conversationId,
@@ -205,13 +218,15 @@ describe("dashboard routes", () => {
 
   it("protects sub-routes at root basePath from unauthenticated access", async () => {
     // app.use("/", ...) only matches the exact root in Hono; sub-routes like
-    // /conversations and /sessions must be covered by a wildcard middleware.
+    // /conversations, /plugins, and /sessions must be covered by a wildcard
+    // middleware.
     const app = dashboard(null);
 
     for (const path of [
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/conversations/slack%3AC1%3A123?view=tools",
+      "/plugins",
       "/sessions",
       "/sessions/some-session",
     ]) {
@@ -361,6 +376,7 @@ describe("dashboard routes", () => {
       "/api/dashboard/plugins",
       "/api/dashboard/skills",
       "/api/dashboard/sessions",
+      "/api/dashboard/plugin-reports",
       "/api/dashboard/conversations/slack%3AC1%3A123",
       "/api/dashboard/config",
       "/api/dashboard/me",
@@ -495,6 +511,46 @@ describe("dashboard routes", () => {
     expect(await skills.json()).toEqual([
       { name: "triage", pluginProvider: "github" },
     ]);
+
+    const pluginReports = await app.fetch(
+      new Request("http://localhost/api/dashboard/plugin-reports"),
+    );
+    expect(pluginReports.status).toBe(200);
+    expect(await pluginReports.json()).toMatchObject({
+      reports: [
+        {
+          pluginName: "scheduler",
+          summary: [{ label: "active", value: "1" }],
+        },
+      ],
+      source: "trusted_plugins",
+    });
+  });
+
+  it("returns an empty plugin report feed for legacy reporting providers", async () => {
+    const { getPluginReports: _getPluginReports, ...legacyReporting } =
+      reporting();
+    expect(_getPluginReports).toBeTypeOf("function");
+    const app = dashboard(
+      {
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      },
+      legacyReporting,
+    );
+
+    const pluginReports = await app.fetch(
+      new Request("http://localhost/api/dashboard/plugin-reports"),
+    );
+
+    expect(pluginReports.status).toBe(200);
+    expect(await pluginReports.json()).toMatchObject({
+      reports: [],
+      source: "trusted_plugins",
+    });
   });
 
   it("returns the signed-in identity and session feed", async () => {
@@ -738,6 +794,7 @@ describe("dashboard routes", () => {
         pathname === "/" ||
         pathname === "/conversations" ||
         pathname.startsWith("/conversations/") ||
+        pathname === "/plugins" ||
         pathname === "/sessions" ||
         pathname.startsWith("/sessions/") ||
         pathname.startsWith("/api/dashboard/") ||
@@ -801,10 +858,11 @@ describe("dashboard routes", () => {
       trustedOrigins: ["https://junior.example.com"],
     }).nitro.setup(fixture.nitro);
 
-    expect(Object.keys(fixture.nitro.options.routes).slice(0, 8)).toEqual([
+    expect(Object.keys(fixture.nitro.options.routes).slice(0, 9)).toEqual([
       "/",
       "/conversations",
       "/conversations/**",
+      "/plugins",
       "/sessions",
       "/sessions/**",
       "/api/dashboard/**",

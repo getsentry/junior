@@ -1,4 +1,7 @@
-import type { AgentPluginState } from "@sentry/junior-plugin-api";
+import type {
+  AgentPluginReadState,
+  AgentPluginState,
+} from "@sentry/junior-plugin-api";
 import { getNextRunAtMs } from "./cadence";
 import type { ScheduledRun, ScheduledTask } from "./types";
 
@@ -15,6 +18,7 @@ export interface SchedulerStore {
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listIncompleteRuns(): Promise<ScheduledRun[]>;
+  listTasks(): Promise<ScheduledTask[]>;
   listTasksForTeam(teamId: string): Promise<ScheduledTask[]>;
   markRunBlocked(args: {
     completedAtMs: number;
@@ -52,6 +56,11 @@ export interface SchedulerStore {
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";
   }): Promise<void>;
+}
+
+export interface SchedulerDashboardStore {
+  listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
+  listTasks(): Promise<ScheduledTask[]>;
 }
 
 function taskKey(taskId: string): string {
@@ -139,7 +148,7 @@ async function removeFromIndex(
 }
 
 async function getIndex(
-  state: AgentPluginState,
+  state: AgentPluginReadState,
   key: string,
 ): Promise<string[]> {
   const values = (await state.get<string[]>(key)) ?? [];
@@ -346,6 +355,68 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
+async function getTaskFromState(
+  state: AgentPluginReadState,
+  taskId: string,
+): Promise<ScheduledTask | undefined> {
+  return (await state.get<ScheduledTask>(taskKey(taskId))) ?? undefined;
+}
+
+async function listTasksFromState(
+  state: AgentPluginReadState,
+  indexKey: string,
+): Promise<ScheduledTask[]> {
+  const ids = await getIndex(state, indexKey);
+  const tasks = await Promise.all(ids.map((id) => getTaskFromState(state, id)));
+  return tasks
+    .filter((task): task is ScheduledTask => Boolean(task))
+    .filter((task) => task.status !== "deleted")
+    .sort((a, b) => a.createdAtMs - b.createdAtMs);
+}
+
+async function getRunFromState(
+  state: AgentPluginReadState,
+  runId: string,
+): Promise<ScheduledRun | undefined> {
+  return (await state.get<ScheduledRun>(runKey(runId))) ?? undefined;
+}
+
+async function listIncompleteRunsForTasksFromState(
+  state: AgentPluginReadState,
+  tasks: ScheduledTask[],
+): Promise<ScheduledRun[]> {
+  const runs: ScheduledRun[] = [];
+  for (const task of tasks) {
+    const active = await state.get<{ runId?: unknown }>(activeRunKey(task.id));
+    if (typeof active?.runId !== "string") {
+      continue;
+    }
+    const run = await getRunFromState(state, active.runId);
+    if (run && !isFinishedRun(run)) {
+      runs.push(run);
+    }
+  }
+  return runs;
+}
+
+class PluginStateSchedulerDashboardStore implements SchedulerDashboardStore {
+  private readonly state: AgentPluginReadState;
+
+  constructor(state: AgentPluginReadState) {
+    this.state = state;
+  }
+
+  async listTasks(): Promise<ScheduledTask[]> {
+    return await listTasksFromState(this.state, globalTaskIndexKey());
+  }
+
+  async listIncompleteRunsForTasks(
+    tasks: ScheduledTask[],
+  ): Promise<ScheduledRun[]> {
+    return await listIncompleteRunsForTasksFromState(this.state, tasks);
+  }
+}
+
 class PluginStateSchedulerStore implements SchedulerStore {
   private readonly state: AgentPluginState;
 
@@ -408,16 +479,15 @@ class PluginStateSchedulerStore implements SchedulerStore {
   }
 
   async getTask(taskId: string): Promise<ScheduledTask | undefined> {
-    return (await this.state.get<ScheduledTask>(taskKey(taskId))) ?? undefined;
+    return await getTaskFromState(this.state, taskId);
+  }
+
+  async listTasks(): Promise<ScheduledTask[]> {
+    return await listTasksFromState(this.state, globalTaskIndexKey());
   }
 
   async listTasksForTeam(teamId: string): Promise<ScheduledTask[]> {
-    const ids = await getIndex(this.state, teamTaskIndexKey(teamId));
-    const tasks = await Promise.all(ids.map((id) => this.getTask(id)));
-    return tasks
-      .filter((task): task is ScheduledTask => Boolean(task))
-      .filter((task) => task.status !== "deleted")
-      .sort((a, b) => a.createdAtMs - b.createdAtMs);
+    return await listTasksFromState(this.state, teamTaskIndexKey(teamId));
   }
 
   async claimDueRun(args: {
@@ -576,25 +646,12 @@ class PluginStateSchedulerStore implements SchedulerStore {
   }
 
   async getRun(runId: string): Promise<ScheduledRun | undefined> {
-    return (await this.state.get<ScheduledRun>(runKey(runId))) ?? undefined;
+    return await getRunFromState(this.state, runId);
   }
 
   async listIncompleteRuns(): Promise<ScheduledRun[]> {
-    const ids = await getIndex(this.state, globalTaskIndexKey());
-    const runs: ScheduledRun[] = [];
-    for (const taskId of ids) {
-      const active = await this.state.get<{ runId?: unknown }>(
-        activeRunKey(taskId),
-      );
-      if (typeof active?.runId !== "string") {
-        continue;
-      }
-      const run = await this.getRun(active.runId);
-      if (run && !isFinishedRun(run)) {
-        runs.push(run);
-      }
-    }
-    return runs;
+    const tasks = await this.listTasks();
+    return await listIncompleteRunsForTasksFromState(this.state, tasks);
   }
 
   async markRunDispatched(args: {
@@ -816,4 +873,11 @@ class PluginStateSchedulerStore implements SchedulerStore {
 /** Create a scheduler store backed by this plugin's durable state namespace. */
 export function createSchedulerStore(state: AgentPluginState): SchedulerStore {
   return new PluginStateSchedulerStore(state);
+}
+
+/** Create a read-only scheduler store for dashboard reporting. */
+export function createSchedulerDashboardStore(
+  state: AgentPluginReadState,
+): SchedulerDashboardStore {
+  return new PluginStateSchedulerDashboardStore(state);
 }

@@ -85,6 +85,7 @@ function dashboardPageRoutes(
   basePath: string,
   handler: string,
 ): NitroRouteConfig {
+  const pluginsPath = basePath === "/" ? "/plugins" : `${basePath}/plugins`;
   const sessionsPath = basePath === "/" ? "/sessions" : `${basePath}/sessions`;
   const conversationsPath =
     basePath === "/" ? "/conversations" : `${basePath}/conversations`;
@@ -94,6 +95,7 @@ function dashboardPageRoutes(
       "/": routeEntry(handler),
       [conversationsPath]: routeEntry(handler),
       [`${conversationsPath}/**`]: routeEntry(handler),
+      [pluginsPath]: routeEntry(handler),
       [sessionsPath]: routeEntry(handler),
       [`${sessionsPath}/**`]: routeEntry(handler),
     };

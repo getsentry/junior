@@ -31,6 +31,8 @@ import {
 } from "@/chat/state/turn-session";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { GET as healthGET } from "@/handlers/health";
+import { getAgentPluginDashboardReports } from "@/chat/plugins/agent-hooks";
+import type { DashboardPluginReport } from "@sentry/junior-plugin-api";
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const SAFE_METADATA_KEY_LIMIT = 20;
@@ -168,6 +170,14 @@ export interface DashboardSessionFeed {
   generatedAt: string;
 }
 
+export type { DashboardPluginReport } from "@sentry/junior-plugin-api";
+
+export interface DashboardPluginReportFeed {
+  generatedAt: string;
+  reports: DashboardPluginReport[];
+  source: "trusted_plugins";
+}
+
 export interface JuniorReporting {
   /** Read the public runtime health snapshot without exposing discovery data. */
   getHealth(): Promise<HealthReport>;
@@ -184,6 +194,8 @@ export interface JuniorReporting {
    * actor, route, usage, and links that can later be reconstructed from spans.
    */
   getSessions(): Promise<DashboardSessionFeed>;
+  /** Read sanitized operational summaries contributed by trusted plugins. */
+  getPluginReports?(): Promise<DashboardPluginReportFeed>;
   /**
    * Read one conversation transcript for the dashboard.
    *
@@ -647,6 +659,15 @@ async function readSessions(): Promise<DashboardSessionFeed> {
   };
 }
 
+async function readPluginReports(): Promise<DashboardPluginReportFeed> {
+  const nowMs = Date.now();
+  return {
+    source: "trusted_plugins",
+    generatedAt: new Date(nowMs).toISOString(),
+    reports: await getAgentPluginDashboardReports(nowMs),
+  };
+}
+
 async function readConversation(
   conversationId: string,
 ): Promise<DashboardConversationReport> {
@@ -719,7 +740,9 @@ async function readConversation(
 }
 
 /** Create the read-only reporting boundary used by authenticated dashboard routes. */
-export function createJuniorReporting(): JuniorReporting {
+export function createJuniorReporting(): JuniorReporting & {
+  getPluginReports(): Promise<DashboardPluginReportFeed>;
+} {
   return {
     getHealth: readHealth,
     async getRuntimeInfo() {
@@ -740,6 +763,7 @@ export function createJuniorReporting(): JuniorReporting {
     getPlugins: readPlugins,
     getSkills: readSkills,
     getSessions: readSessions,
+    getPluginReports: readPluginReports,
     getConversation: readConversation,
   };
 }

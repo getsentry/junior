@@ -699,7 +699,7 @@ function isLocalPersistenceUnavailable(error: unknown): boolean {
 export function createMockConversationReporting(
   reporting: JuniorReporting,
 ): JuniorReporting {
-  return {
+  const overlay: JuniorReporting = {
     getHealth: reporting.getHealth,
     getRuntimeInfo: reporting.getRuntimeInfo,
     getPlugins: reporting.getPlugins,
@@ -723,4 +723,8 @@ export function createMockConversationReporting(
       return reporting.getConversation(conversationId);
     },
   };
+  if (reporting.getPluginReports) {
+    overlay.getPluginReports = reporting.getPluginReports;
+  }
+  return overlay;
 }

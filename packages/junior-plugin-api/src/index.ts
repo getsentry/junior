@@ -167,6 +167,10 @@ export interface AgentPluginState {
   ): Promise<T>;
 }
 
+export interface AgentPluginReadState {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+}
+
 export interface HeartbeatHookContext extends AgentPluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
@@ -178,6 +182,52 @@ export interface HeartbeatHookContext extends AgentPluginContext {
 
 export interface HeartbeatResult {
   dispatchCount?: number;
+}
+
+export type DashboardPluginMetricTone =
+  | "danger"
+  | "good"
+  | "neutral"
+  | "warning";
+
+export interface DashboardPluginMetric {
+  label: string;
+  tone?: DashboardPluginMetricTone;
+  value: string;
+}
+
+export interface DashboardPluginTableColumn {
+  key: string;
+  label: string;
+}
+
+export interface DashboardPluginTableRow {
+  cells: Record<string, string>;
+  id: string;
+  tone?: DashboardPluginMetricTone;
+}
+
+export interface DashboardPluginSection {
+  columns?: DashboardPluginTableColumn[];
+  emptyText?: string;
+  rows?: DashboardPluginTableRow[];
+  title: string;
+}
+
+export interface DashboardPluginReportContent {
+  generatedAt?: string;
+  sections?: DashboardPluginSection[];
+  summary?: DashboardPluginMetric[];
+  title?: string;
+}
+
+export interface DashboardPluginReport extends DashboardPluginReportContent {
+  pluginName: string;
+}
+
+export interface DashboardReportHookContext extends AgentPluginContext {
+  nowMs: number;
+  state: AgentPluginReadState;
 }
 
 export type AgentPluginRouteMethod =
@@ -220,6 +270,12 @@ export interface AgentPluginHooks {
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
+  dashboardReport?(
+    ctx: DashboardReportHookContext,
+  ):
+    | Promise<DashboardPluginReportContent | undefined>
+    | DashboardPluginReportContent
+    | undefined;
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;

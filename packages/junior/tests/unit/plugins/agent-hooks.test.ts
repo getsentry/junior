@@ -2,6 +2,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   createAgentPluginHookRunner,
+  getAgentPluginDashboardReports,
   getAgentPluginRoutes,
   getAgentPluginSlackConversationLink,
   getAgentPluginTools,
@@ -326,6 +327,97 @@ describe("agent plugin hooks", () => {
       expect(() => getAgentPluginSlackConversationLink("slack:C1:123")).toThrow(
         'Trusted plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
       );
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("collects dashboard reports from configured plugins", async () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async dashboardReport(ctx) {
+            expect(ctx.nowMs).toBe(123);
+            expect("set" in ctx.state).toBe(false);
+            await expect(ctx.state.get("dashboard-test")).resolves.toBe(
+              undefined,
+            );
+            return {
+              title: "Agent Demo",
+              summary: [{ label: "active", value: "1" }],
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(getAgentPluginDashboardReports(123)).resolves.toEqual([
+        {
+          pluginName: "agent-demo",
+          title: "Agent Demo",
+          summary: [{ label: "active", value: "1" }],
+        },
+      ]);
+    } finally {
+      setAgentPlugins(previous);
+    }
+  });
+
+  it("contains failed dashboard reports per plugin", async () => {
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        name: "agent-demo",
+        manifest: {
+          name: "agent-demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          dashboardReport() {
+            return {
+              title: "Agent Demo",
+              summary: [{ label: "active", value: "1" }],
+            };
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        name: "broken-demo",
+        manifest: {
+          name: "broken-demo",
+          description: "Broken demo",
+        },
+        hooks: {
+          dashboardReport() {
+            throw new Error("database unavailable");
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(getAgentPluginDashboardReports(123)).resolves.toEqual([
+        {
+          pluginName: "agent-demo",
+          title: "Agent Demo",
+          summary: [{ label: "active", value: "1" }],
+        },
+        {
+          generatedAt: "1970-01-01T00:00:00.123Z",
+          pluginName: "broken-demo",
+          sections: [
+            {
+              emptyText: "This plugin report failed to load.",
+              title: "Error",
+            },
+          ],
+          summary: [{ label: "report", tone: "danger", value: "failed" }],
+          title: "broken-demo",
+        },
+      ]);
     } finally {
       setAgentPlugins(previous);
     }

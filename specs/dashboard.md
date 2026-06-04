@@ -53,6 +53,7 @@ export interface JuniorReporting {
   getPlugins(): Promise<PluginReport[]>;
   getSkills(): Promise<SkillReport[]>;
   getSessions(): Promise<DashboardSessionFeed>;
+  getPluginReports(): Promise<DashboardPluginReportFeed>;
   getConversation(conversationId: string): Promise<DashboardConversationReport>;
 }
 
@@ -131,6 +132,7 @@ The dashboard package owns browser-facing routes:
 | `GET /`                 | Better Auth session unless auth is explicitly disabled | React command-center UI.            |
 | `GET /conversations`    | Better Auth session unless auth is explicitly disabled | React conversation-history UI.      |
 | `GET /conversations/**` | Better Auth session unless auth is explicitly disabled | React conversation-detail UI.       |
+| `GET /plugins`          | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.          |
 | `GET /sessions/**`      | Better Auth session unless auth is explicitly disabled | Compatibility redirect UI.          |
 | `GET /api/dashboard/**` | Better Auth session unless auth is explicitly disabled | Dashboard JSON APIs.                |
 | `/api/auth/**`          | Better Auth                                            | Better Auth social login callbacks. |
@@ -144,6 +146,7 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                            |
 | `GET /api/dashboard/skills`                      | Discovered skill inventory.                         |
 | `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records. |
+| `GET /api/dashboard/plugin-reports`              | Sanitized trusted-plugin operational summaries.     |
 | `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs. |
 | `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.  |
 | `GET /api/dashboard/me`                          | Signed-in dashboard identity.                       |
@@ -233,6 +236,7 @@ Reporting data may include:
 - configured plugin names
 - skill names and owning plugin provider
 - conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
+- trusted plugin dashboard summaries made of bounded string metrics and tables
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links for conversation summaries when Sentry DSN and org slug configuration are present
@@ -245,6 +249,22 @@ Session reporting must not include conversation text, Pi messages, tool results,
 Dashboard transcript and title redaction must follow `./data-redaction-policy.md`.
 
 Public health responses must not include runtime discovery data such as cwd, home directory, plugin names, skill names, or packaged content.
+
+### Trusted Plugin Dashboard Reports
+
+Trusted plugins may expose a read-only `dashboardReport(ctx)` hook. The context
+contains only the plugin name, plugin logger, current timestamp, and that
+plugin's namespaced durable state.
+
+Plugin dashboard reports must be operational metadata only. They may include
+small string metrics, table columns, table rows, and sanitized creator labels
+for audit-oriented operational records. They must not include raw conversation
+text, scheduled task text, original user utterances, provider tokens, raw tool
+payloads, private channel names, or authorization URLs.
+
+The dashboard renders plugin reports generically. The dashboard package must
+not import scheduler or other plugin implementation modules to read their
+private state.
 
 ## Trusted Plugin Route Integration
 
@@ -328,6 +348,7 @@ Dashboard implementation requires integration tests for:
 8. `/api/info` no longer exposes public runtime diagnostics.
 9. Slack webhook, provider OAuth callback, internal, and sandbox egress routes are not intercepted by dashboard auth.
 10. dashboard reporting cannot return secret-bearing values.
+11. authenticated users can read sanitized trusted-plugin dashboard reports.
 
 Tests must follow `./testing.md`: route wiring and auth behavior belong in integration tests.
 

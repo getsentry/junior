@@ -757,6 +757,74 @@ describe("trusted plugin heartbeat", () => {
     });
   });
 
+  it("exposes sanitized scheduler dashboard reports through Junior reporting", async () => {
+    setAgentPlugins([schedulerPlugin()]);
+    const store = schedulerStore();
+    await store.saveTask(
+      createTask({
+        createdBy: {
+          slackUserId: "U123",
+          fullName: "Alice Reviewer",
+          userName: "alice",
+        },
+        task: {
+          text: "Secret task text that must stay out of dashboard stats.",
+        },
+      }),
+    );
+    await store.saveTask(
+      createTask({
+        createdBy: {
+          slackUserId: "U456",
+          userName: "bob",
+        },
+        id: "sched_plugin_blocked",
+        status: "blocked",
+        statusReason: "Secret blocked reason",
+        task: {
+          text: "Secret blocked task text",
+        },
+        updatedAtMs: TEST_NOW_MS,
+      }),
+    );
+
+    const { createJuniorReporting } = await import("@/reporting");
+    const feed = await createJuniorReporting().getPluginReports();
+    const scheduler = feed.reports.find(
+      (report) => report.pluginName === "scheduler",
+    );
+
+    expect(feed.source).toBe("trusted_plugins");
+    expect(scheduler).toMatchObject({
+      pluginName: "scheduler",
+      title: "Scheduler",
+    });
+    expect(scheduler?.summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "active", value: "1" }),
+        expect.objectContaining({ label: "blocked", value: "1" }),
+        expect.objectContaining({ label: "due now", value: "1" }),
+      ]),
+    );
+    expect(scheduler?.sections?.map((section) => section.title)).toEqual([
+      "Upcoming",
+      "Blocked",
+      "Running",
+    ]);
+    expect(scheduler?.sections?.[0]?.columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "author", label: "Author" }),
+      ]),
+    );
+    expect(scheduler?.sections?.[0]?.rows?.[0]?.cells ?? {}).toMatchObject({
+      author: "Alice Reviewer (@alice)",
+    });
+    expect(scheduler?.sections?.[1]?.rows?.[0]?.cells ?? {}).toMatchObject({
+      author: "@bob",
+    });
+    expect(JSON.stringify(feed)).not.toContain("Secret");
+  });
+
   it("carries scheduled task credential subjects into dispatch records", async () => {
     mockDispatchCallbackFetch(originalFetch);
     setAgentPlugins([schedulerPlugin()]);

@@ -7,6 +7,7 @@ import type {
   Health,
   Identity,
   Plugin,
+  PluginDashboardReportFeed,
   Runtime,
   SessionFeed,
   Skill,
@@ -14,6 +15,10 @@ import type {
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
+const CORE_DASHBOARD_REFETCH_INTERVAL_MS = 5_000;
+const PLUGIN_REPORT_REFETCH_INTERVAL_MS = 30_000;
+
+type DashboardCoreData = Omit<DashboardData, "pluginReports">;
 
 class DashboardApiError extends Error {
   readonly status: number;
@@ -55,11 +60,32 @@ async function read<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+function emptyPluginReportFeed(): PluginDashboardReportFeed {
+  return {
+    generatedAt: new Date().toISOString(),
+    reports: [],
+    source: "trusted_plugins",
+  };
+}
+
+async function readPluginReports(): Promise<PluginDashboardReportFeed> {
+  try {
+    return await read<PluginDashboardReportFeed>(
+      "/api/dashboard/plugin-reports",
+    );
+  } catch (error) {
+    if (error instanceof DashboardApiError && error.status === 401) {
+      throw error;
+    }
+    return emptyPluginReportFeed();
+  }
+}
+
 /** Poll the dashboard summary feed used by command center and conversation lists. */
 export function useDashboardData() {
-  return useQuery({
-    queryKey: ["dashboard"],
-    queryFn: async (): Promise<DashboardData> => {
+  const coreQuery = useQuery({
+    queryKey: ["dashboard", "core"],
+    queryFn: async (): Promise<DashboardCoreData> => {
       const [health, runtime, plugins, skills, sessions, me, config] =
         await Promise.all([
           read<Health>("/api/dashboard/health"),
@@ -80,10 +106,27 @@ export function useDashboardData() {
         me,
       };
     },
-    refetchInterval: 5_000,
+    refetchInterval: CORE_DASHBOARD_REFETCH_INTERVAL_MS,
     refetchIntervalInBackground: false,
     retry: false,
   });
+  const pluginReportsQuery = useQuery({
+    queryKey: ["dashboard", "plugin-reports"],
+    queryFn: readPluginReports,
+    refetchInterval: PLUGIN_REPORT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  return {
+    ...coreQuery,
+    data: coreQuery.data
+      ? {
+          ...coreQuery.data,
+          pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
+        }
+      : undefined,
+    error: coreQuery.error,
+  };
 }
 
 /** Poll one conversation transcript while preserving route-level disabled state. */

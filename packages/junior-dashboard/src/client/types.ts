@@ -1,6 +1,8 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   DashboardConversationReport,
+  DashboardPluginReport,
+  DashboardPluginReportFeed,
   DashboardRequesterIdentity,
   DashboardSessionFeed,
   DashboardSessionReport,
@@ -19,6 +21,10 @@ export type Runtime = RuntimeInfoReport;
 export type Plugin = PluginReport;
 
 export type Skill = SkillReport;
+
+export type PluginDashboardReport = DashboardPluginReport;
+
+export type PluginDashboardReportFeed = DashboardPluginReportFeed;
 
 export type RequesterIdentity = DashboardRequesterIdentity;
 
@@ -71,6 +77,7 @@ export type DashboardData = {
   config: DashboardConfig;
   health: Health;
   me: Identity;
+  pluginReports: PluginDashboardReportFeed;
   plugins: Plugin[];
   runtime: Runtime;
   sessions: SessionFeed;

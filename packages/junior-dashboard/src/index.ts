@@ -17,7 +17,14 @@ function dashboardRoutePaths(options: JuniorDashboardPluginOptions): string[] {
   const authPath = normalizeDashboardPath(options.authPath, "/api/auth");
   const pagePaths =
     basePath === "/"
-      ? ["/", "/conversations", "/conversations/*", "/sessions", "/sessions/*"]
+      ? [
+          "/",
+          "/conversations",
+          "/conversations/*",
+          "/plugins",
+          "/sessions",
+          "/sessions/*",
+        ]
       : [basePath, `${basePath}/*`];
 
   return [

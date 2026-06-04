@@ -151,11 +151,15 @@ export function ConversationDurationChart(props: {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
-        {totals.total} conversations / {totals.hung} hung / {totals.failed}{" "}
-        errors
+        {plural("conversation", totals.total)} / {totals.hung} hung /{" "}
+        {plural("error", totals.failed)}
       </div>
     </Section>
   );
+}
+
+function plural(label: string, count: number): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
 }
 
 function ChartTitle(props: { children: ReactNode }) {

@@ -13,6 +13,7 @@ import {
   formatUsageTotal,
   parseMarkdownBlocks,
   requesterLabel,
+  summarizeConversationStats,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -38,6 +39,88 @@ describe("dashboard token formatting", () => {
 
   it("sums turn runtime", () => {
     expect(formatDurationTotal([1_000, 2_500])).toBe("3.5s");
+  });
+
+  it("summarizes conversations by requester and location", () => {
+    const sessions: Session[] = [
+      {
+        channel: "C1",
+        channelName: "proj-alpha",
+        conversationId: "slack:C1:100",
+        cumulativeDurationMs: 1_000,
+        cumulativeUsage: { inputTokens: 10, outputTokens: 5 },
+        id: "turn-1",
+        lastProgressAt: "2026-06-01T10:01:00.000Z",
+        lastSeenAt: "2026-06-01T10:02:00.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+      {
+        channel: "C1",
+        channelName: "proj-alpha",
+        conversationId: "slack:C1:100",
+        cumulativeDurationMs: 2_000,
+        cumulativeUsage: { totalTokens: 20 },
+        id: "turn-2",
+        lastProgressAt: "2026-06-01T10:03:00.000Z",
+        lastSeenAt: "2026-06-01T10:04:00.000Z",
+        requesterIdentity: { fullName: "Blake" },
+        startedAt: "2026-06-01T10:03:00.000Z",
+        status: "failed",
+        surface: "slack",
+        title: "Turn turn-2",
+      },
+      {
+        channel: "D1",
+        conversationId: "slack:D1:200",
+        cumulativeDurationMs: 3_000,
+        id: "turn-3",
+        lastProgressAt: "2026-06-01T11:01:00.000Z",
+        lastSeenAt: "2026-06-01T11:02:00.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-06-01T11:00:00.000Z",
+        status: "active",
+        surface: "slack",
+        title: "Turn turn-3",
+      },
+    ];
+
+    expect(summarizeConversationStats(sessions)).toMatchObject({
+      active: 1,
+      conversations: 2,
+      durationMs: 6_000,
+      failed: 1,
+      requesters: [
+        {
+          conversations: 2,
+          durationMs: 4_000,
+          label: "Avery",
+          tokens: 15,
+          turns: 2,
+        },
+        {
+          conversations: 1,
+          durationMs: 2_000,
+          label: "Blake",
+          tokens: 20,
+          turns: 1,
+        },
+      ],
+      tokens: 35,
+      turns: 3,
+    });
+    expect(
+      summarizeConversationStats(sessions).locations.map((item) => ({
+        conversations: item.conversations,
+        label: item.label,
+      })),
+    ).toEqual([
+      { conversations: 1, label: "#proj-alpha" },
+      { conversations: 1, label: "Direct Message" },
+    ]);
   });
 
   it("rounds long chart duration ticks to whole minutes", () => {

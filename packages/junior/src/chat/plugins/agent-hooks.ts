@@ -1,8 +1,12 @@
 import type {
   AgentPluginRequester,
+  AgentPluginReadState,
   AgentPluginRoute,
   AgentPluginRouteMethod,
   AgentPluginSandbox,
+  DashboardPluginReport,
+  DashboardPluginReportContent,
+  DashboardPluginMetricTone,
   SlackConversationLink,
   JuniorPluginRegistration,
 } from "@sentry/junior-plugin-api";
@@ -48,6 +52,12 @@ export interface AgentPluginHookRunner {
 let agentPlugins: JuniorPluginRegistration[] = [];
 const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+const DASHBOARD_REPORT_MAX_SUMMARY_ITEMS = 8;
+const DASHBOARD_REPORT_MAX_SECTIONS = 8;
+const DASHBOARD_REPORT_MAX_COLUMNS = 8;
+const DASHBOARD_REPORT_MAX_ROWS = 25;
+const DASHBOARD_REPORT_MAX_LABEL_LENGTH = 80;
+const DASHBOARD_REPORT_MAX_VALUE_LENGTH = 160;
 const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
   "GET",
   "POST",
@@ -316,6 +326,226 @@ export function getAgentPluginSlackConversationLink(
     }
   }
   return undefined;
+}
+
+function pluginReadState(state: { get: AgentPluginReadState["get"] }) {
+  return {
+    get: state.get,
+  } satisfies AgentPluginReadState;
+}
+
+function dashboardReportText(
+  value: string | undefined,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.length <= maxLength
+    ? trimmed
+    : `${trimmed.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function dashboardReportTone(
+  tone: DashboardPluginMetricTone | undefined,
+): DashboardPluginMetricTone | undefined {
+  return tone === "danger" ||
+    tone === "good" ||
+    tone === "neutral" ||
+    tone === "warning"
+    ? tone
+    : undefined;
+}
+
+function sanitizeDashboardReport(args: {
+  pluginName: string;
+  report: DashboardPluginReportContent;
+}): DashboardPluginReport {
+  const summary = args.report.summary
+    ?.slice(0, DASHBOARD_REPORT_MAX_SUMMARY_ITEMS)
+    .map((metric) => {
+      const label = dashboardReportText(
+        metric.label,
+        DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+      );
+      const value = dashboardReportText(
+        metric.value,
+        DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+      );
+      if (!label || !value) {
+        return undefined;
+      }
+      const sanitizedMetric: NonNullable<
+        DashboardPluginReport["summary"]
+      >[number] = { label, value };
+      const tone = dashboardReportTone(metric.tone);
+      if (tone) {
+        sanitizedMetric.tone = tone;
+      }
+      return sanitizedMetric;
+    })
+    .filter((metric): metric is NonNullable<typeof metric> => Boolean(metric));
+  const sections = args.report.sections
+    ?.slice(0, DASHBOARD_REPORT_MAX_SECTIONS)
+    .map((section, sectionIndex) => {
+      const title = dashboardReportText(
+        section.title,
+        DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+      );
+      if (!title) {
+        return undefined;
+      }
+      const columns = section.columns
+        ?.slice(0, DASHBOARD_REPORT_MAX_COLUMNS)
+        .map((column) => {
+          const key = dashboardReportText(
+            column.key,
+            DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+          );
+          const label = dashboardReportText(
+            column.label,
+            DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+          );
+          return key && label ? { key, label } : undefined;
+        })
+        .filter((column): column is NonNullable<typeof column> =>
+          Boolean(column),
+        );
+      const rows = section.rows
+        ?.slice(0, DASHBOARD_REPORT_MAX_ROWS)
+        .map((row, rowIndex) => {
+          const id =
+            dashboardReportText(row.id, DASHBOARD_REPORT_MAX_LABEL_LENGTH) ??
+            `${sectionIndex}:${rowIndex}`;
+          const cells = Object.fromEntries(
+            (columns ?? []).map((column) => [
+              column.key,
+              dashboardReportText(
+                row.cells[column.key],
+                DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+              ) ?? "",
+            ]),
+          );
+          const sanitizedRow: NonNullable<
+            NonNullable<DashboardPluginReport["sections"]>[number]["rows"]
+          >[number] = {
+            cells,
+            id,
+          };
+          const tone = dashboardReportTone(row.tone);
+          if (tone) {
+            sanitizedRow.tone = tone;
+          }
+          return sanitizedRow;
+        });
+      const sanitizedSection: NonNullable<
+        DashboardPluginReport["sections"]
+      >[number] = { title };
+      if (columns?.length) {
+        sanitizedSection.columns = columns;
+      }
+      const emptyText = dashboardReportText(
+        section.emptyText,
+        DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+      );
+      if (emptyText) {
+        sanitizedSection.emptyText = emptyText;
+      }
+      if (rows?.length) {
+        sanitizedSection.rows = rows;
+      }
+      return sanitizedSection;
+    })
+    .filter((section): section is NonNullable<typeof section> =>
+      Boolean(section),
+    );
+
+  const sanitized: DashboardPluginReport = {
+    pluginName: args.pluginName,
+  };
+  const generatedAt = dashboardReportText(
+    args.report.generatedAt,
+    DASHBOARD_REPORT_MAX_VALUE_LENGTH,
+  );
+  if (generatedAt) {
+    sanitized.generatedAt = generatedAt;
+  }
+  if (sections?.length) {
+    sanitized.sections = sections;
+  }
+  if (summary?.length) {
+    sanitized.summary = summary;
+  }
+  const title = dashboardReportText(
+    args.report.title,
+    DASHBOARD_REPORT_MAX_LABEL_LENGTH,
+  );
+  if (title) {
+    sanitized.title = title;
+  }
+  return sanitized;
+}
+
+function failedDashboardReport(args: {
+  nowMs: number;
+  pluginName: string;
+}): DashboardPluginReport {
+  return {
+    generatedAt: new Date(args.nowMs).toISOString(),
+    pluginName: args.pluginName,
+    summary: [{ label: "report", tone: "danger", value: "failed" }],
+    title: args.pluginName,
+    sections: [
+      {
+        emptyText: "This plugin report failed to load.",
+        title: "Error",
+      },
+    ],
+  };
+}
+
+/** Collect read-only dashboard summaries exposed by trusted plugins. */
+export async function getAgentPluginDashboardReports(
+  nowMs = Date.now(),
+): Promise<DashboardPluginReport[]> {
+  const reports: DashboardPluginReport[] = [];
+  for (const plugin of getAgentPlugins()) {
+    const hook = plugin.hooks?.dashboardReport;
+    if (!hook) {
+      continue;
+    }
+    const log = createAgentPluginLogger(plugin.name);
+    try {
+      const state = createPluginState(plugin.name, {
+        legacyStatePrefixes: plugin.legacyStatePrefixes,
+      });
+      const report = await hook({
+        plugin: { name: plugin.name },
+        log,
+        nowMs,
+        state: pluginReadState(state),
+      });
+      if (!report) {
+        continue;
+      }
+      reports.push(
+        sanitizeDashboardReport({
+          pluginName: plugin.name,
+          report,
+        }),
+      );
+    } catch (error) {
+      log.error("Trusted plugin dashboard report failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      reports.push(failedDashboardReport({ nowMs, pluginName: plugin.name }));
+    }
+  }
+  return reports;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

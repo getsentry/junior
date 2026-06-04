@@ -53,6 +53,13 @@ function reporting(): JuniorReporting {
         ],
       };
     },
+    async getPluginReports() {
+      return {
+        source: "trusted_plugins",
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        reports: [],
+      };
+    },
     async getConversation(conversationId: string) {
       return {
         conversationId,

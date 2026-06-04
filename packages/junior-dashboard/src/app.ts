@@ -1,7 +1,10 @@
 import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { JuniorReporting } from "@sentry/junior/reporting";
+import type {
+  DashboardPluginReportFeed,
+  JuniorReporting,
+} from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { dashboardClientAsset, dashboardTailwindAsset } from "./assets";
@@ -119,6 +122,47 @@ function dashboardLoginUrl(request: Request, basePath: string): string {
     url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
   }
   return url.toString();
+}
+
+function emptyPluginReportFeed(): DashboardPluginReportFeed {
+  return {
+    generatedAt: new Date().toISOString(),
+    reports: [],
+    source: "trusted_plugins",
+  };
+}
+
+function failedPluginReportFeed(): DashboardPluginReportFeed {
+  return {
+    generatedAt: new Date().toISOString(),
+    reports: [
+      {
+        pluginName: "dashboard",
+        sections: [
+          {
+            emptyText: "Trusted plugin stats failed to load.",
+            title: "Error",
+          },
+        ],
+        summary: [{ label: "report", tone: "danger", value: "failed" }],
+        title: "Plugin Reports",
+      },
+    ],
+    source: "trusted_plugins",
+  };
+}
+
+async function readPluginReports(
+  reporting: JuniorReporting,
+): Promise<DashboardPluginReportFeed> {
+  if (!reporting.getPluginReports) {
+    return emptyPluginReportFeed();
+  }
+  try {
+    return await reporting.getPluginReports();
+  } catch {
+    return failedPluginReportFeed();
+  }
 }
 
 function callbackUrl(request: Request, basePath: string): string {
@@ -255,6 +299,7 @@ function dashboardPagePaths(basePath: string): string[] {
   return [
     basePath,
     basePath === "/" ? "/conversations" : `${basePath}/conversations`,
+    basePath === "/" ? "/plugins" : `${basePath}/plugins`,
     basePath === "/" ? "/sessions" : `${basePath}/sessions`,
   ];
 }
@@ -436,8 +481,8 @@ export function createDashboardApp(
 
   if (basePath === "/") {
     // When mounted at root, a wildcard is required to cover all sub-routes
-    // (e.g. /conversations, /sessions). `app.use("/", ...)` only matches
-    // the exact root path in Hono and leaves those routes unprotected.
+    // (e.g. /conversations, /plugins, /sessions). `app.use("/", ...)` only
+    // matches the exact root path in Hono and leaves those routes unprotected.
     app.use("/*", requireDashboardSession);
   } else {
     app.use(basePath, requireDashboardSession);
@@ -465,6 +510,9 @@ export function createDashboardApp(
   });
   app.get("/api/dashboard/sessions", async () => {
     return Response.json(await reporting.getSessions());
+  });
+  app.get("/api/dashboard/plugin-reports", async () => {
+    return Response.json(await readPluginReports(reporting));
   });
   app.get("/api/dashboard/conversations/:conversationId", async (c) => {
     return Response.json(

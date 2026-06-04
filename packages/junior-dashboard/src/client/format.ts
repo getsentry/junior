@@ -545,8 +545,7 @@ function getConversationTitle(conversation: Conversation): string {
   if (title) return title;
   if (conversation.surface === "slack") {
     return (
-      slackLocationLabel(conversation, { includeId: false }) ??
-      "Conversation"
+      slackLocationLabel(conversation, { includeId: false }) ?? "Conversation"
     );
   }
   return "Conversation";
@@ -926,6 +925,178 @@ export function buildConversations(sessions: Session[]): Conversation[] {
       };
     })
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
+}
+
+export type ConversationStatsItem = {
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  hung: number;
+  label: string;
+  tokens?: number;
+  turns: number;
+};
+
+export type ConversationStats = {
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  hung: number;
+  locations: ConversationStatsItem[];
+  requesters: ConversationStatsItem[];
+  tokens?: number;
+  turns: number;
+};
+
+function emptyStatsItem(label: string): ConversationStatsItem {
+  return {
+    active: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    label,
+    turns: 0,
+  };
+}
+
+function addItemTokens(
+  item: ConversationStatsItem,
+  tokens: number | undefined,
+): void {
+  if (tokens === undefined) {
+    return;
+  }
+  item.tokens = (item.tokens ?? 0) + tokens;
+}
+
+function durationTotal(turns: Session[]): number {
+  return turns.reduce((sum, turn) => {
+    const duration = turn.cumulativeDurationMs;
+    return typeof duration === "number" && Number.isFinite(duration)
+      ? sum + Math.max(0, Math.floor(duration))
+      : sum;
+  }, 0);
+}
+
+function tokenTotal(turns: Session[]): number | undefined {
+  return summarizeUsage(turns.map((turn) => turn.cumulativeUsage))?.totalTokens;
+}
+
+function statusCounts(conversations: Conversation[]) {
+  return conversations.reduce(
+    (sum, conversation) => {
+      const status = visualStatusForConversation(conversation);
+      return {
+        active: sum.active + (status === "active" ? 1 : 0),
+        failed: sum.failed + (status === "failed" ? 1 : 0),
+        hung: sum.hung + (status === "hung" ? 1 : 0),
+      };
+    },
+    { active: 0, failed: 0, hung: 0 },
+  );
+}
+
+function addConversationToStatsItem(
+  item: ConversationStatsItem,
+  conversation: Conversation,
+): void {
+  const durationMs = durationTotal(conversation.turns);
+  const tokens = tokenTotal(conversation.turns);
+  const status = visualStatusForConversation(conversation);
+  item.conversations += 1;
+  item.turns += conversation.turns.length;
+  item.durationMs += durationMs;
+  item.active += status === "active" ? 1 : 0;
+  item.failed += status === "failed" ? 1 : 0;
+  item.hung += status === "hung" ? 1 : 0;
+  addItemTokens(item, tokens);
+}
+
+function addTurnToStatsItem(args: {
+  conversation: Conversation;
+  countedConversations: Set<string>;
+  item: ConversationStatsItem;
+  turn: Session;
+}): void {
+  const durationMs = durationTotal([args.turn]);
+  const tokens = tokenTotal([args.turn]);
+  if (!args.countedConversations.has(args.conversation.id)) {
+    const status = visualStatusForConversation(args.conversation);
+    args.countedConversations.add(args.conversation.id);
+    args.item.conversations += 1;
+    args.item.active += status === "active" ? 1 : 0;
+    args.item.failed += status === "failed" ? 1 : 0;
+    args.item.hung += status === "hung" ? 1 : 0;
+  }
+  args.item.turns += 1;
+  args.item.durationMs += durationMs;
+  addItemTokens(args.item, tokens);
+}
+
+function statsItems(map: Map<string, ConversationStatsItem>) {
+  return [...map.values()].sort(
+    (left, right) =>
+      right.conversations - left.conversations ||
+      right.turns - left.turns ||
+      right.durationMs - left.durationMs ||
+      left.label.localeCompare(right.label),
+  );
+}
+
+/** Summarize recent conversations into dashboard aggregate groups. */
+export function summarizeConversationStats(
+  sessions: Session[],
+): ConversationStats {
+  const conversations = buildConversations(sessions);
+  const requesters = new Map<string, ConversationStatsItem>();
+  const requesterConversationIds = new Map<string, Set<string>>();
+  const locations = new Map<string, ConversationStatsItem>();
+
+  for (const conversation of conversations) {
+    const location =
+      slackLocationLabel(conversation, { includeId: false }) ??
+      (conversation.surface === "scheduler"
+        ? "Scheduler"
+        : conversation.surface === "api"
+          ? "API"
+          : conversation.surface === "internal"
+            ? "Internal"
+            : "Unknown");
+
+    for (const turn of conversation.turns) {
+      const requester = requesterLabel(turn.requesterIdentity) ?? "Unknown";
+      const requesterItem =
+        requesters.get(requester) ?? emptyStatsItem(requester);
+      const countedConversations =
+        requesterConversationIds.get(requester) ?? new Set<string>();
+      addTurnToStatsItem({
+        conversation,
+        countedConversations,
+        item: requesterItem,
+        turn,
+      });
+      requesters.set(requester, requesterItem);
+      requesterConversationIds.set(requester, countedConversations);
+    }
+
+    const locationItem = locations.get(location) ?? emptyStatsItem(location);
+    addConversationToStatsItem(locationItem, conversation);
+    locations.set(location, locationItem);
+  }
+
+  const counts = statusCounts(conversations);
+  return {
+    ...counts,
+    conversations: conversations.length,
+    durationMs: durationTotal(sessions),
+    locations: statsItems(locations),
+    requesters: statsItems(requesters),
+    tokens: tokenTotal(sessions),
+    turns: sessions.length,
+  };
 }
 
 /** Apply the dashboard conversation filter to grouped conversation rows. */

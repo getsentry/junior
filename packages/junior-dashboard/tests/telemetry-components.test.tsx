@@ -7,6 +7,7 @@ import { HighlightedCode } from "../src/client/code";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { Button } from "../src/client/components/Button";
 import { FilterTabs } from "../src/client/components/FilterTabs";
+import { PluginReports } from "../src/client/components/PluginReports";
 import { StatusBadge } from "../src/client/components/StatusBadge";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
@@ -16,6 +17,7 @@ import { client } from "../src/client/api";
 import { CommandCenter } from "../src/client/pages/CommandCenter";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
+import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
   ConversationDetailFeed,
   ConversationTurn,
@@ -44,6 +46,11 @@ function dashboardData(sessions: Session[]): DashboardData {
       timestamp: "2026-01-01T00:00:00.000Z",
     },
     me: { user: {} },
+    pluginReports: {
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      reports: [],
+      source: "trusted_plugins",
+    },
     plugins: [],
     runtime: {
       cwd: "/repo",
@@ -386,10 +393,108 @@ describe("dashboard telemetry components", () => {
         <CommandCenter data={data} queryError={null} />
       </MemoryRouter>,
     );
+    const plugins = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data} />
+      </MemoryRouter>,
+    );
 
     expect(conversation).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
     expect(conversations).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
     expect(command).toContain("mx-auto grid w-full min-w-0 max-w-screen-xl");
+    expect(plugins).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
+  });
+
+  it("renders aggregate stats and trusted plugin reports", () => {
+    const sessions: Session[] = [
+      {
+        channel: "C1",
+        channelName: "proj-alpha",
+        conversationId: "slack:C1:100",
+        cumulativeDurationMs: 1_000,
+        id: "turn-1",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:02.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+      {
+        channel: "D1",
+        conversationId: "slack:D1:200",
+        cumulativeDurationMs: 2_000,
+        id: "turn-2",
+        lastProgressAt: "2026-01-01T00:02:01.000Z",
+        lastSeenAt: "2026-01-01T00:02:02.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-01-01T00:02:00.000Z",
+        status: "failed",
+        surface: "slack",
+        title: "Turn turn-2",
+      },
+    ];
+    const data = dashboardData(sessions);
+    data.plugins = [{ name: "github" }];
+    data.pluginReports.reports = [
+      {
+        pluginName: "scheduler",
+        title: "Scheduler",
+        summary: [{ label: "active", value: "2" }],
+        sections: [
+          {
+            title: "Upcoming",
+            columns: [{ key: "task", label: "Task" }],
+            rows: [{ id: "sched_1", cells: { task: "sched_1" } }],
+          },
+        ],
+      },
+    ];
+    data.skills = [{ name: "triage", pluginProvider: "github" }];
+
+    const commandHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <CommandCenter data={data} queryError={null} />
+      </MemoryRouter>,
+    );
+    const pluginHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(commandHtml).toContain(">Stats<");
+    expect(commandHtml).toContain(">People<");
+    expect(commandHtml).toContain("Avery");
+    expect(pluginHtml).toContain(">Plugins<");
+    expect(pluginHtml).toContain(">Scheduler<");
+    expect(pluginHtml).toContain("github");
+    expect(pluginHtml).toContain("triage");
+    expect(pluginHtml).toContain("scheduler");
+    expect(pluginHtml).toContain("sched_1");
+  });
+
+  it("renders a clear fallback for plugin rows without columns", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "scheduler",
+            sections: [
+              {
+                title: "Malformed",
+                rows: [{ id: "row-1", cells: { task: "sched_1" } }],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(
+      "Report rows are unavailable because no columns were declared.",
+    );
   });
 
   it("renders transcript copy as an icon-only control", () => {
