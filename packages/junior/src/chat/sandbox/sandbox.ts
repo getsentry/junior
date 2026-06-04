@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+import { readRuntimeFile } from "@/chat/content";
 import {
   logInfo,
   setSpanAttributes,
@@ -298,7 +298,7 @@ export function createSandboxExecutor(options?: {
         resolveHostDataPath(referenceFiles, filePath);
       if (hostPath) {
         try {
-          const content = await fs.readFile(hostPath, "utf8");
+          const content = await readRuntimeFile(hostPath);
           setSpanAttributes({
             "app.sandbox.path.length": filePath.length,
             "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),

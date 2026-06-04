@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-04
 
 ## Purpose
 
@@ -36,6 +36,36 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 Plugin registry initialization is synchronous at module load so `discoverSkills()` can associate plugin-backed skills with their parent plugin.
 
 Plugin packages must be explicitly declared by plugin registrations. Runtime must never scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to auto-discover plugins.
+
+## Nitro Content Provider
+
+Nitro/serverless builds compile Junior app content into a private virtual module
+instead of requiring each serverless function to rediscover files from
+`process.cwd()`. The compiled graph includes app markdown, app-local skills,
+app-local plugin manifests and skills, and explicitly configured plugin package
+manifests and skills. The graph uses virtual server-only paths under
+`/__junior_content__`; those paths are ownership identifiers, not public assets
+or build-machine filesystem paths.
+
+`createApp()` hydrates the compiled provider before plugin validation and route
+wiring. If the virtual module is absent, CLI, local dev, and non-Nitro runtimes
+continue to use the filesystem provider. Plugin package discovery remains
+explicit: the compiled provider may include only packages named by the
+`defineJuniorPlugins(...)` set passed to `juniorNitro()`.
+
+Provider-backed reads must preserve the existing runtime boundaries:
+
+- plugin manifests are parsed and validated through the normal manifest parser
+- plugin-owned skill roots still resolve back to their parent plugin before
+  skill bodies are loaded
+- app reference markdown and skill files remain syncable into sandboxes
+- SOUL, WORLD, DESCRIPTION, skill bodies, and plugin manifests are never emitted
+  as public Vercel static assets
+
+Nitro/Vercel builds must not copy Junior app/plugin content into each function
+directory as the runtime source of truth. `juniorNitro({ includeFiles })` is
+reserved for explicitly configured non-Junior package assets that a dependency
+provider needs at runtime and the bundler cannot trace.
 
 ## Registry Surface
 
@@ -118,9 +148,9 @@ Trusted agent behavior is initialized from app code, not `plugin.yaml`.
 
 Apps export one runtime-safe `defineJuniorPlugins(...)` set and point
 `juniorNitro({ plugins: "./plugins" })` at it. `juniorNitro()` extracts package
-names for build-time copying and emits a virtual module that imports the same
-set at runtime. `createApp()` extracts trusted hooks from that virtual module
-and validates that every registration has a matching manifest. Trusted
+names for compiled content and emits a virtual module that imports the same set
+at runtime. `createApp()` extracts trusted hooks from that virtual module and
+validates that every registration has a matching manifest. Trusted
 factories carry their manifest inline, so runtime code is not declared from
 `plugin.yaml`.
 

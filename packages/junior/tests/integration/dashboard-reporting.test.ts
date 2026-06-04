@@ -4,8 +4,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 vi.mock("@/chat/prompt", () => ({
   buildSystemPrompt: vi.fn(() => "[system prompt]"),
   buildTurnContextPrompt: vi.fn(() => null),
-  JUNIOR_PERSONALITY: "",
-  JUNIOR_WORLD: null,
 }));
 
 const SYSTEM_MESSAGE = {

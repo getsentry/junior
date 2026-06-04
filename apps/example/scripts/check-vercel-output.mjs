@@ -17,6 +17,8 @@ const queueFunctionDir = path.join(
   "agent",
   "continue.func",
 );
+const compiledAppRoot = "/__junior_content__/app";
+const compiledNodeModulesRoot = "/__junior_content__/node_modules";
 
 function fail(message) {
   throw new Error(`Vercel output check failed: ${message}`);
@@ -25,6 +27,12 @@ function fail(message) {
 function requireFile(filePath) {
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     fail(`missing file ${path.relative(appRoot, filePath)}`);
+  }
+}
+
+function rejectFile(filePath) {
+  if (existsSync(filePath) && statSync(filePath).isFile()) {
+    fail(`unexpected copied file ${path.relative(appRoot, filePath)}`);
   }
 }
 
@@ -37,6 +45,32 @@ function requireDirectory(directoryPath) {
 function readJson(filePath) {
   requireFile(filePath);
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function readVirtualContent(functionDir) {
+  const virtualContentPath = path.join(functionDir, "_virtual", "content.mjs");
+  requireFile(virtualContentPath);
+  const raw = readFileSync(virtualContentPath, "utf8");
+  const match =
+    /^export const content = (.*);\n?$/s.exec(raw) ??
+    /(?:^|\n)const content = (\{[\s\S]*\});\n\/\/#endregion\nexport \{ content \};\n?$/.exec(
+      raw,
+    );
+  if (!match) {
+    fail(
+      `${path.relative(appRoot, virtualContentPath)} does not export a compiled content graph`,
+    );
+  }
+
+  return JSON.parse(match[1]);
+}
+
+function requireCompiledFile(content, virtualPath, functionDir) {
+  if (typeof content?.files?.[virtualPath] !== "string") {
+    fail(
+      `${path.relative(appRoot, functionDir)} is missing compiled file ${virtualPath}`,
+    );
+  }
 }
 
 function packageSourceHasPlugin(packageName) {
@@ -76,19 +110,36 @@ function assertQueueTrigger() {
 
 function assertFunctionHasJuniorContent(functionDir, pluginPackages) {
   requireFile(path.join(functionDir, "index.mjs"));
-  requireFile(path.join(functionDir, "app", "SOUL.md"));
-  requireFile(
-    path.join(functionDir, "app", "plugins", "example-bundle", "plugin.yaml"),
+  const content = readVirtualContent(functionDir);
+  if (content.appRoot !== compiledAppRoot) {
+    fail(`${path.relative(appRoot, functionDir)} has an unexpected app root`);
+  }
+
+  requireCompiledFile(content, `${compiledAppRoot}/SOUL.md`, functionDir);
+  rejectFile(path.join(functionDir, "app", "SOUL.md"));
+  requireCompiledFile(
+    content,
+    `${compiledAppRoot}/plugins/example-bundle/plugin.yaml`,
+    functionDir,
   );
-  requireFile(
-    path.join(functionDir, "app", "skills", "example-local", "SKILL.md"),
+  requireCompiledFile(
+    content,
+    `${compiledAppRoot}/skills/example-local/SKILL.md`,
+    functionDir,
   );
 
   for (const packageName of pluginPackages) {
-    requireFile(
+    requireCompiledFile(
+      content,
+      `${compiledNodeModulesRoot}/${packageName}/plugin.yaml`,
+      functionDir,
+    );
+    rejectFile(
       path.join(functionDir, "node_modules", packageName, "plugin.yaml"),
     );
   }
+
+  return content;
 }
 
 if (existsSync(path.join(appRoot, "api"))) {
@@ -106,10 +157,17 @@ if (pluginPackages.length === 0) {
   fail("no plugin package fixtures were discovered for output validation");
 }
 
+const compiledGraphs = [];
 for (const functionDir of [serverFunctionDir, queueFunctionDir]) {
-  assertFunctionHasJuniorContent(functionDir, pluginPackages);
+  compiledGraphs.push(
+    assertFunctionHasJuniorContent(functionDir, pluginPackages),
+  );
+}
+
+if (JSON.stringify(compiledGraphs[0]) !== JSON.stringify(compiledGraphs[1])) {
+  fail("primary and queue functions have different compiled content graphs");
 }
 
 console.log(
-  `Verified Vercel output for ${pluginPackages.length} plugin package(s) in primary and queue functions.`,
+  `Verified compiled Junior content for ${pluginPackages.length} plugin package(s) in primary and queue functions.`,
 );

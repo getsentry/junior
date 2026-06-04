@@ -7,24 +7,26 @@ import {
   getGatewayApiKey,
   MISSING_GATEWAY_CREDENTIALS_ERROR,
 } from "@/chat/pi/client";
-import { JUNIOR_PERSONALITY } from "@/chat/prompt";
+import { getJuniorPersonality } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
 
-const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
+function buildEnrichmentSystemPrompt(): string {
+  return `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
 
 <personality>
-${JUNIOR_PERSONALITY}
+${getJuniorPersonality()}
 </personality>
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
+}
 
 async function enrichImagePrompt(rawPrompt: string): Promise<string> {
   try {
     const { text } = await completeText({
       modelId: botConfig.fastModelId,
-      system: ENRICHMENT_SYSTEM_PROMPT,
+      system: buildEnrichmentSystemPrompt(),
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
       maxTokens: 1024,
     });

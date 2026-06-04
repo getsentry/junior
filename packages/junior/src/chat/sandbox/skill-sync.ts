@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  listCompiledFilesRecursive,
+  readRuntimeFileBuffer,
+} from "@/chat/content";
+import {
   SANDBOX_DATA_ROOT,
   SANDBOX_SKILLS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -22,9 +26,14 @@ function toPosixRelative(base: string, absolute: string): string {
   return path.relative(base, absolute).split(path.sep).join("/");
 }
 
-async function listFilesRecursive(root: string): Promise<string[]> {
+async function listFilesRecursive(root: string): Promise<SkillSyncFile[]> {
+  const compiledFiles = listCompiledFilesRecursive(root);
+  if (compiledFiles) {
+    return compiledFiles;
+  }
+
   const queue: string[] = [root];
-  const files: string[] = [];
+  const files: SkillSyncFile[] = [];
 
   while (queue.length > 0) {
     const dir = queue.shift() as string;
@@ -36,7 +45,10 @@ async function listFilesRecursive(root: string): Promise<string[]> {
       if (entry.isDirectory()) {
         queue.push(absolute);
       } else if (entry.isFile()) {
-        files.push(absolute);
+        files.push({
+          path: absolute,
+          content: await fs.readFile(absolute),
+        });
       }
     }
   }
@@ -59,14 +71,15 @@ async function buildSkillSyncFiles(
 
   for (const skill of availableSkills) {
     const skillFiles = await listFilesRecursive(skill.skillPath);
-    for (const absoluteFile of skillFiles) {
+    for (const file of skillFiles) {
+      const absoluteFile = file.path;
       const relative = toPosixRelative(skill.skillPath, absoluteFile);
       if (!relative || relative.startsWith("..")) {
         continue;
       }
       filesToWrite.push({
         path: `${sandboxSkillDir(skill.name)}/${relative}`,
-        content: await fs.readFile(absoluteFile),
+        content: file.content,
       });
     }
 
@@ -87,7 +100,7 @@ async function buildSkillSyncFiles(
       const fileName = path.basename(absoluteFile);
       filesToWrite.push({
         path: `${SANDBOX_DATA_ROOT}/${fileName}`,
-        content: await fs.readFile(absoluteFile),
+        content: await readRuntimeFileBuffer(absoluteFile),
       });
     }
   }

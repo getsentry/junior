@@ -9,6 +9,7 @@ import {
   getPluginProviders,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
+import { setRuntimeContent, type JuniorCompiledContent } from "@/chat/content";
 import {
   type AgentPluginRouteRegistration,
   getAgentPluginRoutes,
@@ -106,6 +107,23 @@ async function resolveVirtualConfig(): Promise<
   }
 }
 
+/** Resolve private runtime content from the virtual module injected by juniorNitro(). */
+async function resolveVirtualContent(): Promise<
+  JuniorCompiledContent | undefined
+> {
+  try {
+    const mod: {
+      content?: JuniorCompiledContent;
+    } = await import("#junior/content");
+    return mod.content;
+  } catch (error) {
+    if (!isMissingVirtualModule(error, "#junior/content")) {
+      throw error;
+    }
+    return undefined;
+  }
+}
+
 /** Resolve plugin configuration from the env fallback. */
 function resolveEnvPluginCatalogConfig(): PluginCatalogConfig | undefined {
   const packages = readEnvPluginPackages();
@@ -116,6 +134,10 @@ function resolveEnvPluginCatalogConfig(): PluginCatalogConfig | undefined {
 }
 
 function isMissingVirtualConfig(error: unknown): boolean {
+  return isMissingVirtualModule(error, "#junior/config");
+}
+
+function isMissingVirtualModule(error: unknown, specifier: string): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
@@ -124,7 +146,7 @@ function isMissingVirtualConfig(error: unknown): boolean {
     (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
       code === "ERR_MODULE_NOT_FOUND" ||
       code === "MODULE_NOT_FOUND") &&
-    error.message.includes("#junior/config")
+    error.message.includes(specifier)
   );
 }
 
@@ -257,6 +279,7 @@ function mountAgentPluginRoutes(
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+  setRuntimeContent(await resolveVirtualContent());
   const virtualConfig = await resolveVirtualConfig();
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const agentPlugins =

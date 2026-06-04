@@ -1,7 +1,11 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import {
+  getRuntimeContentVersion,
+  listRuntimeDirectoryEntries,
+  readRuntimeFile,
+} from "@/chat/content";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import {
@@ -332,7 +336,7 @@ async function readSkillDirectory(
   const skillFile = path.join(skillDir, "SKILL.md");
 
   try {
-    const raw = await fs.readFile(skillFile, "utf8");
+    const raw = await readRuntimeFile(skillFile);
     const parsed = parseSkillFile(raw, path.basename(skillDir));
     if (!parsed.ok) {
       logWarn(
@@ -379,7 +383,7 @@ export async function discoverSkills(
   options?: DiscoverSkillsOptions,
 ): Promise<SkillMetadata[]> {
   const roots = resolveSkillRoots(options);
-  const cacheKey = roots.join(path.delimiter);
+  const cacheKey = `${getRuntimeContentVersion()}:${roots.join(path.delimiter)}`;
   if (
     skillCache &&
     skillCache.expiresAt > Date.now() &&
@@ -392,32 +396,30 @@ export async function discoverSkills(
   const seen = new Set<string>();
 
   for (const root of roots) {
-    try {
-      const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const entry of entries.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      )) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const skill = await readSkillDirectory(path.join(root, entry.name));
-        if (skill && !seen.has(skill.name)) {
-          seen.add(skill.name);
-          discovered.push(skill);
-        }
-      }
-    } catch (error) {
+    const entries = listRuntimeDirectoryEntries(root);
+    if (!entries) {
       logWarn(
         "skill_root_read_failed",
         {},
         {
           "file.directory": root,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
+          "exception.message": "directory could not be read",
         },
         "Failed to read skill root",
       );
+      continue;
+    }
+
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isDirectory) {
+        continue;
+      }
+
+      const skill = await readSkillDirectory(path.join(root, entry.name));
+      if (skill && !seen.has(skill.name)) {
+        seen.add(skill.name);
+        discovered.push(skill);
+      }
     }
   }
 
@@ -499,7 +501,7 @@ export async function loadSkillsByName(
     }
 
     const skillFile = path.join(meta.skillPath, "SKILL.md");
-    const raw = await fs.readFile(skillFile, "utf8");
+    const raw = await readRuntimeFile(skillFile);
     const parsed = parseSkillFile(raw, meta.name);
     if (!parsed.ok) {
       throw new Error(`Invalid skill file in ${skillFile}: ${parsed.error}`);

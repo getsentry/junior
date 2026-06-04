@@ -2,10 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  copyAppAndPluginContent,
-  copyIncludedFiles,
-} from "@/build/copy-build-content";
+import { copyIncludedFiles } from "@/build/copy-build-content";
 
 const tempDirs: string[] = [];
 
@@ -213,71 +210,5 @@ describe("copyIncludedFiles", () => {
         "utf8",
       ),
     ).toBe("export {};\n");
-  });
-});
-
-describe("copyAppAndPluginContent", () => {
-  it("copies configured plugin packages resolved from ancestor node_modules", () => {
-    const workspaceRoot = makeTempDir();
-    const cwd = path.join(workspaceRoot, "apps", "example");
-    const serverRoot = makeTempDir();
-    const packageDir = writePackage(workspaceRoot, "@acme/ancestor-plugin", {
-      entryPoint: false,
-    });
-
-    fs.mkdirSync(path.join(packageDir, "skills", "demo"), { recursive: true });
-    fs.writeFileSync(
-      path.join(packageDir, "plugin.yaml"),
-      "name: ancestor\ndescription: Ancestor plugin\n",
-      "utf8",
-    );
-    fs.writeFileSync(
-      path.join(packageDir, "skills", "demo", "SKILL.md"),
-      "---\nname: demo\ndescription: Demo\n---\n",
-      "utf8",
-    );
-    fs.mkdirSync(cwd, { recursive: true });
-    fs.writeFileSync(
-      path.join(cwd, "package.json"),
-      JSON.stringify({
-        name: "example",
-        dependencies: {
-          "@acme/ancestor-plugin": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
-    fs.writeFileSync(
-      path.join(workspaceRoot, "package.json"),
-      JSON.stringify({ name: "workspace", private: true }),
-      "utf8",
-    );
-
-    copyAppAndPluginContent(cwd, serverRoot, ["@acme/ancestor-plugin"]);
-
-    expect(
-      fs.existsSync(
-        path.join(
-          serverRoot,
-          "node_modules",
-          "@acme",
-          "ancestor-plugin",
-          "plugin.yaml",
-        ),
-      ),
-    ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(
-          serverRoot,
-          "node_modules",
-          "@acme",
-          "ancestor-plugin",
-          "skills",
-          "demo",
-          "SKILL.md",
-        ),
-      ),
-    ).toBe(true);
   });
 });

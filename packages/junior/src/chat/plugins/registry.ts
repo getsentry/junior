@@ -1,6 +1,13 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
+import {
+  getCompiledPluginPackageContent,
+  getRuntimeContentVersion,
+  listRuntimeDirectoryEntries,
+  readRuntimeFileSync,
+  runtimePathIsDirectory,
+  runtimePathIsFile,
+} from "@/chat/content";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
@@ -150,6 +157,62 @@ function normalizePluginRoots(roots: string[]): string[] {
   return resolved;
 }
 
+function emptyPluginPackageContent(): InstalledPluginPackageContent {
+  return {
+    packageNames: [],
+    packages: [],
+    manifestRoots: [],
+    skillRoots: [],
+    tracingIncludes: [],
+  };
+}
+
+function pathIsInsideRoot(targetPath: string, root: string): boolean {
+  const normalizedTarget = path.resolve(targetPath);
+  const normalizedRoot = path.resolve(root);
+  return (
+    normalizedTarget === normalizedRoot ||
+    normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`)
+  );
+}
+
+function filterCompiledPluginPackageContent(
+  packagedContent: InstalledPluginPackageContent,
+): InstalledPluginPackageContent {
+  const packageNames = normalizePluginPackageNames(pluginConfig?.packages);
+  if (packageNames.length === 0) {
+    return emptyPluginPackageContent();
+  }
+
+  const packagesByName = new Map(
+    packagedContent.packages.map((pkg) => [pkg.name, pkg]),
+  );
+  const packages = packageNames.map((packageName) => {
+    const pkg = packagesByName.get(packageName);
+    if (!pkg) {
+      throw new Error(
+        `Plugin package "${packageName}" was configured but was not bundled by juniorNitro()`,
+      );
+    }
+    return pkg;
+  });
+  const packageDirs = packages.map((pkg) => pkg.dir);
+  const belongsToSelectedPackage = (targetPath: string) =>
+    packageDirs.some((dir) => pathIsInsideRoot(targetPath, dir));
+
+  return {
+    packageNames,
+    packages,
+    manifestRoots: packagedContent.manifestRoots.filter(
+      belongsToSelectedPackage,
+    ),
+    skillRoots: packagedContent.skillRoots.filter(belongsToSelectedPackage),
+    tracingIncludes: packagedContent.tracingIncludes.filter(
+      belongsToSelectedPackage,
+    ),
+  };
+}
+
 function getPluginCatalogSource(): PluginCatalogSource {
   const packagedContent = discoverConfiguredPluginPackageContent();
   const localRoots = normalizePluginRoots(pluginRoots());
@@ -170,6 +233,7 @@ function getPluginCatalogSource(): PluginCatalogSource {
       manifestRoots,
       packagedSkillRoots,
       packageNames: [...packagedContent.packageNames].sort(),
+      contentVersion: getRuntimeContentVersion(),
       pluginConfig: pluginConfig ?? {},
     }),
   };
@@ -240,6 +304,11 @@ function registerInlineManifests(
 }
 
 function discoverConfiguredPluginPackageContent(): InstalledPluginPackageContent {
+  const compiledPackageContent = getCompiledPluginPackageContent();
+  if (compiledPackageContent) {
+    return filterCompiledPluginPackageContent(compiledPackageContent);
+  }
+
   return discoverInstalledPluginPackageContent(process.cwd(), {
     packageNames: pluginConfig?.packages,
   });
@@ -258,67 +327,43 @@ function buildLoadedPluginState(
 
   const roots = source.manifestRoots;
   for (const pluginsRoot of roots) {
-    let entries: string[];
-    let rootStat: ReturnType<typeof statSync>;
-    try {
-      rootStat = statSync(pluginsRoot);
-    } catch (error) {
-      logWarn(
-        "plugin_root_read_failed",
-        {},
-        {
-          "file.directory": pluginsRoot,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Failed to read plugin root",
-      );
-      continue;
-    }
-    if (rootStat.isDirectory()) {
+    if (runtimePathIsDirectory(pluginsRoot)) {
       const manifestPath = path.join(pluginsRoot, "plugin.yaml");
-      let hasRootManifest = false;
-      try {
-        hasRootManifest = statSync(manifestPath).isFile();
-      } catch {
-        hasRootManifest = false;
-      }
-      if (hasRootManifest) {
-        const rawRootManifest = readFileSync(manifestPath, "utf8");
+      if (runtimePathIsFile(manifestPath)) {
+        const rawRootManifest = readRuntimeFileSync(manifestPath);
+        if (rawRootManifest === null) {
+          continue;
+        }
         registerYamlPluginManifest(state, rawRootManifest, pluginsRoot);
         continue;
       }
     }
-    try {
-      entries = readdirSync(pluginsRoot);
-    } catch (error) {
+
+    const entries = listRuntimeDirectoryEntries(pluginsRoot);
+    if (!entries) {
       logWarn(
         "plugin_root_read_failed",
         {},
         {
           "file.directory": pluginsRoot,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
+          "exception.message": "directory could not be read",
         },
         "Failed to read plugin root",
       );
       continue;
     }
 
-    for (const entry of entries.sort()) {
-      const pluginDir = path.join(pluginsRoot, entry);
-      try {
-        const stat = statSync(pluginDir);
-        if (!stat.isDirectory()) continue;
-      } catch {
+    for (const entry of entries.sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      const pluginDir = path.join(pluginsRoot, entry.name);
+      if (!entry.isDirectory) {
         continue;
       }
 
       const manifestPath = path.join(pluginDir, "plugin.yaml");
-      let raw: string;
-      try {
-        raw = readFileSync(manifestPath, "utf8");
-      } catch {
+      const raw = readRuntimeFileSync(manifestPath);
+      if (raw === null) {
         continue; // No manifest — skip
       }
 

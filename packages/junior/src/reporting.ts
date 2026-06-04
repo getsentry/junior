@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "@/chat/coerce";
+import { readRuntimeFileSync } from "@/chat/content";
 import { homeDir } from "@/chat/discovery";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -195,15 +195,12 @@ export interface JuniorReporting {
 }
 
 function readDescriptionText(): string | undefined {
-  try {
-    const raw = readFileSync(
-      path.join(homeDir(), "DESCRIPTION.md"),
-      "utf8",
-    ).trim();
+  const content = readRuntimeFileSync(path.join(homeDir(), "DESCRIPTION.md"));
+  if (content !== null) {
+    const raw = content.trim();
     return raw || undefined;
-  } catch {
-    return undefined;
   }
+  return undefined;
 }
 
 async function readHealth(): Promise<HealthReport> {

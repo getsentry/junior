@@ -7,3 +7,10 @@ declare module "#junior/config" {
   export const plugins: PluginCatalogConfig;
   export const trustedPluginRegistrations: string[];
 }
+
+/** Private content graph injected by juniorNitro() at build time. */
+declare module "#junior/content" {
+  import type { JuniorCompiledContent } from "@/chat/content";
+
+  export const content: JuniorCompiledContent;
+}

@@ -21,6 +21,7 @@ export default defineConfig({
   splitting: true,
   external: [
     "#junior/config",
+    "#junior/content",
     "hono",
     "@sentry/node",
     // All runtime npm dependencies stay external

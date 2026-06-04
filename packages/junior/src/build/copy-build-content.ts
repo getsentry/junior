@@ -1,37 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
 import { globToRegex } from "@/build/glob-to-regex";
 import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
-
-/** Copy app directory and plugin manifests into the server output. */
-export function copyAppAndPluginContent(
-  cwd: string,
-  serverRoot: string,
-  packageNames?: unknown,
-): void {
-  copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
-
-  const packagedContent = discoverInstalledPluginPackageContent(cwd, {
-    packageNames,
-  });
-  for (const root of packagedContent.manifestRoots) {
-    if (existsSync(path.join(root, "plugin.yaml"))) {
-      const manifestPath = path.join(root, "plugin.yaml");
-      copyIfExists(
-        manifestPath,
-        resolveServerOutputPath(cwd, serverRoot, manifestPath),
-      );
-      continue;
-    }
-
-    copyRootIntoServerOutput(cwd, serverRoot, root);
-  }
-
-  for (const root of packagedContent.skillRoots) {
-    copyRootIntoServerOutput(cwd, serverRoot, root);
-  }
-}
 
 /** Copy extra file patterns into server output for files the bundler cannot trace. */
 export function copyIncludedFiles(
@@ -145,51 +115,4 @@ function copyIfExists(source: string, target: string): boolean {
   mkdirSync(path.dirname(target), { recursive: true });
   cpSync(source, target, { recursive: true });
   return true;
-}
-
-function copyRootIntoServerOutput(
-  cwd: string,
-  serverRoot: string,
-  root: string,
-): void {
-  copyIfExists(root, resolveServerOutputPath(cwd, serverRoot, root));
-}
-
-function resolveServerOutputPath(
-  cwd: string,
-  serverRoot: string,
-  sourcePath: string,
-): string {
-  const relative = path.relative(cwd, sourcePath);
-  if (isLocalRelativePath(relative)) {
-    return path.join(serverRoot, relative);
-  }
-
-  const nodeModulesRelative = nodeModulesRelativePath(sourcePath);
-  if (nodeModulesRelative) {
-    return path.join(serverRoot, nodeModulesRelative);
-  }
-
-  throw new Error(
-    `Cannot copy configured plugin content outside the app root or node_modules: ${sourcePath}`,
-  );
-}
-
-function isLocalRelativePath(relativePath: string): boolean {
-  return (
-    Boolean(relativePath) &&
-    !path.isAbsolute(relativePath) &&
-    relativePath !== ".." &&
-    !relativePath.startsWith(`..${path.sep}`)
-  );
-}
-
-function nodeModulesRelativePath(sourcePath: string): string | null {
-  const parts = path.resolve(sourcePath).split(path.sep);
-  const nodeModulesIndex = parts.lastIndexOf("node_modules");
-  if (nodeModulesIndex === -1 || nodeModulesIndex === parts.length - 1) {
-    return null;
-  }
-
-  return path.join("node_modules", ...parts.slice(nodeModulesIndex + 1));
 }

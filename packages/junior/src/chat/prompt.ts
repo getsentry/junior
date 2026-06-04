@@ -6,9 +6,9 @@
  * stay separate from durable conversation history so compaction does not retain
  * runtime instructions as user text.
  */
-import fs from "node:fs";
 import path from "node:path";
 import { botConfig } from "@/chat/config";
+import { getRuntimeContentVersion, readRuntimeFileSync } from "@/chat/content";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   listReferenceFiles,
@@ -43,8 +43,9 @@ function loadOptionalMarkdownFile(
   fileName: string,
 ): string | null {
   for (const resolved of candidates) {
-    try {
-      const raw = fs.readFileSync(resolved, "utf8").trim();
+    const content = readRuntimeFileSync(resolved);
+    if (content !== null) {
+      const raw = content.trim();
       if (raw.length > 0) {
         const loggedMarkdownFiles = getLoggedMarkdownFiles();
         const logKey = `${fileName}:${resolved}`;
@@ -61,8 +62,6 @@ function loadOptionalMarkdownFile(
         }
         return raw;
       }
-    } catch {
-      continue;
     }
   }
 
@@ -90,7 +89,7 @@ function loadWorld(): string | null {
   return loadOptionalMarkdownFile(worldPathCandidates(), "WORLD.md");
 }
 
-export const JUNIOR_PERSONALITY = (() => {
+function resolveJuniorPersonality(): string {
   try {
     return loadSoul();
   } catch (error) {
@@ -105,9 +104,9 @@ export const JUNIOR_PERSONALITY = (() => {
     );
     return DEFAULT_SOUL;
   }
-})();
+}
 
-export const JUNIOR_WORLD = (() => {
+function resolveJuniorWorld(): string | null {
   try {
     return loadWorld();
   } catch (error) {
@@ -122,7 +121,12 @@ export const JUNIOR_WORLD = (() => {
     );
     return null;
   }
-})();
+}
+
+/** Return the active Junior personality from compiled content or filesystem fallback. */
+export function getJuniorPersonality(): string {
+  return resolveJuniorPersonality();
+}
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
@@ -433,15 +437,16 @@ function buildIdentitySection(): string {
 }
 
 function buildPersonalitySection(): string {
-  return ["# Personality", JUNIOR_PERSONALITY.trim()].join("\n");
+  return ["# Personality", resolveJuniorPersonality().trim()].join("\n");
 }
 
 function buildWorldSection(): string | null {
-  if (!JUNIOR_WORLD) {
+  const world = resolveJuniorWorld();
+  if (!world) {
     return null;
   }
 
-  return ["# World", JUNIOR_WORLD.trim()].join("\n");
+  return ["# World", world.trim()].join("\n");
 }
 
 function buildRuntimeSection(params: {
@@ -579,20 +584,29 @@ type TurnContextPromptInput = {
   configuration?: Record<string, unknown>;
 };
 
-const STATIC_SYSTEM_PROMPT = [
-  HEADER,
-  buildIdentitySection(),
-  buildPersonalitySection(),
-  buildWorldSection(),
-  buildBehaviorSection(),
-  buildOutputSection(),
-]
-  .filter((section): section is string => Boolean(section))
-  .join("\n\n");
+let staticSystemPromptCache:
+  | { contentVersion: number; prompt: string }
+  | undefined;
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
 export function buildSystemPrompt(): string {
-  return STATIC_SYSTEM_PROMPT;
+  const contentVersion = getRuntimeContentVersion();
+  if (staticSystemPromptCache?.contentVersion === contentVersion) {
+    return staticSystemPromptCache.prompt;
+  }
+
+  const prompt = [
+    HEADER,
+    buildIdentitySection(),
+    buildPersonalitySection(),
+    buildWorldSection(),
+    buildBehaviorSection(),
+    buildOutputSection(),
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join("\n\n");
+  staticSystemPromptCache = { contentVersion, prompt };
+  return prompt;
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

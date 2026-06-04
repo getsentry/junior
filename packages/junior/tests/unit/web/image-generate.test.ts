@@ -11,7 +11,7 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 vi.mock("@/chat/prompt", () => ({
-  JUNIOR_PERSONALITY: "test persona",
+  getJuniorPersonality: () => "test persona",
 }));
 
 import { completeText } from "@/chat/pi/client";

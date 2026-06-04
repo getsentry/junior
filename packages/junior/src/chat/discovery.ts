@@ -1,6 +1,13 @@
-import fs, { statSync } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  getCompiledAppRoot,
+  getCompiledSkillRoots,
+  listRuntimeDirectoryEntries,
+  runtimePathIsDirectory,
+  runtimePathIsFile,
+} from "@/chat/content";
 
 // ---------------------------------------------------------------------------
 // Filesystem helpers
@@ -8,20 +15,12 @@ import { fileURLToPath } from "node:url";
 
 /** Check whether a path exists and is a directory. */
 export function isDirectory(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isDirectory();
-  } catch {
-    return false;
-  }
+  return runtimePathIsDirectory(targetPath);
 }
 
 /** Check whether a path exists and is a regular file. */
 export function isFile(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
-  }
+  return runtimePathIsFile(targetPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +229,11 @@ export function resolveHomeDir(
   cwd: string = process.cwd(),
   options?: ResolveHomeDirOptions,
 ): string {
+  const compiledAppRoot = getCompiledAppRoot();
+  if (compiledAppRoot) {
+    return compiledAppRoot;
+  }
+
   const resolvedCwd = path.resolve(cwd);
   const directApp = path.resolve(resolvedCwd, "app");
   if (pathExists(directApp) && hasAnyDataMarkers(directApp)) {
@@ -265,6 +269,17 @@ export function resolveHomeDir(
 }
 
 function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
+  const compiledAppRoot = getCompiledAppRoot();
+  if (compiledAppRoot) {
+    if (subdir === "data") {
+      return [compiledAppRoot];
+    }
+    if (subdir === "skills") {
+      return getCompiledSkillRoots();
+    }
+    return [path.join(compiledAppRoot, "plugins")];
+  }
+
   if (subdir === "data") {
     return [homeDir()];
   }
@@ -347,18 +362,18 @@ const RESERVED_APP_FILES = new Set([
 /** List non-reserved .md files in the app root for sandbox reference syncing. */
 export function listReferenceFiles(): string[] {
   const appDir = homeDir();
-  try {
-    const entries = fs.readdirSync(appDir, { withFileTypes: true });
-    return entries
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          entry.name.endsWith(".md") &&
-          !RESERVED_APP_FILES.has(entry.name),
-      )
-      .map((entry) => path.join(appDir, entry.name))
-      .sort();
-  } catch {
+  const entries = listRuntimeDirectoryEntries(appDir);
+  if (!entries) {
     return [];
   }
+
+  return entries
+    .filter(
+      (entry) =>
+        entry.isFile &&
+        entry.name.endsWith(".md") &&
+        !RESERVED_APP_FILES.has(entry.name),
+    )
+    .map((entry) => path.join(appDir, entry.name))
+    .sort();
 }

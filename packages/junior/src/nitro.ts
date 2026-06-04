@@ -3,11 +3,9 @@ import { statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Nitro } from "nitro/types";
+import { injectVirtualContent } from "@/build/compiled-content";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
-import {
-  copyAppAndPluginContent,
-  copyIncludedFiles,
-} from "@/build/copy-build-content";
+import { copyIncludedFiles } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
   type RuntimePluginModule,
@@ -283,7 +281,7 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
     };
 }
 
-/** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
+/** Nitro module that configures deployment wiring and private Junior runtime content. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void };
 } {
@@ -331,33 +329,30 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           plugins: pluginCatalogConfig,
           trustedPluginRegistrations,
         });
-
-        const copyBuildContent = async () => {
-          const pluginSet = await loadConfiguredPluginSet();
-          const compiledPluginCatalogConfig =
-            pluginCatalogConfigFromPluginSet(pluginSet);
-          copyAppAndPluginContent(
-            cwd,
-            nitro.options.output.serverDir,
-            compiledPluginCatalogConfig?.packages,
-          );
-          copyIncludedFiles(
-            cwd,
-            nitro.options.output.serverDir,
-            options.includeFiles,
-          );
-        };
-
-        nitro.hooks.hook("rollup:before", (_nitro, config) => {
-          const buildConfig = config as RollupLikeConfig;
-          buildConfig.plugins ??= [];
-          buildConfig.plugins.push({
-            name: "junior:copy-build-content",
-            async writeBundle() {
-              await copyBuildContent();
-            },
-          });
+        injectVirtualContent(nitro, {
+          cwd,
+          loadPackageNames: async () => {
+            const pluginSet = await loadConfiguredPluginSet();
+            return pluginCatalogConfigFromPluginSet(pluginSet)?.packages;
+          },
         });
+
+        if (options.includeFiles !== undefined) {
+          nitro.hooks.hook("rollup:before", (_nitro, config) => {
+            const buildConfig = config as RollupLikeConfig;
+            buildConfig.plugins ??= [];
+            buildConfig.plugins.push({
+              name: "junior:copy-included-files",
+              writeBundle() {
+                copyIncludedFiles(
+                  cwd,
+                  nitro.options.output.serverDir,
+                  options.includeFiles,
+                );
+              },
+            });
+          });
+        }
       },
     },
   };

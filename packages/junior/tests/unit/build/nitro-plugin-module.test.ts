@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import { COMPILED_APP_ROOT } from "@/chat/content";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -409,39 +410,33 @@ describe("juniorNitro plugin modules", () => {
     expect(code).toContain(
       'export const plugins = {"packages":["@acme/junior-demo"]};',
     );
-    expect(rollupBeforeHooks).toHaveLength(1);
+    expect(rollupBeforeHooks).toHaveLength(0);
   });
 
-  it("copies app and plugin content before Vercel route functions are cloned", async () => {
+  it("injects a compiled content graph for plugin module references", async () => {
     const tempRoot = await makeTempDir();
-    const serverDir = path.join(
-      tempRoot,
-      ".vercel",
-      "output",
-      "functions",
-      "__server.func",
+    await fs.writeFile(
+      path.join(tempRoot, "plugins.mjs"),
+      [
+        "export const plugins = {",
+        '  packageNames: ["@acme/junior-demo"],',
+        "  registrations: [],",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
     );
-    const callbackDir = path.join(
-      tempRoot,
-      ".vercel",
-      "output",
-      "functions",
-      "api",
-      "internal",
-      "agent",
-      "continue.func",
+    await fs.mkdir(path.join(tempRoot, "app"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "app", "SOUL.md"),
+      "Compiled soul\n",
+      "utf8",
     );
     const packageDir = path.join(
       tempRoot,
       "node_modules",
       "@acme",
       "junior-demo",
-    );
-    await fs.mkdir(path.join(tempRoot, "app"), { recursive: true });
-    await fs.writeFile(
-      path.join(tempRoot, "app", "SOUL.md"),
-      "Local soul\n",
-      "utf8",
     );
     await fs.mkdir(path.join(packageDir, "skills", "demo"), {
       recursive: true,
@@ -456,7 +451,100 @@ describe("juniorNitro plugin modules", () => {
       "---\nname: demo\ndescription: Demo\n---\n",
       "utf8",
     );
+
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: path.join(tempRoot, ".output", "server"),
+        },
+        rootDir: tempRoot,
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
+
+    const template = virtual["#junior/content"];
+    expect(typeof template).toBe("function");
+    const code = await (template as () => Promise<string>)();
+    const match = /^export const content = (.*);\n$/.exec(code);
+    expect(match?.[1]).toBeDefined();
+    const content = JSON.parse(match?.[1] ?? "{}") as {
+      appRoot: string;
+      files: Record<string, string>;
+      packageContent: {
+        manifestRoots: string[];
+        skillRoots: string[];
+      };
+    };
+
+    expect(content.appRoot).toBe(COMPILED_APP_ROOT);
+    expect(
+      Buffer.from(
+        content.files[path.join(COMPILED_APP_ROOT, "SOUL.md")] ?? "",
+        "base64",
+      ).toString("utf8"),
+    ).toBe("Compiled soul\n");
+    expect(content.packageContent.manifestRoots).toContain(
+      "/__junior_content__/node_modules/@acme/junior-demo",
+    );
+    expect(content.packageContent.skillRoots).toContain(
+      "/__junior_content__/node_modules/@acme/junior-demo/skills",
+    );
+  });
+
+  it("copies only explicitly included package files during Vercel builds", async () => {
+    const tempRoot = await makeTempDir();
+    const serverDir = path.join(
+      tempRoot,
+      ".vercel",
+      "output",
+      "functions",
+      "__server.func",
+    );
+    const packageDir = path.join(
+      tempRoot,
+      "node_modules",
+      "@acme",
+      "local-provider",
+    );
+    await fs.mkdir(path.join(packageDir, "dist"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@acme/local-provider",
+        main: "index.js",
+      }),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(packageDir, "index.js"),
+      "export {};\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(packageDir, "dist", "provider.js"),
+      "export const provider = true;\n",
+      "utf8",
+    );
     await fs.mkdir(serverDir, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "test-app",
+        dependencies: {
+          "@acme/local-provider": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
 
     const rollupBeforeHooks: TestRollupBeforeHook[] = [];
     const virtual: Record<string, (() => Promise<string>) | string> = {};
@@ -480,48 +568,33 @@ describe("juniorNitro plugin modules", () => {
 
     juniorNitro({
       cwd: tempRoot,
-      plugins: defineJuniorPlugins(["@acme/junior-demo"]),
+      includeFiles: ["@acme/local-provider/dist/*.js"],
     }).nitro.setup(nitro);
+    expect(rollupBeforeHooks).toHaveLength(1);
+
     const buildConfig: TestBuildConfig = { plugins: [] };
     await rollupBeforeHooks[0]?.(nitro, buildConfig);
     const copyPlugin = buildConfig.plugins?.find(
-      (plugin) => plugin.name === "junior:copy-build-content",
+      (plugin) => plugin.name === "junior:copy-included-files",
     );
     expect(copyPlugin).toBeDefined();
     await copyPlugin?.writeBundle?.();
 
-    await fs.cp(serverDir, callbackDir, { recursive: true });
-
-    for (const functionDir of [serverDir, callbackDir]) {
-      await expect(
-        fs.readFile(path.join(functionDir, "app", "SOUL.md"), "utf8"),
-      ).resolves.toBe("Local soul\n");
-      await expect(
-        fs.readFile(
-          path.join(
-            functionDir,
-            "node_modules",
-            "@acme",
-            "junior-demo",
-            "plugin.yaml",
-          ),
-          "utf8",
+    await expect(
+      fs.readFile(
+        path.join(
+          serverDir,
+          "node_modules",
+          "@acme",
+          "local-provider",
+          "dist",
+          "provider.js",
         ),
-      ).resolves.toContain("name: demo");
-      await expect(
-        fs.readFile(
-          path.join(
-            functionDir,
-            "node_modules",
-            "@acme",
-            "junior-demo",
-            "skills",
-            "demo",
-            "SKILL.md",
-          ),
-          "utf8",
-        ),
-      ).resolves.toContain("description: Demo");
-    }
+        "utf8",
+      ),
+    ).resolves.toBe("export const provider = true;\n");
+    await expect(fs.stat(path.join(serverDir, "app"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

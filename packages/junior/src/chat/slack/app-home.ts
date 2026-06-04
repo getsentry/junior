@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
+import { readRuntimeFileSync } from "@/chat/content";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
@@ -30,13 +30,12 @@ function clampSectionText(text: string): string {
 
 function loadDescriptionText(): string {
   const descriptionPath = path.join(homeDir(), "DESCRIPTION.md");
-  try {
-    const raw = fs.readFileSync(descriptionPath, "utf8").trim();
+  const content = readRuntimeFileSync(descriptionPath);
+  if (content !== null) {
+    const raw = content.trim();
     if (raw.length > 0) {
       return clampSectionText(raw);
     }
-  } catch {
-    // Use fallback when DESCRIPTION.md is absent.
   }
   return DEFAULT_DESCRIPTION_TEXT;
 }
