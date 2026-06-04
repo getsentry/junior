@@ -84,6 +84,7 @@ describe("init cli", () => {
       "utf8",
     );
     expect(envExample).toContain("CRON_SECRET=");
+    expect(envExample).toContain("JUNIOR_SLASH_COMMAND=");
 
     const checkLines: string[] = [];
     await runCheck(target, {

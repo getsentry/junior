@@ -4,12 +4,17 @@ import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { isPluginProvider } from "@/chat/plugins/registry";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { logInfo } from "@/chat/logging";
+import { getChatConfig } from "@/chat/config";
 
 async function postEphemeral(
   event: SlashCommandEvent,
   text: string,
 ): Promise<void> {
   await event.channel.postEphemeral(event.user, text, { fallbackToDM: false });
+}
+
+function getCommandName(): string {
+  return getChatConfig().slack.slashCommand;
 }
 
 async function handleLink(
@@ -77,7 +82,7 @@ async function handleUnlink(
     "slash_command_unlink",
     { slackUserId: event.user.userId },
     { "app.credential.provider": provider },
-    `Unlinked ${formatProviderLabel(provider)} account via /jr slash command`,
+    `Unlinked ${formatProviderLabel(provider)} account via ${getCommandName()} slash command`,
   );
 
   await postEphemeral(
@@ -86,7 +91,7 @@ async function handleUnlink(
   );
 }
 
-/** Route `/jr link` and `/jr unlink` slash commands to the appropriate OAuth flow. */
+/** Route link and unlink slash commands to the appropriate OAuth flow. */
 export async function handleSlashCommand(
   event: SlashCommandEvent,
 ): Promise<void> {
@@ -95,13 +100,16 @@ export async function handleSlashCommand(
   if (!subcommand || !["link", "unlink"].includes(subcommand)) {
     await postEphemeral(
       event,
-      "Usage: `/jr link <provider>` or `/jr unlink <provider>`",
+      `Usage: \`${getCommandName()} link <provider>\` or \`${getCommandName()} unlink <provider>\``,
     );
     return;
   }
 
   if (!provider || rest.length > 0) {
-    await postEphemeral(event, `Usage: \`/jr ${subcommand} <provider>\``);
+    await postEphemeral(
+      event,
+      `Usage: \`${getCommandName()} ${subcommand} <provider>\``,
+    );
     return;
   }
 

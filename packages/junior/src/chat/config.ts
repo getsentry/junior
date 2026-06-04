@@ -5,6 +5,7 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
+const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const ADVISOR_THINKING_LEVELS = [
   "minimal",
   "low",
@@ -60,6 +61,7 @@ export interface ChatConfig {
     clientId?: string;
     clientSecret?: string;
     signingSecret?: string;
+    slashCommand: string;
   };
   state: {
     adapter: "memory" | "redis";
@@ -157,6 +159,16 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
+function parseSlashCommand(rawValue: string | undefined): string {
+  const command = toOptionalTrimmed(rawValue) ?? DEFAULT_SLACK_SLASH_COMMAND;
+  if (!command.startsWith("/") || /\s/.test(command)) {
+    throw new Error(
+      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
+    );
+  }
+  return command;
+}
+
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
@@ -222,6 +234,7 @@ export function readChatConfig(
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
       clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
+      slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
     },
     state: {
       adapter:

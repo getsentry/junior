@@ -45,6 +45,28 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("openai/gpt-5.4");
   });
 
+  it("uses the default slash command when JUNIOR_SLASH_COMMAND is unset", async () => {
+    delete process.env.JUNIOR_SLASH_COMMAND;
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().slack.slashCommand).toBe("/jr");
+  });
+
+  it("uses JUNIOR_SLASH_COMMAND when configured", async () => {
+    process.env.JUNIOR_SLASH_COMMAND = " /junior ";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().slack.slashCommand).toBe("/junior");
+  });
+
+  it("throws when JUNIOR_SLASH_COMMAND is invalid", async () => {
+    process.env.JUNIOR_SLASH_COMMAND = "junior command";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
+    );
+  });
+
   it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
