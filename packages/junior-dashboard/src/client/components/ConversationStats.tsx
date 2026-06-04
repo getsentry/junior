@@ -16,10 +16,13 @@ function plural(label: string, count: number): string {
 }
 
 /** Render aggregate conversation stats derived from recent turn summaries. */
-export function ConversationStats(props: { sessions: Session[] }) {
+export function ConversationStats(props: {
+  nowMs: number;
+  sessions: Session[];
+}) {
   const stats = useMemo(
-    () => summarizeConversationStats(props.sessions),
-    [props.sessions],
+    () => summarizeConversationStats(props.sessions, props.nowMs),
+    [props.nowMs, props.sessions],
   );
 
   return (

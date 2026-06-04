@@ -35,11 +35,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderChart(sessions: Session[]): string {
+function renderChart(sessions: Session[], nowMs: number): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ConversationDurationChart sessions={sessions} timeZone="UTC" />
+        <ConversationDurationChart
+          nowMs={nowMs}
+          sessions={sessions}
+          timeZone="UTC"
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -50,55 +54,59 @@ describe("conversation duration chart", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
-    const html = renderChart([
-      {
-        completedAt: "2026-06-02T09:05:00.000Z",
-        conversationId: "conversation-1",
-        cumulativeDurationMs: 1_000,
-        id: "turn-1",
-        lastProgressAt: "2026-06-02T09:05:00.000Z",
-        lastSeenAt: "2026-06-02T09:05:00.000Z",
-        startedAt: "2026-06-02T09:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        title: "Turn turn-1",
-      },
-      {
-        completedAt: "2026-06-02T11:03:00.000Z",
-        conversationId: "conversation-1",
-        cumulativeDurationMs: 2_500,
-        id: "turn-2",
-        lastProgressAt: "2026-06-02T11:03:00.000Z",
-        lastSeenAt: "2026-06-02T11:03:00.000Z",
-        startedAt: "2026-06-02T11:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        title: "Turn turn-2",
-      },
-      {
-        conversationId: "conversation-active",
-        cumulativeDurationMs: 3_000,
-        id: "active-turn",
-        lastProgressAt: "2026-06-02T11:30:00.000Z",
-        lastSeenAt: "2026-06-02T11:30:00.000Z",
-        startedAt: "2026-06-02T11:30:00.000Z",
-        status: "active",
-        surface: "slack",
-        title: "Turn active-turn",
-      },
-      {
-        completedAt: "2026-05-20T09:05:00.000Z",
-        conversationId: "conversation-old",
-        cumulativeDurationMs: 9_000,
-        id: "old-turn",
-        lastProgressAt: "2026-05-20T09:05:00.000Z",
-        lastSeenAt: "2026-05-20T09:05:00.000Z",
-        startedAt: "2026-05-20T09:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        title: "Turn old-turn",
-      },
-    ]);
+    const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
+    const html = renderChart(
+      [
+        {
+          completedAt: "2026-06-02T09:05:00.000Z",
+          conversationId: "conversation-1",
+          cumulativeDurationMs: 1_000,
+          id: "turn-1",
+          lastProgressAt: "2026-06-02T09:05:00.000Z",
+          lastSeenAt: "2026-06-02T09:05:00.000Z",
+          startedAt: "2026-06-02T09:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          title: "Turn turn-1",
+        },
+        {
+          completedAt: "2026-06-02T11:03:00.000Z",
+          conversationId: "conversation-1",
+          cumulativeDurationMs: 2_500,
+          id: "turn-2",
+          lastProgressAt: "2026-06-02T11:03:00.000Z",
+          lastSeenAt: "2026-06-02T11:03:00.000Z",
+          startedAt: "2026-06-02T11:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          title: "Turn turn-2",
+        },
+        {
+          conversationId: "conversation-active",
+          cumulativeDurationMs: 3_000,
+          id: "active-turn",
+          lastProgressAt: "2026-06-02T11:30:00.000Z",
+          lastSeenAt: "2026-06-02T11:30:00.000Z",
+          startedAt: "2026-06-02T11:30:00.000Z",
+          status: "active",
+          surface: "slack",
+          title: "Turn active-turn",
+        },
+        {
+          completedAt: "2026-05-20T09:05:00.000Z",
+          conversationId: "conversation-old",
+          cumulativeDurationMs: 9_000,
+          id: "old-turn",
+          lastProgressAt: "2026-05-20T09:05:00.000Z",
+          lastSeenAt: "2026-05-20T09:05:00.000Z",
+          startedAt: "2026-05-20T09:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          title: "Turn old-turn",
+        },
+      ],
+      nowMs,
+    );
 
     expect(chartState.scatterData).toHaveLength(1);
     expect(chartState.scatterData[0]).toMatchObject({

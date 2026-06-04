@@ -318,7 +318,11 @@ describe("dashboard telemetry components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <MemoryRouter>
-          <ConversationDurationChart sessions={[session]} timeZone="UTC" />
+          <ConversationDurationChart
+            nowMs={Date.parse("2026-01-05T00:00:00.000Z")}
+            sessions={[session]}
+            timeZone="UTC"
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     );

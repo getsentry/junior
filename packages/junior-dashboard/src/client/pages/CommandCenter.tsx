@@ -14,16 +14,21 @@ export function CommandCenter(props: {
   queryError: Error | null;
 }) {
   const sessions = props.data?.sessions.sessions ?? [];
-  const conversations = filterRecentConversations(buildConversations(sessions));
+  const nowMs = Date.now();
+  const conversations = filterRecentConversations(
+    buildConversations(sessions),
+    nowMs,
+  );
 
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-screen-xl gap-4 px-4 py-4 md:px-8 lg:grid-cols-[minmax(21rem,0.32fr)_minmax(0,1fr)]">
       <CommandRail data={props.data} error={props.queryError} />
 
       <section className="min-w-0">
-        <ConversationStats sessions={sessions} />
+        <ConversationStats nowMs={nowMs} sessions={sessions} />
 
         <ConversationDurationChart
+          nowMs={nowMs}
           sessions={sessions}
           timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
         />

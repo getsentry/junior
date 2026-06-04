@@ -49,27 +49,32 @@ import { statusBorderClass } from "./statusStyles";
 
 /** Render recent conversations by start time and duration. */
 export function ConversationDurationChart(props: {
+  nowMs: number;
   sessions: Session[];
   timeZone: string;
 }) {
   const navigate = useNavigate();
-  const nowMs = Date.now();
-  const { endMs: rangeEndMs, startMs: rangeStartMs } =
-    recentConversationRange(nowMs);
+  const { endMs: rangeEndMs, startMs: rangeStartMs } = recentConversationRange(
+    props.nowMs,
+  );
   const chartEdgePaddingMs = 6 * 60 * 60 * 1000;
   const chartRangeStartMs = rangeStartMs - chartEdgePaddingMs;
   const chartRangeEndMs = rangeEndMs + chartEdgePaddingMs;
   const conversations = useMemo(
-    () => filterRecentConversations(buildConversations(props.sessions), nowMs),
-    [nowMs, props.sessions],
+    () =>
+      filterRecentConversations(
+        buildConversations(props.sessions),
+        props.nowMs,
+      ),
+    [props.nowMs, props.sessions],
   );
   const points = conversations
     .map((conversation) => conversationPoint(conversation, props.timeZone))
     .filter((point): point is DurationPoint => Boolean(point))
     .sort((left, right) => left.x - right.x);
   const stats = useMemo(
-    () => summarizeConversationStats(props.sessions, nowMs),
-    [nowMs, props.sessions],
+    () => summarizeConversationStats(props.sessions, props.nowMs),
+    [props.nowMs, props.sessions],
   );
   const maxDurationMs = points.reduce(
     (max, point) => Math.max(max, point.durationMs),
