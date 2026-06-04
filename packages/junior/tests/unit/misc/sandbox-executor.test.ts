@@ -4,138 +4,31 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import {
-  createApiError,
-  createStreamInterruptedError,
-  credentialTokenFromForwardURL,
-  expectWorkspaceToDelegate,
-  makeSandbox,
-  sentryForwardURLFromPolicy,
-} from "../../fixtures/sandbox-executor";
-
-const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
-  sandboxGetMock: vi.fn(),
-  sandboxCreateMock: vi.fn(),
-}));
-
-vi.mock("@vercel/sandbox", () => ({
-  Sandbox: {
-    get: sandboxGetMock,
-    create: sandboxCreateMock,
-  },
-}));
-
-vi.mock("bash-tool", () => ({
-  createBashTool: vi.fn(),
-}));
-
-vi.mock("@/chat/config", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/chat/config")>();
-  const memoryConfig = original.readChatConfig({
-    ...process.env,
-    JUNIOR_STATE_ADAPTER: "memory",
-  });
-  return {
-    ...original,
-    botConfig: memoryConfig.bot,
-    getChatConfig: () => memoryConfig,
-  };
-});
-
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: () => [
-    {
-      manifest: {
-        name: "sentry",
-        displayName: "Sentry",
-        description: "Sentry",
-        capabilities: ["sentry.api"],
-        configKeys: [],
-        commandEnv: {
-          SENTRY_READ_ONLY: "1",
-        },
-        credentials: {
-          type: "oauth-bearer",
-          domains: ["sentry.io"],
-          authTokenEnv: "SENTRY_AUTH_TOKEN",
-          authTokenPlaceholder: "host_managed_credential",
-        },
-      },
-    },
-  ],
-}));
-
-const {
-  resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingErrorMock,
-  getRuntimeDependencyProfileHashMock,
-} = vi.hoisted(() => ({
-  resolveRuntimeDependencySnapshotMock: vi.fn<
-    (...args: any[]) => Promise<{
-      snapshotId?: string;
-      profileHash?: string;
-      dependencyCount: number;
-      cacheHit: boolean;
-      resolveOutcome: string;
-      rebuildReason?: string;
-    }>
-  >(async () => ({
-    dependencyCount: 0,
-    cacheHit: false,
-    resolveOutcome: "no_profile",
-  })),
-  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
-  getRuntimeDependencyProfileHashMock: vi.fn<
-    (runtime: string) => string | undefined
-  >(() => undefined),
-}));
-
-vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
-  resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingError: isSnapshotMissingErrorMock,
-  getRuntimeDependencyProfileHash: getRuntimeDependencyProfileHashMock,
-}));
-
-import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
-import {
-  parseSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-session";
-import { createSandboxSessionManager } from "@/chat/sandbox/session";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createBashTool } from "bash-tool";
+import {
+  createBashTool,
+  createApiError,
+  createSandboxExecutor,
+  createSandboxSessionManager,
+  createStreamInterruptedError,
+  credentialTokenFromForwardURL,
+  expectWorkspaceToDelegate,
+  getRuntimeDependencyProfileHashMock,
+  makeSandbox,
+  parseSandboxEgressCredentialToken,
+  sandboxCreateMock,
+  sandboxGetMock,
+  sentryForwardURLFromPolicy,
+  setupSandboxExecutorTest,
+  cleanupSandboxExecutorTest,
+} from "../../fixtures/sandbox-executor";
 
 describe("createSandboxExecutor", () => {
-  beforeEach(() => {
-    sandboxGetMock.mockReset();
-    sandboxCreateMock.mockReset();
-    vi.mocked(createBashTool).mockReset();
-    resolveRuntimeDependencySnapshotMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
-      dependencyCount: 0,
-      cacheHit: false,
-      resolveOutcome: "no_profile",
-    });
-    isSnapshotMissingErrorMock.mockReset();
-    isSnapshotMissingErrorMock.mockReturnValue(false);
-    getRuntimeDependencyProfileHashMock.mockReset();
-    getRuntimeDependencyProfileHashMock.mockReturnValue(undefined);
-    delete process.env.VERCEL_TOKEN;
-    delete process.env.VERCEL_TEAM_ID;
-    delete process.env.VERCEL_PROJECT_ID;
-    delete process.env.VERCEL_OIDC_TOKEN;
-    delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "test-secret";
-  });
+  beforeEach(setupSandboxExecutorTest);
 
-  afterEach(async () => {
-    vi.useRealTimers();
-    await disconnectStateAdapter();
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
-  });
+  afterEach(cleanupSandboxExecutorTest);
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
     const stoppedSandbox = makeSandbox("sbx_stopped", {
@@ -1675,214 +1568,5 @@ describe("createSandboxExecutor", () => {
       name: "sbx_existing",
       resume: true,
     });
-  });
-
-  it("creates fresh sandboxes from dependency snapshots when available", async () => {
-    const snapshotSandbox = makeSandbox("sbx_snapshot");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
-      snapshotId: "snap_123",
-      profileHash: "hash_123",
-      dependencyCount: 2,
-      cacheHit: true,
-      resolveOutcome: "cache_hit",
-    });
-    sandboxCreateMock.mockResolvedValue(snapshotSandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    const sandbox = await executor.createSandbox();
-
-    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
-    expect(sandboxCreateMock).toHaveBeenCalledWith({
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_123",
-      },
-    });
-  });
-
-  it("rebuilds snapshot when cached snapshot is missing", async () => {
-    const rebuiltSandbox = makeSandbox("sbx_rebuilt");
-    resolveRuntimeDependencySnapshotMock
-      .mockResolvedValueOnce({
-        snapshotId: "snap_missing",
-        profileHash: "hash_1",
-        dependencyCount: 2,
-        cacheHit: true,
-        resolveOutcome: "cache_hit",
-      })
-      .mockResolvedValueOnce({
-        snapshotId: "snap_rebuilt",
-        profileHash: "hash_1",
-        dependencyCount: 2,
-        cacheHit: false,
-        resolveOutcome: "forced_rebuild",
-        rebuildReason: "snapshot_missing",
-      });
-    const missingError = new Error("snapshot not found");
-    sandboxCreateMock
-      .mockRejectedValueOnce(missingError)
-      .mockResolvedValueOnce(rebuiltSandbox);
-    isSnapshotMissingErrorMock.mockImplementation(
-      (error: unknown) => error === missingError,
-    );
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    const sandbox = await executor.createSandbox();
-
-    await expectWorkspaceToDelegate(sandbox, rebuiltSandbox);
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        runtime: "node22",
-        timeoutMs: 1000 * 60 * 30,
-        forceRebuild: true,
-        staleSnapshotId: "snap_missing",
-      }),
-    );
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_rebuilt",
-      },
-    });
-  });
-
-  it("retries snapshot boot when Vercel reports snapshotting in progress", async () => {
-    const snapshotSandbox = makeSandbox("sbx_snapshot_ready");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
-      snapshotId: "snap_retry",
-      profileHash: "hash_retry",
-      dependencyCount: 2,
-      cacheHit: true,
-      resolveOutcome: "cache_hit",
-    });
-    const snapshottingError = createApiError(
-      422,
-      "Unprocessable Entity",
-      "sandbox_snapshotting",
-      "Sandbox is creating a snapshot and will be stopped shortly.",
-    );
-    sandboxCreateMock
-      .mockRejectedValueOnce(snapshottingError)
-      .mockResolvedValueOnce(snapshotSandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    const sandbox = await executor.createSandbox();
-
-    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(1, {
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_retry",
-      },
-    });
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_retry",
-      },
-    });
-  });
-
-  it("uses a fresh sandbox name when retrying snapshot boot with network policy", async () => {
-    const snapshotSandbox = makeSandbox("sbx_snapshot_policy_ready");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
-      snapshotId: "snap_policy_retry",
-      profileHash: "hash_policy_retry",
-      dependencyCount: 2,
-      cacheHit: true,
-      resolveOutcome: "cache_hit",
-    });
-    const snapshottingError = createApiError(
-      422,
-      "Unprocessable Entity",
-      "sandbox_snapshotting",
-      "Sandbox is creating a snapshot and will be stopped shortly.",
-    );
-    sandboxCreateMock
-      .mockRejectedValueOnce(snapshottingError)
-      .mockResolvedValueOnce(snapshotSandbox);
-    const createNetworkPolicy = vi.fn((sandboxId: string) => ({
-      allow: {
-        "*": [],
-        "api.example.com": [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
-          },
-        ],
-      },
-    }));
-
-    const manager = createSandboxSessionManager({ createNetworkPolicy });
-    manager.configureSkills([]);
-
-    await manager.createSandbox();
-
-    const firstCreate = sandboxCreateMock.mock.calls[0]?.[0] as {
-      name?: string;
-      networkPolicy?: unknown;
-    };
-    const secondCreate = sandboxCreateMock.mock.calls[1]?.[0] as {
-      name?: string;
-      networkPolicy?: unknown;
-    };
-    expect(firstCreate.name).toMatch(/^junior-/);
-    expect(secondCreate.name).toMatch(/^junior-/);
-    expect(secondCreate.name).not.toBe(firstCreate.name);
-    expect(createNetworkPolicy).toHaveBeenNthCalledWith(1, firstCreate.name);
-    expect(createNetworkPolicy).toHaveBeenNthCalledWith(2, secondCreate.name);
-    expect(createNetworkPolicy).toHaveBeenNthCalledWith(
-      3,
-      "sbx_snapshot_policy_ready_session",
-      undefined,
-    );
-    expect(secondCreate.networkPolicy).toEqual({
-      allow: {
-        "*": [],
-        "api.example.com": [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${secondCreate.name}`,
-          },
-        ],
-      },
-    });
-    expect(snapshotSandbox.update).toHaveBeenCalledWith({
-      networkPolicy: {
-        allow: {
-          "*": [],
-          "api.example.com": [
-            {
-              forwardURL:
-                "https://junior.example.com/api/internal/sandbox-egress/sbx_snapshot_policy_ready_session",
-            },
-          ],
-        },
-      },
-    });
-  });
-
-  it("wraps snapshot resolution failures as sandbox setup errors", async () => {
-    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(
-      new Error("lock timeout"),
-    );
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await expect(executor.createSandbox()).rejects.toThrow(
-      "sandbox setup failed",
-    );
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 });

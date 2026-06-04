@@ -1,6 +1,136 @@
 import { expect, vi } from "vitest";
-import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
+
+const mocks = vi.hoisted(() => ({
+  sandboxGetMock: vi.fn(),
+  sandboxCreateMock: vi.fn(),
+  resolveRuntimeDependencySnapshotMock: vi.fn<
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+      rebuildReason?: string;
+    }>
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+  getRuntimeDependencyProfileHashMock: vi.fn<
+    (runtime: string) => string | undefined
+  >(() => undefined),
+}));
+
+export const sandboxGetMock = mocks.sandboxGetMock;
+export const sandboxCreateMock = mocks.sandboxCreateMock;
+export const resolveRuntimeDependencySnapshotMock =
+  mocks.resolveRuntimeDependencySnapshotMock;
+export const isSnapshotMissingErrorMock = mocks.isSnapshotMissingErrorMock;
+export const getRuntimeDependencyProfileHashMock =
+  mocks.getRuntimeDependencyProfileHashMock;
+
+vi.mock("@vercel/sandbox", () => ({
+  Sandbox: {
+    get: mocks.sandboxGetMock,
+    create: mocks.sandboxCreateMock,
+  },
+}));
+
+vi.mock("bash-tool", () => ({
+  createBashTool: vi.fn(),
+}));
+
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+  };
+});
+
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginProviders: () => [
+    {
+      manifest: {
+        name: "sentry",
+        description: "Sentry",
+        capabilities: ["sentry.api"],
+        configKeys: [],
+        commandEnv: {
+          SENTRY_READ_ONLY: "1",
+        },
+        credentials: {
+          type: "oauth-bearer",
+          domains: ["sentry.io"],
+          authTokenEnv: "SENTRY_AUTH_TOKEN",
+          authTokenPlaceholder: "host_managed_credential",
+        },
+      },
+    },
+  ],
+}));
+
+vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
+  resolveRuntimeDependencySnapshot: mocks.resolveRuntimeDependencySnapshotMock,
+  isSnapshotMissingError: mocks.isSnapshotMissingErrorMock,
+  getRuntimeDependencyProfileHash: mocks.getRuntimeDependencyProfileHashMock,
+}));
+
+import { createBashTool as createBashToolImpl } from "bash-tool";
+import {
+  parseSandboxEgressCredentialToken as parseSandboxEgressCredentialTokenImpl,
+  SANDBOX_EGRESS_PROXY_PATH,
+} from "@/chat/sandbox/egress-session";
+import { createSandboxExecutor as createSandboxExecutorImpl } from "@/chat/sandbox/sandbox";
+import { createSandboxSessionManager as createSandboxSessionManagerImpl } from "@/chat/sandbox/session";
+import { disconnectStateAdapter as disconnectStateAdapterImpl } from "@/chat/state/adapter";
+
+export const createBashTool = createBashToolImpl;
+export const createSandboxExecutor = createSandboxExecutorImpl;
+export const createSandboxSessionManager = createSandboxSessionManagerImpl;
+export const disconnectStateAdapter = disconnectStateAdapterImpl;
+export const parseSandboxEgressCredentialToken =
+  parseSandboxEgressCredentialTokenImpl;
+
+/** Reset sandbox executor mocks and process env before each test. */
+export function setupSandboxExecutorTest(): void {
+  mocks.sandboxGetMock.mockReset();
+  mocks.sandboxCreateMock.mockReset();
+  vi.mocked(createBashToolImpl).mockReset();
+  mocks.resolveRuntimeDependencySnapshotMock.mockReset();
+  mocks.resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  });
+  mocks.isSnapshotMissingErrorMock.mockReset();
+  mocks.isSnapshotMissingErrorMock.mockReturnValue(false);
+  mocks.getRuntimeDependencyProfileHashMock.mockReset();
+  mocks.getRuntimeDependencyProfileHashMock.mockReturnValue(undefined);
+  delete process.env.VERCEL_TOKEN;
+  delete process.env.VERCEL_TEAM_ID;
+  delete process.env.VERCEL_PROJECT_ID;
+  delete process.env.VERCEL_OIDC_TOKEN;
+  delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
+  process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+  process.env.JUNIOR_SECRET = "test-secret";
+}
+
+/** Restore sandbox executor test globals and memory state after each test. */
+export async function cleanupSandboxExecutorTest(): Promise<void> {
+  vi.useRealTimers();
+  await disconnectStateAdapterImpl();
+  delete process.env.JUNIOR_BASE_URL;
+  delete process.env.JUNIOR_SECRET;
+}
 
 export interface MockSandbox {
   name: string;

@@ -35,6 +35,8 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted the shared sandbox executor fake and workspace assertions into
   `tests/fixtures/sandbox-executor.ts` as the first step toward splitting the
   executor suite by lifecycle, bash, file-tool, and snapshot contracts.
+- Split sandbox executor dependency snapshot boot/rebuild/retry coverage into
+  `tests/unit/sandbox/executor-snapshots.test.ts`.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
