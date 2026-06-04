@@ -37,6 +37,8 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   executor suite by lifecycle, bash, file-tool, and snapshot contracts.
 - Split sandbox executor dependency snapshot boot/rebuild/retry coverage into
   `tests/unit/sandbox/executor-snapshots.test.ts`.
+- Split sandbox executor bash execution, timeout, abort, env, and credential
+  egress coverage into `tests/unit/sandbox/executor-bash.test.ts`.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
