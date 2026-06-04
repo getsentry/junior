@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-04
 
 ## Intent
 
@@ -50,6 +50,10 @@ Recommended:
 
 - Preferred path: `packages/junior/tests/unit/**`.
 - Test titles should describe observable unit behavior.
+- Split large unit suites by the local contract under test even when they share
+  a setup fixture. Shared package/filesystem builders belong in
+  `tests/fixtures/**`; manifest parsing, validation, env interpolation, and
+  adapter metadata should remain separate suites.
 
 ## Required Characteristics
 
