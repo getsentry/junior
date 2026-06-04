@@ -150,6 +150,46 @@ describe("dashboard token formatting", () => {
     ]);
   });
 
+  it("keeps conversations with recent activity in the reporting window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+
+    const stats = summarizeConversationStats([
+      {
+        conversationId: "conversation-carryover",
+        cumulativeDurationMs: 4_000,
+        id: "turn-carryover",
+        lastProgressAt: "2026-06-04T10:03:00.000Z",
+        lastSeenAt: "2026-06-04T10:04:00.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-05-20T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn carryover",
+      },
+      {
+        conversationId: "conversation-old",
+        cumulativeDurationMs: 8_000,
+        id: "turn-old",
+        lastProgressAt: "2026-05-20T10:03:00.000Z",
+        lastSeenAt: "2026-05-20T10:04:00.000Z",
+        requesterIdentity: { fullName: "Blake" },
+        startedAt: "2026-05-20T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn old",
+      },
+    ]);
+
+    expect(stats.conversations).toBe(1);
+    expect(stats.requesters).toEqual([
+      expect.objectContaining({
+        conversations: 1,
+        label: "Avery",
+      }),
+    ]);
+  });
+
   it("keeps mixed requester turn statuses visible in one conversation", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));

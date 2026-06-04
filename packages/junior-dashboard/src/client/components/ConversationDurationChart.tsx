@@ -47,7 +47,7 @@ import {
 } from "./TelemetryMetrics";
 import { statusBorderClass } from "./statusStyles";
 
-/** Render recent conversations by start time and duration. */
+/** Render recent conversations by activity time and duration. */
 export function ConversationDurationChart(props: {
   nowMs: number;
   sessions: Session[];
@@ -206,8 +206,9 @@ function conversationPoint(
   conversation: Conversation,
   timeZone: string,
 ): DurationPoint | null {
+  const activityAtMs = Date.parse(conversation.lastSeenAt);
   const startedAtMs = Date.parse(conversation.startedAt);
-  if (!Number.isFinite(startedAtMs)) {
+  if (!Number.isFinite(activityAtMs) || !Number.isFinite(startedAtMs)) {
     return null;
   }
   const status = plottedStatus(visualStatusForConversation(conversation));
@@ -228,10 +229,10 @@ function conversationPoint(
     startedAt: conversation.startedAt,
     status,
     title: conversationDisplayTitle(conversation),
-    tooltipLabel: new Date(startedAtMs).toLocaleString(undefined, {
+    tooltipLabel: new Date(activityAtMs).toLocaleString(undefined, {
       timeZone,
     }),
-    x: startedAtMs,
+    x: activityAtMs,
   };
 }
 

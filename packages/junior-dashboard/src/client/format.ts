@@ -68,18 +68,18 @@ export function recentConversationRange(nowMs = Date.now()) {
   };
 }
 
-/** Keep command-center conversations inside the shared recent window. */
+/** Keep command-center conversations inside the shared recent activity window. */
 export function filterRecentConversations(
   conversations: Conversation[],
   nowMs = Date.now(),
 ): Conversation[] {
   const range = recentConversationRange(nowMs);
   return conversations.filter((conversation) => {
-    const startedAt = parseTime(conversation.startedAt);
+    const activityAt = parseTime(conversation.lastSeenAt);
     return (
-      startedAt !== null &&
-      startedAt >= range.startMs &&
-      startedAt <= range.endMs
+      activityAt !== null &&
+      activityAt >= range.startMs &&
+      activityAt <= range.endMs
     );
   });
 }

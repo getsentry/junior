@@ -93,6 +93,18 @@ describe("conversation duration chart", () => {
           title: "Turn active-turn",
         },
         {
+          completedAt: "2026-06-02T10:10:00.000Z",
+          conversationId: "conversation-carryover",
+          cumulativeDurationMs: 9_000,
+          id: "carryover-turn",
+          lastProgressAt: "2026-06-02T10:10:00.000Z",
+          lastSeenAt: "2026-06-02T10:10:00.000Z",
+          startedAt: "2026-05-20T09:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          title: "Turn carryover-turn",
+        },
+        {
           completedAt: "2026-05-20T09:05:00.000Z",
           conversationId: "conversation-old",
           cumulativeDurationMs: 9_000,
@@ -108,12 +120,18 @@ describe("conversation duration chart", () => {
       nowMs,
     );
 
-    expect(chartState.scatterData).toHaveLength(1);
+    expect(chartState.scatterData).toHaveLength(2);
     expect(chartState.scatterData[0]).toMatchObject({
+      conversationId: "conversation-carryover",
+      durationLabel: "9.0s",
+      durationMs: 9_000,
+      x: Date.parse("2026-06-02T10:10:00.000Z"),
+    });
+    expect(chartState.scatterData[1]).toMatchObject({
       conversationId: "conversation-1",
       durationLabel: "2.5s",
       durationMs: 2_500,
     });
-    expect(html).toContain("2 conversations / 1 active / 0 hung / 0 errors");
+    expect(html).toContain("3 conversations / 1 active / 0 hung / 0 errors");
   });
 });
