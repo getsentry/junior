@@ -14,6 +14,9 @@ const BOTTOM_PROXIMITY_PX = 96;
 const USER_SCROLL_DELTA_PX = 2;
 
 type ScrollRoot = HTMLElement | Window;
+type PositionMeasureSource = "measure" | "scroll";
+
+export type TranscriptFollowIntent = "follow" | "pause" | "preserve";
 
 export type ScrollSnapshot = {
   clientHeight: number;
@@ -74,6 +77,24 @@ export function shouldAutoPinTranscriptBottom(input: {
   return input.enabled && input.following;
 }
 
+/** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
+export function transcriptFollowIntent(input: {
+  previousScrollTop: number | null;
+  snapshot: ScrollSnapshot;
+  source: PositionMeasureSource;
+}): TranscriptFollowIntent {
+  if (
+    input.source === "scroll" &&
+    input.previousScrollTop != null &&
+    input.snapshot.scrollTop < input.previousScrollTop - USER_SCROLL_DELTA_PX
+  ) {
+    return "pause";
+  }
+
+  if (isNearScrollBottom(input.snapshot)) return "follow";
+  return "preserve";
+}
+
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
   enabled: boolean;
@@ -106,26 +127,26 @@ export function usePinnedTranscriptBottom(input: {
   }, []);
 
   const measurePosition = useCallback(
-    (source: "measure" | "scroll") => {
+    (source: PositionMeasureSource) => {
       const root = scrollRootFor(contentRef.current);
       if (!root) return;
 
       const snapshot = scrollSnapshot(root);
-      const nearBottom = isNearScrollBottom(snapshot);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
 
-      if (nearBottom) {
+      const intent = transcriptFollowIntent({
+        previousScrollTop,
+        snapshot,
+        source,
+      });
+      if (intent === "follow") {
         setFollowingIntent(true);
         setHasPendingUpdate(false);
         return;
       }
 
-      if (
-        source === "scroll" &&
-        previousScrollTop != null &&
-        snapshot.scrollTop < previousScrollTop - USER_SCROLL_DELTA_PX
-      ) {
+      if (intent === "pause") {
         setFollowingIntent(false);
       }
     },

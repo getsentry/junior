@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isNearScrollBottom,
   shouldAutoPinTranscriptBottom,
+  transcriptFollowIntent,
   transcriptBottomVersion,
 } from "../src/client/components/transcriptBottomPinning";
 import type { ConversationTurn } from "../src/client/types";
@@ -99,5 +100,19 @@ describe("transcript bottom pinning", () => {
     expect(
       shouldAutoPinTranscriptBottom({ enabled: false, following: true }),
     ).toBe(false);
+  });
+
+  it("pauses follow when the reader scrolls up inside bottom slack", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 1_120,
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+        source: "scroll",
+      }),
+    ).toBe("pause");
   });
 });
