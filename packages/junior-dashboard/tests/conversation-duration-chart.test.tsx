@@ -46,7 +46,7 @@ function renderChart(sessions: Session[]): void {
 }
 
 describe("conversation duration chart", () => {
-  it("plots conversation duration as summed turn runtime", () => {
+  it("plots recent conversation runtime without double-counting cumulative turns", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
@@ -75,13 +75,25 @@ describe("conversation duration chart", () => {
         surface: "slack",
         title: "Turn turn-2",
       },
+      {
+        completedAt: "2026-05-20T09:05:00.000Z",
+        conversationId: "conversation-2",
+        cumulativeDurationMs: 9_000,
+        id: "old-turn",
+        lastProgressAt: "2026-05-20T09:05:00.000Z",
+        lastSeenAt: "2026-05-20T09:05:00.000Z",
+        startedAt: "2026-05-20T09:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn old-turn",
+      },
     ]);
 
     expect(chartState.scatterData).toHaveLength(1);
     expect(chartState.scatterData[0]).toMatchObject({
       conversationId: "conversation-1",
-      durationLabel: "3.5s",
-      durationMs: 3_500,
+      durationLabel: "2.5s",
+      durationMs: 2_500,
     });
   });
 });

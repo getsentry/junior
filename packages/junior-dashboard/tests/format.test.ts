@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildConversations,
@@ -21,6 +21,10 @@ import {
 } from "../src/client/format";
 import type { ConversationTurn, Session } from "../src/client/types";
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("dashboard token formatting", () => {
   it("sums turn usage for conversation totals", () => {
     expect(
@@ -42,6 +46,9 @@ describe("dashboard token formatting", () => {
   });
 
   it("summarizes conversations by requester and location without double-counting cumulative totals", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+
     const sessions: Session[] = [
       {
         channel: "C1",
@@ -86,6 +93,21 @@ describe("dashboard token formatting", () => {
         surface: "slack",
         title: "Turn turn-3",
       },
+      {
+        channel: "C2",
+        channelName: "old-project",
+        conversationId: "slack:C2:300",
+        cumulativeDurationMs: 8_000,
+        cumulativeUsage: { totalTokens: 500 },
+        id: "old-turn",
+        lastProgressAt: "2026-05-20T10:01:00.000Z",
+        lastSeenAt: "2026-05-20T10:02:00.000Z",
+        requesterIdentity: { fullName: "Casey" },
+        startedAt: "2026-05-20T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+        title: "Turn old-turn",
+      },
     ];
 
     expect(summarizeConversationStats(sessions)).toMatchObject({
@@ -125,6 +147,48 @@ describe("dashboard token formatting", () => {
     ).toEqual([
       { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
       { conversations: 1, durationMs: 3_000, label: "Direct Message" },
+    ]);
+  });
+
+  it("keeps mixed requester turn statuses visible in one conversation", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+
+    const stats = summarizeConversationStats([
+      {
+        conversationId: "conversation-1",
+        cumulativeDurationMs: 1_000,
+        id: "turn-1",
+        lastProgressAt: "2026-06-04T10:01:00.000Z",
+        lastSeenAt: "2026-06-04T10:02:00.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-06-04T10:00:00.000Z",
+        status: "failed",
+        surface: "slack",
+        title: "Turn turn-1",
+      },
+      {
+        conversationId: "conversation-1",
+        cumulativeDurationMs: 2_000,
+        id: "turn-2",
+        lastProgressAt: "2026-06-04T10:03:00.000Z",
+        lastSeenAt: "2026-06-04T10:04:00.000Z",
+        requesterIdentity: { fullName: "Avery" },
+        startedAt: "2026-06-04T10:03:00.000Z",
+        status: "active",
+        surface: "slack",
+        title: "Turn turn-2",
+      },
+    ]);
+
+    expect(stats.requesters).toEqual([
+      expect.objectContaining({
+        active: 1,
+        conversations: 1,
+        failed: 1,
+        label: "Avery",
+        turns: 2,
+      }),
     ]);
   });
 

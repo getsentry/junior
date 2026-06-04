@@ -16,6 +16,7 @@ import type {
 import { sameToolInvocation } from "./toolInvocations";
 
 let dashboardTimeZone = "America/Los_Angeles";
+const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Set the dashboard display timezone returned by the authenticated config API. */
 export function setDashboardTimeZone(timeZone: string): void {
@@ -57,6 +58,30 @@ function parseTime(value: string | undefined): number | null {
   if (!value) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
+}
+
+/** Return the recent reporting window shared by command-center aggregates. */
+export function recentConversationRange(nowMs = Date.now()) {
+  return {
+    endMs: nowMs,
+    startMs: nowMs - RECENT_CONVERSATION_WINDOW_MS,
+  };
+}
+
+/** Keep command-center conversations inside the shared recent window. */
+export function filterRecentConversations(
+  conversations: Conversation[],
+  nowMs = Date.now(),
+): Conversation[] {
+  const range = recentConversationRange(nowMs);
+  return conversations.filter((conversation) => {
+    const startedAt = parseTime(conversation.startedAt);
+    return (
+      startedAt !== null &&
+      startedAt >= range.startMs &&
+      startedAt <= range.endMs
+    );
+  });
 }
 
 /** Format absolute dashboard timestamps with a stable empty fallback. */
@@ -507,6 +532,18 @@ export function formatConversationDuration(conversation: Conversation): string {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.round(minutes / 60)}h`;
+}
+
+/** Return cumulative conversation runtime without double-counting prior turns. */
+export function conversationRuntimeMs(
+  conversation: Pick<Conversation, "turns">,
+): number | undefined {
+  if (
+    !conversation.turns.some((turn) => durationSnapshot(turn) !== undefined)
+  ) {
+    return undefined;
+  }
+  return contributionDurationTotal(turnContributions(conversation.turns));
 }
 
 /** Resolve the owning conversation id for a turn/session summary. */
@@ -1050,25 +1087,12 @@ function statusCounts(conversations: Conversation[]) {
   );
 }
 
-function visualStatusForSessions(turns: Session[]): VisualStatus {
-  if (turns.some(isHungSession)) {
-    return "hung";
-  }
-  if (turns.some(isActiveSession)) {
-    return "active";
-  }
-  if (turns.some(isFailedSession)) {
-    return "failed";
-  }
-  return "idle";
-}
-
 function addConversationToStatsItem(
   item: ConversationStatsItem,
   conversation: Conversation,
   contributions: TurnContribution[],
 ): void {
-  const durationMs = contributionDurationTotal(contributions);
+  const durationMs = conversationRuntimeMs(conversation) ?? 0;
   const tokens = contributionTokenTotal(contributions);
   const status = visualStatusForConversation(conversation);
   item.conversations += 1;
@@ -1086,15 +1110,15 @@ function addRequesterContributionsToStatsItem(args: {
 }): void {
   const durationMs = contributionDurationTotal(args.contributions);
   const tokens = contributionTokenTotal(args.contributions);
-  const status = visualStatusForSessions(
-    args.contributions.map((contribution) => contribution.turn),
-  );
   args.item.conversations += 1;
   args.item.turns += args.contributions.length;
   args.item.durationMs += durationMs;
-  args.item.active += status === "active" ? 1 : 0;
-  args.item.failed += status === "failed" ? 1 : 0;
-  args.item.hung += status === "hung" ? 1 : 0;
+  for (const contribution of args.contributions) {
+    const status = visualStatusForSession(contribution.turn);
+    args.item.active += status === "active" ? 1 : 0;
+    args.item.failed += status === "failed" ? 1 : 0;
+    args.item.hung += status === "hung" ? 1 : 0;
+  }
   addItemTokens(args.item, tokens);
 }
 
@@ -1111,8 +1135,12 @@ function statsItems(map: Map<string, ConversationStatsItem>) {
 /** Summarize recent conversations into dashboard aggregate groups. */
 export function summarizeConversationStats(
   sessions: Session[],
+  nowMs = Date.now(),
 ): ConversationStats {
-  const conversations = buildConversations(sessions);
+  const conversations = filterRecentConversations(
+    buildConversations(sessions),
+    nowMs,
+  );
   const requesters = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
   let durationMs = 0;
@@ -1166,7 +1194,10 @@ export function summarizeConversationStats(
     locations: statsItems(locations),
     requesters: statsItems(requesters),
     tokens,
-    turns: sessions.length,
+    turns: conversations.reduce(
+      (sum, conversation) => sum + conversation.turns.length,
+      0,
+    ),
   };
 }
 

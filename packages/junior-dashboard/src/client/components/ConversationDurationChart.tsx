@@ -14,11 +14,14 @@ import {
 import { readConversationData } from "../api";
 import {
   buildConversations,
+  conversationRuntimeMs,
   conversationDisplayTitle,
   conversationRequesterLabel,
   conversationPath,
+  filterRecentConversations,
   formatDurationTick,
   formatMs,
+  recentConversationRange,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
@@ -50,19 +53,18 @@ export function ConversationDurationChart(props: {
 }) {
   const navigate = useNavigate();
   const nowMs = Date.now();
-  const rangeStartMs = nowMs - 7 * 24 * 60 * 60 * 1000;
-  const rangeEndMs = nowMs;
+  const { endMs: rangeEndMs, startMs: rangeStartMs } =
+    recentConversationRange(nowMs);
   const chartEdgePaddingMs = 6 * 60 * 60 * 1000;
   const chartRangeStartMs = rangeStartMs - chartEdgePaddingMs;
   const chartRangeEndMs = rangeEndMs + chartEdgePaddingMs;
   const conversations = useMemo(
-    () => buildConversations(props.sessions),
-    [props.sessions],
+    () => filterRecentConversations(buildConversations(props.sessions), nowMs),
+    [nowMs, props.sessions],
   );
   const points = conversations
     .map((conversation) => conversationPoint(conversation, props.timeZone))
     .filter((point): point is DurationPoint => Boolean(point))
-    .filter((point) => point.x >= rangeStartMs && point.x <= rangeEndMs)
     .sort((left, right) => left.x - right.x);
   const totals = points.reduce(
     (sum, point) => ({
@@ -198,11 +200,6 @@ function plottedStatus(status: VisualStatus): PlottedTurnStatus | null {
   return status === "active" ? null : status;
 }
 
-function finiteDurationMs(value: number | undefined): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  return Math.max(0, Math.floor(value));
-}
-
 function conversationPoint(
   conversation: Conversation,
   timeZone: string,
@@ -215,13 +212,10 @@ function conversationPoint(
   if (!status) {
     return null;
   }
-  const durations = conversation.turns
-    .map((turn) => finiteDurationMs(turn.cumulativeDurationMs))
-    .filter((duration): duration is number => duration !== undefined);
-  if (durations.length === 0) {
+  const durationMs = conversationRuntimeMs(conversation);
+  if (durationMs === undefined) {
     return null;
   }
-  const durationMs = durations.reduce((sum, duration) => sum + duration, 0);
 
   return {
     conversation,
