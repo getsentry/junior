@@ -18,12 +18,13 @@ export function PluginsPage(props: { data?: DashboardData }) {
   const skills = props.data?.skills ?? [];
   const reportsError = props.data?.pluginReportsError ?? false;
   const reportsLoading = props.data?.pluginReportsLoading ?? false;
+  const reportsPending = reportsLoading && reports.length === 0;
   const rows = buildPluginRows({
     plugins,
     reports,
     skills,
   });
-  const reportCount = reports.length;
+  const reportCount = reportsPending ? "..." : reports.length;
   const loadedCount = plugins.length;
   const skillCount = skills.length;
   const reportEmptyText = reportsError
@@ -95,7 +96,9 @@ export function PluginsPage(props: { data?: DashboardData }) {
                       <td className="border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]">
                         {row.report
                           ? (row.report.title ?? "available")
-                          : "none"}
+                          : reportsPending
+                            ? "loading"
+                            : "none"}
                       </td>
                       <td className="max-w-96 truncate border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]">
                         {row.skills.length
@@ -127,11 +130,15 @@ export function PluginsPage(props: { data?: DashboardData }) {
   );
 }
 
-function PluginMetric(props: { label: string; value: number }) {
+function PluginMetric(props: { label: string; value: number | string }) {
+  const value =
+    typeof props.value === "number"
+      ? props.value.toLocaleString()
+      : props.value;
   return (
     <div className="min-w-0 border-r border-white/10 bg-[#050505] px-4 py-3 last:border-r-0 max-sm:border-b">
       <div className="truncate text-3xl font-extrabold leading-none text-white">
-        {props.value.toLocaleString()}
+        {value}
       </div>
       <div className="mt-1 text-[0.72rem] font-semibold uppercase leading-tight text-[#888]">
         {props.label}

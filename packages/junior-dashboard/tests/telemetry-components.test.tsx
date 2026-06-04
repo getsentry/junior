@@ -538,6 +538,8 @@ describe("dashboard telemetry components", () => {
   it("shows plugin reports as loading before the report query returns", () => {
     const data = dashboardData([]);
     data.pluginReportsLoading = true;
+    data.plugins = [{ name: "github" }];
+    data.skills = [{ name: "triage", pluginProvider: "github" }];
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
@@ -546,6 +548,9 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain("Loading trusted plugin stats.");
+    expect(html).toContain(">...<");
+    expect(html).toContain(">loading<");
+    expect(html).not.toContain(">none<");
     expect(html).not.toContain(
       "No trusted plugin stats have been reported yet.",
     );
