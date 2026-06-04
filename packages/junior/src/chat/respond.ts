@@ -81,8 +81,7 @@ import {
   type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { createLazySandboxWorkspace } from "@/chat/sandbox/lazy-workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
@@ -96,14 +95,17 @@ import {
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
 import {
+  buildSteeringPiMessage,
   buildUserTurnText,
-  encodeNonImageAttachmentForPrompt,
+  buildUserTurnInput,
   getSessionIdentifiers,
   hasRuntimeTurnContext,
   isAssistantMessage,
   prependMissingRuntimeTurnContext,
+  type ReplyRequestAttachment,
   summarizeMessageText,
   toObservablePromptPart,
+  type UserTurnContentPart,
   upsertActiveSkill,
 } from "@/chat/respond-helpers";
 import {
@@ -157,6 +159,7 @@ import {
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
+export type { ReplyRequestAttachment };
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -268,15 +271,6 @@ export interface ReplyRequestContext {
   }) => void;
 }
 
-export type AssistantReplyRequestContext = ReplyRequestContext;
-
-export interface ReplyRequestAttachment {
-  data?: Buffer;
-  mediaType: string;
-  filename?: string;
-  promptText?: string;
-}
-
 export interface ReplySteeringMessage {
   omittedImageAttachmentCount?: number;
   text: string;
@@ -285,37 +279,6 @@ export interface ReplySteeringMessage {
 }
 
 let startupDiscoveryLogged = false;
-const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
-
-type UserTurnContentPart =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
-
-type UserTurnAttachment = NonNullable<
-  ReplyRequestContext["userAttachments"]
->[number];
-
-function buildOmittedImageAttachmentNotice(count: number): string {
-  return [
-    "<omitted-image-attachments>",
-    `count: ${count}`,
-    "Slack included image attachments with this turn, but this runtime cannot analyze images because no vision model is configured.",
-    "Do not claim that no image was attached.",
-    "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
-    "</omitted-image-attachments>",
-  ].join("\n");
-}
-
-function trimRouterAttachmentText(text: string): string {
-  const normalized = text.replaceAll("\0", " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length <= MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS
-    ? normalized
-    : `${normalized.slice(0, MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS)}...`;
-}
-
 function extractSliceUsage(
   messages: PiMessage[],
   beforeMessageCount: number,
@@ -450,122 +413,6 @@ function surfaceFromContext(
     return "api";
   }
   return undefined;
-}
-
-function supportsRouterTextPreview(mediaType: string): boolean {
-  const baseMediaType = mediaType.split(";", 1)[0]?.trim().toLowerCase();
-  if (!baseMediaType) {
-    return false;
-  }
-  return (
-    baseMediaType.startsWith("text/") ||
-    baseMediaType === "application/json" ||
-    baseMediaType === "application/xml" ||
-    baseMediaType === "application/x-www-form-urlencoded" ||
-    baseMediaType.endsWith("+json") ||
-    baseMediaType.endsWith("+xml")
-  );
-}
-
-function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
-  if (attachment.promptText) {
-    return trimRouterAttachmentText(attachment.promptText);
-  }
-
-  const header = [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-  ];
-
-  if (attachment.data && supportsRouterTextPreview(attachment.mediaType)) {
-    const preview = trimRouterAttachmentText(attachment.data.toString("utf8"));
-    if (preview) {
-      return [
-        ...header,
-        "<text-preview>",
-        preview,
-        "</text-preview>",
-        "</attachment>",
-      ].join("\n");
-    }
-  }
-
-  return [...header, "</attachment>"].join("\n");
-}
-
-function buildUserTurnInput(args: {
-  omittedImageAttachmentCount: number;
-  userAttachments?: ReplyRequestContext["userAttachments"];
-  userTurnText: string;
-}): {
-  routerBlocks: string[];
-  userContentParts: UserTurnContentPart[];
-} {
-  const routerBlocks: string[] = [];
-  const userContentParts: UserTurnContentPart[] = [
-    { type: "text", text: args.userTurnText },
-  ];
-
-  if (args.omittedImageAttachmentCount > 0) {
-    const omittedImagesNotice = buildOmittedImageAttachmentNotice(
-      args.omittedImageAttachmentCount,
-    );
-    userContentParts.push({ type: "text", text: omittedImagesNotice });
-    routerBlocks.push(omittedImagesNotice);
-  }
-
-  for (const attachment of args.userAttachments ?? []) {
-    routerBlocks.push(buildRouterAttachmentBlock(attachment));
-
-    if (attachment.promptText) {
-      userContentParts.push({
-        type: "text",
-        text: attachment.promptText,
-      });
-      continue;
-    }
-
-    if (attachment.mediaType.startsWith("image/")) {
-      if (!attachment.data) {
-        throw new Error("Image attachment is missing image data");
-      }
-      userContentParts.push({
-        type: "image",
-        data: attachment.data.toString("base64"),
-        mimeType: attachment.mediaType,
-      });
-      continue;
-    }
-
-    if (!attachment.data) {
-      throw new Error("Attachment is missing attachment data");
-    }
-
-    userContentParts.push({
-      type: "text",
-      text: encodeNonImageAttachmentForPrompt({
-        data: attachment.data,
-        mediaType: attachment.mediaType,
-        filename: attachment.filename,
-      }),
-    });
-  }
-
-  return { routerBlocks, userContentParts };
-}
-
-function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
-  const { userContentParts } = buildUserTurnInput({
-    userTurnText: message.text,
-    userAttachments: message.userAttachments,
-    omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
-  });
-  return {
-    role: "user",
-    content: userContentParts,
-    timestamp: message.timestampMs ?? Date.now(),
-  } as PiMessage;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
@@ -827,69 +674,10 @@ export async function generateAssistantReply(
           })
         : [],
     );
-    let sandboxPromise: Promise<SandboxWorkspace> | undefined;
-    let sandboxPromiseId: string | undefined;
-    const clearSandboxPromise = (): void => {
-      sandboxPromise = undefined;
-      sandboxPromiseId = undefined;
-    };
-    const getSandbox = (reason: {
-      trigger: string;
-      path?: string;
-      cmd?: string;
-      cwd?: string;
-    }): Promise<SandboxWorkspace> => {
-      const currentSandboxId = currentSandboxExecutor.getSandboxId();
-      if (
-        sandboxPromise &&
-        sandboxPromiseId &&
-        currentSandboxId !== sandboxPromiseId
-      ) {
-        clearSandboxPromise();
-      }
-
-      if (!sandboxPromise) {
-        logInfo(
-          "sandbox_boot_requested",
-          spanContext,
-          {
-            "app.sandbox.boot.trigger": reason.trigger,
-            ...(reason.path ? { "file.path": reason.path } : {}),
-            ...(reason.cmd ? { "process.executable.name": reason.cmd } : {}),
-            ...(reason.cwd ? { "file.directory": reason.cwd } : {}),
-          },
-          "Lazy sandbox boot requested",
-        );
-        sandboxPromise = currentSandboxExecutor
-          .createSandbox()
-          .then((sandbox) => {
-            sandboxPromiseId = sandbox.sandboxId;
-            return sandbox;
-          })
-          .catch((error) => {
-            clearSandboxPromise();
-            throw error;
-          });
-      }
-      return sandboxPromise;
-    };
-    const sandbox: SandboxWorkspace = {
-      readFileToBuffer: async (input) =>
-        (
-          await getSandbox({
-            trigger: "workspace.readFileToBuffer",
-            path: input.path,
-          })
-        ).readFileToBuffer(input),
-      runCommand: async (input) =>
-        (
-          await getSandbox({
-            trigger: "workspace.runCommand",
-            cmd: input.cmd,
-            cwd: input.cwd,
-          })
-        ).runCommand(input),
-    };
+    const sandbox = createLazySandboxWorkspace({
+      executor: currentSandboxExecutor,
+      logContext: spanContext,
+    });
 
     // ── Restore skill runtime handles from durable Pi history ────────
     for (const skillName of inferLoadedSkillNamesFromPiMessages(

@@ -26,6 +26,12 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   metadata, credentials, MCP metadata, and env-var interpolation suites.
 - Split sandbox egress proxy unit coverage into policy/env, forwarding,
   credential lease, and OIDC verification suites.
+- Extracted lazy sandbox workspace boot/cache/replacement behavior from the
+  broad `generateAssistantReply` runtime suite into
+  `chat/sandbox/lazy-workspace` with direct unit coverage.
+- Moved user-turn attachment/router-block assembly into `respond-helpers` so
+  attachment prompt contracts are covered without exercising the full runtime
+  reply path.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -50,7 +56,6 @@ low-fidelity integration tests.
 Files:
 
 - `packages/junior/tests/unit/runtime/respond-mcp-progressive-loading.test.ts`
-- `packages/junior/tests/unit/runtime/respond-lazy-sandbox.test.ts`
 - `packages/junior/tests/unit/runtime/respond-timeout-resume.test.ts`
 - `packages/junior/tests/unit/runtime/respond-provider-retry.test.ts`
 
@@ -59,6 +64,12 @@ Problem:
 These tests mock a broad runtime surface to drive `generateAssistantReply`-style
 behavior. They often prove multi-module orchestration, prompt/tool/runtime
 handoffs, auth pauses, or resume behavior from a unit layer.
+
+`respond-lazy-sandbox.test.ts` is partially improved: pure attachment assembly
+and lazy workspace cache/replacement mechanics now have direct unit coverage.
+The remaining file still uses a mocked runtime seam to prove that
+`generateAssistantReply` avoids sandbox booting unless a sandbox-backed tool is
+used and preserves sandbox metadata on error replies.
 
 Direction:
 

@@ -184,6 +184,45 @@ describe("selectTurnThinkingLevel", () => {
     });
   });
 
+  it("includes current-turn attachment blocks in the classifier prompt", async () => {
+    let capturedPrompt = "";
+    const completeObject = async ({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return {
+        object: {
+          thinking_level: "high",
+          confidence: 0.95,
+          reason: "attachment stack trace",
+        },
+      };
+    };
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      currentTurnBlocks: [
+        [
+          "<attachment>",
+          "filename: error.json",
+          "media_type: application/vnd.api+json; charset=utf-8",
+          "<text-preview>",
+          '{"error":"TypeError: x is undefined"}',
+          "</text-preview>",
+          "</attachment>",
+        ].join("\n"),
+      ],
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "can you fix this?",
+    });
+
+    expect(capturedPrompt).toContain("<current-instruction>");
+    expect(capturedPrompt).toContain("filename: error.json");
+    expect(capturedPrompt).toContain("TypeError: x is undefined");
+    expect(profile).toMatchObject({
+      thinkingLevel: "high",
+      reason: "attachment stack trace",
+    });
+  });
+
   it("does not floor acknowledgment turns with thread context", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
