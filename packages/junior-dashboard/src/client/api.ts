@@ -18,7 +18,10 @@ export const client = new QueryClient();
 const CORE_DASHBOARD_REFETCH_INTERVAL_MS = 5_000;
 const PLUGIN_REPORT_REFETCH_INTERVAL_MS = 30_000;
 
-type DashboardCoreData = Omit<DashboardData, "pluginReports">;
+type DashboardCoreData = Omit<
+  DashboardData,
+  "pluginReports" | "pluginReportsLoading"
+>;
 
 class DashboardApiError extends Error {
   readonly status: number;
@@ -123,6 +126,8 @@ export function useDashboardData() {
       ? {
           ...coreQuery.data,
           pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
+          pluginReportsLoading:
+            pluginReportsQuery.isPending && !pluginReportsQuery.data,
         }
       : undefined,
     error: coreQuery.error,

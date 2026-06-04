@@ -95,15 +95,19 @@ describe("dashboard token formatting", () => {
       failed: 1,
       requesters: [
         {
+          active: 1,
           conversations: 2,
           durationMs: 4_000,
+          failed: 0,
           label: "Avery",
           tokens: 15,
           turns: 2,
         },
         {
+          active: 0,
           conversations: 1,
           durationMs: 2_000,
+          failed: 1,
           label: "Blake",
           tokens: 20,
           turns: 1,

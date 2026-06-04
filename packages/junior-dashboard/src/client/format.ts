@@ -999,6 +999,19 @@ function statusCounts(conversations: Conversation[]) {
   );
 }
 
+function visualStatusForSessions(turns: Session[]): VisualStatus {
+  if (turns.some(isHungSession)) {
+    return "hung";
+  }
+  if (turns.some(isActiveSession)) {
+    return "active";
+  }
+  if (turns.some(isFailedSession)) {
+    return "failed";
+  }
+  return "idle";
+}
+
 function addConversationToStatsItem(
   item: ConversationStatsItem,
   conversation: Conversation,
@@ -1015,24 +1028,19 @@ function addConversationToStatsItem(
   addItemTokens(item, tokens);
 }
 
-function addTurnToStatsItem(args: {
-  conversation: Conversation;
-  countedConversations: Set<string>;
+function addRequesterTurnsToStatsItem(args: {
   item: ConversationStatsItem;
-  turn: Session;
+  turns: Session[];
 }): void {
-  const durationMs = durationTotal([args.turn]);
-  const tokens = tokenTotal([args.turn]);
-  if (!args.countedConversations.has(args.conversation.id)) {
-    const status = visualStatusForConversation(args.conversation);
-    args.countedConversations.add(args.conversation.id);
-    args.item.conversations += 1;
-    args.item.active += status === "active" ? 1 : 0;
-    args.item.failed += status === "failed" ? 1 : 0;
-    args.item.hung += status === "hung" ? 1 : 0;
-  }
-  args.item.turns += 1;
+  const durationMs = durationTotal(args.turns);
+  const tokens = tokenTotal(args.turns);
+  const status = visualStatusForSessions(args.turns);
+  args.item.conversations += 1;
+  args.item.turns += args.turns.length;
   args.item.durationMs += durationMs;
+  args.item.active += status === "active" ? 1 : 0;
+  args.item.failed += status === "failed" ? 1 : 0;
+  args.item.hung += status === "hung" ? 1 : 0;
   addItemTokens(args.item, tokens);
 }
 
@@ -1052,7 +1060,6 @@ export function summarizeConversationStats(
 ): ConversationStats {
   const conversations = buildConversations(sessions);
   const requesters = new Map<string, ConversationStatsItem>();
-  const requesterConversationIds = new Map<string, Set<string>>();
   const locations = new Map<string, ConversationStatsItem>();
 
   for (const conversation of conversations) {
@@ -1066,20 +1073,23 @@ export function summarizeConversationStats(
             ? "Internal"
             : "Unknown");
 
+    const requesterTurns = new Map<string, Session[]>();
     for (const turn of conversation.turns) {
       const requester = requesterLabel(turn.requesterIdentity) ?? "Unknown";
+      requesterTurns.set(requester, [
+        ...(requesterTurns.get(requester) ?? []),
+        turn,
+      ]);
+    }
+
+    for (const [requester, turns] of requesterTurns) {
       const requesterItem =
         requesters.get(requester) ?? emptyStatsItem(requester);
-      const countedConversations =
-        requesterConversationIds.get(requester) ?? new Set<string>();
-      addTurnToStatsItem({
-        conversation,
-        countedConversations,
+      addRequesterTurnsToStatsItem({
         item: requesterItem,
-        turn,
+        turns,
       });
       requesters.set(requester, requesterItem);
-      requesterConversationIds.set(requester, countedConversations);
     }
 
     const locationItem = locations.get(location) ?? emptyStatsItem(location);

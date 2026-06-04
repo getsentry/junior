@@ -51,6 +51,7 @@ function dashboardData(sessions: Session[]): DashboardData {
       reports: [],
       source: "trusted_plugins",
     },
+    pluginReportsLoading: false,
     plugins: [],
     runtime: {
       cwd: "/repo",
@@ -511,6 +512,22 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">Plugins<");
     expect(html).toContain("github");
     expect(html).toContain("No trusted plugin stats have been reported yet.");
+  });
+
+  it("shows plugin reports as loading before the report query returns", () => {
+    const data = dashboardData([]);
+    data.pluginReportsLoading = true;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PluginsPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Loading trusted plugin stats.");
+    expect(html).not.toContain(
+      "No trusted plugin stats have been reported yet.",
+    );
   });
 
   it("renders transcript copy as an icon-only control", () => {
