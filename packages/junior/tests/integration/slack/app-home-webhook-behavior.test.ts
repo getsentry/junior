@@ -58,7 +58,7 @@ function createTokenStore(
   };
 }
 
-describe("Slack webhook: App Home events", () => {
+describe("Slack behavior: App Home webhook", () => {
   beforeEach(() => {
     process.env = {
       ...ORIGINAL_ENV,

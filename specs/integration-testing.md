@@ -3,11 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-04
 
 ## Intent
 
-Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. Use this layer when the contract depends on production composition, handler routing, external transport behavior, or user-visible runtime outcomes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
+Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at explicit agent/model ports. Use this layer when the contract depends on production composition, handler routing, external transport behavior, or user-visible runtime outcomes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
 
 ## Scope
 
@@ -17,7 +17,7 @@ In scope:
 - Runtime orchestration and state interactions.
 - Slack HTTP contracts (request shape, retries, error mapping) through MSW.
 - Auth callback and resume flows, persisted thread recovery, and other user-visible product wiring.
-- Behavior outcomes from real runtime flow using deterministic fake-agent outputs.
+- Behavior outcomes from real runtime flow using deterministic fake agent/model output.
 
 ## Non-Goals
 
@@ -36,11 +36,13 @@ In scope:
 Allowed:
 
 - Fake agent or service substitution at the composition boundary only (`createSlackRuntime(...)`, `createTestChatRuntime(...)`, or approved thin wrapper helpers over them).
+- Fake Pi model transport through `ReplyRequestContext.streamFn` when the test needs the real Pi `Agent` loop, tool execution, durable checkpoints, or auth-pause behavior.
+- Precomputed deterministic runtime decisions through explicit request-context ports when the decision is not the behavior under test.
 
 Disallowed in integration behavior tests:
 
 - Mutable runtime-global behavior seams or singleton patching for core chat behavior.
-- `vi.mock` for runtime behavior modules (`@/chat/state/*`, workflow router/runtime handlers, ingress binding/router paths, etc.).
+- `vi.mock` or `vi.doMock` for any module.
 - Ad-hoc stubbing of Slack HTTP fetch/webclient internals in test files.
 - Ad-hoc fake persistence or fake Slack delivery layers when the shared memory adapter + MSW harness can prove the same contract.
 
@@ -66,11 +68,11 @@ Do not let low-level stream ordering or request-shape assertions dominate genera
 
 ## Classification Guidance
 
-If a test relies on runtime module mocks to drive control-flow branches, classify it as unit or component instead of integration.
+If a test relies on module mocks to drive control-flow branches, classify it as unit or component instead of integration.
 
 If the behavior under test depends on natural-language interpretation, continuity, or model choice, classify it as eval instead of integration.
 
-If a product/runtime change can be proven only by real wiring plus a deterministic fake agent, integration is the right answer. If the contract is a deterministic store, worker, queue-port, lease, or service-coordination invariant, prefer a component test.
+If a product/runtime change can be proven only by real wiring plus deterministic fake agent/model output at an explicit port, integration is the right answer. If the contract is a deterministic store, worker, queue-port, lease, or service-coordination invariant, prefer a component test.
 
 Do not keep a scenario in integration solely because a fake classifier fixture is easier than writing the corresponding eval. When the real contract is ambiguous natural-language behavior or reply quality, promote it to eval.
 
@@ -118,4 +120,4 @@ Avoid:
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces integration boundary policy for designated behavior integration tests.
+`pnpm --filter @sentry/junior run test:slack-boundary` enforces integration boundary policy for all integration tests.

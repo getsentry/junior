@@ -99,6 +99,9 @@ function createReadOnlyConfigService(
   };
 }
 
+/** Generates a resumed Slack turn reply at the agent execution boundary. */
+export type ResumeReplyGenerator = typeof generateAssistantReply;
+
 /** Error raised when another worker already owns the resume lock. */
 export class ResumeTurnBusyError extends Error {
   constructor(lockKey: string) {
@@ -115,7 +118,7 @@ interface ResumeSlackTurnArgs {
   replyContext?: AssistantReplyRequestContext;
   lockKey?: string;
   initialText?: string;
-  generateReply?: typeof generateAssistantReply;
+  generateReply?: ResumeReplyGenerator;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
@@ -474,7 +477,7 @@ export async function resumeAuthorizedRequest(args: {
   connectedText: string;
   replyContext?: AssistantReplyRequestContext;
   lockKey?: string;
-  generateReply?: typeof generateAssistantReply;
+  generateReply?: ResumeReplyGenerator;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;

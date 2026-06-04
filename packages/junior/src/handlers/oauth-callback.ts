@@ -18,6 +18,7 @@ import {
   ResumeTurnBusyError,
   resumeAuthorizedRequest,
   resumeSlackTurn,
+  type ResumeReplyGenerator,
 } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { logException, logInfo } from "@/chat/logging";
@@ -70,6 +71,10 @@ import { requireSlackDestination } from "@/chat/destination";
 
 interface OAuthCallbackOptions {
   generateReply?: typeof generateAssistantReply;
+}
+
+interface OAuthCallbackHandlerOptions {
+  generateReply?: ResumeReplyGenerator;
 }
 
 /**
@@ -174,7 +179,7 @@ async function persistFailedOAuthReplyState(args: {
 
 async function resumeOAuthSessionRecordTurn(
   stored: OAuthStatePayload,
-  options: OAuthCallbackOptions,
+  options: OAuthCallbackHandlerOptions = {},
 ): Promise<boolean> {
   if (
     !stored.resumeConversationId ||
@@ -459,6 +464,7 @@ async function resumeOAuthSessionRecordTurn(
             expectedVersion: version,
           });
         },
+        generateReply: options.generateReply,
       };
     },
   });
@@ -468,7 +474,7 @@ async function resumeOAuthSessionRecordTurn(
 
 async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
-  options: OAuthCallbackOptions,
+  options: OAuthCallbackHandlerOptions = {},
 ): Promise<void> {
   if (
     !stored.pendingMessage ||
@@ -520,6 +526,7 @@ async function resumePendingOAuthMessage(
       piMessages: conversation.piMessages,
       configuration: stored.configuration,
     },
+    generateReply: options.generateReply,
     onSuccess: async (reply) => {
       logInfo(
         "oauth_callback_resume_complete",
@@ -539,7 +546,7 @@ export async function GET(
   request: Request,
   provider: string,
   waitUntil: WaitUntilFn,
-  options: OAuthCallbackOptions = {},
+  options: OAuthCallbackHandlerOptions = {},
 ): Promise<Response> {
   const providerConfig = getPluginOAuthConfig(provider);
   if (!providerConfig) {

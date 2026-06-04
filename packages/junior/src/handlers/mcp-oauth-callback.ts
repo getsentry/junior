@@ -34,7 +34,10 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { resumeAuthorizedRequest } from "@/chat/runtime/slack-resume";
+import {
+  resumeAuthorizedRequest,
+  type ResumeReplyGenerator,
+} from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   applyPendingAuthUpdate,
@@ -57,6 +60,10 @@ import {
   type Requester,
 } from "@/chat/requester";
 import { requireSlackDestination } from "@/chat/destination";
+
+interface McpOAuthCallbackHandlerOptions {
+  generateReply?: ResumeReplyGenerator;
+}
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -188,7 +195,7 @@ async function persistFailedReplyState(
 
 async function resumeAuthorizedMcpTurn(args: {
   authSession: McpAuthSessionState;
-  generateReply?: typeof generateAssistantReply;
+  generateReply?: ResumeReplyGenerator;
   provider: string;
 }): Promise<void> {
   const { authSession, generateReply, provider } = args;
@@ -241,7 +248,7 @@ async function resumeAuthorizedMcpTurn(args: {
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
     connectedText: "",
-    generateReply,
+    generateReply: args.generateReply,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
@@ -454,7 +461,7 @@ export async function GET(
   request: Request,
   provider: string,
   waitUntil: WaitUntilFn,
-  options: McpOAuthCallbackOptions = {},
+  options: McpOAuthCallbackHandlerOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
   const state = url.searchParams.get("state")?.trim();

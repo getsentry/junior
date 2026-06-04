@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import {
+  listAgentTurnSessionSummaries,
+  recordAgentTurnSessionSummary,
+  upsertAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import type { PiMessage } from "@/chat/pi/messages";
-
-vi.mock("@/chat/prompt", () => ({
-  buildSystemPrompt: vi.fn(() => "[system prompt]"),
-  buildTurnContextPrompt: vi.fn(() => null),
-  JUNIOR_PERSONALITY: "",
-  JUNIOR_WORLD: null,
-}));
+import { createJuniorReporting } from "@/reporting";
 
 const SYSTEM_MESSAGE = {
   role: "system",
@@ -14,6 +14,12 @@ const SYSTEM_MESSAGE = {
 };
 
 const ORIGINAL_ENV = { ...process.env };
+
+function createReporting() {
+  return createJuniorReporting({
+    systemPrompt: () => "[system prompt]",
+  });
+}
 
 describe("dashboard reporting", () => {
   beforeEach(async () => {
@@ -23,23 +29,16 @@ describe("dashboard reporting", () => {
       DATABASE_URL: undefined,
       JUNIOR_DATABASE_URL: undefined,
     };
-    vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.useRealTimers();
-    vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });
 
   it("indexes recent turn session summaries", async () => {
-    const { listAgentTurnSessionSummaries, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:111",
       sessionId: "turn-1",
@@ -611,10 +610,6 @@ describe("dashboard reporting", () => {
   }, 20_000);
 
   it("reports only the current turn transcript from session history", async () => {
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
-
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:222",
       sessionId: "turn-current",
@@ -663,8 +658,7 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
-    const report =
-      await createJuniorReporting().getConversation("slack:C1:222");
+    const report = await createReporting().getConversation("slack:C1:222");
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
@@ -786,10 +780,6 @@ describe("dashboard reporting", () => {
   });
 
   it("reports a conversation after newer turns evict it from the global index", async () => {
-    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
-
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:999",
       destination: {
@@ -818,8 +808,7 @@ describe("dashboard reporting", () => {
       });
     }
 
-    const report =
-      await createJuniorReporting().getConversation("slack:C1:999");
+    const report = await createReporting().getConversation("slack:C1:999");
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
@@ -837,10 +826,6 @@ describe("dashboard reporting", () => {
   }, 20_000);
 
   it("keeps earlier turn transcripts pinned to their committed log prefix", async () => {
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
-
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:333",
       destination: {
@@ -898,8 +883,7 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
-    const report =
-      await createJuniorReporting().getConversation("slack:C1:333");
+    const report = await createReporting().getConversation("slack:C1:333");
 
     expect(report.runs).toHaveLength(2);
     expect(report.runs[0]).toMatchObject({ id: "turn-one" });
@@ -932,11 +916,6 @@ describe("dashboard reporting", () => {
   });
 
   it("redacts dashboard transcripts for non-public conversations", async () => {
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { persistThreadStateById } =
-      await import("@/chat/runtime/thread-state");
-    const { createJuniorReporting } = await import("@/reporting");
     const privateToolArgs = Object.fromEntries(
       Array.from({ length: 25 }, (_, index) => [
         `privateKey${index}`,
@@ -981,8 +960,7 @@ describe("dashboard reporting", () => {
       traceId: "0123456789abcdef0123456789abcdef",
     });
 
-    const report =
-      await createJuniorReporting().getConversation("slack:D1:222");
+    const report = await createReporting().getConversation("slack:D1:222");
 
     expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",
@@ -1016,10 +994,6 @@ describe("dashboard reporting", () => {
   });
 
   it("marks expired private transcripts as privacy redacted", async () => {
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
-
     await recordAgentTurnSessionSummary({
       conversationId: "slack:D1:333",
       sessionId: "turn-private-expired",
@@ -1027,8 +1001,7 @@ describe("dashboard reporting", () => {
       state: "completed",
     });
 
-    const report =
-      await createJuniorReporting().getConversation("slack:D1:333");
+    const report = await createReporting().getConversation("slack:D1:333");
 
     expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",

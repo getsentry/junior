@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message, StateAdapter, Thread } from "chat";
+import type { Message, Thread } from "chat";
 import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
@@ -11,7 +11,6 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
-import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -26,42 +25,17 @@ import {
   SLACK_DESTINATION,
   conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
-  SLACK_BOT_USER_ID,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
-  type ConversationWorkQueueTestAdapter,
   handleSlackWebhookAndFlush,
+  processNextQueuedSlackWork,
+  SLACK_BOT_USER_ID,
+  type ProcessQueuedSlackWorkArgs,
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
-
-interface ProcessQueuedSlackWorkArgs {
-  getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
-  lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
-  nowMs?: () => number;
-  queue: ConversationWorkQueueTestAdapter;
-  resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
-  runtime: SlackWorkerOptions["runtime"];
-  state: StateAdapter;
-}
-
-function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
-  return processConversationQueueMessage(args.queue.takeMessage(), {
-    nowMs: args.nowMs,
-    queue: args.queue,
-    run: createSlackConversationWorker({
-      getSlackAdapter: args.getSlackAdapter,
-      lookupSlackUser: args.lookupSlackUser,
-      resumeAwaitingContinuation:
-        args.resumeAwaitingContinuation ?? (async () => false),
-      runtime: args.runtime,
-      state: args.state,
-    }),
-    state: args.state,
-  });
-}
 
 /** Prove redundant queue deliveries do not replay already-drained Slack work. */
 async function expectRemainingQueuedSlackWorkIsNoop(

@@ -8,14 +8,8 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+import { successfulAssistantReply } from "../fixtures/assistant-reply";
+import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
@@ -37,17 +31,25 @@ let stateAdapterModule: StateAdapterModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
+const generateAssistantReplyMock = vi.fn<ResumeReplyGenerator>();
+
+function runOauthCallbackRoute(args: {
+  provider: string;
+  state: string;
+  code: string;
+}): Promise<Response> {
+  return oauthCallbackHarnessModule.runOauthCallbackRoute({
+    ...args,
+    generateReply: generateAssistantReplyMock,
+  });
+}
 
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "Here are your Sentry issues.",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      successfulAssistantReply("Here are your Sentry issues."),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -79,7 +81,7 @@ describe("oauth callback slack integration", () => {
         provider: "eval-oauth",
       });
 
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+    const response = await runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-state",
       code: "eval-oauth-code",
@@ -138,7 +140,7 @@ describe("oauth callback slack integration", () => {
         },
       });
 
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+    const response = await runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-resume-state",
       code: "eval-oauth-code",
@@ -263,7 +265,7 @@ describe("oauth callback slack integration", () => {
         },
       });
 
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+    const response = await runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-session-record-state",
       code: "eval-oauth-code",
@@ -577,7 +579,7 @@ describe("oauth callback slack integration", () => {
     }) as typeof adapter.get);
 
     try {
-      const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      const response = await runOauthCallbackRoute({
         provider: "eval-oauth",
         state: "eval-oauth-locked-state",
         code: "eval-oauth-code",
@@ -757,7 +759,7 @@ describe("oauth callback slack integration", () => {
         resumeSessionId: sessionId,
       });
 
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+    const response = await runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-abandoned-state",
       code: "eval-oauth-code",

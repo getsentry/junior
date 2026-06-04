@@ -19,14 +19,20 @@ function successDiagnostics(toolCalls: string[] = []) {
   };
 }
 
-function reactionCall(name: string, timestamp: string) {
-  return expect.objectContaining({
-    params: expect.objectContaining({
-      channel: "C_PROCESSING",
-      timestamp,
-      name,
-    }),
-  });
+function reactionEvents(calls: ReturnType<typeof slackApiOutbox.reactionAdds>) {
+  return calls.map((call) => ({
+    channel: call.params.channel,
+    name: call.params.name,
+    timestamp: call.params.timestamp,
+  }));
+}
+
+function processingReaction(name: string, timestamp: string) {
+  return {
+    channel: "C_PROCESSING",
+    name,
+    timestamp,
+  };
 }
 
 describe("Slack behavior: processing reaction", () => {
@@ -65,12 +71,12 @@ describe("Slack behavior: processing reaction", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(slackApiOutbox.reactionAdds()).toEqual([
-      reactionCall("eyes", "1700007001.000000"),
-      reactionCall("white_check_mark", "1700007001.000000"),
+    expect(reactionEvents(slackApiOutbox.reactionAdds())).toEqual([
+      processingReaction("eyes", "1700007001.000000"),
+      processingReaction("white_check_mark", "1700007001.000000"),
     ]);
-    expect(slackApiOutbox.reactionRemovals()).toEqual([
-      reactionCall("eyes", "1700007001.000000"),
+    expect(reactionEvents(slackApiOutbox.reactionRemovals())).toEqual([
+      processingReaction("eyes", "1700007001.000000"),
     ]);
   });
 
@@ -172,12 +178,12 @@ describe("Slack behavior: processing reaction", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(slackApiOutbox.reactionAdds()).toEqual([
-      reactionCall("eyes", "1700007151.000000"),
-      reactionCall("white_check_mark", "1700007151.000000"),
+    expect(reactionEvents(slackApiOutbox.reactionAdds())).toEqual([
+      processingReaction("eyes", "1700007151.000000"),
+      processingReaction("white_check_mark", "1700007151.000000"),
     ]);
-    expect(slackApiOutbox.reactionRemovals()).toEqual([
-      reactionCall("eyes", "1700007151.000000"),
+    expect(reactionEvents(slackApiOutbox.reactionRemovals())).toEqual([
+      processingReaction("eyes", "1700007151.000000"),
     ]);
   });
 

@@ -13,14 +13,8 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+import { successfulAssistantReply } from "../fixtures/assistant-reply";
+import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
@@ -54,6 +48,18 @@ let pluginRegistryModule: PluginRegistryModule;
 let stateAdapterModule: StateAdapterModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
+const generateAssistantReplyMock = vi.fn<ResumeReplyGenerator>();
+
+function runMcpOauthCallbackRoute(args: {
+  provider: string;
+  state: string;
+  code: string;
+}): Promise<Response> {
+  return mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+    ...args,
+    generateReply: generateAssistantReplyMock,
+  });
+}
 
 async function createPendingAuthSession(args: {
   conversationId: string;
@@ -124,18 +130,18 @@ async function createAwaitingMcpTurnRecord(args: {
 describe("mcp oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "The budget deadline you mentioned earlier was Friday.",
-      artifactStatePatch: {
-        lastCanvasUrl: "https://example.com/canvas",
-      },
-      sandboxId: "sandbox-1",
-      sandboxDependencyProfileHash: "hash-1",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      successfulAssistantReply(
+        "The budget deadline you mentioned earlier was Friday.",
+        {
+          artifactStatePatch: {
+            lastCanvasUrl: "https://example.com/canvas",
+          },
+          sandboxId: "sandbox-1",
+          sandboxDependencyProfileHash: "hash-1",
+        },
+      ),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -302,12 +308,11 @@ describe("mcp oauth callback slack integration", () => {
       codeVerifier: expect.any(String),
     });
 
-    const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        state: authProvider.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
-      });
+    const response = await runMcpOauthCallbackRoute({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      state: authProvider.authSessionId,
+      code: EVAL_MCP_AUTH_CODE,
+    });
 
     expect(response.status).toBe(200);
 
@@ -596,12 +601,11 @@ describe("mcp oauth callback slack integration", () => {
     }) as typeof adapter.get);
 
     try {
-      const response =
-        await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-          provider: EVAL_MCP_AUTH_PROVIDER,
-          state: authProvider.authSessionId,
-          code: EVAL_MCP_AUTH_CODE,
-        });
+      const response = await runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+      });
 
       expect(response.status).toBe(200);
     } finally {
@@ -699,12 +703,11 @@ describe("mcp oauth callback slack integration", () => {
       threadTs: "1700000000.004",
     });
 
-    const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        state: authProvider.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
-      });
+    const response = await runMcpOauthCallbackRoute({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      state: authProvider.authSessionId,
+      code: EVAL_MCP_AUTH_CODE,
+    });
 
     expect(response.status).toBe(200);
     expect(generateAssistantReplyMock).not.toHaveBeenCalled();
@@ -764,12 +767,11 @@ describe("mcp oauth callback slack integration", () => {
       threadTs: "1700000000.006",
     });
 
-    const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        state: authProvider.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
-      });
+    const response = await runMcpOauthCallbackRoute({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      state: authProvider.authSessionId,
+      code: EVAL_MCP_AUTH_CODE,
+    });
 
     expect(response.status).toBe(200);
     expect(generateAssistantReplyMock).not.toHaveBeenCalled();
@@ -847,24 +849,21 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "",
-      files: [
-        {
-          data: Buffer.from("hello"),
-          filename: "resume.txt",
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      successfulAssistantReply("", {
+        files: [
+          {
+            data: Buffer.from("hello"),
+            filename: "resume.txt",
+          },
+        ],
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: true,
+          attachFiles: "inline",
         },
-      ],
-      deliveryPlan: {
-        mode: "thread",
-        postThreadText: true,
-        attachFiles: "inline",
-      },
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+      }),
+    );
     await stateAdapterModule
       .getStateAdapter()
       .set("thread-state:slack:C123:1700000000.002", {
@@ -907,12 +906,11 @@ describe("mcp oauth callback slack integration", () => {
       threadTs: "1700000000.002",
     });
 
-    const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        state: authProvider.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
-      });
+    const response = await runMcpOauthCallbackRoute({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      state: authProvider.authSessionId,
+      code: EVAL_MCP_AUTH_CODE,
+    });
 
     expect(response.status).toBe(200);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
@@ -931,24 +929,21 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files even when thread text delivery is suppressed", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "👍",
-      files: [
-        {
-          data: Buffer.from("hello"),
-          filename: "resume.txt",
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      successfulAssistantReply("👍", {
+        files: [
+          {
+            data: Buffer.from("hello"),
+            filename: "resume.txt",
+          },
+        ],
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: false,
+          attachFiles: "inline",
         },
-      ],
-      deliveryPlan: {
-        mode: "thread",
-        postThreadText: false,
-        attachFiles: "inline",
-      },
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+      }),
+    );
     await stateAdapterModule
       .getStateAdapter()
       .set("thread-state:slack:C123:1700000000.003", {
@@ -991,12 +986,11 @@ describe("mcp oauth callback slack integration", () => {
       threadTs: "1700000000.003",
     });
 
-    const response =
-      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        state: authProvider.authSessionId,
-        code: EVAL_MCP_AUTH_CODE,
-      });
+    const response = await runMcpOauthCallbackRoute({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      state: authProvider.authSessionId,
+      code: EVAL_MCP_AUTH_CODE,
+    });
 
     expect(response.status).toBe(200);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);

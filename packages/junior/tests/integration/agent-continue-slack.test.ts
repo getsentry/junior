@@ -7,8 +7,8 @@ import {
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-
-const generateAssistantReplyMock = vi.fn();
+import { successfulAssistantReply } from "../fixtures/assistant-reply";
+import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -28,28 +28,28 @@ let requestDeadlineModule: RequestDeadlineModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let agentContinueServiceModule: AgentContinueServiceModule;
 let queue: ConversationWorkQueueTestAdapter;
+let turnResumeClient: TurnResumeTestClient;
+let waitUntil: WaitUntilCollector;
+const generateAssistantReplyMock = vi.fn<ResumeReplyGenerator>();
 
 function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
-}): Promise<boolean> {
-  return requestDeadlineModule.runWithTurnRequestDeadline(() =>
-    agentContinueRunnerModule.continueSlackAgentRunWithLockRetry(
-      {
-        conversationId: args.conversationId,
-        destination: SLACK_DESTINATION,
-        expectedVersion: args.expectedVersion,
-        sessionId: args.sessionId,
-      },
-      {
-        generateReply: generateAssistantReplyMock,
-        scheduleAgentContinue: (request) =>
-          agentContinueServiceModule.scheduleAgentContinue(request, {
-            queue,
-          }),
-      },
-    ),
+}): Promise<Response> {
+  return turnResumeHandlerModule.POST(
+    turnResumeClient.request({
+      ...args,
+      destination: SLACK_DESTINATION,
+    }),
+    waitUntil.fn,
+    {
+      generateReply: generateAssistantReplyMock,
+      scheduleTurnTimeoutResume: (request) =>
+        timeoutResumeServiceModule.scheduleTurnTimeoutResume(request, {
+          queue,
+        }),
+    },
   );
 }
 
@@ -57,13 +57,9 @@ describe("agent continuation Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "Final resumed answer",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      successfulAssistantReply("Final resumed answer"),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -544,19 +540,16 @@ describe("agent continuation Slack integration", () => {
         },
       });
 
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "Final resumed answer with artifact",
-      files: [
-        {
-          data: Buffer.from("resume-file"),
-          filename: "resume.txt",
-        },
-      ],
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      successfulAssistantReply("Final resumed answer with artifact", {
+        files: [
+          {
+            data: Buffer.from("resume-file"),
+            filename: "resume.txt",
+          },
+        ],
+      }),
+    );
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {

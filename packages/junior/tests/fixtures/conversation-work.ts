@@ -5,10 +5,9 @@ import type {
   ConversationQueueSendOptions,
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
-import {
-  CONVERSATION_BY_ACTIVITY_INDEX_KEY,
-  type InboundMessage,
-} from "@/chat/task-execution/store";
+import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
+import type { InboundMessageRecord } from "@/chat/task-execution/store";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
@@ -33,6 +32,17 @@ export interface ConversationQueueSendRecord {
 interface QueueSendHold {
   entered: () => void;
   release: Promise<unknown>;
+}
+
+type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
+
+export interface ProcessQueuedSlackWorkArgs {
+  getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
+  nowMs?: () => number;
+  queue: ConversationWorkQueueTestAdapter;
+  resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
+  runtime: SlackWorkerOptions["runtime"];
+  state: StateAdapter;
 }
 
 /**
@@ -328,4 +338,19 @@ export function createNoopSlackWebhookRuntime() {
     handleNewMention: async () => {},
     handleSubscribedMessage: async () => {},
   };
+}
+
+/** Deliver the next queued Slack conversation-work nudge through the real worker. */
+export function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
+  return processConversationQueueMessage(args.queue.takeMessage(), {
+    nowMs: args.nowMs,
+    queue: args.queue,
+    run: createSlackConversationWorker({
+      getSlackAdapter: args.getSlackAdapter,
+      resumeAwaitingContinuation: args.resumeAwaitingContinuation,
+      runtime: args.runtime,
+      state: args.state,
+    }),
+    state: args.state,
+  });
 }

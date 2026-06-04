@@ -7,8 +7,12 @@
  * and persists resumable checkpoints. Slack delivery and thread presentation
  * should stay outside this file.
  */
-import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import {
+  Agent,
+  type AgentTool,
+  type StreamFn,
+} from "@earendil-works/pi-agent-core";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -233,6 +237,10 @@ export interface ReplyRequestContext {
     /** Per-turn override for app-owned sandbox egress trace propagation. */
     tracePropagation?: SandboxEgressTracePropagationConfig;
   };
+  /** Override the Pi model transport when a host owns deterministic execution. */
+  streamFn?: StreamFn;
+  /** Reuse a preselected reasoning level when routing already made that choice. */
+  turnThinkingSelection?: TurnThinkingSelection;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   onArtifactStateUpdated?: (
     artifactState: ThreadArtifactsState,
@@ -924,19 +932,21 @@ export async function generateAssistantReply(
         } as PiMessage,
       ];
 
-    thinkingSelection = await selectTurnThinkingLevel({
-      completeObject,
-      conversationContext: context.conversationContext,
-      context: {
-        threadId: context.correlation?.threadId,
-        channelId: context.correlation?.channelId,
-        requesterId: context.correlation?.requesterId,
-        runId: context.correlation?.runId,
-      },
-      currentTurnBlocks: routerBlocks,
-      fastModelId: botConfig.fastModelId,
-      messageText: userInput,
-    });
+    thinkingSelection =
+      context.turnThinkingSelection ??
+      (await selectTurnThinkingLevel({
+        completeObject,
+        conversationContext: context.conversationContext,
+        context: {
+          threadId: context.correlation?.threadId,
+          channelId: context.correlation?.channelId,
+          requesterId: context.correlation?.requesterId,
+          runId: context.correlation?.runId,
+        },
+        currentTurnBlocks: routerBlocks,
+        fastModelId: botConfig.fastModelId,
+        messageText: userInput,
+      }));
     setSpanAttributes({
       "gen_ai.request.model": botConfig.modelId,
       "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
@@ -1375,7 +1385,8 @@ export async function generateAssistantReply(
 
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
-      streamFn: createTracedStreamFn({ conversationPrivacy }),
+      streamFn:
+        context.streamFn ?? createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       prepareNextTurn: async () => {
         await drainSteeringMessages();

@@ -53,7 +53,7 @@ function extractImageAttachmentSummary(
   return match?.[1];
 }
 
-describe("bot image hydration", () => {
+describe("Slack behavior: image hydration", () => {
   beforeEach(() => {
     listThreadRepliesMock.mockReset();
   });

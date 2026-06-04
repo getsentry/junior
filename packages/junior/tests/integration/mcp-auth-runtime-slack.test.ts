@@ -1,5 +1,9 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { ReplyRequestContext } from "@/chat/respond";
+import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
@@ -17,28 +21,25 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { piTextResponse, piToolCallResponse } from "../fixtures/pi-stream";
 
-const {
-  agentProbe,
-  MCP_TOOL_NAME,
-  SKILL_NAME,
-  assistantReplyWithoutContext,
-  assistantReplyWithContext,
-  priorBudgetContext,
-} = vi.hoisted(() => ({
-  agentProbe: {
-    continueCallCount: 0,
-    directProviderSearch: false,
-    promptCallCount: 0,
-    searchToolNames: [] as string[][],
-  },
-  MCP_TOOL_NAME: "mcp__eval-auth__budget-echo",
-  SKILL_NAME: "eval-auth",
-  assistantReplyWithoutContext: "I need the earlier budget context first.",
-  assistantReplyWithContext:
-    "The budget deadline you mentioned earlier was Friday.",
-  priorBudgetContext: "You need the budget by Friday.",
-}));
+const MCP_TOOL_NAME = "mcp__eval-auth__budget-echo";
+const SKILL_NAME = "eval-auth";
+const assistantReplyWithoutContext = "I need the earlier budget context first.";
+const assistantReplyWithContext =
+  "The budget deadline you mentioned earlier was Friday.";
+const priorBudgetContext = "You need the budget by Friday.";
+const testThinkingSelection: TurnThinkingSelection = {
+  thinkingLevel: "medium",
+  reason: "test_default",
+};
+
+const agentProbe = {
+  continueCallCount: 0,
+  directProviderSearch: false,
+  promptCallCount: 0,
+  searchToolNames: [] as string[][],
+};
 
 function resetAgentProbe(): void {
   agentProbe.promptCallCount = 0;
@@ -76,159 +77,143 @@ function hasPriorBudgetContext(messages: unknown[]): boolean {
   );
 }
 
-vi.mock("@/chat/services/turn-thinking-level", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/chat/services/turn-thinking-level")
-  >("@/chat/services/turn-thinking-level");
-  return {
-    ...actual,
-    // Bypass the classifier to keep this an agent-boundary test with no
-    // model traffic.
-    selectTurnThinkingLevel: async () => ({
-      thinkingLevel: "medium" as const,
-      reason: "test_default",
-    }),
-  };
-});
+function hasCompletedMcpAuthorization(messages: unknown[]): boolean {
+  return messages.some((message) =>
+    extractTextContent(message).includes(
+      `MCP authorization completed for provider "${EVAL_MCP_AUTH_PROVIDER}"`,
+    ),
+  );
+}
 
-vi.mock("@earendil-works/pi-agent-core", () => {
-  class FakeAgent {
-    state: {
-      messages: unknown[];
-      model: unknown;
-      systemPrompt: string;
-      tools: Array<{
-        name: string;
-        execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
-      }>;
+function extractSearchToolNames(messages: unknown[]): string[] | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+
+    const candidate = message as {
+      details?: unknown;
+      role?: unknown;
+      toolName?: unknown;
     };
-    private aborted = false;
-
-    constructor(input: {
-      initialState: {
-        model: unknown;
-        systemPrompt: string;
-        tools: Array<{
-          name: string;
-          execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
-        }>;
-      };
-    }) {
-      this.state = {
-        messages: [],
-        model: input.initialState.model,
-        systemPrompt: input.initialState.systemPrompt,
-        tools: input.initialState.tools,
-      };
+    if (
+      candidate.role !== "toolResult" ||
+      candidate.toolName !== "searchMcpTools" ||
+      !candidate.details ||
+      typeof candidate.details !== "object"
+    ) {
+      continue;
     }
 
-    subscribe() {
-      return () => undefined;
+    const tools = (candidate.details as { tools?: unknown }).tools;
+    if (!Array.isArray(tools)) {
+      return [];
     }
-
-    abort() {
-      this.aborted = true;
-    }
-
-    async prompt(message: unknown) {
-      agentProbe.promptCallCount += 1;
-      this.aborted = false;
-      this.state.messages.push(message);
-
-      if (agentProbe.directProviderSearch) {
-        const searchMcpTools = this.state.tools.find(
-          (tool) => tool.name === "searchMcpTools",
-        );
-        if (!searchMcpTools) {
-          throw new Error("searchMcpTools missing");
-        }
-        await searchMcpTools.execute("tool-search-provider", {
-          provider: EVAL_MCP_AUTH_PROVIDER,
-          query: "budget echo query",
-        });
-        if (this.aborted) {
-          return {};
-        }
-        throw new Error("Expected MCP auth pause while searching eval-auth");
-      }
-
-      const loadSkillTool = this.state.tools.find(
-        (tool) => tool.name === "loadSkill",
-      );
-      if (!loadSkillTool) {
-        throw new Error("loadSkill tool missing");
-      }
-
-      await loadSkillTool.execute("tool-load-skill", {
-        skill_name: SKILL_NAME,
-      });
-
-      if (this.aborted) {
-        return {};
-      }
-
-      throw new Error("Expected MCP auth pause while loading eval-auth");
-    }
-
-    async continue() {
-      agentProbe.continueCallCount += 1;
-      this.aborted = false;
-
-      const searchMcpTools = this.state.tools.find(
-        (tool) => tool.name === "searchMcpTools",
-      );
-      if (!searchMcpTools) {
-        throw new Error("searchMcpTools missing on resume");
-      }
-      const searchResult = (await searchMcpTools.execute("tool-search-resume", {
-        provider: EVAL_MCP_AUTH_PROVIDER,
-        query: "budget echo query",
-      })) as {
-        details?: { tools?: Array<{ tool_name?: unknown }> };
-      };
-      agentProbe.searchToolNames.push(
-        (searchResult.details?.tools ?? [])
-          .map((tool) => tool.tool_name)
-          .filter(
-            (toolName): toolName is string => typeof toolName === "string",
-          ),
-      );
-
-      const callMcpTool = this.state.tools.find(
-        (tool) => tool.name === "callMcpTool",
-      );
-      if (!callMcpTool) {
-        throw new Error("callMcpTool missing on resume");
-      }
-
-      await callMcpTool.execute("tool-call-continue", {
-        tool_name: MCP_TOOL_NAME,
-        arguments: { query: "what did i say about the budget?" },
-      });
-
-      if (this.aborted) {
-        return {};
-      }
-
-      this.state.messages.push({
-        role: "assistant",
-        content: [
-          {
-            type: "text",
-            text: hasPriorBudgetContext(this.state.messages)
-              ? assistantReplyWithContext
-              : assistantReplyWithoutContext,
-          },
-        ],
-        stopReason: "stop",
-      });
-
-      return {};
-    }
+    return tools
+      .map((tool) =>
+        tool && typeof tool === "object"
+          ? (tool as { tool_name?: unknown }).tool_name
+          : undefined,
+      )
+      .filter((toolName): toolName is string => typeof toolName === "string");
   }
 
-  return { Agent: FakeAgent };
-});
+  return undefined;
+}
+
+function recordSearchToolNames(messages: unknown[]): void {
+  const toolNames = extractSearchToolNames(messages);
+  if (!toolNames) {
+    return;
+  }
+
+  const previous = agentProbe.searchToolNames.at(-1);
+  if (previous && previous.join("\0") === toolNames.join("\0")) {
+    return;
+  }
+
+  agentProbe.searchToolNames.push(toolNames);
+}
+
+function createMcpAuthStreamFn(): StreamFn {
+  let initialPromptStarted = false;
+  let resumeStep = 0;
+
+  return async (_model, context) => {
+    const messages = context.messages ?? [];
+    const authorizationCompleted = hasCompletedMcpAuthorization(messages);
+
+    if (authorizationCompleted && resumeStep > 0) {
+      recordSearchToolNames(messages);
+    }
+
+    if (!initialPromptStarted) {
+      initialPromptStarted = true;
+      agentProbe.promptCallCount += 1;
+      if (agentProbe.directProviderSearch) {
+        return piToolCallResponse({
+          id: "tool-search-provider",
+          name: "searchMcpTools",
+          parameters: {
+            provider: EVAL_MCP_AUTH_PROVIDER,
+            query: "budget echo query",
+          },
+        });
+      }
+
+      return piToolCallResponse({
+        id: "tool-load-skill",
+        name: "loadSkill",
+        parameters: { skill_name: SKILL_NAME },
+      });
+    }
+
+    if (!authorizationCompleted) {
+      return piTextResponse("Authorization pending.");
+    }
+
+    if (resumeStep === 0) {
+      resumeStep += 1;
+      agentProbe.continueCallCount += 1;
+      return piToolCallResponse({
+        id: "tool-search-resume",
+        name: "searchMcpTools",
+        parameters: {
+          provider: EVAL_MCP_AUTH_PROVIDER,
+          query: "budget echo query",
+        },
+      });
+    }
+
+    if (resumeStep === 1) {
+      resumeStep += 1;
+      return piToolCallResponse({
+        id: "tool-call-continue",
+        name: "callMcpTool",
+        parameters: {
+          tool_name: MCP_TOOL_NAME,
+          arguments: { query: "what did i say about the budget?" },
+        },
+      });
+    }
+
+    return piTextResponse(
+      hasPriorBudgetContext(context.messages ?? [])
+        ? assistantReplyWithContext
+        : assistantReplyWithoutContext,
+    );
+  };
+}
+
+function createReplyGenerator(streamFn: StreamFn): ResumeReplyGenerator {
+  return (messageText: string, context: ReplyRequestContext = {}) =>
+    respondModule.generateAssistantReply(messageText, {
+      ...context,
+      streamFn,
+      turnThinkingSelection: testThinkingSelection,
+    });
+}
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
@@ -240,6 +225,7 @@ type ChatRuntimeModule = typeof import("../fixtures/chat-runtime");
 type McpAuthStoreModule = typeof import("@/chat/mcp/auth-store");
 type McpOauthCallbackHarnessModule =
   typeof import("../fixtures/mcp-oauth-callback-harness");
+type RespondModule = typeof import("@/chat/respond");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
@@ -247,6 +233,7 @@ type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 let chatRuntimeModule: ChatRuntimeModule;
 let mcpAuthStoreModule: McpAuthStoreModule;
 let mcpOauthCallbackHarnessModule: McpOauthCallbackHarnessModule;
+let respondModule: RespondModule;
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
@@ -312,6 +299,7 @@ describe("mcp auth runtime slack integration", () => {
     mcpAuthStoreModule = await import("@/chat/mcp/auth-store");
     mcpOauthCallbackHarnessModule =
       await import("../fixtures/mcp-oauth-callback-harness");
+    respondModule = await import("@/chat/respond");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
@@ -331,8 +319,12 @@ describe("mcp auth runtime slack integration", () => {
     const threadId = "slack:C123:1700000000.001";
     const turnId = "turn_user-1";
     const { createTestChatRuntime } = chatRuntimeModule;
+    const generateAssistantReply = createReplyGenerator(
+      createMcpAuthStreamFn(),
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
+        replyExecutor: { generateAssistantReply },
         visionContext: {
           listThreadReplies: async () => [],
         },
@@ -468,6 +460,7 @@ describe("mcp auth runtime slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: pendingAuthSession!.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        generateReply: generateAssistantReply,
       });
 
     expect(response.status).toBe(200);
@@ -571,8 +564,12 @@ describe("mcp auth runtime slack integration", () => {
     const threadId = "slack:C124:1700000000.002";
     const turnId = "turn_user-2";
     const { createTestChatRuntime } = chatRuntimeModule;
+    const generateAssistantReply = createReplyGenerator(
+      createMcpAuthStreamFn(),
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
+        replyExecutor: { generateAssistantReply },
         subscribedReplyPolicy: {
           completeObject: async () =>
             ({
@@ -681,8 +678,12 @@ describe("mcp auth runtime slack integration", () => {
     const threadId = "slack:C125:1700000000.003";
     const turnId = "turn_user-3";
     const { createTestChatRuntime } = chatRuntimeModule;
+    const generateAssistantReply = createReplyGenerator(
+      createMcpAuthStreamFn(),
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
+        replyExecutor: { generateAssistantReply },
         visionContext: {
           listThreadReplies: async () => [],
         },
@@ -764,6 +765,7 @@ describe("mcp auth runtime slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: pendingAuthSession!.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        generateReply: generateAssistantReply,
       });
 
     expect(response.status).toBe(200);
