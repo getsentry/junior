@@ -58,6 +58,19 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       return undefined;
     }
 
+    private recordRunFailure(error: unknown) {
+      this.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "" }],
+        stopReason: "error",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        usage: {
+          input: 0,
+          output: 0,
+        },
+      });
+    }
+
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
@@ -66,7 +79,12 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         agentMode.value === "steering" ||
         agentMode.value === "steeringSteerThrows"
       ) {
-        await this.prepareNextTurn?.();
+        try {
+          await this.prepareNextTurn?.();
+        } catch (error) {
+          this.recordRunFailure(error);
+          return {};
+        }
         this.state.messages.push(...this.steeringMessages);
         this.state.messages.push({
           role: "assistant",
@@ -323,6 +341,9 @@ describe("generateAssistantReply provider retry", () => {
     expect(sessionRecord).toMatchObject({
       state: "awaiting_resume",
       resumeReason: "yield",
+      errorMessage: expect.stringContaining(
+        "Agent turn yielded at a safe boundary",
+      ),
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
@@ -372,6 +393,9 @@ describe("generateAssistantReply provider retry", () => {
     expect(sessionRecord).toMatchObject({
       state: "awaiting_resume",
       resumeReason: "yield",
+      errorMessage: expect.stringContaining(
+        "Agent turn yielded at a safe boundary",
+      ),
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([

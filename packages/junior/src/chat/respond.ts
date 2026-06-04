@@ -471,7 +471,7 @@ export async function generateAssistantReply(
   let canRecordMcpProviders = false;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
-  let yielded = false;
+  let cooperativeYieldError: CooperativeTurnYieldError | undefined;
   let inputCommitted = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
@@ -1211,13 +1211,13 @@ export async function generateAssistantReply(
         return;
       }
 
-      yielded = true;
       timeoutResumeMessages = getResumeSnapshot();
-      throw new CooperativeTurnYieldError(
+      cooperativeYieldError = new CooperativeTurnYieldError(
         `Agent turn yielded at a safe boundary after ${
           Date.now() - replyStartedAtMs
         }ms`,
       );
+      throw cooperativeYieldError;
     };
 
     agent = new Agent({
@@ -1400,6 +1400,9 @@ export async function generateAssistantReply(
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
             promptResult = await runAgentStep(run);
+            if (cooperativeYieldError) {
+              throw cooperativeYieldError;
+            }
 
             newMessages = agent.state.messages.slice(beforeMessageCount);
             const outputMessages = newMessages.filter(isAssistantMessage);
@@ -1530,7 +1533,7 @@ export async function generateAssistantReply(
     });
   } catch (error) {
     if (
-      yielded &&
+      cooperativeYieldError &&
       error instanceof CooperativeTurnYieldError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
