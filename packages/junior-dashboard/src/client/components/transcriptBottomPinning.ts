@@ -66,6 +66,14 @@ export function transcriptBottomVersion(turns: ConversationTurn[]): string {
   ].join("|");
 }
 
+/** Require both live mode and reader intent before moving the viewport. */
+export function shouldAutoPinTranscriptBottom(input: {
+  enabled: boolean;
+  following: boolean;
+}): boolean {
+  return input.enabled && input.following;
+}
+
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
   enabled: boolean;
@@ -86,6 +94,8 @@ export function usePinnedTranscriptBottom(input: {
     if (input.enabled) {
       everEnabledRef.current = true;
     } else {
+      followingRef.current = false;
+      setFollowing(false);
       setHasPendingUpdate(false);
     }
   }, [input.enabled]);
@@ -139,7 +149,12 @@ export function usePinnedTranscriptBottom(input: {
       measurePosition("measure");
     }
 
-    if (followingRef.current) {
+    if (
+      shouldAutoPinTranscriptBottom({
+        enabled: input.enabled,
+        following: followingRef.current,
+      })
+    ) {
       scrollToBottom("auto");
       setHasPendingUpdate(false);
       return;
@@ -175,7 +190,12 @@ export function usePinnedTranscriptBottom(input: {
     if (!content) return;
 
     const observer = new ResizeObserver(() => {
-      if (everEnabledRef.current && followingRef.current) {
+      if (
+        shouldAutoPinTranscriptBottom({
+          enabled: enabledRef.current,
+          following: followingRef.current,
+        })
+      ) {
         scrollToBottom("auto");
         return;
       }

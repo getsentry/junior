@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNearScrollBottom,
+  shouldAutoPinTranscriptBottom,
   transcriptBottomVersion,
 } from "../src/client/components/transcriptBottomPinning";
 import type { ConversationTurn } from "../src/client/types";
@@ -89,5 +90,14 @@ describe("transcript bottom pinning", () => {
     ]);
 
     expect(after).not.toBe(before);
+  });
+
+  it("does not auto-pin after live mode turns off", () => {
+    expect(
+      shouldAutoPinTranscriptBottom({ enabled: true, following: true }),
+    ).toBe(true);
+    expect(
+      shouldAutoPinTranscriptBottom({ enabled: false, following: true }),
+    ).toBe(false);
   });
 });
