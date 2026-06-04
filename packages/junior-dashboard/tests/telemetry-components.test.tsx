@@ -260,7 +260,7 @@ describe("dashboard telemetry components", () => {
           parts: [
             {
               type: "text",
-              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [local](/api/dashboard/me), and [bad](javascript:alert).",
+              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [broken [real](https://nested.example/ok), [local](/api/dashboard/me), and [bad](javascript:alert).",
             },
           ],
         },
@@ -285,10 +285,52 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("https://.");
     expect(html).toContain('href="https://after-invalid.example/ok"');
     expect(html).toContain(">https://after-invalid.example/ok</a>");
+    expect(html).toContain("[broken ");
+    expect(html).toContain('href="https://nested.example/ok"');
+    expect(html).toContain(">real</a>");
+    expect(html).not.toContain(">broken [real</a>");
     expect(html).toContain("[local](/api/dashboard/me)");
     expect(html).toContain("[bad](javascript:alert)");
     expect(html).not.toContain('href="/api/dashboard/me"');
     expect(html).not.toContain('href="javascript:alert"');
+  });
+
+  it("renders cached highlighted markdown links", () => {
+    const text =
+      "## Trace summary\n- [cached trace](https://cached.example/trace).";
+    client.setQueryData(
+      ["highlight", "markdown", text, "transcript-markdown"],
+      '<pre><code><span class="line"><span style="color:#79B8FF;font-weight:bold">## Trace summary</span></span>\n<span class="line">- <a data-cached="yes" href="https://cached.example/trace" rel="noreferrer" target="_blank">cached trace</a>.</span></code></pre>',
+    );
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      title: "Turn turn-1",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [{ type: "text", text }],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptSegment turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('data-cached="yes"');
+    expect(html).toContain('href="https://cached.example/trace"');
+    expect(html).toContain(">cached trace</a>");
+    expect(html).not.toContain("[cached trace]");
   });
 
   it("renders the conversation duration chart title", () => {
