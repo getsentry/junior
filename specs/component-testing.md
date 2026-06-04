@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-02
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-04
 
 ## Intent
 
@@ -57,6 +57,10 @@ Disallowed:
   branch that happens to produce it.
 - Keep component files focused by feature or service boundary, for example
   `tests/component/task-execution/*`.
+- Split orchestration-heavy suites by durable contract before adding more cases.
+  For example, mailbox persistence, lease lifecycle, queue adapter contracts, and
+  Slack worker input-commit behavior should live in separate files even when they
+  share the same backing store.
 
 ## Required Characteristics
 

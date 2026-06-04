@@ -19,6 +19,11 @@ export const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } as const satisfies Destination;
+export const OTHER_SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C456",
+} as const satisfies Destination;
 export const SLACK_BOT_USER_ID = "U_BOT";
 export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
@@ -38,6 +43,7 @@ type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 export interface ProcessQueuedSlackWorkArgs {
   getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
+  lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
   resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
@@ -347,10 +353,23 @@ export function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     queue: args.queue,
     run: createSlackConversationWorker({
       getSlackAdapter: args.getSlackAdapter,
+      lookupSlackUser: args.lookupSlackUser,
       resumeAwaitingContinuation: args.resumeAwaitingContinuation,
       runtime: args.runtime,
       state: args.state,
     }),
     state: args.state,
   });
+}
+
+/** Prove redundant queue deliveries do not replay already-drained Slack work. */
+export async function expectRemainingQueuedSlackWorkIsNoop(
+  args: ProcessQueuedSlackWorkArgs,
+): Promise<void> {
+  while (args.queue.hasQueuedMessages()) {
+    const result = await processNextQueuedSlackWork(args);
+    if (result.status !== "no_work") {
+      throw new Error(`Expected no remaining Slack work, got ${result.status}`);
+    }
+  }
 }
