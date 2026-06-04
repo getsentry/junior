@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
 import {
@@ -7,7 +8,10 @@ import {
   JUNIOR_HEARTBEAT_ROUTE,
   LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION,
 } from "@/deployment";
-import { parsePluginManifest } from "@/chat/plugins/manifest";
+import {
+  parseInlinePluginManifest,
+  parsePluginManifest,
+} from "@/chat/plugins/manifest";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 export interface ValidationIo {
@@ -38,9 +42,12 @@ interface PluginValidationResult {
   skillResults: SkillValidationResult[];
 }
 
-interface PackagedPluginDirectory {
+interface PluginSource {
   pluginDir: string;
-  packageName: string;
+  manifestPath: string;
+  packageName?: string;
+  manifest?: PluginManifest;
+  errors?: string[];
 }
 
 interface PackagedSkillRoot {
@@ -126,6 +133,8 @@ async function readTextFile(targetPath: string): Promise<string | undefined> {
 
 interface PackageJson {
   dependencies?: Record<string, string>;
+  exports?: unknown;
+  main?: string;
   optionalDependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   version?: string;
@@ -291,35 +300,12 @@ async function validatePluginDirectory(
   try {
     const raw = await fs.readFile(manifestPath, "utf8");
     const manifest = parsePluginManifest(raw, pluginDir);
-    const errors: string[] = [];
-    const firstSeen = duplicatePluginNames.get(manifest.name);
-    if (firstSeen) {
-      errors.push(
-        `${manifestPath}: duplicate plugin name "${manifest.name}" (already defined in ${firstSeen})`,
-      );
-    }
-    const domains = [
-      ...new Set([
-        ...(manifest.credentials?.domains ?? []),
-        ...(manifest.domains ?? []),
-      ]),
-    ];
-    for (const domain of domains) {
-      const firstDomainSeen = duplicateProviderDomains.get(domain);
-      if (firstDomainSeen) {
-        errors.push(
-          `${manifestPath}: duplicate provider domain "${domain}" (already defined in ${firstDomainSeen})`,
-        );
-      }
-    }
-    if (errors.length > 0) {
-      return { manifestPath, manifest, errors };
-    }
-    duplicatePluginNames.set(manifest.name, manifestPath);
-    for (const domain of domains) {
-      duplicateProviderDomains.set(domain, manifestPath);
-    }
-    return { manifestPath, manifest, errors: [] };
+    return validatePluginManifest(
+      manifestPath,
+      manifest,
+      duplicatePluginNames,
+      duplicateProviderDomains,
+    );
   } catch (error) {
     return {
       manifestPath,
@@ -328,6 +314,177 @@ async function validatePluginDirectory(
       ],
     };
   }
+}
+
+function validatePluginManifest(
+  manifestPath: string,
+  manifest: PluginManifest,
+  duplicatePluginNames: Map<string, string>,
+  duplicateProviderDomains: Map<string, string>,
+): {
+  manifestPath: string;
+  manifest: PluginManifest;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  const firstSeen = duplicatePluginNames.get(manifest.name);
+  if (firstSeen) {
+    errors.push(
+      `${manifestPath}: duplicate plugin name "${manifest.name}" (already defined in ${firstSeen})`,
+    );
+  }
+  const domains = [
+    ...new Set([
+      ...(manifest.credentials?.domains ?? []),
+      ...(manifest.domains ?? []),
+    ]),
+  ];
+  for (const domain of domains) {
+    const firstDomainSeen = duplicateProviderDomains.get(domain);
+    if (firstDomainSeen) {
+      errors.push(
+        `${manifestPath}: duplicate provider domain "${domain}" (already defined in ${firstDomainSeen})`,
+      );
+    }
+  }
+  if (errors.length > 0) {
+    return { manifestPath, manifest, errors };
+  }
+  duplicatePluginNames.set(manifest.name, manifestPath);
+  for (const domain of domains) {
+    duplicateProviderDomains.set(domain, manifestPath);
+  }
+  return { manifestPath, manifest, errors: [] };
+}
+
+function packageExportsEntryPath(exportsValue: unknown): string | undefined {
+  if (typeof exportsValue === "string") {
+    return exportsValue;
+  }
+  if (!isRecord(exportsValue)) {
+    return undefined;
+  }
+
+  const rootExport = exportsValue["."] ?? exportsValue;
+  if (typeof rootExport === "string") {
+    return rootExport;
+  }
+  if (!isRecord(rootExport)) {
+    return undefined;
+  }
+
+  for (const condition of ["default", "import", "node"]) {
+    const target = rootExport[condition];
+    if (typeof target === "string") {
+      return target;
+    }
+  }
+  return undefined;
+}
+
+async function resolvePackageEntryPath(
+  packageDir: string,
+): Promise<string | undefined> {
+  const packageJson = await readJsonFile<PackageJson>(
+    path.join(packageDir, "package.json"),
+  );
+  const entry =
+    packageExportsEntryPath(packageJson?.exports) ?? packageJson?.main;
+  const candidates = [
+    ...(entry ? [entry] : []),
+    "./index.js",
+    "./dist/index.js",
+  ];
+
+  for (const candidate of candidates) {
+    if (path.isAbsolute(candidate) || candidate.startsWith("../")) {
+      continue;
+    }
+    const normalizedCandidate = candidate.startsWith("./")
+      ? candidate
+      : `./${candidate}`;
+    const entryPath = path.resolve(packageDir, normalizedCandidate);
+    if (await pathIsFile(entryPath)) {
+      return entryPath;
+    }
+  }
+  return undefined;
+}
+
+function isPluginFactoryExport(
+  name: string,
+  value: unknown,
+): value is () => unknown {
+  return (
+    typeof value === "function" &&
+    (name === "default" || name.endsWith("Plugin"))
+  );
+}
+
+function isPluginRegistrationLike(
+  value: unknown,
+): value is { manifest: PluginManifest } {
+  return isRecord(value) && isRecord(value.manifest);
+}
+
+async function collectPackageJsPluginSources(
+  packageDir: string,
+  packageName: string,
+): Promise<PluginSource[]> {
+  const entryPath = await resolvePackageEntryPath(packageDir);
+  if (!entryPath) {
+    return [];
+  }
+
+  let moduleExports: Record<string, unknown>;
+  try {
+    moduleExports = (await import(pathToFileURL(entryPath).href)) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return [];
+  }
+
+  const pluginSources: PluginSource[] = [];
+  for (const [exportName, exportedValue] of Object.entries(moduleExports).sort(
+    ([left], [right]) => left.localeCompare(right),
+  )) {
+    if (!isPluginFactoryExport(exportName, exportedValue)) {
+      continue;
+    }
+
+    let registration: unknown;
+    try {
+      registration = await exportedValue();
+    } catch {
+      continue;
+    }
+    if (!isPluginRegistrationLike(registration)) {
+      continue;
+    }
+
+    const manifestPath = `${entryPath}#${exportName}`;
+    try {
+      pluginSources.push({
+        pluginDir: packageDir,
+        packageName,
+        manifestPath,
+        manifest: parseInlinePluginManifest(registration.manifest, packageDir),
+      });
+    } catch (error) {
+      pluginSources.push({
+        pluginDir: packageDir,
+        packageName,
+        manifestPath,
+        errors: [
+          `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      });
+    }
+  }
+
+  return pluginSources;
 }
 
 async function collectPluginDirectories(rootDir: string): Promise<string[]> {
@@ -360,10 +517,10 @@ async function collectPackagedContent(
   rootDir: string,
   packages: DeclaredPackage[],
 ): Promise<{
-  pluginDirs: PackagedPluginDirectory[];
+  pluginSources: PluginSource[];
   skillRoots: PackagedSkillRoot[];
 }> {
-  const pluginDirs: PackagedPluginDirectory[] = [];
+  const pluginSources: PluginSource[] = [];
   const skillRoots: PackagedSkillRoot[] = [];
 
   for (const declaredPackage of packages) {
@@ -375,17 +532,27 @@ async function collectPackagedContent(
     const rootManifestPath = path.join(packageDir, "plugin.yaml");
     const hasRootManifest = await pathIsFile(rootManifestPath);
     const packageSkillsRoot = path.join(packageDir, "skills");
+    const hasPackageSkills = await pathIsDirectory(packageSkillsRoot);
 
     if (hasRootManifest) {
-      pluginDirs.push({
+      pluginSources.push({
         pluginDir: packageDir,
+        manifestPath: rootManifestPath,
         packageName: declaredPackage.name,
       });
-    } else if (await pathIsDirectory(packageSkillsRoot)) {
-      skillRoots.push({
-        root: packageSkillsRoot,
-        packageName: declaredPackage.name,
-      });
+    } else if (hasPackageSkills) {
+      const jsPluginSources = await collectPackageJsPluginSources(
+        packageDir,
+        declaredPackage.name,
+      );
+      if (jsPluginSources.length > 0) {
+        pluginSources.push(...jsPluginSources);
+      } else {
+        skillRoots.push({
+          root: packageSkillsRoot,
+          packageName: declaredPackage.name,
+        });
+      }
     }
 
     const nestedPluginsRoot = path.join(packageDir, "plugins");
@@ -404,8 +571,9 @@ async function collectPackagedContent(
       }
       const pluginDir = path.join(nestedPluginsRoot, entry.name);
       if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
-        pluginDirs.push({
+        pluginSources.push({
           pluginDir,
+          manifestPath: path.join(pluginDir, "plugin.yaml"),
           packageName: declaredPackage.name,
         });
       }
@@ -413,7 +581,7 @@ async function collectPackagedContent(
   }
 
   return {
-    pluginDirs: pluginDirs.sort((left, right) =>
+    pluginSources: pluginSources.sort((left, right) =>
       `${left.packageName}:${left.pluginDir}`.localeCompare(
         `${right.packageName}:${right.pluginDir}`,
       ),
@@ -807,18 +975,18 @@ export async function runCheck(
   const packageWarnings = await collectPackageWarnings(resolvedRoot, packages);
   const packagedContent = await collectPackagedContent(resolvedRoot, packages);
   const appPluginDirs = await collectPluginDirectories(resolvedRoot);
-  const packagedPluginDirs = packagedContent.pluginDirs;
-  const pluginDirs = [
+  const packagedPluginSources = packagedContent.pluginSources;
+  const pluginSources: PluginSource[] = [
     ...appPluginDirs.map((pluginDir) => ({
       pluginDir,
-      packageName: undefined,
+      manifestPath: path.join(pluginDir, "plugin.yaml"),
     })),
-    ...packagedPluginDirs,
+    ...packagedPluginSources,
   ];
   const appSkillsRoot = contentRoot(resolvedRoot, "skills");
   const appSkillDirs = await collectSkillDirectories(appSkillsRoot);
   const pluginSkillDirs = new Map<string, string[]>();
-  for (const { pluginDir } of pluginDirs) {
+  for (const { pluginDir } of pluginSources) {
     pluginSkillDirs.set(
       pluginDir,
       await collectSkillDirectories(path.join(pluginDir, "skills")),
@@ -842,7 +1010,7 @@ export async function runCheck(
     ),
   ].sort((left, right) => left.localeCompare(right));
   const packagedSkillDirs = [
-    ...packagedPluginDirs.flatMap(
+    ...packagedPluginSources.flatMap(
       ({ pluginDir }) => pluginSkillDirs.get(pluginDir) ?? [],
     ),
     ...packagedStandaloneSkillDirs,
@@ -868,18 +1036,32 @@ export async function runCheck(
   warnings.push(...deploymentConfigResult.warnings);
   errors.push(...deploymentConfigResult.errors);
 
-  for (const { pluginDir, packageName } of pluginDirs) {
+  for (const source of pluginSources) {
+    const { pluginDir, packageName } = source;
     const pluginNameMap = packageName
       ? duplicatePackagedPluginNames
       : duplicatePluginNames;
     const providerDomainMap = packageName
       ? duplicatePackagedProviderDomains
       : duplicateProviderDomains;
-    const result = await validatePluginDirectory(
-      pluginDir,
-      pluginNameMap,
-      providerDomainMap,
-    );
+    const result = source.errors
+      ? {
+          manifestPath: source.manifestPath,
+          ...(source.manifest ? { manifest: source.manifest } : {}),
+          errors: source.errors,
+        }
+      : source.manifest
+        ? validatePluginManifest(
+            source.manifestPath,
+            source.manifest,
+            pluginNameMap,
+            providerDomainMap,
+          )
+        : await validatePluginDirectory(
+            pluginDir,
+            pluginNameMap,
+            providerDomainMap,
+          );
     pluginResults.push({
       pluginDir,
       manifestPath: result.manifestPath,
@@ -1005,11 +1187,11 @@ export async function runCheck(
       io.error(`${statusIcon("error")} error: ${error}`);
     }
     throw new Error(
-      `Validation failed (${errors.length} error${errors.length === 1 ? "" : "s"}, ${pluginDirs.length} plugin manifest${pluginDirs.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`,
+      `Validation failed (${errors.length} error${errors.length === 1 ? "" : "s"}, ${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`,
     );
   }
 
   io.info(
-    `${formatHeading("ok", `Validation passed (${pluginDirs.length} plugin manifest${pluginDirs.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`)}`,
+    `${formatHeading("ok", `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`)}`,
   );
 }

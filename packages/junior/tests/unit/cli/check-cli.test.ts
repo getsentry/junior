@@ -476,6 +476,104 @@ describe("check cli", () => {
     ).toBe(true);
   });
 
+  it("accepts configDefaults from JS-defined packaged plugin manifests", async () => {
+    const repoRoot = makeTempDir("junior-validate-js-plugin-defaults-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify(
+        {
+          dependencies: {
+            "@acme/junior-github": "1.0.0",
+            "@acme/junior-sentry": "1.0.0",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const githubPackageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@acme",
+      "junior-github",
+    );
+    writeFile(
+      path.join(githubPackageRoot, "package.json"),
+      JSON.stringify({
+        name: "@acme/junior-github",
+        version: "1.0.0",
+        type: "module",
+        exports: { ".": { default: "./index.js" } },
+      }),
+    );
+    writeFile(
+      path.join(githubPackageRoot, "index.js"),
+      [
+        "export function githubPlugin() {",
+        "  return {",
+        '    name: "github",',
+        "    manifest: {",
+        '      name: "github",',
+        '      description: "GitHub plugin",',
+        '      configKeys: ["org", "repo"],',
+        "    },",
+        "  };",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    fs.mkdirSync(path.join(githubPackageRoot, "skills"), { recursive: true });
+
+    const sentryPackageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@acme",
+      "junior-sentry",
+    );
+    writeFile(
+      path.join(sentryPackageRoot, "package.json"),
+      JSON.stringify({ name: "@acme/junior-sentry", version: "1.0.0" }),
+    );
+    writeFile(
+      path.join(sentryPackageRoot, "plugin.yaml"),
+      [
+        "name: sentry",
+        "description: Sentry plugin",
+        "config-keys:",
+        "  - org",
+        "",
+      ].join("\n"),
+    );
+    writeFile(
+      path.join(repoRoot, "server.ts"),
+      [
+        'import { createApp } from "@sentry/junior";',
+        "",
+        "export default await createApp({",
+        "  configDefaults: {",
+        '    "github.org": "getsentry",',
+        '    "sentry.org": "sentry",',
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      `Checking ${repoRoot}`,
+      "✓ packaged plugin github (@acme/junior-github)",
+      "✓ packaged plugin sentry (@acme/junior-sentry)",
+      "✓ Validation passed (2 plugin manifests, 0 skill directories checked).",
+    ]);
+  });
+
   it("warns when official plugin package versions differ from core", async () => {
     const repoRoot = makeTempDir("junior-validate-version-skew-");
     writeFile(
