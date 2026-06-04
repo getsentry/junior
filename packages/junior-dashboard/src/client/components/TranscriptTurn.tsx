@@ -46,6 +46,7 @@ import { TranscriptText } from "./TranscriptText";
 import { TranscriptThinkingView } from "./TranscriptThinkingView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
+import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
   countRenderedTranscriptChildren,
   groupTranscriptMessages,
@@ -74,7 +75,7 @@ export function ConversationTranscriptSegment(props: {
 
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 border-t border-white/10 py-4 first:border-t-0">
-      <div className="flex flex-col items-center pt-2" aria-hidden="true">
+      <div className="flex flex-col items-center pt-1.5" aria-hidden="true">
         <span className={turnMarkerClass(status)} />
         <span className="mt-2 w-px flex-1 bg-[#beaaff]/20" />
       </div>
@@ -627,7 +628,17 @@ function TranscriptMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       onCopy={(event) => {
-        if (props.view !== "rich" || !rawText) return;
+        const selection = event.currentTarget.ownerDocument.getSelection();
+        if (
+          !shouldCopyRawTranscript(
+            props.view,
+            rawText,
+            selection,
+            event.currentTarget,
+          )
+        ) {
+          return;
+        }
         event.clipboardData.setData("text/plain", rawText);
         event.preventDefault();
       }}
