@@ -32,6 +32,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Moved user-turn attachment/router-block assembly into `respond-helpers` so
   attachment prompt contracts are covered without exercising the full runtime
   reply path.
+- Extracted the shared sandbox executor fake and workspace assertions into
+  `tests/fixtures/sandbox-executor.ts` as the first step toward splitting the
+  executor suite by lifecycle, bash, file-tool, and snapshot contracts.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -94,7 +97,8 @@ files, file-tool errors, and runtime dependency snapshots.
 
 Direction:
 
-- Extract a dedicated sandbox executor fixture before adding more cases.
+- Keep growing the dedicated sandbox executor fixture only for repeated
+  sandbox/session-manager boundaries.
 - Split into lifecycle, bash execution, tool/file behavior, and snapshot suites.
 - Longer term, consider smaller production ports for sandbox boot, bash command
   execution, file tools, and snapshot resolution so tests do not need one
