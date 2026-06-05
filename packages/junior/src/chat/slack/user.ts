@@ -132,17 +132,16 @@ export async function lookupSlackActorIdentity(
 /**
  * Build actor identity for a resumed turn from the persisted session requester.
  *
- * Continuation turns use the identity captured at turn start and persisted in
- * the session record. No Slack API call is made. Session records that predate
- * requester storage receive only the actor id and no display/contact fields.
+ * The session requester is the single source of truth for continuation identity.
+ * The actor id comes from stored.slackUserId — the same value originally set from
+ * the Slack message author. No Slack API call is made.
  */
 export function resolveSlackResumeRequester(
-  userId: string,
   stored: AgentTurnRequester | undefined,
 ): ActorIdentityInput {
-  return slackActorIdentity(userId, stored && {
-    email: stored.email,
-    fullName: stored.fullName,
-    userName: stored.slackUserName,
+  return slackActorIdentity(stored?.slackUserId ?? "", {
+    email: stored?.email,
+    fullName: stored?.fullName,
+    userName: stored?.slackUserName,
   });
 }

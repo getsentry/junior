@@ -333,10 +333,7 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
-      const requester = resolveSlackResumeRequester(
-        lockedUserMessage.author.userId,
-        lockedSessionRecord.requester,
-      );
+      const requester = resolveSlackResumeRequester(lockedSessionRecord.requester);
 
       return {
         messageText: lockedPendingAuth

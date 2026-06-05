@@ -193,10 +193,7 @@ export async function resumeTimedOutTurn(
         excludeMessageId: userMessage.id,
       });
       const sandbox = getPersistedSandboxState(currentState);
-      const requester = resolveSlackResumeRequester(
-        userMessage.author.userId,
-        sessionRecord.requester,
-      );
+      const requester = resolveSlackResumeRequester(sessionRecord.requester);
 
       return {
         messageText: userMessage.text,
