@@ -29,6 +29,7 @@ import {
   inboundMessage,
 } from "../../fixtures/conversation-work";
 import {
+  mockTestClock,
   useMemoryStateAdapter,
   useRealTimersAfterEach,
 } from "../../fixtures/vitest";
@@ -135,7 +136,7 @@ describe("conversation work leases", () => {
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
       }),
-    ).rejects.toThrow("Conversation work destination changed");
+    ).rejects.toThrow("Conversation destination changed");
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
@@ -272,7 +273,7 @@ describe("conversation work leases", () => {
   });
 
   it("extends the lease with worker check-ins during long execution", async () => {
-    vi.useFakeTimers({ now: 1_000 });
+    mockTestClock(1_000);
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
@@ -310,7 +311,7 @@ describe("conversation work leases", () => {
   });
 
   it("reports lost lease after periodic check-in loses ownership", async () => {
-    vi.useFakeTimers({ now: 1_000 });
+    mockTestClock(1_000);
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<{

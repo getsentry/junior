@@ -14,6 +14,7 @@ import {
   restoreRespondRuntimeEnv,
 } from "../../fixtures/respond-env";
 import { createScriptedReplyAgentFactory } from "../../fixtures/respond-agent";
+import { mockTestClock } from "../../fixtures/vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
 const { generateAssistantReply } = await import("@/chat/respond");
@@ -136,7 +137,7 @@ describe("generateAssistantReply timeout resume", () => {
     promptMode.value = "settlesAfterAbort";
     resolveAbort = undefined;
     await disconnectStateAdapter();
-    vi.useFakeTimers();
+    mockTestClock();
   });
 
   afterEach(async () => {

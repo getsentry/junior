@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupSlackScheduleToolTest,
   createContext,
@@ -10,6 +10,7 @@ import {
   setupSlackScheduleToolTest,
   TEST_TEAM_ID,
 } from "../../fixtures/slack-schedule-tools";
+import { mockTestClock } from "../../fixtures/vitest";
 
 describe("Slack schedule create tools", () => {
   beforeEach(setupSlackScheduleToolTest);
@@ -113,8 +114,7 @@ describe("Slack schedule create tools", () => {
   });
 
   it("creates explicit one-off reminders without a second confirmation", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
+    mockTestClock("2026-05-27T00:24:23.000Z");
 
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(
@@ -160,8 +160,7 @@ describe("Slack schedule create tools", () => {
   });
 
   it("creates short imperative one-off reminders without channel confirmation", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-27T00:24:23.000Z"));
+    mockTestClock("2026-05-27T00:24:23.000Z");
 
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(
@@ -197,8 +196,7 @@ describe("Slack schedule create tools", () => {
   });
 
   it("creates one-off reminders by omitting recurrence", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-28T02:17:48.005Z"));
+    mockTestClock("2026-05-28T02:17:48.005Z");
 
     const result = await executeTool(
       createSlackScheduleCreateTaskTool(
@@ -261,8 +259,7 @@ describe("Slack schedule create tools", () => {
   });
 
   it("creates one-off tasks with an exact timestamp using the default Pacific timezone", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
+    mockTestClock("2026-05-25T12:00:00.000Z");
 
     const created = await createTask(createContext(), {
       schedule: "On May 26 at 9am",
@@ -283,8 +280,7 @@ describe("Slack schedule create tools", () => {
 
   it("uses JUNIOR_TIMEZONE as the default schedule timezone", async () => {
     process.env.JUNIOR_TIMEZONE = "America/New_York";
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
+    mockTestClock("2026-05-25T12:00:00.000Z");
 
     const created = await createTask(createContext(), {
       schedule: "On May 26 at 9am",

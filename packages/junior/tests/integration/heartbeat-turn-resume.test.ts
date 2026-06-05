@@ -13,6 +13,7 @@ import {
   setupHeartbeatTestEnv,
   TEST_NOW_MS,
 } from "../fixtures/heartbeat";
+import { mockTestClock } from "../fixtures/vitest";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 
 vi.hoisted(() => {
@@ -35,7 +36,7 @@ describe("heartbeat turn resume recovery", () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn-timeout";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
-    vi.setSystemTime(staleNowMs);
+    mockTestClock(staleNowMs);
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -62,7 +63,7 @@ describe("heartbeat turn resume recovery", () => {
       { queue, nowMs: staleNowMs },
     );
     queue.clearSentRecords();
-    vi.setSystemTime(TEST_NOW_MS);
+    mockTestClock(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
     const response = await heartbeat(heartbeatRequest(), waitUntil.fn, {
@@ -91,7 +92,7 @@ describe("heartbeat turn resume recovery", () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn-yield";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
-    vi.setSystemTime(staleNowMs);
+    mockTestClock(staleNowMs);
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -118,7 +119,7 @@ describe("heartbeat turn resume recovery", () => {
       { queue, nowMs: staleNowMs },
     );
     queue.clearSentRecords();
-    vi.setSystemTime(TEST_NOW_MS);
+    mockTestClock(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
     const response = await heartbeat(heartbeatRequest(), waitUntil.fn, {
@@ -147,7 +148,7 @@ describe("heartbeat turn resume recovery", () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn-timeout-inactive";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
-    vi.setSystemTime(staleNowMs);
+    mockTestClock(staleNowMs);
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -164,7 +165,7 @@ describe("heartbeat turn resume recovery", () => {
       ],
     });
     await persistActiveTurn(conversationId, "turn-newer");
-    vi.setSystemTime(TEST_NOW_MS);
+    mockTestClock(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
     const response = await heartbeat(heartbeatRequest(), waitUntil.fn, {
@@ -184,7 +185,7 @@ describe("heartbeat turn resume recovery", () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn-timeout-no-active-work";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
-    vi.setSystemTime(staleNowMs);
+    mockTestClock(staleNowMs);
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -201,7 +202,7 @@ describe("heartbeat turn resume recovery", () => {
       ],
     });
     await persistActiveTurn(conversationId, sessionId);
-    vi.setSystemTime(TEST_NOW_MS);
+    mockTestClock(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
     const response = await heartbeat(heartbeatRequest(), waitUntil.fn, {

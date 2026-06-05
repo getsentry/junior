@@ -6,10 +6,13 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
-import type { InboundMessageRecord } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import {
+  CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
 

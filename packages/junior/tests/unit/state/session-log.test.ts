@@ -12,6 +12,7 @@ import {
   type SessionLogEntry,
   type SessionLogStore,
 } from "@/chat/state/session-log";
+import { mockTestClock } from "../../fixtures/vitest";
 
 function memoryStore(): SessionLogStore & {
   entries: SessionLogEntry[];
@@ -299,8 +300,7 @@ describe("agent session log store", () => {
   });
 
   it("records authorization interrupts and projects completion to Pi", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000);
+    mockTestClock(1_000);
     const store = memoryStore();
     const message = textMessage("user", "list my orgs", 1);
 
@@ -402,7 +402,7 @@ describe("agent session log store", () => {
       store,
       conversationId: "conversation-1",
     });
-    vi.setSystemTime(9_000);
+    mockTestClock(9_000);
     await expect(
       loadProjection({
         store,

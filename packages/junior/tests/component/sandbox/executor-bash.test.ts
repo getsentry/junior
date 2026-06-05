@@ -15,6 +15,7 @@ import {
   setupSandboxExecutorTest,
   cleanupSandboxExecutorTest,
 } from "../../fixtures/sandbox-executor";
+import { mockTestClock } from "../../fixtures/vitest";
 
 describe("sandbox executor bash execution", () => {
   beforeEach(setupSandboxExecutorTest);
@@ -53,7 +54,7 @@ describe("sandbox executor bash execution", () => {
   });
 
   it("applies a host timeout to bash commands when the model omits one", async () => {
-    vi.useFakeTimers();
+    mockTestClock();
     const sandbox = makeSandbox("sbx_bash_timeout");
     sandbox.runCommand.mockImplementationOnce(
       async (input) =>

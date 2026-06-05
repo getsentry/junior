@@ -15,6 +15,7 @@ import {
 import * as pluginDbModule from "@/chat/plugins/db";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createLocalJuniorSqlFixture } from "./sql";
+import { mockTestClock } from "./vitest";
 
 export const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
 export const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
@@ -31,7 +32,7 @@ let schedulerPluginDb: PluginDb | undefined;
 
 /** Reset shared heartbeat dependencies before each integration case. */
 export async function setupHeartbeatTestEnv(): Promise<void> {
-  vi.useFakeTimers({ now: TEST_NOW_MS });
+  mockTestClock(TEST_NOW_MS);
   process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_SECRET = "dispatch-secret";

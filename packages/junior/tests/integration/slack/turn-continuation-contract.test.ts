@@ -6,6 +6,7 @@ import {
 } from "../../msw/handlers/slack-api";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
+  createTestDestination,
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
@@ -17,7 +18,7 @@ describe("Slack contract: turn continuation", () => {
   });
 
   it("does not post a Slack continuation notice when a live turn times out", async () => {
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C_TIMEOUT_API:1700000000.000";
     const sessionId = "turn_msg-timeout-api";
     const { slackRuntime } = createTestChatRuntime({
@@ -26,10 +27,10 @@ describe("Slack contract: turn continuation", () => {
           listThreadReplies: async () => [],
         },
         replyExecutor: {
-          scheduleTurnTimeoutResume,
+          scheduleAgentContinue,
           generateAssistantReply: async () => {
             throw new RetryableTurnError(
-              "turn_timeout_resume",
+              "agent_continue",
               "simulated timeout continuation",
               {
                 conversationId,
@@ -45,6 +46,7 @@ describe("Slack contract: turn continuation", () => {
 
     const thread = createTestThread({ id: conversationId });
     (thread.adapter as { name?: string }).name = "slack";
+    const destination = createTestDestination(thread);
 
     await expect(
       slackRuntime.handleNewMention(
@@ -58,8 +60,9 @@ describe("Slack contract: turn continuation", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId,
       expectedVersion: 3,
     });

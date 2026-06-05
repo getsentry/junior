@@ -4,8 +4,15 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { mockTestClock } from "../../fixtures/vitest";
 
 type Testbed = Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
+
+const TEST_SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T-test",
+  channelId: "C-test",
+} as const;
 
 describe("Slack resume runtime", () => {
   let testbed: Testbed;
@@ -19,7 +26,7 @@ describe("Slack resume runtime", () => {
 
   beforeEach(async () => {
     testbed = await createOauthResumeSlackFixture();
-    vi.useFakeTimers();
+    mockTestClock();
 
     logExceptionMock.mockReset();
     logExceptionMock.mockReturnValue("evt_test");
@@ -219,7 +226,7 @@ describe("Slack resume runtime", () => {
       },
       generateReply: async () => {
         throw new testbed.RetryableTurnError(
-          "turn_timeout_resume",
+          "agent_continue",
           "timed out again",
           {
             conversationId: "conversation-1",
@@ -253,7 +260,7 @@ describe("Slack resume runtime", () => {
       },
       generateReply: async () => {
         throw new testbed.RetryableTurnError(
-          "turn_timeout_resume",
+          "agent_continue",
           "timed out again",
           {
             conversationId: "conversation-1",

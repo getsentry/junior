@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { mockTestClock } from "../../fixtures/vitest";
 
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -132,7 +133,7 @@ describe("createWebSearchTool", () => {
   });
 
   it("returns a retryable timeout error instead of throwing", async () => {
-    vi.useFakeTimers();
+    mockTestClock();
     vi.mocked(generateText).mockImplementation(
       () =>
         new Promise(() => {
@@ -156,11 +157,10 @@ describe("createWebSearchTool", () => {
       timeout: true,
       retryable: true,
     });
-    vi.useRealTimers();
   });
 
   it("aborts the generateText call on timeout", async () => {
-    vi.useFakeTimers();
+    mockTestClock();
     let capturedSignal: AbortSignal | undefined;
     vi.mocked(generateText).mockImplementation(((opts: {
       abortSignal?: AbortSignal;
@@ -181,7 +181,6 @@ describe("createWebSearchTool", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await pending;
     expect(capturedSignal?.aborted).toBe(true);
-    vi.useRealTimers();
   });
 
   it("does not abort signal on successful search", async () => {
@@ -203,7 +202,7 @@ describe("createWebSearchTool", () => {
   });
 
   it("still reports timeout even if abort signal cleanup throws", async () => {
-    vi.useFakeTimers();
+    mockTestClock();
     const brokenController = new AbortController();
     const originalAbort = brokenController.abort.bind(brokenController);
     brokenController.abort = () => {
@@ -243,7 +242,6 @@ describe("createWebSearchTool", () => {
       timeout: true,
       error: "web search failed: webSearch timed out",
     });
-    vi.useRealTimers();
   });
 
   it("marks authentication failures as non-retryable", async () => {

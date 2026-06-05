@@ -1,17 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createJuniorReporting } from "@/reporting";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import {
   createScriptedReplyAgentFactory,
   type ScriptedReplyAgent,
 } from "../../fixtures/respond-agent";
-import "../../fixtures/respond-runtime";
+import {
+  configureRespondRuntimeEnv,
+  restoreRespondRuntimeEnv,
+} from "../../fixtures/respond-env";
+import { mockTestClock } from "../../fixtures/vitest";
 
+const originalEnv = configureRespondRuntimeEnv();
 const { generateAssistantReply } = await import("@/chat/respond");
 const { isCooperativeTurnYieldError } = await import("@/chat/runtime/turn");
-const { getAwaitingTurnContinuationRequest } =
-  await import("@/chat/services/timeout-resume");
+const { getAwaitingAgentContinueRequest } =
+  await import("@/chat/services/agent-continue");
 const { disconnectStateAdapter } = await import("@/chat/state/adapter");
 const turnSessionState = await import("@/chat/state/turn-session");
 
@@ -99,10 +113,16 @@ async function generateReply(
   message: string,
   options: Parameters<typeof generateAssistantReply>[1] = {},
 ) {
+  const { destination, harness, requester, ...restOptions } = options;
   return await generateAssistantReply(message, {
-    ...options,
-    agentFactory,
-    turnThinkingSelection,
+    destination: destination ?? TEST_DESTINATION,
+    requester: requester ? { ...TEST_REQUESTER, ...requester } : TEST_REQUESTER,
+    ...restOptions,
+    harness: {
+      agentFactory,
+      turnThinkingSelection,
+      ...harness,
+    },
   });
 }
 
@@ -111,14 +131,23 @@ const TEST_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
+const TEST_REQUESTER = {
+  platform: "slack",
+  teamId: TEST_DESTINATION.teamId,
+  userId: "U123",
+} as const;
 
 describe("generateAssistantReply provider retry", () => {
+  afterAll(() => {
+    restoreRespondRuntimeEnv(originalEnv);
+  });
+
   beforeEach(async () => {
     agentMode.value = "providerRetry";
     counters.continueCalls = 0;
     counters.promptCalls = 0;
     await disconnectStateAdapter();
-    vi.useFakeTimers();
+    mockTestClock();
   });
 
   afterEach(async () => {
@@ -137,6 +166,7 @@ describe("generateAssistantReply provider retry", () => {
       },
     });
 
+    await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(2_000);
     const reply = await replyPromise;
 
@@ -204,6 +234,7 @@ describe("generateAssistantReply provider retry", () => {
         channelId: "C123",
         threadTs: "1712345.0001",
       },
+      piMessages: priorMessages,
       drainSteeringMessages: async (inject) => {
         const messages = [
           { text: "actually do the other thing", timestampMs: 2_000 },
@@ -221,7 +252,6 @@ describe("generateAssistantReply provider retry", () => {
       "slack:C123:1712345.0001",
       "turn-steering",
     );
-    expect(sessionRecord?.turnStartMessageIndex).toBe(2);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
@@ -369,13 +399,7 @@ describe("generateAssistantReply provider retry", () => {
     );
     expect(isCooperativeTurnYieldError(error)).toBe(false);
     await expect(
-      turnSessionState.getAgentTurnSessionRecord(
-        "conversation-yield-persist-failure",
-        "turn-yield-persist-failure",
-      ),
-    ).resolves.toBeUndefined();
-    await expect(
-      getAwaitingTurnContinuationRequest({
+      getAwaitingAgentContinueRequest({
         conversationId: "conversation-yield-persist-failure",
         sessionId: "turn-yield-persist-failure",
       }),

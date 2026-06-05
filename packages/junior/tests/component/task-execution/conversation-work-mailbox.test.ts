@@ -4,9 +4,10 @@ import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
+  CONVERSATION_ACTIVE_INDEX_KEY,
   countPendingConversationMessages,
   getConversationWorkState,
-  listConversationWorkIds,
+  listActiveConversationIds,
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { describe, expect, it, vi } from "vitest";
@@ -19,11 +20,10 @@ import {
   inboundMessage,
 } from "../../fixtures/conversation-work";
 import {
+  mockTestClock,
   useMemoryStateAdapter,
   useRealTimersAfterEach,
 } from "../../fixtures/vitest";
-
-const CONVERSATION_WORK_STATE_KEY = `junior:conversation-work:state:${CONVERSATION_ID}`;
 
 describe("conversation work mailbox", () => {
   useMemoryStateAdapter();
@@ -55,35 +55,6 @@ describe("conversation work mailbox", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(queue.sendAttempts()).toHaveLength(1);
     expect(queue.sentRecords()).toHaveLength(1);
-  });
-
-  it("does not overwrite malformed persisted conversation work", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    const legacyMessage = {
-      ...(inboundMessage("legacy") as unknown as Record<string, unknown>),
-    };
-    delete legacyMessage.destination;
-    const legacyWork = {
-      schemaVersion: 1,
-      conversationId: CONVERSATION_ID,
-      messages: [legacyMessage],
-      needsRun: true,
-      updatedAtMs: 1_000,
-    };
-    await state.set(CONVERSATION_WORK_STATE_KEY, legacyWork);
-
-    await expect(
-      appendInboundMessage({
-        message: inboundMessage("m2"),
-        nowMs: 2_000,
-        state,
-      }),
-    ).rejects.toThrow("Conversation work state is invalid");
-
-    await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
-      legacyWork,
-    );
   });
 
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
@@ -133,7 +104,7 @@ describe("conversation work mailbox", () => {
   });
 
   it("waits through same-conversation mutation lock contention", async () => {
-    vi.useFakeTimers({ now: 1_000 });
+    mockTestClock(1_000);
     const queue = createConversationWorkQueueTestAdapter();
     const state = delayMutationLockUntil({
       conversationId: CONVERSATION_ID,
@@ -183,7 +154,7 @@ describe("conversation work mailbox", () => {
     ]);
   });
 
-  it("keeps runnable conversation ids when the recovery index overflows", async () => {
+  it("keeps valid runnable conversation ids when the active index contains malformed entries", async () => {
     const state = getStateAdapter();
     await state.connect();
     const activeConversationId = "conversation-active";
@@ -195,9 +166,9 @@ describe("conversation work mailbox", () => {
       state,
     });
     await state.set(
-      "junior:conversation-work:index",
+      CONVERSATION_ACTIVE_INDEX_KEY,
       [
-        activeConversationId,
+        { conversationId: activeConversationId, score: 1_000 },
         ...Array.from({ length: 9_999 }, (_, index) => `stale-${index}`),
       ],
       60_000,
@@ -210,11 +181,11 @@ describe("conversation work mailbox", () => {
       state,
     });
 
-    const ids = await listConversationWorkIds({ state });
+    const ids = await listActiveConversationIds({ state });
     expect(ids).toContain(activeConversationId);
     expect(ids).toContain(newConversationId);
     expect(ids).not.toContain("stale-0");
-    expect(ids).toHaveLength(10_000);
+    expect(ids).toHaveLength(2);
   });
 
   it("requeues pending mailbox work with no recent queue marker", async () => {

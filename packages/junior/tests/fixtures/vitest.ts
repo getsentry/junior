@@ -1,4 +1,3 @@
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { afterEach, beforeEach, vi } from "vitest";
 
 type TestEnvValues = Readonly<Record<string, string | undefined>>;
@@ -22,10 +21,12 @@ export function stubTestEnv(values: TestEnvValues): void {
 export function useMemoryStateAdapter(): void {
   beforeEach(async () => {
     stubTestEnv({ JUNIOR_STATE_ADAPTER: "memory" });
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 }

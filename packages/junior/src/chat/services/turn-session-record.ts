@@ -158,6 +158,7 @@ export async function persistRunningSessionRecord(
     logContext: SessionRecordLogContext;
     requester?: AgentTurnRequester;
     surface?: AgentTurnSurface;
+    turnStartMessageIndex?: number;
   },
   services: TurnSessionRecordServices = defaultTurnSessionRecordServices,
 ): Promise<boolean> {
@@ -190,6 +191,14 @@ export async function persistRunningSessionRecord(
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.turnStartMessageIndex ??
+        latestSessionRecord?.turnStartMessageIndex) !== undefined
+        ? {
+            turnStartMessageIndex:
+              args.turnStartMessageIndex ??
+              latestSessionRecord?.turnStartMessageIndex,
+          }
         : {}),
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
@@ -227,6 +236,7 @@ export async function persistCompletedSessionRecord(
     logContext: SessionRecordLogContext;
     requester?: AgentTurnRequester;
     surface?: AgentTurnSurface;
+    turnStartMessageIndex?: number;
   },
   services: TurnSessionRecordServices = defaultTurnSessionRecordServices,
 ): Promise<void> {
@@ -261,6 +271,14 @@ export async function persistCompletedSessionRecord(
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.turnStartMessageIndex ??
+        latestSessionRecord?.turnStartMessageIndex) !== undefined
+        ? {
+            turnStartMessageIndex:
+              args.turnStartMessageIndex ??
+              latestSessionRecord?.turnStartMessageIndex,
+          }
         : {}),
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }

@@ -1,4 +1,5 @@
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -50,6 +51,7 @@ describe("Slack conversation work continuations", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
+          resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
           runtime: {
             handleNewMention: async () => {
               throw new Error("injected messages should not replay");
@@ -75,7 +77,7 @@ describe("Slack conversation work continuations", () => {
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:
-        "Awaiting turn continuation metadata could not be materialized",
+        "Awaiting agent continuation metadata could not be materialized",
     });
   });
 
@@ -148,6 +150,7 @@ describe("Slack conversation work continuations", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
+          resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
           runtime: {
             handleNewMention: async () => {
               throw new Error("injected messages should not replay");
@@ -172,7 +175,7 @@ describe("Slack conversation work continuations", () => {
       getAgentTurnSessionRecord(CONVERSATION_ID, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Awaiting turn continuation was stale before resuming",
+      errorMessage: "Awaiting agent continuation was stale before it could run",
     });
   });
 });

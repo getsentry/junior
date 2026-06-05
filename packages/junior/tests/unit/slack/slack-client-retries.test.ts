@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SlackActionError, withSlackRetries } from "@/chat/slack/client";
+import { mockTestClock } from "../../fixtures/vitest";
 
 describe("withSlackRetries", () => {
   afterEach(() => {
@@ -7,7 +8,7 @@ describe("withSlackRetries", () => {
   });
 
   it("retries rate-limited calls using Slack retryAfter", async () => {
-    vi.useFakeTimers();
+    mockTestClock();
     const task = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce({
