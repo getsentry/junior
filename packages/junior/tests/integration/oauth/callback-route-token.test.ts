@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EVAL_OAUTH_PROVIDER,
   createOauthCallbackRouteFixture,
-} from "../fixtures/oauth-callback-route";
-import { queueEvalOAuthTokenResponse } from "../msw/handlers/eval-oauth";
+} from "../../fixtures/oauth-callback-route";
+import { queueEvalOAuthTokenResponse } from "../../msw/handlers/eval-oauth";
 
 let testbed: Awaited<ReturnType<typeof createOauthCallbackRouteFixture>>;
 

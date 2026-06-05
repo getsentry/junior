@@ -77,6 +77,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/mcp-auth-runtime-slack.ts` and split runtime coverage by
   mention resume, subscribed-thread parking, and direct-provider activation
   contracts.
+- Moved OAuth callback route/resume suites under `tests/integration/oauth/`
+  and moved MCP auth runtime suites under `tests/integration/slack/` so
+  top-level integration files no longer encode feature ownership in prefixes.
 - Extracted generic OAuth callback setup into
   `tests/fixtures/oauth-callback-route.ts` and split callback coverage by app
   home publication, resume context, thread-lock freshness, and
@@ -230,20 +233,20 @@ Files:
 - `packages/junior/tests/integration/slack/schedule-update-tools.test.ts`
 - `packages/junior/tests/integration/slack/schedule-run-tools.test.ts`
 - `packages/junior/tests/integration/slack/schedule-execution-mode.test.ts`
-- `packages/junior/tests/integration/mcp-oauth-callback-resume-context.test.ts`
-- `packages/junior/tests/integration/mcp-oauth-callback-resume-guards.test.ts`
-- `packages/junior/tests/integration/mcp-oauth-callback-file-delivery.test.ts`
-- `packages/junior/tests/integration/mcp-oauth-callback-route-guards.test.ts`
-- `packages/junior/tests/integration/mcp-auth-runtime-mention-resume.test.ts`
-- `packages/junior/tests/integration/mcp-auth-runtime-subscribed-parking.test.ts`
-- `packages/junior/tests/integration/mcp-auth-runtime-direct-provider.test.ts`
-- `packages/junior/tests/integration/oauth-callback-app-home.test.ts`
-- `packages/junior/tests/integration/oauth-callback-route-guards.test.ts`
-- `packages/junior/tests/integration/oauth-callback-route-provider-errors.test.ts`
-- `packages/junior/tests/integration/oauth-callback-route-token.test.ts`
-- `packages/junior/tests/integration/oauth-callback-resume-context.test.ts`
-- `packages/junior/tests/integration/oauth-callback-resume-lock.test.ts`
-- `packages/junior/tests/integration/oauth-callback-resume-guards.test.ts`
+- `packages/junior/tests/integration/oauth/mcp-callback-resume-context.test.ts`
+- `packages/junior/tests/integration/oauth/mcp-callback-resume-guards.test.ts`
+- `packages/junior/tests/integration/oauth/mcp-callback-file-delivery.test.ts`
+- `packages/junior/tests/integration/oauth/mcp-callback-route-guards.test.ts`
+- `packages/junior/tests/integration/slack/mcp-auth-runtime-mention-resume.test.ts`
+- `packages/junior/tests/integration/slack/mcp-auth-runtime-subscribed-parking.test.ts`
+- `packages/junior/tests/integration/slack/mcp-auth-runtime-direct-provider.test.ts`
+- `packages/junior/tests/integration/oauth/callback-app-home.test.ts`
+- `packages/junior/tests/integration/oauth/callback-route-guards.test.ts`
+- `packages/junior/tests/integration/oauth/callback-route-provider-errors.test.ts`
+- `packages/junior/tests/integration/oauth/callback-route-token.test.ts`
+- `packages/junior/tests/integration/oauth/callback-resume-context.test.ts`
+- `packages/junior/tests/integration/oauth/callback-resume-lock.test.ts`
+- `packages/junior/tests/integration/oauth/callback-resume-guards.test.ts`
 - `packages/junior/tests/integration/slack/oauth-resume-slack-delivery.test.ts`
 - `packages/junior/tests/integration/slack/oauth-resume-slack-chunking.test.ts`
 - `packages/junior/tests/integration/slack/oauth-resume-slack-failure-markers.test.ts`

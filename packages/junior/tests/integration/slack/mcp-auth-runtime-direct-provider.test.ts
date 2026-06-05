@@ -5,9 +5,12 @@ import {
   assistantReplyWithContext,
   createMcpAuthRuntimeSlackFixture,
   priorBudgetContext,
-} from "../fixtures/mcp-auth-runtime-slack";
-import { createTestMessage, createTestThread } from "../fixtures/slack-harness";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+} from "../../fixtures/mcp-auth-runtime-slack";
+import {
+  createTestMessage,
+  createTestThread,
+} from "../../fixtures/slack-harness";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createMcpAuthRuntimeSlackFixture>>;
 

@@ -3,7 +3,7 @@ import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
   createMcpOauthCallbackRouteFixture,
-} from "../fixtures/mcp-oauth-callback-route";
+} from "../../fixtures/mcp-oauth-callback-route";
 
 let testbed: Awaited<ReturnType<typeof createMcpOauthCallbackRouteFixture>>;
 
