@@ -110,6 +110,9 @@ describe("dashboard mock conversation routes", () => {
   });
 
   it("overlays mock conversations for local dashboard visual QA", async () => {
+    // Pin time to match the hardcoded session dates in the mock reporting fixture.
+    // Without this, recentConversationGroups filters out sessions older than 7 days.
+    vi.useFakeTimers({ now: new Date("2026-05-29T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
