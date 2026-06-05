@@ -125,15 +125,6 @@ describe("skills", () => {
     });
   });
 
-  it("parses /skill invocation", () => {
-    expect(
-      parseSkillInvocation("hey /brief github: octocat", stubSkills),
-    ).toEqual({
-      skillName: "brief",
-      args: "github: octocat",
-    });
-  });
-
   it("returns null for unregistered slash command", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
   });

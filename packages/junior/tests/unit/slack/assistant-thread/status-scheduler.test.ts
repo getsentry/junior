@@ -180,7 +180,7 @@ describe("createAssistantStatusScheduler", () => {
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
       },
-      loadingMessages: ["Consulting the orb", "Bribing the gremlins"],
+      loadingMessages: ["Consulting the orb", "Checking the queue"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -197,7 +197,7 @@ describe("createAssistantStatusScheduler", () => {
         text: expect.any(String),
         loadingMessages: expect.arrayContaining([
           "Consulting the orb",
-          "Bribing the gremlins",
+          "Checking the queue",
         ]),
       },
       { text: "", loadingMessages: undefined },
