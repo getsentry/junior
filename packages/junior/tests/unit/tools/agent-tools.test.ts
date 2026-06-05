@@ -6,14 +6,23 @@ import { createAgentTools } from "@/chat/tools/agent-tools";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 
-const { handleToolExecutionError } = vi.hoisted(() => ({
-  handleToolExecutionError: vi.fn((error: unknown) => {
-    throw error;
-  }),
+const { setSpanAttributesMock, withSpanMock } = vi.hoisted(() => ({
+  setSpanAttributesMock: vi.fn(),
+  withSpanMock: vi.fn(
+    async (
+      _name: string,
+      _op: string,
+      _context: Record<string, unknown>,
+      callback: () => Promise<unknown>,
+      _attributes?: Record<string, unknown>,
+    ) => callback(),
+  ),
 }));
 
-vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
-  handleToolExecutionError,
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  setSpanAttributes: setSpanAttributesMock,
+  withSpan: withSpanMock,
 }));
 
 const githubSkill: Skill = {
@@ -27,7 +36,8 @@ const githubSkill: Skill = {
 
 describe("createAgentTools", () => {
   beforeEach(() => {
-    handleToolExecutionError.mockClear();
+    setSpanAttributesMock.mockClear();
+    withSpanMock.mockClear();
   });
 
   it("emits assistant status only for reportProgress", async () => {
@@ -334,13 +344,16 @@ describe("createAgentTools", () => {
     await expect(
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
-    expect(pluginAuthOrchestration.maybeHandleAuthSignal).toHaveBeenCalledWith(
+    expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
+      activeSkill: githubSkill,
+      command: "gh issue view 123",
+      details: expect.any(Object),
+    });
+    expect(setSpanAttributesMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        command: "gh issue view 123",
-        auth_required: authRequired,
+        "error.type": expect.any(String),
       }),
     );
-    expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 
   it("rethrows disabled authorization errors without reporting a tool failure", async () => {
@@ -387,6 +400,10 @@ describe("createAgentTools", () => {
     await expect(
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
-    expect(handleToolExecutionError).not.toHaveBeenCalled();
+    expect(setSpanAttributesMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        "error.type": expect.any(String),
+      }),
+    );
   });
 });
