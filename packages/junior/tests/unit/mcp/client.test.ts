@@ -1,19 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 
-const {
-  callToolMock,
-  connectMock,
-  listToolsMock,
-  setSpanAttributesMock,
-  transportOptions,
-} = vi.hoisted(() => ({
-  callToolMock: vi.fn(),
-  connectMock: vi.fn(),
-  listToolsMock: vi.fn(),
-  setSpanAttributesMock: vi.fn(),
-  transportOptions: [] as Array<Record<string, unknown>>,
-}));
+const { callToolMock, connectMock, listToolsMock, transportOptions } =
+  vi.hoisted(() => ({
+    callToolMock: vi.fn(),
+    connectMock: vi.fn(),
+    listToolsMock: vi.fn(),
+    transportOptions: [] as Array<Record<string, unknown>>,
+  }));
 
 vi.mock("@modelcontextprotocol/sdk/client/auth.js", () => {
   class UnauthorizedError extends Error {
@@ -87,10 +81,6 @@ vi.mock("@modelcontextprotocol/sdk/client", () => ({
   },
 }));
 
-vi.mock("@/chat/logging", () => ({
-  setSpanAttributes: setSpanAttributesMock,
-}));
-
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
@@ -150,7 +140,6 @@ describe("PluginMcpClient", () => {
     callToolMock.mockReset();
     connectMock.mockReset();
     listToolsMock.mockReset();
-    setSpanAttributesMock.mockReset();
     transportOptions.length = 0;
   });
 
@@ -245,16 +234,6 @@ describe("PluginMcpClient", () => {
     expect(callToolMock).toHaveBeenCalledWith(expect.anything(), {
       name: "notion-search",
       arguments: {},
-    });
-    expect(setSpanAttributesMock).toHaveBeenCalledWith({
-      "mcp.method.name": "tools/call",
-      "gen_ai.operation.name": "execute_tool",
-      "mcp.session.id": "server-session",
-      "mcp.protocol.version": "2025-11-25",
-      "server.address": "mcp.notion.com",
-      "server.port": 443,
-      "network.protocol.name": "http",
-      "network.transport": "tcp",
     });
   });
 

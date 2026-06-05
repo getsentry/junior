@@ -1,29 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
-
-const { setSpanAttributesMock, withSpanMock } = vi.hoisted(() => ({
-  setSpanAttributesMock: vi.fn(),
-  withSpanMock: vi.fn(
-    async (
-      _name: string,
-      _op: string,
-      _context: Record<string, unknown>,
-      callback: () => Promise<unknown>,
-      _attributes?: Record<string, unknown>,
-    ) => callback(),
-  ),
-}));
-
-vi.mock("@/chat/logging", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/logging")>()),
-  setSpanAttributes: setSpanAttributesMock,
-  withSpan: withSpanMock,
-}));
 
 const githubSkill: Skill = {
   name: "github",
@@ -68,11 +49,6 @@ function createFailedBashSandboxExecutor() {
 }
 
 describe("createAgentTools", () => {
-  beforeEach(() => {
-    setSpanAttributesMock.mockClear();
-    withSpanMock.mockClear();
-  });
-
   it("emits assistant status only for reportProgress", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
@@ -301,27 +277,15 @@ describe("createAgentTools", () => {
     expect(editTool?.executionMode).toBe("sequential");
   });
 
-  it("marks sandbox bash as sequential", () => {
-    const sandbox = new SkillSandbox([], []);
-    const [bashTool] = createAgentTools(
-      {
-        bash: createBashTool(),
-      },
-      sandbox,
-      {},
-    );
-
-    expect(bashTool?.executionMode).toBe("sequential");
-  });
-
   it.each(authorizationPassThroughCases)(
     "rethrows $name without reporting a tool failure",
     async ({ createError, expectedError }) => {
       const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
       const pluginAuthOrchestration = {
-        handleCommandFailure: vi.fn(async () => {
+        maybeHandleAuthSignal: vi.fn(async () => {
           throw createError();
         }),
+        getPendingPause: vi.fn(() => undefined),
       } as any;
 
       const [bashTool] = createAgentTools(
@@ -343,16 +307,11 @@ describe("createAgentTools", () => {
       await expect(
         bashTool!.execute("tool-2", { command: "gh issue view 123" }),
       ).rejects.toBeInstanceOf(expectedError);
-      expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith(
-        {
-          activeSkill: githubSkill,
-          command: "gh issue view 123",
-          details: expect.any(Object),
-        },
-      );
-      expect(setSpanAttributesMock).not.toHaveBeenCalledWith(
+      expect(pluginAuthOrchestration.maybeHandleAuthSignal).toHaveBeenCalledWith(
         expect.objectContaining({
-          "error.type": expect.any(String),
+          command: "gh issue view 123",
+          exit_code: 1,
+          stderr: "bad credentials",
         }),
       );
     },

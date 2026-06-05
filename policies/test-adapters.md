@@ -21,7 +21,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Integration tests must use explicit composition or named harness ports for deterministic agent/model behavior; do not use module mocks to alter runtime wiring.
 - Treat module mocks as rare. They should usually target third-party services, SDK clients, nondeterministic system boundaries, or one explicit injected port in a unit/component test.
 - Do not mock logging, Sentry capture, span capture, or tracing helpers to quiet tests or avoid setup. Real telemetry should run through ordinary behavior tests.
-- If telemetry output must be inspected, keep it in a dedicated instrumentation contract test and mock only the minimal Sentry/span primitive needed to observe stable semantic behavior.
+- If telemetry output must be inspected, keep it rare, put it in a dedicated logging contract test under `tests/unit/logging/**`, and mock only the minimal Sentry/span primitive needed to observe stable semantic behavior.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.
 - Keep shared adapter contract tests in dedicated files named for the adapter or
   port contract. Do not mix test-adapter self-tests into product behavior suites.
@@ -31,6 +31,6 @@ Tests should be easy to write because the repo provides faithful test adapters f
 
 - A local stub is acceptable for one-off pure unit logic when the boundary is not shared and the behavior is deterministic.
 - Module mocks are acceptable at the one explicitly allowed boundary for unit and component tests; integration tests must use explicit ports instead.
-- Instrumentation contract tests may substitute telemetry primitives when the emitted logging/span/capture shape is the behavior under test.
+- Logging contract tests under `tests/unit/logging/**` may substitute telemetry primitives when the emitted logging/span/capture shape is the behavior under test.
 - A route harness may defer `waitUntil` execution when the contract under test is the response/ack boundary before background work; make the deferred flush explicit.
 - Very low-level adapter contract tests may inspect raw captured payloads when the payload shape itself is the contract under test.

@@ -1,17 +1,10 @@
 import { vi } from "vitest";
+import { withSpan } from "@/chat/logging";
 import { resolveRuntimeDependencySnapshot as resolveRuntimeDependencySnapshotImpl } from "@/chat/sandbox/runtime-dependency-snapshots";
 
 export const sandboxCreateMock = vi.fn();
 export const getPluginRuntimeDependenciesMock = vi.fn();
 export const getPluginRuntimePostinstallMock = vi.fn();
-export const withSpanMock = vi.fn(
-  async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => callback(),
-);
 
 const store = new Map<string, string>();
 let lockHeld = false;
@@ -40,7 +33,7 @@ function runtimeDependencySnapshotServices() {
     getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
     getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
     getStateAdapter: () => stateAdapter as never,
-    withSpan: withSpanMock as never,
+    withSpan,
   };
 }
 
@@ -101,15 +94,6 @@ export function setupRuntimeDependencySnapshotTest() {
   stateAdapter.set.mockClear();
   stateAdapter.acquireLock.mockClear();
   stateAdapter.releaseLock.mockClear();
-  withSpanMock.mockReset();
-  withSpanMock.mockImplementation(
-    async (
-      _name: string,
-      _op: string,
-      _context: unknown,
-      callback: () => Promise<unknown>,
-    ) => await callback(),
-  );
   getPluginRuntimeDependenciesMock.mockReset();
   getPluginRuntimePostinstallMock.mockReset();
   getPluginRuntimePostinstallMock.mockReturnValue([]);

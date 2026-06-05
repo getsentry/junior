@@ -101,7 +101,7 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 2. Mock one boundary, not a whole workflow.
 3. The mocked boundary must be the thing the layer is explicitly allowed to replace. Mocks should normally target third-party services/SDKs, nondeterministic system boundaries, or explicit injected ports.
 4. Do not mock observability side effects (`@/chat/logging`, Sentry capture, span capture, tracing helpers) in behavior tests. Telemetry is not a test seam.
-5. If instrumentation output is the contract under test, isolate it in a dedicated instrumentation-focused unit/component suite and assert stable semantic attributes or capture behavior, not incidental call choreography.
+5. Instrumentation-output assertions should be rare. If instrumentation output is the contract under test, isolate it in `tests/unit/logging/**` and assert stable semantic attributes or capture behavior, not incidental call choreography.
 6. If product logic consumes a telemetry result such as a Sentry event ID, test the user-visible or state result through a small injected service port; do not globally mock telemetry for a full workflow.
 7. If a component test needs fake ports, keep them explicit and role-named. Do not use module-level mocks to steer unrelated runtime branches.
 8. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
@@ -111,9 +111,11 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces major Slack boundary rules for evals and integration tests:
+`pnpm --filter @sentry/junior run test:slack-boundary` enforces major Slack and observability boundary rules:
 
 - Eval files cannot import Slack contract internals.
 - Integration tests cannot use module mocks.
+- Behavior tests cannot mock logging, Sentry capture, span capture, or tracing helpers.
+- Behavior tests cannot assert internal telemetry emissions; rare telemetry contract tests live under `tests/unit/logging/**`.
 
 See `scripts/check-slack-test-boundary.mjs`.

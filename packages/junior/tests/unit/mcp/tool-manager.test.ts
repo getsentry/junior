@@ -1,18 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const { logWarnMock } = vi.hoisted(() => ({
-  logWarnMock: vi.fn(),
-}));
-
-vi.mock("@/chat/logging", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/chat/logging")>();
-  return {
-    ...actual,
-    logWarn: logWarnMock,
-  };
-});
-
 import {
   McpAuthorizationRequiredError,
   type PluginMcpClientOptions,
@@ -178,26 +166,6 @@ describe("McpToolManager", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(manager.getActiveToolCatalog()).toEqual([]);
-  });
-
-  it("logs expected MCP tool errors with semantic context", async () => {
-    const plugin = buildPlugin();
-    const manager = createMcpToolManager([plugin]);
-    await manager.activateProvider("demo");
-    callToolMock.mockResolvedValueOnce({
-      content: [
-        {
-          type: "text",
-          text: "Input validation error: Invalid input: expected object, received undefined",
-        },
-      ],
-      isError: true,
-    });
-
-    const resolvedTools = manager.getResolvedActiveTools();
-    await expect(resolvedTools[0]!.execute({})).rejects.toThrow(
-      "expected object, received undefined",
-    );
   });
 
   it("surfaces MCP authorization challenges through the callback hook", async () => {

@@ -27,8 +27,8 @@ Define the canonical logging/tracing instrumentation contracts and shared policy
 
 - Instrumentation is part of the real runtime path. Do not mock or disable Sentry capture, logging, span capture, or tracing helpers in ordinary behavior tests.
 - Behavior tests should not assert log calls, span creation, trace attributes, or Sentry captures. Let telemetry run unless the emitted signal is the product contract under test.
-- Instrumentation contract tests may replace Sentry/span primitives with a small test double when the test's purpose is to inspect emitted semantic keys, parent/child span behavior, error status, or capture return behavior.
-- Keep instrumentation contract tests dedicated and clearly named, for example under `tests/unit/logging/**` or `*instrumentation*.test.ts`. Do not mix telemetry call assertions into product behavior suites.
+- Instrumentation contract tests should be rare. They may replace Sentry/span primitives with a small test double only when the test's purpose is to inspect emitted semantic keys, parent/child span behavior, error status, or capture return behavior.
+- Keep instrumentation contract tests dedicated and clearly named under `tests/unit/logging/**`. Do not mix telemetry call assertions into product behavior suites or feature-local `*instrumentation*.test.ts` files.
 - If product code consumes a telemetry result, such as a Sentry event ID, test the resulting user-visible behavior or persisted state through an explicit service port. Avoid global telemetry module mocks for full runtime flows.
 
 ## Specs

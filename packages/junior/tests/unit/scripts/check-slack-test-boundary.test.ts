@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 type BoundaryCheckModule = {
   runBoundaryCheck(roots: {
     evalsRoot: string;
+    evalTestsRoot: string;
     integrationRoot: string;
     mswRoot: string;
     reportRoot: string;
+    testRoot: string;
   }): Promise<string[]>;
 };
 
@@ -24,12 +26,26 @@ async function writeFixtureFile(
   await fs.writeFile(filePath, source, "utf8");
 }
 
+function viModuleMockSource(
+  kind: "doMock" | "mock",
+  moduleName: string,
+  factory: string,
+): string {
+  return `vi.${kind}("${moduleName}", ${factory});`;
+}
+
+function expectCalledSource(name: string): string {
+  return `expect(${name}).toHaveBeenCalled();`;
+}
+
 async function checkTempRepo(): Promise<string[]> {
   return await runBoundaryCheck({
     evalsRoot: path.join(tempRoot, "packages/junior-evals/evals"),
+    evalTestsRoot: path.join(tempRoot, "packages/junior-evals/tests"),
     integrationRoot: path.join(tempRoot, "packages/junior/tests/integration"),
     mswRoot: path.join(tempRoot, "packages/junior/tests/msw"),
     reportRoot: tempRoot,
+    testRoot: path.join(tempRoot, "packages/junior/tests"),
   });
 }
 
@@ -75,6 +91,94 @@ describe("check-slack-test-boundary", () => {
 
     await expect(checkTempRepo()).resolves.toEqual([
       expect.stringContaining('module mock "@/chat/respond"'),
+    ]);
+  });
+
+  it("detects observability module mocks outside instrumentation tests", async () => {
+    await writeFixtureFile(
+      "packages/junior/tests/unit/tools/bad.test.ts",
+      [
+        "import { vi } from 'vitest';",
+        viModuleMockSource(
+          "mock",
+          "@/chat/logging",
+          "() => ({ logWarn: vi.fn() })",
+        ),
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([
+      expect.stringContaining('observability module mock "@/chat/logging"'),
+    ]);
+  });
+
+  it("allows observability mocks in dedicated logging contract tests", async () => {
+    await writeFixtureFile(
+      "packages/junior/tests/unit/logging/tool-span.test.ts",
+      [
+        "import { vi } from 'vitest';",
+        viModuleMockSource(
+          "mock",
+          "@/chat/logging",
+          "() => ({ withSpan: vi.fn() })",
+        ),
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([]);
+  });
+
+  it("rejects observability mocks in feature-local instrumentation tests", async () => {
+    await writeFixtureFile(
+      "packages/junior/tests/unit/tools/tool-instrumentation.test.ts",
+      [
+        "import { vi } from 'vitest';",
+        viModuleMockSource(
+          "mock",
+          "@/chat/logging",
+          "() => ({ withSpan: vi.fn() })",
+        ),
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([
+      expect.stringContaining("tests/unit/tools/tool-instrumentation.test.ts"),
+    ]);
+  });
+
+  it("allows Sentry client config mocks that do not replace capture or span helpers", async () => {
+    await writeFixtureFile(
+      "packages/junior/tests/unit/slack/footer-sentry-link.test.ts",
+      [
+        "import { vi } from 'vitest';",
+        viModuleMockSource(
+          "doMock",
+          "@/chat/sentry",
+          "() => ({ getClient: () => ({ getDsn: () => undefined }) })",
+        ),
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([]);
+  });
+
+  it("detects observability assertions outside instrumentation tests", async () => {
+    await writeFixtureFile(
+      "packages/junior/tests/unit/tools/bad-assertion.test.ts",
+      [
+        "import { expect, vi } from 'vitest';",
+        "const logWarn = vi.fn();",
+        expectCalledSource("logWarn"),
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([
+      expect.stringContaining("Forbidden observability assertion"),
     ]);
   });
 });
