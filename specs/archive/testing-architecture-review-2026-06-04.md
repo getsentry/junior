@@ -63,6 +63,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/slack-schedule-tools.ts` and split the broad integration
   suite by create/default, validation, update/ownership, run/claiming, and
   execution-mode contracts.
+- Extracted MCP OAuth Slack callback setup into
+  `tests/fixtures/mcp-oauth-callback-slack.ts` and split callback coverage by
+  persisted resume context, stale/missing resume guards, and resumed file
+  delivery contracts.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -157,7 +161,9 @@ Files:
 - `packages/junior/tests/integration/slack-schedule-update-tools.test.ts`
 - `packages/junior/tests/integration/slack-schedule-run-tools.test.ts`
 - `packages/junior/tests/integration/slack-schedule-execution-mode.test.ts`
-- `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`
+- `packages/junior/tests/integration/mcp-oauth-callback-resume-context.test.ts`
+- `packages/junior/tests/integration/mcp-oauth-callback-resume-guards.test.ts`
+- `packages/junior/tests/integration/mcp-oauth-callback-file-delivery.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-slack.test.ts`
 - `packages/junior/tests/integration/oauth-callback-slack.test.ts`
 - `packages/junior/tests/integration/turn-resume-slack.test.ts`
