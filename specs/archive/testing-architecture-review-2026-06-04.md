@@ -50,6 +50,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted the progressive MCP loading runtime harness into
   `tests/fixtures/respond-mcp-progressive-loading.ts`, then split the scenarios
   into focused MCP skill-loading, session-context, and auth-resume suites.
+- Extracted a CLI check repository fixture into `tests/fixtures/check-cli.ts`
+  and split `check-cli.test.ts` into app-config, deployment-config, package,
+  plugin-manifest, and skill validation suites.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -159,20 +162,28 @@ Direction:
 
 ### 4. CLI Check Suite
 
-File:
+Files:
 
-- `packages/junior/tests/unit/cli/check-cli.test.ts`
+- `packages/junior/tests/unit/cli/check-cli-app-config.test.ts`
+- `packages/junior/tests/unit/cli/check-cli-deployment-config.test.ts`
+- `packages/junior/tests/unit/cli/check-cli-packages.test.ts`
+- `packages/junior/tests/unit/cli/check-cli-plugin-manifests.test.ts`
+- `packages/junior/tests/unit/cli/check-cli-skills.test.ts`
 
 Problem:
 
-The suite is mostly legitimate unit/CLI validation, but setup is dense and mixes
-plugin manifests, app config checks, deployment config checks, and skill checks.
+The suite is mostly legitimate unit/CLI validation. It now uses a shared fixture
+and focused files by validation family. The remaining risk is over-testing
+similar config-file variants as the CLI surface grows.
 
 Direction:
 
-- Extract a CLI repo fixture builder.
-- Split by check family: plugin manifests, app source config, deployment config,
-  packaged plugin config defaults, and skill linting.
+- Keep future checks grouped by validation family instead of re-growing a
+  catch-all CLI file.
+- Reuse the CLI repo fixture for temp filesystem setup and captured logger
+  output.
+- Delete duplicate constant-variation cases unless they represent a distinct
+  CLI contract.
 
 ### 5. Routing Decision Tables
 
