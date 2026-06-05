@@ -58,17 +58,17 @@ if [ -z "$message_file" ]; then
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: bot commit attribution was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: requester commit attribution was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
   exit 1
 fi
 
 if [ "\${GIT_AUTHOR_NAME:-}" != "$JUNIOR_GIT_AUTHOR_NAME" ] || [ "\${GIT_AUTHOR_EMAIL:-}" != "$JUNIOR_GIT_AUTHOR_EMAIL" ]; then
-  echo "Junior GitHub plugin internal error: Git author was not set to the configured bot identity. Do not override Git author manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: Git author was not set to the resolved requester identity. Do not override Git author manually; report this configuration error." >&2
   exit 1
 fi
 
 if [ -z "\${JUNIOR_GIT_COAUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_COAUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: requester coauthor identity was not injected by the host runtime. Do not set coauthor env vars manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: Junior coauthor identity was not injected by the host runtime. Do not set coauthor env vars manually; report this configuration error." >&2
   exit 1
 fi
 
@@ -97,6 +97,8 @@ async function configureGit(ctx, key, value) {
 export function githubPlugin(options = {}) {
   const botNameEnv = options.botNameEnv ?? "GITHUB_APP_BOT_NAME";
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
+  const clientIdEnv = options.clientIdEnv ?? "GITHUB_APP_CLIENT_ID";
+  const clientSecretEnv = options.clientSecretEnv ?? "GITHUB_APP_CLIENT_SECRET";
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -118,9 +120,13 @@ export function githubPlugin(options = {}) {
         privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
         installationIdEnv: "GITHUB_INSTALLATION_ID",
       },
+      oauth: {
+        clientIdEnv,
+        clientSecretEnv,
+        authorizeEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
+      },
       commandEnv: {
-        GIT_AUTHOR_NAME: "${GITHUB_APP_BOT_NAME}",
-        GIT_AUTHOR_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
         GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
         GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
       },
@@ -170,24 +176,24 @@ export function githubPlugin(options = {}) {
         if (!botName || !botEmail) {
           return;
         }
-        const coauthorName = requesterName(ctx.requester);
-        const coauthorEmail = requesterEmail(ctx.requester);
-        if ((!coauthorName || !coauthorEmail) && isGitCommitCommand(command)) {
+        const authorName = requesterName(ctx.requester);
+        const authorEmail = requesterEmail(ctx.requester);
+        if ((!authorName || !authorEmail) && isGitCommitCommand(command)) {
           ctx.decision.deny(
-            "Junior GitHub plugin could not determine a resolved requester name and email for commit attribution. This is an internal request-context error; do not set coauthor env vars manually.",
+            "Junior GitHub plugin could not determine a resolved requester name and email for commit attribution. This is an internal request-context error; do not set author env vars manually.",
           );
           return;
         }
-        ctx.env.set("GIT_AUTHOR_NAME", botName);
-        ctx.env.set("GIT_AUTHOR_EMAIL", botEmail);
+        if (authorName && authorEmail) {
+          ctx.env.set("GIT_AUTHOR_NAME", authorName);
+          ctx.env.set("GIT_AUTHOR_EMAIL", authorEmail);
+          ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", authorName);
+          ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", authorEmail);
+        }
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
-        ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", botName);
-        ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
-        if (coauthorName && coauthorEmail) {
-          ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", coauthorName);
-          ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", coauthorEmail);
-        }
+        ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", botName);
+        ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", botEmail);
       },
     },
   });

@@ -3,7 +3,9 @@ import type {
   CredentialBroker,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import {
   DEFAULT_GITHUB_SYSTEM_READ_SCOPES,
@@ -13,9 +15,18 @@ import {
 } from "@/chat/plugins/github-permissions";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
-import type { GitHubAppCredentials, PluginManifest } from "../types";
+import {
+  buildOAuthTokenRequest,
+  parseOAuthTokenResponse,
+} from "./oauth-request";
+import type {
+  GitHubAppCredentials,
+  PluginBrokerDeps,
+  PluginManifest,
+} from "../types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
+const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 function base64Url(input: string): string {
   return Buffer.from(input)
@@ -167,10 +178,59 @@ function resolveGitHubApiDomain(credentials: GitHubAppCredentials): string {
   return apiDomain;
 }
 
+async function refreshUserAccessToken(
+  refreshToken: string,
+  oauth: NonNullable<PluginManifest["oauth"]>,
+  fallbackScope?: string,
+): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresAt?: number;
+  scope?: string;
+}> {
+  const clientId = process.env[oauth.clientIdEnv]?.trim();
+  const clientSecret = process.env[oauth.clientSecretEnv]?.trim();
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      `Missing ${oauth.clientIdEnv} or ${oauth.clientSecretEnv} for GitHub user token refresh`,
+    );
+  }
+
+  const request = buildOAuthTokenRequest({
+    clientId,
+    clientSecret,
+    payload: {
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    },
+    tokenAuthMethod: oauth.tokenAuthMethod,
+    tokenExtraHeaders: oauth.tokenExtraHeaders,
+  });
+  const response = await fetch(oauth.tokenEndpoint, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub user token refresh failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  return parseOAuthTokenResponse(data, fallbackScope);
+}
+
+function leaseExpiry(expiresAt?: number): number {
+  return expiresAt
+    ? Math.min(expiresAt, Date.now() + MAX_LEASE_MS)
+    : Date.now() + MAX_LEASE_MS;
+}
+
 /** Create a broker that keeps GitHub App tokens on the host while authorizing provider traffic. */
 export function createGitHubAppBroker(
   manifest: PluginManifest,
   credentials: GitHubAppCredentials,
+  deps?: PluginBrokerDeps,
 ): CredentialBroker {
   const provider = manifest.name;
   const {
@@ -242,10 +302,11 @@ export function createGitHubAppBroker(
   }
 
   function createLease(params: {
-    installationId: number;
+    installationId?: number;
     token: string;
     expiresAtMs: number;
     reason: string;
+    tokenKind: "installation" | "user";
   }): CredentialLease {
     return {
       id: randomUUID(),
@@ -266,8 +327,11 @@ export function createGitHubAppBroker(
       ]),
       expiresAt: new Date(params.expiresAtMs).toISOString(),
       metadata: {
-        installationId: String(params.installationId),
+        ...(params.installationId !== undefined
+          ? { installationId: String(params.installationId) }
+          : {}),
         reason: params.reason,
+        tokenKind: params.tokenKind,
       },
     };
   }
@@ -284,41 +348,141 @@ export function createGitHubAppBroker(
     return installationId;
   }
 
+  async function issueUserLease(input: {
+    context: Parameters<CredentialBroker["issue"]>[0]["context"];
+    reason: string;
+  }): Promise<CredentialLease> {
+    const oauth = manifest.oauth;
+    if (
+      !oauth ||
+      !deps?.userTokenStore ||
+      input.context.actor.type !== "user"
+    ) {
+      throw new CredentialUnavailableError(
+        provider,
+        "GitHub write access requires user authorization.",
+      );
+    }
+    const userSubjectId = input.context.actor.userId;
+
+    const stored = await deps.userTokenStore.get(userSubjectId, provider);
+    if (!stored) {
+      throw new CredentialUnavailableError(
+        provider,
+        "GitHub write access requires user authorization.",
+      );
+    }
+    if (!hasRequiredOAuthScope(stored.scope, oauth.scope)) {
+      throw new CredentialUnavailableError(
+        provider,
+        "Your GitHub authorization needs to be refreshed.",
+      );
+    }
+
+    const now = Date.now();
+    if (
+      stored.expiresAt !== undefined &&
+      stored.expiresAt - now < REFRESH_BUFFER_MS
+    ) {
+      try {
+        const refreshed = await refreshUserAccessToken(
+          stored.refreshToken,
+          oauth,
+          stored.scope ?? oauth.scope,
+        );
+        if (!hasRequiredOAuthScope(refreshed.scope, oauth.scope)) {
+          throw new CredentialUnavailableError(
+            provider,
+            "Your GitHub authorization needs to be refreshed.",
+          );
+        }
+        await deps.userTokenStore.set(userSubjectId, provider, refreshed);
+        return createLease({
+          token: refreshed.accessToken,
+          expiresAtMs: leaseExpiry(refreshed.expiresAt),
+          reason: input.reason,
+          tokenKind: "user",
+        });
+      } catch (error) {
+        if (error instanceof CredentialUnavailableError) {
+          throw error;
+        }
+        if (stored.expiresAt > Date.now()) {
+          return createLease({
+            token: stored.accessToken,
+            expiresAtMs: leaseExpiry(stored.expiresAt),
+            reason: input.reason,
+            tokenKind: "user",
+          });
+        }
+        throw new CredentialUnavailableError(
+          provider,
+          "Your GitHub authorization has expired.",
+        );
+      }
+    }
+
+    if (stored.expiresAt === undefined || stored.expiresAt > Date.now()) {
+      return createLease({
+        token: stored.accessToken,
+        expiresAtMs: leaseExpiry(stored.expiresAt),
+        reason: input.reason,
+        tokenKind: "user",
+      });
+    }
+
+    throw new CredentialUnavailableError(
+      provider,
+      "Your GitHub authorization has expired.",
+    );
+  }
+
+  async function issueInstallationLease(input: {
+    context: Parameters<CredentialBroker["issue"]>[0]["context"];
+    reason: string;
+  }): Promise<CredentialLease> {
+    const installationId = resolveInstallationId();
+    const appId = resolveAppId(appIdEnv);
+    const appJwt = createAppJwt(appId, privateKeyEnv);
+    const tokenPermissions = await resolveTokenPermissions({
+      appJwt,
+      installationId,
+      systemActor: input.context.actor.type === "system",
+    });
+    const tokenRequestBody: Record<string, unknown> = tokenPermissions
+      ? { permissions: tokenPermissions }
+      : {};
+
+    const accessTokenResponse = await githubRequest<{
+      token: string;
+      expires_at: string;
+    }>(apiBase, `/app/installations/${installationId}/access_tokens`, {
+      method: "POST",
+      token: appJwt,
+      body: tokenRequestBody,
+    });
+
+    const providerExpiresAtMs = Date.parse(accessTokenResponse.expires_at);
+    const expiresAtMs = Math.min(
+      providerExpiresAtMs,
+      Date.now() + MAX_LEASE_MS,
+    );
+
+    return createLease({
+      installationId,
+      token: accessTokenResponse.token,
+      expiresAtMs,
+      reason: input.reason,
+      tokenKind: "installation",
+    });
+  }
+
   return {
     async issue(input): Promise<CredentialLease> {
-      const installationId = resolveInstallationId();
-      const appId = resolveAppId(appIdEnv);
-      const appJwt = createAppJwt(appId, privateKeyEnv);
-      const tokenPermissions = await resolveTokenPermissions({
-        appJwt,
-        installationId,
-        systemActor: input.context.actor.type === "system",
-      });
-      const tokenRequestBody: Record<string, unknown> = tokenPermissions
-        ? { permissions: tokenPermissions }
-        : {};
-
-      const accessTokenResponse = await githubRequest<{
-        token: string;
-        expires_at: string;
-      }>(apiBase, `/app/installations/${installationId}/access_tokens`, {
-        method: "POST",
-        token: appJwt,
-        body: tokenRequestBody,
-      });
-
-      const providerExpiresAtMs = Date.parse(accessTokenResponse.expires_at);
-      const expiresAtMs = Math.min(
-        providerExpiresAtMs,
-        Date.now() + MAX_LEASE_MS,
-      );
-
-      return createLease({
-        installationId,
-        token: accessTokenResponse.token,
-        expiresAtMs,
-        reason: input.reason,
-      });
+      if (input.intent === "write") {
+        return await issueUserLease(input);
+      }
+      return await issueInstallationLease(input);
     },
   };
 }

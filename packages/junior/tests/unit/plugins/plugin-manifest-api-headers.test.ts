@@ -153,8 +153,6 @@ describe("plugin manifest API headers", () => {
       GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
     });
     expect(manifest.commandEnv).toMatchObject({
-      GIT_AUTHOR_NAME: "${GITHUB_APP_BOT_NAME}",
-      GIT_AUTHOR_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
       GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
       GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
     });

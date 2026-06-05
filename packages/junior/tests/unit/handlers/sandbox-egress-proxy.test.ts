@@ -48,6 +48,7 @@ import {
 } from "@/chat/sandbox/egress-policy";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
+  credentialIntentForSandboxEgressRequest,
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
 } from "@/chat/sandbox/egress-proxy";
@@ -102,7 +103,7 @@ function githubPlugin() {
       },
       credentials: {
         type: "oauth-bearer",
-        domains: ["api.github.com"],
+        domains: ["api.github.com", "github.com"],
         authTokenEnv: "GITHUB_TOKEN",
         authTokenPlaceholder: "host_managed_credential",
       },
@@ -155,6 +156,10 @@ function mockGitHubLease(token = "github-token"): void {
       {
         domain: "api.github.com",
         headers: { Authorization: `Bearer ${token}` },
+      },
+      {
+        domain: "github.com",
+        headers: { Authorization: `Basic ${token}` },
       },
     ],
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -378,8 +383,9 @@ describe("sandbox egress proxy", () => {
     await expect(response.text()).resolves.toBe("ok");
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
       context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "read",
       provider: "sentry",
-      reason: "sandbox-egress:sentry",
+      reason: "sandbox-egress:sentry:read",
     });
 
     const repeated = await proxy(
@@ -394,6 +400,216 @@ describe("sandbox egress proxy", () => {
     await expect(repeated.text()).resolves.toBe("ok");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies GitHub sandbox egress credential intent from method and git service", () => {
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        provider: "github",
+        method: "GET",
+        upstreamUrl: new URL(
+          "https://api.github.com/repos/getsentry/junior/issues/449",
+        ),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL(
+          "https://api.github.com/repos/getsentry/junior/issues",
+        ),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        provider: "github",
+        method: "GET",
+        upstreamUrl: new URL(
+          "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
+        ),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        provider: "github",
+        method: "GET",
+        upstreamUrl: new URL(
+          "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
+        ),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        provider: "github",
+        method: "GET",
+        upstreamUrl: new URL(
+          "https://github.example/getsentry/junior.git/info/refs?service=git-receive-pack",
+        ),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({ query: "query { viewer { login } }" }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({ query: "# comment\n{ viewer { login } }" }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            query: "mutation { createIssue(input: {}) { issue { id } } }",
+          }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({ query: "query { viewer { login } }" }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://github.example/api/graphql"),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode("{").buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("write");
+  });
+
+  it("requests write-intent credentials for GitHub API mutations", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    mockGitHubLease();
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        method: "POST",
+        path: "/repos/getsentry/junior/issues",
+        body: JSON.stringify({ title: "test" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "write",
+      provider: "github",
+      reason: "sandbox-egress:github:write",
+    });
+  });
+
+  it("requests read-intent credentials for GitHub GraphQL queries", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    mockGitHubLease();
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        method: "POST",
+        path: "/graphql",
+        body: JSON.stringify({ query: "query { viewer { login } }" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "read",
+      provider: "github",
+      reason: "sandbox-egress:github:read",
+    });
+  });
+
+  it("does not reuse GitHub read leases for smart HTTP push requests", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    issueProviderCredentialLeaseMock
+      .mockResolvedValueOnce({
+        id: "lease-read",
+        provider: "github",
+        env: { GITHUB_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "github.com",
+            headers: { Authorization: "Basic read-token" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        id: "lease-write",
+        provider: "github",
+        env: { GITHUB_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "github.com",
+            headers: { Authorization: "Basic write-token" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      return new Response(new Headers(init?.headers).get("authorization"));
+    });
+
+    const readResponse = await proxy(
+      egressRequest({
+        host: "github.com",
+        path: "/getsentry/junior.git/info/refs?service=git-upload-pack",
+      }),
+      fetchMock as typeof fetch,
+    );
+    await expect(readResponse.text()).resolves.toBe("Basic read-token");
+
+    const writeResponse = await proxy(
+      egressRequest({
+        host: "github.com",
+        path: "/getsentry/junior.git/info/refs?service=git-receive-pack",
+      }),
+      fetchMock as typeof fetch,
+    );
+    await expect(writeResponse.text()).resolves.toBe("Basic write-token");
+
+    expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(1, {
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "read",
+      provider: "github",
+      reason: "sandbox-egress:github:read",
+    });
+    expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(2, {
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "write",
+      provider: "github",
+      reason: "sandbox-egress:github:write",
+    });
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {
@@ -465,8 +681,9 @@ describe("sandbox egress proxy", () => {
           },
         },
       },
+      intent: "read",
       provider: "github",
-      reason: "sandbox-egress:github",
+      reason: "sandbox-egress:github:read",
     });
   });
 
@@ -604,13 +821,15 @@ describe("sandbox egress proxy", () => {
 
     expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(1, {
       context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "read",
       provider: "sentry",
-      reason: "sandbox-egress:sentry",
+      reason: "sandbox-egress:sentry:read",
     });
     expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(2, {
       context: { actor: { type: "user", userId: "U456" } },
+      intent: "read",
       provider: "sentry",
-      reason: "sandbox-egress:sentry",
+      reason: "sandbox-egress:sentry:read",
     });
   });
 
@@ -683,7 +902,7 @@ describe("sandbox egress proxy", () => {
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.text()).resolves.toContain(
-      "junior-auth-required provider=sentry 401 unauthorized",
+      "junior-auth-required provider=sentry intent=read 401 unauthorized",
     );
   });
 
@@ -728,7 +947,9 @@ describe("sandbox egress proxy", () => {
       fetchMock as typeof fetch,
     );
     expect(firstResponse.status).toBe(401);
-    await expect(firstResponse.text()).resolves.toContain("junior-auth-required provider=sentry");
+    await expect(firstResponse.text()).resolves.toContain(
+      "junior-auth-required provider=sentry intent=read",
+    );
 
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
@@ -977,7 +1198,7 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(401);
     await expect(response.text()).resolves.toContain(
-      "junior-auth-required provider=sentry 401 unauthorized",
+      "junior-auth-required provider=sentry intent=read 401 unauthorized",
     );
   });
 

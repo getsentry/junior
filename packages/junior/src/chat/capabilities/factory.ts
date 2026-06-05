@@ -3,6 +3,7 @@ import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type {
   CredentialBroker,
+  CredentialIntent,
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -57,6 +58,7 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
 /** Issue one provider credential lease for host-side sandbox egress proxying. */
 export async function issueProviderCredentialLease(input: {
   context: CredentialContext;
+  intent?: CredentialIntent;
   provider: string;
   reason: string;
 }): Promise<CredentialLease> {

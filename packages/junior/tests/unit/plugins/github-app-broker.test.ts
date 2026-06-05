@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { createGitHubAppBroker } from "@/chat/plugins/auth/github-app-broker";
 import type {
   GitHubAppCredentials,
   PluginManifest,
 } from "@/chat/plugins/types";
+import type { StoredTokens } from "@/chat/credentials/user-token-store";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -30,6 +32,15 @@ const TEST_MANIFEST: PluginManifest = {
     commandFlags: ["--repo", "-R"],
   },
 };
+const TEST_OAUTH_MANIFEST: PluginManifest = {
+  ...TEST_MANIFEST,
+  oauth: {
+    clientIdEnv: "GITHUB_APP_CLIENT_ID",
+    clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+    authorizeEndpoint: "https://github.com/login/oauth/authorize",
+    tokenEndpoint: "https://github.com/login/oauth/access_token",
+  },
+};
 const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
 };
@@ -42,14 +53,27 @@ function setupValidEnv() {
     .privateKey.export({ type: "pkcs8", format: "pem" })
     .toString();
   process.env.GITHUB_APP_ID = "12345";
+  process.env.GITHUB_APP_CLIENT_ID = "client-id";
+  process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
   process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
   process.env.GITHUB_INSTALLATION_ID = "42";
+}
+
+function userTokenStore(tokens?: StoredTokens) {
+  return {
+    get: vi.fn(async () => tokens),
+    set: vi.fn(async (_userId: string, _provider: string, value) => {
+      tokens = value;
+    }),
+    delete: vi.fn(),
+  };
 }
 
 function mockJsonResponse(body: unknown) {
   return {
     ok: true,
     status: 200,
+    json: async () => body,
     text: async () => JSON.stringify(body),
   };
 }
@@ -447,6 +471,148 @@ describe("github app credential broker", () => {
       deployments: "read",
       metadata: "read",
       pull_requests: "read",
+    });
+  });
+
+  it("uses stored GitHub user tokens for write-intent leases", async () => {
+    setupValidEnv();
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("installation token should not be requested");
+    }) as unknown as typeof fetch;
+    const store = userTokenStore({
+      accessToken: "user-token",
+      refreshToken: "user-refresh-token",
+      expiresAt: Date.now() + 30 * 60 * 1000,
+    });
+
+    const broker = createGitHubAppBroker(
+      TEST_OAUTH_MANIFEST,
+      TEST_CREDENTIALS,
+      { userTokenStore: store },
+    );
+    const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
+      intent: "write",
+      reason: "test:user-write",
+    });
+
+    expect(store.get).toHaveBeenCalledWith("U123", "github");
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "api.github.com",
+        headers: { Authorization: "Bearer user-token" },
+      },
+      {
+        domain: "github.com",
+        headers: {
+          Authorization: `Basic ${Buffer.from("x-access-token:user-token").toString("base64")}`,
+        },
+      },
+    ]);
+    expect(lease.metadata).toMatchObject({
+      reason: "test:user-write",
+      tokenKind: "user",
+    });
+    expect(lease.metadata).not.toHaveProperty("installationId");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("requires GitHub user authorization for write-intent leases", async () => {
+    setupValidEnv();
+    const broker = createGitHubAppBroker(
+      TEST_OAUTH_MANIFEST,
+      TEST_CREDENTIALS,
+      { userTokenStore: userTokenStore() },
+    );
+
+    await expect(
+      broker.issue({
+        context: USER_CREDENTIAL_CONTEXT,
+        intent: "write",
+        reason: "test:missing-user-token",
+      }),
+    ).rejects.toBeInstanceOf(CredentialUnavailableError);
+  });
+
+  it("does not use delegated user tokens for system actor write-intent leases", async () => {
+    setupValidEnv();
+    const store = userTokenStore({
+      accessToken: "delegated-user-token",
+      refreshToken: "delegated-refresh-token",
+      expiresAt: Date.now() + 30 * 60 * 1000,
+    });
+    const broker = createGitHubAppBroker(
+      TEST_OAUTH_MANIFEST,
+      TEST_CREDENTIALS,
+      { userTokenStore: store },
+    );
+
+    await expect(
+      broker.issue({
+        context: {
+          actor: { type: "system", id: "scheduler" },
+          subject: {
+            type: "user",
+            userId: "U123",
+            allowedWhen: "private-direct-conversation",
+            binding: {
+              type: "slack-direct-conversation",
+              teamId: "T123",
+              channelId: "D123",
+              signature: "v1=test",
+            },
+          },
+        },
+        intent: "write",
+        reason: "test:system-delegated-write",
+      }),
+    ).rejects.toBeInstanceOf(CredentialUnavailableError);
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("refreshes expiring GitHub user tokens before write leases", async () => {
+    setupValidEnv();
+    const store = userTokenStore({
+      accessToken: "old-user-token",
+      refreshToken: "old-refresh-token",
+      expiresAt: Date.now() + 30_000,
+    });
+    globalThis.fetch = vi.fn(async (input, init) => {
+      expect(String(input)).toBe("https://github.com/login/oauth/access_token");
+      expect(init?.method).toBe("POST");
+      const body = init?.body as URLSearchParams;
+      expect(body.get("grant_type")).toBe("refresh_token");
+      expect(body.get("refresh_token")).toBe("old-refresh-token");
+      return mockJsonResponse({
+        access_token: "new-user-token",
+        refresh_token: "new-refresh-token",
+        expires_in: 28_800,
+        scope: "",
+      });
+    }) as unknown as typeof fetch;
+
+    const broker = createGitHubAppBroker(
+      TEST_OAUTH_MANIFEST,
+      TEST_CREDENTIALS,
+      { userTokenStore: store },
+    );
+    const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
+      intent: "write",
+      reason: "test:refresh-user-token",
+    });
+
+    expect(store.set).toHaveBeenCalledWith(
+      "U123",
+      "github",
+      expect.objectContaining({
+        accessToken: "new-user-token",
+        refreshToken: "new-refresh-token",
+      }),
+    );
+    expect(lease.headerTransforms?.[0]).toEqual({
+      domain: "api.github.com",
+      headers: { Authorization: "Bearer new-user-token" },
     });
   });
 });

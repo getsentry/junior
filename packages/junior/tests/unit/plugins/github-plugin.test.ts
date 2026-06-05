@@ -97,6 +97,12 @@ describe("github plugin", () => {
     expect(writes[0]?.path).toBe(
       "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
     );
+    expect(String(writes[0]?.content)).toContain(
+      "Co-authored-by: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>",
+    );
+    expect(String(writes[0]?.content)).toContain(
+      "Git author was not set to the resolved requester identity",
+    );
     expect(started).toEqual([
       "core.hooksPath",
       "commit.gpgsign",
@@ -106,7 +112,7 @@ describe("github plugin", () => {
     expect(maxRunning).toBe(1);
   });
 
-  it("injects commit coauthor env only for resolved requester identity", () => {
+  it("injects requester author and Junior coauthor env only for resolved requester identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -122,12 +128,14 @@ describe("github plugin", () => {
 
     expect(before.denial).toBeUndefined();
     expect(before.env).toMatchObject({
-      GIT_AUTHOR_NAME: "sentry-junior[bot]",
-      GIT_AUTHOR_EMAIL: "bot@example.com",
-      JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
-      JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
-      JUNIOR_GIT_COAUTHOR_NAME: "David Cramer",
-      JUNIOR_GIT_COAUTHOR_EMAIL: "david@example.com",
+      GIT_AUTHOR_NAME: "David Cramer",
+      GIT_AUTHOR_EMAIL: "david@example.com",
+      GIT_COMMITTER_NAME: "sentry-junior[bot]",
+      GIT_COMMITTER_EMAIL: "bot@example.com",
+      JUNIOR_GIT_AUTHOR_NAME: "David Cramer",
+      JUNIOR_GIT_AUTHOR_EMAIL: "david@example.com",
+      JUNIOR_GIT_COAUTHOR_NAME: "sentry-junior[bot]",
+      JUNIOR_GIT_COAUTHOR_EMAIL: "bot@example.com",
     });
   });
 

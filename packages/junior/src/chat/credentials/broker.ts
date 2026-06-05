@@ -24,9 +24,12 @@ export interface CredentialLease {
   metadata?: Record<string, string>;
 }
 
+export type CredentialIntent = "read" | "write";
+
 export interface CredentialBroker {
   issue(input: {
     context: CredentialContext;
+    intent?: CredentialIntent;
     reason: string;
   }): Promise<CredentialLease>;
 }

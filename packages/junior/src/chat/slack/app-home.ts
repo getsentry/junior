@@ -64,7 +64,10 @@ async function hasConnectedAccount(
   plugin: PluginDefinition,
   userTokenStore: UserTokenStore,
 ): Promise<boolean> {
-  if (plugin.manifest.credentials?.type === "oauth-bearer") {
+  if (
+    plugin.manifest.oauth ||
+    plugin.manifest.credentials?.type === "oauth-bearer"
+  ) {
     const stored = await userTokenStore.get(userId, plugin.manifest.name);
     return Boolean(
       stored &&

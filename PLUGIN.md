@@ -94,7 +94,7 @@ runtime-postinstall:
   - `issues.read` becomes `<name>.issues.read`
   - `org` becomes `<name>.org`
 - `credentials` is optional; when present, `credentials.type` must be `oauth-bearer` or `github-app`
-- `oauth` requires `credentials.type: oauth-bearer`
+- `oauth` requires `credentials.type: oauth-bearer`, except GitHub App plugins may declare OAuth for user-to-server write attribution
 - Plugins can declare capabilities without credentials, but `jr-rpc issue-credential` will fail with a clear no-credentials error.
 - `runtime-dependencies` is optional and supports `npm` and `system` installers
 - `runtime-dependencies[].version` is optional for `npm` (`latest` when omitted) and must be omitted for `system`

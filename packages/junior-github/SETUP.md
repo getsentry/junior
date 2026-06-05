@@ -1,13 +1,13 @@
 # GitHub plugin setup
 
-This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows) — both authenticated via host-issued GitHub App installation tokens.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Read operations use host-issued GitHub App installation tokens. Write operations use GitHub App user-to-server OAuth tokens so GitHub attributes the action to the requesting user with the app badge.
 
 ## 1) Create/install GitHub App
 
 In GitHub:
 
 1. Go to `Settings -> Developer settings -> GitHub Apps -> New GitHub App`.
-2. Set app name and callback URL (any valid HTTPS URL is fine if you do not use web flow).
+2. Set app name and callback URL to `https://<junior-host>/api/oauth/callback/github`.
 3. Under repository permissions, grant:
 
 - Issues: Read and write
@@ -23,6 +23,8 @@ In GitHub:
 Install the app on target repos/orgs and collect:
 
 - `GITHUB_APP_ID`
+- `GITHUB_APP_CLIENT_ID`
+- `GITHUB_APP_CLIENT_SECRET`
 - `GITHUB_APP_PRIVATE_KEY` (PEM)
 
 ## 2) Configure host runtime
@@ -30,6 +32,8 @@ Install the app on target repos/orgs and collect:
 Set on the harness host (never in skill files):
 
 - `GITHUB_APP_ID`
+- `GITHUB_APP_CLIENT_ID`
+- `GITHUB_APP_CLIENT_SECRET`
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_INSTALLATION_ID`
 
@@ -49,6 +53,8 @@ For Vercel, prefer CLI file input so newlines are preserved exactly:
 
 ```bash
 vercel env add GITHUB_APP_ID production
+vercel env add GITHUB_APP_CLIENT_ID production
+vercel env add GITHUB_APP_CLIENT_SECRET production
 vercel env add GITHUB_INSTALLATION_ID production
 vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
 ```
@@ -64,7 +70,10 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- Issued credentials are reused only within the current turn.
+- The runtime classifies GitHub traffic from the forwarded HTTP request: safe API methods, read-only GraphQL queries, and `git-upload-pack` use read intent; API mutations, GraphQL mutations, and `git-receive-pack` use write intent.
+- Write intent requires the requester to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses the turn, sends a private authorization link, and resumes after approval.
+- Git commits use the requester as the commit author, Junior as committer, and a Junior `Co-authored-by` trailer.
+- Issued credentials are reused only within the current turn, and read/write credential leases are cached separately.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage
@@ -133,10 +142,10 @@ jr-rpc config set github.repo getsentry/junior
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
 4. Exercise `github-issues` to create an issue in a safe test repo.
-5. Verify the issue is authored by the GitHub App identity.
+5. Verify the issue is authored by the requesting GitHub user with the GitHub App badge.
 6. Exercise `github-issues` to update title/body, add/remove labels, and add a comment.
 7. Push a test branch and exercise `github-code` to create a draft PR using explicit repo targeting and `--head`.
-8. Verify all mutations succeed and are attributed to the app.
+8. Verify all mutations succeed and are attributed to the requesting GitHub user with the app badge.
 9. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
 10. Verify raw token values are never printed in output or logs.
 11. Check logs for:

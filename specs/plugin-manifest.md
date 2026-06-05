@@ -77,7 +77,7 @@ target:
 - `credentials.auth-token-env`: host env var for static token fallback outside credential-context-bound turns and for sandbox placeholder naming.
 - `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility.
 - `credentials.system-read-permissions`: optional GitHub App-only list of read scopes for system actors. Manifest entries may use dashes for readability and are normalized to GitHub API permission names at load. If omitted, the broker derives a safe read-only subset from the installation permissions.
-- `oauth`: required for OAuth bearer providers. Endpoints must be HTTPS.
+- `oauth`: required for OAuth bearer providers. GitHub App providers may also declare OAuth so write-intent GitHub requests can use user-to-server tokens. Endpoints must be HTTPS.
 - `target.config-key`: must appear in `config-keys`.
 - `runtime-dependencies`: optional sandbox dependencies. `type` is `"npm"` or `"system"`.
 - `runtime-postinstall`: optional commands run after dependency install and before snapshot capture.

@@ -16,19 +16,19 @@ description: Internal provider workflows
 
 ## Optional
 
-| Field                  | Purpose                     | Rules                                              |
-| ---------------------- | --------------------------- | -------------------------------------------------- |
-| `capabilities`         | provider permissions        | short tokens, qualified as `<plugin>.<capability>` |
-| `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`        |
-| `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                      |
-| `domains`              | header injection domains    | required with `api-headers`                        |
-| `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                  |
-| `credentials`          | token delivery              | `oauth-bearer` or `github-app`                     |
-| `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer`          |
-| `target`               | target/config metadata      | `config-key` must be in `config-keys`              |
-| `runtime-dependencies` | sandbox packages            | `npm` or `system`                                  |
-| `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`            |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools`              |
+| Field                  | Purpose                     | Rules                                                                                           |
+| ---------------------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `capabilities`         | provider permissions        | short tokens, qualified as `<plugin>.<capability>`                                              |
+| `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`                                                     |
+| `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                                                                   |
+| `domains`              | header injection domains    | required with `api-headers`                                                                     |
+| `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                                                               |
+| `credentials`          | token delivery              | `oauth-bearer` or `github-app`                                                                  |
+| `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer`, or `github-app` for GitHub user-to-server write auth |
+| `target`               | target/config metadata      | `config-key` must be in `config-keys`                                                           |
+| `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                               |
+| `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                                         |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools`                                                           |
 
 ## OAuth bearer
 
@@ -87,7 +87,7 @@ mcp:
 
 - `api-headers` requires `domains`.
 - `domains` requires `api-headers`.
-- `oauth` requires `credentials.type: oauth-bearer`.
+- `oauth` requires `credentials.type: oauth-bearer`, except GitHub App plugins may declare OAuth for user-to-server write attribution.
 - `mcp.url` env refs must be declared in `env-vars`.
 - API-header env refs must not declare defaults.
 - `command-env` env refs must not reuse API-header, credential, or OAuth env vars.

@@ -72,7 +72,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 ### Permission model
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
-- Runtime requests the full permission set declared by the GitHub plugin manifest for user actors.
+- Runtime uses GitHub App installation tokens for read-intent leases and GitHub App user-to-server OAuth tokens for write-intent user leases.
+- When issuing installation tokens for non-system actors, runtime requests the full permission set declared by the GitHub plugin manifest.
 - GitHub App `credentials.system-read-permissions` declares the explicit read-only permission envelope for system actors when configured. These scope names are normalized to GitHub API permission names during plugin load and may use dashes in manifest YAML for readability.
 - Repo context is still important for command correctness, but credential issuance is provider-level and turn-bound.
 
@@ -82,12 +83,15 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The GitHub API host is the declared `api.github.com` or `api.*` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
-- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn.
+- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but read-intent and write-intent leases are cached separately.
+- GitHub read intent is derived from runtime-visible HTTP evidence, including safe HTTP methods, bounded GitHub GraphQL `query`/anonymous selection bodies, and `git-upload-pack`. GitHub write intent is derived from runtime-visible mutation evidence, including non-read HTTP methods, GitHub GraphQL `mutation` bodies, and `git-receive-pack`; ambiguous GraphQL bodies remain write intent.
 - When a GitHub App lease is issued for a system actor, runtime must send an explicit read-only permissions body instead of inheriting the installation's default permissions.
 - If GitHub App `credentials.system-read-permissions` is declared, runtime requests only those scopes plus `metadata`, all at `read`.
 - If no system read permissions are declared, runtime reads the installation permission envelope and requests only the safe default read subset that the installation actually has: `metadata`, `contents`, `issues`, `pull_requests`, `checks`, `statuses`, and `actions`.
 - Provider `401`/`403` responses discard the cached sandbox egress lease so the next request re-issues from current provider state.
-- When an upstream `401` is received for a request where Junior injected an OAuth bearer credential, the proxy replaces the raw provider response body with the `junior-auth-required provider=<name> 401 unauthorized` sentinel. Plugin auth orchestration reads this sentinel, unlinks the stored token, and starts the private OAuth reconnect flow. `403` responses (permission denied for a valid token) pass through raw.
+- When an upstream `401` is received for a request where Junior injected a provider credential, the proxy replaces the raw provider response body with the `junior-auth-required provider=<name> intent=<read|write> 401 unauthorized` sentinel. Plugin auth orchestration reads this sentinel, unlinks stored user tokens only for OAuth-backed recovery paths, and starts the private OAuth reconnect flow when the provider contract allows user authorization for that intent. `403` responses (permission denied for a valid token) pass through raw.
+- GitHub write-intent leases for user actors require a stored GitHub user-to-server OAuth token. Missing or stale user authorization returns the auth-required sentinel with `intent=write`, which starts the private OAuth flow and resumes the write after authorization.
+- GitHub read-intent leases continue to use GitHub App installation tokens. Read-intent GitHub credential failures are operational app/installation failures and must not trigger user OAuth.
 
 ## Sentry profile
 

@@ -1,5 +1,8 @@
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import {
+  CredentialUnavailableError,
+  type CredentialIntent,
+} from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/logging";
 import {
   matchesSandboxEgressDomain,
@@ -46,6 +49,8 @@ const DECODED_RESPONSE_HEADERS = new Set([
 ]);
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
+const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const MAX_GRAPHQL_INTENT_BODY_BYTES = 64 * 1024;
 
 /** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
 export type SandboxEgressHttpInterceptor = (input: {
@@ -84,6 +89,7 @@ function shouldLogSandboxEgressInfo(): boolean {
 function egressAttributes(input: {
   egressId?: string;
   host?: string;
+  intent?: CredentialIntent;
   method?: string;
   path?: string;
   provider?: string;
@@ -92,6 +98,7 @@ function egressAttributes(input: {
   return {
     ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : {}),
     ...(input.provider ? { "app.credential.provider": input.provider } : {}),
+    ...(input.intent ? { "app.credential.intent": input.intent } : {}),
     ...(input.host ? { "server.address": input.host } : {}),
     ...(input.method ? { "http.request.method": input.method } : {}),
     ...(input.path ? { "url.path": input.path } : {}),
@@ -139,6 +146,7 @@ function routingAttributes(
 
 function logSandboxEgressUpstreamRequest(input: {
   egressId: string;
+  intent: CredentialIntent;
   provider: string;
   request: Request;
   upstream: Response;
@@ -155,6 +163,7 @@ function logSandboxEgressUpstreamRequest(input: {
       ...egressAttributes({
         egressId: input.egressId,
         host: input.upstreamUrl.hostname,
+        intent: input.intent,
         method: input.request.method,
         path: input.upstreamUrl.pathname,
         provider: input.provider,
@@ -320,19 +329,112 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
+function githubSmartHttpIntent(upstreamUrl: URL): CredentialIntent | undefined {
+  const service = upstreamUrl.searchParams.get("service");
+  if (service === "git-receive-pack") {
+    return "write";
+  }
+  if (service === "git-upload-pack") {
+    return "read";
+  }
+
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  if (pathname.endsWith("/git-receive-pack")) {
+    return "write";
+  }
+  if (pathname.endsWith("/git-upload-pack")) {
+    return "read";
+  }
+
+  return undefined;
+}
+
+function graphqlOperationIntent(query: string): CredentialIntent | undefined {
+  const cleaned = query
+    .replace(/^\uFEFF/, "")
+    .replace(/(?:^|\n)\s*#[^\n]*/g, "\n")
+    .trimStart();
+  if (!cleaned) {
+    return undefined;
+  }
+  if (cleaned.startsWith("{")) {
+    return "read";
+  }
+  const operation = /^[A-Za-z]+/.exec(cleaned)?.[0];
+  if (operation === "query" || operation === "subscription") {
+    return "read";
+  }
+  if (operation === "mutation") {
+    return "write";
+  }
+  return undefined;
+}
+
+function githubGraphqlIntent(
+  upstreamUrl: URL,
+  body: ArrayBuffer | undefined,
+): CredentialIntent | undefined {
+  if (
+    !upstreamUrl.pathname.toLowerCase().endsWith("/graphql") ||
+    body === undefined ||
+    body.byteLength > MAX_GRAPHQL_INTENT_BODY_BYTES
+  ) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    const query = (parsed as { query?: unknown }).query;
+    return typeof query === "string"
+      ? graphqlOperationIntent(query)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Classify provider traffic so credential brokers can choose user-write auth only when runtime evidence requires it. */
+export function credentialIntentForSandboxEgressRequest(input: {
+  body?: ArrayBuffer;
+  provider: string;
+  method: string;
+  upstreamUrl: URL;
+}): CredentialIntent {
+  if (input.provider === "github") {
+    const smartHttpIntent = githubSmartHttpIntent(input.upstreamUrl);
+    if (smartHttpIntent) {
+      return smartHttpIntent;
+    }
+    const graphqlIntent = githubGraphqlIntent(input.upstreamUrl, input.body);
+    if (graphqlIntent) {
+      return graphqlIntent;
+    }
+  }
+
+  return HTTP_READ_METHODS.has(input.method.toUpperCase()) ? "read" : "write";
+}
+
 async function credentialLease(
   provider: string,
+  intent: CredentialIntent,
   context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease> {
-  const cached = await getSandboxEgressCredentialLease(provider, context);
+  const cached = await getSandboxEgressCredentialLease(
+    provider,
+    intent,
+    context,
+  );
   if (cached) {
     return cached;
   }
 
   const lease = await issueProviderCredentialLease({
     context: context.credentials,
+    intent,
     provider,
-    reason: `sandbox-egress:${provider}`,
+    reason: `sandbox-egress:${provider}:${intent}`,
   });
   const headerTransforms = lease.headerTransforms ?? [];
   if (headerTransforms.length === 0) {
@@ -343,6 +445,7 @@ async function credentialLease(
 
   const cachedLease: SandboxEgressCredentialLease = {
     provider,
+    intent,
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
@@ -452,6 +555,11 @@ export async function proxySandboxEgressRequest(
     );
     return jsonError("No provider owns forwarded host", 403);
   }
+  const provisionalIntent = credentialIntentForSandboxEgressRequest({
+    provider,
+    method: request.method,
+    upstreamUrl,
+  });
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's signed
   // credential context identifies which provider credentials may be issued
@@ -467,6 +575,7 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
+          intent: provisionalIntent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -482,9 +591,17 @@ export async function proxySandboxEgressRequest(
     );
   }
 
+  const body = await requestBodyBytes(request);
+  const intent = credentialIntentForSandboxEgressRequest({
+    body,
+    provider,
+    method: request.method,
+    upstreamUrl,
+  });
+
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(provider, credentialContext);
+    lease = await credentialLease(provider, intent, credentialContext);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       logWarn(
@@ -494,6 +611,7 @@ export async function proxySandboxEgressRequest(
           ...egressAttributes({
             egressId: activeEgressId,
             host: upstreamUrl.hostname,
+            intent,
             method: request.method,
             path: upstreamUrl.pathname,
             provider,
@@ -504,7 +622,7 @@ export async function proxySandboxEgressRequest(
         "Sandbox egress provider credential is unavailable",
       );
       return new Response(
-        `junior-auth-required provider=${error.provider} 401 unauthorized\n${error.message}`,
+        `junior-auth-required provider=${error.provider} intent=${intent} 401 unauthorized\n${error.message}`,
         {
           status: 401,
           headers: { "content-type": "text/plain; charset=utf-8" },
@@ -522,6 +640,7 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
+          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -537,7 +656,6 @@ export async function proxySandboxEgressRequest(
     return jsonError("Credential lease does not cover forwarded host", 403);
   }
 
-  const body = await requestBodyBytes(request);
   const fetchImpl = deps.fetch ?? fetch;
   const headers = requestHeaders(request, lease, upstreamUrl.hostname);
   const intercepted = await deps.interceptHttp?.({
@@ -561,6 +679,7 @@ export async function proxySandboxEgressRequest(
   });
   logSandboxEgressUpstreamRequest({
     egressId: activeEgressId,
+    intent,
     provider,
     request,
     upstream,
@@ -574,6 +693,7 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
+          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -596,6 +716,7 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
+          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -613,11 +734,15 @@ export async function proxySandboxEgressRequest(
         ? "Sandbox egress upstream auth rejected injected credential"
         : "Sandbox egress upstream permission denied",
     );
-    await clearSandboxEgressCredentialLease(provider, credentialContext);
+    await clearSandboxEgressCredentialLease(
+      provider,
+      intent,
+      credentialContext,
+    );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       await upstream.body?.cancel().catch(() => undefined);
       return new Response(
-        `junior-auth-required provider=${provider} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
+        `junior-auth-required provider=${provider} intent=${intent} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
         {
           status: 401,
           headers: {

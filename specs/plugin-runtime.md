@@ -55,7 +55,7 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 `createPluginBroker(provider, deps)` constructs brokers from manifest config:
 
 - `oauth-bearer`: generic OAuth bearer broker for per-user OAuth tokens, refresh, static fallback outside credential-context-bound turns, command env, and header transforms.
-- `github-app`: GitHub App broker that signs JWTs and exchanges them for short-lived installation tokens.
+- `github-app`: GitHub App broker that signs JWTs and exchanges them for short-lived installation tokens for read intent, and uses stored GitHub user-to-server OAuth tokens for write intent when the plugin declares `oauth`.
 - plugin-level `api-headers`: API header broker for providers that need header injection without OAuth/App credentials.
 - no credentials/no headers: provider-scoped no-credentials error when authenticated work needs that provider.
 

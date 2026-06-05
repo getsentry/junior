@@ -3,7 +3,10 @@ import {
   parseCredentialContext,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
+import type {
+  CredentialHeaderTransform,
+  CredentialIntent,
+} from "@/chat/credentials/broker";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
@@ -22,18 +25,20 @@ export interface SandboxEgressCredentialContext {
 
 export interface SandboxEgressCredentialLease {
   provider: string;
+  intent: CredentialIntent;
   expiresAt: string;
   headerTransforms: CredentialHeaderTransform[];
 }
 
 function leaseKey(
   provider: string,
+  intent: CredentialIntent,
   context: SandboxEgressCredentialContext,
 ): string {
   const actor = context.credentials.actor;
   const actorKey =
     actor.type === "user" ? `user:${actor.userId}` : `system:${actor.id}`;
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${actorKey}:${context.egressId}:${context.contextId}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${intent}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
 function getSandboxEgressSecret(): string {
@@ -104,6 +109,7 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   const record = value as Partial<SandboxEgressCredentialLease>;
   if (
     typeof record.provider !== "string" ||
+    (record.intent !== "read" && record.intent !== "write") ||
     typeof record.expiresAt !== "string" ||
     !Array.isArray(record.headerTransforms)
   ) {
@@ -127,6 +133,7 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   }
   return {
     provider: record.provider,
+    intent: record.intent,
     expiresAt: record.expiresAt,
     headerTransforms,
   };
@@ -194,25 +201,31 @@ export async function setSandboxEgressCredentialLease(
   );
   const state = getStateAdapter();
   await state.connect();
-  await state.set(leaseKey(lease.provider, context), lease, ttlMs);
+  await state.set(
+    leaseKey(lease.provider, lease.intent, context),
+    lease,
+    ttlMs,
+  );
 }
 
 /** Load a cached egress credential lease for an actor/sandbox context/provider pair. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
+  intent: CredentialIntent,
   context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(provider, context)));
+  return parseLease(await state.get(leaseKey(provider, intent, context)));
 }
 
 /** Clear a cached egress credential lease after the provider rejects its headers. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
+  intent: CredentialIntent,
   context: SandboxEgressCredentialContext,
 ): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(provider, context));
+  await state.delete(leaseKey(provider, intent, context));
 }

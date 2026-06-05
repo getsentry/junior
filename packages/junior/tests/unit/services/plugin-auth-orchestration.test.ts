@@ -328,6 +328,81 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
+  it("starts oauth recovery for explicit GitHub write-intent auth markers", async () => {
+    getPluginOAuthConfig.mockImplementation((provider: string) =>
+      provider === "github" ? { provider } : undefined,
+    );
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const userTokenStore = {} as any;
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "create an issue",
+        userTokenStore,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "gh issue create",
+        details: {
+          exit_code: 1,
+          stderr:
+            "junior-auth-required provider=github intent=write 401 unauthorized",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "github",
+      expect.objectContaining({
+        requesterId: "U123",
+        userMessage: "create an issue",
+      }),
+    );
+    expect(unlinkProvider).toHaveBeenCalledWith(
+      "U123",
+      "github",
+      userTokenStore,
+    );
+  });
+
+  it("keeps GitHub read-intent auth markers as app credential failures", async () => {
+    getPluginOAuthConfig.mockImplementation((provider: string) =>
+      provider === "github" ? { provider } : undefined,
+    );
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "inspect a repo",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "gh repo view getsentry/junior",
+        details: {
+          exit_code: 1,
+          stderr:
+            "junior-auth-required provider=github intent=read 401 unauthorized",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginCredentialFailureError);
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
   it("ignores auth-like failures for commands unrelated to the provider", async () => {
     const orchestration = createPluginAuthOrchestration(
       {

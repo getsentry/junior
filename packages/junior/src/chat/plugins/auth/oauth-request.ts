@@ -85,7 +85,7 @@ export function parseOAuthTokenResponse(
   let scope: string | undefined;
 
   if (responseScope !== undefined) {
-    if (typeof responseScope !== "string" || !responseScope.trim()) {
+    if (typeof responseScope !== "string") {
       throw new Error("OAuth token response returned invalid scope");
     }
     scope = normalizeOAuthScope(responseScope);

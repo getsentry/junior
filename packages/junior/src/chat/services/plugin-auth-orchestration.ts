@@ -135,11 +135,26 @@ function isGitHubSmartHttpAuthFailure(
   return /\bgzip:\s*invalid header\b/.test(text);
 }
 
-function explicitAuthRequiredProvider(details: unknown): string | undefined {
+function explicitAuthRequiredMarker(details: unknown):
+  | {
+      intent?: "read" | "write";
+      provider: string;
+    }
+  | undefined {
   const match = /\bjunior-auth-required\s+provider=([a-z0-9-]+)\b/.exec(
     commandText(details).toLowerCase(),
   );
-  return match?.[1];
+  const provider = match?.[1];
+  if (!provider) {
+    return undefined;
+  }
+  const intent = /\bintent=(read|write)\b/.exec(
+    commandText(details).toLowerCase(),
+  )?.[1] as "read" | "write" | undefined;
+  return {
+    provider,
+    ...(intent ? { intent } : {}),
+  };
 }
 
 function registeredProviderNames(): string[] {
@@ -325,10 +340,10 @@ export function createPluginAuthOrchestration(
   return {
     handleCommandFailure: async (input) => {
       const providers = registeredProviderNames();
-      const explicitProvider = explicitAuthRequiredProvider(input.details);
+      const explicitMarker = explicitAuthRequiredMarker(input.details);
       const provider =
-        explicitProvider && providers.includes(explicitProvider)
-          ? explicitProvider
+        explicitMarker && providers.includes(explicitMarker.provider)
+          ? explicitMarker.provider
           : providers.find((availableProvider) =>
               commandTargetsProvider(
                 availableProvider,
@@ -355,6 +370,15 @@ export function createPluginAuthOrchestration(
       }
 
       if (!getPluginOAuthConfig(provider)) {
+        throw buildCredentialFailureError(provider, input.command);
+      }
+      const credentialType =
+        getPluginDefinition(provider)?.manifest.credentials?.type;
+      if (
+        provider === "github" &&
+        credentialType === "github-app" &&
+        explicitMarker?.intent !== "write"
+      ) {
         throw buildCredentialFailureError(provider, input.command);
       }
 

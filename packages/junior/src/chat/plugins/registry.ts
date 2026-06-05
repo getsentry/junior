@@ -581,7 +581,7 @@ export function createPluginBroker(
   } else if (credentials.type === "oauth-bearer") {
     broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
   } else if (credentials.type === "github-app") {
-    broker = createGitHubAppBroker(plugin.manifest, credentials);
+    broker = createGitHubAppBroker(plugin.manifest, credentials, deps);
   } else {
     throw new Error(`Unsupported credentials type for plugin "${name}"`);
   }

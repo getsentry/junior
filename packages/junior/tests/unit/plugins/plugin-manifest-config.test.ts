@@ -74,6 +74,36 @@ describe("plugin manifest config", () => {
     ).toEqual(["contents", "pull_requests"]);
   });
 
+  it("allows GitHub App credentials to declare user OAuth", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: github",
+        "description: GitHub",
+        "credentials:",
+        "  type: github-app",
+        "  domains:",
+        "    - api.github.com",
+        "    - github.com",
+        "  auth-token-env: GITHUB_TOKEN",
+        "  app-id-env: GITHUB_APP_ID",
+        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+        "  installation-id-env: GITHUB_INSTALLATION_ID",
+        "oauth:",
+        "  client-id-env: GITHUB_APP_CLIENT_ID",
+        "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
+        "  authorize-endpoint: https://github.com/login/oauth/authorize",
+        "  token-endpoint: https://github.com/login/oauth/access_token",
+      ].join("\n"),
+      "/plugins/github",
+    );
+
+    expect(manifest.credentials?.type).toBe("github-app");
+    expect(manifest.oauth).toMatchObject({
+      clientIdEnv: "GITHUB_APP_CLIENT_ID",
+      clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+    });
+  });
+
   it("rejects invalid GitHub App system read permissions during manifest parsing", () => {
     expect(() =>
       parsePluginManifest(

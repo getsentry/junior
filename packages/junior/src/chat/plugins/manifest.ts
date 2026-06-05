@@ -1169,9 +1169,12 @@ function parseManifestSource(
     if (!credentials) {
       throw new Error(`Plugin ${data.name} oauth requires credentials`);
     }
-    if (credentials.type !== "oauth-bearer") {
+    if (
+      credentials.type !== "oauth-bearer" &&
+      credentials.type !== "github-app"
+    ) {
       throw new Error(
-        `Plugin ${data.name} oauth requires credentials.type "oauth-bearer"`,
+        `Plugin ${data.name} oauth requires credentials.type "oauth-bearer" or "github-app"`,
       );
     }
 

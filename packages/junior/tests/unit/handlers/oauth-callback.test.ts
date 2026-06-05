@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   BASE_URL,
   EXAMPLE_OAUTH_CONFIG,
+  GITHUB_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
@@ -25,6 +26,13 @@ const {
     tokenExtraHeaders: { "Content-Type": "application/json" },
     callbackPath: "/api/oauth/callback/example",
   },
+  GITHUB_OAUTH_CONFIG: {
+    clientIdEnv: "GITHUB_APP_CLIENT_ID",
+    clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+    authorizeEndpoint: "https://github.com/login/oauth/authorize",
+    tokenEndpoint: "https://github.com/login/oauth/access_token",
+    callbackPath: "/api/oauth/callback/github",
+  },
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
@@ -36,10 +44,13 @@ vi.mock("@/chat/plugins/registry", () => ({
     if (provider === "example") {
       return EXAMPLE_OAUTH_CONFIG;
     }
+    if (provider === "github") {
+      return GITHUB_OAUTH_CONFIG;
+    }
     return undefined;
   },
   isPluginProvider: (provider: string) =>
-    provider === "sentry" || provider === "example",
+    provider === "sentry" || provider === "example" || provider === "github",
   getPluginCapabilityProviders: () => [],
   isPluginCapability: () => false,
   isPluginConfigKey: () => false,
@@ -117,6 +128,12 @@ function configureSentryOAuthEnv() {
 function configureExampleOAuthEnv() {
   process.env.EXAMPLE_CLIENT_ID = "example-client-id";
   process.env.EXAMPLE_CLIENT_SECRET = "example-client-secret";
+  process.env.JUNIOR_BASE_URL = BASE_URL;
+}
+
+function configureGitHubOAuthEnv() {
+  process.env.GITHUB_APP_CLIENT_ID = "github-client-id";
+  process.env.GITHUB_APP_CLIENT_SECRET = "github-client-secret";
   process.env.JUNIOR_BASE_URL = BASE_URL;
 }
 
@@ -343,6 +360,42 @@ describe("oauth callback handler", () => {
       refreshToken: "example-refresh-token",
     });
     expect(stored.expiresAt).toBeUndefined();
+  });
+
+  it("stores GitHub App user tokens when GitHub returns an empty OAuth scope", async () => {
+    const stateKey = "oauth-state:github-exchange";
+    await putStoredState(stateKey, {
+      userId: "U777",
+      provider: "github",
+    });
+
+    configureGitHubOAuthEnv();
+    mockJsonFetch({
+      access_token: "github-user-token",
+      refresh_token: "github-refresh-token",
+      expires_in: 28_800,
+      scope: "",
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/github?code=valid-code&state=github-exchange",
+      ),
+      "github",
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(200);
+    const stored = (await getStoredTokens("U777", "github")) as {
+      accessToken: string;
+      refreshToken: string;
+      scope?: string;
+    };
+    expect(stored).toMatchObject({
+      accessToken: "github-user-token",
+      refreshToken: "github-refresh-token",
+    });
+    expect(stored.scope).toBeUndefined();
   });
 
   it("rejects callback grants whose explicit scope is missing required access", async () => {
