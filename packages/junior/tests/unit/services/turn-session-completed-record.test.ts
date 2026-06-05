@@ -3,6 +3,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   cleanupTurnSessionRecordTest,
   createTurnSessionRecordServices,
+  piTextMessage,
   setupTurnSessionRecordTest,
 } from "../../fixtures/turn-session-record";
 
@@ -26,13 +27,7 @@ describe("turn session completed records", () => {
           conversationId: "conversation-1",
           sessionId: "turn-1",
           sliceId: 1,
-          allMessages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: "help me" }],
-              timestamp: 1,
-            },
-          ],
+          allMessages: [piTextMessage("user", "help me", 1)],
           logContext: {
             channelId: "C123",
             modelId: "test-model",
@@ -67,11 +62,7 @@ describe("turn session completed records", () => {
           ],
           timestamp: 1,
         } as PiMessage,
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "done" }],
-          timestamp: 2,
-        } as PiMessage,
+        piTextMessage("assistant", "done", 2),
       ],
       logContext: {
         modelId: "test-model",

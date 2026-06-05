@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
 import type * as TurnSessionRecordModule from "@/chat/services/turn-session-record";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -46,4 +47,19 @@ export function createTurnSessionRecordServices(
     })),
     ...overrides,
   };
+}
+
+/** Build a Pi text message fixture for turn-session record boundaries. */
+export function piTextMessage(
+  role: PiMessage["role"],
+  text: string,
+  timestamp: number,
+  extra: Record<string, unknown> = {},
+): PiMessage {
+  return {
+    role,
+    ...extra,
+    content: [{ type: "text", text }],
+    timestamp,
+  } as PiMessage;
 }

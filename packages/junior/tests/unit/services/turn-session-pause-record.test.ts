@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   cleanupTurnSessionRecordTest,
+  piTextMessage,
   setupTurnSessionRecordTest,
 } from "../../fixtures/turn-session-record";
 
@@ -17,14 +18,8 @@ describe("turn session pause records", () => {
       await import("@/chat/state/turn-session");
 
     const priorMessages: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "help me" }],
-        timestamp: 1,
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "working on it" }],
+      piTextMessage("user", "help me", 1),
+      piTextMessage("assistant", "working on it", 2, {
         api: "responses",
         provider: "openai",
         model: "gpt-5.3",
@@ -42,9 +37,8 @@ describe("turn session pause records", () => {
             total: 0,
           },
         },
-        timestamp: 2,
         stopReason: "toolUse",
-      },
+      }),
     ];
 
     await upsertAgentTurnSessionRecord({
@@ -95,13 +89,7 @@ describe("turn session pause records", () => {
       sessionId: "turn-1",
       sliceId: 1,
       state: "awaiting_resume",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "continue me" }],
-          timestamp: 1,
-        },
-      ],
+      piMessages: [piTextMessage("user", "continue me", 1)],
       resumeReason: "timeout",
       cumulativeDurationMs: 1_500,
       cumulativeUsage: {
@@ -148,13 +136,7 @@ describe("turn session pause records", () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    const piMessages: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "keep trying" }],
-        timestamp: 1,
-      },
-    ];
+    const piMessages = [piTextMessage("user", "keep trying", 1)];
 
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-timeout-cap",
@@ -203,13 +185,7 @@ describe("turn session pause records", () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    const safeBoundary: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "connect and answer" }],
-        timestamp: 1,
-      },
-    ];
+    const safeBoundary = [piTextMessage("user", "connect and answer", 1)];
 
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-auth-tail",
@@ -224,9 +200,7 @@ describe("turn session pause records", () => {
       sessionId: "turn-auth-tail",
       currentSliceId: 1,
       messages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "calling credential-gated tool" }],
+        piTextMessage("assistant", "calling credential-gated tool", 2, {
           api: "responses",
           provider: "openai",
           model: "gpt-5.3",
@@ -244,9 +218,8 @@ describe("turn session pause records", () => {
               total: 0,
             },
           },
-          timestamp: 2,
           stopReason: "toolUse",
-        },
+        }),
       ],
       errorMessage: "plugin auth pause",
       logContext: {
@@ -311,13 +284,7 @@ describe("turn session pause records", () => {
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const messages: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "help me" }],
-        timestamp: 1,
-      },
-    ];
+    const messages = [piTextMessage("user", "help me", 1)];
 
     await persistRunningSessionRecord({
       conversationId: "conversation-1",

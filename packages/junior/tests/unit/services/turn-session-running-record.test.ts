@@ -3,6 +3,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   cleanupTurnSessionRecordTest,
   createTurnSessionRecordServices,
+  piTextMessage,
   setupTurnSessionRecordTest,
 } from "../../fixtures/turn-session-record";
 
@@ -16,30 +17,17 @@ describe("turn session running records", () => {
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const userBoundary: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "help me" }],
-        timestamp: 1,
-      },
-    ];
+    const userBoundary = [piTextMessage("user", "help me", 1)];
     const unsafeAssistantBoundary: PiMessage[] = [
       ...userBoundary,
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "working" }],
-        timestamp: 2,
-      } as PiMessage,
+      piTextMessage("assistant", "working", 2),
     ];
     const toolResultBoundary: PiMessage[] = [
       ...unsafeAssistantBoundary,
-      {
-        role: "toolResult",
+      piTextMessage("toolResult", "ok", 3, {
         toolCallId: "call-1",
         toolName: "bash",
-        content: [{ type: "text", text: "ok" }],
-        timestamp: 3,
-      } as PiMessage,
+      }),
     ];
 
     await expect(
@@ -109,13 +97,7 @@ describe("turn session running records", () => {
           conversationId: "conversation-storage-failure",
           sessionId: "turn-storage-failure",
           sliceId: 1,
-          messages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: "help me" }],
-              timestamp: 1,
-            },
-          ],
+          messages: [piTextMessage("user", "help me", 1)],
           logContext: {
             modelId: "test-model",
           },
@@ -128,23 +110,17 @@ describe("turn session running records", () => {
   it("branches Pi session state from the recoverable cursor after trimming an unsafe assistant tail", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const user: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "help me" }],
-      timestamp: 1,
-    };
-    const unsafeAssistant = {
-      role: "assistant",
-      content: [{ type: "text", text: "not committed" }],
-      timestamp: 2,
-    } as PiMessage;
-    const replacementToolResult = {
-      role: "toolResult",
-      toolCallId: "call-1",
-      toolName: "bash",
-      content: [{ type: "text", text: "safe result" }],
-      timestamp: 3,
-    } as PiMessage;
+    const user = piTextMessage("user", "help me", 1);
+    const unsafeAssistant = piTextMessage("assistant", "not committed", 2);
+    const replacementToolResult = piTextMessage(
+      "toolResult",
+      "safe result",
+      3,
+      {
+        toolCallId: "call-1",
+        toolName: "bash",
+      },
+    );
 
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-branch",
