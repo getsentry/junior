@@ -129,28 +129,23 @@ export async function lookupSlackActorIdentity(
 }
 
 /**
- * Resolve actor identity for a resumed turn.
+ * Build actor identity for a resumed turn from the persisted session requester.
  *
- * A continuation is the same turn. The identity persisted in the session
- * record is the correct identity — no Slack API call is needed. The stored
- * and resumed user ids are always the same value (both derived from the
- * original Slack message author). The live lookup fallback only fires for
- * old session records that predate requester storage.
+ * Continuation turns use the identity captured at turn start and persisted in
+ * the session record. No Slack API call is made. Session records that predate
+ * requester storage receive only the actor id and no display/contact fields.
  */
-export async function resolveSlackResumeRequester(
+export function resolveSlackResumeRequester(
   userId: string,
   stored: {
     slackUserName?: string;
     fullName?: string;
     email?: string;
   } | undefined,
-): Promise<ActorIdentityInput> {
-  if (stored) {
-    return slackActorIdentity(userId, {
-      email: stored.email,
-      fullName: stored.fullName,
-      userName: stored.slackUserName,
-    });
-  }
-  return slackActorIdentity(userId, await lookupSlackUser(userId));
+): ActorIdentityInput {
+  return slackActorIdentity(userId, stored && {
+    email: stored.email,
+    fullName: stored.fullName,
+    userName: stored.slackUserName,
+  });
 }

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-05
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -95,6 +95,34 @@ Plugin dispatch also executes as a system actor unless a future spec defines a d
 
 Scheduled tasks and plugin dispatches may carry an explicit delegated user credential subject only under the Slack private direct conversation exception defined by the scheduler and dispatch specs. That subject is not the actor.
 
+### Turn Continuation Requester Identity
+
+A turn continuation resumes the same actor turn in a later execution context
+(timeout resume, auth resume). Requester identity for a continuation MUST be
+reconstructed from the durable turn session record, not from a new Slack profile
+lookup.
+
+At the start of a Slack turn the requester identity resolved at the Slack
+boundary is persisted in `AgentTurnSessionRecord.requester`. That stored
+requester is owned state for the lifetime of the turn. Continuation endpoints
+MUST reconstruct `ActorIdentityInput` from this stored requester when resuming.
+
+Continuation endpoints MUST NOT call live Slack identity helpers such as
+`lookupSlackActorIdentity` to re-derive requester display or contact fields.
+Those helpers are fresh-turn boundary resolution paths. Re-querying Slack during
+continuation creates a dependency on external profile availability that can cause
+requester display and contact fields to disappear across serverless invocations.
+
+If a session record does not contain stored requester display or contact fields
+(for example, records that predate this contract), the continuation proceeds
+with actor id only and no recovered display fields. It MUST NOT perform a live
+Slack lookup to repair missing fields.
+
+Fresh OAuth replay (`resumePendingOAuthMessage`) is not a turn continuation for
+this purpose. It replays the user's original message after OAuth connection and
+is treated as a fresh turn that may resolve identity through the normal live
+Slack boundary path.
+
 ### Conversation History
 
 User-authored conversation messages must carry exact author identity when they are committed to durable state. Conversation rendering may sanitize display labels so platform ids are not shown as names, but it must not repair or reinterpret stored author ids.
@@ -134,6 +162,8 @@ Use integration tests for behavior that crosses real runtime boundaries:
 
 - Slack ingress persists the real requester/author identity and rejects synthetic or malformed actor ids.
 - Slack DM and channel paths preserve the current requester through first delivery, retry, and continuation.
+- Turn continuation identity: seed a session record with `AgentTurnSessionRecord.requester` containing Slack user id, username, full name, and email; resume through a continuation endpoint while making live Slack profile lookup unavailable; verify the resumed turn receives requester identity from the stored session record and that no live Slack lookup is performed.
+- Absent continuation identity: when a continuation session record has no stored requester display or contact fields, verify the resumed turn proceeds with actor id only and does not attempt a live Slack lookup.
 - Scheduler dispatch runs with a system actor and does not use creator identity as requester.
 - Plugin dispatch carries a system actor through callback, retry, continuation, credential context, and Slack delivery.
 - Private direct scheduled tasks may carry an explicit credential subject; group, private channel, public channel, and unknown-audience tasks may not.
