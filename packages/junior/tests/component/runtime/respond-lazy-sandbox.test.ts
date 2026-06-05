@@ -13,6 +13,10 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import {
+  configureRespondRuntimeEnv,
+  restoreRespondRuntimeEnv,
+} from "../../fixtures/respond-env";
+import {
   createScriptedReplyAgentFactory,
   type ScriptedReplyAgent,
 } from "../../fixtures/respond-agent";
@@ -22,21 +26,7 @@ import {
   type ScriptedSandboxExecutorState,
 } from "../../fixtures/respond-sandbox";
 
-const originalEnv = {
-  agentTurnTimeoutMs: process.env.AGENT_TURN_TIMEOUT_MS,
-  aiAdvisorModel: process.env.AI_ADVISOR_MODEL,
-  aiFastModel: process.env.AI_FAST_MODEL,
-  aiModel: process.env.AI_MODEL,
-  functionMaxDurationSeconds: process.env.FUNCTION_MAX_DURATION_SECONDS,
-  juniorStateAdapter: process.env.JUNIOR_STATE_ADAPTER,
-};
-
-process.env.AGENT_TURN_TIMEOUT_MS = "10000";
-process.env.AI_ADVISOR_MODEL = "openai/gpt-5.5";
-process.env.AI_FAST_MODEL = "openai/gpt-5.4-mini";
-process.env.AI_MODEL = "openai/gpt-5.4";
-process.env.FUNCTION_MAX_DURATION_SECONDS = "60";
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalEnv = configureRespondRuntimeEnv();
 
 const { generateAssistantReply } = await import("@/chat/respond");
 const { disconnectStateAdapter } = await import("@/chat/state/adapter");
@@ -214,15 +204,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   });
 
   afterAll(() => {
-    restoreEnv("AGENT_TURN_TIMEOUT_MS", originalEnv.agentTurnTimeoutMs);
-    restoreEnv("AI_ADVISOR_MODEL", originalEnv.aiAdvisorModel);
-    restoreEnv("AI_FAST_MODEL", originalEnv.aiFastModel);
-    restoreEnv("AI_MODEL", originalEnv.aiModel);
-    restoreEnv(
-      "FUNCTION_MAX_DURATION_SECONDS",
-      originalEnv.functionMaxDurationSeconds,
-    );
-    restoreEnv("JUNIOR_STATE_ADAPTER", originalEnv.juniorStateAdapter);
+    restoreRespondRuntimeEnv(originalEnv);
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -320,11 +302,3 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
   });
 });
-
-function restoreEnv(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = value;
-}

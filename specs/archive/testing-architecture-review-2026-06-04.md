@@ -98,6 +98,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Added an explicit `sandboxExecutorFactory` port to `generateAssistantReply`
   and moved lazy sandbox boot/metadata coverage into a component runtime suite
   backed by real skill discovery plus `tests/fixtures/respond-sandbox.ts`.
+- Moved respond startup error handling into component runtime coverage backed by
+  the sandbox executor port, removing the direct skills-module mock from that
+  error-path suite.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -125,6 +128,7 @@ Files:
 - `packages/junior/tests/unit/runtime/respond-mcp-session-context.test.ts`
 - `packages/junior/tests/unit/runtime/respond-mcp-skill-loading.test.ts`
 - `packages/junior/tests/component/runtime/respond-lazy-sandbox.test.ts`
+- `packages/junior/tests/component/runtime/respond-startup-error.test.ts`
 - `packages/junior/tests/component/runtime/respond-timeout-resume.test.ts`
 - `packages/junior/tests/component/runtime/respond-provider-retry.test.ts`
 
@@ -139,6 +143,10 @@ scripted sandbox executor factory instead of a sandbox module mock, and reads a
 temporary skill from disk instead of mocking the skills module. It still proves
 the `generateAssistantReply` orchestration contract that sandbox boot is lazy
 and sandbox metadata survives failed turns.
+
+`respond-startup-error.test.ts` now proves startup failure propagation and
+sandbox reuse metadata through an explicit failing sandbox executor factory
+instead of a mocked skills module.
 
 `respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now live
 under `tests/component/runtime` and drive Pi behavior through the explicit
