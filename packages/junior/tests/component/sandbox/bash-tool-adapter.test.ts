@@ -1,55 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const { sandboxGetMock } = vi.hoisted(() => ({
-  sandboxGetMock: vi.fn(),
-}));
-
-vi.mock("@vercel/sandbox", () => ({
-  Sandbox: {
-    get: sandboxGetMock,
-  },
-}));
+import { createBashTool as createRealBashTool } from "bash-tool";
 
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
+import { makeSandbox, sandboxGetMock } from "../../fixtures/sandbox-executor";
 
-function makeSandbox() {
+const createSandboxMock = vi.fn();
+const resolveRuntimeDependencySnapshotMock = vi.fn();
+
+function sandboxSessionServices() {
   return {
-    name: "sbx_adapter_contract",
-    currentSession: vi.fn(() => ({
-      sessionId: "sbx_adapter_contract_session",
-    })),
-    mkDir: vi.fn(async () => {}),
-    writeFiles: vi.fn(async () => {}),
-    readFileToBuffer: vi.fn(async () => Buffer.from("file content")),
-    runCommand: vi.fn(async (params: { cmd: string; args?: string[] }) => ({
-      exitCode: 0,
-      stdout: async () =>
-        params.cmd === "bash" &&
-        params.args?.[0] === "-c" &&
-        params.args[1]?.startsWith("ls /usr/bin")
-          ? "grep\nsed\ncat\n"
-          : "command stdout",
-      stderr: async () => "",
-    })),
-    stop: vi.fn(async () => {}),
-    extendTimeout: vi.fn(async () => {}),
-    snapshot: vi.fn(async () => ({ snapshotId: "snap_adapter_contract" })),
-    update: vi.fn(async () => {}),
-    fs: {},
+    createBashTool: createRealBashTool,
+    createSandbox: createSandboxMock as never,
+    getRuntimeDependencyProfileHash: () => undefined,
+    getSandbox: sandboxGetMock as never,
+    isSnapshotMissingError: () => false,
+    resolveRuntimeDependencySnapshot:
+      resolveRuntimeDependencySnapshotMock as never,
   };
 }
 
 describe("bash-tool sandbox adapter", () => {
   beforeEach(() => {
+    createSandboxMock.mockReset();
+    resolveRuntimeDependencySnapshotMock.mockReset();
     sandboxGetMock.mockReset();
   });
 
   it("lets real bash-tool initialize against Vercel Sandbox v2 shape", async () => {
-    const sandbox = makeSandbox();
+    const sandbox = makeSandbox("sbx_adapter_contract");
+    sandbox.readFileToBuffer.mockResolvedValue(Buffer.from("file content"));
+    sandbox.runCommand.mockImplementation(
+      async (params: { cmd: string; args?: string[] }) => ({
+        exitCode: 0,
+        stdout: async () =>
+          params.cmd === "bash" &&
+          params.args?.[0] === "-c" &&
+          params.args[1]?.startsWith("ls /usr/bin")
+            ? "grep\nsed\ncat\n"
+            : "command stdout",
+        stderr: async () => "",
+      }),
+    );
     sandboxGetMock.mockResolvedValue(sandbox);
-    const manager = createSandboxSessionManager({
-      sandboxId: "sbx_adapter_contract",
-    });
+    const manager = createSandboxSessionManager(
+      { sandboxId: "sbx_adapter_contract" },
+      sandboxSessionServices(),
+    );
 
     const executors = await manager.ensureToolExecutors();
 
