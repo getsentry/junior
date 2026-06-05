@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-02
-- Last Edited: 2026-06-04
+- Last Edited: 2026-06-05
 
 ## Intent
 
@@ -42,11 +42,13 @@ Allowed:
 - Shared memory-backed state adapters.
 - MSW handlers when the adapter boundary itself is the contract.
 - Local spies on explicit injected ports.
+- Third-party SDK/client fakes at an adapter boundary when MSW or a shared adapter cannot express the deterministic case.
 
 Disallowed:
 
 - Broad dependency bags or service locators created only for tests.
 - `vi.mock` of runtime modules to force unrelated branches.
+- Module mocks for logging, Sentry capture, span capture, or tracing helpers. Instrumentation should run with the real component path unless the suite is a dedicated instrumentation contract test.
 - Fake Slack delivery and fake reply execution together to prove a single
   user-visible outcome. Use integration or eval for that.
 

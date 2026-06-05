@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-04
+- Last Edited: 2026-06-05
 
 ## Intent
 
@@ -29,14 +29,17 @@ In scope:
 
 Allowed:
 
-- `vi.mock`, local fakes, and spies.
+- Local fakes and spies for one explicit boundary.
+- `vi.mock` only when the real dependency is a third-party SDK/client, nondeterministic system boundary, or the local invariant cannot be exercised through an injected port.
 - Dependency stubs for clocks, random IDs, and boundary services.
 
 Recommended:
 
+- Default to no module mocks. If a unit test repeatedly needs an internal module mock, extract a small adapter/fixture or move the contract to a component test.
 - Keep the mocked surface minimal.
 - Mock one boundary for one local invariant; do not stack mocks across persistence, Slack delivery, and reply execution just to simulate an end-to-end flow.
 - Assert behavior at module outputs rather than internal calls where practical.
+- Do not mock logging, Sentry capture, or span/tracing modules unless the test is explicitly validating instrumentation.
 - Do not treat logger or tracer calls as required behavior unless the test is explicitly validating instrumentation.
 - Do not unit test prompt builders by asserting exact or substring prompt prose. If prompt wording matters, cover the resulting user-visible behavior with evals or integration tests.
 - If a test has to mock large parts of the runtime or Slack client to prove a user-visible flow, reclassify it as component, integration, or eval instead of growing the unit seam.

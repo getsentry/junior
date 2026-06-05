@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-04
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -46,16 +46,18 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 1. Tests must be deterministic and isolated.
 2. External HTTP is blocked by default in tests and evals; use MSW or the shared HTTP interceptor fixtures. Local URLs, model endpoints, and Vercel sandbox/OIDC control-plane traffic are the only live exceptions.
 3. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
-4. Use centralized fixtures/factories (`packages/junior/tests/fixtures/slack/*`) over ad-hoc payload literals when available.
-5. Prefer asserting user-visible behavior and external contracts over implementation details.
-6. Keep test names descriptive of outcomes, not implementation mechanics.
-7. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
-8. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
-9. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent/model output through explicit composition or named harness ports.
-10. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
-11. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
-12. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
-13. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
+4. Use centralized fixtures/factories (`packages/junior/tests/fixtures/**`) over ad-hoc payload literals and one-off lifecycle setup when available.
+5. Use Vitest-native shared helpers (`packages/junior/tests/fixtures/vitest.ts`) for recurring env, fake-timer, and memory-state isolation.
+6. Prefer asserting user-visible behavior and external contracts over implementation details.
+7. Keep test names descriptive of outcomes, not implementation mechanics.
+8. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
+9. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
+10. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent/model output through explicit composition or named harness ports.
+11. Observability must remain in the runtime path for behavior tests. Do not mock or disable Sentry capture, logging, span capture, or tracing modules to make ordinary tests easier.
+12. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
+13. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
+14. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
+15. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
 
 ## Coverage Budget (Avoid Over-Testing)
 
@@ -95,13 +97,17 @@ If a test needs to mock large parts of the runtime just to prove a user-visible 
 
 These rules are mandatory whenever mocks or fakes appear in a test.
 
-1. Mock one boundary, not a whole workflow.
-2. The mocked boundary must be the thing the layer is explicitly allowed to replace.
-3. If a component test needs fake ports, keep them explicit and role-named. Do not use module-level mocks to steer unrelated runtime branches.
-4. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
-5. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
-6. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
-7. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.
+1. Default to no mocks. Use real modules, shared in-memory adapters, MSW, and explicit local ports before reaching for `vi.mock`.
+2. Mock one boundary, not a whole workflow.
+3. The mocked boundary must be the thing the layer is explicitly allowed to replace. Mocks should normally target third-party services/SDKs, nondeterministic system boundaries, or explicit injected ports.
+4. Do not mock observability side effects (`@/chat/logging`, Sentry capture, span capture, tracing helpers) in behavior tests. Telemetry is not a test seam.
+5. If instrumentation output is the contract under test, isolate it in a dedicated instrumentation-focused unit/component suite and assert stable semantic attributes or capture behavior, not incidental call choreography.
+6. If product logic consumes a telemetry result such as a Sentry event ID, test the user-visible or state result through a small injected service port; do not globally mock telemetry for a full workflow.
+7. If a component test needs fake ports, keep them explicit and role-named. Do not use module-level mocks to steer unrelated runtime branches.
+8. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
+9. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
+10. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
+11. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.
 
 ## Enforcement
 

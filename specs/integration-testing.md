@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-04
+- Last Edited: 2026-06-05
 
 ## Intent
 
@@ -30,6 +30,7 @@ In scope:
 1. Use real app/runtime modules for behavior paths.
 2. Use MSW handlers and Slack fixtures for outbound Slack HTTP.
 3. Keep persistence/routing code real unless the test is explicitly categorized as unit.
+4. Keep observability modules real. Integration behavior tests should not mock logging, Sentry capture, span capture, or tracing helpers.
 
 ## Substitution Policy
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-06-09
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -23,18 +23,13 @@ Define the canonical logging/tracing instrumentation contracts and shared policy
   - required aggregation cannot be recovered from existing span/log attributes, or
   - a critical SLO/SLA alert needs a dedicated low-latency metric path.
 
-## Attribute Scope Policy
+## Testing Policy
 
-Telemetry attributes that describe the emitting process or deployment may be
-attached to every span and log record so each record is independently
-queryable. Examples include `service.version`, `deployment.id`, and
-`deployment.environment.name`.
-
-Operation-local attributes must stay on the span or log record that directly
-observes them. For example, `http.response.status_code` belongs on the
-corresponding `http.server`/`http.client` span and must not be copied to sibling
-spans only to make cross-span queries easier. Treat spans like logs/events for
-attribute scope: global context can be repeated, but local facts stay local.
+- Instrumentation is part of the real runtime path. Do not mock or disable Sentry capture, logging, span capture, or tracing helpers in ordinary behavior tests.
+- Behavior tests should not assert log calls, span creation, trace attributes, or Sentry captures. Let telemetry run unless the emitted signal is the product contract under test.
+- Instrumentation contract tests may replace Sentry/span primitives with a small test double when the test's purpose is to inspect emitted semantic keys, parent/child span behavior, error status, or capture return behavior.
+- Keep instrumentation contract tests dedicated and clearly named, for example under `tests/unit/logging/**` or `*instrumentation*.test.ts`. Do not mix telemetry call assertions into product behavior suites.
+- If product code consumes a telemetry result, such as a Sentry event ID, test the resulting user-visible behavior or persisted state through an explicit service port. Avoid global telemetry module mocks for full runtime flows.
 
 ## Specs
 
