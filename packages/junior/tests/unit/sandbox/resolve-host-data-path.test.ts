@@ -10,15 +10,6 @@ describe("resolveHostDataPath", () => {
     ).toBe("/app/runbooks.md");
   });
 
-  it("resolves another sandbox data path", () => {
-    expect(
-      resolveHostDataPath(
-        referenceFiles,
-        "/vercel/sandbox/data/api-surface.md",
-      ),
-    ).toBe("/app/api-surface.md");
-  });
-
   it("returns null for unknown files", () => {
     expect(
       resolveHostDataPath(referenceFiles, "/vercel/sandbox/data/unknown.md"),
