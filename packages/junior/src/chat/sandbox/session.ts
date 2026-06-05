@@ -71,6 +71,24 @@ interface SandboxToolExecutors {
   fs: SandboxFileSystem;
 }
 
+interface SandboxSessionServices {
+  createBashTool: typeof createBashTool;
+  createSandbox: typeof Sandbox.create;
+  getRuntimeDependencyProfileHash: typeof getRuntimeDependencyProfileHash;
+  getSandbox: typeof Sandbox.get;
+  isSnapshotMissingError: typeof isSnapshotMissingError;
+  resolveRuntimeDependencySnapshot: typeof resolveRuntimeDependencySnapshot;
+}
+
+const defaultSandboxSessionServices: SandboxSessionServices = {
+  createBashTool,
+  createSandbox: Sandbox.create,
+  getRuntimeDependencyProfileHash,
+  getSandbox: Sandbox.get,
+  isSnapshotMissingError,
+  resolveRuntimeDependencySnapshot,
+};
+
 function createBashToolSandboxAdapter(sandbox: SandboxInstance) {
   return {
     async executeCommand(command: string) {
@@ -182,22 +200,22 @@ function getCommandAbortedResult(): {
 }
 
 /** Manage sandbox lifecycle, sync, keepalive, and tool executor caching for one executor instance. */
-export function createSandboxSessionManager(options?: {
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (
-    egressId: string,
-    traceHeaders?: TracePropagationHeaders,
-  ) => NetworkPolicy | undefined;
-  onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
-  onSandboxAcquired?: (sandbox: {
-    sandboxId: string;
+export function createSandboxSessionManager(
+  options?: {
+    sandboxId?: string;
     sandboxDependencyProfileHash?: string;
-  }) => void | Promise<void>;
-}): SandboxSessionManager {
+    timeoutMs?: number;
+    traceContext?: LogContext;
+    commandEnv?: () => Promise<Record<string, string>>;
+    createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
+    onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
+    onSandboxAcquired?: (sandbox: {
+      sandboxId: string;
+      sandboxDependencyProfileHash?: string;
+    }) => void | Promise<void>;
+  },
+  services: SandboxSessionServices = defaultSandboxSessionServices,
+): SandboxSessionManager {
   let sandbox: SandboxInstance | null = null;
   let sandboxIdHint = options?.sandboxId;
   let availableSkills: SkillMetadata[] = [];
@@ -211,7 +229,7 @@ export function createSandboxSessionManager(options?: {
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
   const dependencyProfileHash =
-    getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
+    services.getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
   const resolveCommandEnv =
     options?.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -368,7 +386,7 @@ export function createSandboxSessionManager(options?: {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
         return createSandboxInstance(
-          await Sandbox.create({
+          await services.createSandbox({
             timeout: timeoutMs,
             ...(networkPolicy
               ? { name: sandboxName, persistent: false, networkPolicy }
@@ -424,7 +442,7 @@ export function createSandboxSessionManager(options?: {
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       return createSandboxInstance(
-        await Sandbox.create({
+        await services.createSandbox({
           timeout: timeoutMs,
           runtime,
           ...(networkPolicy
@@ -442,14 +460,14 @@ export function createSandboxSessionManager(options?: {
         sandboxName,
       );
     } catch (error) {
-      if (!isSnapshotMissingError(error)) {
+      if (!services.isSnapshotMissingError(error)) {
         throw error;
       }
 
       setSpanAttributes({
         "app.sandbox.snapshot.rebuild_after_missing": true,
       });
-      const rebuiltSnapshot = await resolveRuntimeDependencySnapshot({
+      const rebuiltSnapshot = await services.resolveRuntimeDependencySnapshot({
         runtime,
         timeoutMs,
         forceRebuild: true,
@@ -483,7 +501,7 @@ export function createSandboxSessionManager(options?: {
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveRuntimeDependencySnapshot({
+          const snapshot = await services.resolveRuntimeDependencySnapshot({
             runtime,
             timeoutMs,
           });
@@ -587,7 +605,7 @@ export function createSandboxSessionManager(options?: {
         },
         async () =>
           createSandboxInstance(
-            await Sandbox.get({
+            await services.getSandbox({
               name: sandboxIdHint as string,
               resume: true,
               ...(sandboxCredentials ?? {}),
@@ -732,7 +750,7 @@ export function createSandboxSessionManager(options?: {
         "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT,
       },
       async () =>
-        await createBashTool({
+        await services.createBashTool({
           sandbox: createBashToolSandboxAdapter(sandboxInstance),
           destination: SANDBOX_WORKSPACE_ROOT,
         }),

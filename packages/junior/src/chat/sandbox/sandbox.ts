@@ -112,6 +112,20 @@ export type SandboxExecutorFactory = (
   options?: SandboxExecutorOptions,
 ) => SandboxExecutor;
 
+interface SandboxExecutorServices {
+  buildSandboxEgressNetworkPolicy: typeof buildSandboxEgressNetworkPolicy;
+  createSandboxEgressCredentialToken: typeof createSandboxEgressCredentialToken;
+  createSandboxSessionManager: typeof createSandboxSessionManager;
+  resolveSandboxCommandEnvironment: typeof resolveSandboxCommandEnvironment;
+}
+
+const defaultSandboxExecutorServices: SandboxExecutorServices = {
+  buildSandboxEgressNetworkPolicy,
+  createSandboxEgressCredentialToken,
+  createSandboxSessionManager,
+  resolveSandboxCommandEnvironment,
+};
+
 const SANDBOX_TOOL_NAMES = new Set([
   "bash",
   "readFile",
@@ -153,6 +167,7 @@ function sandboxStreamInterruptedResult(toolName: string) {
 /** Create one sandbox-backed tool executor facade for the current turn. */
 export function createSandboxExecutor(
   options?: SandboxExecutorOptions,
+  services: SandboxExecutorServices = defaultSandboxExecutorServices,
 ): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
@@ -178,7 +193,7 @@ export function createSandboxExecutor(
       throw new Error("Sandbox credential egress is not configured");
     }
     const now = Date.now();
-    const token = createSandboxEgressCredentialToken({
+    const token = services.createSandboxEgressCredentialToken({
       credentials: credentialEgress,
       egressId,
       ttlMs: sandboxEgressTokenTtlMs,
@@ -189,25 +204,20 @@ export function createSandboxExecutor(
     });
     return token;
   };
-  const sessionManager = createSandboxSessionManager({
+  const sessionManager = services.createSandboxSessionManager({
     sandboxId: options?.sandboxId,
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
     commandEnv: credentialEgress
-      ? async () => await resolveSandboxCommandEnvironment()
+      ? async () => await services.resolveSandboxCommandEnvironment()
       : undefined,
-    createNetworkPolicy:
-      credentialEgress || hasTracePropagationDomains
-        ? (egressId, traceHeaders) =>
-            buildSandboxEgressNetworkPolicy({
-              ...(credentialEgress
-                ? { credentialToken: sandboxEgressCredentialTokenFor(egressId) }
-                : {}),
-              traceConfig: tracePropagation,
-              traceHeaders,
-            })
-        : undefined,
+    createNetworkPolicy: credentialEgress
+      ? (egressId) =>
+          services.buildSandboxEgressNetworkPolicy({
+            credentialToken: sandboxEgressCredentialTokenFor(egressId),
+          })
+      : undefined,
     onSandboxPrepare: async (sandbox) => {
       await options?.agentHooks?.prepareSandbox(sandbox);
     },
