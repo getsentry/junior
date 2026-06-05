@@ -19,6 +19,7 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
           "The thread reply is a concise researched answer, not a status update or process note.",
           "The answer coherently summarizes Slack agent streaming across the provided sources.",
           "The answer stays brief enough for a normal Slack reply and does not create a canvas.",
+          "turn_diagnostics shows the turn used high or xhigh thinking.",
         ],
         fail: [
           "Do not include process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",

@@ -57,6 +57,7 @@ function buildEvalOutput(result: EvalResult): Record<string, JsonValue> {
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
       assistant_status_pending: hasAssistantStatusPending(result),
     },
+    turn_diagnostics: toJson(result.turnDiagnostics),
   };
 }
 

@@ -59,6 +59,7 @@ For each `it()` case inside a `describeEval()` suite:
 2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
 3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
 4. Return observed artifacts as JSON for LLM judgment, including structured `assistant_posts` with text plus actual attached-file metadata, and Slack-visible metadata.
+   The output also includes compact `turn_diagnostics` so evals can assert user-facing runtime metadata such as selected thinking level without scraping logs.
    The helper pretty-prints this JSON so failure output stays readable in local runs and CI.
 5. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 

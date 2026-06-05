@@ -21,6 +21,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
           "A small source edit in the sandbox fixture updates the requested value and reports the changed file.",
         pass: [
           "The final reply identifies the changed config file and says the default retry count is now 3.",
+          "turn_diagnostics shows the turn used xhigh thinking.",
         ],
         fail: [
           "Do not answer with only a plan or promise to edit later.",

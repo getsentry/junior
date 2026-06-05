@@ -48,6 +48,10 @@ import { juniorSqlSchema } from "@/chat/sql/schema";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
+import type {
+  AgentTurnDiagnostics,
+  AssistantReply,
+} from "@/chat/services/turn-result";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import type {
@@ -196,6 +200,7 @@ export interface EvalResult {
     timestamp: string;
   }>;
   slackAdapter: FakeSlackAdapter;
+  turnDiagnostics: EvalTurnDiagnostics[];
   toolInvocations: EvalToolInvocation[];
 }
 
@@ -216,6 +221,13 @@ export interface EvalAssistantPost {
 export interface EvalCanvasArtifact {
   markdown: string;
   title: string;
+}
+
+export interface EvalTurnDiagnostics {
+  modelId: string;
+  outcome: AgentTurnDiagnostics["outcome"];
+  thinkingLevel?: AgentTurnDiagnostics["thinkingLevel"];
+  toolCalls: string[];
 }
 
 export interface EvalToolInvocation {
@@ -247,6 +259,7 @@ interface QueueDelivery {
 }
 
 interface RuntimeObservations {
+  turnDiagnostics: EvalTurnDiagnostics[];
   toolInvocations: EvalToolInvocation[];
 }
 
@@ -395,6 +408,19 @@ function toEvalToolInvocation(input: {
   }
 
   return invocation;
+}
+
+function toEvalTurnDiagnostics(
+  diagnostics: AgentTurnDiagnostics,
+): EvalTurnDiagnostics {
+  return {
+    modelId: diagnostics.modelId,
+    outcome: diagnostics.outcome,
+    ...(diagnostics.thinkingLevel
+      ? { thinkingLevel: diagnostics.thinkingLevel }
+      : {}),
+    toolCalls: diagnostics.toolCalls,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,7 +1461,7 @@ function buildRuntimeServices(
             ...(replyResult.tool_invocations ??
               (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
           );
-          return {
+          const reply: AssistantReply = {
             text: replyResult.text,
             deliveryMode: "thread",
             deliveryPlan: {
@@ -1459,11 +1485,15 @@ function buildRuntimeServices(
               usedPrimaryText: replyResult.used_primary_text ?? true,
             },
           };
+          observations.turnDiagnostics.push(
+            toEvalTurnDiagnostics(reply.diagnostics),
+          );
+          return reply;
         }
         const replyText = replyTexts[replyState.successfulCount];
         if (typeof replyText === "string") {
           replyState.successfulCount += 1;
-          return {
+          const reply: AssistantReply = {
             text: replyText,
             deliveryMode: "thread",
             deliveryPlan: {
@@ -1481,6 +1511,10 @@ function buildRuntimeServices(
               usedPrimaryText: true,
             },
           };
+          observations.turnDiagnostics.push(
+            toEvalTurnDiagnostics(reply.diagnostics),
+          );
+          return reply;
         }
 
         const gatewaySnapshot = snapshotEnv([
@@ -1536,6 +1570,9 @@ function buildRuntimeServices(
         }
 
         replyState.successfulCount += 1;
+        observations.turnDiagnostics.push(
+          toEvalTurnDiagnostics(reply.diagnostics),
+        );
         return reply;
       },
     },
@@ -1718,6 +1755,7 @@ function collectResults(
     reactions,
     posts: [...threadPosts, ...callbackThreadPosts],
     slackAdapter,
+    turnDiagnostics: observations.turnDiagnostics,
     toolInvocations: observations.toolInvocations,
   };
 }
@@ -1761,6 +1799,7 @@ export async function runEvalScenario(
     const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {
+      turnDiagnostics: [],
       toolInvocations: [],
     };
     const channelStateById = new Map<
