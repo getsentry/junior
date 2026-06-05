@@ -33,7 +33,7 @@ Investigate every code path Junior uses to push visible output into Slack thread
   - `packages/junior/tests/integration/slack/message-changed-behavior.test.ts`
   - `packages/junior/tests/integration/oauth-resume-slack.test.ts`
   - `packages/junior/tests/unit/slack/bot-handlers.test.ts`
-  - `packages/junior/tests/unit/misc/output.test.ts`
+  - `packages/junior/tests/unit/slack/output.test.ts`
   - `packages/junior-evals/evals/core/lifecycle-and-resilience.eval.ts`
 - Targeted verification run:
   - `pnpm --filter @sentry/junior exec vitest run tests/integration/slack/streaming-reply-behavior.test.ts tests/integration/slack/message-changed-behavior.test.ts tests/integration/oauth-resume-slack.test.ts`
@@ -140,7 +140,7 @@ Facts:
 - `slackOutputPolicy.maxInlineLines` is `45`
 - those limits are inserted into the system prompt only
 - `buildSlackOutputMessage()` does not enforce them
-- `packages/junior/tests/unit/misc/output.test.ts` explicitly asserts that long content stays inline by default
+- `packages/junior/tests/unit/slack/output.test.ts` explicitly asserts that long content stays inline by default
 
 This is worse for streamed replies:
 
