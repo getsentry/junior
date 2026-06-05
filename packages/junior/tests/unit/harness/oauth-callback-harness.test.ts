@@ -1,25 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { oauthCallbackGetMock, mcpOauthCallbackGetMock } = vi.hoisted(() => ({
-  oauthCallbackGetMock: vi.fn(),
-  mcpOauthCallbackGetMock: vi.fn(),
-}));
-
-vi.mock("@/handlers/oauth-callback", () => ({
-  GET: oauthCallbackGetMock,
-}));
-
-vi.mock("@/handlers/mcp-oauth-callback", () => ({
-  GET: mcpOauthCallbackGetMock,
-}));
-
 import { runOauthCallbackRoute } from "../../fixtures/oauth-callback-harness";
 import { runMcpOauthCallbackRoute } from "../../fixtures/mcp-oauth-callback-harness";
 
 describe("oauth callback harnesses", () => {
+  const oauthCallbackGet = vi.fn();
+  const mcpOauthCallbackGet = vi.fn();
+
   afterEach(() => {
-    oauthCallbackGetMock.mockReset();
-    mcpOauthCallbackGetMock.mockReset();
+    oauthCallbackGet.mockReset();
+    mcpOauthCallbackGet.mockReset();
   });
 
   it.each([
@@ -30,6 +19,7 @@ describe("oauth callback harnesses", () => {
           provider: "eval-oauth",
           state: "oauth-state-1",
           code: "eval-oauth-code",
+          handler: oauthCallbackGet,
         }),
       expectedError:
         'OAuth callback route returned 200 without registering waitUntil() work for provider "eval-oauth"',
@@ -41,6 +31,7 @@ describe("oauth callback harnesses", () => {
           provider: "eval-auth",
           state: "auth-session-1",
           code: "eval-auth-code",
+          handler: mcpOauthCallbackGet,
         }),
       expectedError:
         'MCP OAuth callback route returned 200 without registering waitUntil() work for provider "eval-auth"',
@@ -48,10 +39,8 @@ describe("oauth callback harnesses", () => {
   ])(
     "fails when the $label callback route returns success without registering waitUntil() work",
     async ({ run, expectedError }) => {
-      oauthCallbackGetMock.mockResolvedValue(
-        new Response("ok", { status: 200 }),
-      );
-      mcpOauthCallbackGetMock.mockResolvedValue(
+      oauthCallbackGet.mockResolvedValue(new Response("ok", { status: 200 }));
+      mcpOauthCallbackGet.mockResolvedValue(
         new Response("ok", { status: 200 }),
       );
 

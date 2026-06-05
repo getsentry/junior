@@ -4,8 +4,12 @@ import {
 } from "./oauth-callback-after-harness";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
+type McpOauthCallbackHandler =
+  typeof import("@/handlers/mcp-oauth-callback").GET;
+
 export interface RunMcpOauthCallbackRequestArgs {
   generateReply?: ResumeReplyGenerator;
+  handler?: McpOauthCallbackHandler;
   provider: string;
   request: Request;
 }
@@ -15,7 +19,8 @@ export async function runMcpOauthCallbackRequest(
   args: RunMcpOauthCallbackRequestArgs,
 ) {
   waitUntilCallbacks.length = 0;
-  const { GET } = await import("@/handlers/mcp-oauth-callback");
+  const GET =
+    args.handler ?? (await import("@/handlers/mcp-oauth-callback")).GET;
   const response = await GET(args.request, args.provider, testWaitUntil, {
     generateReply: args.generateReply,
   });
@@ -37,6 +42,7 @@ export async function runMcpOauthCallbackRoute(args: {
   state: string;
   code: string;
   generateReply?: ResumeReplyGenerator;
+  handler?: McpOauthCallbackHandler;
 }) {
   return await runMcpOauthCallbackRequest({
     provider: args.provider,
@@ -45,5 +51,6 @@ export async function runMcpOauthCallbackRoute(args: {
       { method: "GET" },
     ),
     generateReply: args.generateReply,
+    handler: args.handler,
   });
 }

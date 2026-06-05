@@ -4,8 +4,11 @@ import {
 } from "./oauth-callback-after-harness";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
+type OAuthCallbackHandler = typeof import("@/handlers/oauth-callback").GET;
+
 export interface RunOauthCallbackRequestArgs {
   generateReply?: ResumeReplyGenerator;
+  handler?: OAuthCallbackHandler;
   provider: string;
   request: Request;
 }
@@ -15,7 +18,7 @@ export async function runOauthCallbackRequest(
   args: RunOauthCallbackRequestArgs,
 ) {
   waitUntilCallbacks.length = 0;
-  const { GET } = await import("@/handlers/oauth-callback");
+  const GET = args.handler ?? (await import("@/handlers/oauth-callback")).GET;
   const response = await GET(args.request, args.provider, testWaitUntil, {
     generateReply: args.generateReply,
   });
@@ -37,6 +40,7 @@ export async function runOauthCallbackRoute(args: {
   state: string;
   code: string;
   generateReply?: ResumeReplyGenerator;
+  handler?: OAuthCallbackHandler;
 }) {
   return await runOauthCallbackRequest({
     provider: args.provider,
@@ -45,5 +49,6 @@ export async function runOauthCallbackRoute(args: {
       { method: "GET" },
     ),
     generateReply: args.generateReply,
+    handler: args.handler,
   });
 }
