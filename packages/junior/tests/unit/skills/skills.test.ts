@@ -40,6 +40,64 @@ async function writeDemoPluginSkill(
   return { pluginRoot, skillFile };
 }
 
+async function withTempRoot(
+  prefix: string,
+  run: (tempRoot: string) => Promise<void>,
+): Promise<void> {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+
+  try {
+    await run(tempRoot);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+async function withConfiguredSkillDirs(
+  skillDirs: string,
+  run: () => Promise<void>,
+): Promise<void> {
+  const originalSkillDirs = process.env.SKILL_DIRS;
+  process.env.SKILL_DIRS = skillDirs;
+  resetSkillDiscoveryCache();
+
+  try {
+    await run();
+  } finally {
+    resetSkillDiscoveryCache();
+    if (originalSkillDirs === undefined) {
+      delete process.env.SKILL_DIRS;
+    } else {
+      process.env.SKILL_DIRS = originalSkillDirs;
+    }
+  }
+}
+
+async function withDemoPluginApp(
+  prefix: string,
+  skillName: string,
+  pluginLines: string[],
+  skillLines: string[],
+  run: (fixture: { skillFile: string }) => Promise<void>,
+): Promise<void> {
+  await withTempRoot(prefix, async (tempRoot) => {
+    const fixture = await writeDemoPluginSkill(
+      tempRoot,
+      skillName,
+      pluginLines,
+      skillLines,
+    );
+    const pluginApp = await createPluginAppFixture([fixture.pluginRoot]);
+    resetSkillDiscoveryCache();
+
+    try {
+      await run(fixture);
+    } finally {
+      await pluginApp.cleanup();
+    }
+  });
+}
+
 const stubSkills: SkillMetadata[] = [
   { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
   { name: "sum", description: "Summarize", skillPath: "/tmp/sum" },
@@ -57,48 +115,32 @@ describe("skills", () => {
   });
 
   it("discovers valid skills from configured skill directories", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-skills-default-"),
-    );
-    const originalSkillDirs = process.env.SKILL_DIRS;
+    await withTempRoot("junior-skills-default-", async (tempRoot) => {
+      await writeSkillFile(tempRoot, "brief", [
+        "---",
+        "name: brief",
+        "description: Candidate brief",
+        "---",
+        "",
+        "# Body",
+      ]);
+      await writeSkillFile(tempRoot, "sum", [
+        "---",
+        "name: sum",
+        "description: Summarize",
+        "---",
+        "",
+        "# Body",
+      ]);
 
-    await writeSkillFile(tempRoot, "brief", [
-      "---",
-      "name: brief",
-      "display-name: Brief",
-      "description: Candidate brief",
-      "---",
-      "",
-      "# Body",
-    ]);
-    await writeSkillFile(tempRoot, "sum", [
-      "---",
-      "name: sum",
-      "display-name: Sum",
-      "description: Summarize",
-      "---",
-      "",
-      "# Body",
-    ]);
+      await withConfiguredSkillDirs(tempRoot, async () => {
+        const skills = await discoverSkills();
+        const names = skills.map((skill) => skill.name);
 
-    resetSkillDiscoveryCache();
-    process.env.SKILL_DIRS = tempRoot;
-
-    try {
-      const skills = await discoverSkills();
-      const names = skills.map((skill) => skill.name);
-
-      expect(names).toContain("brief");
-      expect(names).toContain("sum");
-    } finally {
-      resetSkillDiscoveryCache();
-      if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
-      } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
-      }
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+        expect(names).toContain("brief");
+        expect(names).toContain("sum");
+      });
+    });
   });
 
   it("does not parse invocation without slash command", () => {
@@ -148,10 +190,7 @@ describe("skills", () => {
   });
 
   it("skips skills with unsupported capability metadata", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
-    const originalSkillDirs = process.env.SKILL_DIRS;
-
-    try {
+    await withTempRoot("junior-skills-", async (tempRoot) => {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
         "---",
         "name: tmp-valid-metadata",
@@ -171,62 +210,42 @@ describe("skills", () => {
         "",
         "# Body",
       ]);
-      process.env.SKILL_DIRS = tempRoot;
-      resetSkillDiscoveryCache();
 
-      const skills = await discoverSkills();
-      const names = skills.map((skill) => skill.name);
+      await withConfiguredSkillDirs(tempRoot, async () => {
+        const skills = await discoverSkills();
+        const names = skills.map((skill) => skill.name);
 
-      expect(names).toContain("tmp-valid-metadata");
-      expect(names).not.toContain("tmp-invalid-capability");
-    } finally {
-      resetSkillDiscoveryCache();
-      if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
-      } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
-      }
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+        expect(names).toContain("tmp-valid-metadata");
+        expect(names).not.toContain("tmp-invalid-capability");
+      });
+    });
   });
 
   it("discovers plugin skills and capabilities added after module load", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-late-load-"),
-    );
-
-    try {
-      const { pluginRoot } = await writeDemoPluginSkill(
-        tempRoot,
-        "demo-connect",
-        [
-          "name: demo",
-          "display-name: Demo",
-          "description: Demo plugin",
-          "capabilities:",
-          "  - read",
-          "credentials:",
-          "  type: oauth-bearer",
-          "  domains:",
-          "    - demo.example.test",
-          "  auth-token-env: DEMO_ACCESS_TOKEN",
-        ],
-        [
-          "---",
-          "name: demo-connect",
-          "display-name: Demo Connect",
-          "description: Demo plugin skill",
-          "allowed-tools: bash",
-          "---",
-          "",
-          "# Body",
-        ],
-      );
-
-      const pluginApp = await createPluginAppFixture([pluginRoot]);
-      resetSkillDiscoveryCache();
-
-      try {
+    await withDemoPluginApp(
+      "junior-plugin-skill-late-load-",
+      "demo-connect",
+      [
+        "name: demo",
+        "description: Demo plugin",
+        "capabilities:",
+        "  - read",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - demo.example.test",
+        "  auth-token-env: DEMO_ACCESS_TOKEN",
+      ],
+      [
+        "---",
+        "name: demo-connect",
+        "description: Demo plugin skill",
+        "allowed-tools: bash",
+        "---",
+        "",
+        "# Body",
+      ],
+      async () => {
         const skills = await discoverSkills();
         expect(
           skills.find((skill) => skill.name === "demo-connect"),
@@ -238,46 +257,30 @@ describe("skills", () => {
           provider: "demo",
           capabilities: ["demo.read"],
         });
-      } finally {
-        await pluginApp.cleanup();
-      }
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+      },
+    );
   });
 
   it("discovers plugin skills for config-only plugin defaults", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-config-only-"),
-    );
-
-    try {
-      const { pluginRoot } = await writeDemoPluginSkill(
-        tempRoot,
-        "demo-defaults",
-        [
-          "name: demo",
-          "display-name: Demo",
-          "description: Demo plugin",
-          "config-keys:",
-          "  - team",
-          "  - project",
-        ],
-        [
-          "---",
-          "name: demo-defaults",
-          "display-name: Demo Defaults",
-          "description: Demo defaults skill",
-          "---",
-          "",
-          "# Body",
-        ],
-      );
-
-      const pluginApp = await createPluginAppFixture([pluginRoot]);
-      resetSkillDiscoveryCache();
-
-      try {
+    await withDemoPluginApp(
+      "junior-plugin-skill-config-only-",
+      "demo-defaults",
+      [
+        "name: demo",
+        "description: Demo plugin",
+        "config-keys:",
+        "  - team",
+        "  - project",
+      ],
+      [
+        "---",
+        "name: demo-defaults",
+        "description: Demo defaults skill",
+        "---",
+        "",
+        "# Body",
+      ],
+      async () => {
         const skills = await discoverSkills();
         expect(
           skills.find((skill) => skill.name === "demo-defaults"),
@@ -285,59 +288,43 @@ describe("skills", () => {
           name: "demo-defaults",
           pluginProvider: "demo",
         });
-      } finally {
-        await pluginApp.cleanup();
-      }
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+      },
+    );
   });
 
   it("adds manifest-owned runtime boundaries to loaded plugin skills", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-runtime-boundary-"),
-    );
-
-    try {
-      const { pluginRoot } = await writeDemoPluginSkill(
-        tempRoot,
-        "demo-tool",
-        [
-          "name: demo",
-          "display-name: Demo",
-          "description: Demo plugin",
-          "config-keys:",
-          "  - repo",
-          "credentials:",
-          "  type: oauth-bearer",
-          "  domains:",
-          "    - demo.example.test",
-          "  auth-token-env: DEMO_ACCESS_TOKEN",
-          "runtime-dependencies:",
-          "  - type: npm",
-          "    package: example-cli",
-          "mcp:",
-          "  url: https://mcp.example.test/mcp",
-          "  allowed-tools:",
-          "    - search_demo",
-        ],
-        [
-          "---",
-          "name: demo-tool",
-          "display-name: Demo Tool",
-          "description: Demo tool skill",
-          "allowed-tools: bash",
-          "---",
-          "",
-          "Run `npm install example-cli` before using this skill.",
-          "Then call example-cli.",
-        ],
-      );
-
-      const pluginApp = await createPluginAppFixture([pluginRoot]);
-      resetSkillDiscoveryCache();
-
-      try {
+    await withDemoPluginApp(
+      "junior-plugin-skill-runtime-boundary-",
+      "demo-tool",
+      [
+        "name: demo",
+        "description: Demo plugin",
+        "config-keys:",
+        "  - repo",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - demo.example.test",
+        "  auth-token-env: DEMO_ACCESS_TOKEN",
+        "runtime-dependencies:",
+        "  - type: npm",
+        "    package: example-cli",
+        "mcp:",
+        "  url: https://mcp.example.test/mcp",
+        "  allowed-tools:",
+        "    - search_demo",
+      ],
+      [
+        "---",
+        "name: demo-tool",
+        "description: Demo tool skill",
+        "allowed-tools: bash",
+        "---",
+        "",
+        "Run `npm install example-cli` before using this skill.",
+        "Then call example-cli.",
+      ],
+      async () => {
         const available = await discoverSkills();
         const [loaded] = await loadSkillsByName(["demo-tool"], available);
 
@@ -355,39 +342,24 @@ describe("skills", () => {
           "Run `npm install example-cli` before using this skill.",
         );
         expect(loaded?.allowedTools).toEqual(["bash"]);
-      } finally {
-        await pluginApp.cleanup();
-      }
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+      },
+    );
   });
 
   it("validates current skill frontmatter at load time", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-load-deprecated-config-"),
-    );
-
-    try {
-      const { pluginRoot, skillFile } = await writeDemoPluginSkill(
-        tempRoot,
-        "demo-tool",
-        ["name: demo", "description: Demo plugin", "config-keys:", "  - repo"],
-        [
-          "---",
-          "name: demo-tool",
-          "display-name: Demo Tool",
-          "description: Demo tool skill",
-          "---",
-          "",
-          "Use this skill.",
-        ],
-      );
-
-      const pluginApp = await createPluginAppFixture([pluginRoot]);
-      resetSkillDiscoveryCache();
-
-      try {
+    await withDemoPluginApp(
+      "junior-plugin-skill-load-deprecated-config-",
+      "demo-tool",
+      ["name: demo", "description: Demo plugin", "config-keys:", "  - repo"],
+      [
+        "---",
+        "name: demo-tool",
+        "description: Demo tool skill",
+        "---",
+        "",
+        "Use this skill.",
+      ],
+      async ({ skillFile }) => {
         const available = await discoverSkills();
         expect(
           available.find((skill) => skill.name === "demo-tool"),
@@ -413,47 +385,39 @@ describe("skills", () => {
         ).rejects.toThrow(
           'Frontmatter field "uses-config" is no longer supported; plugin config keys come from plugin.yaml.',
         );
-      } finally {
-        await pluginApp.cleanup();
-      }
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+      },
+    );
   });
 
   it("rejects plugin metadata that does not match the skill path owner", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-owner-mismatch-"),
+    await withTempRoot(
+      "junior-plugin-skill-owner-mismatch-",
+      async (tempRoot) => {
+        await writeSkillFile(tempRoot, "demo-tool", [
+          "---",
+          "name: demo-tool",
+          "description: Demo tool skill",
+          "---",
+          "",
+          "Use this skill.",
+        ]);
+
+        await expect(
+          loadSkillsByName(
+            ["demo-tool"],
+            [
+              {
+                name: "demo-tool",
+                description: "Demo tool skill",
+                skillPath: path.join(tempRoot, "demo-tool"),
+                pluginProvider: "demo",
+              },
+            ],
+          ),
+        ).rejects.toThrow(
+          'Skill "demo-tool" metadata names plugin "demo" but is not owned by that plugin',
+        );
+      },
     );
-
-    try {
-      await writeSkillFile(tempRoot, "demo-tool", [
-        "---",
-        "name: demo-tool",
-        "display-name: Demo Tool",
-        "description: Demo tool skill",
-        "---",
-        "",
-        "Use this skill.",
-      ]);
-
-      await expect(
-        loadSkillsByName(
-          ["demo-tool"],
-          [
-            {
-              name: "demo-tool",
-              description: "Demo tool skill",
-              skillPath: path.join(tempRoot, "demo-tool"),
-              pluginProvider: "demo",
-            },
-          ],
-        ),
-      ).rejects.toThrow(
-        'Skill "demo-tool" metadata names plugin "demo" but is not owned by that plugin',
-      );
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
   });
 });
