@@ -8,6 +8,7 @@ import {
   createBashTool,
   createSandboxExecutor,
   createStreamInterruptedError,
+  makeBashToolFacade,
   makeSandbox,
   sandboxCreateMock,
   sandboxGetMock,
@@ -24,12 +25,6 @@ describe("sandbox executor tool execution", () => {
     const sandbox = makeSandbox("sbx_find_files_interrupted");
     sandbox.fs.stat.mockRejectedValueOnce(createStreamInterruptedError());
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
-    vi.mocked(createBashTool).mockResolvedValueOnce({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -62,12 +57,9 @@ describe("sandbox executor tool execution", () => {
       throw createStreamInterruptedError();
     });
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
-    vi.mocked(createBashTool).mockResolvedValueOnce({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: writeFileExecute },
-      },
-    } as never);
+    vi.mocked(createBashTool).mockResolvedValueOnce(
+      makeBashToolFacade({ writeFile: writeFileExecute }) as never,
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -89,12 +81,6 @@ describe("sandbox executor tool execution", () => {
   it("routes matching bash commands through custom command handler", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
     const runBashCustomCommand = vi.fn(async (command: string) =>
       command === "jr-rpc config get github.repo"
         ? {
@@ -141,12 +127,6 @@ describe("sandbox executor tool execution", () => {
   it("syncs sandbox files once when the first tool call also initializes tool executors", async () => {
     const sandbox = makeSandbox("sbx_single_sync");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -167,12 +147,6 @@ describe("sandbox executor tool execution", () => {
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
     const sandbox = makeSandbox("sbx_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -198,12 +172,6 @@ describe("sandbox executor tool execution", () => {
   it("does not re-sync skills when reusing a cached sandbox", async () => {
     const sandbox = makeSandbox("sbx_cached_once");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -256,12 +224,6 @@ describe("sandbox executor tool execution", () => {
     sandboxCreateMock
       .mockResolvedValueOnce(firstSandbox)
       .mockResolvedValueOnce(secondSandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -338,12 +300,11 @@ describe("sandbox executor tool execution", () => {
     );
     const sandbox = makeSandbox("sbx_missing_virtual_skill_file");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "from sandbox" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    vi.mocked(createBashTool).mockResolvedValue(
+      makeBashToolFacade({
+        readFile: vi.fn(async () => ({ content: "from sandbox" })),
+      }) as never,
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([
@@ -376,16 +337,13 @@ describe("sandbox executor tool execution", () => {
   it("returns a readFile tool result when the sandbox path is missing", async () => {
     const sandbox = makeSandbox("sbx_missing_read_file");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: {
-          execute: vi.fn(async () => {
-            throw new Error("File not found: /vercel/sandbox/missing.ts");
-          }),
-        },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    vi.mocked(createBashTool).mockResolvedValue(
+      makeBashToolFacade({
+        readFile: vi.fn(async () => {
+          throw new Error("File not found: /vercel/sandbox/missing.ts");
+        }),
+      }) as never,
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -413,12 +371,6 @@ describe("sandbox executor tool execution", () => {
       }),
     );
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -437,21 +389,18 @@ describe("sandbox executor tool execution", () => {
   it("keeps sandbox API failures as readFile errors", async () => {
     const sandbox = makeSandbox("sbx_read_file_api_error");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: {
-          execute: vi.fn(async () => {
-            throw createApiError(
-              410,
-              "Gone",
-              "sandbox_stopped",
-              "Sandbox has stopped execution and is no longer available",
-            );
-          }),
-        },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    vi.mocked(createBashTool).mockResolvedValue(
+      makeBashToolFacade({
+        readFile: vi.fn(async () => {
+          throw createApiError(
+            410,
+            "Gone",
+            "sandbox_stopped",
+            "Sandbox has stopped execution and is no longer available",
+          );
+        }),
+      }) as never,
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -478,12 +427,11 @@ describe("sandbox executor tool execution", () => {
     );
     const sandbox = makeSandbox("sbx_existing");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "Sandbox note" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    vi.mocked(createBashTool).mockResolvedValue(
+      makeBashToolFacade({
+        readFile: vi.fn(async () => ({ content: "Sandbox note" })),
+      }) as never,
+    );
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_existing" });
     executor.configureSkills([

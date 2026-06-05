@@ -100,11 +100,33 @@ export const disconnectStateAdapter = disconnectStateAdapterImpl;
 export const parseSandboxEgressCredentialToken =
   parseSandboxEgressCredentialTokenImpl;
 
+/** Build the default bash-tool facade used by sandbox executor component tests. */
+export function makeBashToolFacade(
+  options: {
+    readFile?: (input: unknown) => Promise<{ content: string }>;
+    writeFile?: (input: unknown) => Promise<{ success: boolean }>;
+  } = {},
+) {
+  return {
+    tools: {
+      readFile: {
+        execute: options.readFile ?? vi.fn(async () => ({ content: "" })),
+      },
+      writeFile: {
+        execute: options.writeFile ?? vi.fn(async () => ({ success: true })),
+      },
+    },
+  };
+}
+
 /** Reset sandbox executor mocks and process env before each test. */
 export function setupSandboxExecutorTest(): void {
   mocks.sandboxGetMock.mockReset();
   mocks.sandboxCreateMock.mockReset();
   vi.mocked(createBashToolImpl).mockReset();
+  vi.mocked(createBashToolImpl).mockResolvedValue(
+    makeBashToolFacade() as never,
+  );
   mocks.resolveRuntimeDependencySnapshotMock.mockReset();
   mocks.resolveRuntimeDependencySnapshotMock.mockResolvedValue({
     dependencyCount: 0,

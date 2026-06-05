@@ -91,12 +91,6 @@ describe("sandbox executor lifecycle", () => {
   it("shares in-flight sandbox setup across parallel executor initialization", async () => {
     const freshSandbox = makeSandbox("sbx_parallel_boot");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     let markPrepareStarted: () => void = () => {};
     let releasePrepare: () => void = () => {};

@@ -36,13 +36,13 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/sandbox-executor.ts` as the first step toward splitting the
   executor suite by lifecycle, bash, file-tool, and snapshot contracts.
 - Split sandbox executor dependency snapshot boot/rebuild/retry coverage into
-  `tests/unit/sandbox/executor-snapshots.test.ts`.
+  `tests/component/sandbox/executor-snapshots.test.ts`.
 - Split sandbox executor bash execution, timeout, abort, env, and credential
-  egress coverage into `tests/unit/sandbox/executor-bash.test.ts`.
+  egress coverage into `tests/component/sandbox/executor-bash.test.ts`.
 - Split sandbox executor file-tool, cached executor, keepalive, and virtual
-  skill-file coverage into `tests/unit/sandbox/executor-tools.test.ts`.
+  skill-file coverage into `tests/component/sandbox/executor-tools.test.ts`.
 - Moved the remaining sandbox executor lifecycle/session-manager coverage into
-  `tests/unit/sandbox/executor-lifecycle.test.ts`.
+  `tests/component/sandbox/executor-lifecycle.test.ts`.
 - Extracted shared `generateAssistantReply` runtime mocks into
   `tests/fixtures/respond-runtime.ts` for the provider-retry and timeout-resume
   suites, leaving each file focused on its fake Pi agent behavior and
@@ -182,23 +182,33 @@ Direction:
 
 File:
 
-- `packages/junior/tests/unit/sandbox/executor-lifecycle.test.ts`
-- `packages/junior/tests/unit/sandbox/executor-bash.test.ts`
-- `packages/junior/tests/unit/sandbox/executor-tools.test.ts`
-- `packages/junior/tests/unit/sandbox/executor-snapshots.test.ts`
+- `packages/junior/tests/component/sandbox/bash-tool-adapter.test.ts`
+- `packages/junior/tests/component/sandbox/executor-lifecycle.test.ts`
+- `packages/junior/tests/component/sandbox/executor-bash.test.ts`
+- `packages/junior/tests/component/sandbox/executor-tools.test.ts`
+- `packages/junior/tests/component/sandbox/executor-snapshots.test.ts`
 
 Problem:
 
-The old file covered at least five contracts in one mocked harness: sandbox
-lifecycle, network policy refresh, bash execution, tool executor caching,
-virtual skill files, file-tool errors, and runtime dependency snapshots.
+The sandbox executor coverage now lives under `tests/component/sandbox` because
+it exercises real executor/session-manager orchestration with fake Vercel
+Sandbox, bash-tool, plugin registry, config, and dependency snapshot
+boundaries. The shared fixture now supplies the default bash-tool facade so
+individual cases only override file-tool behavior when that behavior is the
+contract under test.
+
+The remaining risk is fixture breadth: lifecycle, egress policy, bash command
+execution, virtual skill files, file-tool errors, bash-tool adapter shape, and
+runtime dependency snapshots still share one fixture with several module mocks.
+That is acceptable for component coverage, but future changes should avoid
+adding more responsibilities to the fixture.
 
 Direction:
 
 - Keep growing the dedicated sandbox executor fixture only for repeated
   sandbox/session-manager boundaries.
-- Keep lifecycle, bash execution, tool/file behavior, and snapshot suites
-  separate.
+- Keep lifecycle, bash execution, tool/file behavior, adapter contract, and
+  snapshot suites separate.
 - Longer term, consider smaller production ports for sandbox boot, bash command
   execution, file tools, and snapshot resolution so tests do not need one
   enormous mock harness.

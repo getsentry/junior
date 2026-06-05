@@ -4,7 +4,6 @@ import {
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-session";
 import {
-  createBashTool,
   createSandboxExecutor,
   createSandboxSessionManager,
   createStreamInterruptedError,
@@ -25,12 +24,6 @@ describe("sandbox executor bash execution", () => {
   it("runs bash commands through a noninteractive shell", async () => {
     const sandbox = makeSandbox("sbx_bash");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_bash" });
     executor.configureSkills([]);
@@ -71,12 +64,6 @@ describe("sandbox executor bash execution", () => {
         }),
     );
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_bash_timeout" });
     executor.configureSkills([]);
@@ -110,12 +97,6 @@ describe("sandbox executor bash execution", () => {
         }),
     );
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_bash_abort" });
     executor.configureSkills([]);
@@ -144,12 +125,6 @@ describe("sandbox executor bash execution", () => {
   it("resolves sandbox command environment for each bash command", async () => {
     const sandbox = makeSandbox("sbx_dynamic_env");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
     const commandEnv = vi
       .fn<() => Promise<Record<string, string>>>()
       .mockResolvedValueOnce({
@@ -198,12 +173,6 @@ describe("sandbox executor bash execution", () => {
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_authorize_credentials",
@@ -243,12 +212,6 @@ describe("sandbox executor bash execution", () => {
       stderr: async () => "command-controlled output",
     }));
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
     await setSandboxEgressAuthRequiredSignal(
       {
         credentials: { actor: { type: "user", userId: "U123" } },
@@ -333,12 +296,6 @@ describe("sandbox executor bash execution", () => {
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_fresh_auth_signal",
@@ -398,12 +355,6 @@ describe("sandbox executor bash execution", () => {
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_permission_signal",
@@ -469,12 +420,6 @@ describe("sandbox executor bash execution", () => {
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_mixed_auth_signal",
@@ -522,12 +467,6 @@ describe("sandbox executor bash execution", () => {
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_authorize_system_credentials",
@@ -555,12 +494,6 @@ describe("sandbox executor bash execution", () => {
   it("makes registered provider placeholders available to sandbox commands", async () => {
     const sandbox = makeSandbox("sbx_registered_credentials");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_registered_credentials",
@@ -597,12 +530,6 @@ describe("sandbox executor bash execution", () => {
     const sandbox = makeSandbox("sbx_stream_interrupted");
     sandbox.runCommand.mockRejectedValueOnce(streamError);
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_stream_interrupted",
