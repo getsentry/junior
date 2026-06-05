@@ -131,12 +131,13 @@ export async function lookupSlackActorIdentity(
 /**
  * Resolve actor identity for a resumed turn.
  *
- * Live Slack profile data wins; the stored session requester fills fields
- * the live lookup could not supply, but only when its Slack user id matches
- * the resumed user id — never inferred from a stored actor the live request
- * has not proven to be the same person.
+ * Continuations are the same turn — the identity captured at turn start and
+ * persisted in the session record is the correct identity. When the stored
+ * requester is proven to belong to the resumed user, it is used directly
+ * without a Slack API call. A live lookup is only performed as a fallback
+ * when no same-user stored requester is available.
  */
-export async function lookupSlackResumeRequester(
+export async function resolveSlackResumeRequester(
   userId: string,
   stored: {
     slackUserId?: string;
@@ -145,14 +146,12 @@ export async function lookupSlackResumeRequester(
     email?: string;
   } | undefined,
 ): Promise<ActorIdentityInput> {
-  const profile = await lookupSlackUser(userId);
-  const canUseStored = Boolean(
-    stored?.slackUserId && stored.slackUserId === userId,
-  );
-  return slackActorIdentity(userId, {
-    email: profile?.email ?? (canUseStored ? stored?.email : undefined),
-    fullName: profile?.fullName ?? (canUseStored ? stored?.fullName : undefined),
-    userName:
-      profile?.userName ?? (canUseStored ? stored?.slackUserName : undefined),
-  });
+  if (stored?.slackUserId === userId) {
+    return slackActorIdentity(userId, {
+      email: stored.email,
+      fullName: stored.fullName,
+      userName: stored.slackUserName,
+    });
+  }
+  return slackActorIdentity(userId, await lookupSlackUser(userId));
 }

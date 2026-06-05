@@ -4,40 +4,34 @@ vi.mock("@/chat/config", () => ({
   getSlackBotToken: () => "test-token",
 }));
 
-import { lookupSlackResumeRequester } from "@/chat/slack/user";
+import { resolveSlackResumeRequester } from "@/chat/slack/user";
 
-function makeSlackResponse(overrides?: {
-  email?: string | null; // null = explicitly omit email from profile
+function makeSlackApiResponse(overrides?: {
+  email?: string | null; // null = omit email from profile
   name?: string;
   displayName?: string;
 }) {
   const email =
     overrides === undefined
-      ? "alice@sentry.io"
+      ? "live@sentry.io"
       : overrides.email === null
         ? undefined
-        : (overrides.email ?? "alice@sentry.io");
+        : (overrides.email ?? "live@sentry.io");
   return {
     ok: true,
     user: {
-      name: overrides?.name ?? "alice",
-      real_name: "Alice Example",
+      name: overrides?.name ?? "live-alice",
+      real_name: "Live Alice",
       profile: {
-        display_name: overrides?.displayName ?? "Alice Example",
-        real_name: "Alice Example",
+        display_name: overrides?.displayName ?? "Live Alice",
+        real_name: "Live Alice",
         ...(email !== undefined ? { email } : {}),
       },
     },
   };
 }
 
-function mockFetch(body: unknown, status = 200) {
-  vi.mocked(fetch).mockResolvedValueOnce(
-    new Response(JSON.stringify(body), { status }),
-  );
-}
-
-describe("lookupSlackResumeRequester", () => {
+describe("resolveSlackResumeRequester", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -46,96 +40,89 @@ describe("lookupSlackResumeRequester", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses live profile when Slack lookup succeeds", async () => {
-    mockFetch(makeSlackResponse());
-
-    const result = await lookupSlackResumeRequester("UA001", {
-      slackUserId: "UA001",
-      slackUserName: "old-alice",
-      fullName: "Old Alice",
-      email: "old@sentry.io",
-    });
-
-    expect(result).toMatchObject({
-      userId: "UA001",
-      email: "alice@sentry.io",
-      fullName: "Alice Example",
-      userName: "alice",
-    });
-  });
-
-  it("fills missing fields from stored session requester when Slack lookup returns null", async () => {
-    mockFetch({ ok: false });
-
-    const result = await lookupSlackResumeRequester("UA002", {
-      slackUserId: "UA002",
+  it("uses stored session requester directly without calling Slack when slackUserId matches", async () => {
+    // Stored has full identity from the initial turn.
+    const result = await resolveSlackResumeRequester("U100", {
+      slackUserId: "U100",
       slackUserName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
 
+    // Slack API must not be called — stored identity is complete and proven.
+    expect(fetch).not.toHaveBeenCalled();
+
     expect(result).toMatchObject({
-      userId: "UA002",
+      userId: "U100",
       userName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
   });
 
-  it("live data wins for fields the live lookup provides; stored fills only gaps", async () => {
-    // Live profile has fullName but no email (null = omit email from profile)
-    mockFetch(makeSlackResponse({ email: null, displayName: "Live Alice" }));
-
-    const result = await lookupSlackResumeRequester("UA003", {
-      slackUserId: "UA003",
-      slackUserName: "stored-alice",
-      fullName: "Stored Alice",
-      email: "stored@sentry.io",
+  it("uses stored even when only some display fields are present", async () => {
+    const result = await resolveSlackResumeRequester("U101", {
+      slackUserId: "U101",
+      slackUserName: "alice",
+      // no fullName or email — partial stored is still used, no live call
     });
 
-    expect(result.fullName).toBe("Live Alice");
-    expect(result.email).toBe("stored@sentry.io");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.userId).toBe("U101");
+    expect(result.userName).toBe("alice");
+    expect(result.email).toBeUndefined();
+    expect(result.fullName).toBeUndefined();
   });
 
-  it("does not use stored fields when stored slackUserId differs from resumed userId", async () => {
-    mockFetch({ ok: false });
+  it("falls back to live Slack lookup when no stored requester is available", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(makeSlackApiResponse()), { status: 200 }),
+    );
 
-    const result = await lookupSlackResumeRequester("UA004", {
+    const result = await resolveSlackResumeRequester("U200", undefined);
+
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      userId: "U200",
+      email: "live@sentry.io",
+      fullName: "Live Alice",
+      userName: "live-alice",
+    });
+  });
+
+  it("falls back to live Slack lookup when stored slackUserId does not match", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(makeSlackApiResponse()), { status: 200 }),
+    );
+
+    const result = await resolveSlackResumeRequester("UAlice", {
       slackUserId: "UBob",
       slackUserName: "bob",
       fullName: "Bob",
       email: "bob@sentry.io",
     });
 
-    expect(result.userId).toBe("UA004");
-    expect(result.email).toBeUndefined();
-    expect(result.fullName).toBeUndefined();
-    expect(result.userName).toBeUndefined();
+    // Live lookup called for UAlice, not Bob's stored identity.
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(result.userId).toBe("UAlice");
+    expect(result.email).toBe("live@sentry.io");
+    expect(result.email).not.toBe("bob@sentry.io");
+    expect(result.fullName).not.toBe("Bob");
   });
 
-  it("does not use stored fields when stored has no slackUserId", async () => {
-    mockFetch({ ok: false });
+  it("falls back to live Slack lookup when stored has no slackUserId", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(makeSlackApiResponse()), { status: 200 }),
+    );
 
-    const result = await lookupSlackResumeRequester("UA005", {
-      // no slackUserId — ownership cannot be proven
+    // Stored without slackUserId — ownership cannot be proven.
+    const result = await resolveSlackResumeRequester("U300", {
       slackUserName: "alice",
       fullName: "Alice",
       email: "alice@sentry.io",
     });
 
-    expect(result.userId).toBe("UA005");
-    expect(result.email).toBeUndefined();
-    expect(result.fullName).toBeUndefined();
-  });
-
-  it("works with no stored requester", async () => {
-    mockFetch(makeSlackResponse());
-
-    const result = await lookupSlackResumeRequester("UA006", undefined);
-
-    expect(result).toMatchObject({
-      userId: "UA006",
-      email: "alice@sentry.io",
-    });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(result.userId).toBe("U300");
   });
 });

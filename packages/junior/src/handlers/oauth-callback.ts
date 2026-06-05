@@ -45,7 +45,7 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import {
   lookupSlackActorIdentity,
-  lookupSlackResumeRequester,
+  resolveSlackResumeRequester,
 } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
@@ -333,7 +333,7 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
-      const requester = await lookupSlackResumeRequester(
+      const requester = await resolveSlackResumeRequester(
         lockedUserMessage.author.userId,
         lockedSessionRecord.requester,
       );
