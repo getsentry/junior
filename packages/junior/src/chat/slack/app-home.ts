@@ -19,6 +19,14 @@ interface HomeView {
   blocks: KnownBlock[];
 }
 
+interface HomeViewBuilderDeps {
+  discoverSkills: typeof discoverSkills;
+  getMcpStoredOAuthCredentials: typeof getMcpStoredOAuthCredentials;
+  getPluginProviders: typeof getPluginProviders;
+  getRuntimeMetadata: typeof getRuntimeMetadata;
+  homeDir: typeof homeDir;
+}
+
 const DEFAULT_DESCRIPTION_TEXT =
   "I help your team investigate, summarize, and act on work in Slack.";
 const MAX_HOME_SKILLS = 6;
@@ -32,8 +40,8 @@ function clampSectionText(text: string): string {
   return `${text.slice(0, MAX_SECTION_TEXT_CHARS - 1)}…`;
 }
 
-function loadDescriptionText(): string {
-  const descriptionPath = path.join(homeDir(), "DESCRIPTION.md");
+function loadDescriptionText(deps: HomeViewBuilderDeps): string {
+  const descriptionPath = path.join(deps.homeDir(), "DESCRIPTION.md");
   try {
     const raw = fs.readFileSync(descriptionPath, "utf8").trim();
     if (raw.length > 0) {
@@ -45,8 +53,10 @@ function loadDescriptionText(): string {
   return DEFAULT_DESCRIPTION_TEXT;
 }
 
-async function buildSkillsSummaryText(): Promise<string> {
-  const skills = (await discoverSkills()).filter(
+async function buildSkillsSummaryText(
+  deps: HomeViewBuilderDeps,
+): Promise<string> {
+  const skills = (await deps.discoverSkills()).filter(
     (skill) => !HIDDEN_HOME_SKILLS.has(skill.name),
   );
   if (skills.length === 0) {
@@ -96,10 +106,11 @@ async function connectedOAuthTokens(
 async function hasConnectedMcpAccount(
   userId: string,
   plugin: PluginDefinition,
+  deps: HomeViewBuilderDeps,
 ): Promise<boolean> {
   if (plugin.manifest.mcp) {
     return Boolean(
-      (await getMcpStoredOAuthCredentials(userId, plugin.manifest.name))
+      (await deps.getMcpStoredOAuthCredentials(userId, plugin.manifest.name))
         ?.tokens,
     );
   }
@@ -107,102 +118,128 @@ async function hasConnectedMcpAccount(
   return false;
 }
 
+/** Create an App Home view builder with explicit data-source dependencies. */
+export function createHomeViewBuilder(deps: HomeViewBuilderDeps) {
+  return {
+    buildHomeView: async (
+      userId: string,
+      userTokenStore: UserTokenStore,
+    ): Promise<HomeView> => {
+      const runtimeMetadata = deps.getRuntimeMetadata();
+      const descriptionText = loadDescriptionText(deps);
+      const skillsSummaryText = await buildSkillsSummaryText(deps);
+      const providers = deps.getPluginProviders();
+      const connectedSections: SectionBlock[] = [];
+
+      for (const plugin of providers) {
+        const tokens = await connectedOAuthTokens(
+          userId,
+          plugin,
+          userTokenStore,
+        );
+        if (!tokens && !(await hasConnectedMcpAccount(userId, plugin, deps))) {
+          continue;
+        }
+
+        connectedSections.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: connectedAccountText(plugin, tokens?.account),
+          },
+          accessory: {
+            type: "button",
+            text: { type: "plain_text", text: "Unlink" },
+            action_id: "app_home_disconnect",
+            value: plugin.manifest.name,
+            style: "danger",
+          },
+        });
+      }
+
+      const accountBlocks: KnownBlock[] =
+        connectedSections.length > 0
+          ? connectedSections
+          : [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: "No connected accounts",
+                },
+              },
+            ];
+
+      return {
+        type: "home",
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Junior",
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: descriptionText,
+            },
+          },
+          { type: "divider" },
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "What I can help with",
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: skillsSummaryText,
+            },
+          },
+          { type: "divider" },
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "Connected accounts",
+            },
+          },
+          ...accountBlocks,
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: `*junior version:* \`${runtimeMetadata.version ?? "unknown"}\``,
+              },
+            ],
+          },
+        ],
+      };
+    },
+  };
+}
+
+const defaultHomeViewBuilder = createHomeViewBuilder({
+  discoverSkills,
+  getMcpStoredOAuthCredentials,
+  getPluginProviders,
+  getRuntimeMetadata,
+  homeDir,
+});
+
 /** Build the Slack App Home tab view showing skills, connected accounts, and version. */
 export async function buildHomeView(
   userId: string,
   userTokenStore: UserTokenStore,
 ): Promise<HomeView> {
-  const runtimeMetadata = getRuntimeMetadata();
-  const descriptionText = loadDescriptionText();
-  const skillsSummaryText = await buildSkillsSummaryText();
-  const providers = getPluginProviders();
-  const connectedSections: SectionBlock[] = [];
-
-  for (const plugin of providers) {
-    const tokens = await connectedOAuthTokens(userId, plugin, userTokenStore);
-    if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
-
-    connectedSections.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: connectedAccountText(plugin, tokens?.account),
-      },
-      accessory: {
-        type: "button",
-        text: { type: "plain_text", text: "Unlink" },
-        action_id: "app_home_disconnect",
-        value: plugin.manifest.name,
-        style: "danger",
-      },
-    });
-  }
-
-  const accountBlocks: KnownBlock[] =
-    connectedSections.length > 0
-      ? connectedSections
-      : [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: "No connected accounts",
-            },
-          },
-        ];
-
-  return {
-    type: "home",
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "Junior",
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: descriptionText,
-        },
-      },
-      { type: "divider" },
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "What I can help with",
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: skillsSummaryText,
-        },
-      },
-      { type: "divider" },
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "Connected accounts",
-        },
-      },
-      ...accountBlocks,
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `*junior version:* \`${runtimeMetadata.version ?? "unknown"}\``,
-          },
-        ],
-      },
-    ],
-  };
+  return await defaultHomeViewBuilder.buildHomeView(userId, userTokenStore);
 }
 
 /** Publish the App Home view to a specific Slack user. */

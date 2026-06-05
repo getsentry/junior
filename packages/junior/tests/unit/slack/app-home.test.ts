@@ -1,16 +1,44 @@
 import fs from "node:fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import type { KnownBlock, SectionBlock } from "@slack/web-api";
-import { buildHomeView } from "@/chat/slack/app-home";
+import { createHomeViewBuilder } from "@/chat/slack/app-home";
 import type {
   UserTokenStore,
   StoredTokens,
 } from "@/chat/credentials/user-token-store";
-import { discoverSkills } from "@/chat/skills";
-import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: () => [
+type HomeViewBuilderDeps = Parameters<typeof createHomeViewBuilder>[0];
+type HomeViewBuilder = ReturnType<typeof createHomeViewBuilder>;
+type HomeView = Awaited<ReturnType<HomeViewBuilder["buildHomeView"]>>;
+
+function createMockTokenStore(
+  tokens: Record<string, StoredTokens | undefined>,
+): UserTokenStore {
+  return {
+    get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
+    set: vi.fn(async () => {}),
+    delete: vi.fn(async () => {}),
+  };
+}
+
+const validToken: StoredTokens = {
+  accessToken: "xoxp-test",
+  refreshToken: "xoxr-test",
+  expiresAt: Date.now() + 3600_000,
+};
+
+const expiredToken: StoredTokens = {
+  accessToken: "xoxp-expired",
+  refreshToken: "xoxr-expired",
+  expiresAt: Date.now() - 1000,
+};
+
+function defaultProviders(): ReturnType<
+  HomeViewBuilderDeps["getPluginProviders"]
+> {
+  return [
     {
       manifest: {
         name: "sentry",
@@ -53,42 +81,23 @@ vi.mock("@/chat/plugins/registry", () => ({
         description: "Bundle-only plugin",
       },
     },
-  ],
-}));
-
-vi.mock("@/chat/discovery", () => ({
-  homeDir: () => "/mock/app",
-}));
-
-vi.mock("@/chat/mcp/auth-store", () => ({
-  getMcpStoredOAuthCredentials: vi.fn(async () => undefined),
-}));
-
-vi.mock("@/chat/skills", () => ({
-  discoverSkills: vi.fn(async () => []),
-}));
-
-function createMockTokenStore(
-  tokens: Record<string, StoredTokens | undefined>,
-): UserTokenStore {
-  return {
-    get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
-    set: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
-  };
+  ] as ReturnType<HomeViewBuilderDeps["getPluginProviders"]>;
 }
 
-const validToken: StoredTokens = {
-  accessToken: "xoxp-test",
-  refreshToken: "xoxr-test",
-  expiresAt: Date.now() + 3600_000,
-};
-
-const expiredToken: StoredTokens = {
-  accessToken: "xoxp-expired",
-  refreshToken: "xoxr-expired",
-  expiresAt: Date.now() - 1000,
-};
+function createBuilder(overrides: Partial<HomeViewBuilderDeps> = {}) {
+  const deps: HomeViewBuilderDeps = {
+    discoverSkills: vi.fn(async () => []),
+    getMcpStoredOAuthCredentials: vi.fn(async () => undefined),
+    getPluginProviders: vi.fn(() => defaultProviders()),
+    getRuntimeMetadata: vi.fn(() => ({})),
+    homeDir: vi.fn(() => "/mock/app"),
+    ...overrides,
+  };
+  return {
+    builder: createHomeViewBuilder(deps),
+    deps,
+  };
+}
 
 function findSection(
   blocks: KnownBlock[],
@@ -100,9 +109,7 @@ function findSection(
   }) as SectionBlock | undefined;
 }
 
-function getVersionText(
-  view: Awaited<ReturnType<typeof buildHomeView>>,
-): string | undefined {
+function getVersionText(view: HomeView): string | undefined {
   const versionBlock = view.blocks[view.blocks.length - 1] as {
     type: string;
     elements?: Array<{ text?: string }>;
@@ -121,39 +128,29 @@ function getAllSectionText(blocks: KnownBlock[]): string {
     .join("\n");
 }
 
-describe("buildHomeView", () => {
-  let readFileSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    readFileSpy = vi.spyOn(fs, "readFileSync").mockReturnValue("About text");
-    vi.mocked(getMcpStoredOAuthCredentials).mockReset();
-    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    delete process.env.VERCEL_GIT_COMMIT_SHA;
-    vi.restoreAllMocks();
-    vi.mocked(discoverSkills).mockResolvedValue([]);
-  });
-
-  it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
-    process.env.VERCEL_GIT_COMMIT_SHA = "abc123def456";
+describe("createHomeViewBuilder", () => {
+  it("shows version metadata from runtime metadata", async () => {
+    const { builder } = createBuilder({
+      getRuntimeMetadata: vi.fn(() => ({ version: "abc123def456" })),
+    });
     const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     expect(getVersionText(view)).toBe("*junior version:* `abc123def456`");
   });
 
-  it("shows unknown version metadata when VERCEL_GIT_COMMIT_SHA is missing", async () => {
+  it("shows unknown version metadata when runtime metadata omits a version", async () => {
+    const { builder } = createBuilder();
     const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     expect(getVersionText(view)).toBe("*junior version:* `unknown`");
   });
 
   it("shows connected oauth-bearer provider with Unlink button", async () => {
+    const { builder } = createBuilder();
     const store = createMockTokenStore({ sentry: validToken });
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
     const section = findSection(
@@ -171,15 +168,16 @@ describe("buildHomeView", () => {
   });
 
   it("shows connected MCP provider with Unlink button", async () => {
-    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
-      tokens: {
-        access_token: "token",
-        token_type: "bearer",
-      },
+    const { builder } = createBuilder({
+      getMcpStoredOAuthCredentials: vi.fn(async () => ({
+        tokens: {
+          access_token: "token",
+          token_type: "bearer",
+        },
+      })),
     });
-
     const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     const section = findSection(
       view.blocks,
@@ -196,8 +194,9 @@ describe("buildHomeView", () => {
   });
 
   it("shows 'No connected accounts' when user has no tokens", async () => {
+    const { builder } = createBuilder();
     const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
     const noAccountsSection = findSection(
@@ -207,9 +206,10 @@ describe("buildHomeView", () => {
     expect(noAccountsSection).toBeDefined();
   });
 
-  it("shows providers with expired access tokens (refresh token keeps connection alive)", async () => {
+  it("shows providers with expired access tokens because refresh token keeps connection alive", async () => {
+    const { builder } = createBuilder();
     const store = createMockTokenStore({ sentry: expiredToken });
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     const section = findSection(
       view.blocks,
@@ -219,6 +219,7 @@ describe("buildHomeView", () => {
   });
 
   it("shows GitHub App providers with user OAuth tokens", async () => {
+    const { builder, deps } = createBuilder();
     const store = createMockTokenStore({
       github: {
         ...validToken,
@@ -229,7 +230,7 @@ describe("buildHomeView", () => {
         },
       },
     });
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     const section = findSection(
       view.blocks,
@@ -241,61 +242,71 @@ describe("buildHomeView", () => {
     );
     expect(store.get).toHaveBeenCalledWith("U123", "github");
     expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");
-    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
+    expect(deps.getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
       "U123",
       "github",
     );
-    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
+    expect(deps.getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
       "U123",
       "example-bundle",
     );
   });
 
   it("loads DESCRIPTION.md from app root for home intro text", async () => {
-    readFileSpy.mockReturnValue("Custom app home intro");
-    const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-home-"));
+    try {
+      fs.writeFileSync(
+        path.join(appRoot, "DESCRIPTION.md"),
+        "Custom app home intro",
+        "utf8",
+      );
+      const { builder } = createBuilder({ homeDir: vi.fn(() => appRoot) });
+      const store = createMockTokenStore({});
+      const view = await builder.buildHomeView("U123", store);
 
-    expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
-    expect(fs.readFileSync).toHaveBeenCalledWith(
-      "/mock/app/DESCRIPTION.md",
-      "utf8",
-    );
+      expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
+    } finally {
+      fs.rmSync(appRoot, { recursive: true, force: true });
+    }
   });
 
   it("falls back to default intro text when DESCRIPTION.md is missing", async () => {
-    readFileSpy.mockImplementation(() => {
-      throw new Error("missing");
-    });
-    const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-home-"));
+    try {
+      const { builder } = createBuilder({ homeDir: vi.fn(() => appRoot) });
+      const store = createMockTokenStore({});
+      const view = await builder.buildHomeView("U123", store);
 
-    expect(getAllSectionText(view.blocks)).toContain(
-      "I help your team investigate, summarize, and act on work in Slack.",
-    );
+      expect(getAllSectionText(view.blocks)).toContain(
+        "I help your team investigate, summarize, and act on work in Slack.",
+      );
+    } finally {
+      fs.rmSync(appRoot, { recursive: true, force: true });
+    }
   });
 
   it("shows available skills as read-only list", async () => {
-    vi.mocked(discoverSkills).mockResolvedValue([
-      {
-        name: "incident-summary",
-        description: "Summarize incidents",
-        skillPath: "/skills/incident-summary",
-      },
-      {
-        name: "release-check",
-        description: "Check release health",
-        skillPath: "/skills/release-check",
-      },
-      {
-        name: "jr-rpc",
-        description: "Internal credential ops",
-        skillPath: "/skills/jr-rpc",
-      },
-    ]);
-
+    const { builder } = createBuilder({
+      discoverSkills: vi.fn(async () => [
+        {
+          name: "incident-summary",
+          description: "Summarize incidents",
+          skillPath: "/skills/incident-summary",
+        },
+        {
+          name: "release-check",
+          description: "Check release health",
+          skillPath: "/skills/release-check",
+        },
+        {
+          name: "jr-rpc",
+          description: "Internal credential ops",
+          skillPath: "/skills/jr-rpc",
+        },
+      ]),
+    });
     const store = createMockTokenStore({});
-    const view = await buildHomeView("U123", store);
+    const view = await builder.buildHomeView("U123", store);
 
     const content = getAllSectionText(view.blocks);
     expect(content).toContain("*incident-summary*");
