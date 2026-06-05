@@ -48,8 +48,8 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   suites, leaving each file focused on its fake Pi agent behavior and
   assertions.
 - Extracted the progressive MCP loading runtime harness into
-  `tests/fixtures/respond-mcp-progressive-loading.ts`, cutting the test file
-  down to MCP auth/session/tool-loading scenarios without an embedded mock wall.
+  `tests/fixtures/respond-mcp-progressive-loading.ts`, then split the scenarios
+  into focused MCP skill-loading, session-context, and auth-resume suites.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -73,7 +73,9 @@ low-fidelity integration tests.
 
 Files:
 
-- `packages/junior/tests/unit/runtime/respond-mcp-progressive-loading.test.ts`
+- `packages/junior/tests/unit/runtime/respond-mcp-auth-resume.test.ts`
+- `packages/junior/tests/unit/runtime/respond-mcp-session-context.test.ts`
+- `packages/junior/tests/unit/runtime/respond-mcp-skill-loading.test.ts`
 - `packages/junior/tests/unit/runtime/respond-timeout-resume.test.ts`
 - `packages/junior/tests/unit/runtime/respond-provider-retry.test.ts`
 
@@ -94,10 +96,10 @@ single runtime mock fixture, which reduces duplication but does not change the
 layer assessment: the tests still prove turn orchestration through a mocked
 `generateAssistantReply` seam.
 
-`respond-mcp-progressive-loading.test.ts` now imports its dedicated mocked MCP
-runtime harness from fixtures. This makes the scenario list readable, but the
-suite still belongs in the migration queue because it validates multi-module MCP
-turn orchestration through unit-level module mocks.
+The progressive MCP loading coverage now imports its dedicated mocked MCP
+runtime harness from fixtures and is split by scenario family. These suites still
+belong in the migration queue because they validate multi-module MCP turn
+orchestration through unit-level module mocks.
 
 Direction:
 
