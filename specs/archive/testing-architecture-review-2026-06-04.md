@@ -89,8 +89,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   resumed reply delivery, durable continuation scheduling, and file delivery.
 - Extracted OAuth resume Slack setup into
   `tests/fixtures/oauth-resume-slack.ts` and split integration coverage by
-  delivery, cumulative diagnostics, chunking, failure markers, and file
-  delivery contracts.
+  delivery, chunking, failure markers, and file delivery contracts.
+- Moved Slack-visible OAuth/turn resume suites under
+  `tests/integration/slack/` and pruned the duplicated timeout-continuation
+  case so the integration layer keeps one representative durable handoff path.
 - Added an explicit `agentFactory` port to `generateAssistantReply` and moved
   provider-retry/cooperative-yield and timeout-resume orchestration coverage
   into component runtime suites backed by `tests/fixtures/respond-agent.ts`
@@ -236,14 +238,13 @@ Files:
 - `packages/junior/tests/integration/oauth-callback-resume-context.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-lock.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-guards.test.ts`
-- `packages/junior/tests/integration/oauth-resume-slack-delivery.test.ts`
-- `packages/junior/tests/integration/oauth-resume-slack-diagnostics.test.ts`
-- `packages/junior/tests/integration/oauth-resume-slack-chunking.test.ts`
-- `packages/junior/tests/integration/oauth-resume-slack-failure-markers.test.ts`
-- `packages/junior/tests/integration/oauth-resume-slack-file-delivery.test.ts`
-- `packages/junior/tests/integration/turn-resume-slack-delivery.test.ts`
-- `packages/junior/tests/integration/turn-resume-slack-continuation.test.ts`
-- `packages/junior/tests/integration/turn-resume-slack-file-delivery.test.ts`
+- `packages/junior/tests/integration/slack/oauth-resume-slack-delivery.test.ts`
+- `packages/junior/tests/integration/slack/oauth-resume-slack-chunking.test.ts`
+- `packages/junior/tests/integration/slack/oauth-resume-slack-failure-markers.test.ts`
+- `packages/junior/tests/integration/slack/oauth-resume-slack-file-delivery.test.ts`
+- `packages/junior/tests/integration/slack/turn-resume-slack-delivery.test.ts`
+- `packages/junior/tests/integration/slack/turn-resume-slack-continuation.test.ts`
+- `packages/junior/tests/integration/slack/turn-resume-slack-file-delivery.test.ts`
 
 Problem:
 

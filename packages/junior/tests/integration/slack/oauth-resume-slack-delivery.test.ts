@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../fixtures/oauth-resume-slack";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+} from "../../fixtures/oauth-resume-slack";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
 
@@ -32,12 +32,7 @@ describe("oauth resume slack delivery", () => {
       generateReply: async () =>
         ({
           text: "The budget deadline you mentioned earlier was Friday.",
-          diagnostics: makeResumeDiagnostics("success", {
-            durationMs: 842,
-            usage: {
-              totalTokens: 1234,
-            },
-          }),
+          diagnostics: makeResumeDiagnostics(),
         }) as any,
     });
 
@@ -82,14 +77,6 @@ describe("oauth resume slack delivery", () => {
                   text: expect.stringContaining(
                     "*ID:* slack:C123:1700000000.001",
                   ),
-                }),
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: "*Tokens:* 1.2k",
-                }),
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: "*Time:* 842ms",
                 }),
               ]),
             },

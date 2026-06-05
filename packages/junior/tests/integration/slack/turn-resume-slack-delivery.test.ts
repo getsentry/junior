@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { slackApiOutbox } from "../fixtures/slack-api-outbox";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import {
   SLACK_DESTINATION,
   createTurnResumeSlackFixture,
-} from "../fixtures/turn-resume-slack";
+} from "../../fixtures/turn-resume-slack";
 
 let testbed: Awaited<ReturnType<typeof createTurnResumeSlackFixture>>;
 

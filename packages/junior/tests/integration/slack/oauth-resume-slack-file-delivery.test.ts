@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../fixtures/oauth-resume-slack";
+} from "../../fixtures/oauth-resume-slack";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
   queueSlackApiError,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
 

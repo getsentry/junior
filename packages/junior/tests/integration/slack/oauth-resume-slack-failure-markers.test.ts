@@ -3,8 +3,8 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../fixtures/oauth-resume-slack";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+} from "../../fixtures/oauth-resume-slack";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
 

@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { successfulAssistantReply } from "../fixtures/assistant-reply";
-import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { createTurnResumeSlackFixture } from "../fixtures/turn-resume-slack";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { createTurnResumeSlackFixture } from "../../fixtures/turn-resume-slack";
 
 let testbed: Awaited<ReturnType<typeof createTurnResumeSlackFixture>>;
 

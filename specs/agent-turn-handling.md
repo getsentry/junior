@@ -196,8 +196,8 @@ Representative current coverage includes:
 - `packages/junior/tests/unit/turn-result.test.ts`
 - `packages/junior/tests/integration/slack/new-mention-behavior.test.ts`
 - `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`
-- `packages/junior/tests/integration/slack/bot-handlers.test.ts`
-- `packages/junior/tests/integration/agent-continue-slack.test.ts`
+- `packages/junior/tests/integration/slack/runtime-turn-behavior.test.ts`
+- `packages/junior/tests/integration/slack/turn-resume-slack-delivery.test.ts`
 - `packages/junior-evals/evals/core/passive-behavior.eval.ts`
 - `packages/junior-evals/evals/core/routing-and-continuity.eval.ts`
 
