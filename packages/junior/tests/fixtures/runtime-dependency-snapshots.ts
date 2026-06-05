@@ -1,68 +1,57 @@
 import { vi } from "vitest";
+import { resolveRuntimeDependencySnapshot as resolveRuntimeDependencySnapshotImpl } from "@/chat/sandbox/runtime-dependency-snapshots";
 
-const mocks = vi.hoisted(() => ({
-  sandboxCreateMock: vi.fn(),
-  getPluginRuntimeDependenciesMock: vi.fn(),
-  getPluginRuntimePostinstallMock: vi.fn(),
-  withSpanMock: vi.fn(
-    async (
-      _name: string,
-      _op: string,
-      _context: unknown,
-      callback: () => Promise<unknown>,
-    ) => callback(),
-  ),
-}));
-
-export const sandboxCreateMock = mocks.sandboxCreateMock;
-export const getPluginRuntimeDependenciesMock =
-  mocks.getPluginRuntimeDependenciesMock;
-export const getPluginRuntimePostinstallMock =
-  mocks.getPluginRuntimePostinstallMock;
-export const withSpanMock = mocks.withSpanMock;
+export const sandboxCreateMock = vi.fn();
+export const getPluginRuntimeDependenciesMock = vi.fn();
+export const getPluginRuntimePostinstallMock = vi.fn();
+export const withSpanMock = vi.fn(
+  async (
+    _name: string,
+    _op: string,
+    _context: unknown,
+    callback: () => Promise<unknown>,
+  ) => callback(),
+);
 
 const store = new Map<string, string>();
 let lockHeld = false;
 
-vi.mock("@vercel/sandbox", () => ({
-  Sandbox: {
-    create: mocks.sandboxCreateMock,
-  },
-}));
-
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginRuntimeDependencies: mocks.getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstall: mocks.getPluginRuntimePostinstallMock,
-}));
-
-vi.mock("@/chat/logging", () => ({
-  withSpan: mocks.withSpanMock,
-}));
-
-vi.mock("@/chat/state/adapter", () => ({
-  getStateAdapter: () => ({
-    connect: vi.fn(async () => {}),
-    get: vi.fn(async (key: string) => store.get(key)),
-    set: vi.fn(async (key: string, value: string) => {
-      store.set(key, value);
-    }),
-    acquireLock: vi.fn(async () => {
-      if (lockHeld) {
-        return null;
-      }
-      lockHeld = true;
-      return { key: "lock" };
-    }),
-    releaseLock: vi.fn(async () => {
-      lockHeld = false;
-    }),
+const stateAdapter = {
+  connect: vi.fn(async () => {}),
+  get: vi.fn(async (key: string) => store.get(key)),
+  set: vi.fn(async (key: string, value: string) => {
+    store.set(key, value);
   }),
-}));
+  acquireLock: vi.fn(async () => {
+    if (lockHeld) {
+      return null;
+    }
+    lockHeld = true;
+    return { key: "lock" };
+  }),
+  releaseLock: vi.fn(async () => {
+    lockHeld = false;
+  }),
+};
 
-import { resolveRuntimeDependencySnapshot as resolveRuntimeDependencySnapshotImpl } from "@/chat/sandbox/runtime-dependency-snapshots";
+function runtimeDependencySnapshotServices() {
+  return {
+    createSandbox: sandboxCreateMock,
+    getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
+    getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
+    getStateAdapter: () => stateAdapter as never,
+    withSpan: withSpanMock as never,
+  };
+}
 
-export const resolveRuntimeDependencySnapshot =
-  resolveRuntimeDependencySnapshotImpl;
+export async function resolveRuntimeDependencySnapshot(
+  params: Parameters<typeof resolveRuntimeDependencySnapshotImpl>[0],
+) {
+  return await resolveRuntimeDependencySnapshotImpl(
+    params,
+    runtimeDependencySnapshotServices(),
+  );
+}
 
 /** Builds a fake Vercel sandbox for runtime dependency snapshot tests. */
 export function makeRuntimeDependencySandbox(
@@ -106,9 +95,14 @@ export function getRuntimeDependencyScript(params: {
 export function setupRuntimeDependencySnapshotTest() {
   store.clear();
   lockHeld = false;
-  mocks.sandboxCreateMock.mockReset();
-  mocks.withSpanMock.mockReset();
-  mocks.withSpanMock.mockImplementation(
+  sandboxCreateMock.mockReset();
+  stateAdapter.connect.mockClear();
+  stateAdapter.get.mockClear();
+  stateAdapter.set.mockClear();
+  stateAdapter.acquireLock.mockClear();
+  stateAdapter.releaseLock.mockClear();
+  withSpanMock.mockReset();
+  withSpanMock.mockImplementation(
     async (
       _name: string,
       _op: string,
@@ -116,9 +110,9 @@ export function setupRuntimeDependencySnapshotTest() {
       callback: () => Promise<unknown>,
     ) => await callback(),
   );
-  mocks.getPluginRuntimeDependenciesMock.mockReset();
-  mocks.getPluginRuntimePostinstallMock.mockReset();
-  mocks.getPluginRuntimePostinstallMock.mockReturnValue([]);
+  getPluginRuntimeDependenciesMock.mockReset();
+  getPluginRuntimePostinstallMock.mockReset();
+  getPluginRuntimePostinstallMock.mockReturnValue([]);
   delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
   delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
   delete process.env.VERCEL_TOKEN;

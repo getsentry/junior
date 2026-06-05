@@ -42,6 +42,14 @@ interface DependencyProfile {
   postinstall: PluginRuntimePostinstallCommand[];
 }
 
+interface RuntimeDependencySnapshotServices {
+  createSandbox: typeof Sandbox.create;
+  getPluginRuntimeDependencies: typeof getPluginRuntimeDependencies;
+  getPluginRuntimePostinstall: typeof getPluginRuntimePostinstall;
+  getStateAdapter: typeof getStateAdapter;
+  withSpan: typeof withSpan;
+}
+
 export type SnapshotResolveOutcome =
   | "no_profile"
   | "cache_hit"
@@ -77,6 +85,15 @@ interface BuildLockResult {
   waitedForLock: boolean;
 }
 
+const defaultRuntimeDependencySnapshotServices: RuntimeDependencySnapshotServices =
+  {
+    createSandbox: Sandbox.create,
+    getPluginRuntimeDependencies,
+    getPluginRuntimePostinstall,
+    getStateAdapter,
+    withSpan,
+  };
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -111,9 +128,12 @@ function parseFloatingDepMaxAgeMs(): number {
   return parsed;
 }
 
-function buildDependencyProfile(runtime: string): DependencyProfile | null {
-  const dependencies = getPluginRuntimeDependencies();
-  const postinstall = getPluginRuntimePostinstall();
+function buildDependencyProfile(
+  runtime: string,
+  services: RuntimeDependencySnapshotServices,
+): DependencyProfile | null {
+  const dependencies = services.getPluginRuntimeDependencies();
+  const postinstall = services.getPluginRuntimePostinstall();
   if (dependencies.length === 0 && postinstall.length === 0) {
     return null;
   }
@@ -142,10 +162,12 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
   };
 }
 
+/** Return the cache profile hash for the active runtime dependency set. */
 export function getRuntimeDependencyProfileHash(
   runtime: string,
+  services: RuntimeDependencySnapshotServices = defaultRuntimeDependencySnapshotServices,
 ): string | undefined {
-  return buildDependencyProfile(runtime)?.profileHash;
+  return buildDependencyProfile(runtime, services)?.profileHash;
 }
 
 function shouldRebuildCachedSnapshot(
@@ -164,9 +186,10 @@ function shouldRebuildCachedSnapshot(
 
 async function getCachedSnapshot(
   profileHash: string,
+  services: RuntimeDependencySnapshotServices,
 ): Promise<CachedSnapshotEntry | null> {
   try {
-    const state = getStateAdapter();
+    const state = services.getStateAdapter();
     await state.connect();
     const raw = await state.get(profileCacheKey(profileHash));
     if (typeof raw !== "string") {
@@ -190,8 +213,11 @@ async function getCachedSnapshot(
   }
 }
 
-async function setCachedSnapshot(entry: CachedSnapshotEntry): Promise<void> {
-  const state = getStateAdapter();
+async function setCachedSnapshot(
+  entry: CachedSnapshotEntry,
+  services: RuntimeDependencySnapshotServices,
+): Promise<void> {
+  const state = services.getStateAdapter();
   await state.connect();
   await state.set(
     profileCacheKey(entry.profileHash),
@@ -205,8 +231,9 @@ async function withSnapshotSpan<T>(
   op: string,
   attributes: Record<string, unknown>,
   callback: () => Promise<T>,
+  services: RuntimeDependencySnapshotServices,
 ): Promise<T> {
-  return await withSpan(name, op, {}, callback, attributes);
+  return await services.withSpan(name, op, {}, callback, attributes);
 }
 
 async function runOrThrow(
@@ -322,6 +349,7 @@ function runtimeDependencyFilePath(url: string, sha256: string): string {
 async function installRuntimeDependencies(
   sandbox: SandboxInstance,
   deps: PluginRuntimeDependency[],
+  services: RuntimeDependencySnapshotServices,
 ): Promise<void> {
   const systemDeps = deps.filter(
     (dep): dep is Extract<PluginRuntimeDependency, { type: "system" }> =>
@@ -404,6 +432,7 @@ async function installRuntimeDependencies(
           );
         }
       },
+      services,
     );
   }
 
@@ -430,6 +459,7 @@ async function installRuntimeDependencies(
           "npm install",
         );
       },
+      services,
     );
   }
 }
@@ -437,6 +467,7 @@ async function installRuntimeDependencies(
 async function runRuntimePostinstall(
   sandbox: SandboxInstance,
   commands: PluginRuntimePostinstallCommand[],
+  services: RuntimeDependencySnapshotServices,
 ): Promise<void> {
   if (commands.length === 0) {
     return;
@@ -467,6 +498,7 @@ async function runRuntimePostinstall(
         throw new Error(`runtime-postinstall ${command.cmd} failed: ${detail}`);
       }
     },
+    services,
   );
 }
 
@@ -474,6 +506,7 @@ async function createDependencySnapshot(
   profile: DependencyProfile,
   runtime: string,
   timeoutMs: number,
+  services: RuntimeDependencySnapshotServices,
 ): Promise<string> {
   return await withSnapshotSpan(
     "sandbox.snapshot.build",
@@ -485,7 +518,7 @@ async function createDependencySnapshot(
     async () => {
       const sandboxCredentials = getVercelSandboxCredentials();
       const sandbox = createSandboxInstance(
-        await Sandbox.create({
+        await services.createSandbox({
           timeout: timeoutMs,
           runtime,
           ...(sandboxCredentials ?? {}),
@@ -493,8 +526,12 @@ async function createDependencySnapshot(
       );
 
       try {
-        await installRuntimeDependencies(sandbox, profile.dependencies);
-        await runRuntimePostinstall(sandbox, profile.postinstall);
+        await installRuntimeDependencies(
+          sandbox,
+          profile.dependencies,
+          services,
+        );
+        await runRuntimePostinstall(sandbox, profile.postinstall, services);
         return await withSnapshotSpan(
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",
@@ -505,6 +542,7 @@ async function createDependencySnapshot(
             const snapshot = await sandbox.snapshot();
             return snapshot.snapshotId;
           },
+          services,
         );
       } finally {
         try {
@@ -514,6 +552,7 @@ async function createDependencySnapshot(
         }
       }
     },
+    services,
   );
 }
 
@@ -524,11 +563,12 @@ async function withBuildLock(
     source: "callback_cache" | "built";
   }>,
   canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean,
+  services: RuntimeDependencySnapshotServices,
   hooks?: {
     onWaitingForLock?: () => void | Promise<void>;
   },
 ): Promise<BuildLockResult> {
-  const state = getStateAdapter();
+  const state = services.getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
   const tryAcquireLock = async () =>
@@ -558,7 +598,7 @@ async function withBuildLock(
       await hooks?.onWaitingForLock?.();
       const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
       while (Date.now() < waitUntil) {
-        const cached = await getCachedSnapshot(profileHash);
+        const cached = await getCachedSnapshot(profileHash, services);
         if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
           return {
             snapshotId: cached.snapshotId,
@@ -584,7 +624,7 @@ async function withBuildLock(
         await sleep(500);
       }
 
-      const cached = await getCachedSnapshot(profileHash);
+      const cached = await getCachedSnapshot(profileHash, services);
       if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
         return {
           snapshotId: cached.snapshotId,
@@ -595,6 +635,7 @@ async function withBuildLock(
 
       throw new Error("Timed out waiting for snapshot build lock");
     },
+    services,
   );
 }
 
@@ -630,15 +671,19 @@ function getRebuildReason(params: {
   return undefined;
 }
 
-export async function resolveRuntimeDependencySnapshot(params: {
-  runtime: string;
-  timeoutMs: number;
-  forceRebuild?: boolean;
-  staleSnapshotId?: string;
-  onProgress?: (
-    phase: RuntimeDependencySnapshotProgressPhase,
-  ) => void | Promise<void>;
-}): Promise<RuntimeDependencySnapshot> {
+/** Resolve or build the sandbox snapshot for the active runtime dependency set. */
+export async function resolveRuntimeDependencySnapshot(
+  params: {
+    runtime: string;
+    timeoutMs: number;
+    forceRebuild?: boolean;
+    staleSnapshotId?: string;
+    onProgress?: (
+      phase: RuntimeDependencySnapshotProgressPhase,
+    ) => void | Promise<void>;
+  },
+  services: RuntimeDependencySnapshotServices = defaultRuntimeDependencySnapshotServices,
+): Promise<RuntimeDependencySnapshot> {
   return await withSnapshotSpan(
     "sandbox.snapshot.resolve",
     "sandbox.snapshot.resolve",
@@ -649,7 +694,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
     async () => {
       await params.onProgress?.("resolve_start");
       const resolveStartedAtMs = Date.now();
-      const profile = buildDependencyProfile(params.runtime);
+      const profile = buildDependencyProfile(params.runtime, services);
       if (!profile) {
         return {
           dependencyCount: 0,
@@ -658,7 +703,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
         };
       }
 
-      const cached = await getCachedSnapshot(profile.profileHash);
+      const cached = await getCachedSnapshot(profile.profileHash, services);
       const cachedNeedsRebuild = Boolean(
         cached?.snapshotId && shouldRebuildCachedSnapshot(profile, cached),
       );
@@ -698,7 +743,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
       const lockResult = await withBuildLock(
         profile.profileHash,
         async () => {
-          const latest = await getCachedSnapshot(profile.profileHash);
+          const latest = await getCachedSnapshot(profile.profileHash, services);
           if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
             await params.onProgress?.("cache_hit");
             return {
@@ -712,18 +757,23 @@ export async function resolveRuntimeDependencySnapshot(params: {
             profile,
             params.runtime,
             params.timeoutMs,
+            services,
           );
-          await setCachedSnapshot({
-            profileHash: profile.profileHash,
-            snapshotId: nextSnapshotId,
-            runtime: params.runtime,
-            createdAtMs: Date.now(),
-            dependencyCount: profile.dependencyCount,
-          });
+          await setCachedSnapshot(
+            {
+              profileHash: profile.profileHash,
+              snapshotId: nextSnapshotId,
+              runtime: params.runtime,
+              createdAtMs: Date.now(),
+              dependencyCount: profile.dependencyCount,
+            },
+            services,
+          );
           await params.onProgress?.("build_complete");
           return { snapshotId: nextSnapshotId, source: "built" as const };
         },
         canUseCachedSnapshot,
+        services,
         {
           onWaitingForLock: async () => {
             await params.onProgress?.("waiting_for_lock");
@@ -744,9 +794,11 @@ export async function resolveRuntimeDependencySnapshot(params: {
         ...(rebuildReason ? { rebuildReason } : {}),
       };
     },
+    services,
   );
 }
 
+/** Detect provider errors that mean a cached snapshot id can no longer be used. */
 export function isSnapshotMissingError(error: unknown): boolean {
   const searchable =
     error instanceof Error
