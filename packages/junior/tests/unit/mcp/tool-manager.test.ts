@@ -1,65 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const {
-  callToolMock,
-  clientOptions,
-  clientSetupError,
-  closeMock,
-  listToolsMock,
-  onAuthorizationRequiredMock,
-} = vi.hoisted(() => ({
-  callToolMock: vi.fn(),
-  clientOptions: [] as unknown[],
-  clientSetupError: { value: undefined as unknown },
-  closeMock: vi.fn(),
-  listToolsMock: vi.fn(),
-  onAuthorizationRequiredMock: vi.fn(),
+const { logWarnMock, setSpanAttributesMock } = vi.hoisted(() => ({
+  logWarnMock: vi.fn(),
+  setSpanAttributesMock: vi.fn(),
 }));
 
-vi.mock("@/chat/mcp/client", () => {
-  class MockMcpAuthorizationRequiredError extends Error {
-    readonly provider: string;
+vi.mock("@/chat/logging", () => ({
+  logWarn: logWarnMock,
+  setSpanAttributes: setSpanAttributesMock,
+}));
 
-    constructor(provider: string, message: string) {
-      super(message);
-      this.name = "McpAuthorizationRequiredError";
-      this.provider = provider;
-    }
-  }
+import {
+  McpAuthorizationRequiredError,
+  type PluginMcpClientOptions,
+} from "@/chat/mcp/client";
+import {
+  McpToolManager,
+  type McpToolManagerOptions,
+} from "@/chat/mcp/tool-manager";
 
-  class MockPluginMcpClient {
-    constructor(
-      private readonly plugin: PluginDefinition,
-      options?: unknown,
-    ) {
-      if (clientSetupError.value) {
-        throw clientSetupError.value;
-      }
-      clientOptions.push(options);
-    }
-
-    async listTools() {
-      return await listToolsMock(this.plugin);
-    }
-
-    async callTool(name: string, args: Record<string, unknown>) {
-      return await callToolMock(this.plugin, name, args);
-    }
-
-    async close() {
-      await closeMock(this.plugin);
-    }
-  }
-
-  return {
-    McpAuthorizationRequiredError: MockMcpAuthorizationRequiredError,
-    PluginMcpClient: MockPluginMcpClient,
-  };
-});
-
-import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
-import { McpToolManager } from "@/chat/mcp/tool-manager";
+const callToolMock = vi.fn();
+const clientOptions: PluginMcpClientOptions[] = [];
+const clientSetupError: { value: unknown } = { value: undefined };
+const closeMock = vi.fn();
+const listToolsMock = vi.fn();
+const onAuthorizationRequiredMock = vi.fn();
 
 function buildPlugin(
   name = "demo",
@@ -81,6 +47,38 @@ function buildPlugin(
       },
     },
   };
+}
+
+function createTestClientFactory(): NonNullable<
+  McpToolManagerOptions["clientFactory"]
+> {
+  return (plugin, options) => {
+    if (clientSetupError.value) {
+      throw clientSetupError.value;
+    }
+    clientOptions.push(options);
+    return {
+      async listTools() {
+        return await listToolsMock(plugin);
+      },
+      async callTool(name, args) {
+        return await callToolMock(plugin, name, args);
+      },
+      async close() {
+        await closeMock(plugin);
+      },
+    };
+  };
+}
+
+function createMcpToolManager(
+  plugins: PluginDefinition[],
+  options: McpToolManagerOptions = {},
+) {
+  return new McpToolManager(plugins, {
+    ...options,
+    clientFactory: options.clientFactory ?? createTestClientFactory(),
+  });
 }
 
 describe("McpToolManager", () => {
@@ -115,7 +113,7 @@ describe("McpToolManager", () => {
 
   it("activates plugin-scoped MCP tools once with collision-safe names", async () => {
     const plugin = buildPlugin();
-    const manager = new McpToolManager([plugin]);
+    const manager = createMcpToolManager([plugin]);
 
     expect(
       await manager.activateForSkill({
@@ -165,9 +163,29 @@ describe("McpToolManager", () => {
     expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
-  it("throws expected MCP tool errors", async () => {
+  it("annotates MCP tool spans with the MCP method name", async () => {
     const plugin = buildPlugin();
-    const manager = new McpToolManager([plugin]);
+    const manager = createMcpToolManager([plugin]);
+    await manager.activateProvider("demo");
+
+    const resolvedTools = manager.getResolvedActiveTools();
+    await expect(
+      resolvedTools[0]!.execute({ query: "hello" }),
+    ).resolves.toMatchObject({
+      details: {
+        provider: "demo",
+        tool: "ping",
+      },
+    });
+
+    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+      "mcp.method.name": "tools/call",
+    });
+  });
+
+  it("logs expected MCP tool errors with semantic context", async () => {
+    const plugin = buildPlugin();
+    const manager = createMcpToolManager([plugin]);
     await manager.activateProvider("demo");
     callToolMock.mockResolvedValueOnce({
       content: [
@@ -187,7 +205,7 @@ describe("McpToolManager", () => {
 
   it("surfaces MCP authorization challenges through the callback hook", async () => {
     const plugin = buildPlugin();
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
     await manager.activateProvider("demo");
@@ -212,7 +230,7 @@ describe("McpToolManager", () => {
   it("parks handled MCP authorization challenges without surfacing a tool error", async () => {
     const plugin = buildPlugin();
     onAuthorizationRequiredMock.mockResolvedValueOnce(true);
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
     await manager.activateProvider("demo");
@@ -238,7 +256,7 @@ describe("McpToolManager", () => {
 
   it("surfaces MCP authorization challenges during tool discovery", async () => {
     const plugin = buildPlugin();
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
     listToolsMock.mockRejectedValueOnce(
@@ -261,7 +279,7 @@ describe("McpToolManager", () => {
   it("parks handled MCP authorization challenges during discovery", async () => {
     const plugin = buildPlugin();
     onAuthorizationRequiredMock.mockResolvedValueOnce(true);
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
     listToolsMock.mockRejectedValueOnce(
@@ -276,7 +294,7 @@ describe("McpToolManager", () => {
   it("does not retry activation for a provider already parked for auth", async () => {
     const plugin = buildPlugin();
     onAuthorizationRequiredMock.mockResolvedValueOnce(true);
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
     listToolsMock.mockRejectedValueOnce(
@@ -299,7 +317,7 @@ describe("McpToolManager", () => {
     );
     clientSetupError.value = authError;
     onAuthorizationRequiredMock.mockResolvedValueOnce(true);
-    const manager = new McpToolManager([plugin], {
+    const manager = createMcpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
 
@@ -312,7 +330,7 @@ describe("McpToolManager", () => {
   it("closes every active client before surfacing the first close error", async () => {
     const alphaPlugin = buildPlugin("alpha");
     const betaPlugin = buildPlugin("beta");
-    const manager = new McpToolManager([alphaPlugin, betaPlugin]);
+    const manager = createMcpToolManager([alphaPlugin, betaPlugin]);
 
     await manager.activateProvider("alpha");
     await manager.activateProvider("beta");
@@ -356,7 +374,7 @@ describe("McpToolManager", () => {
       },
     ]);
 
-    const manager = new McpToolManager([plugin]);
+    const manager = createMcpToolManager([plugin]);
     await manager.activateProvider("notion");
 
     expect(manager.getActiveToolCatalog().map((tool) => tool.name)).toEqual([
@@ -388,7 +406,7 @@ describe("McpToolManager", () => {
       },
     ]);
 
-    const manager = new McpToolManager([plugin]);
+    const manager = createMcpToolManager([plugin]);
     await manager.activateProvider("notion");
 
     expect(manager.getActiveToolCatalog().map((tool) => tool.name)).toEqual([
@@ -410,7 +428,7 @@ describe("McpToolManager", () => {
   it("getAvailableProviderCatalog returns all configured providers without connecting", async () => {
     const notionPlugin = buildPlugin("notion");
     const linearPlugin = buildPlugin("linear");
-    const manager = new McpToolManager([notionPlugin, linearPlugin]);
+    const manager = createMcpToolManager([notionPlugin, linearPlugin]);
 
     const catalog = manager.getAvailableProviderCatalog();
     expect(catalog).toHaveLength(2);
@@ -437,7 +455,7 @@ describe("McpToolManager", () => {
       },
     ]);
 
-    const manager = new McpToolManager([plugin]);
+    const manager = createMcpToolManager([plugin]);
 
     await expect(manager.activateProvider("notion")).rejects.toThrow(
       "Plugin notion MCP discovery missing allowlisted tools: notion-fetch",
