@@ -3,7 +3,7 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { applyBotConfigOverrides } from "@/chat/config";
+import { applyBotConfigOverrides, botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import {
   getPluginCatalogSignature,
@@ -284,6 +284,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
+  const previousProcessingReactionEmoji = botConfig.processingReactionEmoji;
+  const previousCompletedReactionEmoji = botConfig.completedReactionEmoji;
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
   try {
     setConfigDefaults(options?.configDefaults);
@@ -299,6 +301,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
+    botConfig.processingReactionEmoji = previousProcessingReactionEmoji;
+    botConfig.completedReactionEmoji = previousCompletedReactionEmoji;
     throw error;
   }
 
