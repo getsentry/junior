@@ -198,7 +198,7 @@ function wrapBareUrls(text: string): string {
   let inCodeBlock = false;
 
   for (const line of lines) {
-    if (/^```/.test(line.trimStart())) {
+    if (line.trimStart().startsWith("```")) {
       inCodeBlock = !inCodeBlock;
       out.push(line);
       continue;
