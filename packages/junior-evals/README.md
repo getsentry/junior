@@ -76,6 +76,7 @@ Harness override knobs (in `EvalOverrides`):
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
+`reply_texts` and `reply_results` bypass real reply generation, so use them only for downstream delivery behavior, not prompt, model-routing, or thinking-level coverage.
 
 Tool replay:
 

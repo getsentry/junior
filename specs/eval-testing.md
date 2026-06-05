@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-05
 
 ## Intent
 
@@ -39,6 +39,9 @@ In scope:
 9. Keep user prompts natural and product-realistic. Do not script exact internal commands, tool names, or implementation steps into the prompt just to force a path.
 10. If a case only works when the prompt prescribes internal mechanics, treat that as an eval-design failure or product-behavior gap, not a passing eval.
 11. If a case uses harness-controlled decision fixtures such as subscribed-message reply gating, do not claim those gated behaviors are being validated by the eval outcome.
+12. Prefer extending the rubric for an existing realistic scenario when that scenario already exercises the behavior under test. Add a new eval case only for a distinct user journey, failure mode, or product contract.
+13. Use structured harness observations for stable runtime metadata such as selected thinking level. Do not scrape logs, spans, prompt text, or incidental tool sequences to prove agent-facing behavior.
+14. Treat reply/result fixtures as downstream delivery fixtures only. They bypass real reply generation, so they cannot validate prompt interpretation, model routing, thinking-level routing, or other upstream generation behavior.
 
 ## Boundaries
 
@@ -48,6 +51,7 @@ Do not in eval files:
 - Use MSW queue/capture helpers intended for integration contract tests.
 - Rely on implementation-only identifiers (exact internal tool names, opaque IDs) unless the case intentionally evaluates that surface.
 - Encode exact internal commands or tool choices in user prompts when the contract under test is higher-level conversational behavior.
+- Use canned assistant reply fixtures to claim coverage of behavior that happens inside real reply generation.
 
 ## Relationship to Other Layers
 
