@@ -1,7 +1,5 @@
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getAgentPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
-import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
-import type { AgentTurnUsage } from "@/chat/usage";
 
 interface SlackMrkdwnTextObject {
   text: string;
@@ -53,78 +51,13 @@ function escapeSlackLinkUrl(url: string): string {
     .replaceAll(">", "%3E");
 }
 
-function formatSlackTokenCount(value: number): string {
-  if (value >= 1_000_000) {
-    const millions = value / 1_000_000;
-    // Show up to 2 decimal places, drop trailing zeros
-    return `${parseFloat(millions.toFixed(2))}m`;
-  }
-  if (value >= 1_000) {
-    const thousands = value / 1_000;
-    return `${parseFloat(thousands.toFixed(1))}k`;
-  }
-  return `${value}`;
-}
-
-function formatSlackDuration(durationMs: number): string {
-  if (durationMs < 1_000) {
-    return `${durationMs}ms`;
-  }
-
-  const totalSeconds = Math.round(durationMs / 1_000);
-
-  if (totalSeconds < 10) {
-    const precise = durationMs / 1_000;
-    return `${precise.toFixed(1).replace(/\.0$/, "")}s`;
-  }
-
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (seconds === 0) {
-    return `${minutes}m`;
-  }
-  return `${minutes}m${seconds}s`;
-}
-
-function resolveTotalTokens(
-  usage: AgentTurnUsage | undefined,
-): number | undefined {
-  if (!usage) {
-    return undefined;
-  }
-
-  // Sum every individual counter the provider reported so cached + cache
-  // creation tokens are included in the displayed total. Provider `totalTokens`
-  // fields are inconsistent across vendors (some exclude cached tokens, some
-  // include them), so prefer the sum when component counts exist.
-  const components = [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].filter((value): value is number => value !== undefined);
-
-  if (components.length > 0) {
-    return components.reduce((sum, value) => sum + value, 0);
-  }
-
-  return usage.totalTokens;
-}
-
 /**
- * Build a compact footer for the finalized Slack reply.
+ * Build the compact conversation footer for the finalized Slack reply.
  *
- * This is reply metadata, not part of the in-flight assistant loading state.
+ * Detailed turn metrics stay in the dashboard instead of Slack-visible copy.
  */
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
-  durationMs?: number;
-  thinkingLevel?: TurnThinkingSelection["thinkingLevel"];
-  usage?: AgentTurnUsage;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
 
@@ -141,29 +74,6 @@ export function buildSlackReplyFooter(args: {
       idItem.url = conversationUrl;
     }
     items.push(idItem);
-  }
-
-  const totalTokens = resolveTotalTokens(args.usage);
-  if (totalTokens !== undefined) {
-    items.push({
-      label: "Tokens",
-      value: formatSlackTokenCount(totalTokens),
-    });
-  }
-
-  if (typeof args.durationMs === "number" && Number.isFinite(args.durationMs)) {
-    const durationMs = Math.max(0, Math.floor(args.durationMs));
-    items.push({
-      label: "Time",
-      value: formatSlackDuration(durationMs),
-    });
-  }
-
-  if (args.thinkingLevel) {
-    items.push({
-      label: "Thinking",
-      value: args.thinkingLevel,
-    });
   }
 
   return items.length > 0 ? { items } : undefined;

@@ -352,9 +352,6 @@ export async function runAgentDispatchSlice(
       posts: planSlackReplyPosts({ reply: deliveryReply }),
       footer: buildSlackReplyFooter({
         conversationId,
-        durationMs: deliveryReply.diagnostics.durationMs,
-        thinkingLevel: deliveryReply.diagnostics.thinkingLevel,
-        usage: deliveryReply.diagnostics.usage,
       }),
       fileUploadFailureMode: "strict",
     });

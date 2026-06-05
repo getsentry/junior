@@ -56,8 +56,8 @@ Current rules:
 5. Channel permalink lookup is best effort and must not turn a successful post into a failed action.
 6. Slack message posts use `text` with `mrkdwn` enabled; callers do not switch between competing text fields ad hoc.
 7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
-8. Finalized reply footers that show correlation or diagnostic metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
-9. Footer values such as token counts, turn duration, and the selected thinking-level bucket are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
+8. Finalized reply footers that show correlation metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
+9. Footer rendering may include the conversation ID/link. Token counts, turn duration, and the selected thinking-level bucket stay in dashboard reporting instead of Slack-visible footer copy.
 10. The conversation ID footer item may link through a trusted plugin `slackConversationLink` hook. The hook result must be an absolute HTTP(S) URL. When no trusted plugin supplies a link, Sentry conversation links remain the fallback when Sentry configuration is available.
 
 ### 4. Ephemeral Message Contract

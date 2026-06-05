@@ -152,7 +152,7 @@ Current rules:
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
 7. When Junior adds finalized reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
-8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, selected thinking level, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
+8. Footer metadata is derived from correlation state. Slack footers may show the conversation ID/link; selected thinking level, token totals, and turn duration are available through dashboard reporting instead of Slack-visible footer copy.
 9. Footer metadata is not an assistant-status surface and must not be used to convey in-flight progress.
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.

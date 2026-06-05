@@ -48,7 +48,6 @@ describe("Slack contract: outbound normalization", () => {
   it("passes block payloads with a top-level fallback text", async () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
-      thinkingLevel: "low",
     });
 
     await postSlackMessage({
@@ -73,10 +72,6 @@ describe("Slack contract: outbound normalization", () => {
                 {
                   type: "mrkdwn",
                   text: "*ID:* slack:C123:1700000000.000100",
-                },
-                {
-                  type: "mrkdwn",
-                  text: "*Thinking:* low",
                 },
               ],
             },

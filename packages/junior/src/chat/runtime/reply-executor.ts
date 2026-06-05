@@ -815,9 +815,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const plannedPosts = planSlackReplyPosts({ reply });
           const replyFooter = buildSlackReplyFooter({
             conversationId,
-            durationMs: reply.diagnostics.durationMs,
-            thinkingLevel: reply.diagnostics.thinkingLevel,
-            usage: reply.diagnostics.usage,
           });
           const shouldUseSlackFooter =
             Boolean(replyFooter) &&

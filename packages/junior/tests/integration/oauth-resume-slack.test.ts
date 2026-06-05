@@ -101,22 +101,14 @@ describe("oauth resume slack integration", () => {
             },
             {
               type: "context",
-              elements: expect.arrayContaining([
+              elements: [
                 expect.objectContaining({
                   type: "mrkdwn",
                   text: expect.stringContaining(
                     "*ID:* slack:C123:1700000000.001",
                   ),
                 }),
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: "*Tokens:* 1.2k",
-                }),
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: "*Time:* 842ms",
-                }),
-              ]),
+              ],
             },
           ],
           channel: "C123",
@@ -127,7 +119,7 @@ describe("oauth resume slack integration", () => {
     ]);
   }, 10_000);
 
-  it("uses cumulative session diagnostics for resumed reply footers", async () => {
+  it("uses correlation IDs for resumed reply footers", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
     const { upsertAgentTurnSessionRecord } =
@@ -186,20 +178,12 @@ describe("oauth resume slack integration", () => {
             },
             {
               type: "context",
-              elements: expect.arrayContaining([
+              elements: [
                 {
                   type: "mrkdwn",
                   text: "*ID:* conversation-1",
                 },
-                {
-                  type: "mrkdwn",
-                  text: "*Tokens:* 1k",
-                },
-                {
-                  type: "mrkdwn",
-                  text: "*Time:* 1.5s",
-                },
-              ]),
+              ],
             },
           ],
         }),

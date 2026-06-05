@@ -27,8 +27,6 @@ import {
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { ACTIVE_LOCK_TTL_MS, getStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { addAgentTurnUsage } from "@/chat/usage";
 import {
   startSlackProcessingReactionForMessage,
   type ProcessingReactionSession,
@@ -316,14 +314,6 @@ export async function resumeSlackTurn(
 
     const generateReply = runArgs.generateReply ?? generateAssistantReply;
     const replyContext = createResumeReplyContext(runArgs, status);
-    const priorSessionRecord =
-      replyContext.correlation?.conversationId &&
-      replyContext.correlation?.turnId
-        ? await getAgentTurnSessionRecord(
-            replyContext.correlation.conversationId,
-            replyContext.correlation.turnId,
-          )
-        : undefined;
     const replyPromise = generateReply(runArgs.messageText, replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
     let reply =
@@ -353,18 +343,6 @@ export async function resumeSlackTurn(
     const footer = buildSlackReplyFooter({
       conversationId:
         runArgs.replyContext?.correlation?.conversationId ?? lockKey,
-      durationMs:
-        typeof priorSessionRecord?.cumulativeDurationMs === "number" ||
-        typeof reply.diagnostics.durationMs === "number"
-          ? (priorSessionRecord?.cumulativeDurationMs ?? 0) +
-            (reply.diagnostics.durationMs ?? 0)
-          : undefined,
-      thinkingLevel: reply.diagnostics.thinkingLevel,
-      usage:
-        addAgentTurnUsage(
-          priorSessionRecord?.cumulativeUsage,
-          reply.diagnostics.usage,
-        ) ?? reply.diagnostics.usage,
     });
     await postSlackApiReplyPosts({
       channelId: runArgs.channelId,
