@@ -1,49 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createSlackListCreateTool } from "@/chat/tools/slack/list-tools";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack/list-tools";
-import type { ToolState } from "@/chat/tools/types";
 import { slackListsCreateOk } from "../../fixtures/slack/factories/api";
+import {
+  createTestToolState,
+  executeTestTool,
+} from "../../fixtures/tool-runtime";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../../msw/handlers/slack-api";
-
-function createToolState(
-  options: {
-    currentListId?: string;
-    listColumnMap?: {
-      titleColumnId?: string;
-      completedColumnId?: string;
-      assigneeColumnId?: string;
-      dueDateColumnId?: string;
-    };
-  } = {},
-): ToolState {
-  const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: options.listColumnMap ?? {},
-  };
-
-  return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => {
-      Object.assign(artifactState, patch);
-    },
-    getCurrentListId: () => options.currentListId,
-    getOperationResult: <T>(operationKey: string): T | undefined =>
-      operationResultCache.get(operationKey) as T | undefined,
-    setOperationResult: (operationKey, result) => {
-      operationResultCache.set(operationKey, result);
-    },
-  };
-}
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  return await tool.execute(input, {} as any);
-}
 
 describe("slack list create/update tools", () => {
   it("creates a list, persists thread artifact state, and deduplicates repeated create calls", async () => {
@@ -60,11 +26,11 @@ describe("slack list create/update tools", () => {
       },
     });
 
-    const state = createToolState();
+    const state = createTestToolState();
     const tool = createSlackListCreateTool(state);
 
-    const first = await executeTool(tool, { name: "Incident checklist" });
-    const second = await executeTool(tool, { name: "Incident checklist" });
+    const first = await executeTestTool(tool, { name: "Incident checklist" });
+    const second = await executeTestTool(tool, { name: "Incident checklist" });
 
     expect(first).toMatchObject({
       ok: true,
@@ -93,16 +59,18 @@ describe("slack list create/update tools", () => {
       body: { ok: true },
     });
 
-    const state = createToolState({
+    const state = createTestToolState({
       currentListId: "LIST_ABC",
-      listColumnMap: {
-        titleColumnId: "COL_TITLE",
-        completedColumnId: "COL_DONE",
+      artifactState: {
+        listColumnMap: {
+          titleColumnId: "COL_TITLE",
+          completedColumnId: "COL_DONE",
+        },
       },
     });
     const tool = createSlackListUpdateItemTool(state);
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       item_id: "ROW_77",
       completed: true,
       title: "Ship durable workflow rollout",
@@ -148,14 +116,13 @@ describe("slack list create/update tools", () => {
   });
 
   it("fails fast when update fields cannot be mapped to list columns", async () => {
-    const state = createToolState({
+    const state = createTestToolState({
       currentListId: "LIST_ABC",
-      listColumnMap: {},
     });
     const tool = createSlackListUpdateItemTool(state);
 
     await expect(
-      executeTool(tool, {
+      executeTestTool(tool, {
         item_id: "ROW_77",
         completed: true,
       }),

@@ -4,6 +4,7 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
@@ -30,10 +31,9 @@ describe("oauth resume slack failure markers", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: "Partial output",
+        successfulAssistantReply("Partial output", {
           diagnostics: makeResumeDiagnostics("provider_error"),
-        }) as any,
+        }),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -62,13 +62,12 @@ describe("oauth resume slack failure markers", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: "",
+        successfulAssistantReply("", {
           diagnostics: makeResumeDiagnostics("execution_failure", {
             assistantMessageCount: 0,
             usedPrimaryText: false,
           }),
-        }) as any,
+        }),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");

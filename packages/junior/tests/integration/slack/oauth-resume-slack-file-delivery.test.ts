@@ -4,6 +4,7 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
@@ -34,8 +35,7 @@ describe("oauth resume slack file delivery", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: "Here is the resumed artifact.",
+        successfulAssistantReply("Here is the resumed artifact.", {
           files: [
             {
               data: Buffer.from("resume-file"),
@@ -43,7 +43,7 @@ describe("oauth resume slack file delivery", () => {
             },
           ],
           diagnostics: makeResumeDiagnostics(),
-        }) as any,
+        }),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -89,8 +89,7 @@ describe("oauth resume slack file delivery", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: "Here is the resumed artifact.",
+        successfulAssistantReply("Here is the resumed artifact.", {
           files: [
             {
               data: Buffer.from("resume-file"),
@@ -98,7 +97,7 @@ describe("oauth resume slack file delivery", () => {
             },
           ],
           diagnostics: makeResumeDiagnostics(),
-        }) as any,
+        }),
     });
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([

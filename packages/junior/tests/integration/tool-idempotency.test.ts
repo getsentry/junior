@@ -3,8 +3,11 @@ import { createSlackCanvasCreateTool } from "@/chat/tools/slack/canvas-tools";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
 import { SlackActionError } from "@/chat/slack/client";
-import type { ToolState } from "@/chat/tools/types";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import {
+  createTestToolRuntimeContext,
+  createTestToolState,
+  executeTestTool,
+} from "../fixtures/tool-runtime";
 import {
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -16,71 +19,6 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-
-function createToolState(
-  options: {
-    currentListId?: string;
-    listColumnMap?: {
-      titleColumnId?: string;
-      completedColumnId?: string;
-      assigneeColumnId?: string;
-      dueDateColumnId?: string;
-    };
-  } = {},
-): ToolState {
-  const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: options.listColumnMap ?? {},
-  };
-
-  return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => {
-      Object.assign(artifactState, patch);
-    },
-    getCurrentListId: () => options.currentListId,
-    getOperationResult: <T>(operationKey: string): T | undefined =>
-      operationResultCache.get(operationKey) as T | undefined,
-    setOperationResult: (operationKey, result) => {
-      operationResultCache.set(operationKey, result);
-    },
-  };
-}
-
-const noopSandbox = {} as any;
-
-function slackContext(channelId: string): SlackToolContext {
-  return {
-    destination: {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId,
-    },
-    source: {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId,
-    },
-    destinationChannelId: channelId,
-    sourceChannelId: channelId,
-    teamId: "T123",
-  };
-}
-
-const LOCAL_CONTEXT = {
-  destination: {
-    platform: "local",
-    conversationId: "local:test:tool-idempotency",
-  },
-  sandbox: noopSandbox,
-} as const;
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  return await tool.execute(input, {} as any);
-}
 
 describe("tool idempotency", () => {
   it("creates deterministic operation keys regardless of object key order", () => {
@@ -111,14 +49,19 @@ describe("tool idempotency", () => {
         permalink: "https://example.invalid/canvas-1",
       }),
     });
-    const state = createToolState();
-    const tool = createSlackCanvasCreateTool(slackContext("C123"), state);
+    const state = createTestToolState();
+    const tool = createSlackCanvasCreateTool(
+      createTestToolRuntimeContext({
+        channelId: "C123",
+      }),
+      state,
+    );
 
-    const first = await executeTool(tool, {
+    const first = await executeTestTool(tool, {
       title: "Weekly plan",
       markdown: "- item one",
     });
-    const second = await executeTool(tool, {
+    const second = await executeTestTool(tool, {
       title: "Weekly plan",
       markdown: "- item one",
     });
@@ -157,10 +100,15 @@ describe("tool idempotency", () => {
       }),
     });
 
-    const state = createToolState();
-    const tool = createSlackCanvasCreateTool(slackContext("D123"), state);
+    const state = createTestToolState();
+    const tool = createSlackCanvasCreateTool(
+      createTestToolRuntimeContext({
+        channelId: "D123",
+      }),
+      state,
+    );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       title: "DM brief",
       markdown: "Body",
     });
@@ -198,19 +146,14 @@ describe("tool idempotency", () => {
     });
 
     const tool = createSlackCanvasCreateTool(
-      {
-        ...slackContext("D123"),
-        destination: {
-          platform: "slack" as const,
-          teamId: "T123",
-          channelId: "C_SHARED",
-        },
-        destinationChannelId: "C_SHARED",
-      },
-      createToolState(),
+      createTestToolRuntimeContext({
+        channelId: "D123",
+        deliveryChannelId: "C_SHARED",
+      }),
+      createTestToolState(),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       title: "Shared brief",
       markdown: "Body",
     });
@@ -229,14 +172,21 @@ describe("tool idempotency", () => {
   });
 
   it("throws when creating a canvas without assistant channel context", async () => {
-    const state = createToolState();
+    const state = createTestToolState();
     const tool = createSlackCanvasCreateTool(
-      LOCAL_CONTEXT as unknown as SlackToolContext,
+      createTestToolRuntimeContext({
+        channelId: undefined,
+        channelCapabilities: {
+          canCreateCanvas: false,
+          canPostToChannel: false,
+          canAddReactions: false,
+        },
+      }),
       state,
     );
 
     await expect(
-      executeTool(tool, {
+      executeTestTool(tool, {
         title: "No context",
         markdown: "Body",
       }),
@@ -257,18 +207,20 @@ describe("tool idempotency", () => {
     queueSlackApiResponse("slackLists.items.create", {
       body: slackListsItemsCreateOk({ itemId: "item-2" }),
     });
-    const state = createToolState({
+    const state = createTestToolState({
       currentListId: "list-1",
-      listColumnMap: {
-        titleColumnId: "col-title",
+      artifactState: {
+        listColumnMap: {
+          titleColumnId: "col-title",
+        },
       },
     });
     const tool = createSlackListAddItemsTool(state);
 
-    const first = await executeTool(tool, {
+    const first = await executeTestTool(tool, {
       items: ["Ship patch", "Run test"],
     });
-    const second = await executeTool(tool, {
+    const second = await executeTestTool(tool, {
       items: ["Ship patch", "Run test"],
     });
 
@@ -296,11 +248,16 @@ describe("tool idempotency", () => {
     queueSlackApiError("canvases.create", {
       error: "internal_error",
     });
-    const state = createToolState();
-    const tool = createSlackCanvasCreateTool(slackContext("C123"), state);
+    const state = createTestToolState();
+    const tool = createSlackCanvasCreateTool(
+      createTestToolRuntimeContext({
+        channelId: "C123",
+      }),
+      state,
+    );
 
     await expect(
-      executeTool(tool, {
+      executeTestTool(tool, {
         title: "Incident plan",
         markdown: "placeholder",
       }),

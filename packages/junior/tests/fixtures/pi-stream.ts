@@ -1,6 +1,8 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { Message } from "@earendil-works/pi-ai";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
+type AssistantMessage = Extract<Message, { role: "assistant" }>;
 
 const zeroUsage = {
   input: 0,
@@ -18,7 +20,9 @@ const zeroUsage = {
 };
 
 /** Build a Pi assistant message for deterministic streamFn tests. */
-export function piAssistantMessage(content: Array<Record<string, unknown>>) {
+export function piAssistantMessage(
+  content: AssistantMessage["content"],
+): AssistantMessage {
   return {
     role: "assistant" as const,
     api: "test",
@@ -26,7 +30,7 @@ export function piAssistantMessage(content: Array<Record<string, unknown>>) {
     model: "test",
     usage: zeroUsage,
     stopReason: content.some((part) => part.type === "toolCall")
-      ? "toolCalls"
+      ? "toolUse"
       : "stop",
     content,
     timestamp: Date.now(),

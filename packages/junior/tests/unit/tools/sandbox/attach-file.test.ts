@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FileUpload } from "chat";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
+import { executeTestTool } from "../../../fixtures/tool-runtime";
 
 function getUploadBytes(data: FileUpload["data"]): number {
   if (Buffer.isBuffer(data)) {
@@ -51,15 +52,11 @@ describe("createAttachFileTool", () => {
           })),
         );
       },
-    } as any);
-    if (typeof tool.execute !== "function") {
-      throw new Error("attachFile execute function missing");
-    }
+    });
 
-    const result = await tool.execute(
-      { path: "/tmp/sentry-home.png" },
-      {} as any,
-    );
+    const result = await executeTestTool(tool, {
+      path: "/tmp/sentry-home.png",
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -81,12 +78,9 @@ describe("createAttachFileTool", () => {
       readFileToBuffer: async () => null,
     });
     const tool = createAttachFileTool(sandbox);
-    if (typeof tool.execute !== "function") {
-      throw new Error("attachFile execute function missing");
-    }
 
     await expect(
-      tool.execute({ path: "/tmp/missing.png" }, {} as any),
+      executeTestTool(tool, { path: "/tmp/missing.png" }),
     ).rejects.toThrow("failed to read file: /tmp/missing.png");
   });
 
@@ -110,14 +104,10 @@ describe("createAttachFileTool", () => {
         );
       },
     });
-    if (typeof tool.execute !== "function") {
-      throw new Error("attachFile execute function missing");
-    }
 
-    const result = await tool.execute(
-      { path: "/vercel/sandbox/generated-image-1.png" },
-      {} as any,
-    );
+    const result = await executeTestTool(tool, {
+      path: "/vercel/sandbox/generated-image-1.png",
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -140,12 +130,9 @@ describe("createAttachFileTool", () => {
       readFileToBuffer: async () => tooLarge,
     });
     const tool = createAttachFileTool(sandbox);
-    if (typeof tool.execute !== "function") {
-      throw new Error("attachFile execute function missing");
-    }
 
     await expect(
-      tool.execute({ path: "/tmp/huge.png" }, {} as any),
+      executeTestTool(tool, { path: "/tmp/huge.png" }),
     ).rejects.toThrow("file exceeds 10485760 bytes");
   });
 
@@ -158,11 +145,8 @@ describe("createAttachFileTool", () => {
       }),
     });
     const tool = createAttachFileTool(sandbox);
-    if (typeof tool.execute !== "function") {
-      throw new Error("attachFile execute function missing");
-    }
 
-    const result = await tool.execute({ path: "/tmp/report.pdf" }, {} as any);
+    const result = await executeTestTool(tool, { path: "/tmp/report.pdf" });
     expect(result).toMatchObject({
       ok: true,
       mime_type: "application/pdf",

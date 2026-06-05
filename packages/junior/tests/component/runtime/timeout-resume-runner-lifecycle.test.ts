@@ -16,6 +16,7 @@ import {
   setupTimeoutResumeRunnerTest,
   TIMEOUT_RESUME_DESTINATION,
 } from "../../fixtures/timeout-resume-runner";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 
 describe("timeout resume runner lifecycle", () => {
   beforeEach(setupTimeoutResumeRunnerTest);
@@ -98,17 +99,18 @@ describe("timeout resume runner lifecycle", () => {
     resumeSlackTurn.mockImplementationOnce(async (args) => {
       const runArgs = await prepareResumeArgs(args);
       if (runArgs === false) return false;
-      await runArgs.onSuccess?.({
-        text: "Final resumed answer",
-        diagnostics: {
-          outcome: "success",
-          assistantMessageCount: 1,
-          toolCalls: [],
-          toolResultCount: 0,
-          toolErrorCount: 0,
-          usedPrimaryText: true,
-        },
-      } as any);
+      await runArgs.onSuccess?.(
+        successfulAssistantReply("Final resumed answer", {
+          diagnostics: {
+            outcome: "success",
+            assistantMessageCount: 1,
+            toolCalls: [],
+            toolResultCount: 0,
+            toolErrorCount: 0,
+            usedPrimaryText: true,
+          },
+        }),
+      );
       return true;
     });
 

@@ -17,6 +17,7 @@ import { tool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { Type } from "@sinclair/typebox";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
+import { createTestToolRuntimeContext } from "../../fixtures/tool-runtime";
 
 const TEST_REQUESTER = {
   platform: "slack",
@@ -91,6 +92,17 @@ function fakeSandbox(
   };
 }
 
+function createHeadlessToolContext() {
+  return createTestToolRuntimeContext({
+    channelId: undefined,
+    channelCapabilities: {
+      canAddReactions: false,
+      canCreateCanvas: false,
+      canPostToChannel: false,
+    },
+  });
+}
+
 describe("agent plugin hooks", () => {
   it("collects turn-scoped tools from configured plugins", () => {
     const previous = setPlugins([
@@ -115,12 +127,13 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const tools = getPluginTools({
-        destination: SLACK_DESTINATION,
-        requester: TEST_REQUESTER,
-        source: SLACK_DESTINATION,
-        sandbox: {} as any,
-      });
+      const tools = getPluginTools(
+        createTestToolRuntimeContext({
+          destination: SLACK_DESTINATION,
+          requester: TEST_REQUESTER,
+          source: SLACK_DESTINATION,
+        }),
+      );
 
       expect(tools).toHaveProperty("demoTool");
     } finally {
@@ -151,11 +164,12 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() =>
-        getPluginTools({
-          destination: LOCAL_DESTINATION,
-          source: LOCAL_DESTINATION,
-          sandbox: {} as any,
-        }),
+        getPluginTools(
+          createTestToolRuntimeContext({
+            destination: LOCAL_DESTINATION,
+            source: LOCAL_DESTINATION,
+          }),
+        ),
       ).toThrow("must be a camelCase identifier");
     } finally {
       setPlugins(previous);
@@ -188,11 +202,7 @@ describe("agent plugin hooks", () => {
         createTools(
           [],
           {},
-          {
-            destination: LOCAL_DESTINATION,
-            source: LOCAL_DESTINATION,
-            sandbox: {} as any,
-          },
+          createHeadlessToolContext(),
         ),
       ).toThrow('Plugin tool "loadSkill" conflicts with a core tool');
     } finally {

@@ -2,17 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
 import { usersInfoOk, usersListPage } from "../../fixtures/slack/factories/api";
 import {
+  createTestToolRuntimeContext,
+  executeTestTool,
+} from "../../fixtures/tool-runtime";
+import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
   queueSlackApiError,
 } from "../../msw/handlers/slack-api";
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  return await tool.execute(input, {} as any);
-}
 
 describe("slackUserLookup", () => {
   describe("user_id mode", () => {
@@ -36,7 +33,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U039RR91S" });
+      const result = await executeTestTool(tool, { user_id: "U039RR91S" });
 
       expect(result).toMatchObject({
         ok: true,
@@ -73,7 +70,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_BASIC" });
+      const result = await executeTestTool(tool, { user_id: "U_BASIC" });
 
       expect(result).toMatchObject({
         ok: true,
@@ -92,7 +89,7 @@ describe("slackUserLookup", () => {
       queueSlackApiError("users.info", { error: "user_not_found" });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_NONEXISTENT" });
+      const result = await executeTestTool(tool, { user_id: "U_NONEXISTENT" });
 
       expect(result.ok).toBe(false);
       expect(result.slack_error).toBe("user_not_found");
@@ -111,7 +108,9 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { email: "emailuser@sentry.io" });
+      const result = await executeTestTool(tool, {
+        email: "emailuser@sentry.io",
+      });
 
       expect(result).toMatchObject({
         ok: true,
@@ -132,7 +131,9 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { email: "nobody@example.com" });
+      const result = await executeTestTool(tool, {
+        email: "nobody@example.com",
+      });
 
       expect(result).toMatchObject({
         ok: false,
@@ -161,7 +162,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { query: "markus" });
+      const result = await executeTestTool(tool, { query: "markus" });
 
       expect(result).toMatchObject({
         ok: true,
@@ -186,7 +187,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { query: "zzzzzz" });
+      const result = await executeTestTool(tool, { query: "zzzzzz" });
 
       expect(result).toMatchObject({
         ok: true,
@@ -207,7 +208,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { query: "junior" });
+      const result = await executeTestTool(tool, { query: "junior" });
 
       expect(result.users).toHaveLength(1);
       expect(result.users[0].id).toBe("U2");
@@ -224,7 +225,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
+      const result = await executeTestTool(tool, {
         query: "junior",
         include_bots: true,
       });
@@ -247,7 +248,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
+      const result = await executeTestTool(tool, {
         query: "alice",
         max_pages: 2,
       });
@@ -274,7 +275,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
+      const result = await executeTestTool(tool, {
         query: "alice",
         max_pages: 3,
       });
@@ -303,7 +304,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { query: "user" });
+      const result = await executeTestTool(tool, { query: "user" });
 
       expect(result.users).toHaveLength(1);
       expect(result.users[0].id).toBe("U2");
@@ -313,7 +314,7 @@ describe("slackUserLookup", () => {
   describe("input validation", () => {
     it("rejects when no input provided", async () => {
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {});
+      const result = await executeTestTool(tool, {});
 
       expect(result).toMatchObject({
         ok: false,
@@ -323,7 +324,7 @@ describe("slackUserLookup", () => {
 
     it("rejects when multiple inputs provided", async () => {
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
+      const result = await executeTestTool(tool, {
         user_id: "U123",
         query: "alice",
       });
@@ -341,19 +342,9 @@ describe("slackUserLookup", () => {
       const tools = createTools(
         [],
         {},
-        {
-          source: {
-            platform: "slack",
-            teamId: "T_TEST",
-            channelId: "C_TEST",
-          },
-          destination: {
-            platform: "slack",
-            teamId: "T_TEST",
-            channelId: "C_TEST",
-          },
-          sandbox: {} as any,
-        },
+        createTestToolRuntimeContext({
+          channelId: "C_TEST",
+        }),
       );
 
       expect(tools).toHaveProperty("slackUserLookup");

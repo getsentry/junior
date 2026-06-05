@@ -12,6 +12,7 @@ import {
   type AdvisorToolRuntimeContext,
 } from "@/chat/tools/advisor/tool";
 import { tool } from "@/chat/tools/definition";
+import { createTestToolRuntimeContext } from "../../fixtures/tool-runtime";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -92,11 +93,9 @@ async function executeAdvisor(
 
 describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
-    const baseContext = {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_DESTINATION,
-      sandbox: {} as any,
-    };
+    const baseContext = createTestToolRuntimeContext({
+      channelId: "D12345",
+    });
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
 
     const tools = createTools(
@@ -187,11 +186,9 @@ describe("advisor tool", () => {
       createTools(
         [],
         {},
-        {
-          destination: LOCAL_DESTINATION,
-          source: LOCAL_DESTINATION,
-          sandbox: {} as any,
-        },
+        createTestToolRuntimeContext({
+          channelId: "C12345",
+        }),
       ),
     );
 
@@ -200,6 +197,11 @@ describe("advisor tool", () => {
       "grep",
       "listDir",
       "readFile",
+      "slackCanvasRead",
+      "slackChannelListMessages",
+      "slackListGetItems",
+      "slackThreadRead",
+      "slackUserLookup",
       "systemTime",
       "webFetch",
       "webSearch",

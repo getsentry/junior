@@ -4,6 +4,7 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
@@ -35,10 +36,9 @@ describe("oauth resume slack chunking", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: longReply,
+        successfulAssistantReply(longReply, {
           diagnostics: makeResumeDiagnostics(),
-        }) as any,
+        }),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");

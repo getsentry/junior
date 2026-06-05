@@ -1,44 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDb } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import * as pluginDbModule from "@/chat/plugins/db";
-const noopSandbox = {} as any;
+import { createTestToolRuntimeContext } from "../../fixtures/tool-runtime";
 
-function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
-function ctx(
-  channelId: string,
-): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
-function ctx(channelId?: string): ToolRuntimeContext {
-  if (!channelId) {
-    return {
-      destination: {
-        platform: "local" as const,
-        conversationId: "local:test:tool-registration",
-      },
-      source: {
-        platform: "local" as const,
-        conversationId: "local:test:tool-registration",
-      },
-      sandbox: noopSandbox,
-    };
-  }
-
-  return {
-    destination: {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId,
-    },
-    source: {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId,
-    },
-    sandbox: noopSandbox,
-  };
+function ctx(channelId?: string) {
+  return createTestToolRuntimeContext({
+    channelId,
+  });
 }
 
 describe("Slack tool registration", () => {
@@ -151,15 +122,16 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
-        destination: {
-          platform: "local",
-          conversationId: "local:test:run-test",
-        },
-        source: {
-          platform: "local",
-          conversationId: "local:test:run-test",
-        },
-        sandbox: noopSandbox,
+        ...createTestToolRuntimeContext({
+          destination: {
+            platform: "local",
+            conversationId: "local:test:run-test",
+          },
+          source: {
+            platform: "local",
+            conversationId: "local:test:run-test",
+          },
+        }),
       },
     );
 

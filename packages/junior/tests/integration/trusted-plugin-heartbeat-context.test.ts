@@ -192,19 +192,20 @@ describe("trusted plugin heartbeat context", () => {
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
     });
+    const credentialSubjectWithRuntimeBinding = {
+      ...createCredentialSubject(),
+      binding: {
+        type: "slack-direct-conversation",
+        teamId: "T123",
+        channelId: "D999",
+        signature: "v1=test",
+      },
+    };
 
     await expect(
       ctx.agent.dispatch({
         idempotencyKey: "run-delegated-mismatch",
-        credentialSubject: {
-          ...createCredentialSubject(),
-          binding: {
-            type: "slack-direct-conversation",
-            teamId: "T123",
-            channelId: "D999",
-            signature: "v1=test",
-          },
-        } as any,
+        credentialSubject: credentialSubjectWithRuntimeBinding,
         destination: {
           platform: "slack",
           teamId: "T123",

@@ -3,6 +3,7 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
@@ -30,10 +31,17 @@ describe("oauth resume slack delivery", () => {
         requester: { userId: "U123" },
       },
       generateReply: async () =>
-        ({
-          text: "The budget deadline you mentioned earlier was Friday.",
-          diagnostics: makeResumeDiagnostics(),
-        }) as any,
+        successfulAssistantReply(
+          "The budget deadline you mentioned earlier was Friday.",
+          {
+            diagnostics: makeResumeDiagnostics("success", {
+              durationMs: 842,
+              usage: {
+                totalTokens: 1234,
+              },
+            }),
+          },
+        ),
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([

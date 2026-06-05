@@ -3,40 +3,20 @@ import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
+  createTestToolRuntimeContext,
+  executeTestTool,
+} from "../../fixtures/tool-runtime";
+import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../../msw/handlers/slack-api";
 
-function createContext(
-  overrides: Partial<SlackToolContext> = {},
-): SlackToolContext {
-  const sourceChannelId = overrides.sourceChannelId ?? "C_CURRENT";
-  const destinationChannelId =
-    overrides.destinationChannelId ?? sourceChannelId;
-  return {
-    destination: overrides.destination ?? {
-      platform: "slack",
-      teamId: "T123",
-      channelId: destinationChannelId,
-    },
-    source: overrides.source ?? {
-      platform: "slack",
-      teamId: "T123",
-      channelId: sourceChannelId,
-    },
-    destinationChannelId,
-    sourceChannelId,
-    teamId: "T123",
+function createContext(overrides: Partial<ToolRuntimeContext> = {}) {
+  return createTestToolRuntimeContext({
+    channelId: "C_CURRENT",
     ...overrides,
-  };
-}
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  return await tool.execute(input, {} as any);
+  });
 }
 
 describe("slackThreadRead", () => {
@@ -62,7 +42,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
     });
 
@@ -108,7 +88,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       url: "https://sentry.slack.com/archives/C123/p1700000000999999?thread_ts=1700000000.000000&cid=C123",
     });
 
@@ -144,7 +124,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "C_MANUAL",
       ts: "1700000000.500000",
     });
@@ -173,9 +153,9 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(
-      createContext({ sourceChannelId: "G_PRIVATE" }),
+      createContext({ channelId: "G_PRIVATE" }),
     );
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "G_PRIVATE",
       ts: "1700000000.100000",
     });
@@ -212,7 +192,7 @@ describe("slackThreadRead", () => {
         destinationChannelId: "G_PRIVATE",
       }),
     );
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "G_PRIVATE",
       ts: "1700000000.100000",
     });
@@ -229,7 +209,7 @@ describe("slackThreadRead", () => {
     const tool = createSlackThreadReadTool(
       createContext({ sourceChannelId: "D_DM" }),
     );
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "G_PRIVATE",
       ts: "1700000000.100000",
     });
@@ -246,7 +226,7 @@ describe("slackThreadRead", () => {
     const tool = createSlackThreadReadTool(
       createContext({ sourceChannelId: "C_CURRENT" }),
     );
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
     });
 
@@ -264,7 +244,7 @@ describe("slackThreadRead", () => {
 
   it("blocks reading a DM channel that is not the current channel", async () => {
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "D_SOMEONE",
       ts: "1700000000.100000",
     });
@@ -283,7 +263,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "C_FLAKY",
       ts: "1700000000.100000",
     });
@@ -298,7 +278,7 @@ describe("slackThreadRead", () => {
 
   it("returns an error for invalid URL input", async () => {
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       url: "not a valid url",
     });
 
@@ -310,7 +290,7 @@ describe("slackThreadRead", () => {
 
   it("returns an error when neither url nor channel_id+ts are provided", async () => {
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {});
+    const result = await executeTestTool(tool, {});
 
     expect(result).toMatchObject({
       ok: false,
@@ -320,7 +300,7 @@ describe("slackThreadRead", () => {
 
   it("rejects invalid explicit ts format", async () => {
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "C123",
       ts: "not-a-timestamp",
     });
@@ -368,7 +348,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "C_PAGED",
       ts: "1700000000.000000",
     });
@@ -414,7 +394,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(createContext());
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       channel_id: "C123",
       ts: "1700000000.100000",
     });

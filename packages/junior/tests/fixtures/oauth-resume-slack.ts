@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { AssistantReply } from "@/chat/respond";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -12,8 +13,8 @@ type ResumeOutcome = "success" | "execution_failure" | "provider_error";
 /** Build deterministic assistant diagnostics for OAuth resume Slack tests. */
 export function makeResumeDiagnostics(
   outcome: ResumeOutcome = "success",
-  extras: Record<string, unknown> = {},
-) {
+  extras: Partial<AssistantReply["diagnostics"]> = {},
+): AssistantReply["diagnostics"] {
   return {
     assistantMessageCount: 1,
     modelId: "fake-agent-model",

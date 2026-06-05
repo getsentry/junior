@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import {
+  createTestToolRuntimeContext,
+  createTestToolState,
+  executeTestTool,
+} from "../../fixtures/tool-runtime";
 import {
   chatGetPermalinkOk,
   chatPostMessageOk,
@@ -16,56 +20,16 @@ import {
   queueSlackApiResponse,
 } from "../../msw/handlers/slack-api";
 
-function createToolState(): ToolState {
-  const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: {},
-  };
-
-  return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: () => undefined,
-    getCurrentListId: () => undefined,
-    getOperationResult: <T>(operationKey: string): T | undefined =>
-      operationResultCache.get(operationKey) as T | undefined,
-    setOperationResult: (operationKey, result) => {
-      operationResultCache.set(operationKey, result);
-    },
-  };
-}
-
 function createContext(
-  _userText: string,
-  overrides: Partial<SlackToolContext> = {},
-): SlackToolContext {
-  const sourceChannelId = overrides.sourceChannelId ?? "C123";
-  const destinationChannelId =
-    overrides.destinationChannelId ?? sourceChannelId;
-  return {
-    destination: {
-      platform: "slack",
-      teamId: "T123",
-      channelId: destinationChannelId,
-    },
-    source: {
-      platform: "slack",
-      teamId: "T123",
-      channelId: sourceChannelId,
-      messageTs: "1700000000.321",
-    },
-    destinationChannelId,
+  userText: string,
+  overrides: Partial<ToolRuntimeContext> = {},
+): ToolRuntimeContext {
+  return createTestToolRuntimeContext({
+    channelId: "C123",
     messageTs: "1700000000.321",
-    sourceChannelId,
-    teamId: "T123",
+    userText,
     ...overrides,
-  };
-}
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  return await tool.execute(input, {} as any);
+  });
 }
 
 describe("slack channel tools", () => {
@@ -83,9 +47,9 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackChannelPostMessageTool(
       createContext("summarize this thread"),
-      createToolState(),
+      createTestToolState(),
     );
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       text: "Posting this update",
     });
 
@@ -119,11 +83,11 @@ describe("slack channel tools", () => {
       }),
     });
 
-    await executeTool(
-      createSlackChannelPostMessageTool(context, createToolState()),
+    await executeTestTool(
+      createSlackChannelPostMessageTool(context, createTestToolState()),
       { text: "Shared update" },
     );
-    await executeTool(createSlackChannelListMessagesTool(context), {
+    await executeTestTool(createSlackChannelListMessagesTool(context), {
       limit: 10,
     });
 
@@ -154,13 +118,13 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackChannelPostMessageTool(
       createContext("please post this in #eng channel"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const first = await executeTool(tool, {
+    const first = await executeTestTool(tool, {
       text: "Incident resolved.",
     });
-    const second = await executeTool(tool, {
+    const second = await executeTestTool(tool, {
       text: "Incident resolved.",
     });
 
@@ -193,7 +157,7 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       limit: 150,
       oldest: "1690000000.000",
       latest: "1710000000.000",
@@ -233,10 +197,10 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackChannelPostMessageTool(
       createContext("please post this in #eng channel"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       text: "Heads-up update",
     });
 
@@ -266,7 +230,7 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       limit: 2,
       max_pages: 3,
     });
@@ -301,7 +265,7 @@ describe("slack channel tools", () => {
       createContext("list channel messages"),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       cursor: "expired-cursor",
       limit: 10,
     });
@@ -326,10 +290,10 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackMessageAddReactionTool(
       createContext("yep"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       emoji: ":wave:",
     });
 
@@ -354,10 +318,10 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackMessageAddReactionTool(
       createContext("yep"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       emoji: ":wave:",
     });
 
@@ -376,10 +340,10 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackMessageAddReactionTool(
       createContext("yep"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const result = await executeTool(tool, {
+    const result = await executeTestTool(tool, {
       emoji: ":thumbsup::skin-tone-6:",
     });
 
@@ -400,13 +364,13 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackMessageAddReactionTool(
       createContext("ack"),
-      createToolState(),
+      createTestToolState(),
     );
 
-    const first = await executeTool(tool, {
+    const first = await executeTestTool(tool, {
       emoji: "thumbsup",
     });
-    const second = await executeTool(tool, {
+    const second = await executeTestTool(tool, {
       emoji: "thumbsup",
     });
 
