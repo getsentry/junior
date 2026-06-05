@@ -1,8 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getCapabilityProvider,
+  isKnownCapability,
+  listCapabilityProviders,
+  type CapabilityProviderDefinition,
+} from "@/chat/capabilities/catalog";
 
-let currentSignature = "sig-1";
+let currentSignature = "default";
 let currentProviders: CapabilityProviderDefinition[] = [];
+
+const catalogSource = {
+  getPluginCatalogSignature: () => currentSignature,
+  getPluginCapabilityProviders: () =>
+    currentProviders.map(cloneProviderDefinition),
+};
 
 function cloneProviderDefinition(
   provider: CapabilityProviderDefinition,
@@ -11,33 +22,27 @@ function cloneProviderDefinition(
     ...provider,
     capabilities: [...provider.capabilities],
     configKeys: [...provider.configKeys],
-    ...(provider.target ? { target: { ...provider.target } } : {}),
+    ...(provider.target
+      ? {
+          target: {
+            ...provider.target,
+            ...(provider.target.commandFlags
+              ? { commandFlags: [...provider.target.commandFlags] }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 
-async function loadCatalogModule() {
-  vi.resetModules();
-  vi.doMock("@/chat/logging", () => ({
-    logInfo: () => undefined,
-  }));
-  vi.doMock("@/chat/plugins/registry", () => ({
-    getPluginCatalogSignature: () => currentSignature,
-    getPluginCapabilityProviders: () =>
-      currentProviders.map(cloneProviderDefinition),
-  }));
-  return await import("@/chat/capabilities/catalog");
-}
-
 afterEach(() => {
-  currentSignature = "sig-1";
+  currentSignature = "default";
   currentProviders = [];
-  vi.resetModules();
-  vi.doUnmock("@/chat/logging");
-  vi.doUnmock("@/chat/plugins/registry");
 });
 
 describe("capability catalog", () => {
-  it("refreshes cached providers when the plugin catalog signature changes", async () => {
+  it("refreshes cached providers when the plugin catalog signature changes", () => {
+    currentSignature = "refresh:before";
     currentProviders = [
       {
         provider: "demo",
@@ -46,13 +51,11 @@ describe("capability catalog", () => {
       },
     ];
 
-    const catalog = await loadCatalogModule();
-
-    expect(catalog.getCapabilityProvider("demo.read")).toMatchObject({
+    expect(getCapabilityProvider("demo.read", catalogSource)).toMatchObject({
       provider: "demo",
     });
 
-    currentSignature = "sig-2";
+    currentSignature = "refresh:after";
     currentProviders = [
       {
         provider: "other",
@@ -61,11 +64,12 @@ describe("capability catalog", () => {
       },
     ];
 
-    expect(catalog.getCapabilityProvider("demo.read")).toBeUndefined();
-    expect(catalog.isKnownCapability("other.read")).toBe(true);
+    expect(getCapabilityProvider("demo.read", catalogSource)).toBeUndefined();
+    expect(isKnownCapability("other.read", catalogSource)).toBe(true);
   });
 
-  it("returns defensive copies from provider accessors", async () => {
+  it("returns defensive copies from provider accessors", () => {
+    currentSignature = "defensive-copies";
     currentProviders = [
       {
         provider: "demo",
@@ -79,24 +83,26 @@ describe("capability catalog", () => {
       },
     ];
 
-    const catalog = await loadCatalogModule();
-    const listed = catalog.listCapabilityProviders();
-    const direct = catalog.getCapabilityProvider("demo.read");
+    const listed = listCapabilityProviders(catalogSource);
+    const direct = getCapabilityProvider("demo.read", catalogSource);
 
     expect(direct).toBeDefined();
+    if (!direct) {
+      throw new Error("Expected demo.read provider");
+    }
 
     listed[0]!.provider = "mutated";
     listed[0]!.capabilities.push("demo.write");
     listed[0]!.configKeys.push("demo.extra");
     listed[0]!.target!.configKey = "mutated.repo";
     listed[0]!.target!.commandFlags!.push("--mutated");
-    direct!.provider = "direct-mutation";
-    direct!.capabilities.push("direct.write");
-    direct!.configKeys.push("direct.extra");
-    direct!.target!.configKey = "direct.repo";
-    direct!.target!.commandFlags!.push("--direct");
+    direct.provider = "direct-mutation";
+    direct.capabilities.push("direct.write");
+    direct.configKeys.push("direct.extra");
+    direct.target!.configKey = "direct.repo";
+    direct.target!.commandFlags!.push("--direct");
 
-    expect(catalog.listCapabilityProviders()).toEqual([
+    expect(listCapabilityProviders(catalogSource)).toEqual([
       {
         provider: "demo",
         capabilities: ["demo.read"],
@@ -108,7 +114,7 @@ describe("capability catalog", () => {
         },
       },
     ]);
-    expect(catalog.getCapabilityProvider("demo.read")).toEqual({
+    expect(getCapabilityProvider("demo.read", catalogSource)).toEqual({
       provider: "demo",
       capabilities: ["demo.read"],
       configKeys: ["demo.token"],

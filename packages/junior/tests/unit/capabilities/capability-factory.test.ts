@@ -1,38 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { StateAdapter } from "chat";
+import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
+import type { CredentialBroker } from "@/chat/credentials/broker";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const createPluginBrokerMock = vi.fn();
-const getPluginProvidersMock = vi.fn<() => PluginDefinition[]>();
 const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
 };
 
-vi.mock("@/chat/capabilities/catalog", () => ({
-  logCapabilityCatalogLoadedOnce: vi.fn(),
-}));
-
-vi.mock("@/chat/plugins/registry", () => ({
-  createPluginBroker: (...args: unknown[]) => createPluginBrokerMock(...args),
-  getPluginProviders: () => getPluginProvidersMock(),
-}));
-
-vi.mock("@/chat/state/adapter", () => ({
-  getStateAdapter: () => ({
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-  }),
-}));
-
 describe("capability factory", () => {
-  afterEach(() => {
-    createPluginBrokerMock.mockReset();
-    getPluginProvidersMock.mockReset();
-    vi.resetModules();
-  });
-
   it("uses normal plugin brokers for credential providers", async () => {
-    const broker = {
+    const userTokenStore: UserTokenStore = {
+      get: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
+    const stateAdapter = {} as StateAdapter;
+    const broker: CredentialBroker = {
       issue: vi.fn(async () => ({
         id: "lease-1",
         provider: "example",
@@ -40,8 +25,8 @@ describe("capability factory", () => {
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       })),
     };
-    createPluginBrokerMock.mockReturnValue(broker);
-    getPluginProvidersMock.mockReturnValue([
+    const createPluginBroker = vi.fn(() => broker);
+    const getPluginProviders = vi.fn((): PluginDefinition[] => [
       {
         manifest: {
           name: "example",
@@ -63,16 +48,24 @@ describe("capability factory", () => {
       },
     ]);
 
-    const { issueProviderCredentialLease } =
-      await import("@/chat/capabilities/factory");
-    const lease = await issueProviderCredentialLease({
-      context: USER_CREDENTIAL_CONTEXT,
-      provider: "example",
-      reason: "test:api-headers",
-    });
+    const lease = await issueProviderCredentialLease(
+      {
+        context: USER_CREDENTIAL_CONTEXT,
+        provider: "example",
+        reason: "test:api-headers",
+      },
+      {
+        createPluginBroker,
+        createUserTokenStoreForStateAdapter: () => userTokenStore,
+        getPluginProviders,
+        getStateAdapter: () => stateAdapter,
+        logCapabilityCatalogLoadedOnce: vi.fn(),
+        routerCache: new WeakMap(),
+      },
+    );
 
-    expect(createPluginBrokerMock).toHaveBeenCalledWith("example", {
-      userTokenStore: expect.any(Object),
+    expect(createPluginBroker).toHaveBeenCalledWith("example", {
+      userTokenStore,
     });
     expect(broker.issue).toHaveBeenCalledWith({
       context: USER_CREDENTIAL_CONTEXT,
