@@ -43,6 +43,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   skill-file coverage into `tests/unit/sandbox/executor-tools.test.ts`.
 - Moved the remaining sandbox executor lifecycle/session-manager coverage into
   `tests/unit/sandbox/executor-lifecycle.test.ts`.
+- Extracted shared `generateAssistantReply` runtime mocks into
+  `tests/fixtures/respond-runtime.ts` for the provider-retry and timeout-resume
+  suites, leaving each file focused on its fake Pi agent behavior and
+  assertions.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -81,6 +85,11 @@ and lazy workspace cache/replacement mechanics now have direct unit coverage.
 The remaining file still uses a mocked runtime seam to prove that
 `generateAssistantReply` avoids sandbox booting unless a sandbox-backed tool is
 used and preserves sandbox metadata on error replies.
+
+`respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now share a
+single runtime mock fixture, which reduces duplication but does not change the
+layer assessment: the tests still prove turn orchestration through a mocked
+`generateAssistantReply` seam.
 
 Direction:
 
