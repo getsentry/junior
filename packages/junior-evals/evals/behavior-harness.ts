@@ -177,6 +177,7 @@ export interface EvalScenario {
 }
 
 interface EvalScenarioRunOptions {
+  createSlackRuntime?: typeof createSlackRuntime;
   logRecords?: EmittedLogRecord[];
 }
 
@@ -1804,7 +1805,8 @@ export async function runEvalScenario(
       observations,
     );
 
-    const slackRuntime = createSlackRuntime({
+    const createRuntime = options.createSlackRuntime ?? createSlackRuntime;
+    const slackRuntime = createRuntime({
       getSlackAdapter: () => slackAdapter as any,
       services,
     });

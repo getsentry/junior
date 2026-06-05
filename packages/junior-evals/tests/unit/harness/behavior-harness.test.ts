@@ -1,69 +1,71 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-
-const {
-  handleSubscribedMessageMock,
-  observedRuntimeIds,
-  originalStateAdapterEnv,
-  noopAsync,
-  handleNewMentionMock,
-} = vi.hoisted(() => {
-  const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  const observedRuntimeIds = {
-    destinationChannelId: undefined as string | undefined,
-    juniorBaseUrl: undefined as string | undefined,
-    messageThreadId: undefined as string | undefined,
-    threadId: undefined as string | undefined,
-  };
-
-  return {
-    observedRuntimeIds,
-    originalStateAdapterEnv,
-    noopAsync: vi.fn(async () => {}),
-    handleNewMentionMock: vi.fn(
-      async (
-        thread: { id: string; post: (value: unknown) => Promise<void> },
-        message: { threadId?: string },
-        options?: { destination?: { channelId?: string } },
-      ) => {
-        observedRuntimeIds.destinationChannelId =
-          options?.destination?.channelId;
-        observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
-        observedRuntimeIds.threadId = thread.id;
-        observedRuntimeIds.messageThreadId = message.threadId;
-        await thread.post("observed");
-      },
-    ),
-    handleSubscribedMessageMock: vi.fn(
-      async (
-        thread: { id: string; post: (value: unknown) => Promise<void> },
-        message: { threadId?: string },
-        options?: { destination?: { channelId?: string } },
-      ) => {
-        observedRuntimeIds.destinationChannelId =
-          options?.destination?.channelId;
-        observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
-        observedRuntimeIds.threadId = thread.id;
-        observedRuntimeIds.messageThreadId = message.threadId;
-        await thread.post("observed");
-      },
-    ),
-  };
-});
-
-vi.mock("@/chat/app/factory", () => ({
-  createSlackRuntime: vi.fn(() => ({
-    handleNewMention: handleNewMentionMock,
-    handleSubscribedMessage: handleSubscribedMessageMock,
-    handleAssistantThreadStarted: noopAsync,
-    handleAssistantContextChanged: noopAsync,
-  })),
-}));
+import type { createSlackRuntime } from "@/chat/app/factory";
 
 import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
 } from "../../../evals/behavior-harness";
+
+type SlackRuntimeFactory = typeof createSlackRuntime;
+type SlackRuntime = ReturnType<SlackRuntimeFactory>;
+
+const { originalStateAdapterEnv } = vi.hoisted(() => {
+  const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  return { originalStateAdapterEnv };
+});
+const observedRuntimeIds = {
+  destinationChannelId: undefined as string | undefined,
+  juniorBaseUrl: undefined as string | undefined,
+  messageThreadId: undefined as string | undefined,
+  threadId: undefined as string | undefined,
+};
+const noopAsync = vi.fn(async () => {});
+const handleNewMentionMock = vi.fn(
+  async (
+    thread: { id: string; post: (value: unknown) => Promise<void> },
+    message: { threadId?: string },
+    options?: { destination?: { channelId?: string } },
+  ) => {
+    observedRuntimeIds.destinationChannelId = options?.destination?.channelId;
+    observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
+    observedRuntimeIds.threadId = thread.id;
+    observedRuntimeIds.messageThreadId = message.threadId;
+    await thread.post("observed");
+  },
+);
+const handleSubscribedMessageMock = vi.fn(
+  async (
+    thread: { id: string; post: (value: unknown) => Promise<void> },
+    message: { threadId?: string },
+    options?: { destination?: { channelId?: string } },
+  ) => {
+    observedRuntimeIds.destinationChannelId = options?.destination?.channelId;
+    observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
+    observedRuntimeIds.threadId = thread.id;
+    observedRuntimeIds.messageThreadId = message.threadId;
+    await thread.post("observed");
+  },
+);
+const createSlackRuntimeMock = vi.fn(
+  (_options: Parameters<SlackRuntimeFactory>[0]) =>
+    ({
+      handleNewMention: handleNewMentionMock,
+      handleSubscribedMessage: handleSubscribedMessageMock,
+      handleAssistantThreadStarted: noopAsync,
+      handleAssistantContextChanged: noopAsync,
+    }) as unknown as SlackRuntime,
+);
+const createObservedSlackRuntime = ((options) =>
+  createSlackRuntimeMock(options)) as SlackRuntimeFactory;
+
+function runObservedEvalScenario(
+  scenario: Parameters<typeof runEvalScenario>[0],
+) {
+  return runEvalScenario(scenario, {
+    createSlackRuntime: createObservedSlackRuntime,
+  });
+}
 
 describe("behavior harness", () => {
   afterAll(() => {
@@ -81,11 +83,12 @@ describe("behavior harness", () => {
     observedRuntimeIds.messageThreadId = undefined;
     handleNewMentionMock.mockClear();
     handleSubscribedMessageMock.mockClear();
+    createSlackRuntimeMock.mockClear();
     noopAsync.mockClear();
   });
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {
-    const result = await runEvalScenario({
+    const result = await runObservedEvalScenario({
       events: [
         {
           type: "new_mention",
@@ -122,7 +125,7 @@ describe("behavior harness", () => {
   });
 
   it("normalizes eval destinations from adapter channel ids", async () => {
-    await runEvalScenario({
+    await runObservedEvalScenario({
       events: [
         {
           type: "new_mention",
@@ -149,7 +152,7 @@ describe("behavior harness", () => {
     delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
     try {
       await expect(
-        runEvalScenario({
+        runObservedEvalScenario({
           overrides: {
             credential_providers: ["github"],
           },
@@ -177,7 +180,7 @@ describe("behavior harness", () => {
     delete process.env.JUNIOR_BASE_URL;
     try {
       await expect(
-        runEvalScenario({
+        runObservedEvalScenario({
           overrides: {
             credential_providers: ["github"],
           },
@@ -202,7 +205,7 @@ describe("behavior harness", () => {
       thread_ts: "1700000000.0002",
     };
 
-    const result = await runEvalScenario({
+    const result = await runObservedEvalScenario({
       events: [
         {
           type: "new_mention",
@@ -265,7 +268,7 @@ describe("behavior harness", () => {
       },
     );
 
-    const result = await runEvalScenario({
+    const result = await runObservedEvalScenario({
       events: [
         {
           type: "new_mention",
@@ -307,7 +310,7 @@ describe("behavior harness", () => {
     const cwd = process.cwd();
 
     await expect(
-      runEvalScenario({
+      runObservedEvalScenario({
         events: [],
         overrides: {
           plugin_dirs: ["evals/fixtures/plugins"],

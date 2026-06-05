@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { createEnvFileLoader } from "../junior/src/env/files";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
+const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const applyEnvFile = createEnvFileLoader();
 const EVAL_TEST_TIMEOUT_MS = 60_000;
@@ -32,6 +33,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
       "@junior-tests": path.resolve(juniorPackageRoot, "tests"),
+      "@sentry/junior-plugin-api": path.resolve(
+        pluginApiPackageRoot,
+        "src/index.ts",
+      ),
     },
   },
   test: {

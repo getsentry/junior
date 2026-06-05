@@ -258,17 +258,11 @@ function buildCredentialFailureError(
 ): PluginCredentialFailureError {
   const providerLabel =
     provider === "github" ? "GitHub" : services.formatProviderLabel(provider);
-  const plugin = services.getPluginDefinition(provider);
-  const credentialType = plugin?.manifest.credentials?.type;
   const commandSummary = formatCommand(command);
-  const remediation =
-    provider === "github" && credentialType === "github-app"
-      ? "Verify the GitHub App installation covers the target repository and the host GitHub App environment variables are current."
-      : `Verify the ${providerLabel} provider credentials before retrying.`;
 
   return new PluginCredentialFailureError(
     provider,
-    `${providerLabel} credentials were rejected while running \`${commandSummary}\`. ${remediation}`,
+    `${providerLabel} credentials were rejected while running \`${commandSummary}\`. Verify the ${providerLabel} provider credentials before retrying.`,
   );
 }
 
