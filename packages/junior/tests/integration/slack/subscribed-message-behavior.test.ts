@@ -13,13 +13,13 @@ import {
 
 describe("Slack behavior: subscribed messages", () => {
   it("skips reply when classifier says not to reply", async () => {
-    const classifierCalls: string[] = [];
+    let classifierCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (params: { prompt?: unknown }) => {
-            classifierCalls.push(String(params.prompt));
+          completeObject: async () => {
+            classifierCallCount += 1;
             return {
               object: {
                 should_reply: false,
@@ -51,7 +51,7 @@ describe("Slack behavior: subscribed messages", () => {
 
     await slackRuntime.handleSubscribedMessage(thread, message);
 
-    expect(classifierCalls).toHaveLength(1);
+    expect(classifierCallCount).toBe(1);
     expect(thread.posts).toHaveLength(0);
   });
 
@@ -91,14 +91,14 @@ describe("Slack behavior: subscribed messages", () => {
   });
 
   it("replies when classifier approves a subscribed-thread message", async () => {
-    const classifierCalls: string[] = [];
+    let classifierCallCount = 0;
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (params: { prompt?: unknown }) => {
-            classifierCalls.push(String(params.prompt));
+          completeObject: async () => {
+            classifierCallCount += 1;
             return {
               object: {
                 should_reply: true,
@@ -131,7 +131,7 @@ describe("Slack behavior: subscribed messages", () => {
 
     await slackRuntime.handleSubscribedMessage(thread, message);
 
-    expect(classifierCalls).toHaveLength(1);
+    expect(classifierCallCount).toBe(1);
     expect(replyCallCount).toBe(1);
     expect(thread.posts).toHaveLength(1);
     expect(postedText(thread.posts[0])).toContain("monitor dashboards");

@@ -123,6 +123,41 @@ describe("maybeUpdateAssistantTitle", () => {
       );
     });
 
+    it("passes the earliest human message to the title generator", async () => {
+      const args = makeArgs(DM_CHANNEL_ID);
+      args.conversation = makeConversation({
+        messages: [
+          {
+            id: "assistant-starter",
+            role: "assistant",
+            text: "How can I help?",
+            createdAtMs: 1_700_000_000_000,
+            author: { isBot: true, userId: "B_JUNIOR" },
+          },
+          {
+            id: "current-user",
+            role: "user",
+            text: "Can you add the regression window?",
+            createdAtMs: 1_700_000_020_000,
+            author: { isBot: false, userId: "U_USER" },
+          },
+          {
+            id: "original-user",
+            role: "user",
+            text: "Original production issue summary",
+            createdAtMs: 1_700_000_010_000,
+            author: { isBot: false, userId: "U_USER" },
+          },
+        ],
+      });
+
+      await maybeUpdateAssistantTitle(args);
+
+      expect(args.generateThreadTitle).toHaveBeenCalledWith(
+        "Original production issue summary",
+      );
+    });
+
     it("returns the generated title even when setAssistantTitle throws a permission error", async () => {
       const permissionError = { data: { error: "no_permission" } };
       const args = makeArgs(DM_CHANNEL_ID, {

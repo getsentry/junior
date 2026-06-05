@@ -8,6 +8,7 @@ import {
   createTestThread,
 } from "../../fixtures/slack-harness";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import { conversationMessages } from "../../fixtures/slack-behavior";
 
 const emptyThreadReplies = async () => [];
 
@@ -100,24 +101,17 @@ describe("Slack behavior: thread title", () => {
     );
   });
 
-  it("uses the first human message we know about in the thread", async () => {
+  it("hydrates earlier human thread messages before generating a title", async () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
       services: {
         conversationMemory: {
-          completeText: async (params) => {
-            const prompt =
-              typeof params.messages[0]?.content === "string"
-                ? params.messages[0].content
-                : "";
-            return {
-              text: prompt.includes("Original production issue summary")
-                ? "Production Issue Summary"
-                : "Follow-up Clarification",
+          completeText: async () =>
+            ({
+              text: "Production Issue Summary",
               message: { role: "assistant", content: "" },
-            } as never;
-          },
+            }) as never,
         },
         replyExecutor: {
           generateAssistantReply: async () =>
@@ -148,6 +142,24 @@ describe("Slack behavior: thread title", () => {
 
     await flushTitleWork();
 
+    expect(
+      conversationMessages(thread)
+        .filter(
+          (message) =>
+            message.id === "msg-title4-earlier" ||
+            message.id === "msg-title4-current",
+        )
+        .map((message) => ({ id: message.id, text: message.text })),
+    ).toEqual([
+      {
+        id: "msg-title4-earlier",
+        text: "Original production issue summary",
+      },
+      {
+        id: "msg-title4-current",
+        text: "Can you also include the regression window?",
+      },
+    ]);
     expect(generatedTitleCall(slackAdapter)).toEqual(
       expect.objectContaining({
         title: "Production Issue Summary",

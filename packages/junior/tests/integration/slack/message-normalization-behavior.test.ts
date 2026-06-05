@@ -2,15 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { conversationMessages } from "../../fixtures/slack-behavior";
 import {
   createTestDestination,
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-interface CapturedCall {
-  prompt: string;
-}
 
 describe("Slack behavior: message normalization", () => {
   afterEach(async () => {
@@ -18,7 +15,7 @@ describe("Slack behavior: message normalization", () => {
   });
 
   it("strips leading Slack mention token before invoking the agent", async () => {
-    const calls: CapturedCall[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -35,8 +32,8 @@ describe("Slack behavior: message normalization", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            calls.push({ prompt });
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply("Summary sent.");
           },
         },
@@ -56,18 +53,20 @@ describe("Slack behavior: message normalization", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.prompt).toBe("please summarize the deploy status");
+    expect(replyCallCount).toBe(1);
+    expect(conversationMessages(thread)[0]?.text).toBe(
+      "please summarize the deploy status",
+    );
   });
 
   it("preserves non-leading mention tokens in user content", async () => {
-    const calls: CapturedCall[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            calls.push({ prompt });
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply("Done.");
           },
         },
@@ -87,18 +86,20 @@ describe("Slack behavior: message normalization", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
+    expect(replyCallCount).toBe(1);
+    expect(conversationMessages(thread)[0]?.text).toContain(
+      "message <@U_ONCALL> after deploy",
+    );
   });
 
   it("passes legacy attachment text into the current turn prompt", async () => {
-    const calls: CapturedCall[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            calls.push({ prompt });
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply("Alert reviewed.");
           },
         },
@@ -132,10 +133,14 @@ describe("Slack behavior: message normalization", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.prompt).toContain("Production deploy");
-    expect(calls[0]?.prompt).toContain("OOM on pod-42");
-    expect(calls[0]?.prompt).toContain("Service: checkout");
+    expect(replyCallCount).toBe(1);
+    expect(conversationMessages(thread)[0]?.text).toContain(
+      "Production deploy",
+    );
+    expect(conversationMessages(thread)[0]?.text).toContain("OOM on pod-42");
+    expect(conversationMessages(thread)[0]?.text).toContain(
+      "Service: checkout",
+    );
   });
 
   it("does not invoke the agent for self-authored mention messages", async () => {
