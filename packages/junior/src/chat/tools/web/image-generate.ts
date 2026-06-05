@@ -20,12 +20,29 @@ ${JUNIOR_PERSONALITY}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
-async function enrichImagePrompt(rawPrompt: string): Promise<string> {
+interface ImageGenerateServices {
+  completeText: typeof completeText;
+  getGatewayApiKey: typeof getGatewayApiKey;
+  now: () => number;
+}
+
+const defaultImageGenerateServices: ImageGenerateServices = {
+  completeText,
+  getGatewayApiKey,
+  now: Date.now,
+};
+
+async function enrichImagePrompt(
+  rawPrompt: string,
+  services: Pick<ImageGenerateServices, "completeText" | "now">,
+): Promise<string> {
   try {
-    const { text } = await completeText({
+    const { text } = await services.completeText({
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
+      messages: [
+        { role: "user", content: rawPrompt, timestamp: services.now() },
+      ],
       maxTokens: 1024,
     });
     if (text && text.trim().length > 0) {
@@ -77,6 +94,7 @@ function parseImageGenerationError(
   }
 }
 
+/** Create the image-generation tool that stores generated files as artifacts. */
 export function createImageGenerateTool(
   hooks: ToolHooks,
   deps: ImageGenerateToolDeps = {},
@@ -93,14 +111,22 @@ export function createImageGenerateTool(
     }),
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
+      const services: ImageGenerateServices = {
+        completeText:
+          deps.completeText ?? defaultImageGenerateServices.completeText,
+        getGatewayApiKey:
+          deps.getGatewayApiKey ??
+          defaultImageGenerateServices.getGatewayApiKey,
+        now: deps.now ?? defaultImageGenerateServices.now,
+      };
       // Raw fetch does not resolve AI Gateway env auth on its own, so this
       // path has to turn the documented env credential into a bearer token.
-      const apiKey = getGatewayApiKey();
+      const apiKey = services.getGatewayApiKey();
       if (!apiKey) {
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
-      const enrichedPrompt = await enrichImagePrompt(prompt);
+      const enrichedPrompt = await enrichImagePrompt(prompt, services);
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {
@@ -162,7 +188,7 @@ export function createImageGenerateTool(
         const extension = extensionForMediaType(mimeType);
         uploads.push({
           data: bytes,
-          filename: `generated-image-${Date.now()}-${index + 1}.${extension}`,
+          filename: `generated-image-${services.now()}-${index + 1}.${extension}`,
           mimeType,
         });
       }
