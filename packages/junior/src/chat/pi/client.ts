@@ -40,6 +40,10 @@ import {
   toGenAiMessagesTraceAttributes,
   toGenAiTextMetadata,
 } from "@/chat/conversation-privacy";
+import {
+  createProviderError,
+  isProviderRetryError,
+} from "@/chat/services/provider-retry";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
@@ -231,21 +235,26 @@ export async function completeText(params: {
     "gen_ai.chat",
     logContextFromMetadata(params.modelId, params.metadata),
     async () => {
-      const message = await completeSimple(
-        model,
-        {
-          systemPrompt: params.system,
-          messages: params.messages,
-        },
-        {
-          ...(apiKey ? { apiKey } : {}),
-          temperature: params.temperature,
-          maxTokens: params.maxTokens,
-          reasoning: params.thinkingLevel,
-          signal: params.signal,
-          metadata: params.metadata,
-        },
-      );
+      let message: Awaited<ReturnType<typeof completeSimple>>;
+      try {
+        message = await completeSimple(
+          model,
+          {
+            systemPrompt: params.system,
+            messages: params.messages,
+          },
+          {
+            ...(apiKey ? { apiKey } : {}),
+            temperature: params.temperature,
+            maxTokens: params.maxTokens,
+            reasoning: params.thinkingLevel,
+            signal: params.signal,
+            metadata: params.metadata,
+          },
+        );
+      } catch (error) {
+        throw createProviderError(error);
+      }
       const outputText = extractText(message);
       const outputMessagesAttribute = serializeGenAiAttribute(
         messageAttributeMode === "metadata"
@@ -292,7 +301,7 @@ export async function completeText(params: {
           },
           "AI completion returned provider error",
         );
-        throw new Error(`AI provider error: ${providerMessage}`);
+        throw createProviderError(providerMessage);
       }
 
       return {
@@ -361,6 +370,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       ],
     }));
   } catch (error) {
+    if (isProviderRetryError(error)) {
+      throw error;
+    }
+
     logException(
       error,
       "ai_completion_failed",

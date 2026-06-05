@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import { logException, logInfo, logWarn } from "@/chat/logging";
+import { isProviderRetryError } from "@/chat/services/provider-retry";
 import type { ConversationWorkQueue } from "./queue";
 import {
   checkInConversationWork,
@@ -394,15 +395,17 @@ export async function processConversationWork(
         "Conversation work release failed after runner error",
       );
     }
-    logException(
-      error,
-      "conversation_work_failed",
-      { conversationId },
-      {
-        "app.worker.elapsed_ms": now(options) - startedAtMs,
-      },
-      "Conversation work failed",
-    );
+    if (!isProviderRetryError(error)) {
+      logException(
+        error,
+        "conversation_work_failed",
+        { conversationId },
+        {
+          "app.worker.elapsed_ms": now(options) - startedAtMs,
+        },
+        "Conversation work failed",
+      );
+    }
     throw error;
   } finally {
     clearInterval(timer);

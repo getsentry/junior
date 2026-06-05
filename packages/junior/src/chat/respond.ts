@@ -106,8 +106,8 @@ import {
   type AgentTurnDiagnostics,
 } from "@/chat/services/turn-result";
 import {
-  isRetryableProviderError,
-  trimRetryableProviderErrorTail,
+  isProviderRetryError,
+  nextProviderRetry,
 } from "@/chat/services/provider-retry";
 import {
   selectTurnThinkingLevel,
@@ -150,7 +150,6 @@ import {
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
 
-const PROVIDER_RETRY_DELAYS_MS = [1_000, 2_000] as const;
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
 function sleep(ms: number): Promise<void> {
@@ -1480,31 +1479,25 @@ export async function generateAssistantReply(
             }
 
             const lastAssistant = outputMessages.at(-1);
-            const retryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt];
-            if (
-              retryDelayMs === undefined ||
-              !isRetryableProviderError(lastAssistant)
-            ) {
+            const providerRetry = nextProviderRetry({
+              attempt,
+              lastAssistant,
+              messages: agent.state.messages,
+            });
+            if (!providerRetry) {
               break;
             }
 
             retryUsage = turnUsage;
-            const retryMessages = trimRetryableProviderErrorTail(
-              agent.state.messages,
-            );
-            if (!retryMessages) {
-              break;
-            }
-
-            agent.state.messages = retryMessages;
-            await persistSafeBoundary(retryMessages);
+            agent.state.messages = providerRetry.messages;
+            await persistSafeBoundary(providerRetry.messages);
             logWarn(
               "agent_turn_provider_retry",
               spanContext,
               {},
               "Retrying transient provider failure",
             );
-            await sleep(retryDelayMs);
+            await sleep(providerRetry.delayMs);
             run = agent.continue();
           }
         },
@@ -1698,6 +1691,9 @@ export async function generateAssistantReply(
     }
 
     if (isRetryableTurnError(error)) {
+      throw error;
+    }
+    if (isProviderRetryError(error)) {
       throw error;
     }
     if (isTurnInputCommitLostError(error)) {

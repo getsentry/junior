@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { createProviderError } from "@/chat/services/provider-retry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -81,6 +82,41 @@ describe("Slack behavior: subscribed messages", () => {
     await slackRuntime.handleSubscribedMessage(thread, message);
 
     expect(classifierCalls).toHaveLength(1);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("rethrows retryable classifier provider errors for durable retry", async () => {
+    const providerError = createProviderError(
+      new Error("Anthropic stream ended before message_stop"),
+    );
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            throw providerError;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new Error("generateAssistantReply should not run");
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002000.001" });
+    const message = createTestMessage({
+      id: "m-subscribed-provider-retry",
+      text: "can you check this?",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+
+    await expect(
+      slackRuntime.handleSubscribedMessage(thread, message),
+    ).rejects.toBe(providerError);
     expect(thread.posts).toHaveLength(0);
   });
 

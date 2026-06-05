@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
+import { isProviderRetryError } from "@/chat/services/provider-retry";
 import {
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
@@ -63,6 +64,16 @@ export interface ReplyHooks {
 
 const THREAD_OPTOUT_ACK =
   "Understood. I'll stay out of this thread unless someone @mentions me again.";
+
+/** Preserve retry/yield control flow for the durable worker boundary. */
+function shouldRethrowTurnControlError(error: unknown): boolean {
+  return (
+    isCooperativeTurnYieldError(error) ||
+    isTurnInputCommitLostError(error) ||
+    isProviderRetryError(error)
+  );
+}
+
 /** Apply a subscribed-thread opt-out decision before any agent work runs. */
 async function maybeHandleThreadOptOutDecision(args: {
   beforeFirstResponsePost?: () => Promise<void>;
@@ -516,10 +527,7 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (
-          isCooperativeTurnYieldError(error) ||
-          isTurnInputCommitLostError(error)
-        ) {
+        if (shouldRethrowTurnControlError(error)) {
           throw error;
         }
         const errorContext = logContext({
@@ -755,10 +763,7 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
-        if (
-          isCooperativeTurnYieldError(error) ||
-          isTurnInputCommitLostError(error)
-        ) {
+        if (shouldRethrowTurnControlError(error)) {
           throw error;
         }
         const errorContext = logContext({

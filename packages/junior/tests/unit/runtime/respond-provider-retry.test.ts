@@ -257,7 +257,7 @@ describe("generateAssistantReply provider retry", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     const reply = await replyPromise;
 
     expect(reply.text).toBe("Recovered.");

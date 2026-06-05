@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  isRetryableProviderError,
-  trimRetryableProviderErrorTail,
+  nextProviderRetry,
+  createProviderError,
+  isProviderRetryError,
 } from "@/chat/services/provider-retry";
 
 function assistantError(
-  errorMessage: string,
+  errorMessage: string | undefined,
 ): Pick<AssistantMessage, "stopReason" | "errorMessage"> {
   return {
     stopReason: "error",
@@ -16,41 +17,26 @@ function assistantError(
 }
 
 describe("provider retry helpers", () => {
-  it("matches transient provider stream failures", () => {
-    expect(
-      isRetryableProviderError(
-        assistantError("Anthropic stream ended before message_stop"),
-      ),
-    ).toBe(true);
-    expect(
-      isRetryableProviderError(
-        assistantError("Provider finish_reason: network_error"),
-      ),
-    ).toBe(true);
-    expect(isRetryableProviderError(assistantError("overloaded_error"))).toBe(
-      true,
+  it("marks retryable provider-boundary exceptions", () => {
+    const error = createProviderError(
+      new Error("Anthropic stream ended before message_stop"),
     );
-  });
 
-  it("does not match auth or validation failures", () => {
-    expect(isRetryableProviderError(assistantError("invalid_api_key"))).toBe(
+    expect(error.message).toBe(
+      "AI provider error: Anthropic stream ended before message_stop",
+    );
+    expect(isProviderRetryError(error)).toBe(true);
+    expect(isProviderRetryError(createProviderError("invalid_api_key"))).toBe(
       false,
     );
-    expect(isRetryableProviderError(assistantError("400 bad request"))).toBe(
-      false,
-    );
-    expect(isRetryableProviderError({ stopReason: "stop" })).toBe(false);
+    expect(isProviderRetryError(createProviderError(""))).toBe(false);
+    expect(isProviderRetryError(new Error(error.message))).toBe(false);
   });
 
-  it("trims a failed assistant tail only at a continuable boundary", () => {
+  it("builds a retry step from resumable Pi history", () => {
     const user = {
       role: "user",
       content: [{ type: "text", text: "help" }],
-    } as PiMessage;
-    const toolResult = {
-      role: "toolResult",
-      toolName: "bash",
-      content: [{ type: "text", text: "ok" }],
     } as PiMessage;
     const failedAssistant = {
       role: "assistant",
@@ -59,8 +45,52 @@ describe("provider retry helpers", () => {
     } as unknown as PiMessage;
 
     expect(
-      trimRetryableProviderErrorTail([user, toolResult, failedAssistant]),
-    ).toEqual([user, toolResult]);
-    expect(trimRetryableProviderErrorTail([failedAssistant])).toBeUndefined();
+      nextProviderRetry({
+        attempt: 0,
+        lastAssistant: assistantError(
+          "Anthropic stream ended before message_stop",
+        ),
+        messages: [user, failedAssistant],
+      }),
+    ).toEqual({ delayMs: 2_000, messages: [user] });
+  });
+
+  it("does not retry permanent, exhausted, or unresumable Pi failures", () => {
+    const user = {
+      role: "user",
+      content: [{ type: "text", text: "help" }],
+    } as PiMessage;
+    const failedAssistant = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+    } as unknown as PiMessage;
+    const retry = (
+      overrides: {
+        attempt?: number;
+        lastAssistant?: Pick<AssistantMessage, "stopReason" | "errorMessage">;
+        messages?: PiMessage[];
+      } = {},
+    ) =>
+      nextProviderRetry({
+        attempt: 0,
+        lastAssistant: assistantError("Anthropic overloaded"),
+        messages: [user, failedAssistant],
+        ...overrides,
+      });
+
+    expect(
+      retry({
+        lastAssistant: assistantError("400 bad request"),
+      }),
+    ).toBeUndefined();
+    expect(
+      retry({
+        lastAssistant: assistantError(undefined),
+      }),
+    ).toBeUndefined();
+    expect(retry({ lastAssistant: { stopReason: "stop" } })).toBeUndefined();
+    expect(retry({ attempt: 3 })).toBeUndefined();
+    expect(retry({ messages: [failedAssistant] })).toBeUndefined();
   });
 });

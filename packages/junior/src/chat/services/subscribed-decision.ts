@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { escapeXml } from "@/chat/xml";
+import { isProviderRetryError } from "@/chat/services/provider-retry";
 
 export enum SubscribedReplyReason {
   ThreadOptOut = "thread_opt_out",
@@ -522,6 +523,9 @@ export async function decideSubscribedThreadReply(args: {
       reasonDetail: reason,
     };
   } catch (error) {
+    if (isProviderRetryError(error)) {
+      throw error;
+    }
     args.logClassifierFailure(error, args.input);
     return {
       shouldReply: false,

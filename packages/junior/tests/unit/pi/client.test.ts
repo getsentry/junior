@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
@@ -170,5 +171,25 @@ describe("completeText", () => {
     expect(endAttributes["gen_ai.output.messages"]).not.toContain(
       "private answer",
     );
+  });
+
+  it("rethrows retryable object provider failures without capturing", async () => {
+    mocks.completeSimple.mockRejectedValue(
+      new Error("Anthropic stream ended before message_stop"),
+    );
+
+    const { completeObject } = await import("@/chat/pi/client");
+
+    await expect(
+      completeObject({
+        modelId: "openai/gpt-4o-mini",
+        schema: z.object({ ok: z.boolean() }),
+        prompt: "return json",
+      }),
+    ).rejects.toThrow(
+      "AI provider error: Anthropic stream ended before message_stop",
+    );
+    expect(mocks.logWarn).not.toHaveBeenCalled();
+    expect(mocks.logException).not.toHaveBeenCalled();
   });
 });
