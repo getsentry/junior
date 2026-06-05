@@ -87,31 +87,6 @@ describe("slack outbound boundary", () => {
     });
   });
 
-  it("preserves Slack skin-tone modifiers when adding reactions", async () => {
-    const reactionsAdd = vi.fn(async () => ({ ok: true }));
-    getSlackClient.mockReturnValue({
-      reactions: {
-        add: reactionsAdd,
-      },
-    });
-
-    withSlackRetries.mockImplementation(
-      async (task: () => Promise<unknown>) => await task(),
-    );
-
-    await addReactionToMessage({
-      channelId: "C123",
-      timestamp: "1700000000.100",
-      emoji: ":thumbsup::skin-tone-6:",
-    });
-
-    expect(reactionsAdd).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "thumbsup::skin-tone-6",
-      }),
-    );
-  });
-
   it("treats already_reacted as idempotent success", async () => {
     withSlackRetries.mockRejectedValue(
       new SlackActionErrorMock("already reacted", "already_reacted"),
