@@ -71,6 +71,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/mcp-auth-runtime-slack.ts` and split runtime coverage by
   mention resume, subscribed-thread parking, and direct-provider activation
   contracts.
+- Extracted generic OAuth Slack callback setup into
+  `tests/fixtures/oauth-callback-slack.ts` and split callback coverage by app
+  home publication, resume context, thread-lock freshness, and abandoned-session
+  guards.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -171,7 +175,10 @@ Files:
 - `packages/junior/tests/integration/mcp-auth-runtime-mention-resume.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-subscribed-parking.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-direct-provider.test.ts`
-- `packages/junior/tests/integration/oauth-callback-slack.test.ts`
+- `packages/junior/tests/integration/oauth-callback-app-home.test.ts`
+- `packages/junior/tests/integration/oauth-callback-resume-context.test.ts`
+- `packages/junior/tests/integration/oauth-callback-resume-lock.test.ts`
+- `packages/junior/tests/integration/oauth-callback-resume-guards.test.ts`
 - `packages/junior/tests/integration/turn-resume-slack.test.ts`
 
 Problem:
