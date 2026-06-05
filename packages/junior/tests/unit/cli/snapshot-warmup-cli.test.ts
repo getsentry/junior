@@ -1,53 +1,75 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const {
-  getPluginProvidersMock,
-  getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstallMock,
-  resolveRuntimeDependencySnapshotMock,
-} = vi.hoisted(() => ({
-  getPluginProvidersMock: vi.fn(),
-  getPluginRuntimeDependenciesMock: vi.fn(),
-  getPluginRuntimePostinstallMock: vi.fn(),
-  resolveRuntimeDependencySnapshotMock: vi.fn(),
-}));
-
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: getPluginProvidersMock,
-  getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
-}));
-
-vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
-  resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
-}));
-
 import { runSnapshotCreate } from "@/cli/snapshot-warmup";
+import type {
+  PluginDefinition,
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+} from "@/chat/plugins/types";
+
+type SnapshotCreateDeps = NonNullable<Parameters<typeof runSnapshotCreate>[1]>;
+
+function createPluginDefinition(
+  name: string,
+  options: {
+    runtimeDependencies?: PluginRuntimeDependency[];
+    runtimePostinstall?: PluginRuntimePostinstallCommand[];
+  } = {},
+): PluginDefinition {
+  return {
+    dir: `/tmp/${name}-plugin`,
+    manifest: {
+      name,
+      description: `${name} plugin`,
+      capabilities: [],
+      configKeys: [],
+      ...(options.runtimeDependencies
+        ? { runtimeDependencies: options.runtimeDependencies }
+        : {}),
+      ...(options.runtimePostinstall
+        ? { runtimePostinstall: options.runtimePostinstall }
+        : {}),
+    },
+  };
+}
+
+function createSnapshotCreateDeps() {
+  return {
+    disconnectStateAdapter: vi.fn<SnapshotCreateDeps["disconnectStateAdapter"]>(
+      async () => undefined,
+    ),
+    getPluginProviders: vi.fn<SnapshotCreateDeps["getPluginProviders"]>(
+      () => [],
+    ),
+    getPluginRuntimeDependencies: vi.fn<
+      SnapshotCreateDeps["getPluginRuntimeDependencies"]
+    >(() => []),
+    getPluginRuntimePostinstall: vi.fn<
+      SnapshotCreateDeps["getPluginRuntimePostinstall"]
+    >(() => []),
+    resolveRuntimeDependencySnapshot:
+      vi.fn<SnapshotCreateDeps["resolveRuntimeDependencySnapshot"]>(),
+  } satisfies SnapshotCreateDeps;
+}
 
 describe("snapshot create cli", () => {
-  beforeEach(() => {
-    getPluginProvidersMock.mockReset();
-    getPluginRuntimeDependenciesMock.mockReset();
-    getPluginRuntimePostinstallMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockReset();
+  let deps: ReturnType<typeof createSnapshotCreateDeps>;
 
-    getPluginProvidersMock.mockReturnValue([]);
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
-    getPluginRuntimePostinstallMock.mockReturnValue([]);
+  beforeEach(() => {
+    deps = createSnapshotCreateDeps();
   });
 
   it("uses default runtime and timeout", async () => {
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line));
+    await runSnapshotCreate((line) => logs.push(line), deps);
 
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenCalledTimes(1);
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenCalledWith({
+    expect(deps.resolveRuntimeDependencySnapshot).toHaveBeenCalledTimes(1);
+    expect(deps.resolveRuntimeDependencySnapshot).toHaveBeenCalledWith({
       runtime: "node22",
       timeoutMs: 10 * 60 * 1000,
       onProgress: expect.any(Function),
@@ -56,9 +78,12 @@ describe("snapshot create cli", () => {
     expect(logs).toContain(
       "Sandbox snapshot inputs: plugins=0 system_dependencies=0 npm_dependencies=0 postinstall_commands=0",
     );
-    await resolveRuntimeDependencySnapshotMock.mock.calls[0][0].onProgress(
-      "resolve_start",
-    );
+    const resolveParams =
+      deps.resolveRuntimeDependencySnapshot.mock.calls[0]?.[0];
+    if (!resolveParams?.onProgress) {
+      throw new Error("Expected snapshot resolver to be called");
+    }
+    await resolveParams.onProgress("resolve_start");
     expect(logs).toContain("Resolving sandbox snapshot profile...");
     expect(
       logs.some((line) => line.includes("resolve_outcome=no_profile")),
@@ -66,33 +91,24 @@ describe("snapshot create cli", () => {
   });
 
   it("logs plugin and dependency inputs before snapshot resolution", async () => {
-    getPluginProvidersMock.mockReturnValue([
-      {
-        manifest: {
-          name: "agent-browser",
-          displayName: "Agent Browser",
-          runtimeDependencies: [
-            { type: "npm", package: "agent-browser", version: "latest" },
-            { type: "system", package: "gtk3" },
-          ],
-          runtimePostinstall: [{ cmd: "agent-browser", args: ["install"] }],
-        },
-      },
-      {
-        manifest: {
-          name: "notion",
-          displayName: "Notion",
-        },
-      },
+    deps.getPluginProviders.mockReturnValue([
+      createPluginDefinition("agent-browser", {
+        runtimeDependencies: [
+          { type: "npm", package: "agent-browser", version: "latest" },
+          { type: "system", package: "gtk3" },
+        ],
+        runtimePostinstall: [{ cmd: "agent-browser", args: ["install"] }],
+      }),
+      createPluginDefinition("notion"),
     ]);
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    deps.getPluginRuntimeDependencies.mockReturnValue([
       { type: "system", package: "gtk3" },
       { type: "npm", package: "agent-browser", version: "latest" },
     ]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
+    deps.getPluginRuntimePostinstall.mockReturnValue([
       { cmd: "agent-browser", args: ["install"] },
     ]);
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 2,
@@ -102,7 +118,7 @@ describe("snapshot create cli", () => {
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line));
+    await runSnapshotCreate((line) => logs.push(line), deps);
 
     expect(logs).toContain("Loaded plugins (2): agent-browser, notion");
     expect(logs).toContain(
@@ -115,7 +131,7 @@ describe("snapshot create cli", () => {
   });
 
   it("logs cache hit metadata", async () => {
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 3,
@@ -124,7 +140,7 @@ describe("snapshot create cli", () => {
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line));
+    await runSnapshotCreate((line) => logs.push(line), deps);
 
     const summary = logs[logs.length - 1];
     expect(summary).toContain("resolve_outcome=cache_hit");
@@ -135,10 +151,13 @@ describe("snapshot create cli", () => {
   });
 
   it("rethrows resolver errors", async () => {
-    resolveRuntimeDependencySnapshotMock.mockRejectedValue(
+    deps.resolveRuntimeDependencySnapshot.mockRejectedValue(
       new Error("OIDC missing"),
     );
 
-    await expect(runSnapshotCreate()).rejects.toThrow("OIDC missing");
+    await expect(runSnapshotCreate(undefined, deps)).rejects.toThrow(
+      "OIDC missing",
+    );
+    expect(deps.disconnectStateAdapter).toHaveBeenCalledTimes(1);
   });
 });
