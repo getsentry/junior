@@ -483,6 +483,61 @@ describe("sandbox egress proxy", () => {
     expect(
       credentialIntentForSandboxEgressRequest({
         body: new TextEncoder().encode(
+          JSON.stringify({
+            operationName: "WriteIssue",
+            query:
+              "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
+          }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            operationName: "ReadViewer",
+            query:
+              "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
+          }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            operationName: "ReadViewer",
+            query:
+              'query ReadViewer($input: JSON = { value: "mutation" }) { viewer { login } }',
+          }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("read");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            query:
+              "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
+          }),
+        ).buffer,
+        provider: "github",
+        method: "POST",
+        upstreamUrl: new URL("https://api.github.com/graphql"),
+      }),
+    ).toBe("write");
+    expect(
+      credentialIntentForSandboxEgressRequest({
+        body: new TextEncoder().encode(
           JSON.stringify({ query: "query { viewer { login } }" }),
         ).buffer,
         provider: "github",
@@ -544,6 +599,34 @@ describe("sandbox egress proxy", () => {
       intent: "read",
       provider: "github",
       reason: "sandbox-egress:github:read",
+    });
+  });
+
+  it("requests write-intent credentials for named GitHub GraphQL mutations", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    mockGitHubLease();
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        method: "POST",
+        path: "/graphql",
+        body: JSON.stringify({
+          operationName: "WriteIssue",
+          query:
+            "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "write",
+      provider: "github",
+      reason: "sandbox-egress:github:write",
     });
   });
 

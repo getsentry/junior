@@ -84,7 +84,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
 - Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but read-intent and write-intent leases are cached separately.
-- GitHub read intent is derived from runtime-visible HTTP evidence, including safe HTTP methods, bounded GitHub GraphQL `query`/anonymous selection bodies, and `git-upload-pack`. GitHub write intent is derived from runtime-visible mutation evidence, including non-read HTTP methods, GitHub GraphQL `mutation` bodies, and `git-receive-pack`; ambiguous GraphQL bodies remain write intent.
+- GitHub read intent is derived from runtime-visible HTTP evidence, including safe HTTP methods, bounded GitHub GraphQL `query`/anonymous selection bodies, and `git-upload-pack`. GitHub write intent is derived from runtime-visible mutation evidence, including non-read HTTP methods, GitHub GraphQL `mutation` bodies selected by `operationName` when present, and `git-receive-pack`; ambiguous GraphQL bodies remain write intent.
 - When a GitHub App lease is issued for a system actor, runtime must send an explicit read-only permissions body instead of inheriting the installation's default permissions.
 - If GitHub App `credentials.system-read-permissions` is declared, runtime requests only those scopes plus `metadata`, all at `read`.
 - If no system read permissions are declared, runtime reads the installation permission envelope and requests only the safe default read subset that the installation actually has: `metadata`, `contents`, `issues`, `pull_requests`, `checks`, `statuses`, and `actions`.

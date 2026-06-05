@@ -349,24 +349,189 @@ function githubSmartHttpIntent(upstreamUrl: URL): CredentialIntent | undefined {
   return undefined;
 }
 
-function graphqlOperationIntent(query: string): CredentialIntent | undefined {
-  const cleaned = query
-    .replace(/^\uFEFF/, "")
-    .replace(/(?:^|\n)\s*#[^\n]*/g, "\n")
-    .trimStart();
-  if (!cleaned) {
+type GraphqlOperation = {
+  name?: string;
+  type: "mutation" | "query" | "subscription";
+};
+
+function skipGraphqlIgnored(input: string, index: number): number {
+  let cursor = index;
+  while (cursor < input.length) {
+    const char = input[cursor];
+    if (char === "#" || /\s|,/.test(char ?? "")) {
+      cursor += 1;
+      if (char === "#") {
+        while (cursor < input.length && input[cursor] !== "\n") {
+          cursor += 1;
+        }
+      }
+      continue;
+    }
+    break;
+  }
+  return cursor;
+}
+
+function readGraphqlName(
+  input: string,
+  index: number,
+): { name: string; next: number } | undefined {
+  const match = /^[_A-Za-z][_0-9A-Za-z]*/.exec(input.slice(index));
+  return match ? { name: match[0], next: index + match[0].length } : undefined;
+}
+
+function skipGraphqlString(input: string, index: number): number {
+  if (input.startsWith('"""', index)) {
+    const end = input.indexOf('"""', index + 3);
+    return end === -1 ? input.length : end + 3;
+  }
+
+  let cursor = index + 1;
+  while (cursor < input.length) {
+    const char = input[cursor];
+    if (char === "\\") {
+      cursor += 2;
+      continue;
+    }
+    if (char === '"') {
+      return cursor + 1;
+    }
+    cursor += 1;
+  }
+  return input.length;
+}
+
+function skipGraphqlSelection(input: string, index: number): number {
+  let cursor = index;
+  let depth = 0;
+  while (cursor < input.length) {
+    cursor = skipGraphqlIgnored(input, cursor);
+    const char = input[cursor];
+    if (char === '"') {
+      cursor = skipGraphqlString(input, cursor);
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return cursor + 1;
+      }
+    }
+    cursor += 1;
+  }
+  return input.length;
+}
+
+function skipGraphqlDefinition(input: string, index: number): number {
+  let cursor = index;
+  let parenDepth = 0;
+  while (cursor < input.length) {
+    cursor = skipGraphqlIgnored(input, cursor);
+    const char = input[cursor];
+    if (char === '"') {
+      cursor = skipGraphqlString(input, cursor);
+      continue;
+    }
+    if (char === "(") {
+      parenDepth += 1;
+    } else if (char === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+    } else if (char === "{" && parenDepth === 0) {
+      return skipGraphqlSelection(input, cursor);
+    }
+    cursor += 1;
+  }
+  return input.length;
+}
+
+function parseGraphqlOperations(query: string): GraphqlOperation[] | undefined {
+  const document = query.replace(/^\uFEFF/, "");
+  const operations: GraphqlOperation[] = [];
+  let cursor = skipGraphqlIgnored(document, 0);
+
+  while (cursor < document.length) {
+    cursor = skipGraphqlIgnored(document, cursor);
+    const char = document[cursor];
+    if (!char) {
+      break;
+    }
+    if (char === "{") {
+      operations.push({ type: "query" });
+      cursor = skipGraphqlSelection(document, cursor);
+      continue;
+    }
+
+    const token = readGraphqlName(document, cursor);
+    if (!token) {
+      return undefined;
+    }
+    cursor = token.next;
+
+    if (
+      token.name === "query" ||
+      token.name === "mutation" ||
+      token.name === "subscription"
+    ) {
+      cursor = skipGraphqlIgnored(document, cursor);
+      const name = readGraphqlName(document, cursor);
+      if (name) {
+        cursor = name.next;
+      }
+      operations.push({ name: name?.name, type: token.name });
+      cursor = skipGraphqlDefinition(document, cursor);
+      continue;
+    }
+
+    if (token.name === "fragment") {
+      cursor = skipGraphqlDefinition(document, cursor);
+      continue;
+    }
+
     return undefined;
   }
-  if (cleaned.startsWith("{")) {
-    return "read";
+
+  return operations.length > 0 ? operations : undefined;
+}
+
+function graphqlIntentForOperation(
+  operation: GraphqlOperation,
+): CredentialIntent {
+  return operation.type === "mutation" ? "write" : "read";
+}
+
+function graphqlOperationIntent(
+  query: string,
+  operationName?: string,
+): CredentialIntent | undefined {
+  const operations = parseGraphqlOperations(query);
+  if (!operations) {
+    return undefined;
   }
-  const operation = /^[A-Za-z]+/.exec(cleaned)?.[0];
-  if (operation === "query" || operation === "subscription") {
-    return "read";
+
+  if (operationName) {
+    const selected = operations.find(
+      (operation) => operation.name === operationName,
+    );
+    if (selected) {
+      return graphqlIntentForOperation(selected);
+    }
+    return operations.some((operation) => operation.type === "mutation")
+      ? "write"
+      : "read";
   }
-  if (operation === "mutation") {
+
+  if (operations.length === 1) {
+    return graphqlIntentForOperation(operations[0]!);
+  }
+  if (operations.some((operation) => operation.type === "mutation")) {
     return "write";
   }
+  if (operations.every((operation) => operation.type !== "mutation")) {
+    return "read";
+  }
+
   return undefined;
 }
 
@@ -386,9 +551,18 @@ function githubGraphqlIntent(
     if (!parsed || typeof parsed !== "object") {
       return undefined;
     }
-    const query = (parsed as { query?: unknown }).query;
+    const query = (parsed as { operationName?: unknown; query?: unknown })
+      .query;
+    const operationName = (
+      parsed as { operationName?: unknown; query?: unknown }
+    ).operationName;
     return typeof query === "string"
-      ? graphqlOperationIntent(query)
+      ? graphqlOperationIntent(
+          query,
+          typeof operationName === "string" && operationName.trim()
+            ? operationName
+            : undefined,
+        )
       : undefined;
   } catch {
     return undefined;
