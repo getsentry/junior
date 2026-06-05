@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type { CredentialBroker } from "@/chat/credentials/broker";
+import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../../fixtures/vitest";
 
 const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
@@ -13,7 +14,7 @@ describe("provider credential router", () => {
         id: "lease-1",
         provider: "github",
         env: {},
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_ISO,
       })),
     };
     const router = new ProviderCredentialRouter({
@@ -43,7 +44,7 @@ describe("provider credential router", () => {
         id: "lease-1",
         provider: "github",
         env: {},
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_ISO,
       })),
     };
     const router = new ProviderCredentialRouter({

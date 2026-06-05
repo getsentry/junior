@@ -9,6 +9,11 @@ import type {
   StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
+import {
+  DEFAULT_TEST_EXPIRES_AT_MS,
+  DEFAULT_TEST_NOW_MS,
+  mockTestClock,
+} from "../../fixtures/vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -73,6 +78,7 @@ afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("sentry credential broker (oauth-bearer plugin)", () => {
@@ -81,7 +87,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "user-access-token",
         refreshToken: "user-refresh-token",
-        expiresAt: Date.now() + 60 * 60 * 1000,
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_MS,
         scope: SENTRY_SCOPE,
       },
     });
@@ -185,6 +191,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("refreshes tokens that are near expiry", async () => {
+    mockTestClock(DEFAULT_TEST_NOW_MS);
     process.env.SENTRY_CLIENT_ID = "client-id";
     process.env.SENTRY_CLIENT_SECRET = "client-secret";
 
@@ -192,7 +199,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "old-access-token",
         refreshToken: "old-refresh-token",
-        expiresAt: Date.now() + 2 * 60 * 1000,
+        expiresAt: DEFAULT_TEST_NOW_MS + 2 * 60 * 1000,
         scope: SENTRY_SCOPE,
       },
     });
@@ -291,7 +298,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "user-access-token",
         refreshToken: "user-refresh-token",
-        expiresAt: Date.now() + 60 * 60 * 1000,
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_MS,
         scope: "event:read",
       },
     });
@@ -310,7 +317,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "delegated-access-token",
         refreshToken: "delegated-refresh-token",
-        expiresAt: Date.now() + 60 * 60 * 1000,
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_MS,
         scope: SENTRY_SCOPE,
       },
     });

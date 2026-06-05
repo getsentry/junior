@@ -8,6 +8,10 @@ import type {
   UserTokenStore,
   StoredTokens,
 } from "@/chat/credentials/user-token-store";
+import {
+  DEFAULT_TEST_EXPIRED_AT_MS,
+  DEFAULT_TEST_EXPIRES_AT_MS,
+} from "../../fixtures/vitest";
 
 type HomeViewBuilderDeps = Parameters<typeof createHomeViewBuilder>[0];
 type HomeViewBuilder = ReturnType<typeof createHomeViewBuilder>;
@@ -26,13 +30,13 @@ function createMockTokenStore(
 const validToken: StoredTokens = {
   accessToken: "xoxp-test",
   refreshToken: "xoxr-test",
-  expiresAt: Date.now() + 3600_000,
+  expiresAt: DEFAULT_TEST_EXPIRES_AT_MS,
 };
 
 const expiredToken: StoredTokens = {
   accessToken: "xoxp-expired",
   refreshToken: "xoxr-expired",
-  expiresAt: Date.now() - 1000,
+  expiresAt: DEFAULT_TEST_EXPIRED_AT_MS,
 };
 
 function defaultProviders(): ReturnType<

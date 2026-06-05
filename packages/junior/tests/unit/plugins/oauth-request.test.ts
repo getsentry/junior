@@ -1,9 +1,14 @@
 import { Buffer } from "node:buffer";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/auth/oauth-request";
+import { DEFAULT_TEST_NOW_MS, mockTestClock } from "../../fixtures/vitest";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("OAuth token request helpers", () => {
   it("uses form-encoded body credentials by default", () => {
@@ -59,6 +64,7 @@ describe("OAuth token request helpers", () => {
   });
 
   it("normalizes token response scope and expiration", () => {
+    mockTestClock(DEFAULT_TEST_NOW_MS);
     const parsed = parseOAuthTokenResponse(
       {
         access_token: "access-token",
@@ -76,7 +82,7 @@ describe("OAuth token request helpers", () => {
         expiresAt: expect.any(Number),
       }),
     );
-    expect(parsed.expiresAt).toBeGreaterThan(Date.now());
+    expect(parsed.expiresAt).toBe(DEFAULT_TEST_NOW_MS + 3_600_000);
   });
 
   it("omits expiration when providers do not return expires_in", () => {

@@ -24,6 +24,7 @@ import {
   setSandboxEgressUserActor,
   setupSandboxEgressProxyTest,
 } from "../../fixtures/sandbox-egress-proxy";
+import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../../fixtures/vitest";
 
 function mockSequentialSentryLeases(...tokens: string[]): void {
   tokens.forEach((token, index) => {
@@ -37,7 +38,7 @@ function mockSequentialSentryLeases(...tokens: string[]): void {
           headers: { Authorization: `Bearer ${token}` },
         },
       ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: DEFAULT_TEST_EXPIRES_AT_ISO,
     });
   });
 }

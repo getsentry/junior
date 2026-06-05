@@ -19,6 +19,7 @@ import {
   createScriptedSandboxExecutorFactory,
   createScriptedSandboxExecutorState,
 } from "./respond-sandbox";
+import { DEFAULT_TEST_NOW_MS } from "./vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
 
@@ -433,8 +434,8 @@ const mcpAuthServices = {
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       ...(input.configuration ? { configuration: input.configuration } : {}),
       ...(input.artifactState ? { artifactState: input.artifactState } : {}),
-      createdAtMs: Date.now(),
-      updatedAtMs: Date.now(),
+      createdAtMs: DEFAULT_TEST_NOW_MS,
+      updatedAtMs: DEFAULT_TEST_NOW_MS,
     });
 
     return {

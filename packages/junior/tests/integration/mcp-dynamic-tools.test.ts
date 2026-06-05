@@ -9,6 +9,7 @@ import {
   createEchoMcpTestServer,
   type EchoMcpTestServer,
 } from "../fixtures/mcp-test-server";
+import { DEFAULT_TEST_NOW_MS } from "../fixtures/vitest";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -49,7 +50,7 @@ function assistantMessage(content: Array<Record<string, unknown>>) {
       ? "toolCalls"
       : "stop",
     content,
-    timestamp: Date.now(),
+    timestamp: DEFAULT_TEST_NOW_MS,
   };
 }
 
@@ -230,7 +231,7 @@ describe("MCP tools loaded mid-turn", () => {
     await agent.prompt({
       role: "user",
       content: [{ type: "text", text: "use the MCP tool" }],
-      timestamp: Date.now(),
+      timestamp: DEFAULT_TEST_NOW_MS,
     });
 
     expect(toolsSeenByModel[0]).toEqual([

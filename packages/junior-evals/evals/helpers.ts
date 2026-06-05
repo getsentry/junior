@@ -21,6 +21,8 @@ import {
   runEvalScenario,
 } from "./behavior-harness";
 
+const JUDGE_MESSAGE_TIMESTAMP_MS = Date.parse("2026-06-05T12:00:00.000Z");
+
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
   for (const call of result.slackAdapter.statusCalls) {
@@ -397,7 +399,7 @@ const rubricJudgeHarness = createJudgeHarness({
         {
           role: "user",
           content: prompt,
-          timestamp: Date.now(),
+          timestamp: JUDGE_MESSAGE_TIMESTAMP_MS,
         },
       ],
       temperature: 0,

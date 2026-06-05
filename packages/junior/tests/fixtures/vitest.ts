@@ -5,6 +5,13 @@ type TestClockValue = Date | number | string;
 
 export const DEFAULT_TEST_NOW_ISO = "2026-06-05T12:00:00.000Z";
 export const DEFAULT_TEST_NOW_MS = Date.parse(DEFAULT_TEST_NOW_ISO);
+export const DEFAULT_TEST_EXPIRES_AT_ISO = "2099-01-01T00:00:00.000Z";
+export const DEFAULT_TEST_EXPIRES_AT_MS = Date.parse(
+  DEFAULT_TEST_EXPIRES_AT_ISO,
+);
+export const DEFAULT_TEST_EXPIRED_AT_MS = Date.parse(
+  "2000-01-01T00:00:00.000Z",
+);
 
 function toTestDate(value: TestClockValue): Date {
   return value instanceof Date ? value : new Date(value);

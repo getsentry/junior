@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../../fixtures/vitest";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 
@@ -10,7 +11,7 @@ export const githubApiHandlers = [
     () =>
       HttpResponse.json({
         token: "eval-github-installation-token",
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        expires_at: DEFAULT_TEST_EXPIRES_AT_ISO,
       }),
   ),
 ];

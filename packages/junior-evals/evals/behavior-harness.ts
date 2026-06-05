@@ -514,6 +514,7 @@ const HARNESS_ENV_KEYS = [
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
 const SENTRY_EVAL_SCOPE = "event:read org:read project:read team:read";
+const EVAL_TOKEN_EXPIRES_AT_MS = Date.parse("2099-01-01T00:00:00.000Z");
 const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 })
@@ -1128,7 +1129,7 @@ async function seedCredentialProviderTokens(input: {
     await userTokenStore.set(userId, "sentry", {
       accessToken: "eval-sentry-access-token",
       refreshToken: "eval-sentry-refresh-token",
-      expiresAt: Date.now() + 60 * 60 * 1000,
+      expiresAt: EVAL_TOKEN_EXPIRES_AT_MS,
       scope: SENTRY_EVAL_SCOPE,
     });
   }

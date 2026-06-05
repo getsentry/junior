@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { DEFAULT_TEST_NOW_MS } from "../../fixtures/vitest";
 
 export const EVAL_MCP_AUTH_PROVIDER = "eval-auth";
 export const EVAL_MCP_AUTH_CODE = "eval-auth-code";
@@ -269,7 +270,7 @@ export const evalMcpAuthHandlers = [
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json({
       client_id: "eval-auth-client-id",
-      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_id_issued_at: Math.floor(DEFAULT_TEST_NOW_MS / 1000),
       ...(Array.isArray(body.redirect_uris)
         ? { redirect_uris: body.redirect_uris }
         : {

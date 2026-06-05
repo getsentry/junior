@@ -4,6 +4,7 @@ import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../../fixtures/vitest";
 
 const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
@@ -22,7 +23,7 @@ describe("capability factory", () => {
         id: "lease-1",
         provider: "example",
         env: {},
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: DEFAULT_TEST_EXPIRES_AT_ISO,
       })),
     };
     const createPluginBroker = vi.fn(() => broker);
