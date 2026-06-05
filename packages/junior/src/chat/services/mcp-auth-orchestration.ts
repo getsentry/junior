@@ -65,6 +65,38 @@ export interface McpAuthOrchestration {
   getPendingPause: () => McpAuthorizationPauseError | undefined;
 }
 
+type McpOAuthClientProviderFactoryInput = Parameters<
+  typeof createMcpOAuthClientProvider
+>[0];
+
+type McpAuthProvider = OAuthClientProvider & {
+  readonly authSessionId: string;
+};
+
+interface McpAuthOrchestrationServices {
+  createMcpOAuthClientProvider: (
+    input: McpOAuthClientProviderFactoryInput,
+  ) => Promise<McpAuthProvider>;
+  deleteMcpAuthSession: typeof deleteMcpAuthSession;
+  deliverPrivateMessage: typeof deliverPrivateMessage;
+  formatProviderLabel: typeof formatProviderLabel;
+  getMcpAuthSession: typeof getMcpAuthSession;
+  now: () => number;
+  patchMcpAuthSession: typeof patchMcpAuthSession;
+  recordAuthorizationRequested: typeof recordAuthorizationRequested;
+}
+
+const defaultMcpAuthOrchestrationServices: McpAuthOrchestrationServices = {
+  createMcpOAuthClientProvider,
+  deleteMcpAuthSession,
+  deliverPrivateMessage,
+  formatProviderLabel,
+  getMcpAuthSession,
+  now: Date.now,
+  patchMcpAuthSession,
+  recordAuthorizationRequested,
+};
+
 function authorizationId(args: {
   kind: "mcp";
   provider: string;
@@ -75,7 +107,9 @@ function authorizationId(args: {
 
 /** Create MCP authorization orchestration for a single agent run. */
 export function createMcpAuthOrchestration(
-  input: McpAuthOrchestrationInput,
+  deps: McpAuthOrchestrationDeps,
+  abortAgent: () => void,
+  services: McpAuthOrchestrationServices = defaultMcpAuthOrchestrationServices,
 ): McpAuthOrchestration {
   let pendingPause: McpAuthorizationPauseError | undefined;
   const authSessionIdsByProvider = new Map<string, string>();
@@ -95,7 +129,7 @@ export function createMcpAuthOrchestration(
       );
     }
 
-    const provider = await createMcpOAuthClientProvider({
+    const provider = await services.createMcpOAuthClientProvider({
       provider: plugin.manifest.name,
       conversationId: input.conversationId,
       destination: input.destination,
@@ -128,8 +162,8 @@ export function createMcpAuthOrchestration(
         `Missing MCP auth session context for plugin "${provider}"`,
       );
     }
-    if (input.authorizationFlowMode === "disabled") {
-      await deleteMcpAuthSession(authSessionId);
+    if (deps.authorizationFlowMode === "disabled") {
+      await services.deleteMcpAuthSession(authSessionId);
       throw new AuthorizationFlowDisabledError("mcp", provider);
     }
     const recordPendingAuth = input.recordPendingAuth;
@@ -139,9 +173,9 @@ export function createMcpAuthOrchestration(
       );
     }
 
-    const latestArtifactState = input.getMergedArtifactState();
-    await patchMcpAuthSession(authSessionId, {
-      configuration: { ...input.getConfiguration() },
+    const latestArtifactState = deps.getMergedArtifactState();
+    await services.patchMcpAuthSession(authSessionId, {
+      configuration: { ...deps.getConfiguration() },
       artifactState: latestArtifactState,
       toolChannelId:
         input.toolChannelId ??
@@ -149,7 +183,7 @@ export function createMcpAuthOrchestration(
         input.channelId,
     });
 
-    const authSession = await getMcpAuthSession(authSessionId);
+    const authSession = await services.getMcpAuthSession(authSessionId);
     if (!authSession?.authorizationUrl) {
       throw new Error(`Missing MCP authorization URL for plugin "${provider}"`);
     }
@@ -164,11 +198,11 @@ export function createMcpAuthOrchestration(
     const providerLabel = formatProviderLabel(provider);
 
     if (!reusingPendingLink) {
-      const delivery = await deliverPrivateMessage({
+      const delivery = await services.deliverPrivateMessage({
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         userId: authSession.userId,
-        text: `<${authSession.authorizationUrl}|Click here to link your ${providerLabel} MCP access>. Once you've authorized, this thread will continue automatically.`,
+        text: `<${authSession.authorizationUrl}|Click here to link your ${services.formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
       });
       if (!delivery) {
         throw new Error(
@@ -196,13 +230,30 @@ export function createMcpAuthOrchestration(
       authorizationId: authorizationId({
         kind: "mcp",
         provider,
-        sessionId,
-      }),
-      delivery: reusingPendingLink
-        ? "private_link_reused"
-        : "private_link_sent",
-      ttlMs: THREAD_STATE_TTL_MS,
-    });
+        requesterId: deps.requesterId,
+        sessionId: deps.sessionId,
+        linkSentAtMs: reusingPendingLink
+          ? deps.currentPendingAuth!.linkSentAtMs
+          : services.now(),
+      });
+    }
+    if (deps.conversationId && deps.sessionId && deps.requesterId) {
+      await services.recordAuthorizationRequested({
+        conversationId: deps.conversationId,
+        kind: "mcp",
+        provider,
+        requesterId: deps.requesterId,
+        authorizationId: authorizationId({
+          kind: "mcp",
+          provider,
+          sessionId: deps.sessionId,
+        }),
+        delivery: reusingPendingLink
+          ? "private_link_reused"
+          : "private_link_sent",
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
+    }
     pendingPause = new McpAuthorizationPauseError(
       provider,
       providerLabel,
