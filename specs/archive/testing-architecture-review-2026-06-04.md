@@ -335,12 +335,40 @@ The anti-pattern is a behavior test that invents local stores, queue fakes,
 runtime mocks, and delivery mocks in the same file. That usually means the test
 belongs in integration/component/eval, or the production seam is too broad.
 
-## Completion Criteria For The Next Pass
+## Completion Audit, 2026-06-05
 
-- No mixed-contract test file above roughly 600 lines unless it is a deliberate
-  table of local deterministic cases.
-- No integration tests with module mocks.
-- No behavior tests asserting ordinary logs, spans, or prompt prose.
-- New recurring fakes become shared fixtures or adapters before their third use.
-- Runtime response tests move away from broad unit mocks toward component
-  harnesses and evals.
+The cleanup branch now satisfies the next-pass completion criteria:
+
+- No mixed-contract test file above roughly 600 lines remains. The largest
+  suites are under 530 lines, and the largest integration suites now sit under
+  feature-owned directories such as `tests/integration/slack`.
+- Integration tests do not use `vi.mock` or `vi.doMock`; the Slack boundary
+  check enforces this contract.
+- The remaining prompt-string assertions in integration suites check inbound
+  message, attachment, image-summary, or queued-message construction. They are
+  not durable assertions about system prompt prose.
+- Ordinary log/span assertions are confined to instrumentation-focused unit
+  suites or explicit observability contracts, not broad behavior tests.
+- Recurring fakes introduced by this pass are shared fixtures or adapters,
+  including Slack resume fixtures, OAuth route fixtures, scheduler tool
+  fixtures, sandbox executor fixtures, and component runtime ports.
+- Runtime response tests moved away from broad unit module mocks and now use
+  component harnesses backed by explicit `agentFactory` and
+  `sandboxExecutorFactory` ports.
+
+## Residual Watchlist
+
+- Runtime response component fixtures still stub plugin registry, skill
+  discovery, and OAuth delivery boundaries. Keep replacing those with explicit
+  local providers when production ports exist, and delete any cases already
+  covered by higher-fidelity Slack/auth integration tests.
+- The sandbox executor component fixture remains intentionally broad because it
+  exercises real executor/session-manager orchestration. Do not expand it
+  outside sandbox lifecycle, bash execution, file-tool, snapshot, and adapter
+  contracts.
+- Large deterministic unit suites such as skills, Nitro module, agent tools,
+  tool manager, app config, and turn result should continue deleting duplicate
+  constant-variation cases opportunistically.
+- Future prompt assertions should stay scoped to user-provided content or
+  structured context construction. Prompt wording and reply quality belong in
+  evals.
