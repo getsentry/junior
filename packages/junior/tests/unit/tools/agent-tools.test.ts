@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
+import { Type } from "@sinclair/typebox";
 import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
+import type {
+  BashCustomCommandResult,
+  SandboxExecutionEnvelope,
+  SandboxExecutor,
+} from "@/chat/sandbox/sandbox";
+import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+
+const testInputSchema = Type.Object({}, { additionalProperties: true });
 
 const githubSkill: Skill = {
   name: "github",
@@ -28,24 +37,71 @@ const authorizationPassThroughCases = [
   },
 ];
 
-function createFailedBashSandboxExecutor() {
+function bashResult(
+  overrides: Partial<BashCustomCommandResult> = {},
+): BashCustomCommandResult {
   return {
-    canExecute: (toolName: string) => toolName === "bash",
+    ok: true,
+    command: "bash command",
+    cwd: "/vercel/sandbox",
+    exit_code: 0,
+    signal: null,
+    timed_out: false,
+    stdout: "ok",
+    stderr: "",
+    stdout_truncated: false,
+    stderr_truncated: false,
+    ...overrides,
+  };
+}
+
+function createTestSandboxExecutor(args: {
+  canExecute?: (toolName: string) => boolean;
+  execute?: (params: {
+    input: unknown;
+    signal?: AbortSignal;
+    toolName: string;
+  }) => Promise<SandboxExecutionEnvelope>;
+}): SandboxExecutor {
+  const execute =
+    args.execute ??
+    vi.fn(async () => ({
+      result: bashResult(),
+    }));
+
+  return {
+    canExecute: args.canExecute ?? ((toolName) => toolName === "bash"),
+    configureReferenceFiles: () => {},
+    configureSkills: () => {},
+    createSandbox: async () => {
+      throw new Error("Unexpected sandbox creation in agent tool unit test");
+    },
+    dispose: async () => undefined,
+    async execute<T>(params: {
+      input: unknown;
+      signal?: AbortSignal;
+      toolName: string;
+    }) {
+      const envelope = await execute(params);
+      return { result: envelope.result as T };
+    },
+    getDependencyProfileHash: () => undefined,
+    getSandboxId: () => undefined,
+  };
+}
+
+function createFailedBashSandboxExecutor(): SandboxExecutor {
+  return createTestSandboxExecutor({
     execute: vi.fn(async () => ({
-      result: {
+      result: bashResult({
         ok: false,
         command: "gh issue view 123",
-        cwd: "/vercel/sandbox",
         exit_code: 1,
-        signal: null,
-        timed_out: false,
         stdout: "",
         stderr: "bad credentials",
-        stdout_truncated: false,
-        stderr_truncated: false,
-      },
+      }),
     })),
-  } as any;
+  });
 }
 
 describe("createAgentTools", () => {
@@ -56,11 +112,11 @@ describe("createAgentTools", () => {
       {
         reportProgress: {
           description: "report progress",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
         },
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           execute: async () => ({ ok: true }),
         },
       },
@@ -80,29 +136,21 @@ describe("createAgentTools", () => {
 
   it("executes sandbox bash without host credential injection", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
-      execute: vi.fn(async ({ input }) => ({
-        result: {
-          ok: true,
-          command: (input as Record<string, unknown>).command,
-          cwd: "/vercel/sandbox",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "ok",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
-      })),
-    } as any;
+    const execute = vi.fn(async ({ input }: { input: unknown }) => ({
+      result: bashResult({
+        command:
+          input && typeof input === "object" && "command" in input
+            ? String(input.command)
+            : "",
+      }),
+    }));
+    const sandboxExecutor = createTestSandboxExecutor({ execute });
 
     const [bashTool] = createAgentTools(
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           execute: async () => ({ ok: true }),
         },
       },
@@ -116,7 +164,7 @@ describe("createAgentTools", () => {
       command: "gh issue view 123 --repo getsentry/junior",
     });
 
-    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+    expect(execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "gh issue view 123 --repo getsentry/junior",
@@ -131,29 +179,19 @@ describe("createAgentTools", () => {
   it("passes Pi abort signals to sandbox execution", async () => {
     const sandbox = new SkillSandbox([], []);
     const abortController = new AbortController();
-    const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
-      execute: vi.fn(async () => ({
-        result: {
-          ok: true,
-          command: "sleep 60",
-          cwd: "/vercel/sandbox",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
-      })),
-    } as any;
+    const execute = vi.fn(async () => ({
+      result: bashResult({
+        command: "sleep 60",
+        stdout: "",
+      }),
+    }));
+    const sandboxExecutor = createTestSandboxExecutor({ execute });
 
     const [bashTool] = createAgentTools(
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           execute: async () => ({ ok: true }),
         },
       },
@@ -171,7 +209,7 @@ describe("createAgentTools", () => {
       abortController.signal,
     );
 
-    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+    expect(execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "sleep 60",
@@ -191,7 +229,7 @@ describe("createAgentTools", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           execute,
         },
       },
@@ -233,7 +271,7 @@ describe("createAgentTools", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           execute: async () => ({ ok: true }),
         },
       },
@@ -252,12 +290,12 @@ describe("createAgentTools", () => {
 
   it("forwards Pi tool preparation metadata", () => {
     const sandbox = new SkillSandbox([], []);
-    const prepareArguments = vi.fn((args: unknown) => args as never);
+    const prepareArguments = vi.fn(() => ({}));
     const [editTool] = createAgentTools(
       {
         editFile: {
           description: "edit",
-          inputSchema: {} as any,
+          inputSchema: testInputSchema,
           prepareArguments,
           executionMode: "sequential",
           execute: async () => ({ ok: true }),
@@ -285,14 +323,14 @@ describe("createAgentTools", () => {
         maybeHandleAuthSignal: vi.fn(async () => {
           throw createError();
         }),
-        getPendingPause: vi.fn(() => undefined),
-      } as any;
+        getPendingPause: () => undefined,
+      } satisfies PluginAuthOrchestration;
 
       const [bashTool] = createAgentTools(
         {
           bash: {
             description: "bash",
-            inputSchema: {} as any,
+            inputSchema: testInputSchema,
             execute: async () => ({ ok: true }),
           },
         },
