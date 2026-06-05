@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   cleanupTurnSessionRecordTest,
+  createTurnSessionRecordServices,
   setupTurnSessionRecordTest,
 } from "../../fixtures/turn-session-record";
 
@@ -94,35 +95,33 @@ describe("turn session running records", () => {
   });
 
   it("reports running record storage failures", async () => {
-    vi.doMock("@/chat/state/turn-session", async (importOriginal) => {
-      const actual =
-        await importOriginal<typeof import("@/chat/state/turn-session")>();
-      return {
-        ...actual,
-        upsertAgentTurnSessionRecord: vi.fn(async () => {
-          throw new Error("storage unavailable");
-        }),
-      };
+    const services = createTurnSessionRecordServices({
+      upsertAgentTurnSessionRecord: async () => {
+        throw new Error("storage unavailable");
+      },
     });
     const { persistRunningSessionRecord } =
       await import("@/chat/services/turn-session-record");
 
     await expect(
-      persistRunningSessionRecord({
-        conversationId: "conversation-storage-failure",
-        sessionId: "turn-storage-failure",
-        sliceId: 1,
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "help me" }],
-            timestamp: 1,
+      persistRunningSessionRecord(
+        {
+          conversationId: "conversation-storage-failure",
+          sessionId: "turn-storage-failure",
+          sliceId: 1,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: "help me" }],
+              timestamp: 1,
+            },
+          ],
+          logContext: {
+            modelId: "test-model",
           },
-        ],
-        logContext: {
-          modelId: "test-model",
         },
-      }),
+        services,
+      ),
     ).resolves.toBe(false);
   });
 
