@@ -19,7 +19,11 @@ function isSlackUserId(value) {
 
 function requesterDisplayName(value, requester) {
   const name = cleanIdentityPart(value);
-  if (!name || name === cleanIdentityPart(requester?.userId)) {
+  if (
+    !name ||
+    name.toLowerCase() === "unknown" ||
+    name === cleanIdentityPart(requester?.userId)
+  ) {
     return undefined;
   }
   return isSlackUserId(name) ? undefined : name;

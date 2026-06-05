@@ -176,7 +176,7 @@ describe("Slack schedule tools", () => {
       createContext({
         requester: {
           userId: "U039RR91S",
-          userName: "U039RR91S",
+          userName: "unknown",
           fullName: "W039RR91S",
         },
       }),
@@ -189,6 +189,26 @@ describe("Slack schedule tools", () => {
         },
       }),
     );
+  });
+
+  it("rejects synthetic unknown requester ids before creating a task", async () => {
+    const rejected = createTask(
+      createContext({
+        requester: {
+          userId: "unknown",
+          userName: "unknown",
+          fullName: "unknown",
+        },
+      }),
+    );
+
+    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(
+      "No active Slack requester context is available.",
+    );
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
   });
 
   it("rejects invalid Slack workspace context before creating a task", async () => {

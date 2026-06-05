@@ -70,7 +70,7 @@ function requireRequester(
   context: SchedulerToolContext,
 ): ScheduledTaskPrincipal {
   const userId = context.requester?.userId?.trim();
-  if (!userId) {
+  if (!userId || userId.toLowerCase() === "unknown") {
     throwToolInputError("No active Slack requester context is available.");
   }
 

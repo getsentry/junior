@@ -147,4 +147,22 @@ describe("github plugin", () => {
     expect(before.denial).toContain("resolved requester name and email");
     expect(before.env).toEqual({});
   });
+
+  it("denies git commits when requester display identity is synthetic unknown", () => {
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const plugin = githubPlugin();
+    const before = beforeToolContext({
+      email: "david@example.com",
+      fullName: "unknown",
+      userId: "U039RR91S",
+      userName: "unknown",
+    });
+
+    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+
+    expect(before.denial).toContain("resolved requester name and email");
+    expect(before.env).toEqual({});
+  });
 });

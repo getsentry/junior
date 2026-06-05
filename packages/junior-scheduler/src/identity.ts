@@ -7,12 +7,23 @@ function clean(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
+function cleanSlackUserId(value: string | undefined): string | undefined {
+  const normalized = clean(value);
+  return normalized && normalized.toLowerCase() !== "unknown"
+    ? normalized
+    : undefined;
+}
+
 function cleanDisplay(
   value: string | undefined,
   slackUserId: string,
 ): string | undefined {
   const normalized = clean(value);
-  if (!normalized || normalized === slackUserId) {
+  if (
+    !normalized ||
+    normalized.toLowerCase() === "unknown" ||
+    normalized === slackUserId
+  ) {
     return undefined;
   }
   return SLACK_USER_ID_PATTERN.test(normalized) ? undefined : normalized;
@@ -22,7 +33,7 @@ function cleanDisplay(
 export function sanitizeScheduledTaskPrincipal(
   principal: ScheduledTaskPrincipal,
 ): ScheduledTaskPrincipal {
-  const slackUserId = clean(principal.slackUserId);
+  const slackUserId = cleanSlackUserId(principal.slackUserId);
   if (!slackUserId) {
     throw new Error("Scheduled task principal requires a Slack user id");
   }
