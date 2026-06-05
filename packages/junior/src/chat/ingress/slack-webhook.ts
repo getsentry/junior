@@ -418,7 +418,7 @@ function requireSlackPayloadUserId(
   source: string,
 ): string {
   const userId = value?.trim();
-  if (!userId) {
+  if (!userId || userId.toLowerCase() === "unknown") {
     throw new Error(`${source} is missing a Slack user id`);
   }
   return userId;
@@ -447,7 +447,10 @@ async function handleSlashCommandForm(args: {
       fullName: args.params.get("user_name") ?? undefined,
     },
     userId,
-  ) ?? { userId };
+  );
+  if (!userIdentity?.userId) {
+    throw new Error("Slack slash command payload actor identity is invalid");
+  }
   await withSpan(
     "chat.slash_command",
     "chat.slash_command",

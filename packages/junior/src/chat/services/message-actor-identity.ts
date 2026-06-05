@@ -95,11 +95,3 @@ export async function ensureSlackMessageActorIdentity(
     slackActorIdentity(userId, await lookupSlackUser(userId)),
   );
 }
-
-/** Render an author label without promoting platform ids into names. */
-export function actorDisplayLabel(
-  identity: ActorIdentityInput | undefined,
-  fallback: string,
-): string {
-  return identity?.fullName ?? identity?.userName ?? fallback;
-}

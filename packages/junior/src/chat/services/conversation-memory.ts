@@ -8,7 +8,6 @@ import type {
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import { normalizeActorIdentity } from "@/chat/services/requester-identity";
-import { actorDisplayLabel } from "@/chat/services/message-actor-identity";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
@@ -73,10 +72,10 @@ function renderConversationMessageLine(
   conversation?: ThreadConversationState,
 ): string {
   const actor = normalizeActorIdentity(message.author, message.author?.userId);
-  const displayName = actorDisplayLabel(
-    actor,
-    message.role === "assistant" ? botConfig.userName : message.role,
-  );
+  const displayName =
+    actor?.fullName ??
+    actor?.userName ??
+    (message.role === "assistant" ? botConfig.userName : message.role);
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {

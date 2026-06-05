@@ -89,15 +89,17 @@ export function slackActorIdentity(
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
   }
-  return (
-    normalizeActorIdentity(
-      {
-        email: profile?.email,
-        fullName: profile?.fullName,
-        userId: actorUserId,
-        userName: profile?.userName,
-      },
-      actorUserId,
-    ) ?? { userId: actorUserId }
+  const identity = normalizeActorIdentity(
+    {
+      email: profile?.email,
+      fullName: profile?.fullName,
+      userId: actorUserId,
+      userName: profile?.userName,
+    },
+    actorUserId,
   );
+  if (!identity?.userId) {
+    throw new Error("Slack actor identity requires a user id");
+  }
+  return identity;
 }
