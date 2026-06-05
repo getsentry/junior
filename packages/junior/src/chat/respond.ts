@@ -2,7 +2,7 @@
  * Agent turn orchestration.
  *
  * This module owns the Pi-facing execution boundary for one Junior turn after
- * Slack/runtime code has normalized the request. It assembles prompt context,
+ * Slack/runtime code has parsed and routed the request. It assembles prompt context,
  * restores durable Pi/session state, wires tools/MCP/auth, executes the agent,
  * and persists resumable checkpoints. Slack delivery and thread presentation
  * should stay outside this file.
@@ -135,7 +135,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { normalizeActorIdentity } from "@/chat/services/requester-identity";
+import { buildActorIdentity } from "@/chat/services/requester-identity";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -333,7 +333,7 @@ function actorRequesterFromContext(
   requester: ReplyRequestContext["requester"],
   requesterId: string | undefined,
 ): ReplyRequestContext["requester"] | undefined {
-  return normalizeActorIdentity(requester, requesterId);
+  return buildActorIdentity(requester, requesterId);
 }
 
 function surfaceFromContext(

@@ -15,15 +15,15 @@ export interface SlackActorProfile {
 }
 
 function clean(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function isSyntheticActorUserId(value: string): boolean {
   return value.toLowerCase() === "unknown";
 }
 
-/** Parse actor ids from platform or adapter payloads before they enter owned state. */
+/** Keep actor ids exact at platform boundaries before they enter owned state. */
 export function parseActorUserId(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length === 0) {
     return undefined;
@@ -34,7 +34,7 @@ export function parseActorUserId(value: unknown): string | undefined {
   return value;
 }
 
-/** Return whether a value is already an exact actor id accepted by owned state. */
+/** Assert persisted actor ids without read-side repair. */
 export function isActorUserId(value: string | undefined): value is string {
   return parseActorUserId(value) === value;
 }
@@ -47,26 +47,26 @@ function cleanActorDisplayName(
   value: string | undefined,
   userId?: string,
 ): string | undefined {
-  const normalized = clean(value);
-  if (!normalized) {
+  const displayName = clean(value);
+  if (!displayName) {
     return undefined;
   }
-  if (normalized.toLowerCase() === "unknown") {
+  if (displayName.toLowerCase() === "unknown") {
     return undefined;
   }
-  if (userId && normalized === userId) {
+  if (userId && displayName === userId) {
     return undefined;
   }
-  return isSlackUserId(normalized) ? undefined : normalized;
+  return isSlackUserId(displayName) ? undefined : displayName;
 }
 
 function cleanActorEmail(value: string | undefined): string | undefined {
-  const normalized = clean(value);
-  return normalized && EMAIL_PATTERN.test(normalized) ? normalized : undefined;
+  const email = clean(value);
+  return email && EMAIL_PATTERN.test(email) ? email : undefined;
 }
 
-/** Normalize a requester object without promoting platform IDs into display identity. */
-export function normalizeActorIdentity(
+/** Keep authority ids exact while attaching optional presentation fields. */
+export function buildActorIdentity(
   requester: ActorIdentityInput | undefined,
   requesterId?: string,
 ): ActorIdentityInput | undefined {
@@ -99,7 +99,7 @@ export function normalizeActorIdentity(
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
-/** Build Slack actor identity from the resolved Slack profile source of truth. */
+/** Use Slack profile data only as presentation around the exact user id. */
 export function slackActorIdentity(
   userId: string,
   profile: SlackActorProfile | null | undefined,
@@ -108,7 +108,7 @@ export function slackActorIdentity(
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
   }
-  const identity = normalizeActorIdentity(
+  const identity = buildActorIdentity(
     {
       email: profile?.email,
       fullName: profile?.fullName,

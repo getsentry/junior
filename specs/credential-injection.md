@@ -10,6 +10,7 @@
 - [Security Policy](./security-policy.md)
 - [OAuth Flows Spec](./oauth-flows.md)
 - [Plugin Architecture Spec](./plugin.md)
+- [Identity Spec](./identity.md)
 
 ## Purpose
 
@@ -30,6 +31,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Resolve provider from the Vercel Sandbox forwarded host for proxied sandbox egress.
 - Require a signed credential context before issuing provider credentials. The context has a current execution actor and may carry an explicit user credential subject.
 - Credential contexts must carry exact real actor ids. Synthetic sentinel values such as `unknown` are invalid for user actors, system actors, and delegated user subjects.
+- Actor, requester, system actor, service-principal, and delegated credential subject semantics follow the [Identity Spec](./identity.md). Credential brokers must not infer actor identity from requester metadata, creator metadata, destination, or display profile fields.
 - Agent reply callers pass credential context explicitly. Requester and correlation metadata are not credential inputs.
 - The current actor controls provider permission envelopes. A user credential subject only identifies which stored user OAuth token may be used.
 - System actors may carry an explicit user credential subject only from a runtime boundary that bound or verified the subject for that action. Trusted plugin dispatch accepts the plugin-facing unbound Slack DM subject, signs it at dispatch creation, and stores only the bound subject in dispatch and sandbox egress contexts.

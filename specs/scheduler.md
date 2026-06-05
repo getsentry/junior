@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -309,6 +309,7 @@ Use unit tests only for small deterministic helpers when integration or eval cov
 
 ## Related Specs
 
+- `./identity.md`
 - `./chat-architecture.md`
 - `./task-execution.md`
 - `./agent-prompt.md`

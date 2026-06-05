@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -37,7 +37,7 @@ The core architecture is the flow of one Slack event through a durable agent tur
 
 ```mermaid
 flowchart TD
-  A[Slack webhook event] --> B[Slack-specific ingress normalization]
+  A[Slack webhook event] --> B[Slack-specific ingress parsing and classification]
   B --> C[Append to durable conversation mailbox]
   C --> D[Send Vercel Queue nudge: conversationId]
   D --> E[Queue worker acquires conversation lease]
@@ -74,7 +74,7 @@ flowchart TD
 
 Normative rules:
 
-1. Ingress normalizes events, appends them to the durable mailbox, and sends a queue nudge. It must not decide agent behavior.
+1. Ingress parses and classifies source events, appends them to the durable mailbox, and sends a queue nudge. It must not decide agent behavior.
 2. The task execution layer owns queue wake-ups, conversation leases, worker check-ins, and heartbeat recovery. Chat SDK queue/lock semantics are not canonical.
 3. The mailbox worker is the only point that drains inbound messages into persisted agent session context.
 4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
@@ -89,7 +89,7 @@ Data authority by stage:
 
 | Data                                    | Authority                                              | Notes                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Slack event shape                       | `ingress/` and Slack adapter payloads                  | Normalize IDs and attachments before runtime; do not infer behavior here.                                                   |
+| Slack event shape                       | `ingress/` and Slack adapter payloads                  | Parse platform IDs and attachments before runtime; do not infer behavior here.                                              |
 | Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                  | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                          |
 | Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final Slack delivery.             |
 | Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries.                                               |
@@ -101,18 +101,19 @@ Data authority by stage:
 
 Related contract ownership:
 
-| Spec                              | Owns                                                                                   |
-| --------------------------------- | -------------------------------------------------------------------------------------- |
-| `./chat-architecture.md`          | End-to-end turn data flow, data authority, and module boundaries.                      |
-| `./task-execution.md`             | Conversation mailbox, queue wake-up, lease, cooperative yield, and heartbeat repair.   |
-| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, and session lifecycle.                  |
-| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, pause acknowledgements, and final reply delivery.   |
-| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping. |
+| Spec                              | Owns                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `./chat-architecture.md`          | End-to-end turn data flow, data authority, and module boundaries.                          |
+| `./task-execution.md`             | Conversation mailbox, queue wake-up, lease, cooperative yield, and heartbeat repair.       |
+| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, and session lifecycle.                      |
+| `./identity.md`                   | Actor, system actor, requester, author, creator, subject, and display identity separation. |
+| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, pause acknowledgements, and final reply delivery.       |
+| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping.     |
 
 ### File Tree Responsibilities
 
 - `app/`: composition roots only. Build concrete implementations and assemble runtime instances.
-- `ingress/`: inbound event normalization, classification, and queue handoff only.
+- `ingress/`: inbound event parsing, classification, and queue handoff only.
 - `runtime/`: turn orchestration only.
 - `services/`: domain services with injected collaborators.
 - `state/`: adapter selection plus store modules split by concern.
@@ -180,7 +181,7 @@ interface ChatTurnRuntime {
 
 #### Ingress Router
 
-- Ingress owns event normalization, dedupe, thread-kind classification, mailbox append, and queue handoff.
+- Ingress owns event parsing, dedupe, thread-kind classification, mailbox append, and queue handoff.
 - Chat SDK must not own canonical ingress queueing, conversation locks, or long-running handler lifetime.
 - Ingress must not become a second authority for turn behavior that already belongs in runtime.
 - Canonical ingress code lives under `chat/ingress/*`. Do not reintroduce legacy patch modules for core ingress behavior.

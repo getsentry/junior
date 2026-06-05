@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildActorIdentity,
   isActorUserId,
-  normalizeActorIdentity,
   parseActorUserId,
   slackActorIdentity,
 } from "@/chat/services/requester-identity";
@@ -18,7 +18,7 @@ describe("requester identity", () => {
 
   it("does not promote Slack ids into actor display names", () => {
     expect(
-      normalizeActorIdentity(
+      buildActorIdentity(
         {
           fullName: "U039RR91S",
           userId: "U039RR91S",
@@ -31,7 +31,7 @@ describe("requester identity", () => {
 
   it("does not promote synthetic unknown display names", () => {
     expect(
-      normalizeActorIdentity(
+      buildActorIdentity(
         {
           fullName: "unknown",
           userId: "U039RR91S",
@@ -44,7 +44,7 @@ describe("requester identity", () => {
 
   it("does not preserve synthetic unknown actor ids", () => {
     expect(
-      normalizeActorIdentity(
+      buildActorIdentity(
         {
           fullName: "David Cramer",
           userId: "unknown",
@@ -72,7 +72,7 @@ describe("requester identity", () => {
 
   it("drops profile fields when caller context points at a different user", () => {
     expect(
-      normalizeActorIdentity(
+      buildActorIdentity(
         {
           email: "david@example.com",
           fullName: "David Cramer",

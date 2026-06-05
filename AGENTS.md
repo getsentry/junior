@@ -61,6 +61,7 @@ Co-Authored-By: (agent model name) <email>
 
 - `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
 - `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
+- `policies/context-bound-systems.md` (explicit actor/destination/context propagation across runtime boundaries)
 - `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
 - `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
 - `policies/interface-design.md` (naming, module paths, and minimal interface boundaries)
@@ -85,7 +86,7 @@ Co-Authored-By: (agent model name) <email>
 - Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
 - Service modules must depend on small injected ports for Slack behavior, not import Slack infrastructure directly.
 - Slack modules must not import runtime modules.
-- `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only normalizes/routes.
+- `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only parses, classifies, and routes source events.
 - **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
 - Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
 - Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/app/production`.
@@ -115,6 +116,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed turns, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
+- `specs/identity.md` (current actor, system actor, requester, author, creator, credential subject, service principal, and display identity contract)
 - `specs/credential-injection.md` (requester-bound provider credential injection contract)
 - `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/agent-prompt.md` (core prompt ownership, execution-bias, and bloat-control contract)

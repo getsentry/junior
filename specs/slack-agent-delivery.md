@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -199,7 +199,7 @@ Images passed into Slack threads are part of the thread context contract.
 
 Current rules:
 
-1. Slack file/image attachments on inbound messages must survive ingress normalization, including `message_changed` events.
+1. Slack file/image attachments on inbound messages must survive ingress parsing, including `message_changed` events.
 2. Private-file fetchers must be rehydrated before runtime processing whenever messages are deserialized or side-channeled through webhook handlers.
 3. Passive subscribed-thread messages that include potential image attachments must not be permanently marked as already hydrated before image hydration has actually run.
 4. Later explicit mentions in the same thread may rely on previously skipped screenshots or image uploads still being recoverable from persisted conversation state.

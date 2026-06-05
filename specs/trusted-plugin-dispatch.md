@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-03
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -297,6 +297,7 @@ Use unit tests for:
 
 ## Related Specs
 
+- `./identity.md`
 - `./trusted-plugin-heartbeat.md`
 - `./task-execution.md`
 - `./scheduler.md`

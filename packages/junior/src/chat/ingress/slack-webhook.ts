@@ -28,7 +28,7 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import {
-  normalizeActorIdentity,
+  buildActorIdentity,
   parseActorUserId,
 } from "@/chat/services/requester-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -443,7 +443,7 @@ async function handleSlashCommandForm(args: {
     args.params.get("user_id"),
     "Slack slash command payload",
   );
-  const userIdentity = normalizeActorIdentity(
+  const userIdentity = buildActorIdentity(
     {
       userId,
       userName: args.params.get("user_name") ?? undefined,

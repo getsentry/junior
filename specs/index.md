@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -35,6 +35,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/agent-turn-handling.md`
 - `specs/slack-agent-delivery.md`
 - `specs/slack-outbound-contract.md`
+- `specs/identity.md`
 - `specs/credential-injection.md`
 - `specs/oauth-flows.md`
 - `specs/agent-prompt.md`
@@ -77,6 +78,7 @@ For chat/agent/Slack turn behavior:
 - `specs/context-compaction.md` owns reusable Pi history compaction, internal context forks, and visible-thread compaction bounds.
 - `specs/slack-agent-delivery.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
+- `specs/identity.md` owns current actor, system actor, requester, author, creator, credential subject, service principal, and display identity separation across runtime boundaries.
 
 ## Archived Superseded Specs
 

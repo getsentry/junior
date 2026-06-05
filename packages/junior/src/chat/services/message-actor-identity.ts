@@ -1,7 +1,7 @@
 import type { Author, Message } from "chat";
 import {
+  buildActorIdentity,
   isActorUserId,
-  normalizeActorIdentity,
   parseActorUserId,
   slackActorIdentity,
   type ActorIdentityInput,
@@ -42,29 +42,29 @@ function applyIdentityToAuthor(
   author.fullName = identity.fullName ?? "";
 }
 
-/** Bind canonical actor identity to a Chat SDK message for downstream consumers. */
+/** Preserve runtime-owned identity on Chat SDK messages before persistence. */
 export function bindMessageActorIdentity(
   message: Message,
   identity: ActorIdentityInput,
 ): ActorIdentityInput {
   const userId = canonicalUserId(message.author, identity);
-  const normalized = normalizeActorIdentity(identity, userId);
-  if (!normalized?.userId) {
+  const actorIdentity = buildActorIdentity(identity, userId);
+  if (!actorIdentity?.userId) {
     throw new Error("Message actor identity requires a user id");
   }
-  messageActors.set(message, normalized);
-  applyIdentityToAuthor(message.author, normalized);
-  return normalized;
+  messageActors.set(message, actorIdentity);
+  applyIdentityToAuthor(message.author, actorIdentity);
+  return actorIdentity;
 }
 
-/** Return canonical actor identity for a message without trusting adapter display fallbacks. */
+/** Read message identity without promoting adapter display fallbacks. */
 export function getMessageActorIdentity(
   message: Message,
 ): ActorIdentityInput | undefined {
   return messageActors.get(message) ?? actorIdentityFromAuthor(message.author);
 }
 
-/** Resolve and bind Slack profile-backed actor identity for one message. */
+/** Attach Slack display fields only after the author id is exact. */
 export async function ensureSlackMessageActorIdentity(
   message: Message,
   lookupSlackUser: (
