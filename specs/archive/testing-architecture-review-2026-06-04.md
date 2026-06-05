@@ -75,6 +75,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/oauth-callback-slack.ts` and split callback coverage by app
   home publication, resume context, thread-lock freshness, and abandoned-session
   guards.
+- Moved timeout resume runner behavior out of a mocked handler unit suite and
+  into component runtime suites backed by an explicit `resumeSlackTurn` test
+  port.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 

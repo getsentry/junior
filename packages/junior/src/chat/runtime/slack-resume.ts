@@ -110,7 +110,8 @@ export class ResumeTurnBusyError extends Error {
   }
 }
 
-interface ResumeSlackTurnArgs {
+/** Inputs for resuming a Slack turn through the runtime delivery boundary. */
+export interface ResumeSlackTurnArgs {
   messageText: string;
   channelId: string;
   threadTs: string;
@@ -127,6 +128,9 @@ interface ResumeSlackTurnArgs {
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
 }
+
+/** Runtime boundary used by timeout and auth resume orchestration. */
+export type ResumeSlackTurnRunner = typeof resumeSlackTurn;
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;

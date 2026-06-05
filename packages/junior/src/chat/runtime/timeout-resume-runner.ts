@@ -1,8 +1,9 @@
 import { logException, logWarn } from "@/chat/logging";
 import {
   ResumeTurnBusyError,
-  resumeSlackTurn,
+  resumeSlackTurn as defaultResumeSlackTurn,
   type ResumeReplyGenerator,
+  type ResumeSlackTurnRunner,
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -47,6 +48,7 @@ const TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 /** Runtime ports for timeout continuation execution. */
 export interface TimeoutResumeRunnerOptions {
   generateReply?: ResumeReplyGenerator;
+  resumeSlackTurn?: ResumeSlackTurnRunner;
   scheduleTurnTimeoutResume?: (
     request: TurnContinuationRequest,
   ) => Promise<void>;
@@ -152,6 +154,7 @@ export async function resumeTimedOutTurn(
   }
   const scheduleTurnTimeoutResume =
     options.scheduleTurnTimeoutResume ?? defaultScheduleTurnTimeoutResume;
+  const resumeSlackTurn = options.resumeSlackTurn ?? defaultResumeSlackTurn;
 
   return await resumeSlackTurn({
     messageText: "",
