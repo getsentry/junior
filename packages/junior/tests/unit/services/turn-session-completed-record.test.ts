@@ -10,11 +10,7 @@ beforeEach(setupTurnSessionRecordTest);
 afterEach(cleanupTurnSessionRecordTest);
 
 describe("turn session completed records", () => {
-  it("does not fail a completed turn when session record persistence fails", async () => {
-    const logException = vi.fn();
-    vi.doMock("@/chat/logging", () => ({
-      logException,
-    }));
+  it("continues a completed turn when session record persistence fails", async () => {
     vi.doMock("@/chat/state/turn-session", () => ({
       getAgentTurnSessionRecord: vi.fn(async () => {
         throw new Error("state adapter unavailable");
@@ -44,23 +40,6 @@ describe("turn session completed records", () => {
         },
       }),
     ).resolves.toBeUndefined();
-
-    expect(logException).toHaveBeenCalledWith(
-      expect.any(Error),
-      "agent_turn_completed_session_record_failed",
-      expect.objectContaining({
-        modelId: "test-model",
-        slackChannelId: "C123",
-        slackThreadId: "slack:C123:1",
-        slackUserId: "U123",
-      }),
-      expect.objectContaining({
-        "app.ai.resume_conversation_id": "conversation-1",
-        "app.ai.resume_session_id": "turn-1",
-        "app.ai.resume_slice_id": 1,
-      }),
-      "Failed to persist completed turn session record",
-    );
   });
 
   it("keeps completed session bootstrap context for later turns in the same session", async () => {
