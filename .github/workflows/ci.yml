@@ -3,8 +3,8 @@ name: CI
 permissions:
   contents: read
   actions: write
-  checks: write
-  pull-requests: write
+  statuses: write
+  pull-requests: read
 
 on:
   push:
@@ -54,6 +54,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
+          coverage-format: istanbul
+          disable-search: true
           junit-xml-pattern: packages/**/coverage/results.junit.xml
 
       - name: Pack release artifacts

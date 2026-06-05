@@ -44,6 +44,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["json", "lcov"],
       reportsDirectory: "./coverage",
+      include: ["src/**/*.{ts,tsx}"],
     },
   },
 });
