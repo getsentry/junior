@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeActorUserId,
+  isActorUserId,
   normalizeActorIdentity,
+  parseActorUserId,
   slackActorIdentity,
 } from "@/chat/services/requester-identity";
 
 describe("requester identity", () => {
-  it("normalizes actor user ids without preserving synthetic unknown", () => {
-    expect(normalizeActorUserId(" U039RR91S ")).toBe("U039RR91S");
-    expect(normalizeActorUserId("unknown")).toBeUndefined();
-    expect(normalizeActorUserId("")).toBeUndefined();
+  it("parses exact actor user ids without accepting synthetic values", () => {
+    expect(parseActorUserId("U039RR91S")).toBe("U039RR91S");
+    expect(parseActorUserId(" U039RR91S ")).toBeUndefined();
+    expect(parseActorUserId("unknown")).toBeUndefined();
+    expect(parseActorUserId("")).toBeUndefined();
+    expect(isActorUserId("U039RR91S")).toBe(true);
+    expect(isActorUserId(" U039RR91S ")).toBe(false);
   });
 
   it("does not promote Slack ids into actor display names", () => {
@@ -42,9 +46,9 @@ describe("requester identity", () => {
     expect(
       normalizeActorIdentity(
         {
-          fullName: "unknown",
+          fullName: "David Cramer",
           userId: "unknown",
-          userName: "unknown",
+          userName: "dcramer",
         },
         "unknown",
       ),

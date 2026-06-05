@@ -1,5 +1,5 @@
 import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
-import { normalizeActorUserId } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/services/requester-identity";
 
 export interface CredentialSubjectBinding {
   type: "slack-direct-conversation";
@@ -78,7 +78,7 @@ function parseActor(value: unknown): CredentialContext["actor"] | undefined {
       type?: unknown;
       userId?: unknown;
     };
-    const userId = normalizeActorUserId(
+    const userId = parseActorUserId(
       typeof record.userId === "string" ? record.userId : undefined,
     );
     if (record.type === "user" && userId) {
@@ -86,8 +86,10 @@ function parseActor(value: unknown): CredentialContext["actor"] | undefined {
     }
     const systemId =
       typeof record.id === "string" &&
-      record.id.trim().toLowerCase() !== "unknown"
-        ? record.id.trim()
+      record.id.length > 0 &&
+      record.id === record.id.trim() &&
+      record.id.toLowerCase() !== "unknown"
+        ? record.id
         : undefined;
     if (record.type === "system" && systemId) {
       return { type: "system", id: systemId };
@@ -101,7 +103,7 @@ function parseSubject(
 ): NonNullable<CredentialContext["subject"]> | undefined {
   if (value && typeof value === "object") {
     const record = value as Partial<NonNullable<CredentialContext["subject"]>>;
-    const userId = normalizeActorUserId(
+    const userId = parseActorUserId(
       typeof record.userId === "string" ? record.userId : undefined,
     );
     if (

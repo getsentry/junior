@@ -2,7 +2,7 @@ import type { BoundDispatchOptions, DispatchOptions } from "./types";
 import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
-import { normalizeActorUserId } from "@/chat/services/requester-identity";
+import { isActorUserId } from "@/chat/services/requester-identity";
 
 const MAX_DISPATCH_INPUT_LENGTH = 32_000;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
@@ -39,7 +39,7 @@ export function validateDispatchOptions(options: DispatchOptions): void {
     if (options.credentialSubject.type !== "user") {
       throw new Error("Dispatch credentialSubject type must be user");
     }
-    if (!normalizeActorUserId(options.credentialSubject.userId)) {
+    if (!isActorUserId(options.credentialSubject.userId)) {
       throw new Error("Dispatch credentialSubject userId is required");
     }
     if (

@@ -42,7 +42,7 @@ import {
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
-  normalizeActorUserId,
+  parseActorUserId,
   type SlackActorProfile,
 } from "@/chat/services/requester-identity";
 
@@ -71,7 +71,7 @@ export interface CreateSlackConversationWorkerOptions {
 }
 
 function requireSlackAuthorId(message: Message): string {
-  const authorId = normalizeActorUserId(message.author.userId);
+  const authorId = parseActorUserId(message.author.userId);
   if (!authorId) {
     throw new Error("Slack message requires an actor user id");
   }

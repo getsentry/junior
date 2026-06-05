@@ -5,7 +5,7 @@ import { isPluginProvider } from "@/chat/plugins/registry";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
-import { normalizeActorIdentity } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/services/requester-identity";
 
 async function postEphemeral(
   event: SlashCommandEvent,
@@ -15,11 +15,11 @@ async function postEphemeral(
 }
 
 function requireRequesterId(event: SlashCommandEvent): string {
-  const identity = normalizeActorIdentity({ userId: event.user.userId });
-  if (!identity?.userId) {
+  const userId = parseActorUserId(event.user.userId);
+  if (!userId) {
     throw new Error("Slack slash command requires a requester user id");
   }
-  return identity.userId;
+  return userId;
 }
 
 function getCommandName(): string {

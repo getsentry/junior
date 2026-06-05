@@ -29,7 +29,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import {
   normalizeActorIdentity,
-  normalizeActorUserId,
+  parseActorUserId,
 } from "@/chat/services/requester-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
@@ -420,7 +420,7 @@ function requireSlackPayloadUserId(
   value: string | null | undefined,
   source: string,
 ): string {
-  const userId = normalizeActorUserId(value ?? undefined);
+  const userId = parseActorUserId(value);
   if (!userId) {
     throw new Error(`${source} is missing a Slack user id`);
   }

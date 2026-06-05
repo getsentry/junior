@@ -6,7 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import { normalizeActorUserId } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/services/requester-identity";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
@@ -161,7 +161,7 @@ export async function postSlackEphemeralMessage(input: {
     input.channelId,
     "Slack ephemeral message posting",
   );
-  const userId = normalizeActorUserId(input.userId);
+  const userId = parseActorUserId(input.userId);
   if (!userId) {
     throw new Error("Slack ephemeral message posting requires a user ID");
   }

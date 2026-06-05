@@ -2,7 +2,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
-import { normalizeActorUserId } from "@/chat/services/requester-identity";
+import {
+  isActorUserId,
+  parseActorUserId,
+} from "@/chat/services/requester-identity";
 
 const CREDENTIAL_SUBJECT_HMAC_CONTEXT = "junior.credential_subject.v1";
 const CREDENTIAL_SUBJECT_SIGNATURE_VERSION = "v1";
@@ -48,7 +51,7 @@ export function createSlackDirectCredentialSubject(input: {
 }): AgentPluginCredentialSubject | undefined {
   const channelId = normalizeSlackConversationId(input.channelId);
   const teamId = input.teamId?.trim();
-  const userId = normalizeActorUserId(input.userId);
+  const userId = parseActorUserId(input.userId);
   if (!channelId || !teamId || !userId || !isDmChannel(channelId)) {
     return undefined;
   }
@@ -70,7 +73,7 @@ export function bindSlackDirectCredentialSubject(input: {
   const teamId = input.teamId.trim();
   const secret = getCredentialSubjectSecret();
   const { subject } = input;
-  const userId = normalizeActorUserId(subject.userId);
+  const userId = parseActorUserId(subject.userId);
   if (
     !channelId ||
     !teamId ||
@@ -117,10 +120,9 @@ export function verifySlackDirectCredentialSubject(input: {
   }
   const { subject } = input;
   const binding = subject.binding;
-  const userId = normalizeActorUserId(subject.userId);
   if (
     subject.type !== "user" ||
-    !userId ||
+    !isActorUserId(subject.userId) ||
     subject.allowedWhen !== "private-direct-conversation" ||
     !binding ||
     binding.type !== "slack-direct-conversation" ||
@@ -138,7 +140,7 @@ export function verifySlackDirectCredentialSubject(input: {
       allowedWhen: subject.allowedWhen,
       teamId: binding.teamId,
       channelId: binding.channelId,
-      userId,
+      userId: subject.userId,
     }),
   );
   return timingSafeMatch(expected, binding.signature);

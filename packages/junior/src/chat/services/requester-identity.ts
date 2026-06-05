@@ -19,14 +19,24 @@ function clean(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
-/** Normalize a platform actor id, rejecting synthetic sentinel values. */
-export function normalizeActorUserId(
-  value: string | undefined,
-): string | undefined {
-  const normalized = clean(value);
-  return normalized && normalized.toLowerCase() !== "unknown"
-    ? normalized
-    : undefined;
+function isSyntheticActorUserId(value: string): boolean {
+  return value.toLowerCase() === "unknown";
+}
+
+/** Parse actor ids from platform or adapter payloads before they enter owned state. */
+export function parseActorUserId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0) {
+    return undefined;
+  }
+  if (value !== value.trim() || isSyntheticActorUserId(value)) {
+    return undefined;
+  }
+  return value;
+}
+
+/** Return whether a value is already an exact actor id accepted by owned state. */
+export function isActorUserId(value: string | undefined): value is string {
+  return parseActorUserId(value) === value;
 }
 
 function isSlackUserId(value: string): boolean {
@@ -60,8 +70,14 @@ export function normalizeActorIdentity(
   requester: ActorIdentityInput | undefined,
   requesterId?: string,
 ): ActorIdentityInput | undefined {
-  const contextUserId = normalizeActorUserId(requesterId);
-  const requesterUserId = normalizeActorUserId(requester?.userId);
+  const contextUserId = parseActorUserId(requesterId);
+  if (requesterId !== undefined && !contextUserId) {
+    return undefined;
+  }
+  const requesterUserId = parseActorUserId(requester?.userId);
+  if (requester?.userId !== undefined && !requesterUserId) {
+    return undefined;
+  }
   const userId = contextUserId ?? requesterUserId;
   const canUseRequesterIdentity =
     !contextUserId || !requesterUserId || contextUserId === requesterUserId;
@@ -88,7 +104,7 @@ export function slackActorIdentity(
   userId: string,
   profile: SlackActorProfile | null | undefined,
 ): ActorIdentityInput {
-  const actorUserId = normalizeActorUserId(userId);
+  const actorUserId = parseActorUserId(userId);
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
   }

@@ -7,7 +7,6 @@ import type {
 } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
-import { normalizeActorIdentity } from "@/chat/services/requester-identity";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
@@ -19,6 +18,7 @@ const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const CONTEXT_COMPACTION_BATCH_SIZE = 24;
 const CONTEXT_MAX_COMPACTIONS = 16;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
+const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 export interface ConversationMemoryDeps {
   completeText: typeof completeText;
@@ -71,11 +71,7 @@ function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
 ): string {
-  const actor = normalizeActorIdentity(message.author, message.author?.userId);
-  const displayName =
-    actor?.fullName ??
-    actor?.userName ??
-    (message.role === "assistant" ? botConfig.userName : message.role);
+  const displayName = conversationAuthorDisplayName(message);
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
@@ -90,6 +86,27 @@ function renderConversationMessageLine(
   const markerSuffix = markers.length > 0 ? ` (${markers.join("; ")})` : "";
   const imageContext = buildImageContextSuffix(message, conversation);
   return `[${message.role}] ${displayName}: ${message.text}${imageContext}${markerSuffix}`;
+}
+
+function conversationAuthorDisplayName(message: ConversationMessage): string {
+  const author = message.author;
+  const fullName = authorDisplayField(author?.fullName, author?.userId);
+  const userName = authorDisplayField(author?.userName, author?.userId);
+  return (
+    fullName ??
+    userName ??
+    (message.role === "assistant" ? botConfig.userName : message.role)
+  );
+}
+
+function authorDisplayField(
+  value: string | undefined,
+  userId: string | undefined,
+): string | undefined {
+  if (!value || value === userId || SLACK_USER_ID_DISPLAY_PATTERN.test(value)) {
+    return undefined;
+  }
+  return value;
 }
 
 export function updateConversationStats(
@@ -189,16 +206,9 @@ export function buildConversationContext(
     }
     lines.push("<thread-transcript>");
     for (const [index, message] of messages.entries()) {
-      const actor = normalizeActorIdentity(
-        message.author,
-        message.author?.userId,
-      );
-      const author = escapeXml(
-        actor?.userName ??
-          (message.role === "assistant" ? botConfig.userName : message.role),
-      );
-      const actorIdAttr = actor?.userId
-        ? ` actor_id="${escapeXml(actor.userId)}"`
+      const author = escapeXml(conversationAuthorDisplayName(message));
+      const actorIdAttr = message.author?.userId
+        ? ` actor_id="${escapeXml(message.author.userId)}"`
         : "";
       const ts = new Date(message.createdAtMs).toISOString();
       const slackTsAttr = message.meta?.slackTs

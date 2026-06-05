@@ -80,12 +80,22 @@ describe("credential context", () => {
     ).toBeUndefined();
     expect(
       parseCredentialContext({
+        actor: { type: "system", id: " scheduler " },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseCredentialContext({
         actor: { type: "user", userId: "" },
       }),
     ).toBeUndefined();
     expect(
       parseCredentialContext({
         actor: { type: "user", userId: "unknown" },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseCredentialContext({
+        actor: { type: "user", userId: " U123 " },
       }),
     ).toBeUndefined();
     expect(
