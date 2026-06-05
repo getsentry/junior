@@ -81,6 +81,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted runtime dependency snapshot mocks into
   `tests/fixtures/runtime-dependency-snapshots.ts` and split cache/rebuild,
   install/build, and instrumentation contracts into focused unit suites.
+- Extracted Slack timeout-resume setup into
+  `tests/fixtures/turn-resume-slack.ts` and split integration coverage by
+  resumed reply delivery, durable continuation scheduling, and file delivery.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -185,7 +188,9 @@ Files:
 - `packages/junior/tests/integration/oauth-callback-resume-context.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-lock.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-guards.test.ts`
-- `packages/junior/tests/integration/turn-resume-slack.test.ts`
+- `packages/junior/tests/integration/turn-resume-slack-delivery.test.ts`
+- `packages/junior/tests/integration/turn-resume-slack-continuation.test.ts`
+- `packages/junior/tests/integration/turn-resume-slack-file-delivery.test.ts`
 
 Problem:
 
