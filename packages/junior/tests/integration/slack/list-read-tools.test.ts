@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createSlackListGetItemsTool } from "@/chat/tools/slack/list-tools";
 import type { ToolState } from "@/chat/tools/types";
-import { slackListsItemsListPage } from "../fixtures/slack/factories/api";
+import { slackListsItemsListPage } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 function createToolState(options: { currentListId?: string } = {}): ToolState {
   const operationResultCache = new Map<string, unknown>();

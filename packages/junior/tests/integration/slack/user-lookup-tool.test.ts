@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
-import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
+import { usersInfoOk, usersListPage } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
   queueSlackApiError,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -358,35 +358,6 @@ describe("slackUserLookup", () => {
 
       expect(tools).toHaveProperty("slackUserLookup");
       expect(tools.slackUserLookup.description).toContain("Slack user");
-    });
-  });
-
-  describe("custom profile fields", () => {
-    it("returns custom profile fields as-is", async () => {
-      queueSlackApiResponse("users.info", {
-        body: usersInfoOk({
-          userId: "U_GH",
-          userName: "untitaker",
-          realName: "Markus Unterwaditzer",
-          fields: {
-            Xf042GITHUB: {
-              value: "https://github.com/untitaker",
-              alt: "untitaker",
-              label: "GitHub",
-            },
-          },
-        }),
-      });
-
-      const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_GH" });
-
-      expect(result.user.profile_fields).toHaveLength(1);
-      expect(result.user.profile_fields[0]).toMatchObject({
-        id: "Xf042GITHUB",
-        label: "GitHub",
-        value: "https://github.com/untitaker",
-      });
     });
   });
 });

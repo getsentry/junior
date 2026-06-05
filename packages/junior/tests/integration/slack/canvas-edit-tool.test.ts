@@ -4,12 +4,15 @@ import {
   createSlackCanvasWriteTool,
 } from "@/chat/tools/slack/canvas-tools";
 import type { ToolState } from "@/chat/tools/types";
-import { canvasesEditOk, filesInfoOk } from "../fixtures/slack/factories/api";
+import {
+  canvasesEditOk,
+  filesInfoOk,
+} from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 function createState(
   options: {

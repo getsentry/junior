@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createSlackCanvasReadTool } from "@/chat/tools/slack/canvas-tools";
-import { filesInfoOk } from "../fixtures/slack/factories/api";
+import { filesInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 describe("createSlackCanvasReadTool", () => {
   beforeEach(() => {

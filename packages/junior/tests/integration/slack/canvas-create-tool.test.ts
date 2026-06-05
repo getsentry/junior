@@ -4,13 +4,13 @@ import {
   canvasesAccessSetOk,
   canvasesCreateOk,
   filesInfoOk,
-} from "../fixtures/slack/factories/api";
+} from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
   queueSlackRateLimit,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 describe("createCanvas", () => {
   beforeEach(() => {

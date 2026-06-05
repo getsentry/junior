@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
-import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 function createContext(
   overrides: Partial<SlackToolContext> = {},
@@ -79,7 +79,9 @@ describe("slackThreadRead", () => {
     expect(result.messages[0].text).toBe("root message");
     expect(result.messages[1].text).toBe("reply message");
 
-    // No conversations.info call — access determined by channel prefix
+    // Public-channel URLs should read the thread directly without broader
+    // history or channel-info calls.
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
@@ -427,30 +429,5 @@ describe("slackThreadRead", () => {
     });
     expect(file).not.toHaveProperty("url_private");
     expect(file).not.toHaveProperty("url_private_download");
-  });
-
-  it("does not call conversations.history — only conversations.replies", async () => {
-    queueSlackApiResponse("conversations.replies", {
-      body: conversationsRepliesPage({
-        threadTs: "1700000000.100000",
-        messages: [
-          {
-            ts: "1700000000.100000",
-            thread_ts: "1700000000.100000",
-            user: "U1",
-            text: "msg",
-          },
-        ],
-      }),
-    });
-
-    const tool = createSlackThreadReadTool(createContext());
-    await executeTool(tool, {
-      url: "https://sentry.slack.com/archives/C123/p1700000000100000",
-    });
-
-    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 });

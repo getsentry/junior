@@ -8,7 +8,7 @@ import {
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
   setupSlackScheduleToolTest,
-} from "../fixtures/slack-schedule-tools";
+} from "../../fixtures/slack-schedule-tools";
 
 describe("Slack schedule tool execution modes", () => {
   beforeEach(setupSlackScheduleToolTest);

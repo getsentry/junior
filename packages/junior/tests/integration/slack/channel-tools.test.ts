@@ -9,12 +9,12 @@ import {
   chatPostMessageOk,
   conversationsHistoryPage,
   reactionsAddOk,
-} from "../fixtures/slack/factories/api";
+} from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();

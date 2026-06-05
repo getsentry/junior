@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createSlackListCreateTool } from "@/chat/tools/slack/list-tools";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack/list-tools";
 import type { ToolState } from "@/chat/tools/types";
-import { slackListsCreateOk } from "../fixtures/slack/factories/api";
+import { slackListsCreateOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 function createToolState(
   options: {
