@@ -6,7 +6,6 @@ import {
   buildSlackReplyBlocks,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
-import { toSlackMrkdwnFallback } from "@/chat/slack/mrkdwn";
 import { postSlackMessage, uploadFilesToThread } from "@/chat/slack/outbound";
 import {
   buildSlackOutputMessage,
@@ -214,7 +213,7 @@ export async function postSlackApiReplyPosts(args: {
         const response = await postSlackMessage({
           channelId: args.channelId,
           threadTs: args.threadTs,
-          text: toSlackMrkdwnFallback(post.text),
+          text: post.text,
           ...(blocks ? { blocks } : {}),
         });
         messageTs = response.ts;

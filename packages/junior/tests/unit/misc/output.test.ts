@@ -7,11 +7,7 @@ import {
   slackOutputPolicy,
   splitSlackReplyText,
 } from "@/chat/slack/output";
-import {
-  ensureBlockSpacing,
-  normalizeSlackReplyMarkdown,
-  toSlackMrkdwnFallback,
-} from "@/chat/slack/mrkdwn";
+import { ensureBlockSpacing, normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
 describe("normalizeSlackReplyMarkdown", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {
@@ -98,48 +94,6 @@ describe("normalizeSlackReplyMarkdown", () => {
   });
 });
 
-describe("toSlackMrkdwnFallback", () => {
-  it("converts CommonMark bold to mrkdwn bold", () => {
-    expect(toSlackMrkdwnFallback("**bold text**")).toBe("*bold text*");
-  });
-
-  it("converts a Markdown link to a Slack mrkdwn link", () => {
-    expect(
-      toSlackMrkdwnFallback("[PR](https://github.com/org/repo/pull/1)"),
-    ).toBe("<https://github.com/org/repo/pull/1|PR>");
-  });
-
-  it("converts bold and link together", () => {
-    expect(
-      toSlackMrkdwnFallback(
-        "**See [PR](https://github.com/org/repo/pull/1)**",
-      ),
-    ).toBe("*See <https://github.com/org/repo/pull/1|PR>*");
-  });
-
-  it("preserves an already-wrapped Slack link unchanged", () => {
-    expect(
-      toSlackMrkdwnFallback("<https://github.com/org/repo/pull/1>"),
-    ).toBe("<https://github.com/org/repo/pull/1>");
-  });
-
-  it("preserves inline code unchanged", () => {
-    expect(toSlackMrkdwnFallback("`**bold** [PR](https://e.com)`")).toBe(
-      "`**bold** [PR](https://e.com)`",
-    );
-  });
-
-  it("preserves fenced code block contents unchanged", () => {
-    const input = "intro\n```\n**bold** [PR](https://e.com)\n```\nend";
-    expect(toSlackMrkdwnFallback(input)).toBe(
-      "intro\n```\n**bold** [PR](https://e.com)\n```\nend",
-    );
-  });
-
-  it("passes through plain text without modification", () => {
-    expect(toSlackMrkdwnFallback("just plain text")).toBe("just plain text");
-  });
-});
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {

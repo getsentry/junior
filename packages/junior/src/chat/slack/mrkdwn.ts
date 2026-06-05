@@ -228,80 +228,6 @@ function wrapBareUrls(text: string): string {
   return transformOutsideFences(text, wrapBareUrlsOnLine);
 }
 
-function convertBoldInPlain(text: string): string {
-  return text.replace(/\*\*([^*\n]+)\*\*/g, "*$1*");
-}
-
-/**
- * Convert a single non-fenced line from CommonMark to Slack mrkdwn for use
- * as notification fallback text.
- *
- * Two passes: bold conversion first so `**...[link](url)...**` spans are
- * seen whole, then link conversion on the result.
- */
-function toSlackMrkdwnFallbackLine(line: string): string {
-  // Pass 1: convert **bold** → *bold* outside protected spans.
-  let withBold = "";
-  let i = 0;
-  let plainStart = 0;
-
-  while (i < line.length) {
-    const codeSpan = readInlineCodeSpan(line, i);
-    if (codeSpan) {
-      withBold += convertBoldInPlain(line.slice(plainStart, i)) + codeSpan.text;
-      i = codeSpan.end;
-      plainStart = i;
-      continue;
-    }
-    const angleToken = readExistingSlackAngleToken(line, i);
-    if (angleToken) {
-      withBold +=
-        convertBoldInPlain(line.slice(plainStart, i)) + angleToken.text;
-      i = angleToken.end;
-      plainStart = i;
-      continue;
-    }
-    i++;
-  }
-  withBold += convertBoldInPlain(line.slice(plainStart));
-
-  // Pass 2: convert [label](url) → <url|label> outside protected spans.
-  let result = "";
-  i = 0;
-  plainStart = 0;
-
-  while (i < withBold.length) {
-    const codeSpan = readInlineCodeSpan(withBold, i);
-    if (codeSpan) {
-      result += withBold.slice(plainStart, i) + codeSpan.text;
-      i = codeSpan.end;
-      plainStart = i;
-      continue;
-    }
-    const angleToken = readExistingSlackAngleToken(withBold, i);
-    if (angleToken) {
-      result += withBold.slice(plainStart, i) + angleToken.text;
-      i = angleToken.end;
-      plainStart = i;
-      continue;
-    }
-    const mdLink = readMarkdownLink(withBold, i);
-    if (mdLink) {
-      result += withBold.slice(plainStart, i);
-      const labelCloseIdx = mdLink.text.indexOf("](");
-      const label = mdLink.text.slice(1, labelCloseIdx);
-      const url = mdLink.text.slice(labelCloseIdx + 2, -1);
-      result += `<${url}|${label}>`;
-      i = mdLink.end;
-      plainStart = i;
-      continue;
-    }
-    i++;
-  }
-  result += withBold.slice(plainStart);
-  return result;
-}
-
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
   const codeBlockPattern = /^```/;
@@ -363,20 +289,6 @@ export function normalizeSlackReplyMarkdown(text: string): string {
   normalized = wrapBareUrls(normalized);
   normalized = ensureBlockSpacing(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
-}
-
-/**
- * Convert a CommonMark reply text to mrkdwn-compatible fallback text for
- * the top-level Slack `text` field when posting with blocks.
- *
- * The `text` field is rendered by Slack as legacy mrkdwn (notifications,
- * screen readers, fallback clients). CommonMark `**bold**` and `[label](url)`
- * do not render correctly there, so this converts them to mrkdwn equivalents.
- * Inline code spans, fenced code blocks, and existing Slack angle tokens are
- * preserved unchanged.
- */
-export function toSlackMrkdwnFallback(text: string): string {
-  return transformOutsideFences(text, toSlackMrkdwnFallbackLine);
 }
 
 /** Normalize assistant status text before handing it to Slack. */
