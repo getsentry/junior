@@ -1,14 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/chat/plugins/registry", () => ({
-  isPluginConfigKey: (key: string) =>
-    ["sentry.org", "sentry.project", "github.org", "github.repo"].includes(key),
-}));
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
+
+const configServices = {
+  isPluginConfigKey: (key: string) =>
+    ["sentry.org", "sentry.project", "github.org", "github.repo"].includes(key),
+};
 
 afterEach(() => {
   setConfigDefaults(undefined);
@@ -20,7 +20,10 @@ describe("install config defaults", () => {
   });
 
   it("stores and retrieves defaults", () => {
-    setConfigDefaults({ "sentry.org": "sentry", "github.repo": "myorg/repo" });
+    setConfigDefaults(
+      { "sentry.org": "sentry", "github.repo": "myorg/repo" },
+      configServices,
+    );
     expect(getConfigDefaults()).toEqual({
       "sentry.org": "sentry",
       "github.repo": "myorg/repo",
@@ -28,32 +31,38 @@ describe("install config defaults", () => {
   });
 
   it("clears defaults when called with undefined", () => {
-    setConfigDefaults({ "sentry.org": "sentry" });
+    setConfigDefaults({ "sentry.org": "sentry" }, configServices);
     setConfigDefaults(undefined);
     expect(getConfigDefaults()).toEqual({});
   });
 
   it("rejects keys that are not registered plugin config keys", () => {
-    expect(() => setConfigDefaults({ "unknown.key": "value" })).toThrow(
-      "not a registered plugin config key",
-    );
+    expect(() =>
+      setConfigDefaults({ "unknown.key": "value" }, configServices),
+    ).toThrow("not a registered plugin config key");
   });
 
   it("rejects null defaults", () => {
     expect(() =>
-      setConfigDefaults(null as unknown as Record<string, unknown>),
+      setConfigDefaults(
+        null as unknown as Record<string, unknown>,
+        configServices,
+      ),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("rejects array defaults", () => {
     expect(() =>
-      setConfigDefaults([] as unknown as Record<string, unknown>),
+      setConfigDefaults(
+        [] as unknown as Record<string, unknown>,
+        configServices,
+      ),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("does not mutate the input object", () => {
     const input = { "sentry.org": "sentry" };
-    setConfigDefaults(input);
+    setConfigDefaults(input, configServices);
     input["sentry.org"] = "changed";
     expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
   });
@@ -62,19 +71,19 @@ describe("install config defaults", () => {
     const input = {
       "sentry.org": { slug: "sentry" },
     };
-    setConfigDefaults(input);
+    setConfigDefaults(input, configServices);
     input["sentry.org"].slug = "changed";
     expect(getConfigDefaults()["sentry.org"]).toEqual({ slug: "sentry" });
   });
 
   it("does not expose mutable defaults", () => {
-    setConfigDefaults({ "sentry.org": "sentry" });
+    setConfigDefaults({ "sentry.org": "sentry" }, configServices);
     getConfigDefaults()["sentry.org"] = "changed";
     expect(getConfigDefaults()["sentry.org"]).toBe("sentry");
   });
 
   it("does not expose nested mutable defaults", () => {
-    setConfigDefaults({ "sentry.org": { slug: "sentry" } });
+    setConfigDefaults({ "sentry.org": { slug: "sentry" } }, configServices);
     (getConfigDefaults()["sentry.org"] as { slug: string }).slug = "changed";
     expect(getConfigDefaults()["sentry.org"]).toEqual({ slug: "sentry" });
   });

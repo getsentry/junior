@@ -1,6 +1,14 @@
 import { isPluginConfigKey } from "@/chat/plugins/registry";
 
+interface ConfigDefaultsServices {
+  isPluginConfigKey: typeof isPluginConfigKey;
+}
+
 let installDefaults: Record<string, unknown> = {};
+
+const defaultConfigDefaultsServices: ConfigDefaultsServices = {
+  isPluginConfigKey,
+};
 
 function cloneDefaults(
   defaults: Record<string, unknown>,
@@ -21,6 +29,7 @@ function isConfigDefaultsRecord(
 /** Store install-wide config defaults; keys must be registered plugin config keys. */
 export function setConfigDefaults(
   defaults: Record<string, unknown> | undefined,
+  services: ConfigDefaultsServices = defaultConfigDefaultsServices,
 ): void {
   if (defaults === undefined) {
     installDefaults = {};
@@ -34,7 +43,7 @@ export function setConfigDefaults(
   }
 
   for (const key of Object.keys(defaults)) {
-    if (!isPluginConfigKey(key)) {
+    if (!services.isPluginConfigKey(key)) {
       throw new Error(
         `configDefaults: "${key}" is not a registered plugin config key`,
       );
