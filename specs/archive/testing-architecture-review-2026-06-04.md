@@ -80,6 +80,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Moved OAuth callback route/resume suites under `tests/integration/oauth/`
   and moved MCP auth runtime suites under `tests/integration/slack/` so
   top-level integration files no longer encode feature ownership in prefixes.
+- Split the MCP OAuth thread-lock refresh contract into
+  `tests/integration/oauth/mcp-callback-resume-lock.test.ts`, matching the
+  generic OAuth callback suite's context-vs-lock boundary.
 - Extracted generic OAuth callback setup into
   `tests/fixtures/oauth-callback-route.ts` and split callback coverage by app
   home publication, resume context, thread-lock freshness, and
@@ -234,6 +237,7 @@ Files:
 - `packages/junior/tests/integration/slack/schedule-run-tools.test.ts`
 - `packages/junior/tests/integration/slack/schedule-execution-mode.test.ts`
 - `packages/junior/tests/integration/oauth/mcp-callback-resume-context.test.ts`
+- `packages/junior/tests/integration/oauth/mcp-callback-resume-lock.test.ts`
 - `packages/junior/tests/integration/oauth/mcp-callback-resume-guards.test.ts`
 - `packages/junior/tests/integration/oauth/mcp-callback-file-delivery.test.ts`
 - `packages/junior/tests/integration/oauth/mcp-callback-route-guards.test.ts`
