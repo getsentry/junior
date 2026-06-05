@@ -3,7 +3,7 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { applyBotConfigOverrides, botConfig } from "@/chat/config";
+import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import {
   getPluginCatalogSignature,
@@ -284,13 +284,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
-  const previousProcessingReactionEmoji = botConfig.processingReactionEmoji;
-  const previousCompletedReactionEmoji = botConfig.completedReactionEmoji;
+  const previousSlackReactionConfig = getSlackReactionConfig();
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
   try {
     setConfigDefaults(options?.configDefaults);
     if (options?.slack) {
-      applyBotConfigOverrides(options.slack);
+      setSlackReactionConfig(options.slack);
     }
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
@@ -301,8 +300,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
-    botConfig.processingReactionEmoji = previousProcessingReactionEmoji;
-    botConfig.completedReactionEmoji = previousCompletedReactionEmoji;
+    setSlackReactionConfig(previousSlackReactionConfig);
     throw error;
   }
 

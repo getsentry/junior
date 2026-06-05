@@ -181,18 +181,18 @@ describe("chat config", () => {
     delete process.env.JUNIOR_PROCESSING_REACTION;
     delete process.env.JUNIOR_COMPLETED_REACTION;
 
-    const { botConfig } = await loadConfig();
-    expect(botConfig.processingReactionEmoji).toBe("eyes");
-    expect(botConfig.completedReactionEmoji).toBe("white_check_mark");
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().slack.processingReactionEmoji).toBe("eyes");
+    expect(getChatConfig().slack.completedReactionEmoji).toBe("white_check_mark");
   });
 
   it("uses JUNIOR_PROCESSING_REACTION and JUNIOR_COMPLETED_REACTION when configured", async () => {
     process.env.JUNIOR_PROCESSING_REACTION = "hourglass_flowing_sand";
     process.env.JUNIOR_COMPLETED_REACTION = ":tada:";
 
-    const { botConfig } = await loadConfig();
-    expect(botConfig.processingReactionEmoji).toBe("hourglass_flowing_sand");
-    expect(botConfig.completedReactionEmoji).toBe("tada");
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().slack.processingReactionEmoji).toBe("hourglass_flowing_sand");
+    expect(getChatConfig().slack.completedReactionEmoji).toBe("tada");
   });
 
   it("throws at config load when JUNIOR_PROCESSING_REACTION is not a valid emoji name", async () => {
@@ -250,40 +250,40 @@ describe("chat config", () => {
   });
 });
 
-describe("applyBotConfigOverrides", () => {
+describe("setSlackReactionConfig", () => {
   afterEach(() => {
     vi.resetModules();
   });
 
   it("overrides processingReactionEmoji when provided", async () => {
-    const { botConfig, applyBotConfigOverrides } = await loadConfig();
-    applyBotConfigOverrides({ processingReactionEmoji: "jr-thinking" });
-    expect(botConfig.processingReactionEmoji).toBe("jr-thinking");
+    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
+    expect(getChatConfig().slack.processingReactionEmoji).toBe("jr-thinking");
   });
 
   it("overrides completedReactionEmoji when provided", async () => {
-    const { botConfig, applyBotConfigOverrides } = await loadConfig();
-    applyBotConfigOverrides({ completedReactionEmoji: "jr-done" });
-    expect(botConfig.completedReactionEmoji).toBe("jr-done");
+    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+    setSlackReactionConfig({ completedReactionEmoji: "jr-done" });
+    expect(getChatConfig().slack.completedReactionEmoji).toBe("jr-done");
   });
 
   it("normalizes colon-wrapped emoji names", async () => {
-    const { botConfig, applyBotConfigOverrides } = await loadConfig();
-    applyBotConfigOverrides({ processingReactionEmoji: ":tada:" });
-    expect(botConfig.processingReactionEmoji).toBe("tada");
+    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+    setSlackReactionConfig({ processingReactionEmoji: ":tada:" });
+    expect(getChatConfig().slack.processingReactionEmoji).toBe("tada");
   });
 
   it("throws when override emoji name is invalid", async () => {
-    const { applyBotConfigOverrides } = await loadConfig();
+    const { setSlackReactionConfig } = await loadConfig();
     expect(() =>
-      applyBotConfigOverrides({ processingReactionEmoji: "not valid emoji!" }),
-    ).toThrow("processingReactionEmoji option must be a valid Slack emoji name");
+      setSlackReactionConfig({ processingReactionEmoji: "not valid emoji!" }),
+    ).toThrow("processingReactionEmoji must be a valid Slack emoji name");
   });
 
   it("leaves unspecified fields unchanged", async () => {
-    const { botConfig, applyBotConfigOverrides } = await loadConfig();
-    const original = botConfig.completedReactionEmoji;
-    applyBotConfigOverrides({ processingReactionEmoji: "jr-thinking" });
-    expect(botConfig.completedReactionEmoji).toBe(original);
+    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+    const original = getChatConfig().slack.completedReactionEmoji;
+    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
+    expect(getChatConfig().slack.completedReactionEmoji).toBe(original);
   });
 });

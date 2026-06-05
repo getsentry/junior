@@ -42,12 +42,10 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 
 export interface BotConfig {
   advisor: AdvisorConfig;
-  completedReactionEmoji: string;
   fastModelId: string;
   loadingMessages: string[];
   modelId: string;
   modelContextWindowTokens?: number;
-  processingReactionEmoji: string;
   visionModelId?: string;
   turnTimeoutMs: number;
   userName: string;
@@ -65,6 +63,8 @@ export interface ChatConfig {
     botToken?: string;
     clientId?: string;
     clientSecret?: string;
+    completedReactionEmoji: string;
+    processingReactionEmoji: string;
     signingSecret?: string;
     slashCommand: string;
   };
@@ -234,16 +234,6 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
       DEFAULT_FAST_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    processingReactionEmoji: parseReactionEmoji(
-      "JUNIOR_PROCESSING_REACTION",
-      env.JUNIOR_PROCESSING_REACTION,
-      DEFAULT_PROCESSING_REACTION_EMOJI,
-    ),
-    completedReactionEmoji: parseReactionEmoji(
-      "JUNIOR_COMPLETED_REACTION",
-      env.JUNIOR_COMPLETED_REACTION,
-      DEFAULT_COMPLETED_REACTION_EMOJI,
-    ),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
@@ -264,9 +254,19 @@ export function readChatConfig(
       botToken:
         toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??
         toOptionalTrimmed(env.SLACK_BOT_USER_TOKEN),
-      signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
       clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
+      completedReactionEmoji: parseReactionEmoji(
+        "JUNIOR_COMPLETED_REACTION",
+        env.JUNIOR_COMPLETED_REACTION,
+        DEFAULT_COMPLETED_REACTION_EMOJI,
+      ),
+      processingReactionEmoji: parseReactionEmoji(
+        "JUNIOR_PROCESSING_REACTION",
+        env.JUNIOR_PROCESSING_REACTION,
+        DEFAULT_PROCESSING_REACTION_EMOJI,
+      ),
+      signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
     },
     state: {
@@ -326,23 +326,35 @@ export function getRuntimeMetadata(): RuntimeMetadata {
   };
 }
 
-/** Apply code-configured bot overrides from createApp() options, validating emoji names. */
-export function applyBotConfigOverrides(overrides: {
-  processingReactionEmoji?: string;
-  completedReactionEmoji?: string;
-}): void {
+export interface SlackReactionConfig {
+  completedReactionEmoji: string;
+  processingReactionEmoji: string;
+}
+
+/** Return the current Slack reaction emoji config. */
+export function getSlackReactionConfig(): SlackReactionConfig {
+  return {
+    completedReactionEmoji: chatConfig.slack.completedReactionEmoji,
+    processingReactionEmoji: chatConfig.slack.processingReactionEmoji,
+  };
+}
+
+/** Apply Slack reaction emoji overrides from createApp() options, validating names. */
+export function setSlackReactionConfig(
+  overrides: Partial<SlackReactionConfig>,
+): void {
   if (overrides.processingReactionEmoji !== undefined) {
-    botConfig.processingReactionEmoji = parseReactionEmoji(
-      "processingReactionEmoji option",
+    chatConfig.slack.processingReactionEmoji = parseReactionEmoji(
+      "processingReactionEmoji",
       overrides.processingReactionEmoji,
-      botConfig.processingReactionEmoji,
+      chatConfig.slack.processingReactionEmoji,
     );
   }
   if (overrides.completedReactionEmoji !== undefined) {
-    botConfig.completedReactionEmoji = parseReactionEmoji(
-      "completedReactionEmoji option",
+    chatConfig.slack.completedReactionEmoji = parseReactionEmoji(
+      "completedReactionEmoji",
       overrides.completedReactionEmoji,
-      botConfig.completedReactionEmoji,
+      chatConfig.slack.completedReactionEmoji,
     );
   }
 }

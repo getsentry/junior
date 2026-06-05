@@ -7,7 +7,7 @@ import {
 } from "@/chat/slack/outbound";
 import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
 import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
-import { botConfig } from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
 
 /** Controls the automatic Slack processing reaction lifecycle for one message. */
 export interface ProcessingReactionSession {
@@ -25,7 +25,7 @@ const noProcessingReaction: ProcessingReactionSession = {
 function isProcessingReactionEmoji(value: unknown): boolean {
   return (
     typeof value === "string" &&
-    normalizeSlackEmojiName(value) === botConfig.processingReactionEmoji
+    normalizeSlackEmojiName(value) === getChatConfig().slack.processingReactionEmoji
   );
 }
 
@@ -87,7 +87,7 @@ export async function startSlackProcessingReactionForMessage(args: {
     await addReactionToMessage({
       channelId: args.channelId,
       timestamp: args.timestamp,
-      emoji: botConfig.processingReactionEmoji,
+      emoji: getChatConfig().slack.processingReactionEmoji,
     });
   } catch (error) {
     args.logException(
@@ -114,7 +114,7 @@ export async function startSlackProcessingReactionForMessage(args: {
       await removeReactionFromMessage({
         channelId: args.channelId,
         timestamp: args.timestamp,
-        emoji: botConfig.processingReactionEmoji,
+        emoji: getChatConfig().slack.processingReactionEmoji,
       });
       return true;
     } catch (error) {
@@ -143,7 +143,7 @@ export async function startSlackProcessingReactionForMessage(args: {
         await addReactionToMessage({
           channelId: args.channelId,
           timestamp: args.timestamp,
-          emoji: botConfig.completedReactionEmoji,
+          emoji: getChatConfig().slack.completedReactionEmoji,
         });
       } catch (error) {
         args.logException(
