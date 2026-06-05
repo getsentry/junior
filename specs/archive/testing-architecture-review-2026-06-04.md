@@ -47,6 +47,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/respond-runtime.ts` for the provider-retry and timeout-resume
   suites, leaving each file focused on its fake Pi agent behavior and
   assertions.
+- Extracted the progressive MCP loading runtime harness into
+  `tests/fixtures/respond-mcp-progressive-loading.ts`, cutting the test file
+  down to MCP auth/session/tool-loading scenarios without an embedded mock wall.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -90,6 +93,11 @@ used and preserves sandbox metadata on error replies.
 single runtime mock fixture, which reduces duplication but does not change the
 layer assessment: the tests still prove turn orchestration through a mocked
 `generateAssistantReply` seam.
+
+`respond-mcp-progressive-loading.test.ts` now imports its dedicated mocked MCP
+runtime harness from fixtures. This makes the scenario list readable, but the
+suite still belongs in the migration queue because it validates multi-module MCP
+turn orchestration through unit-level module mocks.
 
 Direction:
 
