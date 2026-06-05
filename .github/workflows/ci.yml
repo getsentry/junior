@@ -3,6 +3,8 @@ name: CI
 permissions:
   contents: read
   actions: write
+  checks: write
+  pull-requests: write
 
 on:
   push:
@@ -42,9 +44,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:check
       - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm test:ci
       - run: pnpm --filter @sentry/junior-example build
       - run: pnpm docs:check
+
+      - name: Upload coverage and test results
+        if: ${{ !cancelled() }}
+        uses: getsentry/codecov-action@0.3.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
+          junit-xml-pattern: packages/**/coverage/results.junit.xml
 
       - name: Pack release artifacts
         if: github.event_name == 'push'

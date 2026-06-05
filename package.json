@@ -23,7 +23,8 @@
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm --filter @sentry/junior-plugin-api typecheck && pnpm --filter @sentry/junior-scheduler typecheck && pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-dashboard typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
-    "skills:check": "pnpm --filter @sentry/junior skills:check"
+    "skills:check": "pnpm --filter @sentry/junior skills:check",
+    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-dashboard test:coverage"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"

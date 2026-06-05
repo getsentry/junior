@@ -40,5 +40,10 @@ export default defineConfig({
       "tests/integration/workflow/**/*.test.ts",
     ],
     setupFiles: ["tests/msw/setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["json", "lcov"],
+      reportsDirectory: "./coverage",
+    },
   },
 });

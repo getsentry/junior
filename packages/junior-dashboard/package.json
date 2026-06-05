@@ -37,7 +37,8 @@
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "test": "vitest run -c vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:coverage": "vitest run -c vitest.config.ts --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
   "dependencies": {
     "@sentry/junior": "workspace:*",
@@ -58,6 +59,7 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.7",
     "tailwindcss": "^4.3.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
