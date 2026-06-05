@@ -25,6 +25,23 @@ import {
   setupSandboxEgressProxyTest,
 } from "../../fixtures/sandbox-egress-proxy";
 
+function mockSequentialSentryLeases(...tokens: string[]): void {
+  tokens.forEach((token, index) => {
+    issueProviderCredentialLeaseMock.mockResolvedValueOnce({
+      id: `lease-${index + 1}`,
+      provider: "sentry",
+      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+      headerTransforms: [
+        {
+          domain: "sentry.io",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+  });
+}
+
 describe("sandbox egress credentials", () => {
   beforeEach(async () => {
     await setupSandboxEgressProxyTest();
@@ -112,31 +129,7 @@ describe("sandbox egress credentials", () => {
 
   it("scopes cached credential leases to the actor", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock
-      .mockResolvedValueOnce({
-        id: "lease-1",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer token-u123" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      })
-      .mockResolvedValueOnce({
-        id: "lease-2",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer token-u456" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+    mockSequentialSentryLeases("token-u123", "token-u456");
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
       return new Response(new Headers(init?.headers).get("authorization"));
@@ -172,31 +165,7 @@ describe("sandbox egress credentials", () => {
 
   it("does not reuse cached credential leases across renewed credential contexts", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock
-      .mockResolvedValueOnce({
-        id: "lease-1",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer token-first-session" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      })
-      .mockResolvedValueOnce({
-        id: "lease-2",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer token-second-session" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+    mockSequentialSentryLeases("token-first-session", "token-second-session");
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
       return new Response(new Headers(init?.headers).get("authorization"));
@@ -245,31 +214,7 @@ describe("sandbox egress credentials", () => {
 
   it("clears the cached credential lease so the next request re-issues after upstream 401", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock
-      .mockResolvedValueOnce({
-        id: "lease-1",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer stale-token" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      })
-      .mockResolvedValueOnce({
-        id: "lease-2",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer fresh-token" },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+    mockSequentialSentryLeases("stale-token", "fresh-token");
 
     const fetchMock = vi
       .fn()
@@ -299,25 +244,7 @@ describe("sandbox egress credentials", () => {
 
   it("passes through upstream 403 responses without overriding the body", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock
-      .mockResolvedValueOnce({
-        id: "lease-1",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      })
-      .mockResolvedValueOnce({
-        id: "lease-2",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+    mockSequentialSentryLeases("token", "token");
 
     const fetchMock = vi.fn().mockImplementation(
       async () =>

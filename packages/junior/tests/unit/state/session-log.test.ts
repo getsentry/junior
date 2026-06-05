@@ -29,6 +29,20 @@ function memoryStore(): SessionLogStore & {
   };
 }
 
+function textMessage(
+  role: string,
+  text: string,
+  timestamp: number,
+  extra: Record<string, unknown> = {},
+): PiMessage {
+  return {
+    role,
+    ...extra,
+    content: [{ type: "text", text }],
+    timestamp,
+  } as PiMessage;
+}
+
 describe("agent session log store", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -36,16 +50,8 @@ describe("agent session log store", () => {
 
   it("appends Pi messages for a growing session projection", async () => {
     const store = memoryStore();
-    const first: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "first" }],
-      timestamp: 1,
-    } as PiMessage;
-    const second: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "second" }],
-      timestamp: 2,
-    } as PiMessage;
+    const first = textMessage("user", "first", 1);
+    const second = textMessage("assistant", "second", 2);
 
     await commitMessages({
       store,
@@ -85,22 +91,11 @@ describe("agent session log store", () => {
 
   it("records projection resets instead of rewriting unsafe history", async () => {
     const store = memoryStore();
-    const first: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "first" }],
-      timestamp: 1,
-    } as PiMessage;
-    const unsafe: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "unsafe" }],
-      timestamp: 2,
-    } as PiMessage;
-    const replacement: PiMessage = {
-      role: "toolResult",
+    const first = textMessage("user", "first", 1);
+    const unsafe = textMessage("assistant", "unsafe", 2);
+    const replacement = textMessage("toolResult", "safe", 3, {
       toolCallId: "call-1",
-      content: [{ type: "text", text: "safe" }],
-      timestamp: 3,
-    } as PiMessage;
+    });
 
     await commitMessages({
       store,
@@ -153,26 +148,10 @@ describe("agent session log store", () => {
 
   it("filters prior session events after a reset", async () => {
     const store = memoryStore();
-    const first: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "first" }],
-      timestamp: 1,
-    } as PiMessage;
-    const replacement: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "replacement" }],
-      timestamp: 2,
-    } as PiMessage;
-    const lateOldMessage: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "late old session" }],
-      timestamp: 3,
-    } as PiMessage;
-    const next: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "next" }],
-      timestamp: 4,
-    } as PiMessage;
+    const first = textMessage("user", "first", 1);
+    const replacement = textMessage("user", "replacement", 2);
+    const lateOldMessage = textMessage("assistant", "late old session", 3);
+    const next = textMessage("assistant", "next", 4);
 
     await commitMessages({
       store,
@@ -243,21 +222,9 @@ describe("agent session log store", () => {
 
   it("keeps legacy entries without session ids readable", async () => {
     const store = memoryStore();
-    const ignored: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "ignored" }],
-      timestamp: 1,
-    } as PiMessage;
-    const replacement: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "replacement" }],
-      timestamp: 2,
-    } as PiMessage;
-    const next: PiMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "next" }],
-      timestamp: 3,
-    } as PiMessage;
+    const ignored = textMessage("assistant", "ignored", 1);
+    const replacement = textMessage("user", "replacement", 2);
+    const next = textMessage("assistant", "next", 3);
 
     // Simulate stored rows written before sessionId existed.
     const legacyEntries = [
@@ -281,11 +248,7 @@ describe("agent session log store", () => {
 
   it("records connected MCP providers outside the Pi projection", async () => {
     const store = memoryStore();
-    const message: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "first" }],
-      timestamp: 1,
-    } as PiMessage;
+    const message = textMessage("user", "first", 1);
 
     await commitMessages({
       store,
@@ -339,11 +302,7 @@ describe("agent session log store", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const store = memoryStore();
-    const message: PiMessage = {
-      role: "user",
-      content: [{ type: "text", text: "list my orgs" }],
-      timestamp: 1,
-    } as PiMessage;
+    const message = textMessage("user", "list my orgs", 1);
 
     await commitMessages({
       store,

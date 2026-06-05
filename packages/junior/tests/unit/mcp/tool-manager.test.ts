@@ -83,6 +83,21 @@ function createMcpToolManager(
   });
 }
 
+function discoveredTool(name: string, title: string, description = title) {
+  return {
+    name,
+    title,
+    description,
+    inputSchema: { type: "object", properties: {} },
+  };
+}
+
+const notionTools = [
+  discoveredTool("notion-search", "Search", "Search Notion"),
+  discoveredTool("notion-fetch", "Fetch", "Fetch Notion content"),
+  discoveredTool("notion-create-pages", "Create", "Create Notion pages"),
+];
+
 describe("McpToolManager", () => {
   beforeEach(() => {
     listToolsMock.mockReset();
@@ -321,26 +336,7 @@ describe("McpToolManager", () => {
     const plugin = buildPlugin("notion", {
       allowedTools: ["notion-search", "notion-fetch"],
     });
-    listToolsMock.mockResolvedValue([
-      {
-        name: "notion-search",
-        title: "Search",
-        description: "Search Notion",
-        inputSchema: { type: "object", properties: {} },
-      },
-      {
-        name: "notion-fetch",
-        title: "Fetch",
-        description: "Fetch Notion content",
-        inputSchema: { type: "object", properties: {} },
-      },
-      {
-        name: "notion-create-pages",
-        title: "Create",
-        description: "Create Notion pages",
-        inputSchema: { type: "object", properties: {} },
-      },
-    ]);
+    listToolsMock.mockResolvedValue(notionTools);
 
     const manager = createMcpToolManager([plugin]);
     await manager.activateProvider("notion");
@@ -353,26 +349,7 @@ describe("McpToolManager", () => {
 
   it("exposes the provider tool catalog once a provider is active, without requiring a skill", async () => {
     const plugin = buildPlugin("notion");
-    listToolsMock.mockResolvedValue([
-      {
-        name: "notion-search",
-        title: "Search",
-        description: "Search Notion",
-        inputSchema: { type: "object", properties: {} },
-      },
-      {
-        name: "notion-fetch",
-        title: "Fetch",
-        description: "Fetch Notion content",
-        inputSchema: { type: "object", properties: {} },
-      },
-      {
-        name: "notion-create-pages",
-        title: "Create",
-        description: "Create Notion pages",
-        inputSchema: { type: "object", properties: {} },
-      },
-    ]);
+    listToolsMock.mockResolvedValue(notionTools);
 
     const manager = createMcpToolManager([plugin]);
     await manager.activateProvider("notion");
@@ -415,12 +392,7 @@ describe("McpToolManager", () => {
       allowedTools: ["notion-search", "notion-fetch"],
     });
     listToolsMock.mockResolvedValue([
-      {
-        name: "notion-search",
-        title: "Search",
-        description: "Search Notion",
-        inputSchema: { type: "object", properties: {} },
-      },
+      discoveredTool("notion-search", "Search", "Search Notion"),
     ]);
 
     const manager = createMcpToolManager([plugin]);
