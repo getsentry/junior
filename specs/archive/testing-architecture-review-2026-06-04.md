@@ -53,6 +53,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted a CLI check repository fixture into `tests/fixtures/check-cli.ts`
   and split `check-cli.test.ts` into app-config, deployment-config, package,
   plugin-manifest, and skill validation suites.
+- Extracted subscribed-thread routing input defaults into
+  `tests/fixtures/subscribed-decision.ts` and split the subscribed-decision
+  suite into preflight, short-circuit, and classifier outcome files.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -189,13 +192,16 @@ Direction:
 
 Files:
 
-- `packages/junior/tests/unit/routing/subscribed-decision.test.ts`
+- `packages/junior/tests/unit/routing/subscribed-preflight-decision.test.ts`
+- `packages/junior/tests/unit/routing/subscribed-short-circuit-decision.test.ts`
+- `packages/junior/tests/unit/routing/subscribed-classifier-decision.test.ts`
 - Other large routing/service unit suites near the 400-600 line range.
 
 Problem:
 
 Some routing unit tests look like branch inventories instead of behavior
-contracts.
+contracts. The subscribed-thread routing suite is now organized by decision
+stage, but the broader risk still applies to other large routing/service files.
 
 Direction:
 
