@@ -27,7 +27,7 @@ import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "./sql";
-import { DEFAULT_TEST_NOW_MS } from "./vitest";
+import { DEFAULT_TEST_NOW_MS, mockTestClock } from "./vitest";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -198,6 +198,7 @@ export async function createTask(
 /** Resets persistent state before each scheduler tool scenario. */
 export async function setupSlackScheduleToolTest() {
   setPlugins([]);
+  mockTestClock();
   await disconnectStateAdapter();
   await initializeSchedulerSqlStore();
 }
