@@ -130,7 +130,8 @@ export function extractMessageChangedMention(
   const channelId = event.channel;
   const messageTs = event.message.ts;
   const threadTs = event.message.thread_ts ?? messageTs;
-  const userId = event.message.user ?? "unknown";
+  const userId = event.message.user?.trim();
+  if (!userId) return null;
   const threadId = `slack:${channelId}:${threadTs}`;
   const teamId = typeof body.team_id === "string" ? body.team_id : undefined;
 
@@ -164,8 +165,9 @@ export function extractMessageChangedMention(
     raw,
     author: {
       userId,
-      userName: userId,
-      fullName: userId,
+      // Raw message_changed payloads do not include profile fields.
+      userName: "",
+      fullName: "",
       isBot: false,
       isMe: false,
     },

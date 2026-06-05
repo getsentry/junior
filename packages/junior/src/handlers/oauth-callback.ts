@@ -41,6 +41,7 @@ import {
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
+import { lookupSlackActorIdentity } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -323,6 +324,9 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
+      const requester = await lookupSlackActorIdentity(
+        lockedUserMessage.author.userId,
+      );
 
       return {
         messageText: stored.pendingMessage ?? lockedUserMessage.text,
@@ -334,11 +338,7 @@ async function resumeOAuthSessionRecordTurn(
               userId: lockedUserMessage.author.userId,
             },
           },
-          requester: {
-            userId: lockedUserMessage.author.userId,
-            userName: lockedUserMessage.author.userName,
-            fullName: lockedUserMessage.author.fullName,
-          },
+          requester,
           correlation: {
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,
@@ -443,6 +443,7 @@ async function resumePendingOAuthMessage(
   const conversationContext = buildConversationContext(conversation, {
     excludeMessageId: latestUserMessage?.id,
   });
+  const requester = await lookupSlackActorIdentity(stored.userId);
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     channelId: stored.channelId,
@@ -453,7 +454,7 @@ async function resumePendingOAuthMessage(
       credentialContext: {
         actor: { type: "user", userId: stored.userId },
       },
-      requester: { userId: stored.userId },
+      requester,
       conversationContext,
       piMessages: conversation.piMessages,
       configuration: stored.configuration,

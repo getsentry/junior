@@ -52,6 +52,7 @@ import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
+import { lookupSlackActorIdentity } from "@/chat/slack/user";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -300,6 +301,7 @@ async function resumeAuthorizedMcpTurn(args: {
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
+      const requester = await lookupSlackActorIdentity(authSession.userId);
 
       return {
         messageText: lockedUserMessage.text,
@@ -308,11 +310,7 @@ async function resumeAuthorizedMcpTurn(args: {
           credentialContext: {
             actor: { type: "user", userId: authSession.userId },
           },
-          requester: {
-            userId: authSession.userId,
-            userName: lockedUserMessage.author?.userName,
-            fullName: lockedUserMessage.author?.fullName,
-          },
+          requester,
           correlation: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,

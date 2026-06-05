@@ -33,6 +33,7 @@ import {
   type TurnContinuationRequest,
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
+import { lookupSlackActorIdentity } from "@/chat/slack/user";
 import type { AssistantReply } from "@/chat/respond";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -192,6 +193,9 @@ export async function resumeTimedOutTurn(
         excludeMessageId: userMessage.id,
       });
       const sandbox = getPersistedSandboxState(currentState);
+      const requester = await lookupSlackActorIdentity(
+        userMessage.author.userId,
+      );
 
       return {
         messageText: userMessage.text,
@@ -203,11 +207,7 @@ export async function resumeTimedOutTurn(
               userId: userMessage.author.userId,
             },
           },
-          requester: {
-            userId: userMessage.author.userId,
-            userName: userMessage.author.userName,
-            fullName: userMessage.author.fullName,
-          },
+          requester,
           correlation: {
             conversationId: payload.conversationId,
             turnId: payload.sessionId,

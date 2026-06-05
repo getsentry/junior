@@ -13,18 +13,29 @@ function cleanIdentityPart(value) {
     .trim();
 }
 
+function isSlackUserId(value) {
+  return /^[UW][A-Z0-9]{5,}$/.test(value);
+}
+
+function requesterDisplayName(value, requester) {
+  const name = cleanIdentityPart(value);
+  if (!name || name === cleanIdentityPart(requester?.userId)) {
+    return undefined;
+  }
+  return isSlackUserId(name) ? undefined : name;
+}
+
 function requesterName(requester) {
   return (
-    cleanIdentityPart(requester?.fullName) ||
-    cleanIdentityPart(requester?.userName) ||
-    cleanIdentityPart(requester?.userId) ||
+    requesterDisplayName(requester?.fullName, requester) ||
+    requesterDisplayName(requester?.userName, requester) ||
     undefined
   );
 }
 
 function requesterEmail(requester) {
   const email = cleanIdentityPart(requester?.email);
-  return email && !/\s/.test(email) ? email : "noreply";
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : undefined;
 }
 
 function isGitCommitCommand(command) {
@@ -156,9 +167,10 @@ export function githubPlugin(options = {}) {
           return;
         }
         const coauthorName = requesterName(ctx.requester);
-        if (!coauthorName && isGitCommitCommand(command)) {
+        const coauthorEmail = requesterEmail(ctx.requester);
+        if ((!coauthorName || !coauthorEmail) && isGitCommitCommand(command)) {
           ctx.decision.deny(
-            "Junior GitHub plugin could not determine requester identity for commit attribution. This is an internal request-context error; do not set coauthor env vars manually.",
+            "Junior GitHub plugin could not determine a resolved requester name and email for commit attribution. This is an internal request-context error; do not set coauthor env vars manually.",
           );
           return;
         }
@@ -168,12 +180,9 @@ export function githubPlugin(options = {}) {
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
         ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", botName);
         ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
-        if (coauthorName) {
+        if (coauthorName && coauthorEmail) {
           ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", coauthorName);
-          ctx.env.set(
-            "JUNIOR_GIT_COAUTHOR_EMAIL",
-            requesterEmail(ctx.requester),
-          );
+          ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", coauthorEmail);
         }
       },
     },

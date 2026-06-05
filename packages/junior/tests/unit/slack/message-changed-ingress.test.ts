@@ -68,13 +68,13 @@ describe("extractMessageChangedMention", () => {
 
     const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
 
-    expect(result?.message.toJSON()).toEqual({
+    const serialized = result?.message.toJSON();
+
+    expect(serialized).toMatchObject({
       _type: "chat:Message",
       attachments: [],
       author: {
         userId: "U_SENDER",
-        userName: "U_SENDER",
-        fullName: "U_SENDER",
         isBot: false,
         isMe: false,
       },
@@ -97,6 +97,8 @@ describe("extractMessageChangedMention", () => {
       text: `<@${BOT_USER_ID}> please help`,
       threadId: `slack:${CHANNEL_ID}:${THREAD_TS}`,
     });
+    expect(serialized?.author.userName).toBe("");
+    expect(serialized?.author.fullName).toBe("");
   });
 
   it("returns null when bot mention was already in the previous message", () => {
@@ -108,6 +110,19 @@ describe("extractMessageChangedMention", () => {
     const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
     expect(result).toBeNull();
   });
+
+  it("returns null when the edited message has no actor user id", () => {
+    const body = makeEnvelope({
+      newText: `<@${BOT_USER_ID}> please help`,
+      prevText: "please help",
+      user: "",
+    });
+
+    const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
+
+    expect(result).toBeNull();
+  });
+
   it("uses message ts as thread_ts fallback when thread_ts is absent", () => {
     const body = {
       type: "event_callback",

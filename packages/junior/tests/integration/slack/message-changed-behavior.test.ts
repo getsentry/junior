@@ -253,7 +253,18 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       getSlackAdapter: () => bot.getAdapter("slack"),
       services: {
         replyExecutor: {
+          lookupSlackUser: async () => ({
+            email: "david@example.com",
+            fullName: "David Cramer",
+            userName: "dcramer",
+          }),
           generateAssistantReply: async (_prompt, context) => {
+            expect(context?.requester).toEqual({
+              email: "david@example.com",
+              fullName: "David Cramer",
+              userId: "U123",
+              userName: "dcramer",
+            });
             await context?.onTextDelta?.("Hello world");
             return {
               text: "Hello world",

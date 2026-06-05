@@ -1,5 +1,9 @@
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
+import {
+  slackActorIdentity,
+  type ActorIdentityInput,
+} from "@/chat/services/requester-identity";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -115,4 +119,11 @@ export async function lookupSlackUser(
     );
     return null;
   }
+}
+
+/** Resolve the canonical Slack actor identity from Slack profile data. */
+export async function lookupSlackActorIdentity(
+  userId: string,
+): Promise<ActorIdentityInput> {
+  return slackActorIdentity(userId, await lookupSlackUser(userId));
 }
