@@ -39,6 +39,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/unit/sandbox/executor-snapshots.test.ts`.
 - Split sandbox executor bash execution, timeout, abort, env, and credential
   egress coverage into `tests/unit/sandbox/executor-bash.test.ts`.
+- Split sandbox executor file-tool, cached executor, keepalive, and virtual
+  skill-file coverage into `tests/unit/sandbox/executor-tools.test.ts`.
+- Moved the remaining sandbox executor lifecycle/session-manager coverage into
+  `tests/unit/sandbox/executor-lifecycle.test.ts`.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -91,19 +95,23 @@ Direction:
 
 File:
 
-- `packages/junior/tests/unit/misc/sandbox-executor.test.ts`
+- `packages/junior/tests/unit/sandbox/executor-lifecycle.test.ts`
+- `packages/junior/tests/unit/sandbox/executor-bash.test.ts`
+- `packages/junior/tests/unit/sandbox/executor-tools.test.ts`
+- `packages/junior/tests/unit/sandbox/executor-snapshots.test.ts`
 
 Problem:
 
-The file covers at least five contracts in one mocked harness: sandbox lifecycle,
-network policy refresh, bash execution, tool executor caching, virtual skill
-files, file-tool errors, and runtime dependency snapshots.
+The old file covered at least five contracts in one mocked harness: sandbox
+lifecycle, network policy refresh, bash execution, tool executor caching,
+virtual skill files, file-tool errors, and runtime dependency snapshots.
 
 Direction:
 
 - Keep growing the dedicated sandbox executor fixture only for repeated
   sandbox/session-manager boundaries.
-- Split into lifecycle, bash execution, tool/file behavior, and snapshot suites.
+- Keep lifecycle, bash execution, tool/file behavior, and snapshot suites
+  separate.
 - Longer term, consider smaller production ports for sandbox boot, bash command
   execution, file tools, and snapshot resolution so tests do not need one
   enormous mock harness.
