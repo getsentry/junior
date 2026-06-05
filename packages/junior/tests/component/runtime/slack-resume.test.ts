@@ -1,90 +1,70 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RetryableTurnError } from "@/chat/runtime/turn";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-
-const { logExceptionMock, postMessageMock, setStatusMock } = vi.hoisted(() => ({
-  logExceptionMock: vi.fn(),
-  postMessageMock: vi.fn(),
-  setStatusMock: vi.fn(),
-}));
-
-vi.mock("@/chat/config", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/chat/config")>();
-  const memoryConfig = original.readChatConfig({
-    ...process.env,
-    JUNIOR_STATE_ADAPTER: "memory",
-  });
-  return {
-    ...original,
-    botConfig: memoryConfig.bot,
-    getChatConfig: () => memoryConfig,
-  };
-});
-
-vi.mock("@/chat/slack/client", () => ({
-  SlackActionError: class SlackActionError extends Error {
-    code: string;
-
-    constructor(message: string, code: string) {
-      super(message);
-      this.name = "SlackActionError";
-      this.code = code;
-    }
-  },
-  normalizeSlackConversationId: (value: string | undefined) => value,
-  withSlackRetries: async (task: () => Promise<unknown>) => await task(),
-  getSlackClient: () => ({
-    chat: {
-      postMessage: postMessageMock,
-    },
-    assistant: {
-      threads: {
-        setStatus: setStatusMock,
-      },
-    },
-  }),
-}));
-
-vi.mock("@/chat/logging", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/chat/logging")>();
-  return {
-    ...original,
-    logException: logExceptionMock,
-  };
-});
-
+import type { ResumeSlackTurnServices } from "@/chat/runtime/slack-resume";
 import {
-  resumeAuthorizedRequest,
-  resumeSlackTurn,
-} from "@/chat/runtime/slack-resume";
+  createOauthResumeSlackFixture,
+  makeResumeDiagnostics,
+} from "../../fixtures/oauth-resume-slack";
 
-const TEST_SLACK_DESTINATION = {
-  platform: "slack",
-  teamId: "T-test",
-  channelId: "C-test",
-} as const;
+type Testbed = Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
 
-describe("resumeAuthorizedRequest", () => {
+describe("Slack resume runtime", () => {
+  let testbed: Testbed;
+  let services: ResumeSlackTurnServices;
+
+  const logExceptionMock = vi.fn();
+  const postMessageMock = vi.fn();
+  const postReplyPostsMock = vi.fn();
+  const createAssistantStatusSessionMock = vi.fn();
+  const startProcessingReactionMock = vi.fn();
+
   beforeEach(async () => {
+    testbed = await createOauthResumeSlackFixture();
     vi.useFakeTimers();
+
     logExceptionMock.mockReset();
     logExceptionMock.mockReturnValue("evt_test");
     postMessageMock.mockReset();
-    setStatusMock.mockReset();
     postMessageMock.mockResolvedValue({ ts: "1700000000.100" });
-    setStatusMock.mockResolvedValue(undefined);
-    await disconnectStateAdapter();
+    postReplyPostsMock.mockReset();
+    postReplyPostsMock.mockResolvedValue("1700000000.200");
+    createAssistantStatusSessionMock.mockReset();
+    createAssistantStatusSessionMock.mockReturnValue({
+      start: vi.fn(),
+      stop: vi.fn(async () => undefined),
+      update: vi.fn(),
+    });
+    startProcessingReactionMock.mockReset();
+    startProcessingReactionMock.mockResolvedValue({
+      complete: vi.fn(async () => undefined),
+      keep: vi.fn(),
+      stop: vi.fn(async () => undefined),
+    });
+
+    services = {
+      createAssistantStatusSession: createAssistantStatusSessionMock,
+      generateAssistantReply: vi.fn(async () => ({
+        text: "default resumed answer",
+        diagnostics: makeResumeDiagnostics(),
+      })),
+      getAgentTurnSessionRecord:
+        testbed.turnSessionStore.getAgentTurnSessionRecord,
+      getStateAdapter: testbed.getStateAdapter,
+      logException: logExceptionMock,
+      postSlackMessage: postMessageMock,
+      postSlackReplyPosts: postReplyPostsMock,
+      startProcessingReactionForMessage: startProcessingReactionMock,
+    };
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    await disconnectStateAdapter();
+    await testbed.cleanup();
   });
 
   it("fails fast when resumed reply generation exceeds the configured timeout", async () => {
     const onFailure = vi.fn(async () => undefined);
 
-    const resumePromise = resumeAuthorizedRequest({
+    const resumePromise = testbed.resumeAuthorizedRequest({
       messageText: "tell me the saved deadline",
       channelId: "C-test",
       threadTs: "1700000000.0001",
@@ -99,6 +79,7 @@ describe("resumeAuthorizedRequest", () => {
       generateReply: () => new Promise<never>(() => {}),
       replyTimeoutMs: 10,
       onFailure,
+      services,
     });
 
     await vi.advanceTimersByTimeAsync(10);
@@ -107,8 +88,8 @@ describe("resumeAuthorizedRequest", () => {
     expect(onFailure).toHaveBeenCalledTimes(1);
     expect(postMessageMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0001",
+        channelId: "C-test",
+        threadTs: "1700000000.0001",
         text: expect.stringContaining(
           "I ran into an internal error while processing that. Reference: `event_id=",
         ),
@@ -121,7 +102,7 @@ describe("resumeAuthorizedRequest", () => {
     logExceptionMock.mockReturnValueOnce(undefined);
 
     await expect(
-      resumeAuthorizedRequest({
+      testbed.resumeAuthorizedRequest({
         messageText: "tell me the saved deadline",
         channelId: "C-test",
         threadTs: "1700000000.0004",
@@ -137,6 +118,7 @@ describe("resumeAuthorizedRequest", () => {
           throw new Error("resume failed");
         },
         onFailure,
+        services,
       }),
     ).rejects.toThrow(
       "Sentry did not return an event ID for slack_resume_turn_failed",
@@ -146,15 +128,15 @@ describe("resumeAuthorizedRequest", () => {
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     expect(postMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0004",
+        channelId: "C-test",
+        threadTs: "1700000000.0004",
         text: "connected",
       }),
     );
     expect(postMessageMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0004",
+        channelId: "C-test",
+        threadTs: "1700000000.0004",
         text: expect.stringContaining("event_id=unknown"),
       }),
     );
@@ -164,7 +146,7 @@ describe("resumeAuthorizedRequest", () => {
     const onFailure = vi.fn(async () => undefined);
 
     await expect(
-      resumeSlackTurn({
+      testbed.resumeSlackTurn({
         messageText: "continue this turn",
         channelId: "C-test",
         threadTs: "1700000000.0005",
@@ -177,35 +159,32 @@ describe("resumeAuthorizedRequest", () => {
         },
         generateReply: async () => ({
           text: "Final resumed answer",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
+          diagnostics: makeResumeDiagnostics(),
         }),
         onSuccess: async () => {
           throw new Error("state write failed");
         },
         onFailure,
+        services,
       }),
     ).rejects.toThrow("state write failed");
 
     expect(onFailure).not.toHaveBeenCalled();
-    expect(postMessageMock).toHaveBeenCalledWith(
+    expect(postReplyPostsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0005",
-        text: expect.stringContaining("Final resumed answer"),
+        channelId: "C-test",
+        threadTs: "1700000000.0005",
+        posts: expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.stringContaining("Final resumed answer"),
+          }),
+        ]),
       }),
     );
     expect(postMessageMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0005",
+        channelId: "C-test",
+        threadTs: "1700000000.0005",
         text: expect.stringContaining(
           "I ran into an internal error while processing that.",
         ),
@@ -215,7 +194,7 @@ describe("resumeAuthorizedRequest", () => {
 
   it("releases the thread lock before scheduling another timeout slice", async () => {
     const onTimeoutPause = vi.fn(async () => {
-      const stateAdapter = getStateAdapter();
+      const stateAdapter = testbed.getStateAdapter();
       await stateAdapter.connect();
       const lock = await stateAdapter.acquireLock(
         "slack:C-test:1700000000.0002",
@@ -227,7 +206,7 @@ describe("resumeAuthorizedRequest", () => {
       }
     });
 
-    await resumeSlackTurn({
+    await testbed.resumeSlackTurn({
       messageText: "continue this turn",
       channelId: "C-test",
       threadTs: "1700000000.0002",
@@ -239,14 +218,19 @@ describe("resumeAuthorizedRequest", () => {
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 3,
-        });
+        throw new testbed.RetryableTurnError(
+          "turn_timeout_resume",
+          "timed out again",
+          {
+            conversationId: "conversation-1",
+            sessionId: "turn-1",
+            version: 3,
+            sliceId: 3,
+          },
+        );
       },
       onTimeoutPause,
+      services,
     });
 
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
@@ -256,7 +240,7 @@ describe("resumeAuthorizedRequest", () => {
   it("posts the canonical failure response when timeout pause handling throws", async () => {
     const onFailure = vi.fn(async () => undefined);
 
-    await resumeSlackTurn({
+    await testbed.resumeSlackTurn({
       messageText: "continue this turn",
       channelId: "C-test",
       threadTs: "1700000000.0003",
@@ -268,24 +252,29 @@ describe("resumeAuthorizedRequest", () => {
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 6,
-        });
+        throw new testbed.RetryableTurnError(
+          "turn_timeout_resume",
+          "timed out again",
+          {
+            conversationId: "conversation-1",
+            sessionId: "turn-1",
+            version: 3,
+            sliceId: 6,
+          },
+        );
       },
       onTimeoutPause: async () => {
         throw new Error("continuation scheduling failed");
       },
       onFailure,
+      services,
     });
 
     expect(onFailure).toHaveBeenCalledTimes(1);
     expect(postMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "C-test",
-        thread_ts: "1700000000.0003",
+        channelId: "C-test",
+        threadTs: "1700000000.0003",
         text: expect.stringContaining(
           "I ran into an internal error while processing that. Reference: `event_id=",
         ),

@@ -55,9 +55,10 @@ async function postSlackMessageBestEffort(
   channelId: string,
   threadTs: string,
   text: string,
+  services: ResumeSlackTurnServices,
 ): Promise<void> {
   try {
-    await postSlackApiMessage({
+    await services.postSlackMessage({
       channelId,
       threadTs,
       text,
@@ -127,10 +128,32 @@ export interface ResumeSlackTurnArgs {
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
+  services?: ResumeSlackTurnServices;
 }
 
 /** Runtime boundary used by timeout and auth resume orchestration. */
 export type ResumeSlackTurnRunner = typeof resumeSlackTurn;
+
+/** Services used by the Slack resume runner; component tests may replace external ports. */
+export interface ResumeSlackTurnServices {
+  createAssistantStatusSession: typeof createSlackWebApiAssistantStatusSession;
+  generateAssistantReply: ResumeReplyGenerator;
+  getStateAdapter: typeof getStateAdapter;
+  logException: typeof logException;
+  postSlackMessage: typeof postSlackApiMessage;
+  postSlackReplyPosts: typeof postSlackApiReplyPosts;
+  startProcessingReactionForMessage: typeof startSlackProcessingReactionForMessage;
+}
+
+const defaultResumeSlackTurnServices: ResumeSlackTurnServices = {
+  createAssistantStatusSession: createSlackWebApiAssistantStatusSession,
+  generateAssistantReply,
+  getStateAdapter,
+  logException,
+  postSlackMessage: postSlackApiMessage,
+  postSlackReplyPosts: postSlackApiReplyPosts,
+  startProcessingReactionForMessage: startSlackProcessingReactionForMessage,
+};
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;
@@ -159,15 +182,16 @@ async function postResumeFailureReply(args: {
   threadTs: string;
   eventId: string;
   logContext: LogContext;
+  services: ResumeSlackTurnServices;
 }): Promise<void> {
   try {
-    await postSlackApiMessage({
+    await args.services.postSlackMessage({
       channelId: args.channelId,
       threadTs: args.threadTs,
       text: buildTurnFailureResponse(args.eventId),
     });
   } catch (error) {
-    logException(
+    args.services.logException(
       error,
       "slack_resume_failure_reply_post_failed",
       args.logContext,
@@ -186,9 +210,10 @@ async function handleResumeFailure(args: {
   eventName: string;
   lockKey: string;
   resumeArgs: ResumeSlackTurnArgs;
+  services: ResumeSlackTurnServices;
 }): Promise<void> {
   const logContext = getResumeLogContext(args.resumeArgs, args.lockKey);
-  const capturedEventId = logException(
+  const capturedEventId = args.services.logException(
     args.error,
     args.eventName,
     logContext,
@@ -202,6 +227,7 @@ async function handleResumeFailure(args: {
     threadTs: args.resumeArgs.threadTs,
     eventId,
     logContext,
+    services: args.services,
   });
 }
 
@@ -266,7 +292,8 @@ function createResumeReplyContext(
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  const stateAdapter = getStateAdapter();
+  const services = args.services ?? defaultResumeSlackTurnServices;
+  const stateAdapter = services.getStateAdapter();
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
@@ -275,7 +302,7 @@ export async function resumeSlackTurn(
     throw new ResumeTurnBusyError(lockKey);
   }
 
-  const status = createSlackWebApiAssistantStatusSession({
+  const status = services.createAssistantStatusSession({
     channelId: args.channelId,
     threadTs: args.threadTs,
   });
@@ -315,10 +342,10 @@ export async function resumeSlackTurn(
     }
 
     if (runArgs.messageTs) {
-      processingReaction = await startSlackProcessingReactionForMessage({
+      processingReaction = await services.startProcessingReactionForMessage({
         channelId: runArgs.channelId,
         timestamp: runArgs.messageTs,
-        logException,
+        logException: services.logException,
         logContext: { ...getResumeLogContext(runArgs, lockKey) },
       });
     }
@@ -327,11 +354,13 @@ export async function resumeSlackTurn(
         runArgs.channelId,
         runArgs.threadTs,
         runArgs.initialText,
+        services,
       );
     }
     status.start();
 
-    const generateReply = runArgs.generateReply ?? generateAssistantReply;
+    const generateReply =
+      runArgs.generateReply ?? services.generateAssistantReply;
     const replyContext = createResumeReplyContext(runArgs, status);
     const replyPromise = generateReply(runArgs.messageText, replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
@@ -354,7 +383,7 @@ export async function resumeSlackTurn(
         : await replyPromise;
     reply = finalizeFailedTurnReply({
       reply,
-      logException,
+      logException: services.logException,
       context: getResumeLogContext(runArgs, lockKey),
     });
 
@@ -363,7 +392,7 @@ export async function resumeSlackTurn(
       conversationId:
         runArgs.replyContext?.correlation?.conversationId ?? lockKey,
     });
-    await postSlackApiReplyPosts({
+    await services.postSlackReplyPosts({
       channelId: runArgs.channelId,
       threadTs: runArgs.threadTs,
       posts: planSlackReplyPosts({ reply }),
@@ -382,7 +411,7 @@ export async function resumeSlackTurn(
       try {
         await runArgs.onPostDeliveryCommitFailure?.(error);
       } catch (terminalizeError) {
-        logException(
+        services.logException(
           terminalizeError,
           "slack_resume_post_delivery_terminalize_failed",
           getResumeLogContext(runArgs, lockKey),
@@ -416,6 +445,7 @@ export async function resumeSlackTurn(
           eventName: "slack_resume_turn_failed",
           lockKey,
           resumeArgs: runArgs,
+          services,
         });
       };
     }
@@ -429,7 +459,7 @@ export async function resumeSlackTurn(
   }
 
   if (postDeliveryCommitError) {
-    logException(
+    services.logException(
       postDeliveryCommitError,
       "slack_resume_success_handler_failed",
       getResumeLogContext(runArgs, lockKey),
@@ -446,10 +476,8 @@ export async function resumeSlackTurn(
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(
-            deferredAuthInfo.requesterId,
-            deferredAuthInfo.providerDisplayName,
-          ),
+          buildAuthPauseResponse(),
+          services,
         );
       }
       return true;
@@ -460,6 +488,7 @@ export async function resumeSlackTurn(
         eventName: "slack_resume_pause_handler_failed",
         lockKey,
         resumeArgs: runArgs,
+        services,
       });
       return true;
     }
@@ -489,6 +518,7 @@ export async function resumeAuthorizedRequest(args: {
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
+  services?: ResumeSlackTurnServices;
 }) {
   await resumeSlackTurn({
     messageText: args.messageText,
@@ -506,5 +536,6 @@ export async function resumeAuthorizedRequest(args: {
     onPostDeliveryCommitFailure: args.onPostDeliveryCommitFailure,
     beforeStart: args.beforeStart,
     replyTimeoutMs: args.replyTimeoutMs,
+    services: args.services,
   });
 }

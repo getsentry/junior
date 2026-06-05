@@ -4,6 +4,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type SlackResumeModule = typeof import("@/chat/runtime/slack-resume");
+type TurnModule = typeof import("@/chat/runtime/turn");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 type ResumeOutcome = "success" | "execution_failure" | "provider_error";
@@ -37,11 +38,15 @@ export async function createOauthResumeSlackFixture() {
   await stateAdapter.disconnectStateAdapter();
   const slackResume: SlackResumeModule =
     await import("@/chat/runtime/slack-resume");
+  const turn: TurnModule = await import("@/chat/runtime/turn");
   const turnSessionStore: TurnSessionStoreModule =
     await import("@/chat/state/turn-session");
 
   return {
+    getStateAdapter: stateAdapter.getStateAdapter,
     resumeAuthorizedRequest: slackResume.resumeAuthorizedRequest,
+    resumeSlackTurn: slackResume.resumeSlackTurn,
+    RetryableTurnError: turn.RetryableTurnError,
     turnSessionStore,
 
     /** Disconnects memory state and restores the test environment. */
