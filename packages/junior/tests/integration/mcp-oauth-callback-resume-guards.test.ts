@@ -3,15 +3,15 @@ import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
   SLACK_DESTINATION,
-  createMcpOauthCallbackSlackFixture,
-} from "../fixtures/mcp-oauth-callback-slack";
+  createMcpOauthCallbackRouteFixture,
+} from "../fixtures/mcp-oauth-callback-route";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
-let testbed: Awaited<ReturnType<typeof createMcpOauthCallbackSlackFixture>>;
+let testbed: Awaited<ReturnType<typeof createMcpOauthCallbackRouteFixture>>;
 
 describe("mcp oauth callback resume guards", () => {
   beforeEach(async () => {
-    testbed = await createMcpOauthCallbackSlackFixture();
+    testbed = await createMcpOauthCallbackRouteFixture();
   });
 
   afterEach(async () => {

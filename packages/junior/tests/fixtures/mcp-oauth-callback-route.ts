@@ -32,8 +32,8 @@ type PluginRegistryModule = typeof import("@/chat/plugins/registry");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
-/** Starts the memory-backed Slack MCP OAuth callback integration fixture. */
-export async function createMcpOauthCallbackSlackFixture() {
+/** Starts the memory-backed MCP OAuth callback route integration fixture. */
+export async function createMcpOauthCallbackRouteFixture() {
   const generateAssistantReplyMock = vi.fn<ResumeReplyGenerator>();
   generateAssistantReplyMock.mockResolvedValue(
     successfulAssistantReply(
@@ -89,6 +89,19 @@ export async function createMcpOauthCallbackSlackFixture() {
     async runRoute(args: { provider: string; state: string; code: string }) {
       return await mcpOauthCallbackHarness.runMcpOauthCallbackRoute({
         ...args,
+        generateReply: generateAssistantReplyMock,
+      });
+    },
+
+    /** Runs an explicit MCP OAuth callback URL through the real handler. */
+    async runCallbackUrl(args: {
+      provider?: string;
+      url: string;
+    }): Promise<Response> {
+      const provider = args.provider ?? EVAL_MCP_AUTH_PROVIDER;
+      return await mcpOauthCallbackHarness.runMcpOauthCallbackRequest({
+        provider,
+        request: new Request(args.url, { method: "GET" }),
         generateReply: generateAssistantReplyMock,
       });
     },

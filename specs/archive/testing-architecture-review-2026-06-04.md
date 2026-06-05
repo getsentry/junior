@@ -63,10 +63,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/slack-schedule-tools.ts` and split the broad integration
   suite by create/default, validation, update/ownership, run/claiming, and
   execution-mode contracts.
-- Extracted MCP OAuth Slack callback setup into
-  `tests/fixtures/mcp-oauth-callback-slack.ts` and split callback coverage by
-  persisted resume context, stale/missing resume guards, and resumed file
-  delivery contracts.
+- Extracted MCP OAuth callback setup into
+  `tests/fixtures/mcp-oauth-callback-route.ts` and split callback coverage by
+  route guards, persisted resume context, stale/missing resume guards, and
+  resumed file delivery contracts.
 - Extracted MCP auth Slack runtime setup into
   `tests/fixtures/mcp-auth-runtime-slack.ts` and split runtime coverage by
   mention resume, subscribed-thread parking, and direct-provider activation
@@ -184,6 +184,7 @@ Files:
 - `packages/junior/tests/integration/mcp-oauth-callback-resume-context.test.ts`
 - `packages/junior/tests/integration/mcp-oauth-callback-resume-guards.test.ts`
 - `packages/junior/tests/integration/mcp-oauth-callback-file-delivery.test.ts`
+- `packages/junior/tests/integration/mcp-oauth-callback-route-guards.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-mention-resume.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-subscribed-parking.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-direct-provider.test.ts`
