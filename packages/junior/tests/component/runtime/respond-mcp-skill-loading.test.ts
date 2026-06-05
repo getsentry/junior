@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupRespondMcpProgressiveLoadingTest,
   generateAssistantReply,
@@ -7,11 +7,11 @@ import {
   makeDemoMcpTools,
   makeReplyContext,
   respondMcpProgressiveLoadingHarness,
+  restoreRespondMcpProgressiveLoadingEnv,
   setupRespondMcpProgressiveLoadingTest,
 } from "../../fixtures/respond-mcp-progressive-loading";
 
 const {
-  agentInitialSystemPrompts,
   agentInitialToolNames,
   callToolMock,
   clientOptions,
@@ -22,15 +22,15 @@ const {
   promptCallCount,
   resumeTurnContextCounts,
   searchMcpToolNames,
-  turnContextInputs,
 } = respondMcpProgressiveLoadingHarness;
 
-// These suites validate local progressive-loading logic through a mocked
-// agent/runtime seam; they are not integration coverage.
+// Component-style runtime coverage: real respond orchestration with explicit
+// fake ports for the agent, MCP client, and sandbox executor.
 describe("generateAssistantReply MCP skill loading", () => {
   beforeEach(setupRespondMcpProgressiveLoadingTest);
 
   afterEach(cleanupRespondMcpProgressiveLoadingTest);
+  afterAll(restoreRespondMcpProgressiveLoadingEnv);
 
   it("persists loaded plugin skills across auth pause and resume", async () => {
     const context = makeReplyContext({
@@ -47,7 +47,6 @@ describe("generateAssistantReply MCP skill loading", () => {
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
-    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedSessionRecord = await getAgentTurnSessionRecord(
@@ -76,15 +75,8 @@ describe("generateAssistantReply MCP skill loading", () => {
     expect(agentInitialToolNames[1]).toContain("loadSkill");
     expect(agentInitialToolNames[1]).toContain("searchMcpTools");
     expect(agentInitialToolNames[1]).toContain("callMcpTool");
-    expect(agentInitialToolNames[1]).not.toContain("searchTools");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual([
-      "System prompt",
-      "System prompt",
-    ]);
     expect(resumeTurnContextCounts).toEqual([1]);
-    expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
-    expect(turnContextInputs).toHaveLength(1);
     expect(searchMcpToolNames).toEqual([]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -122,10 +114,7 @@ describe("generateAssistantReply MCP skill loading", () => {
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
-    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
-    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({

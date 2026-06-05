@@ -23,6 +23,7 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
+  type PluginMcpClientOptions,
   type PluginMcpListedTool,
   type PluginMcpToolCallResult,
 } from "./client";
@@ -163,6 +164,19 @@ export interface McpToolManagerOptions {
     provider: string,
     error: McpAuthorizationRequiredError,
   ) => Promise<boolean | void> | boolean | void;
+  clientFactory?: (
+    plugin: PluginDefinition,
+    options: PluginMcpClientOptions,
+  ) => McpToolClient;
+}
+
+export interface McpToolClient {
+  callTool(
+    name: string,
+    args: Record<string, unknown> | undefined,
+  ): Promise<PluginMcpToolCallResult>;
+  close(): Promise<void>;
+  listTools(): Promise<PluginMcpListedTool[]>;
 }
 
 export interface ManagedMcpToolResult {
@@ -201,7 +215,7 @@ export class McpToolManager {
   private readonly pluginsByProvider = new Map<string, PluginDefinition>();
   private readonly activeProviders = new Set<string>();
   private readonly authorizationPendingProviders = new Set<string>();
-  private readonly clientsByProvider = new Map<string, PluginMcpClient>();
+  private readonly clientsByProvider = new Map<string, McpToolClient>();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
   constructor(
@@ -330,7 +344,7 @@ export class McpToolManager {
     return tools.filter((tool) => allowedToolSet.has(tool.name));
   }
 
-  private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
+  private async getClient(plugin: PluginDefinition): Promise<McpToolClient> {
     const existing = this.clientsByProvider.get(plugin.manifest.name);
     if (existing) {
       return existing;
@@ -339,17 +353,20 @@ export class McpToolManager {
     const authProvider = this.options.authProviderFactory
       ? await this.options.authProviderFactory(plugin)
       : undefined;
-    const client = new PluginMcpClient(plugin, {
+    const clientOptions = {
       ...(authProvider ? { authProvider } : {}),
       ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
-    });
+    } satisfies PluginMcpClientOptions;
+    const client = this.options.clientFactory
+      ? this.options.clientFactory(plugin, clientOptions)
+      : new PluginMcpClient(plugin, clientOptions);
     this.clientsByProvider.set(plugin.manifest.name, client);
     return client;
   }
 
   private toManagedTool(
     plugin: PluginDefinition,
-    client: PluginMcpClient,
+    client: McpToolClient,
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
     const outputSchema = toOptionalRecord(tool.outputSchema);

@@ -45,7 +45,10 @@ import {
   getPluginProviders,
 } from "@/chat/plugins/registry";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
-import { McpToolManager } from "@/chat/mcp/tool-manager";
+import {
+  McpToolManager,
+  type McpToolManagerOptions,
+} from "@/chat/mcp/tool-manager";
 import {
   inferActiveMcpProvidersFromPiMessages,
   inferLoadedSkillNamesFromPiMessages,
@@ -293,6 +296,8 @@ export interface ReplyRequestContext {
   agentFactory?: (options: ReplyAgentOptions) => ReplyAgent;
   /** Override sandbox execution for controlled runtime hosts. */
   sandboxExecutorFactory?: SandboxExecutorFactory;
+  /** Override MCP client construction for controlled runtime harnesses. */
+  mcpClientFactory?: McpToolManagerOptions["clientFactory"];
   /** Reuse a preselected reasoning level when routing already made that choice. */
   turnThinkingSelection?: TurnThinkingSelection;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -858,6 +863,9 @@ export async function generateAssistantReply(
 
     mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
       authProviderFactory: mcpAuth.authProviderFactory,
+      ...(context.mcpClientFactory
+        ? { clientFactory: context.mcpClientFactory }
+        : {}),
       onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
     });
     const turnMcpToolManager = mcpToolManager;

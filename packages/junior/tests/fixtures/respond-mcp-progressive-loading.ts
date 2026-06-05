@@ -1,92 +1,122 @@
-import { Buffer } from "node:buffer";
 import { vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import type {
+  PluginMcpClientOptions,
+  PluginMcpListedTool,
+  PluginMcpToolCallResult,
+} from "@/chat/mcp/client";
+import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
+import type { PluginDefinition } from "@/chat/plugins/types";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
+import { createScriptedReplyAgentFactory } from "./respond-agent";
+import {
+  configureRespondRuntimeEnv,
+  restoreRespondRuntimeEnv,
+} from "./respond-env";
+import {
+  createScriptedSandboxExecutorFactory,
+  createScriptedSandboxExecutorState,
+} from "./respond-sandbox";
 
-const mocks = vi.hoisted(() => ({
-  DEMO_SKILL: {
+const originalEnv = configureRespondRuntimeEnv();
+
+const hoisted = vi.hoisted(() => {
+  const DEMO_SKILL = {
     name: "demo-skill",
     description: "Demo skill",
     skillPath: "/tmp/skills/demo-skill",
     pluginProvider: "demo",
-  } as const,
-  agentInitialSystemPrompts: [] as string[],
-  agentInitialToolNames: [] as string[][],
-  callToolMock: vi.fn(),
-  clientOptions: [] as Array<Record<string, unknown>>,
-  completeEmptyAssistantOnAbort: { value: false },
-  continueCallCount: { value: 0 },
-  continueStopsOnAbort: { value: false },
-  deliverPrivateMessageMock: vi.fn(),
-  listToolsMock: vi.fn(),
-  loadSkillExecutionErrorCount: { value: 0 },
-  loadSkillsByNameMock: vi.fn(),
-  omitFinalAssistantAfterTool: { value: false },
-  promptCallCount: { value: 0 },
-  promptMessages: [] as unknown[],
-  promptSeedMessages: [] as unknown[][],
-  pushPreToolAssistantMessage: { value: false },
-  recordToolResultMessage: { value: false },
-  resumeMessages: [] as unknown[][],
-  resumeTurnContextCounts: [] as number[],
-  searchMcpToolNames: [] as string[][],
-  turnContextInputs: [] as Array<{
-    availableSkills?: Array<{ name: string }>;
-    activeMcpCatalogs?: Array<{
-      provider: string;
-      available_tool_count: number;
-    }>;
-    includeSessionContext?: boolean;
-  }>,
-}));
+  } as const;
 
-const {
-  DEMO_SKILL,
-  agentInitialSystemPrompts,
-  agentInitialToolNames,
-  callToolMock,
-  clientOptions,
-  completeEmptyAssistantOnAbort,
-  continueCallCount,
-  continueStopsOnAbort,
-  deliverPrivateMessageMock,
-  listToolsMock,
-  loadSkillExecutionErrorCount,
-  loadSkillsByNameMock,
-  omitFinalAssistantAfterTool,
-  promptCallCount,
-  promptMessages,
-  promptSeedMessages,
-  pushPreToolAssistantMessage,
-  recordToolResultMessage,
-  resumeMessages,
-  resumeTurnContextCounts,
-  searchMcpToolNames,
-  turnContextInputs,
-} = mocks;
+  const demoPlugin: PluginDefinition = {
+    dir: "/tmp/plugins/demo",
+    skillsDir: "/tmp/plugins/demo/skills",
+    manifest: {
+      name: "demo",
+      description: "Demo plugin",
+      capabilities: [],
+      configKeys: [],
+      mcp: {
+        transport: "http",
+        url: "https://mcp.example.com",
+        allowedTools: ["ping"],
+      },
+    },
+  };
+
+  const state = {
+    agentInitialToolNames: [] as string[][],
+    callToolMock:
+      vi.fn<
+        (
+          plugin: PluginDefinition,
+          name: string,
+          args: Record<string, unknown> | undefined,
+        ) => Promise<PluginMcpToolCallResult>
+      >(),
+    clientOptions: [] as Array<Record<string, unknown>>,
+    completeEmptyAssistantOnAbort: { value: false },
+    continueCallCount: { value: 0 },
+    continueStopsOnAbort: { value: false },
+    deliverPrivateMessageMock: vi.fn(),
+    listToolsMock:
+      vi.fn<
+        (
+          plugin: PluginDefinition,
+          options: PluginMcpClientOptions,
+        ) => Promise<PluginMcpListedTool[]>
+      >(),
+    loadSkillExecutionErrorCount: { value: 0 },
+    loadSkillsByNameMock: vi.fn(),
+    omitFinalAssistantAfterTool: { value: false },
+    promptCallCount: { value: 0 },
+    promptMessages: [] as unknown[],
+    promptSeedMessages: [] as unknown[][],
+    pushPreToolAssistantMessage: { value: false },
+    recordToolResultMessage: { value: false },
+    resumeMessages: [] as unknown[][],
+    resumeTurnContextCounts: [] as number[],
+    searchMcpToolNames: [] as string[][],
+  };
+
+  return {
+    DEMO_SKILL,
+    demoPlugin,
+    state,
+  };
+});
+
+const { DEMO_SKILL, demoPlugin, state } = hoisted;
+
+let abortedAgents = new WeakSet<object>();
+const sandboxState = createScriptedSandboxExecutorState();
+const turnThinkingSelection = {
+  thinkingLevel: "medium",
+  confidence: 1,
+  reason: "test",
+} satisfies TurnThinkingSelection;
 
 export const respondMcpProgressiveLoadingHarness = {
-  DEMO_SKILL: mocks.DEMO_SKILL,
-  agentInitialSystemPrompts: mocks.agentInitialSystemPrompts,
-  agentInitialToolNames: mocks.agentInitialToolNames,
-  callToolMock: mocks.callToolMock,
-  clientOptions: mocks.clientOptions,
-  completeEmptyAssistantOnAbort: mocks.completeEmptyAssistantOnAbort,
-  continueCallCount: mocks.continueCallCount,
-  continueStopsOnAbort: mocks.continueStopsOnAbort,
-  deliverPrivateMessageMock: mocks.deliverPrivateMessageMock,
-  listToolsMock: mocks.listToolsMock,
-  loadSkillExecutionErrorCount: mocks.loadSkillExecutionErrorCount,
-  loadSkillsByNameMock: mocks.loadSkillsByNameMock,
-  omitFinalAssistantAfterTool: mocks.omitFinalAssistantAfterTool,
-  promptCallCount: mocks.promptCallCount,
-  promptMessages: mocks.promptMessages,
-  promptSeedMessages: mocks.promptSeedMessages,
-  pushPreToolAssistantMessage: mocks.pushPreToolAssistantMessage,
-  recordToolResultMessage: mocks.recordToolResultMessage,
-  resumeMessages: mocks.resumeMessages,
-  resumeTurnContextCounts: mocks.resumeTurnContextCounts,
-  searchMcpToolNames: mocks.searchMcpToolNames,
-  turnContextInputs: mocks.turnContextInputs,
+  DEMO_SKILL,
+  agentInitialToolNames: state.agentInitialToolNames,
+  callToolMock: state.callToolMock,
+  clientOptions: state.clientOptions,
+  completeEmptyAssistantOnAbort: state.completeEmptyAssistantOnAbort,
+  continueCallCount: state.continueCallCount,
+  continueStopsOnAbort: state.continueStopsOnAbort,
+  deliverPrivateMessageMock: state.deliverPrivateMessageMock,
+  listToolsMock: state.listToolsMock,
+  loadSkillExecutionErrorCount: state.loadSkillExecutionErrorCount,
+  loadSkillsByNameMock: state.loadSkillsByNameMock,
+  omitFinalAssistantAfterTool: state.omitFinalAssistantAfterTool,
+  promptCallCount: state.promptCallCount,
+  promptMessages: state.promptMessages,
+  promptSeedMessages: state.promptSeedMessages,
+  pushPreToolAssistantMessage: state.pushPreToolAssistantMessage,
+  recordToolResultMessage: state.recordToolResultMessage,
+  resumeMessages: state.resumeMessages,
+  resumeTurnContextCounts: state.resumeTurnContextCounts,
+  searchMcpToolNames: state.searchMcpToolNames,
 };
 
 /** Build the loaded demo skill shape used by progressive MCP tests. */
@@ -97,7 +127,7 @@ export function makeDemoLoadedSkill() {
   };
 }
 
-/** Build a demo MCP tool with the minimal schema needed by the mocked client. */
+/** Build a demo MCP tool with the minimal schema needed by the fake client. */
 export function makeDemoMcpTool(name: "ping" | "mutate") {
   return {
     name,
@@ -110,10 +140,10 @@ export function makeDemoMcpTool(name: "ping" | "mutate") {
       type: "object",
       properties: {},
     },
-  };
+  } satisfies PluginMcpListedTool;
 }
 
-/** Build the full demo MCP tool list exposed by the mocked plugin provider. */
+/** Build the full demo MCP tool list exposed by the fake plugin provider. */
 export function makeDemoMcpTools() {
   return [makeDemoMcpTool("ping"), makeDemoMcpTool("mutate")];
 }
@@ -128,234 +158,237 @@ export function makeReplyContext(args: {
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
-    requester: { userId: "U123" },
+    destination: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    },
+    requester: {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U123",
+    },
     correlation: {
       channelId: "C123",
       conversationId: args.conversationId,
+      teamId: "T123",
       threadTs: args.threadTs,
       turnId: args.turnId,
     },
   };
 }
 
-vi.mock("@earendil-works/pi-agent-core", () => {
-  class MockAgent {
-    state: {
-      messages: unknown[];
-      model: unknown;
-      systemPrompt: string;
-      tools: Array<{
-        name: string;
-        execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
-      }>;
+async function executeAgentTool(
+  agent: { state: { tools: unknown[] } },
+  name: string,
+  params: Record<string, unknown>,
+) {
+  const tool = agent.state.tools.find(
+    (
+      candidate,
+    ): candidate is {
+      execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
+      name: string;
+    } =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      "name" in candidate &&
+      candidate.name === name &&
+      "execute" in candidate &&
+      typeof candidate.execute === "function",
+  );
+  if (!tool) {
+    throw new Error(`${name} tool missing`);
+  }
+  return await tool.execute(`tool-call-${name}`, params);
+}
+
+function hasRuntimeTurnContext(message: unknown): boolean {
+  const candidate = message as { role?: unknown; content?: unknown };
+  return (
+    candidate.role === "user" &&
+    Array.isArray(candidate.content) &&
+    candidate.content.some(
+      (part) =>
+        part &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "text" &&
+        typeof (part as { text?: unknown }).text === "string" &&
+        (part as { text: string }).text.includes("<runtime-turn-context>"),
+    )
+  );
+}
+
+const scriptedAgentFactory = createScriptedReplyAgentFactory({
+  abort(agent) {
+    abortedAgents.add(agent);
+  },
+  async continue(agent) {
+    state.continueCallCount.value += 1;
+    state.resumeMessages.push([...agent.state.messages]);
+    state.resumeTurnContextCounts.push(
+      agent.state.messages.filter(hasRuntimeTurnContext).length,
+    );
+
+    const lastMessage = agent.state.messages.at(-1) as
+      | { role?: unknown }
+      | undefined;
+    if (lastMessage?.role === "assistant") {
+      throw new Error("Cannot continue from message role: assistant");
+    }
+    await executeAgentTool(agent, "callMcpTool", {
+      tool_name: "mcp__demo__ping",
+      arguments: { query: "hello" },
+    });
+    if (abortedAgents.has(agent) && state.continueStopsOnAbort.value) {
+      return {};
+    }
+    agent.state.messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "resumed reply" }],
+      stopReason: "stop",
+    } as PiMessage);
+    return {};
+  },
+  async prompt(agent, message) {
+    state.promptCallCount.value += 1;
+    abortedAgents.delete(agent);
+    state.promptMessages.push(message);
+    state.promptSeedMessages.push([...agent.state.messages]);
+    agent.state.messages.push(message as PiMessage);
+
+    let loadSkillResult: {
+      details?: {
+        mcp_provider?: string;
+        available_tool_count?: number;
+      };
     };
-    private aborted = false;
-
-    constructor(input: {
-      initialState: {
-        model: unknown;
-        systemPrompt: string;
-        tools: Array<{
-          name: string;
-          execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
-        }>;
-      };
-    }) {
-      this.state = {
-        messages: [],
-        model: input.initialState.model,
-        systemPrompt: input.initialState.systemPrompt,
-        tools: input.initialState.tools,
-      };
-      agentInitialSystemPrompts.push(input.initialState.systemPrompt);
-      agentInitialToolNames.push(
-        input.initialState.tools.map((tool) => tool.name),
-      );
-    }
-
-    subscribe() {
-      return () => undefined;
-    }
-
-    abort() {
-      this.aborted = true;
-    }
-
-    async prompt(message: unknown) {
-      promptCallCount.value += 1;
-      this.aborted = false;
-      promptMessages.push(message);
-      promptSeedMessages.push([...this.state.messages]);
-      this.state.messages.push(message);
-
-      const loadSkillTool = this.state.tools.find(
-        (tool) => tool.name === "loadSkill",
-      );
-      if (!loadSkillTool) {
-        throw new Error("loadSkill tool missing");
-      }
-
-      let loadSkillResult: {
+    try {
+      loadSkillResult = (await executeAgentTool(agent, "loadSkill", {
+        skill_name: DEMO_SKILL.name,
+      })) as {
         details?: {
           mcp_provider?: string;
           available_tool_count?: number;
         };
       };
-      try {
-        loadSkillResult = (await loadSkillTool.execute("tool-call-1", {
-          skill_name: DEMO_SKILL.name,
-        })) as {
-          details?: {
-            mcp_provider?: string;
-            available_tool_count?: number;
-          };
-        };
-      } catch (error) {
-        loadSkillExecutionErrorCount.value += 1;
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "loading demo skill" }],
-        });
-        throw error;
-      }
-      this.state.messages.push({
+    } catch (error) {
+      state.loadSkillExecutionErrorCount.value += 1;
+      agent.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "loading demo skill" }],
+      } as PiMessage);
+      throw error;
+    }
+
+    agent.state.messages.push({
+      role: "toolResult",
+      toolCallId: "tool-call-1",
+      toolName: "loadSkill",
+      isError: false,
+      details: loadSkillResult.details,
+      content: [{ type: "text", text: "loaded" }],
+    } as PiMessage);
+    if (abortedAgents.has(agent)) {
+      agent.state.messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: state.completeEmptyAssistantOnAbort.value
+              ? ""
+              : "loading demo skill",
+          },
+        ],
+        ...(state.completeEmptyAssistantOnAbort.value
+          ? { stopReason: "stop" }
+          : {}),
+      } as PiMessage);
+      return {};
+    }
+
+    if (loadSkillResult.details?.mcp_provider) {
+      const searchResult = (await executeAgentTool(agent, "searchMcpTools", {
+        provider: loadSkillResult.details.mcp_provider,
+        query: "ping query",
+      })) as {
+        details?: { tools?: Array<{ tool_name: string }> };
+      };
+      state.searchMcpToolNames.push(
+        (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
+      );
+    }
+    if (state.pushPreToolAssistantMessage.value) {
+      agent.state.messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Let me search for related articles and compare perspectives.",
+          },
+        ],
+      } as PiMessage);
+    }
+
+    await executeAgentTool(agent, "callMcpTool", {
+      tool_name: "mcp__demo__ping",
+      arguments: { query: "hello" },
+    });
+    if (state.recordToolResultMessage.value) {
+      agent.state.messages.push({
         role: "toolResult",
-        toolCallId: "tool-call-1",
-        toolName: "loadSkill",
+        toolName: "callMcpTool",
         isError: false,
-        details: loadSkillResult.details,
-        content: [{ type: "text", text: "loaded" }],
-      });
-      if (this.aborted) {
-        this.state.messages.push({
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: completeEmptyAssistantOnAbort.value
-                ? ""
-                : "loading demo skill",
-            },
-          ],
-          ...(completeEmptyAssistantOnAbort.value
-            ? { stopReason: "stop" }
-            : {}),
-        });
-        return {};
-      }
-      if (loadSkillResult.details?.mcp_provider) {
-        const searchMcpTools = this.state.tools.find(
-          (tool) => tool.name === "searchMcpTools",
-        );
-        if (!searchMcpTools) {
-          throw new Error("searchMcpTools missing");
-        }
-        const searchResult = (await searchMcpTools.execute("tool-call-search", {
-          provider: loadSkillResult.details.mcp_provider,
-          query: "ping query",
-        })) as {
-          details?: { tools?: Array<{ tool_name: string }> };
-        };
-        searchMcpToolNames.push(
-          (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
-        );
-      }
-      if (pushPreToolAssistantMessage.value) {
-        this.state.messages.push({
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "Let me search for related articles and compare perspectives.",
-            },
-          ],
-        });
-      }
-
-      const callMcpTool = this.state.tools.find(
-        (tool) => tool.name === "callMcpTool",
-      );
-      if (!callMcpTool) {
-        throw new Error("callMcpTool missing");
-      }
-
-      await callMcpTool.execute("tool-call-2", {
-        tool_name: "mcp__demo__ping",
-        arguments: { query: "hello" },
-      });
-      if (recordToolResultMessage.value) {
-        this.state.messages.push({
-          role: "toolResult",
-          toolName: "callMcpTool",
-          isError: false,
-          content: [{ type: "text", text: "pong" }],
-        });
-      }
-      if (omitFinalAssistantAfterTool.value) {
-        return {};
-      }
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "resumed reply" }],
-        stopReason: "stop",
-      });
+        content: [{ type: "text", text: "pong" }],
+      } as PiMessage);
+    }
+    if (state.omitFinalAssistantAfterTool.value) {
       return {};
     }
-
-    async continue() {
-      continueCallCount.value += 1;
-      resumeMessages.push([...this.state.messages]);
-      resumeTurnContextCounts.push(
-        this.state.messages.filter((message) => {
-          const candidate = message as { role?: unknown; content?: unknown };
-          return (
-            candidate.role === "user" &&
-            Array.isArray(candidate.content) &&
-            candidate.content.some(
-              (part) =>
-                part &&
-                typeof part === "object" &&
-                (part as { type?: unknown }).type === "text" &&
-                typeof (part as { text?: unknown }).text === "string" &&
-                (part as { text: string }).text.includes("Turn context"),
-            )
-          );
-        }).length,
-      );
-      const lastMessage = this.state.messages[
-        this.state.messages.length - 1
-      ] as { role?: unknown } | undefined;
-      if (lastMessage?.role === "assistant") {
-        throw new Error("Cannot continue from message role: assistant");
-      }
-      const callMcpTool = this.state.tools.find(
-        (tool) => tool.name === "callMcpTool",
-      );
-      if (!callMcpTool) {
-        throw new Error("callMcpTool missing on continue");
-      }
-      await callMcpTool.execute("tool-call-continue", {
-        tool_name: "mcp__demo__ping",
-        arguments: { query: "hello" },
-      });
-      if (this.aborted && continueStopsOnAbort.value) {
-        return {};
-      }
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "resumed reply" }],
-        stopReason: "stop",
-      });
-      return {};
-    }
-  }
-
-  return { Agent: MockAgent };
+    agent.state.messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "resumed reply" }],
+      stopReason: "stop",
+    } as PiMessage);
+    return {};
+  },
 });
+
+const agentFactory: typeof scriptedAgentFactory = (options) => {
+  state.agentInitialToolNames.push(
+    options.initialState.tools.map((tool) =>
+      typeof tool === "object" &&
+      tool !== null &&
+      "name" in tool &&
+      typeof (tool as { name?: unknown }).name === "string"
+        ? (tool as { name: string }).name
+        : "",
+    ),
+  );
+  return scriptedAgentFactory(options);
+};
+
+function mcpClientFactory(
+  plugin: PluginDefinition,
+  options: PluginMcpClientOptions,
+) {
+  state.clientOptions.push({ ...options });
+  return {
+    async listTools() {
+      return await state.listToolsMock(plugin, options);
+    },
+    async callTool(name: string, args: Record<string, unknown> | undefined) {
+      return await state.callToolMock(plugin, name, args);
+    },
+    async close() {
+      return undefined;
+    },
+  };
+}
 
 vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
-  deliverPrivateMessage: mocks.deliverPrivateMessageMock,
+  deliverPrivateMessage: state.deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
   resolveBaseUrl: () => "https://junior.example.com",
 }));
@@ -420,252 +453,104 @@ vi.mock("@/chat/mcp/oauth", () => ({
   },
 }));
 
-vi.mock("@/chat/pi/client", () => ({
-  GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
-  GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
-  GEN_AI_SERVER_PORT: 443,
-  completeObject: async () => ({
-    object: {
-      thinking_level: "medium",
-      confidence: 1,
-      reason: "test-router",
-    },
-  }),
-  getGatewayApiKey: () => "test-gateway-key",
-  getPiGatewayApiKeyOverride: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
-}));
-
-vi.mock("@/chat/prompt", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/chat/prompt")>();
-  return {
-    ...actual,
-    buildSystemPrompt: () => "System prompt",
-    buildTurnContextPrompt: (input: {
-      availableSkills?: Array<{ name: string }>;
-      activeMcpCatalogs?: Array<{
-        provider: string;
-        available_tool_count: number;
-      }>;
-      includeSessionContext?: boolean;
-    }) => {
-      turnContextInputs.push(input);
-      if (input.includeSessionContext === false) {
-        return null;
-      }
-      return "<runtime-turn-context>\nTurn context\n</runtime-turn-context>";
-    },
-  };
-});
-
-vi.mock("@/chat/runtime/dev-agent-trace", () => ({
-  shouldEmitDevAgentTrace: () => false,
-}));
-
-vi.mock("@/chat/config", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/chat/config")>();
-  const memoryConfig = original.readChatConfig({
-    ...process.env,
-    JUNIOR_STATE_ADAPTER: "memory",
-  });
-  return {
-    ...original,
-    botConfig: memoryConfig.bot,
-    getChatConfig: () => memoryConfig,
-    getRuntimeMetadata: () => ({ version: "test" }),
-  };
-});
-
-vi.mock("@/chat/capabilities/factory", () => ({
-  createUserTokenStore: () => ({
-    get: async () => undefined,
-    set: async () => undefined,
-    delete: async () => undefined,
-  }),
-}));
-
-vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
-  maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
-}));
-
-vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => ({
-      readFileToBuffer: async () =>
-        Buffer.from(
-          [
-            "---",
-            "name: demo-skill",
-            "description: Demo skill",
-            "---",
-            "",
-            "Skill instructions",
-          ].join("\n"),
-          "utf8",
-        ),
-    }),
-    canExecute: () => false,
-    execute: async () => {
-      throw new Error("sandbox executor should not handle mocked tools");
-    },
-    getSandboxId: () => "sandbox-test",
-    getDependencyProfileHash: () => "hash-test",
-    dispose: async () => undefined,
-  }),
-}));
-
 vi.mock("@/chat/plugins/registry", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/chat/plugins/registry")>();
-  const plugin = {
-    dir: "/tmp/plugins/demo",
-    skillsDir: "/tmp/plugins/demo/skills",
-    manifest: {
-      name: "demo",
-      description: "Demo plugin",
-      capabilities: [],
-      configKeys: [],
-      mcp: {
-        transport: "http",
-        url: "https://mcp.example.com",
-        allowedTools: ["ping"],
-      },
-    },
-  };
-
   return {
     ...actual,
     getPluginDefinition: (provider: string) =>
-      provider === "demo" ? plugin : undefined,
-    getPluginMcpProviders: () => [plugin],
-    getPluginProviders: () => [plugin],
+      provider === "demo" ? demoPlugin : undefined,
+    getPluginMcpProviders: () => [demoPlugin],
+    getPluginProviders: () => [demoPlugin],
   };
 });
 
 vi.mock("@/chat/skills", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/skills")>();
-
   return {
     ...actual,
     discoverSkills: async () => [DEMO_SKILL],
     findSkillByName: () => null,
-    loadSkillsByName: mocks.loadSkillsByNameMock,
+    loadSkillsByName: state.loadSkillsByNameMock,
     parseSkillInvocation: () => null,
   };
 });
 
-vi.mock("@/chat/mcp/client", () => {
-  class MockMcpAuthorizationRequiredError extends Error {
-    readonly provider: string;
+const { generateAssistantReply: generateAssistantReplyImpl } =
+  await import("@/chat/respond");
+const { isRetryableTurnError: isRetryableTurnErrorImpl } =
+  await import("@/chat/runtime/turn");
+const { disconnectStateAdapter: disconnectStateAdapterImpl } =
+  await import("@/chat/state/adapter");
+const {
+  getAgentTurnSessionRecord: getAgentTurnSessionRecordImpl,
+  upsertAgentTurnSessionRecord: upsertAgentTurnSessionRecordImpl,
+} = await import("@/chat/state/turn-session");
 
-    constructor(provider: string, message: string) {
-      super(message);
-      this.name = "McpAuthorizationRequiredError";
-      this.provider = provider;
-    }
-  }
+/** Run respond through the explicit MCP/agent/sandbox ports used by this fixture. */
+export async function generateAssistantReply(
+  message: string,
+  context: Parameters<typeof generateAssistantReplyImpl>[1] = {},
+) {
+  return await generateAssistantReplyImpl(message, {
+    agentFactory,
+    mcpClientFactory,
+    recordPendingAuth: async () => undefined,
+    sandboxExecutorFactory: createScriptedSandboxExecutorFactory(sandboxState),
+    turnThinkingSelection,
+    ...context,
+  });
+}
 
-  class MockPluginMcpClient {
-    constructor(
-      private readonly plugin: { manifest: { name: string } },
-      private readonly options: {
-        authProvider?: {
-          redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
-        };
-      },
-    ) {
-      clientOptions.push({ ...options });
-    }
-
-    async listTools() {
-      return await listToolsMock(this.plugin, this.options);
-    }
-
-    async callTool(name: string, args: Record<string, unknown>) {
-      return await callToolMock(this.plugin, name, args);
-    }
-
-    async close() {}
-  }
-
-  return {
-    McpAuthorizationRequiredError: MockMcpAuthorizationRequiredError,
-    PluginMcpClient: MockPluginMcpClient,
-  };
-});
-
-import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
-import { isRetryableTurnError as isRetryableTurnErrorImpl } from "@/chat/runtime/turn";
-import { disconnectStateAdapter as disconnectStateAdapterImpl } from "@/chat/state/adapter";
-import {
-  getAgentTurnSessionRecord as getAgentTurnSessionRecordImpl,
-  upsertAgentTurnSessionRecord as upsertAgentTurnSessionRecordImpl,
-} from "@/chat/state/turn-session";
-
-export const generateAssistantReply = generateAssistantReplyImpl;
 export const getAgentTurnSessionRecord = getAgentTurnSessionRecordImpl;
 export const isRetryableTurnError = isRetryableTurnErrorImpl;
 export const upsertAgentTurnSessionRecord = upsertAgentTurnSessionRecordImpl;
+export { McpAuthorizationRequiredError };
 
-/** Reset mocked MCP/respond runtime state before each progressive-loading test. */
+/** Reset MCP/respond runtime state before each progressive-loading test. */
 export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
-  agentInitialToolNames.length = 0;
-  agentInitialSystemPrompts.length = 0;
-  callToolMock.mockReset();
-  clientOptions.length = 0;
-  completeEmptyAssistantOnAbort.value = false;
-  continueCallCount.value = 0;
-  continueStopsOnAbort.value = false;
-  deliverPrivateMessageMock.mockReset();
-  listToolsMock.mockReset();
-  searchMcpToolNames.length = 0;
-  loadSkillExecutionErrorCount.value = 0;
-  loadSkillsByNameMock.mockReset();
-  omitFinalAssistantAfterTool.value = false;
-  promptCallCount.value = 0;
-  promptMessages.length = 0;
-  promptSeedMessages.length = 0;
-  pushPreToolAssistantMessage.value = false;
-  recordToolResultMessage.value = false;
-  resumeMessages.length = 0;
-  resumeTurnContextCounts.length = 0;
-  turnContextInputs.length = 0;
+  state.agentInitialToolNames.length = 0;
+  state.callToolMock.mockReset();
+  state.clientOptions.length = 0;
+  state.completeEmptyAssistantOnAbort.value = false;
+  state.continueCallCount.value = 0;
+  state.continueStopsOnAbort.value = false;
+  state.deliverPrivateMessageMock.mockReset();
+  state.listToolsMock.mockReset();
+  state.searchMcpToolNames.length = 0;
+  state.loadSkillExecutionErrorCount.value = 0;
+  state.loadSkillsByNameMock.mockReset();
+  state.omitFinalAssistantAfterTool.value = false;
+  state.promptCallCount.value = 0;
+  state.promptMessages.length = 0;
+  state.promptSeedMessages.length = 0;
+  state.pushPreToolAssistantMessage.value = false;
+  state.recordToolResultMessage.value = false;
+  state.resumeMessages.length = 0;
+  state.resumeTurnContextCounts.length = 0;
+  abortedAgents = new WeakSet<object>();
 
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
 
-  deliverPrivateMessageMock.mockResolvedValue({
+  state.deliverPrivateMessageMock.mockResolvedValue({
     channel: "D123",
     threadTs: "1712345.0001",
   });
-  callToolMock.mockResolvedValue({
+  state.callToolMock.mockResolvedValue({
     content: [{ type: "text", text: "pong" }],
     isError: false,
   });
-  loadSkillsByNameMock.mockResolvedValue([makeDemoLoadedSkill()]);
-  listToolsMock
-    .mockImplementationOnce(
-      async (
-        plugin: { manifest: { name: string } },
-        options: {
-          authProvider?: {
-            redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
-          };
-        },
-      ) => {
-        await options.authProvider?.redirectToAuthorization?.(
-          new URL(`https://auth.example.com/${plugin.manifest.name}`),
-        );
-        const { McpAuthorizationRequiredError } =
-          await import("@/chat/mcp/client");
-        throw new McpAuthorizationRequiredError(
-          plugin.manifest.name,
-          "Auth required",
-        );
-      },
-    )
+  state.loadSkillsByNameMock.mockResolvedValue([makeDemoLoadedSkill()]);
+  state.listToolsMock
+    .mockImplementationOnce(async (plugin, options) => {
+      await options.authProvider?.redirectToAuthorization?.(
+        new URL(`https://auth.example.com/${plugin.manifest.name}`),
+      );
+      throw new McpAuthorizationRequiredError(
+        plugin.manifest.name,
+        "Auth required",
+      );
+    })
     .mockResolvedValue(makeDemoMcpTools());
 
   await disconnectStateAdapterImpl();
@@ -674,9 +559,13 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
 /** Restore memory state and process globals after progressive-loading tests. */
 export async function cleanupRespondMcpProgressiveLoadingTest(): Promise<void> {
   await disconnectStateAdapterImpl();
-  delete process.env.JUNIOR_STATE_ADAPTER;
   delete process.env.JUNIOR_BASE_URL;
   vi.restoreAllMocks();
+}
+
+/** Restore import-time env values captured for the progressive MCP respond fixture. */
+export function restoreRespondMcpProgressiveLoadingEnv(): void {
+  restoreRespondRuntimeEnv(originalEnv);
 }
 
 export type { PiMessage };

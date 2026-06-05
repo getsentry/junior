@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupRespondMcpProgressiveLoadingTest,
   generateAssistantReply,
@@ -7,6 +7,7 @@ import {
   makeDemoMcpTools,
   makeReplyContext,
   respondMcpProgressiveLoadingHarness,
+  restoreRespondMcpProgressiveLoadingEnv,
   setupRespondMcpProgressiveLoadingTest,
   upsertAgentTurnSessionRecord,
   type PiMessage,
@@ -18,15 +19,39 @@ const {
   promptSeedMessages,
   resumeMessages,
   resumeTurnContextCounts,
-  turnContextInputs,
 } = respondMcpProgressiveLoadingHarness;
 
-// These suites validate local progressive-loading logic through a mocked
-// agent/runtime seam; they are not integration coverage.
+function textParts(message: unknown): string[] {
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content
+    .map((part) =>
+      part &&
+      typeof part === "object" &&
+      typeof (part as { text?: unknown }).text === "string"
+        ? (part as { text: string }).text
+        : "",
+    )
+    .filter((text) => text.length > 0);
+}
+
+function messageText(message: unknown): string {
+  return textParts(message).join("\n");
+}
+
+function runtimeContextCount(message: unknown): number {
+  return (messageText(message).match(/<runtime-turn-context>/g) ?? []).length;
+}
+
+// Component-style runtime coverage: real respond orchestration with explicit
+// fake ports for the agent, MCP client, and sandbox executor.
 describe("generateAssistantReply MCP session context", () => {
   beforeEach(setupRespondMcpProgressiveLoadingTest);
 
   afterEach(cleanupRespondMcpProgressiveLoadingTest);
+  afterAll(restoreRespondMcpProgressiveLoadingEnv);
 
   it("restores MCP providers inferred from prior Pi history before building a follow-up turn prompt", async () => {
     listToolsMock.mockReset();
@@ -52,9 +77,13 @@ describe("generateAssistantReply MCP session context", () => {
       ] as unknown as PiMessage[],
     });
 
-    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
-      { provider: "demo", available_tool_count: 1 },
-    ]);
+    expect(messageText(promptMessages[0])).toContain("<active-mcp-catalogs>");
+    expect(messageText(promptMessages[0])).toContain(
+      "<provider>demo</provider>",
+    );
+    expect(messageText(promptMessages[0])).toContain(
+      "<available_tool_count>1</available_tool_count>",
+    );
     expect(listToolsMock).toHaveBeenCalledTimes(1);
   });
 
@@ -117,19 +146,11 @@ describe("generateAssistantReply MCP session context", () => {
 
     expect(reply.text).toBe("resumed reply");
     expect(resumeMessages).toHaveLength(1);
-    expect(resumeMessages[0]?.at(-1)).toMatchObject({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>\nTurn context\n</runtime-turn-context>",
-        },
-        { type: "text", text: "current follow-up" },
-      ],
-    });
+    const resumedUserMessage = resumeMessages[0]?.at(-1);
+    expect(resumedUserMessage).toMatchObject({ role: "user" });
+    expect(runtimeContextCount(resumedUserMessage)).toBe(1);
+    expect(textParts(resumedUserMessage).at(-1)).toBe("current follow-up");
     expect(resumeTurnContextCounts).toEqual([1]);
-    expect(turnContextInputs).toHaveLength(1);
-    expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
   });
 
   it("injects session context when persisted Pi history has no runtime context", async () => {
@@ -165,11 +186,7 @@ describe("generateAssistantReply MCP session context", () => {
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<thread-background>",
     );
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
-    expect(turnContextInputs.at(-1)?.availableSkills).toEqual([
-      expect.objectContaining({ name: "demo-skill" }),
-    ]);
-    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
+    expect(runtimeContextCount(promptMessages[0])).toBe(1);
   });
 
   it("injects session context for crash retries loaded from stripped running history", async () => {
@@ -213,8 +230,7 @@ describe("generateAssistantReply MCP session context", () => {
     });
 
     expect(promptSeedMessages[0]).toEqual(strippedHistory);
-    expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(runtimeContextCount(promptMessages[0])).toBe(1);
     expect(JSON.stringify(promptMessages[0])).not.toContain("stale bootstrap");
   });
 
@@ -250,9 +266,6 @@ describe("generateAssistantReply MCP session context", () => {
     });
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(turnContextInputs).toHaveLength(0);
-    expect(JSON.stringify(promptMessages[0])).not.toContain(
-      "<runtime-turn-context>",
-    );
+    expect(runtimeContextCount(promptMessages[0])).toBe(0);
   });
 });

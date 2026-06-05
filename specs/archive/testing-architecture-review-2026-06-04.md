@@ -127,9 +127,9 @@ low-fidelity integration tests.
 
 Files:
 
-- `packages/junior/tests/unit/runtime/respond-mcp-auth-resume.test.ts`
-- `packages/junior/tests/unit/runtime/respond-mcp-session-context.test.ts`
-- `packages/junior/tests/unit/runtime/respond-mcp-skill-loading.test.ts`
+- `packages/junior/tests/component/runtime/respond-mcp-auth-resume.test.ts`
+- `packages/junior/tests/component/runtime/respond-mcp-session-context.test.ts`
+- `packages/junior/tests/component/runtime/respond-mcp-skill-loading.test.ts`
 - `packages/junior/tests/component/runtime/respond-lazy-sandbox.test.ts`
 - `packages/junior/tests/component/runtime/respond-startup-error.test.ts`
 - `packages/junior/tests/component/runtime/respond-timeout-resume.test.ts`
@@ -156,10 +156,18 @@ under `tests/component/runtime` and drive Pi behavior through the explicit
 `agentFactory` port with shared deterministic import-time env setup and
 preselected thinking levels instead of the old broad respond runtime fixture.
 
-The progressive MCP loading coverage now imports its dedicated mocked MCP
-runtime harness from fixtures and is split by scenario family. These suites still
-belong in the migration queue because they validate multi-module MCP turn
-orchestration through unit-level module mocks.
+The progressive MCP loading coverage now lives under `tests/component/runtime`.
+It drives `generateAssistantReply` through explicit local ports for the Pi
+agent, MCP client, sandbox executor, and selected thinking level instead of
+mocking those runtime modules. The tests also stopped asserting fake prompt
+prose and now check durable session/auth behavior plus structural runtime
+context boundaries.
+
+Remaining debt in this family is narrower: the shared fixture still stubs plugin
+registry, skill discovery, and OAuth delivery modules because those are separate
+composition boundaries. The next pass should either replace those with local
+fixture providers or delete low-signal cases already covered by higher-fidelity
+Slack/auth integration tests.
 
 Direction:
 

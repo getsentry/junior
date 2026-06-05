@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   cleanupRespondMcpProgressiveLoadingTest,
   generateAssistantReply,
@@ -7,6 +15,7 @@ import {
   makeDemoMcpTool,
   makeReplyContext,
   respondMcpProgressiveLoadingHarness,
+  restoreRespondMcpProgressiveLoadingEnv,
   setupRespondMcpProgressiveLoadingTest,
   upsertAgentTurnSessionRecord,
   type PiMessage,
@@ -24,30 +33,22 @@ const {
   recordToolResultMessage,
 } = respondMcpProgressiveLoadingHarness;
 
-// These suites validate local progressive-loading logic through a mocked
-// agent/runtime seam; they are not integration coverage.
+// Component-style runtime coverage: real respond orchestration with explicit
+// fake ports for the agent, MCP client, and sandbox executor.
 describe("generateAssistantReply MCP auth resume", () => {
   beforeEach(setupRespondMcpProgressiveLoadingTest);
 
   afterEach(cleanupRespondMcpProgressiveLoadingTest);
+  afterAll(restoreRespondMcpProgressiveLoadingEnv);
 
   it("parks for auth when MCP auth is requested during a tool call", async () => {
     listToolsMock.mockReset();
-    listToolsMock.mockImplementation(
-      async (
-        plugin: { manifest: { name: string } },
-        options: {
-          authProvider?: {
-            redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
-          };
-        },
-      ) => {
-        await options.authProvider?.redirectToAuthorization?.(
-          new URL(`https://auth.example.com/${plugin.manifest.name}`),
-        );
-        return [makeDemoMcpTool("ping")];
-      },
-    );
+    listToolsMock.mockImplementation(async (plugin, options) => {
+      await options.authProvider?.redirectToAuthorization?.(
+        new URL(`https://auth.example.com/${plugin.manifest.name}`),
+      );
+      return [makeDemoMcpTool("ping")];
+    });
     callToolMock.mockImplementationOnce(async (plugin) => {
       const { McpAuthorizationRequiredError } =
         await import("@/chat/mcp/client");
@@ -125,18 +126,11 @@ describe("generateAssistantReply MCP auth resume", () => {
         return await originalUpsert(args);
       });
 
-    const context = {
-      credentialContext: {
-        actor: { type: "user" as const, userId: "U123" },
-      },
-      requester: { userId: "U123" },
-      correlation: {
-        conversationId: "conversation-3",
-        turnId: "turn-3",
-        channelId: "C123",
-        threadTs: "1712345.0003",
-      },
-    };
+    const context = makeReplyContext({
+      conversationId: "conversation-3",
+      threadTs: "1712345.0003",
+      turnId: "turn-3",
+    });
 
     const reply = await generateAssistantReply("help me", context);
 
@@ -210,18 +204,14 @@ describe("generateAssistantReply MCP auth resume", () => {
       );
     });
 
-    const firstError = await generateAssistantReply("help me", {
-      credentialContext: {
-        actor: { type: "user", userId: "U123" },
-      },
-      requester: { userId: "U123" },
-      correlation: {
+    const firstError = await generateAssistantReply(
+      "help me",
+      makeReplyContext({
         conversationId: "conversation-5",
-        turnId: "turn-5",
-        channelId: "C123",
         threadTs: "1712345.0005",
-      },
-    }).catch((error) => error);
+        turnId: "turn-5",
+      }),
+    ).catch((error) => error);
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
 
@@ -241,18 +231,14 @@ describe("generateAssistantReply MCP auth resume", () => {
   it("still parks for auth when abort leaves an empty completed assistant frame", async () => {
     completeEmptyAssistantOnAbort.value = true;
 
-    const firstError = await generateAssistantReply("help me", {
-      credentialContext: {
-        actor: { type: "user", userId: "U123" },
-      },
-      requester: { userId: "U123" },
-      correlation: {
+    const firstError = await generateAssistantReply(
+      "help me",
+      makeReplyContext({
         conversationId: "conversation-6",
-        turnId: "turn-6",
-        channelId: "C123",
         threadTs: "1712345.0006",
-      },
-    }).catch((error) => error);
+        turnId: "turn-6",
+      }),
+    ).catch((error) => error);
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
 
