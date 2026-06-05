@@ -2,8 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPluginAppFixture } from "../fixtures/plugin-app";
 
-const originalSkillDirs = process.env.SKILL_DIRS;
+const originalCwd = process.cwd();
 
 async function writeSkill(
   rootDir: string,
@@ -27,14 +28,8 @@ async function writeSkill(
 }
 
 afterEach(() => {
-  if (originalSkillDirs === undefined) {
-    delete process.env.SKILL_DIRS;
-  } else {
-    process.env.SKILL_DIRS = originalSkillDirs;
-  }
+  process.chdir(originalCwd);
   vi.resetModules();
-  vi.doUnmock("@/chat/discovery");
-  vi.doUnmock("@/chat/plugins/package-discovery");
 });
 
 describe("discoverSkills plugin ownership", () => {
@@ -42,9 +37,7 @@ describe("discoverSkills plugin ownership", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skill-plugin-provider-"),
     );
-    const pluginsRoot = path.join(tempRoot, "plugins");
-    const pluginRoot = path.join(pluginsRoot, "demo");
-    const localSkillsRoot = path.join(tempRoot, "skills");
+    const pluginRoot = path.join(tempRoot, "demo");
 
     await fs.mkdir(path.join(pluginRoot, "skills"), { recursive: true });
     await fs.writeFile(
@@ -55,40 +48,33 @@ describe("discoverSkills plugin ownership", () => {
       "utf8",
     );
     await writeSkill(path.join(pluginRoot, "skills"), "triage", "triage");
-    await writeSkill(localSkillsRoot, "notes", "notes");
-
-    process.env.SKILL_DIRS = localSkillsRoot;
-
-    vi.doMock("@/chat/discovery", () => ({
-      pluginRoots: () => [pluginsRoot],
-      skillRoots: () => [],
-    }));
-    vi.doMock("@/chat/plugins/package-discovery", () => ({
-      discoverInstalledPluginPackageContent: () => ({
-        packageNames: [],
-        packages: [],
-        manifestRoots: [],
-        skillRoots: [],
-        tracingIncludes: [],
-      }),
-    }));
 
     try {
-      const { discoverSkills, resetSkillDiscoveryCache } =
-        await import("@/chat/skills");
-      resetSkillDiscoveryCache();
+      const app = await createPluginAppFixture([pluginRoot]);
+      try {
+        await writeSkill(
+          path.join(app.root, "app", "skills"),
+          "notes",
+          "notes",
+        );
+        const { discoverSkills, resetSkillDiscoveryCache } =
+          await import("@/chat/skills");
+        resetSkillDiscoveryCache();
 
-      const skills = await discoverSkills();
-      expect(skills.find((skill) => skill.name === "triage")).toMatchObject({
-        name: "triage",
-        pluginProvider: "demo",
-      });
-      expect(skills.find((skill) => skill.name === "notes")).toMatchObject({
-        name: "notes",
-      });
-      expect(
-        skills.find((skill) => skill.name === "notes")?.pluginProvider,
-      ).toBeUndefined();
+        const skills = await discoverSkills();
+        expect(skills.find((skill) => skill.name === "triage")).toMatchObject({
+          name: "triage",
+          pluginProvider: "demo",
+        });
+        expect(skills.find((skill) => skill.name === "notes")).toMatchObject({
+          name: "notes",
+        });
+        expect(
+          skills.find((skill) => skill.name === "notes")?.pluginProvider,
+        ).toBeUndefined();
+      } finally {
+        await app.cleanup();
+      }
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

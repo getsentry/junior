@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPluginAppFixture } from "../../fixtures/plugin-app";
 
 const originalCwd = process.cwd();
 
@@ -26,8 +27,6 @@ async function writeSkill(pluginDir: string, name: string) {
 afterEach(() => {
   process.chdir(originalCwd);
   vi.resetModules();
-  vi.doUnmock("@/chat/discovery");
-  vi.doUnmock("@/chat/plugins/package-discovery");
 });
 
 describe("loadSkill tool", () => {
@@ -35,7 +34,6 @@ describe("loadSkill tool", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-load-skill-"),
     );
-    process.chdir(tempRoot);
 
     const pluginDir = path.join(tempRoot, "sentry-plugin");
     await fs.mkdir(pluginDir, { recursive: true });
@@ -52,50 +50,44 @@ describe("loadSkill tool", () => {
     );
     await writeSkill(pluginDir, "sentry");
 
-    vi.doMock("@/chat/discovery", () => ({
-      pluginRoots: () => [pluginDir],
-      skillRoots: () => [],
-    }));
-    vi.doMock("@/chat/plugins/package-discovery", () => ({
-      discoverInstalledPluginPackageContent: () => ({
-        packageNames: [],
-        packages: [],
-        manifestRoots: [],
-        skillRoots: [],
-        tracingIncludes: [],
-      }),
-    }));
+    try {
+      const app = await createPluginAppFixture([pluginDir]);
+      try {
+        const { discoverSkills } = await import("@/chat/skills");
+        const { createLoadSkillTool } =
+          await import("@/chat/tools/skill/load-skill");
 
-    const { discoverSkills } = await import("@/chat/skills");
-    const { createLoadSkillTool } =
-      await import("@/chat/tools/skill/load-skill");
+        const skills = await discoverSkills();
+        expect(skills).toEqual([
+          expect.objectContaining({
+            name: "sentry",
+            pluginProvider: "sentry",
+          }),
+        ]);
 
-    const skills = await discoverSkills();
-    expect(skills).toEqual([
-      expect.objectContaining({
-        name: "sentry",
-        pluginProvider: "sentry",
-      }),
-    ]);
+        const result = await createLoadSkillTool(skills).execute!(
+          { skill_name: "sentry" },
+          {},
+        );
 
-    const result = await createLoadSkillTool(skills).execute!(
-      { skill_name: "sentry" },
-      {},
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-      skill_name: "sentry",
-    });
-    expect(result).not.toHaveProperty("mcp_provider");
-    expect(result).not.toHaveProperty("available_tool_count");
+        expect(result).toMatchObject({
+          ok: true,
+          skill_name: "sentry",
+        });
+        expect(result).not.toHaveProperty("mcp_provider");
+        expect(result).not.toHaveProperty("available_tool_count");
+      } finally {
+        await app.cleanup();
+      }
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("returns MCP metadata only when runtime activation provides it", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-load-skill-"),
     );
-    process.chdir(tempRoot);
 
     const pluginDir = path.join(tempRoot, "linear-plugin");
     await fs.mkdir(pluginDir, { recursive: true });
@@ -112,37 +104,32 @@ describe("loadSkill tool", () => {
     );
     await writeSkill(pluginDir, "linear");
 
-    vi.doMock("@/chat/discovery", () => ({
-      pluginRoots: () => [pluginDir],
-      skillRoots: () => [],
-    }));
-    vi.doMock("@/chat/plugins/package-discovery", () => ({
-      discoverInstalledPluginPackageContent: () => ({
-        packageNames: [],
-        packages: [],
-        manifestRoots: [],
-        skillRoots: [],
-        tracingIncludes: [],
-      }),
-    }));
+    try {
+      const app = await createPluginAppFixture([pluginDir]);
+      try {
+        const { discoverSkills } = await import("@/chat/skills");
+        const { createLoadSkillTool } =
+          await import("@/chat/tools/skill/load-skill");
 
-    const { discoverSkills } = await import("@/chat/skills");
-    const { createLoadSkillTool } =
-      await import("@/chat/tools/skill/load-skill");
+        const skills = await discoverSkills();
+        const result = await createLoadSkillTool(skills, {
+          onSkillLoaded: async () => ({
+            mcp_provider: "linear",
+            available_tool_count: 2,
+          }),
+        }).execute!({ skill_name: "linear" }, {});
 
-    const skills = await discoverSkills();
-    const result = await createLoadSkillTool(skills, {
-      onSkillLoaded: async () => ({
-        mcp_provider: "linear",
-        available_tool_count: 2,
-      }),
-    }).execute!({ skill_name: "linear" }, {});
-
-    expect(result).toMatchObject({
-      ok: true,
-      skill_name: "linear",
-      mcp_provider: "linear",
-      available_tool_count: 2,
-    });
+        expect(result).toMatchObject({
+          ok: true,
+          skill_name: "linear",
+          mcp_provider: "linear",
+          available_tool_count: 2,
+        });
+      } finally {
+        await app.cleanup();
+      }
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
