@@ -16,6 +16,20 @@ import {
   MAX_FETCH_CHARS,
 } from "@/chat/tools/web/fetch-content";
 
+interface WebFetchToolServices {
+  assertPublicUrl: typeof assertPublicUrl;
+  extractWebFetchResponse: typeof extractWebFetchResponse;
+  fetchTextWithRedirects: typeof fetchTextWithRedirects;
+  withTimeout: typeof withTimeout;
+}
+
+const defaultWebFetchToolServices: WebFetchToolServices = {
+  assertPublicUrl,
+  extractWebFetchResponse,
+  fetchTextWithRedirects,
+  withTimeout,
+};
+
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";
   if (mediaType === "image/jpeg") return "jpg";
@@ -37,7 +51,11 @@ function extractHttpStatusFromMessage(message: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function createWebFetchTool(hooks: ToolHooks) {
+/** Create the web-fetch tool that retrieves a known public URL. */
+export function createWebFetchTool(
+  hooks: ToolHooks,
+  services: WebFetchToolServices = defaultWebFetchToolServices,
+) {
   const override = hooks.toolOverrides?.webFetch;
   return tool({
     description:
@@ -67,9 +85,9 @@ export function createWebFetchTool(hooks: ToolHooks) {
       }
 
       try {
-        const safeUrl = await assertPublicUrl(url);
-        const response = await withTimeout(
-          fetchTextWithRedirects(safeUrl, MAX_REDIRECTS),
+        const safeUrl = await services.assertPublicUrl(url);
+        const response = await services.withTimeout(
+          services.fetchTextWithRedirects(safeUrl, MAX_REDIRECTS),
           FETCH_TIMEOUT_MS,
           "fetch",
         );
@@ -105,7 +123,11 @@ export function createWebFetchTool(hooks: ToolHooks) {
           };
         }
 
-        return await extractWebFetchResponse(safeUrl, response, max_chars);
+        return await services.extractWebFetchResponse(
+          safeUrl,
+          response,
+          max_chars,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "fetch failed";
         const status = extractHttpStatusFromMessage(message);
