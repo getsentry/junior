@@ -1,5 +1,5 @@
 import type { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -8,7 +8,7 @@ import {
   markConversationMessagesInjected,
   startConversationWork,
 } from "@/chat/task-execution/store";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_ID,
   createConversationWorkQueueTestAdapter,
@@ -21,17 +21,12 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 describe("Slack conversation work steering", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("drains Slack messages that arrive during an active turn into steering", async () => {
     const queue = createConversationWorkQueueTestAdapter();

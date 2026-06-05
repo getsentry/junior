@@ -19,5 +19,6 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
+    unstubEnvs: true,
   },
 });

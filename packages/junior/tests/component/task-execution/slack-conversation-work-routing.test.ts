@@ -1,12 +1,12 @@
 import type { Message, Thread } from "chat";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   countPendingConversationMessages,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import type { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONVERSATION_ID,
   createConversationWorkQueueTestAdapter,
@@ -19,17 +19,12 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 describe("Slack conversation work routing", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {
     const queue = createConversationWorkQueueTestAdapter();

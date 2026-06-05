@@ -1,5 +1,5 @@
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
@@ -10,21 +10,18 @@ import {
 } from "@/chat/task-execution/store";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationWork } from "@/chat/task-execution/worker";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_ID,
+  SLACK_DESTINATION,
+  conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 describe("Slack conversation work continuations", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("terminalizes invalid idle continuation metadata", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -34,6 +31,7 @@ describe("Slack conversation work continuations", () => {
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: 1_000,
       state,
     });
@@ -47,7 +45,7 @@ describe("Slack conversation work continuations", () => {
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         state,
         run: createSlackConversationWorker({
@@ -90,6 +88,7 @@ describe("Slack conversation work continuations", () => {
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: 1_000,
       state,
     });
@@ -98,6 +97,7 @@ describe("Slack conversation work continuations", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [
         {
@@ -143,7 +143,7 @@ describe("Slack conversation work continuations", () => {
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         state,
         run: createSlackConversationWorker({

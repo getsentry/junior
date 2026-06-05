@@ -1,4 +1,3 @@
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendInboundMessage,
@@ -19,25 +18,24 @@ import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
 } from "@/chat/task-execution/worker";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONVERSATION_ID,
   OTHER_SLACK_DESTINATION,
   SLACK_DESTINATION,
+  conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   deferred,
   inboundMessage,
 } from "../../fixtures/conversation-work";
+import {
+  useMemoryStateAdapter,
+  useRealTimersAfterEach,
+} from "../../fixtures/vitest";
 
 describe("conversation work leases", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-    vi.useRealTimers();
-  });
+  useMemoryStateAdapter();
+  useRealTimersAfterEach();
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -46,7 +44,7 @@ describe("conversation work leases", () => {
     const finish = deferred<void>();
     let runs = 0;
 
-    const first = processConversationWork(CONVERSATION_ID, {
+    const first = processConversationWork(conversationQueueMessage(), {
       queue,
       run: async (context) => {
         runs += 1;
@@ -59,7 +57,7 @@ describe("conversation work leases", () => {
     await entered.promise;
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         run: async () => {
           runs += 1;
@@ -85,7 +83,7 @@ describe("conversation work leases", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
@@ -93,6 +91,7 @@ describe("conversation work leases", () => {
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
+            destination: context.destination,
             nowMs: currentNowMs,
           });
           return { status: "completed" };
@@ -149,18 +148,20 @@ describe("conversation work leases", () => {
     let currentNowMs = 1_000;
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: currentNowMs,
     });
 
     async function runSlice(nowMs: number): Promise<void> {
       currentNowMs = nowMs;
       await expect(
-        processConversationWork(CONVERSATION_ID, {
+        processConversationWork(conversationQueueMessage(), {
           nowMs: () => currentNowMs,
           queue,
           run: async (context) => {
             await requestConversationWork({
               conversationId: context.conversationId,
+              destination: context.destination,
               nowMs: currentNowMs,
             });
             return { status: "completed" };
@@ -183,11 +184,12 @@ describe("conversation work leases", () => {
     let currentNowMs = 1_000;
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: currentNowMs,
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
         run: async () => {
@@ -217,7 +219,7 @@ describe("conversation work leases", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
         run: async () => {
@@ -237,6 +239,7 @@ describe("conversation work leases", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         idempotencyKey: `lost_lease:${CONVERSATION_ID}:2000`,
       },
     ]);
@@ -248,7 +251,7 @@ describe("conversation work leases", () => {
     const injected: InboundMessageRecord[][] = [];
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
           injected.push(await context.drainMailbox(async () => {}));
@@ -275,7 +278,7 @@ describe("conversation work leases", () => {
     const entered = deferred<void>();
     const finish = deferred<void>();
 
-    const running = processConversationWork(CONVERSATION_ID, {
+    const running = processConversationWork(conversationQueueMessage(), {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
@@ -316,7 +319,7 @@ describe("conversation work leases", () => {
     }>();
     const finish = deferred<void>();
 
-    const running = processConversationWork(CONVERSATION_ID, {
+    const running = processConversationWork(conversationQueueMessage(), {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
@@ -394,7 +397,7 @@ describe("conversation work leases", () => {
       }),
     ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         run: async () => ({ status: "completed" }),
       }),
@@ -407,7 +410,7 @@ describe("conversation work leases", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {

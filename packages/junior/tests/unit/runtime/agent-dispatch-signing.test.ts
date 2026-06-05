@@ -3,19 +3,20 @@ import {
   scheduleDispatchCallback,
   verifyDispatchCallbackRequest,
 } from "@/chat/agent-dispatch/signing";
+import { stubTestEnv } from "../../fixtures/vitest";
 
 describe("agent dispatch callback signing", () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "dispatch-secret";
+    stubTestEnv({
+      JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_SECRET: "dispatch-secret",
+    });
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
     vi.restoreAllMocks();
   });
 

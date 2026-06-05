@@ -1,27 +1,23 @@
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   appendInboundMessage,
   countPendingConversationMessages,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_ID,
+  conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   deferred,
   inboundMessage,
   observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 describe("conversation work mailbox injection", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("does not block new mailbox appends while injection is in progress", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -38,7 +34,7 @@ describe("conversation work mailbox injection", () => {
     const finishInjection = deferred<void>();
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         state: observed.state,
         run: async (context) => {
@@ -88,7 +84,7 @@ describe("conversation work mailbox injection", () => {
     const injected: string[][] = [];
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
           const first = await context.drainMailbox(async () => {});
@@ -115,7 +111,7 @@ describe("conversation work mailbox injection", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
           await context.drainMailbox(async () => {});
@@ -145,7 +141,7 @@ describe("conversation work mailbox injection", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {

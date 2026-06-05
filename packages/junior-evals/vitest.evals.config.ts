@@ -47,5 +47,6 @@ export default defineConfig({
     setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
     reporters: [new DefaultEvalReporter()],
     testTimeout: EVAL_TEST_TIMEOUT_MS,
+    unstubEnvs: true,
   },
 });

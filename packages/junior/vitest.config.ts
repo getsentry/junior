@@ -48,6 +48,7 @@ export default defineConfig({
       "tests/integration/workflow/**/*.test.ts",
     ],
     setupFiles: ["tests/msw/setup.ts"],
+    unstubEnvs: true,
     coverage: {
       provider: "v8",
       reporter: ["json", "lcov"],

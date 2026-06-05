@@ -1,4 +1,3 @@
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   appendInboundMessage,
   getConversationWorkState,
@@ -9,7 +8,7 @@ import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
 } from "@/chat/task-execution/queue-signing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONVERSATION_ID,
   OTHER_SLACK_DESTINATION,
@@ -18,47 +17,45 @@ import {
   createConversationWorkQueueTestAdapter,
   inboundMessage,
 } from "../../fixtures/conversation-work";
+import { stubTestEnv, useMemoryStateAdapter } from "../../fixtures/vitest";
 
 describe("conversation work queue contract", () => {
-  const originalJuniorSecret = process.env.JUNIOR_SECRET;
-
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-    if (originalJuniorSecret === undefined) {
-      delete process.env.JUNIOR_SECRET;
-    } else {
-      process.env.JUNIOR_SECRET = originalJuniorSecret;
-    }
-  });
+  useMemoryStateAdapter();
 
   it("deduplicates accepted fake queue payloads by idempotency key", async () => {
     const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
-      queue.send({ conversationId: CONVERSATION_ID }, { idempotencyKey: "m1" }),
+      queue.send(conversationQueueMessage(), { idempotencyKey: "m1" }),
     ).resolves.toEqual({ messageId: "queue-1" });
     await expect(
-      queue.send({ conversationId: CONVERSATION_ID }, { idempotencyKey: "m1" }),
+      queue.send(conversationQueueMessage(), { idempotencyKey: "m1" }),
     ).resolves.toEqual({ messageId: "queue-1" });
 
     expect(queue.sendAttempts()).toEqual([
-      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
-      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: "m1",
+      },
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: "m1",
+      },
     ]);
     expect(queue.sentRecords()).toEqual([
-      { conversationId: CONVERSATION_ID, idempotencyKey: "m1" },
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: "m1",
+      },
     ]);
-    expect(queue.queuedMessages()).toEqual([
-      { conversationId: CONVERSATION_ID },
-    ]);
+    expect(queue.queuedMessages()).toEqual([conversationQueueMessage()]);
   });
 
   it("maps the generic queue port to Vercel Queue send options", async () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    stubTestEnv({ JUNIOR_SECRET: "conversation-work-secret" });
     const sends: Array<{
       message: unknown;
       options: unknown;
@@ -76,7 +73,7 @@ describe("conversation work queue contract", () => {
 
     await expect(
       queue.send(
-        { conversationId: CONVERSATION_ID },
+        conversationQueueMessage(),
         { delayMs: 15_001, idempotencyKey: "idem-1" },
       ),
     ).resolves.toEqual({ messageId: "msg_123" });
@@ -86,6 +83,7 @@ describe("conversation work queue contract", () => {
         topic: "junior_test_work",
         message: expect.objectContaining({
           conversationId: CONVERSATION_ID,
+          destination: SLACK_DESTINATION,
           signature: expect.any(String),
           signatureVersion: "v1",
           signedAtMs: expect.any(Number),
@@ -124,16 +122,17 @@ describe("conversation work queue contract", () => {
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    stubTestEnv({ JUNIOR_SECRET: "conversation-work-secret" });
     const signedAtMs = 12_345;
     const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
-      { conversationId: CONVERSATION_ID },
+      conversationQueueMessage(),
       signedAtMs,
     );
 
     expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
     });
     expect(
       verifySignedConversationQueueMessage(
@@ -162,7 +161,7 @@ describe("conversation work queue contract", () => {
   });
 
   it("signs queue destinations by identity rather than object key order", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    stubTestEnv({ JUNIOR_SECRET: "conversation-work-secret" });
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
       {
@@ -183,10 +182,10 @@ describe("conversation work queue contract", () => {
   });
 
   it("keeps queue signatures valid across default visibility redelivery", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    stubTestEnv({ JUNIOR_SECRET: "conversation-work-secret" });
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
-      { conversationId: CONVERSATION_ID },
+      conversationQueueMessage(),
       signedAtMs,
     );
 
@@ -194,6 +193,7 @@ describe("conversation work queue contract", () => {
       verifySignedConversationQueueMessage(signed, signedAtMs + 330_000),
     ).toEqual({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
     });
   });
 
@@ -204,7 +204,7 @@ describe("conversation work queue contract", () => {
 
     await expect(
       processConversationQueueMessage(
-        { conversationId: CONVERSATION_ID },
+        conversationQueueMessage(),
         {
           queue,
           run: async (context) => {
@@ -232,6 +232,6 @@ describe("conversation work queue contract", () => {
           run: async () => ({ status: "completed" }),
         },
       ),
-    ).rejects.toThrow("missing conversationId");
+    ).rejects.toThrow("missing destination context");
   });
 });

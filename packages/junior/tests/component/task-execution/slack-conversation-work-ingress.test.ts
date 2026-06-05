@@ -1,9 +1,10 @@
 import type { Message, Thread } from "chat";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_ID,
+  conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
@@ -13,15 +14,10 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 describe("Slack conversation work ingress", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("persists Slack mentions into the durable mailbox and wakes the queue", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -50,7 +46,7 @@ describe("Slack conversation work ingress", () => {
       }),
     ]);
     expect(queue.queuedMessages()).toEqual([
-      { conversationId: CONVERSATION_ID },
+      conversationQueueMessage(),
     ]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,

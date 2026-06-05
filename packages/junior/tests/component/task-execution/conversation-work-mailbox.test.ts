@@ -1,5 +1,5 @@
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
@@ -9,26 +9,25 @@ import {
   listConversationWorkIds,
   requestConversationWork,
 } from "@/chat/task-execution/store";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONVERSATION_ID,
+  SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
   delayIndexLockOnce,
   delayMutationLockUntil,
   inboundMessage,
 } from "../../fixtures/conversation-work";
+import {
+  useMemoryStateAdapter,
+  useRealTimersAfterEach,
+} from "../../fixtures/vitest";
 
 const CONVERSATION_WORK_STATE_KEY = `junior:conversation-work:state:${CONVERSATION_ID}`;
 
 describe("conversation work mailbox", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-    vi.useRealTimers();
-  });
+  useMemoryStateAdapter();
+  useRealTimersAfterEach();
 
   it("stores inbound mailbox messages idempotently without duplicate queue attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -105,6 +104,7 @@ describe("conversation work mailbox", () => {
     expect(queue.sendAttempts()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         idempotencyKey: `duplicate:${CONVERSATION_ID}:m1:62000`,
       },
     ]);
@@ -177,6 +177,7 @@ describe("conversation work mailbox", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);
@@ -189,6 +190,7 @@ describe("conversation work mailbox", () => {
     const newConversationId = "conversation-new";
     await requestConversationWork({
       conversationId: activeConversationId,
+      destination: SLACK_DESTINATION,
       nowMs: 1_000,
       state,
     });
@@ -203,6 +205,7 @@ describe("conversation work mailbox", () => {
 
     await requestConversationWork({
       conversationId: newConversationId,
+      destination: SLACK_DESTINATION,
       nowMs: 2_000,
       state,
     });
@@ -262,6 +265,7 @@ describe("conversation work mailbox", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:62000`,
       },
     ]);

@@ -1,12 +1,12 @@
 import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
   countPendingConversationMessages,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_ID,
   createConversationWorkQueueTestAdapter,
@@ -18,15 +18,10 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { useMemoryStateAdapter } from "../../fixtures/vitest";
 
 describe("Slack conversation work input commits", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-  });
+  useMemoryStateAdapter();
 
   it("keeps Slack mailbox records pending when input commit fails", async () => {
     const queue = createConversationWorkQueueTestAdapter();

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { stubTestEnv } from "../../fixtures/vitest";
 
 type MockDsn = {
   host: string;
@@ -24,14 +25,13 @@ async function loadFooter() {
 }
 
 afterEach(() => {
-  delete process.env.SENTRY_ORG_SLUG;
   vi.doUnmock("@/chat/sentry");
   vi.resetModules();
 });
 
 describe("Slack footer Sentry links", () => {
   it("links the ID to the conversations page using org slug subdomain for SaaS", async () => {
-    process.env.SENTRY_ORG_SLUG = "my-org";
+    stubTestEnv({ SENTRY_ORG_SLUG: "my-org" });
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -87,7 +87,7 @@ describe("Slack footer Sentry links", () => {
   });
 
   it("uses /organizations/{slug}/ for self-hosted DSN", async () => {
-    process.env.SENTRY_ORG_SLUG = "my-org";
+    stubTestEnv({ SENTRY_ORG_SLUG: "my-org" });
     mockSentryClient({
       dsn: {
         protocol: "https",

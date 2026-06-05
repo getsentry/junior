@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -8,6 +8,7 @@ import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import { stubTestEnv } from "../../fixtures/vitest";
 
 const validOptions = {
   idempotencyKey: "run-1",
@@ -26,7 +27,7 @@ function createPluginCredentialSubject(
     userId?: string;
   } = {},
 ) {
-  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  stubTestEnv({ JUNIOR_SECRET: "dispatch-validation-secret" });
   const subject = createSlackDirectCredentialSubject({
     channelId: input.channelId ?? "D123",
     teamId: input.teamId ?? "T123",
@@ -58,10 +59,6 @@ function createBoundCredentialSubject(
 }
 
 describe("agent dispatch validation", () => {
-  afterEach(() => {
-    delete process.env.JUNIOR_SECRET;
-  });
-
   it("accepts a valid Slack channel dispatch", () => {
     expect(() => validateDispatchOptions(validOptions)).not.toThrow();
   });
