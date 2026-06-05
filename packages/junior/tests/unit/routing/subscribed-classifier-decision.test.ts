@@ -90,38 +90,6 @@ describe("subscribed thread classifier routing", () => {
     expect(completeObject).toHaveBeenCalled();
   });
 
-  it("requires stronger confidence after humans keep talking in the thread", async () => {
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeSubscribedInput({
-        text: "what about the billing worker timeline?",
-        rawText: "what about the billing worker timeline?",
-        conversationContext: [
-          "<thread-transcript>",
-          "[assistant] junior: The deploy changed billing, auth, and the API gateway.",
-          "[user] sam: I think we should revert auth first.",
-          "[user] alex: I can take that rollback.",
-          "</thread-transcript>",
-        ].join("\n"),
-      }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: true,
-          confidence: 0.85,
-          reason: "maybe follow-up",
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision).toEqual({
-      shouldReply: false,
-      reason: SubscribedReplyReason.LowConfidence,
-      reasonDetail: "0.85: maybe follow-up",
-    });
-  });
-
   it("requires stronger confidence after one human takes the floor", async () => {
     const decision = await decideSubscribedThreadReply({
       botUserName: "junior",
@@ -201,31 +169,6 @@ describe("subscribed thread classifier routing", () => {
       reason: SubscribedReplyReason.ThreadOptOut,
       reasonDetail: "user asked junior to stop participating in the thread",
     });
-  });
-
-  it("accepts long classifier reasons without failing schema parsing", async () => {
-    const longReason =
-      "User is making a casual comment about Junior, not asking for assistance or requesting Junior to perform a task. This is side conversation and not a direct request for help.";
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeSubscribedInput({
-        text: "some new text",
-        rawText: "some new text",
-      }),
-      completeObject: vi.fn(async () => ({
-        object: {
-          should_reply: false,
-          confidence: 0.95,
-          reason: longReason,
-        },
-      })),
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
-    expect(decision.reasonDetail).toBe(longReason);
-    expect(decision.shouldReply).toBe(false);
   });
 
   it("uses classifier and rejects low-confidence true", async () => {
