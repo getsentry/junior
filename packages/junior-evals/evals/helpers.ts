@@ -1,4 +1,5 @@
 import {
+  createJudgeHarness,
   createJudge,
   type DescribeEvalOptions,
   type JudgeContext,
@@ -35,17 +36,19 @@ function toJson(value: unknown): JsonValue {
   return toJsonValue(value) ?? null;
 }
 
-function toJsonRecord(
-  value: Record<string, unknown>,
-): Record<string, JsonValue> {
-  const record: Record<string, JsonValue> = {};
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+function toJsonRecord(value: Record<string, unknown>): JsonObject {
+  const record: JsonObject = {};
   for (const [key, entry] of Object.entries(value)) {
     record[key] = toJson(entry);
   }
   return record;
 }
 
-function buildEvalOutput(result: EvalResult): Record<string, JsonValue> {
+function buildEvalOutput(result: EvalResult): JsonObject {
   return {
     assistant_posts: toJson(result.posts),
     observed_tool_invocations: toJson(result.toolInvocations),
@@ -61,7 +64,7 @@ function buildEvalOutput(result: EvalResult): Record<string, JsonValue> {
   };
 }
 
-function serializeEvalOutput(output: Record<string, JsonValue>): string {
+function serializeEvalOutput(output: JsonObject): string {
   return JSON.stringify(output, null, 2);
 }
 
@@ -100,7 +103,7 @@ function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
   });
 }
 
-function toHarnessRun(result: EvalResult): HarnessRun {
+function toHarnessRun(result: EvalResult): HarnessRun<JsonObject> {
   const output = buildEvalOutput(result);
   const toolCalls = result.toolInvocations.map(toToolCallRecord);
   const messages: NormalizedMessage[] = [
@@ -129,7 +132,6 @@ function toHarnessRun(result: EvalResult): HarnessRun {
     output,
     session: {
       messages,
-      outputText: serializeEvalOutput(output),
       metadata: toJsonRecord({
         slack_metadata: output.slack_metadata,
         log_records: result.logRecords.map(toLogMetadata),
@@ -338,24 +340,8 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 }
 
 /** Replays Slack events through the real runtime and returns normalized artifacts. */
-export const slackHarness: Harness<SlackEvalInput> = {
+export const slackHarness: Harness<SlackEvalInput, JsonObject> = {
   name: "slack",
-  prompt: async (input, options) => {
-    const { text } = await completeText({
-      modelId: EVAL_JUDGE_MODEL_ID,
-      system: options?.system,
-      messages: [
-        {
-          role: "user",
-          content: input,
-          timestamp: Date.now(),
-        },
-      ],
-      temperature: 0,
-      metadata: options?.metadata,
-    });
-    return text;
-  },
   run: async (input) => {
     const logRecords: EmittedLogRecord[] = [];
     const unregisterLogSink = registerLogRecordSink((record) => {
@@ -401,32 +387,60 @@ export const slackHarness: Harness<SlackEvalInput> = {
   },
 };
 
+const rubricJudgeHarness = createJudgeHarness({
+  name: "rubric-judge",
+  run: async ({ prompt, system }, options) => {
+    const { text } = await completeText({
+      modelId: EVAL_JUDGE_MODEL_ID,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+          timestamp: Date.now(),
+        },
+      ],
+      temperature: 0,
+      metadata: options.metadata,
+    });
+    return text;
+  },
+});
+
 /** Scores Slack eval output against the case rubric. */
 export const RubricJudge = createJudge(
   "RubricJudge",
   async ({
     input,
     output,
-    harness,
+    runJudge,
   }: JudgeContext<
     SlackEvalInput,
+    JsonObject,
     Record<string, unknown>,
     typeof slackHarness
   >) => {
-    const object = parseJudgeResult(
-      await harness.prompt(
-        formatJudgePrompt(
-          serializeEvalOutput(output as Record<string, JsonValue>),
+    if (!runJudge) {
+      throw new Error("RubricJudge requires a judge harness.");
+    }
+    const response = await runJudge(
+      {
+        prompt: formatJudgePrompt(
+          serializeEvalOutput(output),
           formatRubric(input.criteria),
         ),
-        {
-          system: EVAL_SYSTEM,
-          metadata: {
-            judge: "RubricJudge",
-          },
+        system: EVAL_SYSTEM,
+      },
+      {
+        metadata: {
+          judge: "RubricJudge",
         },
-      ),
+      },
     );
+    if (typeof response !== "string") {
+      throw new Error("RubricJudge expected the judge harness to return text.");
+    }
+    const object = parseJudgeResult(response);
     const answer = object.answer as keyof typeof CHOICE_SCORES;
 
     return {
@@ -442,9 +456,10 @@ export const RubricJudge = createJudge(
 /** Shared vitest-evals suite options for Slack conversation evals. */
 export const slackEvals = {
   harness: slackHarness,
+  judgeHarness: rubricJudgeHarness,
   judges: [RubricJudge],
   judgeThreshold: 0.75,
-} satisfies DescribeEvalOptions<SlackEvalInput>;
+} satisfies DescribeEvalOptions<SlackEvalInput, JsonObject>;
 
 // ── Event builders ─────────────────────────────────────────
 
