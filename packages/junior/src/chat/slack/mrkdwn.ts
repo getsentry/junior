@@ -1,9 +1,5 @@
 import { truncateStatusText } from "@/chat/slack/status-format";
 
-// ---------------------------------------------------------------------------
-// Inline URL wrapping
-// ---------------------------------------------------------------------------
-
 function readInlineCodeSpan(
   line: string,
   start: number,
@@ -114,9 +110,9 @@ function readBareUrl(
   let raw = line.slice(start, end);
   let suffix = "";
 
-  const peel = (count = 1) => {
-    suffix = raw.slice(raw.length - count) + suffix;
-    raw = raw.slice(0, raw.length - count);
+  const peel = () => {
+    suffix = raw.slice(-1) + suffix;
+    raw = raw.slice(0, -1);
   };
 
   // Peel trailing emphasis markers — these are the core bug trigger.
@@ -193,7 +189,6 @@ function normalizeModelMarkdown(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let inFence = false;
-  let fenceChar = "";
   let fenceLength = 0;
 
   for (const line of lines) {
@@ -203,7 +198,6 @@ function normalizeModelMarkdown(text: string): string {
       const openMatch = trimmed.match(/^(`{3,})/);
       if (openMatch) {
         inFence = true;
-        fenceChar = "`";
         fenceLength = openMatch[1].length;
         out.push(line);
         continue;
@@ -214,21 +208,14 @@ function normalizeModelMarkdown(text: string): string {
 
     out.push(line);
     const closeMatch = trimmed.match(/^(`{3,})\s*$/);
-    if (
-      closeMatch &&
-      closeMatch[1][0] === fenceChar &&
-      closeMatch[1].length >= fenceLength
-    ) {
+    if (closeMatch && closeMatch[1].length >= fenceLength) {
       inFence = false;
-      fenceChar = "";
       fenceLength = 0;
     }
   }
 
   return out.join("\n");
 }
-
-// ---------------------------------------------------------------------------
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
