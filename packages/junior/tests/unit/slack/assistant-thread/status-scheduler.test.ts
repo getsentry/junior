@@ -72,20 +72,33 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
 }
 
+function createStatusFixture(
+  options: Partial<Parameters<typeof createAssistantStatusScheduler>[0]> = {},
+) {
+  const scheduler = createFakeScheduler();
+  const statuses: string[] = [];
+  const reporter = createAssistantStatusScheduler({
+    sendStatus: async (text) => {
+      statuses.push(text);
+    },
+    loadingMessages: [firstGenericStatus],
+    now: scheduler.now,
+    setTimer: scheduler.setTimer,
+    clearTimer: scheduler.clearTimer,
+    random: () => 0,
+    ...options,
+  });
+
+  return {
+    reporter,
+    scheduler,
+    statuses,
+  };
+}
+
 describe("createAssistantStatusScheduler", () => {
   it("posts the first generic loading message on start", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -94,9 +107,8 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("does not wait for the initial status request before start() returns", async () => {
-    const scheduler = createFakeScheduler();
     let resolveThinking: (() => void) | undefined;
-    const reporter = createAssistantStatusScheduler({
+    const { reporter } = createStatusFixture({
       sendStatus: async (text) => {
         if (text !== firstGenericStatus) {
           return;
@@ -105,11 +117,6 @@ describe("createAssistantStatusScheduler", () => {
           resolveThinking = resolve;
         });
       },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
     });
 
     const result = reporter.start();
@@ -121,9 +128,8 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("does not wait for an immediate replacement status before update() returns", async () => {
-    const scheduler = createFakeScheduler();
     let resolveReviewing: (() => void) | undefined;
-    const reporter = createAssistantStatusScheduler({
+    const { reporter, scheduler } = createStatusFixture({
       sendStatus: async (text) => {
         if (text !== secondReviewingStatus) {
           return;
@@ -132,11 +138,6 @@ describe("createAssistantStatusScheduler", () => {
           resolveReviewing = resolve;
         });
       },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
     });
 
     reporter.start();
@@ -152,17 +153,12 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("omits loading messages when clearing the assistant status", async () => {
-    const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
-    const reporter = createAssistantStatusScheduler({
+    const { reporter } = createStatusFixture({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
       },
       loadingMessages: ["Consulting the orb", "Checking the queue"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
     });
 
     reporter.start();
@@ -183,18 +179,7 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("suppresses duplicate pending statuses", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, scheduler, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -208,18 +193,7 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("enforces minimum visible duration before replacement", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, scheduler, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -235,18 +209,7 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("keeps the latest status when multiple updates arrive before flush", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, scheduler, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -261,10 +224,9 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("serializes status updates so a slow request cannot reorder with the clear", async () => {
-    const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     let resolveThinking: (() => void) | undefined;
-    const reporter = createAssistantStatusScheduler({
+    const { reporter } = createStatusFixture({
       sendStatus: async (text) => {
         if (text === firstGenericStatus) {
           await new Promise<void>((resolve) => {
@@ -273,11 +235,6 @@ describe("createAssistantStatusScheduler", () => {
         }
         statuses.push(text);
       },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
     });
 
     reporter.start();
@@ -296,18 +253,7 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("clears after the latest visible status when stopping", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, scheduler, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -322,18 +268,7 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("refreshes the current status during long-running work", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
+    const { reporter, scheduler, statuses } = createStatusFixture();
 
     reporter.start();
     await flushAsyncWork();
@@ -345,17 +280,11 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("uses explicit progress text as the loading message", async () => {
-    const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
-    const reporter = createAssistantStatusScheduler({
+    const { reporter, scheduler } = createStatusFixture({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
       },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
     });
 
     reporter.start();
@@ -378,16 +307,12 @@ describe("createAssistantStatusScheduler", () => {
   });
 
   it("replaces generic loading messages when explicit progress matches the visible text", async () => {
-    const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
-    const reporter = createAssistantStatusScheduler({
+    const { reporter } = createStatusFixture({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
       },
       loadingMessages: [secondReviewingStatus, "Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
       random: () => 0.9,
     });
 

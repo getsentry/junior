@@ -27,6 +27,38 @@ function resultFor(input: TurnResultCase) {
   });
 }
 
+function textMessage(
+  role: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    role,
+    content: [{ type: "text", text }],
+    ...extra,
+  };
+}
+
+function user(text: string) {
+  return textMessage("user", text);
+}
+
+function assistant(text: string, extra: Record<string, unknown> = {}) {
+  return textMessage("assistant", text, extra);
+}
+
+function toolResult(
+  toolName: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  return textMessage("toolResult", text, {
+    toolName,
+    isError: false,
+    ...extra,
+  });
+}
+
 describe("buildTurnResult", () => {
   it("treats empty tool-only turns as execution failures", () => {
     const reply = resultFor({
@@ -37,16 +69,9 @@ describe("buildTurnResult", () => {
           isError: false,
           stdout: "ok",
         },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "I don't have access to active tool.",
-            },
-          ],
+        assistant("I don't have access to active tool.", {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "Open the GitHub issue",
     });
@@ -58,21 +83,8 @@ describe("buildTurnResult", () => {
   it("ignores provisional assistant text that appears before the last tool result", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "Let me go check the latest articles and compare them.",
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolName: "webSearch",
-          isError: false,
-          content: [{ type: "text", text: "search results" }],
-        },
+        assistant("Let me go check the latest articles and compare them."),
+        toolResult("webSearch", "search results"),
       ],
       userInput: "Pull the latest blog post and compare related articles",
       toolCalls: ["webSearch"],
@@ -86,21 +98,11 @@ describe("buildTurnResult", () => {
   it("uses only terminal assistant text after tool results", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Let me check that." }],
-        },
-        {
-          role: "toolResult",
-          toolName: "webSearch",
-          isError: false,
-          content: [{ type: "text", text: "search results" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Here is the actual summary." }],
+        assistant("Let me check that."),
+        toolResult("webSearch", "search results"),
+        assistant("Here is the actual summary.", {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "Pull the latest blog post and compare related articles",
       toolCalls: ["webSearch"],
@@ -114,24 +116,14 @@ describe("buildTurnResult", () => {
   it("keeps assistant text across steered user messages", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "first request" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Initial answer." }],
+        user("first request"),
+        assistant("Initial answer.", {
           stopReason: "stop",
-        },
-        {
-          role: "user",
-          content: [{ type: "text", text: "actually do this instead" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Updated answer." }],
+        }),
+        user("actually do this instead"),
+        assistant("Updated answer.", {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "first request",
     });
@@ -211,14 +203,7 @@ describe("buildTurnResult", () => {
 
   it("treats reaction-only turns as successful without fallback text", () => {
     const reply = resultFor({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-      ],
+      newMessages: [toolResult("slackMessageAddReaction", "reaction added")],
       userInput: "react to this",
       toolCalls: ["slackMessageAddReaction"],
     });
@@ -233,14 +218,7 @@ describe("buildTurnResult", () => {
 
   it("suppresses empty thread text when a channel post is the successful side effect", () => {
     const reply = resultFor({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackChannelPostMessage",
-          isError: false,
-          content: [{ type: "text", text: "message posted" }],
-        },
-      ],
+      newMessages: [toolResult("slackChannelPostMessage", "message posted")],
       userInput: "share the update",
       toolCalls: ["slackChannelPostMessage"],
     });
@@ -257,17 +235,10 @@ describe("buildTurnResult", () => {
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Handled it." }],
+        toolResult("slackMessageAddReaction", "reaction added"),
+        assistant("Handled it.", {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "react and confirm",
       toolCalls: ["slackMessageAddReaction"],
@@ -284,17 +255,10 @@ describe("buildTurnResult", () => {
   it("suppresses model text for reaction-only requests", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "արձագանքեցի :thumbsup:" }],
+        toolResult("slackMessageAddReaction", "reaction added"),
+        assistant("արձագանքեցի :thumbsup:", {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "react to this",
       toolCalls: ["slackMessageAddReaction"],
@@ -311,26 +275,17 @@ describe("buildTurnResult", () => {
   it("keeps thread delivery enabled for reaction turns that fail validation", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                type: "tool_call",
-                name: "slackMessageAddReaction",
-                input: { reaction: "thumbsup" },
-              }),
-            },
-          ],
-          stopReason: "stop",
-        },
+        toolResult("slackMessageAddReaction", "reaction added"),
+        assistant(
+          JSON.stringify({
+            type: "tool_call",
+            name: "slackMessageAddReaction",
+            input: { reaction: "thumbsup" },
+          }),
+          {
+            stopReason: "stop",
+          },
+        ),
       ],
       userInput: "react and tell me what happened",
       toolCalls: ["slackMessageAddReaction"],
@@ -361,17 +316,10 @@ describe("buildTurnResult", () => {
 
     const reply = resultFor({
       newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackCanvasCreate",
-          isError: false,
-          content: [{ type: "text", text: "canvas created" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: verboseReply }],
+        toolResult("slackCanvasCreate", "canvas created"),
+        assistant(verboseReply, {
           stopReason: "stop",
-        },
+        }),
       ],
       userInput: "create a reusable reference",
       artifactStatePatch: {
@@ -390,11 +338,9 @@ describe("buildTurnResult", () => {
   it("preserves structured timing and usage diagnostics", () => {
     const reply = resultFor({
       newMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Done." }],
+        assistant("Done.", {
           stopReason: "stop",
-        },
+        }),
       ],
       durationMs: 1532,
       usage: {
