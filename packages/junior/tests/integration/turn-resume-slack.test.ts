@@ -179,8 +179,10 @@ describe("turn resume slack integration", () => {
       "resume this request",
       expect.objectContaining({
         requester: expect.objectContaining({
+          email: "testuser@example.com",
+          fullName: "Test User",
           userId: "U123",
-          userName: "alice",
+          userName: "testuser",
         }),
         toolChannelId: "C999",
         inboundAttachmentCount: 2,
