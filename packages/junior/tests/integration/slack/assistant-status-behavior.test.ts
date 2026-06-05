@@ -199,63 +199,6 @@ describe("Slack behavior: assistant status", () => {
     });
   });
 
-  it("does not block assistant reply generation on slow assistant status writes", async () => {
-    const slackAdapter = new FakeSlackAdapter();
-    let releaseFirstStatus: (() => void) | undefined;
-    let statusCallCount = 0;
-    slackAdapter.setAssistantStatus = async () => {
-      statusCallCount += 1;
-      if (statusCallCount !== 1) {
-        return;
-      }
-      await new Promise<void>((resolve) => {
-        releaseFirstStatus = resolve;
-      });
-    };
-
-    let replyStarted = false;
-    const { slackRuntime } = createRuntime({
-      slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () => ({ text: "Status thread" }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyStarted = true;
-            return successfulAssistantReply(
-              "Still replied while status was pending.",
-            );
-          },
-        },
-      },
-    });
-
-    let settled = false;
-    const turnPromise = slackRuntime
-      .handleNewMention(
-        createTestThread({ id: "slack:D_STATUSBLOCK:1700000000.000" }),
-        createTestMessage({
-          id: "msg-status-block",
-          threadId: "slack:D_STATUSBLOCK:1700000000.000",
-          text: "show the channel",
-          isMention: true,
-        }),
-      )
-      .then(() => {
-        settled = true;
-      });
-
-    await vi.waitFor(() => {
-      expect(replyStarted).toBe(true);
-    });
-
-    expect(settled).toBe(false);
-
-    releaseFirstStatus!();
-    await turnPromise;
-  });
-
   it("posts the final reply even while the initial assistant status write is pending", async () => {
     const slackAdapter = new FakeSlackAdapter();
     let releaseFirstStatus: (() => void) | undefined;

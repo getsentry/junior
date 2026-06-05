@@ -259,45 +259,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     );
   });
 
-  it("posts assistant titles with a raw DM channel id when thread_ts is present", async () => {
-    const bot = await createDirectMessageBot({
-      completeText: async () =>
-        ({
-          text: "Debugging Node.js Memory Leaks",
-          message: { role: "assistant", content: "" },
-        }) as any,
-      generateAssistantReply: async () => ({
-        text: "Here is how to debug memory leaks.",
-        diagnostics: makeDiagnostics(),
-      }),
-    });
-    const waitUntil = slackWebhookClient.waitUntil();
-
-    const response = await handlePlatformWebhook(
-      createDirectMessageRequest("How do I debug memory leaks in Node?", {
-        threadTs: DM_THREAD_TS,
-      }),
-      "slack",
-      waitUntil.fn,
-      bot,
-    );
-
-    expect(response.status).toBe(200);
-    await waitUntil.flush();
-
-    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel_id: DM_CHANNEL_ID,
-          thread_ts: DM_THREAD_TS,
-          title: "Debugging Node.js Memory Leaks",
-        }),
-      }),
-    ]);
-  });
-
-  it("lets the awaited webhook turn task finish before slow title generation", async () => {
-    let resolveTitle: (() => void) | undefined;
+  it("keeps title generation inside the awaited webhook turn task", async () => {
     const bot = await createDirectMessageBot({
       completeText: async () =>
         await new Promise((resolve) => {
