@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebSearchTool } from "@/chat/tools/web/search";
+import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { generateText } from "ai";
-import { createGatewayProvider } from "@ai-sdk/gateway";
+import { createWebSearchTool } from "@/chat/tools/web/search";
 import { mockTestClock } from "../../fixtures/vitest";
 
 vi.mock("ai", () => ({
@@ -11,6 +11,36 @@ vi.mock("ai", () => ({
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
 }));
+
+type GenerateTextResult = Awaited<ReturnType<typeof generateText>>;
+type WebSearchTool = ReturnType<typeof createWebSearchTool>;
+type WebSearchInput = Parameters<NonNullable<WebSearchTool["execute"]>>[0];
+
+function testGatewayProvider(provider: unknown): GatewayProvider {
+  return provider as GatewayProvider;
+}
+
+function generateTextResult(toolResults: unknown[]): GenerateTextResult {
+  return { toolResults } as GenerateTextResult;
+}
+
+function unresolvedGenerateText(): ReturnType<typeof generateText> {
+  return new Promise(() => {
+    // Intentionally unresolved to trigger tool timeout.
+  }) as ReturnType<typeof generateText>;
+}
+
+function requireExecute(tool: WebSearchTool) {
+  const execute = tool.execute;
+  if (!execute) {
+    throw new Error("webSearch execute function missing");
+  }
+  return execute;
+}
+
+async function executeWebSearch(input: WebSearchInput) {
+  return await requireExecute(createWebSearchTool())(input, {});
+}
 
 describe("createWebSearchTool", () => {
   const parallelSearch = { id: "parallel-search-tool" };
@@ -22,7 +52,9 @@ describe("createWebSearchTool", () => {
   };
 
   beforeEach(() => {
-    vi.mocked(createGatewayProvider).mockReturnValue(gatewayProvider as never);
+    vi.mocked(createGatewayProvider).mockReturnValue(
+      testGatewayProvider(gatewayProvider),
+    );
   });
 
   afterEach(() => {
@@ -37,8 +69,8 @@ describe("createWebSearchTool", () => {
 
   it("uses AI Gateway parallel search and maps tool results", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "openai/gpt-5.4";
-    vi.mocked(generateText).mockResolvedValueOnce({
-      toolResults: [
+    vi.mocked(generateText).mockResolvedValueOnce(
+      generateTextResult([
         {
           type: "tool-result",
           toolName: "parallelSearch",
@@ -52,18 +84,13 @@ describe("createWebSearchTool", () => {
             ],
           },
         },
-      ],
-    } as never);
-
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    const result = await tool.execute(
-      { query: "vercel ai gateway", max_results: 2 },
-      {} as never,
+      ]),
     );
+
+    const result = await executeWebSearch({
+      query: "vercel ai gateway",
+      max_results: 2,
+    });
 
     expect(createGatewayProvider).toHaveBeenCalledWith();
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
@@ -97,14 +124,9 @@ describe("createWebSearchTool", () => {
     delete process.env.AI_WEB_SEARCH_MODEL;
     process.env.AI_FAST_MODEL = "openai/gpt-5.4";
     process.env.AI_MODEL = "anthropic/claude-sonnet-4.6";
-    vi.mocked(generateText).mockResolvedValueOnce({ toolResults: [] } as never);
+    vi.mocked(generateText).mockResolvedValueOnce(generateTextResult([]));
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await tool.execute({ query: "anything" }, {} as never);
+    await executeWebSearch({ query: "anything" });
 
     expect(gatewayProvider.chat).toHaveBeenCalledWith("openai/gpt-5.4");
   });
@@ -114,14 +136,7 @@ describe("createWebSearchTool", () => {
       new Error('400 Invalid input: expected "function"'),
     );
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await expect(
-      tool.execute({ query: "test query" }, {} as never),
-    ).resolves.toEqual({
+    await expect(executeWebSearch({ query: "test query" })).resolves.toEqual({
       ok: false,
       query: "test query",
       result_count: 0,
@@ -134,19 +149,9 @@ describe("createWebSearchTool", () => {
 
   it("returns a retryable timeout error instead of throwing", async () => {
     mockTestClock();
-    vi.mocked(generateText).mockImplementation(
-      () =>
-        new Promise(() => {
-          // Intentionally unresolved to trigger tool timeout.
-        }) as never,
-    );
+    vi.mocked(generateText).mockImplementation(() => unresolvedGenerateText());
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    const pending = tool.execute({ query: "test query" }, {} as never);
+    const pending = executeWebSearch({ query: "test query" });
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(pending).resolves.toEqual({
       ok: false,
@@ -162,21 +167,12 @@ describe("createWebSearchTool", () => {
   it("aborts the generateText call on timeout", async () => {
     mockTestClock();
     let capturedSignal: AbortSignal | undefined;
-    vi.mocked(generateText).mockImplementation(((opts: {
-      abortSignal?: AbortSignal;
-    }) => {
-      capturedSignal = opts.abortSignal;
-      return new Promise(() => {
-        // Intentionally unresolved to trigger tool timeout.
-      });
-    }) as never);
+    vi.mocked(generateText).mockImplementation((options) => {
+      capturedSignal = (options as { abortSignal?: AbortSignal }).abortSignal;
+      return unresolvedGenerateText();
+    });
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    const pending = tool.execute({ query: "slow query" }, {} as never);
+    const pending = executeWebSearch({ query: "slow query" });
     expect(capturedSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(60_000);
     await pending;
@@ -185,19 +181,12 @@ describe("createWebSearchTool", () => {
 
   it("does not abort signal on successful search", async () => {
     let capturedSignal: AbortSignal | undefined;
-    vi.mocked(generateText).mockImplementation(((opts: {
-      abortSignal?: AbortSignal;
-    }) => {
-      capturedSignal = opts.abortSignal;
-      return Promise.resolve({ toolResults: [] });
-    }) as never);
+    vi.mocked(generateText).mockImplementation((options) => {
+      capturedSignal = (options as { abortSignal?: AbortSignal }).abortSignal;
+      return Promise.resolve(generateTextResult([]));
+    });
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await tool.execute({ query: "fast query" }, {} as never);
+    await executeWebSearch({ query: "fast query" });
     expect(capturedSignal?.aborted).toBe(false);
   });
 
@@ -210,38 +199,28 @@ describe("createWebSearchTool", () => {
       throw new Error("abort listener blew up");
     };
 
-    // Patch AbortController to return our broken one
-    const originalAC = globalThis.AbortController;
-    globalThis.AbortController = class extends originalAC {
-      constructor() {
-        super();
-        return brokenController as unknown as AbortController;
-      }
-    } as typeof AbortController;
+    const originalController = globalThis.AbortController;
+    try {
+      globalThis.AbortController = class extends originalController {
+        constructor() {
+          super();
+          return brokenController;
+        }
+      } as typeof AbortController;
+      vi.mocked(generateText).mockImplementation(() =>
+        unresolvedGenerateText(),
+      );
 
-    vi.mocked(generateText).mockImplementation(
-      () =>
-        new Promise(() => {
-          // Intentionally unresolved to trigger tool timeout.
-        }) as never,
-    );
-
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
+      const pending = executeWebSearch({ query: "boom query" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await expect(pending).resolves.toMatchObject({
+        ok: false,
+        timeout: true,
+        error: "web search failed: webSearch timed out",
+      });
+    } finally {
+      globalThis.AbortController = originalController;
     }
-
-    const pending = tool.execute({ query: "boom query" }, {} as never);
-    await vi.advanceTimersByTimeAsync(60_000);
-    const result = await pending;
-
-    globalThis.AbortController = originalAC;
-
-    expect(result).toMatchObject({
-      ok: false,
-      timeout: true,
-      error: "web search failed: webSearch timed out",
-    });
   });
 
   it("marks authentication failures as non-retryable", async () => {
@@ -251,22 +230,15 @@ describe("createWebSearchTool", () => {
       ),
     );
 
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
-      {
-        ok: false,
-        query: "test",
-        result_count: 0,
-        results: [],
-        error:
-          "web search failed: AI Gateway authentication failed: No authentication provided.",
-        timeout: false,
-        retryable: false,
-      },
-    );
+    await expect(executeWebSearch({ query: "test" })).resolves.toEqual({
+      ok: false,
+      query: "test",
+      result_count: 0,
+      results: [],
+      error:
+        "web search failed: AI Gateway authentication failed: No authentication provided.",
+      timeout: false,
+      retryable: false,
+    });
   });
 });
