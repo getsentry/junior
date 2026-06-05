@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { deliverPrivateMessage } from "@/chat/oauth-flow";
+import type { Skill, SkillMetadata } from "@/chat/skills";
 import type {
   PluginMcpClientOptions,
   PluginMcpListedTool,
@@ -58,7 +60,7 @@ const hoisted = vi.hoisted(() => {
     completeEmptyAssistantOnAbort: { value: false },
     continueCallCount: { value: 0 },
     continueStopsOnAbort: { value: false },
-    deliverPrivateMessageMock: vi.fn(),
+    deliverPrivateMessageMock: vi.fn<typeof deliverPrivateMessage>(),
     listToolsMock:
       vi.fn<
         (
@@ -67,7 +69,10 @@ const hoisted = vi.hoisted(() => {
         ) => Promise<PluginMcpListedTool[]>
       >(),
     loadSkillExecutionErrorCount: { value: 0 },
-    loadSkillsByNameMock: vi.fn(),
+    loadSkillsByNameMock:
+      vi.fn<
+        (skillNames: string[], available: SkillMetadata[]) => Promise<Skill[]>
+      >(),
     omitFinalAssistantAfterTool: { value: false },
     promptCallCount: { value: 0 },
     promptMessages: [] as unknown[],
@@ -386,30 +391,37 @@ function mcpClientFactory(
   };
 }
 
-vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
-  deliverPrivateMessage: state.deliverPrivateMessageMock,
-  formatProviderLabel: (provider: string) => provider,
-  resolveBaseUrl: () => "https://junior.example.com",
-}));
+const { createMcpAuthOrchestration: createMcpAuthOrchestrationImpl } =
+  await import("@/chat/services/mcp-auth-orchestration");
+const { getConfigDefaults: getConfigDefaultsImpl } =
+  await import("@/chat/configuration/defaults");
+const {
+  deleteMcpAuthSession: deleteMcpAuthSessionImpl,
+  getMcpAuthSession: getMcpAuthSessionImpl,
+  patchMcpAuthSession: patchMcpAuthSessionImpl,
+  putMcpAuthSession: putMcpAuthSessionImpl,
+} = await import("@/chat/mcp/auth-store");
+const {
+  findSkillByName: findSkillByNameImpl,
+  parseSkillInvocation: parseSkillInvocationImpl,
+} = await import("@/chat/skills");
+const { recordAuthorizationRequested: recordAuthorizationRequestedImpl } =
+  await import("@/chat/state/session-log");
+const { generateAssistantReply: generateAssistantReplyImpl } =
+  await import("@/chat/respond");
+const { isRetryableTurnError: isRetryableTurnErrorImpl } =
+  await import("@/chat/runtime/turn");
+const { disconnectStateAdapter: disconnectStateAdapterImpl } =
+  await import("@/chat/state/adapter");
+const {
+  getAgentTurnSessionRecord: getAgentTurnSessionRecordImpl,
+  upsertAgentTurnSessionRecord: upsertAgentTurnSessionRecordImpl,
+} = await import("@/chat/state/turn-session");
 
-vi.mock("@/chat/mcp/oauth", () => ({
-  createMcpOAuthClientProvider: async (input: {
-    provider: string;
-    conversationId: string;
-    sessionId: string;
-    userId: string;
-    userMessage: string;
-    channelId?: string;
-    threadTs?: string;
-    toolChannelId?: string;
-    configuration?: Record<string, unknown>;
-    artifactState?: Record<string, unknown>;
-  }) => {
-    const { patchMcpAuthSession, putMcpAuthSession } =
-      await import("@/chat/mcp/auth-store");
+const mcpAuthServices = {
+  createMcpOAuthClientProvider: async (input) => {
     const authSessionId = `${input.provider}-auth-session`;
-    await putMcpAuthSession({
+    await putMcpAuthSessionImpl({
       authSessionId,
       provider: input.provider,
       userId: input.userId,
@@ -443,7 +455,7 @@ vi.mock("@/chat/mcp/oauth", () => ({
       tokens: async () => undefined,
       saveTokens: async () => undefined,
       redirectToAuthorization: async (authorizationUrl: URL) => {
-        await patchMcpAuthSession(authSessionId, {
+        await patchMcpAuthSessionImpl(authSessionId, {
           authorizationUrl: authorizationUrl.toString(),
         });
       },
@@ -451,41 +463,30 @@ vi.mock("@/chat/mcp/oauth", () => ({
       codeVerifier: async () => "code-verifier",
     };
   },
-}));
+  deleteMcpAuthSession: deleteMcpAuthSessionImpl,
+  deliverPrivateMessage: state.deliverPrivateMessageMock,
+  formatProviderLabel: (provider) => provider,
+  getMcpAuthSession: getMcpAuthSessionImpl,
+  now: Date.now,
+  patchMcpAuthSession: patchMcpAuthSessionImpl,
+  recordAuthorizationRequested: recordAuthorizationRequestedImpl,
+} satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[2]>;
 
-vi.mock("@/chat/plugins/registry", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/chat/plugins/registry")>();
-  return {
-    ...actual,
-    getPluginDefinition: (provider: string) =>
-      provider === "demo" ? demoPlugin : undefined,
-    getPluginMcpProviders: () => [demoPlugin],
-    getPluginProviders: () => [demoPlugin],
-  };
-});
+type ReplyContext = NonNullable<
+  Parameters<typeof generateAssistantReplyImpl>[1]
+>;
 
-vi.mock("@/chat/skills", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/chat/skills")>();
-  return {
-    ...actual,
-    discoverSkills: async () => [DEMO_SKILL],
-    findSkillByName: () => null,
-    loadSkillsByName: state.loadSkillsByNameMock,
-    parseSkillInvocation: () => null,
-  };
-});
-
-const { generateAssistantReply: generateAssistantReplyImpl } =
-  await import("@/chat/respond");
-const { isRetryableTurnError: isRetryableTurnErrorImpl } =
-  await import("@/chat/runtime/turn");
-const { disconnectStateAdapter: disconnectStateAdapterImpl } =
-  await import("@/chat/state/adapter");
-const {
-  getAgentTurnSessionRecord: getAgentTurnSessionRecordImpl,
-  upsertAgentTurnSessionRecord: upsertAgentTurnSessionRecordImpl,
-} = await import("@/chat/state/turn-session");
+const respondRuntimeServices = {
+  createMcpAuthOrchestration: (deps, abortAgent) =>
+    createMcpAuthOrchestrationImpl(deps, abortAgent, mcpAuthServices),
+  discoverSkills: async () => [DEMO_SKILL],
+  findSkillByName: findSkillByNameImpl,
+  getConfigDefaults: getConfigDefaultsImpl,
+  getPluginMcpProviders: () => [demoPlugin],
+  getPluginProviders: () => [demoPlugin],
+  loadSkillsByName: state.loadSkillsByNameMock,
+  parseSkillInvocation: parseSkillInvocationImpl,
+} satisfies NonNullable<ReplyContext["runtimeServices"]>;
 
 /** Run respond through the explicit MCP/agent/sandbox ports used by this fixture. */
 export async function generateAssistantReply(
@@ -496,6 +497,7 @@ export async function generateAssistantReply(
     agentFactory,
     mcpClientFactory,
     recordPendingAuth: async () => undefined,
+    runtimeServices: respondRuntimeServices,
     sandboxExecutorFactory: createScriptedSandboxExecutorFactory(sandboxState),
     turnThinkingSelection,
     ...context,
@@ -532,10 +534,7 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
 
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
 
-  state.deliverPrivateMessageMock.mockResolvedValue({
-    channel: "D123",
-    threadTs: "1712345.0001",
-  });
+  state.deliverPrivateMessageMock.mockResolvedValue("in_context");
   state.callToolMock.mockResolvedValue({
     content: [{ type: "text", text: "pong" }],
     isError: false,

@@ -24,7 +24,12 @@ import {
 } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import {
+  getPluginDefinition,
+  getPluginOAuthConfig,
+  getPluginProviders,
+} from "@/chat/plugins/registry";
+import { hasEgressCredentialHooks } from "@/chat/plugins/credential-hooks";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-schemas";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
@@ -48,7 +53,6 @@ export class PluginCredentialFailureError extends Error {
 }
 
 export interface PluginAuthOrchestrationInput {
-  abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
   requesterId?: string;
@@ -272,7 +276,7 @@ function buildCredentialFailureError(
  * Start plugin OAuth from a sandbox egress auth signal and park the run.
  */
 export function createPluginAuthOrchestration(
-  deps: PluginAuthOrchestrationDeps,
+  deps: PluginAuthOrchestrationInput,
   abortAgent: () => void,
   services: PluginAuthOrchestrationServices = defaultPluginAuthOrchestrationServices,
 ): PluginAuthOrchestration {
@@ -291,26 +295,29 @@ export function createPluginAuthOrchestration(
     if (!deps.requesterId || !services.getPluginOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
-    if (input.authorizationFlowMode === "disabled") {
+    if (deps.authorizationFlowMode === "disabled") {
       throw new AuthorizationFlowDisabledError("plugin", provider);
     }
-    const recordPendingAuth = input.sessionId
-      ? input.recordPendingAuth
+    const recordPendingAuth = deps.sessionId
+      ? deps.recordPendingAuth
       : undefined;
-    if (input.sessionId && !recordPendingAuth) {
+    if (deps.sessionId && !recordPendingAuth) {
       throw new Error(
         `Missing pending auth recorder for plugin authorization pause "${provider}"`,
       );
     }
 
     const providerLabel = services.formatProviderLabel(provider);
-    const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: deps.currentPendingAuth,
-      kind: "plugin",
-      provider,
-      requesterId: deps.requesterId,
-      ...(options?.scope ? { scope: options.scope } : {}),
-    });
+    const reusingPendingLink = deps.sessionId
+      ? canReusePendingAuthLink({
+          pendingAuth: deps.pendingAuth,
+          kind: "plugin",
+          provider,
+          requesterId: deps.requesterId,
+          ...(options?.scope ? { scope: options.scope } : {}),
+          sessionId: deps.sessionId,
+        })
+      : false;
 
     if (!reusingPendingLink) {
       const oauthResult = await services.startOAuthFlow(provider, {
@@ -320,10 +327,9 @@ export function createPluginAuthOrchestration(
         threadTs: deps.threadTs,
         userMessage: deps.userMessage,
         channelConfiguration: deps.channelConfiguration,
-        activeSkillName: activeSkill?.name ?? undefined,
         ...(options?.scope ? { scope: options.scope } : {}),
-        resumeConversationId: input.conversationId,
-        resumeSessionId: input.sessionId,
+        resumeConversationId: deps.conversationId,
+        resumeSessionId: deps.sessionId,
       });
 
       if (!oauthResult.ok) {
@@ -338,8 +344,8 @@ export function createPluginAuthOrchestration(
 
     if (
       options?.unlinkExistingProvider &&
-      input.requesterId &&
-      input.userTokenStore
+      deps.requesterId &&
+      deps.userTokenStore
     ) {
       await services.unlinkProvider(
         deps.requesterId,
@@ -348,28 +354,28 @@ export function createPluginAuthOrchestration(
       );
     }
 
-    if (input.sessionId && recordPendingAuth) {
+    if (deps.sessionId && recordPendingAuth) {
       await recordPendingAuth({
         kind: "plugin",
         provider,
-        requesterId: input.requesterId,
+        requesterId: deps.requesterId,
         ...(options?.scope ? { scope: options.scope } : {}),
-        sessionId: input.sessionId,
+        sessionId: deps.sessionId,
         linkSentAtMs: reusingPendingLink
-          ? deps.currentPendingAuth!.linkSentAtMs
+          ? deps.pendingAuth!.linkSentAtMs
           : services.now(),
       });
     }
-    if (deps.conversationId && deps.sessionId) {
+    if (deps.conversationId && deps.sessionId && deps.requesterId) {
       await services.recordAuthorizationRequested({
         conversationId: deps.conversationId,
         kind: "plugin",
         provider,
-        requesterId: input.requesterId,
+        requesterId: deps.requesterId,
         authorizationId: authorizationId({
           kind: "plugin",
           provider,
-          sessionId: input.sessionId,
+          sessionId: deps.sessionId,
         }),
         delivery: reusingPendingLink
           ? "private_link_reused"
@@ -382,67 +388,53 @@ export function createPluginAuthOrchestration(
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
     );
-    input.abortAgent();
+    abortAgent();
     throw pendingPause;
   };
 
   return {
-    handleCommandFailure: async (input) => {
+    maybeHandleAuthSignal: async (details) => {
       const providers = registeredProviderNames(services);
-      const parsedAuthSignal = pluginAuthRequiredSignal(input.details);
-      const authSignal =
-        parsedAuthSignal && providers.includes(parsedAuthSignal.provider)
-          ? parsedAuthSignal
-          : undefined;
-      const provider = authSignal
-        ? authSignal.provider
-        : providers.find((availableProvider) =>
-            commandTargetsProvider(
-              services,
-              availableProvider,
-              input.command,
-              input.details,
-            ),
-          );
-      if (!provider) {
+      const signal = pluginAuthRequiredSignal(details);
+      if (!signal || !providers.includes(signal.provider)) {
         return;
       }
-
-      const { provider, authorization } = signal;
+      const { provider } = signal;
 
       if (signal.kind === "unavailable") {
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??
-            `${formatProviderLabel(provider)} credentials are unavailable.`,
+            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
         );
       }
 
-      const providerOAuth = services.getPluginOAuthConfig(provider);
-      const authorization =
-        authSignal?.authorization ??
-        (!authSignal &&
-        !services.hasEgressCredentialHooks(provider) &&
-        providerOAuth
-          ? {
-              type: "oauth" as const,
-              provider,
-              ...(providerOAuth.scope ? { scope: providerOAuth.scope } : {}),
-            }
-          : undefined);
+      const authorization = signal.authorization;
 
-      if (!input.requesterId || !input.userTokenStore) {
-        if (input.authorizationFlowMode === "disabled") {
+      if (!deps.requesterId || !deps.userTokenStore) {
+        if (deps.authorizationFlowMode === "disabled") {
           throw new AuthorizationFlowDisabledError("plugin", provider);
         }
-        throw buildCredentialFailureError(services, provider, input.command);
+        throw new PluginCredentialFailureError(
+          provider,
+          signal.message ??
+            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+        );
       }
 
       if (authorization?.type !== "oauth") {
-        throw buildCredentialFailureError(services, provider, input.command);
+        throw new PluginCredentialFailureError(
+          provider,
+          signal.message ??
+            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+        );
       }
       if (!services.getPluginOAuthConfig(authorization.provider)) {
-        throw buildCredentialFailureError(services, provider, input.command);
+        throw new PluginCredentialFailureError(
+          provider,
+          signal.message ??
+            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+        );
       }
 
       await startAuthorizationPause(authorization.provider, {

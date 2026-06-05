@@ -38,7 +38,6 @@ export class McpAuthorizationPauseError extends AuthorizationPauseError {
 }
 
 export interface McpAuthOrchestrationInput {
-  abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
   requesterId?: string;
@@ -107,7 +106,7 @@ function authorizationId(args: {
 
 /** Create MCP authorization orchestration for a single agent run. */
 export function createMcpAuthOrchestration(
-  deps: McpAuthOrchestrationDeps,
+  deps: McpAuthOrchestrationInput,
   abortAgent: () => void,
   services: McpAuthOrchestrationServices = defaultMcpAuthOrchestrationServices,
 ): McpAuthOrchestration {
@@ -117,12 +116,12 @@ export function createMcpAuthOrchestration(
   const authProviderFactory = async (
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
-    if (!input.conversationId || !input.sessionId || !input.requesterId) {
+    if (!deps.conversationId || !deps.sessionId || !deps.requesterId) {
       return undefined;
     }
     if (
-      !input.recordPendingAuth &&
-      input.authorizationFlowMode !== "disabled"
+      !deps.recordPendingAuth &&
+      deps.authorizationFlowMode !== "disabled"
     ) {
       throw new Error(
         `Missing pending auth recorder for MCP authorization pause "${plugin.manifest.name}"`,
@@ -131,16 +130,16 @@ export function createMcpAuthOrchestration(
 
     const provider = await services.createMcpOAuthClientProvider({
       provider: plugin.manifest.name,
-      conversationId: input.conversationId,
-      destination: input.destination,
-      sessionId: input.sessionId,
-      userId: input.requesterId,
-      userMessage: input.userMessage,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-      configuration: input.getConfiguration(),
-      artifactState: input.getArtifactState(),
+      conversationId: deps.conversationId,
+      destination: deps.destination,
+      sessionId: deps.sessionId,
+      userId: deps.requesterId,
+      userMessage: deps.userMessage,
+      ...(deps.channelId ? { channelId: deps.channelId } : {}),
+      ...(deps.threadTs ? { threadTs: deps.threadTs } : {}),
+      ...(deps.toolChannelId ? { toolChannelId: deps.toolChannelId } : {}),
+      configuration: deps.getConfiguration(),
+      artifactState: deps.getArtifactState(),
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
     return provider;
@@ -154,9 +153,9 @@ export function createMcpAuthOrchestration(
     }
 
     const authSessionId = authSessionIdsByProvider.get(provider);
-    const conversationId = input.conversationId;
-    const sessionId = input.sessionId;
-    const requesterId = input.requesterId;
+    const conversationId = deps.conversationId;
+    const sessionId = deps.sessionId;
+    const requesterId = deps.requesterId;
     if (!authSessionId || !conversationId || !sessionId || !requesterId) {
       throw new Error(
         `Missing MCP auth session context for plugin "${provider}"`,
@@ -166,7 +165,7 @@ export function createMcpAuthOrchestration(
       await services.deleteMcpAuthSession(authSessionId);
       throw new AuthorizationFlowDisabledError("mcp", provider);
     }
-    const recordPendingAuth = input.recordPendingAuth;
+    const recordPendingAuth = deps.recordPendingAuth;
     if (!recordPendingAuth) {
       throw new Error(
         `Missing pending auth recorder for MCP authorization pause "${provider}"`,
@@ -178,9 +177,9 @@ export function createMcpAuthOrchestration(
       configuration: { ...deps.getConfiguration() },
       artifactState: latestArtifactState,
       toolChannelId:
-        input.toolChannelId ??
+        deps.toolChannelId ??
         latestArtifactState.assistantContextChannelId ??
-        input.channelId,
+        deps.channelId,
     });
 
     const authSession = await services.getMcpAuthSession(authSessionId);
@@ -189,13 +188,13 @@ export function createMcpAuthOrchestration(
     }
 
     const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: input.pendingAuth,
+      pendingAuth: deps.pendingAuth,
       kind: "mcp",
       provider,
       requesterId,
       sessionId,
     });
-    const providerLabel = formatProviderLabel(provider);
+    const providerLabel = services.formatProviderLabel(provider);
 
     if (!reusingPendingLink) {
       const delivery = await services.deliverPrivateMessage({
@@ -210,7 +209,7 @@ export function createMcpAuthOrchestration(
         );
       }
     } else {
-      await deleteMcpAuthSession(authSessionId);
+      await services.deleteMcpAuthSession(authSessionId);
     }
 
     await recordPendingAuth({
@@ -219,10 +218,10 @@ export function createMcpAuthOrchestration(
       requesterId,
       sessionId,
       linkSentAtMs: reusingPendingLink
-        ? input.pendingAuth!.linkSentAtMs
-        : Date.now(),
+        ? deps.pendingAuth!.linkSentAtMs
+        : services.now(),
     });
-    await recordAuthorizationRequested({
+    await services.recordAuthorizationRequested({
       conversationId,
       kind: "mcp",
       provider,
@@ -230,36 +229,17 @@ export function createMcpAuthOrchestration(
       authorizationId: authorizationId({
         kind: "mcp",
         provider,
-        requesterId: deps.requesterId,
-        sessionId: deps.sessionId,
-        linkSentAtMs: reusingPendingLink
-          ? deps.currentPendingAuth!.linkSentAtMs
-          : services.now(),
-      });
-    }
-    if (deps.conversationId && deps.sessionId && deps.requesterId) {
-      await services.recordAuthorizationRequested({
-        conversationId: deps.conversationId,
-        kind: "mcp",
-        provider,
-        requesterId: deps.requesterId,
-        authorizationId: authorizationId({
-          kind: "mcp",
-          provider,
-          sessionId: deps.sessionId,
-        }),
-        delivery: reusingPendingLink
-          ? "private_link_reused"
-          : "private_link_sent",
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
-    }
+        sessionId,
+      }),
+      delivery: reusingPendingLink ? "private_link_reused" : "private_link_sent",
+      ttlMs: THREAD_STATE_TTL_MS,
+    });
     pendingPause = new McpAuthorizationPauseError(
       provider,
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
     );
-    input.abortAgent();
+    abortAgent();
     return true;
   };
 

@@ -37,6 +37,7 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
   findSkillByName,
+  loadSkillsByName,
   parseSkillInvocation,
   type Skill,
 } from "@/chat/skills";
@@ -207,6 +208,29 @@ type ReplyAgent = {
   ): () => void;
 };
 
+/** Services that host-owned runtime harnesses may replace while keeping respond wiring real. */
+export interface ReplyRuntimeServices {
+  createMcpAuthOrchestration: typeof createMcpAuthOrchestration;
+  discoverSkills: typeof discoverSkills;
+  findSkillByName: typeof findSkillByName;
+  getConfigDefaults: typeof getConfigDefaults;
+  getPluginMcpProviders: typeof getPluginMcpProviders;
+  getPluginProviders: typeof getPluginProviders;
+  loadSkillsByName: typeof loadSkillsByName;
+  parseSkillInvocation: typeof parseSkillInvocation;
+}
+
+const defaultReplyRuntimeServices: ReplyRuntimeServices = {
+  createMcpAuthOrchestration,
+  discoverSkills,
+  findSkillByName,
+  getConfigDefaults,
+  getPluginMcpProviders,
+  getPluginProviders,
+  loadSkillsByName,
+  parseSkillInvocation,
+};
+
 function createDefaultReplyAgent(options: ReplyAgentOptions): ReplyAgent {
   return new Agent(
     options as ConstructorParameters<typeof Agent>[0],
@@ -298,6 +322,8 @@ export interface ReplyRequestContext {
   sandboxExecutorFactory?: SandboxExecutorFactory;
   /** Override MCP client construction for controlled runtime harnesses. */
   mcpClientFactory?: McpToolManagerOptions["clientFactory"];
+  /** Override runtime discovery/auth services for controlled runtime harnesses. */
+  runtimeServices?: ReplyRuntimeServices;
   /** Reuse a preselected reasoning level when routing already made that choice. */
   turnThinkingSelection?: TurnThinkingSelection;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -483,6 +509,8 @@ export async function generateAssistantReply(
   assertCorrelationDestinationMatch(context);
 
   const replyStartedAtMs = Date.now();
+  const runtimeServices =
+    context.runtimeServices ?? defaultReplyRuntimeServices;
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
   const contextTurnDeadlineAtMs =
     typeof context.turnDeadlineAtMs === "number" &&
@@ -595,12 +623,12 @@ export async function generateAssistantReply(
     };
 
     // ── Skill discovery ──────────────────────────────────────────────
-    const availableSkills = await discoverSkills({
+    const availableSkills = await runtimeServices.discoverSkills({
       additionalRoots: context.skillDirs,
     });
     if (!startupDiscoveryLogged) {
       startupDiscoveryLogged = true;
-      const plugins = getPluginProviders();
+      const plugins = runtimeServices.getPluginProviders();
       const roots = [
         ...new Set(availableSkills.map((skill) => skill.skillPath)),
       ].sort();
@@ -641,15 +669,23 @@ export async function generateAssistantReply(
         "Agent message received",
       );
     }
-    const skillInvocation = parseSkillInvocation(userInput, availableSkills);
+    const skillInvocation = runtimeServices.parseSkillInvocation(
+      userInput,
+      availableSkills,
+    );
     const invokedSkill = skillInvocation
-      ? findSkillByName(skillInvocation.skillName, availableSkills)
+      ? runtimeServices.findSkillByName(
+          skillInvocation.skillName,
+          availableSkills,
+        )
       : null;
     const activeSkills: Skill[] = [];
     const syncLoadedSkillNamesForResume = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
     };
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const skillSandbox = new SkillSandbox(availableSkills, activeSkills, {
+      loadSkillsByName: runtimeServices.loadSkillsByName,
+    });
 
     // ── Turn Session Record ────────────────────────────────────────
     const { conversationId: sessionConversationId, sessionId } =
@@ -670,7 +706,7 @@ export async function generateAssistantReply(
       ? await context.channelConfiguration.resolveValues()
       : {};
     configurationValues = {
-      ...getConfigDefaults(),
+      ...runtimeServices.getConfigDefaults(),
       ...(context.configuration ?? {}),
       ...persistedConfigurationValues,
     };
@@ -821,53 +857,54 @@ export async function generateAssistantReply(
     };
 
     // ── MCP auth orchestration ───────────────────────────────────────
-    const slackDestination =
-      context.destination.platform === "slack"
-        ? context.destination
-        : undefined;
-    const slackChannelId = slackDestination?.channelId;
+    const mcpAuth = runtimeServices.createMcpAuthOrchestration(
+      {
+        conversationId: sessionConversationId,
+        sessionId,
+        requesterId: authRequesterId,
+        channelId: context.correlation?.channelId,
+        destination: context.destination,
+        threadTs: context.correlation?.threadTs,
+        toolChannelId: context.toolChannelId,
+        userMessage: userInput,
+        pendingAuth: context.pendingAuth,
+        getConfiguration: () => configurationValues,
+        getArtifactState: () => context.artifactState,
+        getMergedArtifactState: () =>
+          mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
+        recordPendingAuth: context.recordPendingAuth,
+        authorizationFlowMode: context.authorizationFlowMode,
+      },
+      () => agent?.abort(),
+    );
+    const pluginAuth = createPluginAuthOrchestration(
+      {
+        conversationId: sessionConversationId,
+        sessionId,
+        requesterId: authRequesterId,
+        channelId: context.correlation?.channelId,
+        destination: context.destination,
+        threadTs: context.correlation?.threadTs,
+        userMessage: userInput,
+        channelConfiguration: context.channelConfiguration,
+        pendingAuth: context.pendingAuth,
+        recordPendingAuth: context.recordPendingAuth,
+        authorizationFlowMode: context.authorizationFlowMode,
+        userTokenStore,
+      },
+      () => agent?.abort(),
+    );
 
-    const mcpAuth = createMcpAuthOrchestration({
-      abortAgent: () => agent?.abort(),
-      conversationId: sessionConversationId,
-      sessionId,
-      requesterId: authRequesterId,
-      channelId: slackChannelId,
-      destination: context.destination,
-      threadTs: context.correlation?.threadTs,
-      toolChannelId: context.toolChannelId,
-      userMessage: userInput,
-      pendingAuth: context.pendingAuth,
-      getConfiguration: () => configurationValues,
-      getArtifactState: () => context.artifactState,
-      getMergedArtifactState: () =>
-        mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
-      recordPendingAuth: context.recordPendingAuth,
-      authorizationFlowMode: context.authorizationFlowMode,
-    });
-    const pluginAuth = createPluginAuthOrchestration({
-      abortAgent: () => agent?.abort(),
-      conversationId: sessionConversationId,
-      sessionId,
-      requesterId: authRequesterId,
-      channelId: slackChannelId,
-      destination: context.destination,
-      threadTs: context.correlation?.threadTs,
-      userMessage: userInput,
-      channelConfiguration: context.channelConfiguration,
-      pendingAuth: context.pendingAuth,
-      recordPendingAuth: context.recordPendingAuth,
-      authorizationFlowMode: context.authorizationFlowMode,
-      userTokenStore,
-    });
-
-    mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
-      authProviderFactory: mcpAuth.authProviderFactory,
-      ...(context.mcpClientFactory
-        ? { clientFactory: context.mcpClientFactory }
-        : {}),
-      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
-    });
+    mcpToolManager = new McpToolManager(
+      runtimeServices.getPluginMcpProviders(),
+      {
+        authProviderFactory: mcpAuth.authProviderFactory,
+        ...(context.mcpClientFactory
+          ? { clientFactory: context.mcpClientFactory }
+          : {}),
+        onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      },
+    );
     const turnMcpToolManager = mcpToolManager;
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
@@ -893,6 +930,7 @@ export async function generateAssistantReply(
       userText: userInput,
       artifactState: context.artifactState,
       configuration: configurationValues,
+      loadSkillsByName: runtimeServices.loadSkillsByName,
       mcpToolManager: turnMcpToolManager,
       sandbox,
       advisor: {

@@ -10,7 +10,7 @@ import type {
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import type { Skill } from "@/chat/skills";
+import type { loadSkillsByName, Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 import type {
@@ -73,6 +73,7 @@ interface BaseToolRuntimeContext {
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
+  loadSkillsByName?: typeof loadSkillsByName;
   mcpToolManager?: McpToolManager;
   sandbox: SandboxWorkspace;
 }
