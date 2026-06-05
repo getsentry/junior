@@ -802,6 +802,19 @@ describe("trusted plugin heartbeat", () => {
         updatedAtMs: TEST_NOW_MS,
       }),
     );
+    await store.saveTask(
+      createTask({
+        createdBy: {
+          slackUserId: "unknown",
+        },
+        id: "sched_plugin_corrupt_creator",
+        status: "blocked",
+        task: {
+          text: "Corrupt creator metadata task",
+        },
+        updatedAtMs: TEST_NOW_MS + 1,
+      }),
+    );
 
     const { createJuniorReporting } = await import("@/reporting");
     const feed = await createJuniorReporting().getPluginOperationalReports();
@@ -817,7 +830,7 @@ describe("trusted plugin heartbeat", () => {
     expect(scheduler?.metrics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "active", value: "1" }),
-        expect.objectContaining({ label: "blocked", value: "1" }),
+        expect.objectContaining({ label: "blocked", value: "2" }),
         expect.objectContaining({ label: "due now", value: "1" }),
       ]),
     );
@@ -836,10 +849,19 @@ describe("trusted plugin heartbeat", () => {
     ).toMatchObject({
       author: "Alice Reviewer (@alice)",
     });
+    const blockedRecords = scheduler?.recordSets?.[1]?.records ?? [];
     expect(
-      scheduler?.recordSets?.[1]?.records?.[0]?.values ?? {},
+      blockedRecords.find((record) => record.id === "sched_plugin_blocked")
+        ?.values ?? {},
     ).toMatchObject({
       author: "Slack User U456",
+    });
+    expect(
+      blockedRecords.find(
+        (record) => record.id === "sched_plugin_corrupt_creator",
+      )?.values ?? {},
+    ).toMatchObject({
+      author: "Invalid Slack creator metadata",
     });
     expect(JSON.stringify(feed)).not.toContain("Secret");
   });

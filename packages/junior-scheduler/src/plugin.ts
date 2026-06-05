@@ -13,7 +13,11 @@ import {
   type SchedulerStore,
 } from "./store";
 import { scheduledTaskPrincipalLabel } from "./identity";
-import type { ScheduledRun, ScheduledTask } from "./types";
+import type {
+  ScheduledRun,
+  ScheduledTask,
+  ScheduledTaskPrincipal,
+} from "./types";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
@@ -198,6 +202,14 @@ function destinationLabel(destination: ScheduledTask["destination"]): string {
   return destination.channelId;
 }
 
+function operationalAuthorLabel(author: ScheduledTaskPrincipal): string {
+  try {
+    return scheduledTaskPrincipalLabel(author);
+  } catch {
+    return "Invalid Slack creator metadata";
+  }
+}
+
 function cadenceLabel(task: ScheduledTask): string {
   if (task.schedule.kind === "one_off") {
     return "one-off";
@@ -289,7 +301,7 @@ async function buildSchedulerOperationalReport(args: {
           id: task.id,
           values: {
             task: task.id,
-            author: scheduledTaskPrincipalLabel(task.createdBy),
+            author: operationalAuthorLabel(task.createdBy),
             destination: destinationLabel(task.destination),
             nextRun: formatTimestamp(task.nextRunAtMs),
             cadence: cadenceLabel(task),
@@ -310,7 +322,7 @@ async function buildSchedulerOperationalReport(args: {
           tone: "danger",
           values: {
             task: task.id,
-            author: scheduledTaskPrincipalLabel(task.createdBy),
+            author: operationalAuthorLabel(task.createdBy),
             destination: destinationLabel(task.destination),
             updated: formatTimestamp(task.updatedAtMs),
           },
@@ -335,8 +347,8 @@ async function buildSchedulerOperationalReport(args: {
               run: run.id,
               task: run.taskId,
               author: task
-                ? scheduledTaskPrincipalLabel(task.createdBy)
-                : "unknown",
+                ? operationalAuthorLabel(task.createdBy)
+                : "Missing scheduled task",
               scheduledFor: formatTimestamp(run.scheduledForMs),
               status: run.status,
             },

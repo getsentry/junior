@@ -73,4 +73,13 @@ describe("slash command ingress", () => {
       "Slack slash command requires a requester user id",
     );
   });
+
+  it("rejects synthetic unknown requester ids before credential commands", async () => {
+    const { handleSlashCommand } = await loadHandler();
+    const { event } = createSlashEvent("link github", { userId: "unknown" });
+
+    await expect(handleSlashCommand(event)).rejects.toThrow(
+      "Slack slash command requires a requester user id",
+    );
+  });
 });
