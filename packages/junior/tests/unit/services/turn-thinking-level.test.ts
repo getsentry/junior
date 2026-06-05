@@ -5,7 +5,7 @@ import {
 } from "@/chat/services/turn-thinking-level";
 
 describe("selectTurnThinkingLevel", () => {
-  it("classifies even simple acknowledgment turns with the fast model", async () => {
+  it("returns high-confidence router selections and uses fast model defaults", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         thinking_level: "none",
@@ -31,52 +31,6 @@ describe("selectTurnThinkingLevel", () => {
       }),
     );
     expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("off");
-  });
-
-  it("classifies code-change asks as xhigh with the fast model", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        thinking_level: "xhigh",
-        confidence: 0.93,
-        reason: "code change request",
-      },
-    }));
-
-    const profile = await selectTurnThinkingLevel({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText:
-        "fix the failing test in packages/junior/src/chat/respond.ts",
-    });
-
-    expect(profile).toMatchObject({
-      thinkingLevel: "xhigh",
-      reason: "code change request",
-    });
-    expect(completeObject).toHaveBeenCalledOnce();
-    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("xhigh");
-  });
-
-  it("classifies research-heavy work as high", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        thinking_level: "high",
-        confidence: 0.91,
-        reason: "research-heavy investigation",
-      },
-    }));
-
-    const profile = await selectTurnThinkingLevel({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "research how the Slack delivery pipeline works end to end",
-    });
-
-    expect(profile).toMatchObject({
-      thinkingLevel: "high",
-      reason: "research-heavy investigation",
-    });
-    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("high");
   });
 
   it("falls back to medium effort when classifier confidence is low", async () => {
@@ -118,7 +72,7 @@ describe("selectTurnThinkingLevel", () => {
     });
   });
 
-  it("preserves high-confidence low classifications for deterministic simple work", async () => {
+  it("keeps high-confidence low selections when no floor applies", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         thinking_level: "low",
@@ -184,10 +138,10 @@ describe("selectTurnThinkingLevel", () => {
     });
   });
 
-  it("includes current-turn attachment blocks in the classifier prompt", async () => {
-    let capturedPrompt = "";
+  it("passes current-turn attachment blocks to the router input", async () => {
+    let routerInput = "";
     const completeObject = async ({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
+      routerInput = prompt;
       return {
         object: {
           thinking_level: "high",
@@ -214,9 +168,9 @@ describe("selectTurnThinkingLevel", () => {
       messageText: "can you fix this?",
     });
 
-    expect(capturedPrompt).toContain("<current-instruction>");
-    expect(capturedPrompt).toContain("filename: error.json");
-    expect(capturedPrompt).toContain("TypeError: x is undefined");
+    expect(routerInput).toContain("<current-instruction>");
+    expect(routerInput).toContain("filename: error.json");
+    expect(routerInput).toContain("TypeError: x is undefined");
     expect(profile).toMatchObject({
       thinkingLevel: "high",
       reason: "attachment stack trace",
@@ -245,10 +199,10 @@ describe("selectTurnThinkingLevel", () => {
     });
   });
 
-  it("truncates very long thread context with head + tail slices", async () => {
-    let capturedPrompt = "";
+  it("passes truncated thread context with head and tail slices", async () => {
+    let routerInput = "";
     const completeObject = async ({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
+      routerInput = prompt;
       return {
         object: {
           thinking_level: "medium",
@@ -270,9 +224,9 @@ describe("selectTurnThinkingLevel", () => {
       conversationContext: longContext,
     });
 
-    expect(capturedPrompt).toContain(headMarker);
-    expect(capturedPrompt).toContain(tailMarker);
-    expect(capturedPrompt).toContain("…[truncated]…");
+    expect(routerInput).toContain(headMarker);
+    expect(routerInput).toContain(tailMarker);
+    expect(routerInput).toContain("…[truncated]…");
   });
 
   it("does not floor xhigh classifications", async () => {
