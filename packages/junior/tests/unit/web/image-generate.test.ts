@@ -5,9 +5,13 @@ type ImageGenerateHooks = Parameters<typeof createImageGenerateTool>[0];
 type ImageGenerateDeps = NonNullable<
   Parameters<typeof createImageGenerateTool>[1]
 >;
-type FetchMock = ReturnType<typeof vi.fn>;
+type ImageGenerateTool = ReturnType<typeof createImageGenerateTool>;
+type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
+type CompleteTextResult = Awaited<
+  ReturnType<NonNullable<ImageGenerateDeps["completeText"]>>
+>;
 
-const completeText = vi.fn();
+const completeText = vi.fn<NonNullable<ImageGenerateDeps["completeText"]>>();
 
 function getRequestBody(fetchMock: FetchMock) {
   const request = fetchMock.mock.calls[0];
@@ -21,10 +25,8 @@ function createImageDeps(
   overrides: Partial<ImageGenerateDeps> = {},
 ): ImageGenerateDeps {
   return {
-    completeText: completeText as NonNullable<
-      ImageGenerateDeps["completeText"]
-    >,
-    fetch: fetchMock as unknown as typeof fetch,
+    completeText,
+    fetch: fetchMock,
     getGatewayApiKey: () => "test-key",
     ...overrides,
   };
@@ -46,6 +48,10 @@ function createErrorResponse(status: number, body: string) {
   } as Response;
 }
 
+function completion(text: string): CompleteTextResult {
+  return { text } as CompleteTextResult;
+}
+
 function imagePayload() {
   return {
     choices: [
@@ -64,6 +70,18 @@ function imagePayload() {
   };
 }
 
+function requireExecute(tool: ImageGenerateTool) {
+  const execute = tool.execute;
+  if (!execute) {
+    throw new Error("imageGenerate execute function missing");
+  }
+  return execute;
+}
+
+async function executeImageGenerate(tool: ImageGenerateTool, prompt: string) {
+  return await requireExecute(tool)({ prompt }, {});
+}
+
 describe("createImageGenerateTool", () => {
   afterEach(() => {
     delete process.env.AI_IMAGE_MODEL;
@@ -71,9 +89,9 @@ describe("createImageGenerateTool", () => {
   });
 
   it("uses the default image model when AI_IMAGE_MODEL is not set", async () => {
-    completeText.mockResolvedValueOnce({ text: "enriched prompt" });
+    completeText.mockResolvedValueOnce(completion("enriched prompt"));
     const fetchMock = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
 
     const uploads: Array<{ filename: string }> = [];
@@ -86,11 +104,7 @@ describe("createImageGenerateTool", () => {
       hooks,
       createImageDeps(fetchMock, { now: () => 1_737_000_000_000 }),
     );
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
-
-    const result = await tool.execute({ prompt: "test prompt" }, {} as never);
+    const result = await executeImageGenerate(tool, "test prompt");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0];
@@ -118,16 +132,13 @@ describe("createImageGenerateTool", () => {
 
   it("uses AI_IMAGE_MODEL when configured", async () => {
     process.env.AI_IMAGE_MODEL = "openai/dall-e-3";
-    completeText.mockResolvedValueOnce({ text: "enriched cat" });
+    completeText.mockResolvedValueOnce(completion("enriched cat"));
     const fetchMock = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
 
     const tool = createImageGenerateTool({}, createImageDeps(fetchMock));
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
-    const result = await tool.execute({ prompt: "a cat" }, {} as never);
+    const result = await executeImageGenerate(tool, "a cat");
 
     expect(getRequestBody(fetchMock)).toMatchObject({
       model: "openai/dall-e-3",
@@ -140,8 +151,8 @@ describe("createImageGenerateTool", () => {
 
   it("returns an actionable error when model is not image-capable", async () => {
     process.env.AI_IMAGE_MODEL = "google/gemini-3-pro-image";
-    completeText.mockResolvedValueOnce({ text: "enriched prompt" });
-    const fetchMock = vi.fn().mockResolvedValueOnce(
+    completeText.mockResolvedValueOnce(completion("enriched prompt"));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       createErrorResponse(
         400,
         JSON.stringify({
@@ -154,22 +165,19 @@ describe("createImageGenerateTool", () => {
     );
 
     const tool = createImageGenerateTool({}, createImageDeps(fetchMock));
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
     await expect(
-      tool.execute({ prompt: "person in a forest" }, {} as never),
+      executeImageGenerate(tool, "person in a forest"),
     ).rejects.toThrow(
       'configured model "google/gemini-3-pro-image" is not an image generation model',
     );
   });
 
   it("forwards enriched prompt to image API when enrichment succeeds", async () => {
-    completeText.mockResolvedValueOnce({
-      text: "a dark, high-contrast dog with glowing eyes",
-    });
+    completeText.mockResolvedValueOnce(
+      completion("a dark, high-contrast dog with glowing eyes"),
+    );
     const fetchMock = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
 
     const tool = createImageGenerateTool(
@@ -178,7 +186,7 @@ describe("createImageGenerateTool", () => {
       },
       createImageDeps(fetchMock),
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as never);
+    const result = await executeImageGenerate(tool, "draw a dog");
 
     const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe(
@@ -191,9 +199,9 @@ describe("createImageGenerateTool", () => {
   });
 
   it("falls back to raw prompt when enrichment returns empty text", async () => {
-    completeText.mockResolvedValueOnce({ text: "   " });
+    completeText.mockResolvedValueOnce(completion("   "));
     const fetchMock = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
 
     const tool = createImageGenerateTool(
@@ -202,7 +210,7 @@ describe("createImageGenerateTool", () => {
       },
       createImageDeps(fetchMock),
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as never);
+    const result = await executeImageGenerate(tool, "draw a dog");
 
     const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe("draw a dog");
@@ -215,7 +223,7 @@ describe("createImageGenerateTool", () => {
   it("falls back to raw prompt when enrichment fails", async () => {
     completeText.mockRejectedValueOnce(new Error("LLM unavailable"));
     const fetchMock = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
 
     const tool = createImageGenerateTool(
@@ -224,7 +232,7 @@ describe("createImageGenerateTool", () => {
       },
       createImageDeps(fetchMock),
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as never);
+    const result = await executeImageGenerate(tool, "draw a dog");
 
     const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe("draw a dog");
