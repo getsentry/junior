@@ -127,3 +127,32 @@ export async function lookupSlackActorIdentity(
 ): Promise<ActorIdentityInput> {
   return slackActorIdentity(userId, await lookupSlackUser(userId));
 }
+
+/**
+ * Resolve actor identity for a resumed turn.
+ *
+ * Live Slack profile data wins; the stored session requester fills fields
+ * the live lookup could not supply, but only when its Slack user id matches
+ * the resumed user id — never inferred from a stored actor the live request
+ * has not proven to be the same person.
+ */
+export async function lookupSlackResumeRequester(
+  userId: string,
+  stored: {
+    slackUserId?: string;
+    slackUserName?: string;
+    fullName?: string;
+    email?: string;
+  } | undefined,
+): Promise<ActorIdentityInput> {
+  const profile = await lookupSlackUser(userId);
+  const canUseStored = Boolean(
+    stored?.slackUserId && stored.slackUserId === userId,
+  );
+  return slackActorIdentity(userId, {
+    email: profile?.email ?? (canUseStored ? stored?.email : undefined),
+    fullName: profile?.fullName ?? (canUseStored ? stored?.fullName : undefined),
+    userName:
+      profile?.userName ?? (canUseStored ? stored?.slackUserName : undefined),
+  });
+}

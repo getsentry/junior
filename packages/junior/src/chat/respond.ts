@@ -135,10 +135,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import {
-  buildActorIdentity,
-  type ActorIdentityInput,
-} from "@/chat/services/requester-identity";
+import { buildActorIdentity } from "@/chat/services/requester-identity";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -339,35 +336,6 @@ function actorRequesterFromContext(
   return buildActorIdentity(requester, requesterId);
 }
 
-/**
- * Fill in missing display-identity fields on a live actor requester from a
- * durable session-record requester captured during a prior successful Slack
- * lookup.
- *
- * Only fills gaps when both user ids are present and equal — never infers
- * display fields from a stored actor the live request has not proven to be.
- * Live data always wins; stored data only fills gaps.
- */
-function completeActorRequesterFromSession(
-  live: ActorIdentityInput | undefined,
-  stored: AgentTurnRequester | undefined,
-): ActorIdentityInput | undefined {
-  if (!stored) return live;
-  const liveUserId = live?.userId;
-  const storedUserId = stored.slackUserId;
-  // Only complete when both ids are present and match.
-  if (!liveUserId || !storedUserId || liveUserId !== storedUserId) {
-    return live;
-  }
-  return {
-    ...live,
-    userId: liveUserId,
-    userName: live.userName || stored.slackUserName,
-    fullName: live.fullName || stored.fullName,
-    email: live.email || stored.email,
-  };
-}
-
 function surfaceFromContext(
   context: ReplyRequestContext,
 ): AgentTurnSurface | undefined {
@@ -545,11 +513,11 @@ export async function generateAssistantReply(
   let inputCommitted = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
-  let requester = requesterFromContext(
+  const requester = requesterFromContext(
     context.requester,
     context.correlation?.requesterId,
   );
-  let actorRequester = actorRequesterFromContext(
+  const actorRequester = actorRequesterFromContext(
     context.requester,
     context.correlation?.requesterId,
   );
@@ -703,22 +671,6 @@ export async function generateAssistantReply(
     timeoutResumeSliceId = currentSliceId;
     canRecordMcpProviders = Boolean(
       turnSessionState.canUseTurnSession && sessionConversationId && sessionId,
-    );
-    // Complete identity from the durable session record so that a degraded
-    // Slack profile lookup in a resume invocation cannot strip fields that
-    // were successfully captured in the original turn. Normalize through
-    // actorRequesterFromContext so stored display fields pass the same
-    // cleanActorDisplayName / cleanActorEmail gates as the live context.
-    actorRequester = actorRequesterFromContext(
-      completeActorRequesterFromSession(
-        actorRequester,
-        existingSessionRecord?.requester,
-      ),
-      context.correlation?.requesterId,
-    );
-    requester = requesterFromContext(
-      actorRequester,
-      context.correlation?.requesterId,
     );
     const persistedConfigurationValues = context.channelConfiguration
       ? await context.channelConfiguration.resolveValues()

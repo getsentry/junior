@@ -43,7 +43,10 @@ import {
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
-import { lookupSlackActorIdentity } from "@/chat/slack/user";
+import {
+  lookupSlackActorIdentity,
+  lookupSlackResumeRequester,
+} from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -330,8 +333,9 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
-      const requester = await lookupSlackActorIdentity(
+      const requester = await lookupSlackResumeRequester(
         lockedUserMessage.author.userId,
+        lockedSessionRecord.requester,
       );
 
       return {
