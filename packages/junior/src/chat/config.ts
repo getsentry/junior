@@ -325,3 +325,24 @@ export function getRuntimeMetadata(): RuntimeMetadata {
     version: toOptionalTrimmed(process.env.VERCEL_GIT_COMMIT_SHA),
   };
 }
+
+/** Apply code-configured bot overrides from createApp() options, validating emoji names. */
+export function applyBotConfigOverrides(overrides: {
+  processingReactionEmoji?: string;
+  completedReactionEmoji?: string;
+}): void {
+  if (overrides.processingReactionEmoji !== undefined) {
+    botConfig.processingReactionEmoji = parseReactionEmoji(
+      "processingReactionEmoji option",
+      overrides.processingReactionEmoji,
+      botConfig.processingReactionEmoji,
+    );
+  }
+  if (overrides.completedReactionEmoji !== undefined) {
+    botConfig.completedReactionEmoji = parseReactionEmoji(
+      "completedReactionEmoji option",
+      overrides.completedReactionEmoji,
+      botConfig.completedReactionEmoji,
+    );
+  }
+}
