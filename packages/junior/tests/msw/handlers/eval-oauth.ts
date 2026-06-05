@@ -6,7 +6,24 @@ export const EVAL_OAUTH_ORIGIN = "https://example.com";
 const EVAL_OAUTH_TOKEN_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/token`;
 const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
 
-export function resetEvalOAuthMockState(): void {}
+interface QueuedEvalOAuthTokenResponse {
+  body: Record<string, unknown>;
+  status?: number;
+}
+
+const queuedTokenResponses: QueuedEvalOAuthTokenResponse[] = [];
+
+/** Queue the next eval OAuth token response returned by the MSW provider. */
+export function queueEvalOAuthTokenResponse(
+  response: QueuedEvalOAuthTokenResponse,
+): void {
+  queuedTokenResponses.push(response);
+}
+
+/** Reset queued eval OAuth provider responses between tests. */
+export function resetEvalOAuthMockState(): void {
+  queuedTokenResponses.length = 0;
+}
 
 export const evalOAuthHandlers = [
   http.post(EVAL_OAUTH_TOKEN_ENDPOINT, async ({ request }) => {
@@ -21,6 +38,12 @@ export const evalOAuthHandlers = [
         },
         { status: 400 },
       );
+    }
+    const queuedResponse = queuedTokenResponses.shift();
+    if (queuedResponse) {
+      return HttpResponse.json(queuedResponse.body, {
+        status: queuedResponse.status ?? 200,
+      });
     }
 
     return HttpResponse.json({

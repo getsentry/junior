@@ -22,9 +22,10 @@ const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule = typeof import("./oauth-callback-harness");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type UserTokenStoreModule = typeof import("@/chat/capabilities/factory");
 
-/** Starts the memory-backed Slack OAuth callback integration fixture. */
-export async function createOauthCallbackSlackFixture() {
+/** Starts the memory-backed OAuth callback route integration fixture. */
+export async function createOauthCallbackRouteFixture() {
   const generateAssistantReplyMock = vi.fn<ResumeReplyGenerator>();
   generateAssistantReplyMock.mockResolvedValue(
     successfulAssistantReply("Here are your Sentry issues."),
@@ -45,6 +46,8 @@ export async function createOauthCallbackSlackFixture() {
     await import("./oauth-callback-harness");
   const turnSessionStore: TurnSessionStoreModule =
     await import("@/chat/state/turn-session");
+  const userTokenStore: UserTokenStoreModule =
+    await import("@/chat/capabilities/factory");
   await stateAdapter.disconnectStateAdapter();
   await stateAdapter.getStateAdapter().connect();
 
@@ -63,6 +66,19 @@ export async function createOauthCallbackSlackFixture() {
         provider: args.provider ?? EVAL_OAUTH_PROVIDER,
         state: args.state,
         code: args.code ?? EVAL_OAUTH_CODE,
+        generateReply: generateAssistantReplyMock,
+      });
+    },
+
+    /** Runs an explicit OAuth callback URL through the real handler. */
+    async runCallbackUrl(args: {
+      provider?: string;
+      url: string;
+    }): Promise<Response> {
+      const provider = args.provider ?? EVAL_OAUTH_PROVIDER;
+      return await oauthCallbackHarness.runOauthCallbackRequest({
+        provider,
+        request: new Request(args.url, { method: "GET" }),
         generateReply: generateAssistantReplyMock,
       });
     },
@@ -109,6 +125,25 @@ export async function createOauthCallbackSlackFixture() {
         ...(destination ? { destination } : {}),
         ...overrides,
       });
+    },
+
+    /** Reads a raw OAuth state record from the memory adapter. */
+    async getOAuthState<T = unknown>(state: string): Promise<T | null> {
+      return await stateAdapter
+        .getStateAdapter()
+        .get<T>(`oauth-state:${state}`);
+    },
+
+    /** Reads the stored provider token for a fixture user. */
+    async getStoredToken(
+      args: {
+        provider?: string;
+        userId?: string;
+      } = {},
+    ) {
+      return await userTokenStore
+        .createUserTokenStore()
+        .get(args.userId ?? "U123", args.provider ?? EVAL_OAUTH_PROVIDER);
     },
 
     /** Disconnects memory state, plugin fixtures, and test environment. */

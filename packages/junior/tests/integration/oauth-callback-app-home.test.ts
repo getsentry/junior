@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EVAL_OAUTH_PROVIDER,
-  createOauthCallbackSlackFixture,
-} from "../fixtures/oauth-callback-slack";
+  createOauthCallbackRouteFixture,
+} from "../fixtures/oauth-callback-route";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
-let testbed: Awaited<ReturnType<typeof createOauthCallbackSlackFixture>>;
+let testbed: Awaited<ReturnType<typeof createOauthCallbackRouteFixture>>;
 
 describe("oauth callback app home", () => {
   beforeEach(async () => {
-    testbed = await createOauthCallbackSlackFixture();
+    testbed = await createOauthCallbackRouteFixture();
   }, 45_000);
 
   afterEach(async () => {

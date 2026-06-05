@@ -71,10 +71,13 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/mcp-auth-runtime-slack.ts` and split runtime coverage by
   mention resume, subscribed-thread parking, and direct-provider activation
   contracts.
-- Extracted generic OAuth Slack callback setup into
-  `tests/fixtures/oauth-callback-slack.ts` and split callback coverage by app
-  home publication, resume context, thread-lock freshness, and abandoned-session
-  guards.
+- Extracted generic OAuth callback setup into
+  `tests/fixtures/oauth-callback-route.ts` and split callback coverage by app
+  home publication, resume context, thread-lock freshness, and
+  abandoned-session guards.
+- Moved the broad mocked OAuth callback handler unit suite into real route
+  integration suites for guard HTML, provider errors, and token exchange, with
+  token request serialization kept as a small pure unit suite.
 - Moved timeout resume runner behavior out of a mocked handler unit suite and
   into component runtime suites backed by an explicit `resumeSlackTurn` test
   port.
@@ -185,6 +188,9 @@ Files:
 - `packages/junior/tests/integration/mcp-auth-runtime-subscribed-parking.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-direct-provider.test.ts`
 - `packages/junior/tests/integration/oauth-callback-app-home.test.ts`
+- `packages/junior/tests/integration/oauth-callback-route-guards.test.ts`
+- `packages/junior/tests/integration/oauth-callback-route-provider-errors.test.ts`
+- `packages/junior/tests/integration/oauth-callback-route-token.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-context.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-lock.test.ts`
 - `packages/junior/tests/integration/oauth-callback-resume-guards.test.ts`
