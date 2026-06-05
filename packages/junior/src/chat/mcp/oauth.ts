@@ -13,41 +13,67 @@ import {
 } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 
+interface McpOAuthServices {
+  getLatestMcpAuthSessionForUserProvider: typeof getLatestMcpAuthSessionForUserProvider;
+  getPluginDefinition: typeof getPluginDefinition;
+  newAuthSessionId: () => string;
+  putMcpAuthSession: typeof putMcpAuthSession;
+  resolveBaseUrl: typeof resolveBaseUrl;
+}
+
+const defaultMcpOAuthServices: McpOAuthServices = {
+  getLatestMcpAuthSessionForUserProvider,
+  getPluginDefinition,
+  newAuthSessionId: randomUUID,
+  putMcpAuthSession,
+  resolveBaseUrl,
+};
+
+/** Return the callback path registered for an MCP provider OAuth flow. */
 export function getMcpOAuthCallbackPath(provider: string): string {
   return `/api/oauth/callback/mcp/${provider}`;
 }
 
-function requirePluginWithMcp(provider: string): PluginDefinition {
-  const plugin = getPluginDefinition(provider);
+function requirePluginWithMcp(
+  provider: string,
+  services: {
+    getPluginDefinition: typeof getPluginDefinition;
+  } = defaultMcpOAuthServices,
+): PluginDefinition {
+  const plugin = services.getPluginDefinition(provider);
   if (!plugin?.manifest.mcp) {
     throw new Error(`Plugin "${provider}" does not support MCP`);
   }
   return plugin;
 }
 
-export async function createMcpOAuthClientProvider(input: {
-  provider: string;
-  conversationId: string;
-  destination?: Destination;
-  sessionId: string;
-  userId: string;
-  userMessage: string;
-  channelId?: string;
-  threadTs?: string;
-  toolChannelId?: string;
-  configuration?: Record<string, unknown>;
-  artifactState?: ThreadArtifactsState;
-}): Promise<StateBackedMcpOAuthClientProvider> {
-  requirePluginWithMcp(input.provider);
+/** Create the state-backed OAuth provider used by MCP clients during auth pause/resume. */
+export async function createMcpOAuthClientProvider(
+  input: {
+    provider: string;
+    conversationId: string;
+    destination?: Destination;
+    sessionId: string;
+    userId: string;
+    userMessage: string;
+    channelId?: string;
+    threadTs?: string;
+    toolChannelId?: string;
+    configuration?: Record<string, unknown>;
+    artifactState?: ThreadArtifactsState;
+  },
+  services: McpOAuthServices = defaultMcpOAuthServices,
+): Promise<StateBackedMcpOAuthClientProvider> {
+  requirePluginWithMcp(input.provider, services);
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = services.resolveBaseUrl();
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",
     );
   }
 
-  const existingSession = await getLatestMcpAuthSessionForUserProvider(
+  const existingSession = await services.getLatestMcpAuthSessionForUserProvider(
     input.userId,
     input.provider,
   );
@@ -58,9 +84,10 @@ export async function createMcpOAuthClientProvider(input: {
       ? existingSession
       : undefined;
   const now = Date.now();
-  const authSessionId = reusableSession?.authSessionId ?? randomUUID();
+  const authSessionId =
+    reusableSession?.authSessionId ?? services.newAuthSessionId();
 
-  await putMcpAuthSession({
+  await services.putMcpAuthSession({
     authSessionId,
     provider: input.provider,
     userId: input.userId,
@@ -102,6 +129,7 @@ export async function createMcpOAuthClientProvider(input: {
   );
 }
 
+/** Finish the MCP OAuth code exchange and return the updated auth session. */
 export async function finalizeMcpAuthorization(
   provider: string,
   authSessionId: string,

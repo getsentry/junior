@@ -1,50 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const {
-  deleteMcpServerSessionIdMock,
-  getMcpAuthSessionMock,
-  getMcpServerSessionIdMock,
-  getMcpStoredOAuthCredentialsMock,
-  patchMcpAuthSessionMock,
-  putMcpServerSessionIdMock,
-  putMcpAuthSessionMock,
-  putMcpStoredOAuthCredentialsMock,
-} = vi.hoisted(() => ({
-  deleteMcpServerSessionIdMock: vi.fn(),
-  getMcpAuthSessionMock: vi.fn(),
-  getMcpServerSessionIdMock: vi.fn(),
-  getMcpStoredOAuthCredentialsMock: vi.fn(),
-  patchMcpAuthSessionMock: vi.fn(),
-  putMcpServerSessionIdMock: vi.fn(),
-  putMcpAuthSessionMock: vi.fn(),
-  putMcpStoredOAuthCredentialsMock: vi.fn(),
-}));
-
-vi.mock("@/chat/mcp/auth-store", () => ({
-  deleteMcpServerSessionId: deleteMcpServerSessionIdMock,
-  getMcpAuthSession: getMcpAuthSessionMock,
-  getMcpServerSessionId: getMcpServerSessionIdMock,
-  getMcpStoredOAuthCredentials: getMcpStoredOAuthCredentialsMock,
-  patchMcpAuthSession: patchMcpAuthSessionMock,
-  putMcpServerSessionId: putMcpServerSessionIdMock,
-  putMcpAuthSession: putMcpAuthSessionMock,
-  putMcpStoredOAuthCredentials: putMcpStoredOAuthCredentialsMock,
-}));
-
 import { StateBackedMcpOAuthClientProvider } from "@/chat/mcp/oauth-provider";
 
-describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
-  beforeEach(() => {
-    deleteMcpServerSessionIdMock.mockReset();
-    getMcpAuthSessionMock.mockReset();
-    getMcpServerSessionIdMock.mockReset();
-    getMcpStoredOAuthCredentialsMock.mockReset();
-    patchMcpAuthSessionMock.mockReset();
-    putMcpServerSessionIdMock.mockReset();
-    putMcpAuthSessionMock.mockReset();
-    putMcpStoredOAuthCredentialsMock.mockReset();
+type ProviderSessionContext = ConstructorParameters<
+  typeof StateBackedMcpOAuthClientProvider
+>[2];
+type ProviderServices = NonNullable<
+  ConstructorParameters<typeof StateBackedMcpOAuthClientProvider>[3]
+>;
 
-    getMcpAuthSessionMock.mockResolvedValue({
+describe("StateBackedMcpOAuthClientProvider credential state", () => {
+  const services = {
+    deleteMcpServerSessionId: vi.fn(),
+    getMcpAuthSession: vi.fn(),
+    getMcpServerSessionId: vi.fn(),
+    getMcpStoredOAuthCredentials: vi.fn(),
+    patchMcpAuthSession: vi.fn(),
+    putMcpAuthSession: vi.fn(),
+    putMcpServerSessionId: vi.fn(),
+    putMcpStoredOAuthCredentials: vi.fn(),
+  } satisfies ProviderServices;
+
+  function createProvider(sessionContext?: ProviderSessionContext) {
+    return new StateBackedMcpOAuthClientProvider(
+      "auth-session-1",
+      "https://junior.example.com/callback",
+      sessionContext,
+      services,
+    );
+  }
+
+  beforeEach(() => {
+    services.deleteMcpServerSessionId.mockReset();
+    services.getMcpAuthSession.mockReset();
+    services.getMcpServerSessionId.mockReset();
+    services.getMcpStoredOAuthCredentials.mockReset();
+    services.patchMcpAuthSession.mockReset();
+    services.putMcpAuthSession.mockReset();
+    services.putMcpServerSessionId.mockReset();
+    services.putMcpStoredOAuthCredentials.mockReset();
+
+    services.getMcpAuthSession.mockResolvedValue({
       authSessionId: "auth-session-1",
       provider: "demo",
       userId: "U123",
@@ -56,7 +51,7 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
       createdAtMs: 1,
       updatedAtMs: 1,
     });
-    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+    services.getMcpStoredOAuthCredentials.mockResolvedValue({
       clientInformation: { client_id: "client-1" },
       discoveryState: { authorization_server: "https://example.com" },
       tokens: {
@@ -64,23 +59,20 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
         token_type: "Bearer",
       },
     });
-    deleteMcpServerSessionIdMock.mockResolvedValue(undefined);
-    getMcpServerSessionIdMock.mockResolvedValue(undefined);
-    putMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
-    putMcpServerSessionIdMock.mockResolvedValue(undefined);
-    putMcpAuthSessionMock.mockResolvedValue(undefined);
-    patchMcpAuthSessionMock.mockResolvedValue(undefined);
+    services.deleteMcpServerSessionId.mockResolvedValue(undefined);
+    services.getMcpServerSessionId.mockResolvedValue(undefined);
+    services.putMcpStoredOAuthCredentials.mockResolvedValue(undefined);
+    services.putMcpServerSessionId.mockResolvedValue(undefined);
+    services.putMcpAuthSession.mockResolvedValue(undefined);
+    services.patchMcpAuthSession.mockResolvedValue(undefined);
   });
 
   it("preserves the authorization URL when only clearing the verifier", async () => {
-    const provider = new StateBackedMcpOAuthClientProvider(
-      "auth-session-1",
-      "https://junior.example.com/callback",
-    );
+    const provider = createProvider();
 
     await provider.invalidateCredentials("verifier");
 
-    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+    expect(services.putMcpStoredOAuthCredentials).toHaveBeenCalledWith(
       "U123",
       "demo",
       {
@@ -92,76 +84,71 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
         },
       },
     );
-    expect(patchMcpAuthSessionMock).toHaveBeenCalledWith("auth-session-1", {
-      codeVerifier: undefined,
-    });
+    expect(services.patchMcpAuthSession).toHaveBeenCalledWith(
+      "auth-session-1",
+      {
+        codeVerifier: undefined,
+      },
+    );
   });
 
   it("clears the authorization URL when invalidating all credentials", async () => {
-    const provider = new StateBackedMcpOAuthClientProvider(
-      "auth-session-1",
-      "https://junior.example.com/callback",
-    );
+    const provider = createProvider();
 
     await provider.invalidateCredentials("all");
 
-    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+    expect(services.putMcpStoredOAuthCredentials).toHaveBeenCalledWith(
       "U123",
       "demo",
       {},
     );
-    expect(patchMcpAuthSessionMock).toHaveBeenCalledWith("auth-session-1", {
-      codeVerifier: undefined,
-      authorizationUrl: undefined,
-    });
+    expect(services.patchMcpAuthSession).toHaveBeenCalledWith(
+      "auth-session-1",
+      {
+        codeVerifier: undefined,
+        authorizationUrl: undefined,
+      },
+    );
   });
 
   it("reads stored credentials without requiring a persisted auth session", async () => {
-    getMcpAuthSessionMock.mockResolvedValue(undefined);
+    services.getMcpAuthSession.mockResolvedValue(undefined);
 
-    const provider = new StateBackedMcpOAuthClientProvider(
-      "auth-session-1",
-      "https://junior.example.com/callback",
-      {
-        provider: "demo",
-        userId: "U123",
-        conversationId: "conversation-1",
-        sessionId: "turn-1",
-        userMessage: "/demo",
-      },
-    );
+    const provider = createProvider({
+      provider: "demo",
+      userId: "U123",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userMessage: "/demo",
+    });
 
     await expect(provider.tokens()).resolves.toEqual({
       access_token: "access",
       token_type: "Bearer",
     });
-    expect(getMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+    expect(services.getMcpStoredOAuthCredentials).toHaveBeenCalledWith(
       "U123",
       "demo",
     );
   });
 
   it("creates the auth session lazily when redirecting to authorization", async () => {
-    getMcpAuthSessionMock.mockResolvedValue(undefined);
+    services.getMcpAuthSession.mockResolvedValue(undefined);
 
-    const provider = new StateBackedMcpOAuthClientProvider(
-      "auth-session-1",
-      "https://junior.example.com/callback",
-      {
-        provider: "demo",
-        userId: "U123",
-        conversationId: "conversation-1",
-        sessionId: "turn-1",
-        userMessage: "/demo",
-        channelId: "C123",
-      },
-    );
+    const provider = createProvider({
+      provider: "demo",
+      userId: "U123",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userMessage: "/demo",
+      channelId: "C123",
+    });
 
     await provider.redirectToAuthorization(
       new URL("https://example.com/oauth/start"),
     );
 
-    expect(putMcpAuthSessionMock).toHaveBeenCalledWith(
+    expect(services.putMcpAuthSession).toHaveBeenCalledWith(
       expect.objectContaining({
         authSessionId: "auth-session-1",
         provider: "demo",
@@ -173,30 +160,26 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
         authorizationUrl: "https://example.com/oauth/start",
       }),
     );
-    expect(patchMcpAuthSessionMock).not.toHaveBeenCalled();
+    expect(services.patchMcpAuthSession).not.toHaveBeenCalled();
   });
 
   it("stores the opaque MCP server session outside agent-visible state", async () => {
-    const provider = new StateBackedMcpOAuthClientProvider(
-      "auth-session-1",
-      "https://junior.example.com/callback",
-      {
-        provider: "demo",
-        userId: "U123",
-        conversationId: "conversation-1",
-        sessionId: "turn-1",
-        userMessage: "/demo",
-      },
-    );
+    const provider = createProvider({
+      provider: "demo",
+      userId: "U123",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userMessage: "/demo",
+    });
 
     await provider.saveMcpServerSessionId("mcp-session-123");
 
-    expect(putMcpServerSessionIdMock).toHaveBeenCalledWith(
+    expect(services.putMcpServerSessionId).toHaveBeenCalledWith(
       "U123",
       "demo",
       "mcp-session-123",
     );
     await expect(provider.getMcpServerSessionId()).resolves.toBeUndefined();
-    expect(getMcpServerSessionIdMock).toHaveBeenCalledWith("U123", "demo");
+    expect(services.getMcpServerSessionId).toHaveBeenCalledWith("U123", "demo");
   });
 });

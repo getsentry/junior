@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  getLatestMcpAuthSessionForUserProvider,
+  getMcpAuthSession,
+  patchMcpAuthSession,
+  putMcpAuthSession,
+} from "@/chat/mcp/auth-store";
+import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
+import type { PluginDefinition } from "@/chat/plugins/types";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -7,7 +16,11 @@ const SLACK_DESTINATION = {
   channelId: "C123",
 } as const;
 
-function buildPlugin() {
+type McpOAuthServices = NonNullable<
+  Parameters<typeof createMcpOAuthClientProvider>[1]
+>;
+
+function buildPlugin(): PluginDefinition {
   return {
     dir: "/tmp/plugins/demo",
     skillsDir: "/tmp/plugins/demo/skills",
@@ -25,47 +38,44 @@ function buildPlugin() {
   };
 }
 
-describe("createMcpOAuthClientProvider", () => {
+const mcpOAuthServices = {
+  getLatestMcpAuthSessionForUserProvider,
+  getPluginDefinition: (provider: string) =>
+    provider === "demo" ? buildPlugin() : undefined,
+  newAuthSessionId: () => "demo-auth-session",
+  putMcpAuthSession,
+  resolveBaseUrl: () => "https://junior.example.com",
+} satisfies McpOAuthServices;
+
+describe("MCP OAuth client provider session state", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
-      JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_STATE_ADAPTER: "memory",
     };
-    vi.resetModules();
-    vi.doMock("@/chat/plugins/registry", () => ({
-      getPluginDefinition: (provider: string) =>
-        provider === "demo" ? buildPlugin() : undefined,
-    }));
-
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    vi.doUnmock("@/chat/plugins/registry");
-    vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });
 
   it("persists and reuses the pending auth session for the same turn", async () => {
-    const { getMcpAuthSession, patchMcpAuthSession } =
-      await import("@/chat/mcp/auth-store");
-    const { createMcpOAuthClientProvider } = await import("@/chat/mcp/oauth");
-
-    const firstProvider = await createMcpOAuthClientProvider({
-      provider: "demo",
-      conversationId: "conversation-1",
-      destination: SLACK_DESTINATION,
-      sessionId: "turn-1",
-      userId: "U123",
-      userMessage: "use /demo",
-      channelId: "C123",
-      threadTs: "1712345.0001",
-      configuration: { region: "us" },
-    });
+    const firstProvider = await createMcpOAuthClientProvider(
+      {
+        provider: "demo",
+        conversationId: "conversation-1",
+        destination: SLACK_DESTINATION,
+        sessionId: "turn-1",
+        userId: "U123",
+        userMessage: "use /demo",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        configuration: { region: "us" },
+      },
+      mcpOAuthServices,
+    );
 
     const initialSession = await getMcpAuthSession(firstProvider.authSessionId);
     expect(initialSession).toMatchObject({
@@ -86,19 +96,22 @@ describe("createMcpOAuthClientProvider", () => {
       codeVerifier: "code-verifier",
     });
 
-    const reusedProvider = await createMcpOAuthClientProvider({
-      provider: "demo",
-      conversationId: "conversation-1",
-      destination: SLACK_DESTINATION,
-      sessionId: "turn-1",
-      userId: "U123",
-      userMessage: "use /demo",
-      channelId: "C123",
-      threadTs: "1712345.0001",
-      toolChannelId: "C999",
-      configuration: { region: "eu" },
-      artifactState: { assistantContextChannelId: "C999" },
-    });
+    const reusedProvider = await createMcpOAuthClientProvider(
+      {
+        provider: "demo",
+        conversationId: "conversation-1",
+        destination: SLACK_DESTINATION,
+        sessionId: "turn-1",
+        userId: "U123",
+        userMessage: "use /demo",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        toolChannelId: "C999",
+        configuration: { region: "eu" },
+        artifactState: { assistantContextChannelId: "C999" },
+      },
+      mcpOAuthServices,
+    );
 
     expect(reusedProvider.authSessionId).toBe(firstProvider.authSessionId);
 
