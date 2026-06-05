@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPluginAppFixture } from "../fixtures/plugin-app";
+import { createPluginAppFixture } from "../../fixtures/plugin-app";
 
 const originalCwd = process.cwd();
 

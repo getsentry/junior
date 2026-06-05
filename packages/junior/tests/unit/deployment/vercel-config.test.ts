@@ -2,12 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
-import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-const WORKSPACE_ROOT = path.resolve(TEST_DIR, "../../../..");
+const WORKSPACE_ROOT = path.resolve(TEST_DIR, "../../../../..");
 
 describe("juniorVercelConfig", () => {
   it("returns config with default buildCommand", () => {
@@ -49,19 +47,5 @@ describe("juniorVercelConfig", () => {
     const config = juniorVercelConfig();
 
     expect(config.functions).toBeUndefined();
-  });
-});
-
-describe("resolveConversationWorkVisibilityTimeoutSeconds", () => {
-  it("keeps queue redelivery past the function timeout boundary", () => {
-    expect(resolveConversationWorkVisibilityTimeoutSeconds(300)).toBe(330);
-  });
-});
-
-describe("resolveConversationWorkQueueTopic", () => {
-  it("normalizes explicit queue topics", () => {
-    expect(resolveConversationWorkQueueTopic({ topic: " local_work " })).toBe(
-      "local_work",
-    );
   });
 });

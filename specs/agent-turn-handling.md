@@ -193,7 +193,7 @@ Representative current coverage includes:
 - `packages/junior/tests/unit/slack/chat-ingress-bindings.test.ts`
 - `packages/junior/tests/unit/slack/slack-runtime.test.ts`
 - `packages/junior/tests/unit/routing/subscribed-decision.test.ts`
-- `packages/junior/tests/unit/turn-result.test.ts`
+- `packages/junior/tests/unit/services/turn-result.test.ts`
 - `packages/junior/tests/integration/slack/new-mention-behavior.test.ts`
 - `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`
 - `packages/junior/tests/integration/slack/runtime-turn-behavior.test.ts`
