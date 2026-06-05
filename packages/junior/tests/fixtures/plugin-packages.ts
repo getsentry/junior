@@ -18,12 +18,11 @@ export interface PluginPackageAppFixture {
   tempRoot: string;
 }
 
-/** Reset registry module state and process cwd after package-discovery tests. */
+/** Reset registry module state and process cwd after plugin package tests. */
 export function resetPluginPackageRegistryState(): void {
   configuredPackageNames = [];
   process.chdir(originalCwd);
   vi.resetModules();
-  vi.doUnmock("@/chat/discovery");
 }
 
 /** Configure the package list through the production registry config surface. */
@@ -60,6 +59,7 @@ export async function createPluginPackageApp(
   const tempRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "junior-plugin-package-"),
   );
+  await fs.mkdir(path.join(tempRoot, "app", "plugins"), { recursive: true });
   for (const plugin of plugins) {
     await writePackagedPlugin(tempRoot, plugin);
   }
@@ -77,10 +77,6 @@ export async function createPluginPackageApp(
   process.chdir(tempRoot);
 
   vi.resetModules();
-  vi.doMock("@/chat/discovery", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@/chat/discovery")>()),
-    pluginRoots: () => [],
-  }));
 
   await setPluginPackages(
     plugins.map((plugin) => `@acme/${plugin.packageName}`),
@@ -89,6 +85,14 @@ export async function createPluginPackageApp(
     tempRoot,
     resolvedTempRoot: await fs.realpath(tempRoot),
   };
+}
+
+/** Install another temp plugin package in an existing package-app fixture. */
+export async function installPackagedPlugin(
+  app: PluginPackageAppFixture,
+  plugin: PackagedPluginFixture,
+): Promise<void> {
+  await writePackagedPlugin(app.tempRoot, plugin);
 }
 
 /** Build the expected skill root path for an installed temp plugin package. */
