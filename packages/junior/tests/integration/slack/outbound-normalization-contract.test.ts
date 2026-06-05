@@ -7,6 +7,7 @@ import {
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import {
   addReactionToMessage,
+  postSlackEphemeralMessage,
   postSlackMessage,
   uploadFilesToThread,
 } from "@/chat/slack/outbound";
@@ -184,5 +185,17 @@ describe("Slack contract: outbound normalization", () => {
         }),
       }),
     ]);
+  });
+
+  it("rejects synthetic unknown users before chat.postEphemeral", async () => {
+    await expect(
+      postSlackEphemeralMessage({
+        channelId: "slack:C123",
+        userId: "unknown",
+        text: "hello",
+      }),
+    ).rejects.toThrow("Slack ephemeral message posting requires a user ID");
+
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
   });
 });

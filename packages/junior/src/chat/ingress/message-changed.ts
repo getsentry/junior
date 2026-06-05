@@ -1,4 +1,5 @@
 import { Message, type Adapter, type Attachment } from "chat";
+import { normalizeActorUserId } from "@/chat/services/requester-identity";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly
@@ -130,7 +131,7 @@ export function extractMessageChangedMention(
   const channelId = event.channel;
   const messageTs = event.message.ts;
   const threadTs = event.message.thread_ts ?? messageTs;
-  const userId = event.message.user?.trim();
+  const userId = normalizeActorUserId(event.message.user);
   if (!userId) return null;
   const threadId = `slack:${channelId}:${threadTs}`;
   const teamId = typeof body.team_id === "string" ? body.team_id : undefined;

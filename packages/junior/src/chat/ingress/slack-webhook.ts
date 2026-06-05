@@ -27,7 +27,10 @@ import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { normalizeActorIdentity } from "@/chat/services/requester-identity";
+import {
+  normalizeActorIdentity,
+  normalizeActorUserId,
+} from "@/chat/services/requester-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -417,8 +420,8 @@ function requireSlackPayloadUserId(
   value: string | null | undefined,
   source: string,
 ): string {
-  const userId = value?.trim();
-  if (!userId || userId.toLowerCase() === "unknown") {
+  const userId = normalizeActorUserId(value ?? undefined);
+  if (!userId) {
     throw new Error(`${source} is missing a Slack user id`);
   }
   return userId;
@@ -487,10 +490,13 @@ async function handleInteractivePayload(args: {
     (candidate) => candidate.action_id === "app_home_disconnect",
   );
   const provider = action?.selected_option?.value ?? action?.value;
-  const userId = args.payload.user?.id;
-  if (!provider || !userId) {
+  if (!provider) {
     return;
   }
+  const userId = requireSlackPayloadUserId(
+    args.payload.user?.id,
+    "Slack app home disconnect payload",
+  );
 
   await withSpan(
     "chat.app_home_disconnect",

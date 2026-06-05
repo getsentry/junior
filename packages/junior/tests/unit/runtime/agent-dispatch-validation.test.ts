@@ -107,6 +107,58 @@ describe("agent dispatch validation", () => {
     ).not.toThrow();
   });
 
+  it("rejects delegated credential subjects without real actor ids", async () => {
+    expect(
+      createSlackDirectCredentialSubject({
+        channelId: "D123",
+        teamId: "T123",
+        userId: "unknown",
+      }),
+    ).toBeUndefined();
+    process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+
+    const unboundSubject = {
+      type: "user" as const,
+      userId: "unknown",
+      allowedWhen: "private-direct-conversation" as const,
+    };
+
+    expect(
+      bindSlackDirectCredentialSubject({
+        channelId: "D123",
+        teamId: "T123",
+        subject: unboundSubject,
+      }),
+    ).toBeUndefined();
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        destination: {
+          ...validOptions.destination,
+          channelId: "D123",
+        },
+        credentialSubject: unboundSubject,
+      }),
+    ).toThrow("Dispatch credentialSubject userId is required");
+
+    await expect(
+      verifyDispatchCredentialSubjectAccess({
+        ...validOptions,
+        destination: {
+          ...validOptions.destination,
+          channelId: "D123",
+        },
+        credentialSubject: {
+          ...createBoundCredentialSubject(),
+          userId: "unknown",
+        },
+      }),
+    ).rejects.toThrow(
+      "Dispatch credentialSubject must match the private direct Slack destination",
+    );
+  });
+
   it("verifies delegated credential subject bindings locally", async () => {
     await expect(
       verifyDispatchCredentialSubjectAccess({

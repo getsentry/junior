@@ -62,6 +62,23 @@ describe("conversation message actor identity", () => {
     });
   });
 
+  it("does not persist unbound adapter display fields as actor identity", () => {
+    const message = createMessage();
+    message.author.userName = "dcramer";
+    message.author.fullName = "David Cramer";
+
+    expect(
+      toConversationMessage({
+        entry: message,
+        explicitMention: true,
+        text: "hello",
+      }).author,
+    ).toEqual({
+      isBot: false,
+      userId: "U039RR91S",
+    });
+  });
+
   it("binds resolved identity when the adapter supplied unknown", () => {
     const message = createMessage("unknown");
     bindMessageActorIdentity(message, {

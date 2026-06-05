@@ -19,7 +19,10 @@ function clean(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
-function cleanActorUserId(value: string | undefined): string | undefined {
+/** Normalize a platform actor id, rejecting synthetic sentinel values. */
+export function normalizeActorUserId(
+  value: string | undefined,
+): string | undefined {
   const normalized = clean(value);
   return normalized && normalized.toLowerCase() !== "unknown"
     ? normalized
@@ -57,8 +60,8 @@ export function normalizeActorIdentity(
   requester: ActorIdentityInput | undefined,
   requesterId?: string,
 ): ActorIdentityInput | undefined {
-  const contextUserId = cleanActorUserId(requesterId);
-  const requesterUserId = cleanActorUserId(requester?.userId);
+  const contextUserId = normalizeActorUserId(requesterId);
+  const requesterUserId = normalizeActorUserId(requester?.userId);
   const userId = contextUserId ?? requesterUserId;
   const canUseRequesterIdentity =
     !contextUserId || !requesterUserId || contextUserId === requesterUserId;
@@ -85,7 +88,7 @@ export function slackActorIdentity(
   userId: string,
   profile: SlackActorProfile | null | undefined,
 ): ActorIdentityInput {
-  const actorUserId = cleanActorUserId(userId);
+  const actorUserId = normalizeActorUserId(userId);
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
   }

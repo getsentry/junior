@@ -1,4 +1,5 @@
 import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+import { normalizeActorUserId } from "@/chat/services/requester-identity";
 
 export interface CredentialSubjectBinding {
   type: "slack-direct-conversation";
@@ -72,20 +73,24 @@ export function parseCredentialContext(
 
 function parseActor(value: unknown): CredentialContext["actor"] | undefined {
   if (value && typeof value === "object") {
-    const record = value as Partial<CredentialContext["actor"]>;
-    if (
-      record.type === "user" &&
-      typeof record.userId === "string" &&
-      record.userId
-    ) {
-      return { type: "user", userId: record.userId };
+    const record = value as {
+      id?: unknown;
+      type?: unknown;
+      userId?: unknown;
+    };
+    const userId = normalizeActorUserId(
+      typeof record.userId === "string" ? record.userId : undefined,
+    );
+    if (record.type === "user" && userId) {
+      return { type: "user", userId };
     }
-    if (
-      record.type === "system" &&
+    const systemId =
       typeof record.id === "string" &&
-      record.id
-    ) {
-      return { type: "system", id: record.id };
+      record.id.trim().toLowerCase() !== "unknown"
+        ? record.id.trim()
+        : undefined;
+    if (record.type === "system" && systemId) {
+      return { type: "system", id: systemId };
     }
   }
   return undefined;
@@ -96,10 +101,12 @@ function parseSubject(
 ): NonNullable<CredentialContext["subject"]> | undefined {
   if (value && typeof value === "object") {
     const record = value as Partial<NonNullable<CredentialContext["subject"]>>;
+    const userId = normalizeActorUserId(
+      typeof record.userId === "string" ? record.userId : undefined,
+    );
     if (
       record.type === "user" &&
-      typeof record.userId === "string" &&
-      record.userId &&
+      userId &&
       record.allowedWhen === "private-direct-conversation"
     ) {
       if (!record.binding || typeof record.binding !== "object") {
@@ -119,7 +126,7 @@ function parseSubject(
       }
       return {
         type: "user",
-        userId: record.userId,
+        userId,
         allowedWhen: "private-direct-conversation",
         binding: {
           type: "slack-direct-conversation",

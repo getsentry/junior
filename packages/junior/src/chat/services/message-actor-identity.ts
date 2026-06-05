@@ -1,6 +1,7 @@
 import type { Author, Message } from "chat";
 import {
   normalizeActorIdentity,
+  normalizeActorUserId,
   slackActorIdentity,
   type ActorIdentityInput,
   type SlackActorProfile,
@@ -8,16 +9,9 @@ import {
 
 const messageActors = new WeakMap<Message, ActorIdentityInput>();
 
-function cleanUserId(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized && normalized.toLowerCase() !== "unknown"
-    ? normalized
-    : undefined;
-}
-
 function canonicalUserId(author: Author, identity: ActorIdentityInput): string {
-  const authorUserId = cleanUserId(author.userId);
-  const identityUserId = cleanUserId(identity.userId);
+  const authorUserId = normalizeActorUserId(author.userId);
+  const identityUserId = normalizeActorUserId(identity.userId);
   if (authorUserId && identityUserId && authorUserId !== identityUserId) {
     throw new Error("Message actor identity user id mismatch");
   }
@@ -31,14 +25,8 @@ function canonicalUserId(author: Author, identity: ActorIdentityInput): string {
 function actorIdentityFromAuthor(
   author: Author,
 ): ActorIdentityInput | undefined {
-  return normalizeActorIdentity(
-    {
-      fullName: author.fullName,
-      userId: cleanUserId(author.userId),
-      userName: author.userName,
-    },
-    cleanUserId(author.userId),
-  );
+  const userId = normalizeActorUserId(author.userId);
+  return userId ? { userId } : undefined;
 }
 
 function applyIdentityToAuthor(
@@ -86,7 +74,7 @@ export async function ensureSlackMessageActorIdentity(
   if (existing) {
     return existing;
   }
-  const userId = cleanUserId(message.author.userId);
+  const userId = normalizeActorUserId(message.author.userId);
   if (!userId) {
     throw new Error("Slack message actor identity requires a user id");
   }

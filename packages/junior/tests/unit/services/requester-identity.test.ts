@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeActorUserId,
   normalizeActorIdentity,
   slackActorIdentity,
 } from "@/chat/services/requester-identity";
 
 describe("requester identity", () => {
+  it("normalizes actor user ids without preserving synthetic unknown", () => {
+    expect(normalizeActorUserId(" U039RR91S ")).toBe("U039RR91S");
+    expect(normalizeActorUserId("unknown")).toBeUndefined();
+    expect(normalizeActorUserId("")).toBeUndefined();
+  });
+
   it("does not promote Slack ids into actor display names", () => {
     expect(
       normalizeActorIdentity(

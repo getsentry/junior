@@ -241,4 +241,44 @@ describe("Slack webhook: App Home events", () => {
     expect(workspaceTeamIds).toEqual(["T123"]);
     expect(slackApiOutbox.homeViews()).toHaveLength(1);
   });
+
+  it("does not unlink App Home credentials for synthetic unknown users", async () => {
+    const state = createMemoryState();
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+    const queue = createConversationWorkQueueTestAdapter();
+    const deleteToken = vi.fn(async () => {});
+    const userTokenStore = createTokenStore({ delete: deleteToken });
+    const slackAdapter = createSlackAdapter();
+    const params = new URLSearchParams({
+      payload: JSON.stringify({
+        ...interactiveDisconnectPayload(),
+        user: {
+          id: "unknown",
+          team_id: "T123",
+        },
+      }),
+    });
+
+    const response = await handleSlackWebhook({
+      request: client.form(params),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+        getUserTokenStore: () => userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(queue.sentRecords()).toEqual([]);
+    expect(waitUntil.pendingCount()).toBe(1);
+    await waitUntil.flush();
+    expect(deleteToken).not.toHaveBeenCalled();
+    expect(slackApiOutbox.homeViews()).toHaveLength(0);
+  });
 });

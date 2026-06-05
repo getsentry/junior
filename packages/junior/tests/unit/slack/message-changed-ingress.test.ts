@@ -123,6 +123,18 @@ describe("extractMessageChangedMention", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null when the edited message has a synthetic unknown actor id", () => {
+    const body = makeEnvelope({
+      newText: `<@${BOT_USER_ID}> please help`,
+      prevText: "please help",
+      user: "unknown",
+    });
+
+    const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
+
+    expect(result).toBeNull();
+  });
+
   it("uses message ts as thread_ts fallback when thread_ts is absent", () => {
     const body = {
       type: "event_callback",
