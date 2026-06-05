@@ -4,6 +4,7 @@ import {
   slackActorIdentity,
   type ActorIdentityInput,
 } from "@/chat/services/requester-identity";
+import type { AgentTurnRequester } from "@/chat/state/turn-session";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -137,11 +138,7 @@ export async function lookupSlackActorIdentity(
  */
 export function resolveSlackResumeRequester(
   userId: string,
-  stored: {
-    slackUserName?: string;
-    fullName?: string;
-    email?: string;
-  } | undefined,
+  stored: AgentTurnRequester | undefined,
 ): ActorIdentityInput {
   return slackActorIdentity(userId, stored && {
     email: stored.email,

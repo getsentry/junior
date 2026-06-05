@@ -1,30 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/chat/config", () => ({
-  getSlackBotToken: () => "test-token",
-}));
+import { describe, expect, it } from "vitest";
 
 import { resolveSlackResumeRequester } from "@/chat/slack/user";
 
 describe("resolveSlackResumeRequester", () => {
-  it("builds identity from stored session requester without a Slack API call", () => {
-    vi.stubGlobal("fetch", vi.fn());
-
+  it("builds full identity from a stored session requester", () => {
     const result = resolveSlackResumeRequester("U123", {
+      slackUserId: "U123",
       slackUserName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
 
-    expect(fetch).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       userId: "U123",
       userName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
-
-    vi.unstubAllGlobals();
   });
 
   it("returns actor id only when no stored requester is present", () => {
@@ -38,6 +30,7 @@ describe("resolveSlackResumeRequester", () => {
 
   it("returns partial identity when stored requester has only some fields", () => {
     const result = resolveSlackResumeRequester("U789", {
+      slackUserId: "U789",
       email: "bob@sentry.io",
     });
 
