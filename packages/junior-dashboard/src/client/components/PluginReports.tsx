@@ -20,7 +20,7 @@ export function PluginReports(props: {
         <SectionHeader>
           <SectionTitle>Plugin Reports</SectionTitle>
         </SectionHeader>
-        <div className="px-4 pb-4 text-[0.84rem] leading-relaxed text-[#888]">
+        <div className="px-4 py-4 text-[0.84rem] leading-relaxed text-[#888]">
           {props.emptyText}
         </div>
       </Section>

@@ -634,7 +634,7 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain(">Plugins<");
     expect(html).toContain("github");
-    expect(html).toContain("No trusted plugin stats have been reported yet.");
+    expect(html).toContain("No plugins have been reported yet.");
   });
 
   it("shows plugin reports as loading before the report query returns", () => {
@@ -653,9 +653,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">...<");
     expect(html).toContain(">loading<");
     expect(html).not.toContain(">none<");
-    expect(html).not.toContain(
-      "No trusted plugin stats have been reported yet.",
-    );
+    expect(html).not.toContain("No plugins have been reported yet.");
   });
 
   it("shows plugin report failures without looking empty", () => {
@@ -669,9 +667,7 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain("Trusted plugin stats failed to load.");
-    expect(html).not.toContain(
-      "No trusted plugin stats have been reported yet.",
-    );
+    expect(html).not.toContain("No plugins have been reported yet.");
   });
 
   it("shows plugin report failures while keeping stale reports visible", () => {

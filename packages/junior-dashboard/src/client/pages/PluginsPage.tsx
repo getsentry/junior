@@ -31,7 +31,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
     ? undefined
     : reportsLoading
       ? "Loading trusted plugin stats."
-      : "No trusted plugin stats have been reported yet.";
+      : "No plugins have been reported yet.";
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
