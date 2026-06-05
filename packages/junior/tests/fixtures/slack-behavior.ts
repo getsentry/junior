@@ -44,6 +44,18 @@ export function postedText(value: unknown): string {
   return String(value);
 }
 
+/** Read persisted conversation messages from a fake Slack thread state. */
+export function conversationMessages(thread: {
+  getState: () => Record<string, unknown>;
+}): Array<{ id?: string; text?: string }> {
+  const state = thread.getState() as {
+    conversation?: {
+      messages?: Array<{ id?: string; text?: string }>;
+    };
+  };
+  return state.conversation?.messages ?? [];
+}
+
 /** Check whether any fake Slack post contains the expected visible text. */
 export function threadHasPostText(
   thread: { posts: unknown[] },

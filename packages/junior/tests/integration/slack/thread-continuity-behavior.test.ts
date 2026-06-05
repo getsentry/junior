@@ -16,7 +16,7 @@ describe("Slack behavior: thread continuity", () => {
       "Rollback complete. Error rates are back to baseline.",
       "Next step: monitor dashboards for 30 minutes.",
     ];
-    const prompts: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -33,10 +33,10 @@ describe("Slack behavior: thread continuity", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            prompts.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply(
-              scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply",
+              scriptedReplies[replyCallCount - 1] ?? "Unexpected extra reply",
             );
           },
         },
@@ -66,7 +66,7 @@ describe("Slack behavior: thread continuity", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(prompts).toHaveLength(2);
+    expect(replyCallCount).toBe(2);
     expect(thread.posts).toHaveLength(2);
     expect(postedText(thread.posts[0])).toContain("Rollback complete");
     expect(postedText(thread.posts[1])).toContain(

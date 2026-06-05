@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProviderError } from "@/chat/services/provider-retry";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
+  conversationMessages,
   createSlackBehaviorRuntime,
   postedText,
 } from "../../fixtures/slack-behavior";
@@ -91,7 +92,7 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("replies when classifier approves a subscribed-thread message", async () => {
     const classifierCalls: string[] = [];
-    const replyCalls: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -109,8 +110,8 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            replyCalls.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply(
               "Action item captured: monitor dashboards for 30 minutes.",
             );
@@ -131,14 +132,14 @@ describe("Slack behavior: subscribed messages", () => {
     await slackRuntime.handleSubscribedMessage(thread, message);
 
     expect(classifierCalls).toHaveLength(1);
-    expect(replyCalls).toHaveLength(1);
+    expect(replyCallCount).toBe(1);
     expect(thread.posts).toHaveLength(1);
     expect(postedText(thread.posts[0])).toContain("monitor dashboards");
   });
 
   it("replies directly to explicit mentions in subscribed threads", async () => {
     let classifierCalled = false;
-    const replyCalls: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -151,8 +152,8 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            replyCalls.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply("Yes. Shipping status is green.");
           },
         },
@@ -171,14 +172,14 @@ describe("Slack behavior: subscribed messages", () => {
     await slackRuntime.handleSubscribedMessage(thread, message);
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalls).toHaveLength(1);
+    expect(replyCallCount).toBe(1);
     expect(thread.posts).toHaveLength(1);
     expect(postedText(thread.posts[0])).toContain("Shipping status is green");
   });
 
   it("treats queued explicit mentions as part of the subscribed turn", async () => {
     let classifierCalled = false;
-    const replyCalls: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -191,8 +192,8 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            replyCalls.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply("Handled queued subscribed turn.");
           },
         },
@@ -224,9 +225,22 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalls).toHaveLength(1);
-    expect(replyCalls[0]).toContain("first queued request");
-    expect(replyCalls[0]).toContain("latest follow-up");
+    expect(replyCallCount).toBe(1);
+    expect(
+      conversationMessages(thread)
+        .filter(
+          (message) =>
+            message.id === "m-subscribed-queued-mention" ||
+            message.id === "m-subscribed-queued-latest",
+        )
+        .map((message) => ({ id: message.id, text: message.text })),
+    ).toEqual([
+      {
+        id: "m-subscribed-queued-mention",
+        text: "first queued request",
+      },
+      { id: "m-subscribed-queued-latest", text: "latest follow-up" },
+    ]);
     expect(thread.posts).toHaveLength(1);
     expect(postedText(thread.posts[0])).toContain(
       "Handled queued subscribed turn.",
@@ -235,7 +249,7 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("unsubscribes on explicit stop-thread instructions and only re-engages on a later direct mention", async () => {
     let classifierCalled = false;
-    const replyCalls: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -255,10 +269,10 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            replyCalls.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply(
-              replyCalls.length === 1
+              replyCallCount === 1
                 ? "I can help with this thread."
                 : "I'm back because you mentioned me again.",
             );
@@ -294,7 +308,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalls).toHaveLength(1);
+    expect(replyCallCount).toBe(1);
     expect(thread.subscribed).toBe(false);
     expect(postedText(thread.posts[1])).toContain(
       "I'll stay out of this thread unless someone @mentions me again.",
@@ -311,7 +325,7 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     );
 
-    expect(replyCalls).toHaveLength(2);
+    expect(replyCallCount).toBe(2);
     expect(thread.subscribed).toBe(true);
     expect(postedText(thread.posts[2])).toContain(
       "I'm back because you mentioned me again.",

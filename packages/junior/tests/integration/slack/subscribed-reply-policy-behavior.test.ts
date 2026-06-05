@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
+  conversationMessages,
   createSlackBehaviorRuntime,
   postedText,
 } from "../../fixtures/slack-behavior";
@@ -67,10 +68,8 @@ describe("Slack behavior: subscribed reply policy", () => {
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (args) => {
+          completeObject: async () => {
             classifierCalled = true;
-            expect(args.prompt).toContain("Deploy failed");
-            expect(args.prompt).toContain("Service: checkout");
             return {
               object: {
                 should_reply: false,
@@ -114,6 +113,10 @@ describe("Slack behavior: subscribed reply policy", () => {
 
     expect(classifierCalled).toBe(true);
     expect(replyCalled).toBe(false);
+    expect(conversationMessages(thread)[0]?.text).toContain("Deploy failed");
+    expect(conversationMessages(thread)[0]?.text).toContain(
+      "Service: checkout",
+    );
     expect(thread.posts).toHaveLength(0);
   });
 
@@ -245,7 +248,7 @@ describe("Slack behavior: subscribed reply policy", () => {
 
   it("replies immediately to directed follow-up questions after junior just spoke", async () => {
     let classifierCalled = false;
-    const replyCalls: string[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
       services: {
@@ -258,10 +261,10 @@ describe("Slack behavior: subscribed reply policy", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            replyCalls.push(prompt);
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return successfulAssistantReply(
-              replyCalls.length === 1
+              replyCallCount === 1
                 ? "Budget noted."
                 : "You asked for the budget by Friday.",
             );
@@ -294,7 +297,20 @@ describe("Slack behavior: subscribed reply policy", () => {
     );
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalls).toContain("what did you just say about the budget?");
+    expect(replyCallCount).toBe(2);
+    expect(
+      conversationMessages(thread).map((message) => ({
+        id: message.id,
+        text: message.text,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          id: "m-subscribed-followup-2",
+          text: "what did you just say about the budget?",
+        },
+      ]),
+    );
     expect(thread.posts).toHaveLength(2);
     expect(postedText(thread.posts[1])).toContain("budget by Friday");
   });

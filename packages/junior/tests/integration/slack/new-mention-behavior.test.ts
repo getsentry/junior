@@ -1,14 +1,11 @@
 import type { Message } from "chat";
 import { describe, expect, it } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { conversationMessages } from "../../fixtures/slack-behavior";
 import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-interface FakeReplyCall {
-  prompt: string;
-}
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -27,13 +24,13 @@ function toPostedText(value: unknown): string {
 
 describe("Slack behavior: new mention", () => {
   it("handles a mention with real runtime wiring and fake agent response", async () => {
-    const fakeReplyCalls: FakeReplyCall[] = [];
+    let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            fakeReplyCalls.push({ prompt });
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return {
               text: "Acknowledged. Rollback is complete and error rates are stable.",
               diagnostics: {
@@ -67,21 +64,20 @@ describe("Slack behavior: new mention", () => {
 
     await slackRuntime.handleNewMention(thread, message);
 
-    expect(fakeReplyCalls).toHaveLength(1);
-    expect(fakeReplyCalls[0]?.prompt).toContain("give me a status update");
+    expect(replyCallCount).toBe(1);
     expect(thread.subscribeCalls).toBe(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Rollback is complete");
   });
 
-  it("includes queued SDK messages in the assistant prompt", async () => {
-    const fakeReplyCalls: FakeReplyCall[] = [];
+  it("records queued SDK messages before the latest mention", async () => {
+    let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            fakeReplyCalls.push({ prompt });
+          generateAssistantReply: async () => {
+            replyCallCount += 1;
             return {
               text: "Handled both updates.",
               diagnostics: {
@@ -122,19 +118,9 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    expect(fakeReplyCalls).toHaveLength(1);
-    expect(fakeReplyCalls[0]?.prompt).toContain("first queued request");
-    expect(fakeReplyCalls[0]?.prompt).toContain("latest request");
+    expect(replyCallCount).toBe(1);
     expect(
-      fakeReplyCalls[0]?.prompt.indexOf("first queued request"),
-    ).toBeLessThan(fakeReplyCalls[0]?.prompt.indexOf("latest request") ?? -1);
-    const state = thread.getState() as {
-      conversation?: {
-        messages?: Array<{ id: string; text: string }>;
-      };
-    };
-    expect(
-      state.conversation?.messages
+      conversationMessages(thread)
         ?.filter(
           (message) => message.id === "m-queued" || message.id === "m-latest",
         )
@@ -152,16 +138,14 @@ describe("Slack behavior: new mention", () => {
       attachmentText?: string;
       filenames: string[];
       inboundAttachmentCount?: number;
-      prompt: string;
     }> = [];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
+          generateAssistantReply: async (_prompt, context) => {
             const attachments = context?.userAttachments ?? [];
             fakeReplyCalls.push({
-              prompt,
               inboundAttachmentCount: context?.inboundAttachmentCount,
               filenames: attachments.map(
                 (attachment) => attachment.filename ?? "",
@@ -218,11 +202,21 @@ describe("Slack behavior: new mention", () => {
 
     expect(fakeReplyCalls).toEqual([
       expect.objectContaining({
-        prompt: expect.stringContaining("review this file first"),
         inboundAttachmentCount: 1,
         filenames: ["queued-notes.txt"],
         attachmentText: "queued attachment notes",
       }),
+    ]);
+    expect(
+      conversationMessages(thread)
+        .filter(
+          (message) =>
+            message.id === "m-queued-file" || message.id === "m-latest-file",
+        )
+        .map((message) => ({ id: message.id, text: message.text })),
+    ).toEqual([
+      { id: "m-queued-file", text: "review this file first" },
+      { id: "m-latest-file", text: "then answer now" },
     ]);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
