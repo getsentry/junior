@@ -5,6 +5,47 @@ function readEnv(name) {
   return typeof value === "string" && value ? value : undefined;
 }
 
+function normalizeScopeList(scopes) {
+  return [
+    ...new Set(
+      (scopes ?? [])
+        .flatMap((scope) => String(scope).split(/\s+/))
+        .map((scope) => scope.trim())
+        .filter(Boolean),
+    ),
+  ].sort();
+}
+
+function githubPermissionCapabilities(permissions) {
+  if (permissions === undefined) {
+    return undefined;
+  }
+
+  const entries = Object.entries(permissions);
+  if (entries.length === 0) {
+    throw new Error(
+      "githubPlugin appPermissions must contain at least one permission when provided.",
+    );
+  }
+
+  return entries
+    .map(([rawScope, rawLevel]) => {
+      const scope = String(rawScope).trim().replace(/_/g, "-");
+      if (!scope) {
+        throw new Error(
+          "githubPlugin appPermissions contains an empty permission name.",
+        );
+      }
+      if (rawLevel !== "read" && rawLevel !== "write") {
+        throw new Error(
+          `githubPlugin appPermissions.${rawScope} must be "read" or "write".`,
+        );
+      }
+      return `github.${scope}.${rawLevel}`;
+    })
+    .sort();
+}
+
 function cleanIdentityPart(value) {
   return String(value ?? "")
     .replaceAll("\n", " ")
@@ -99,6 +140,8 @@ export function githubPlugin(options = {}) {
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
   const clientIdEnv = options.clientIdEnv ?? "GITHUB_APP_CLIENT_ID";
   const clientSecretEnv = options.clientSecretEnv ?? "GITHUB_APP_CLIENT_SECRET";
+  const appCapabilities = githubPermissionCapabilities(options.appPermissions);
+  const userScopes = normalizeScopeList(options.additionalUserScopes);
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -106,6 +149,7 @@ export function githubPlugin(options = {}) {
       name: "github",
       description:
         "GitHub issue, pull request, and repository workflows via GitHub App",
+      ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
       envVars: {
         GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
@@ -125,6 +169,7 @@ export function githubPlugin(options = {}) {
         clientSecretEnv,
         authorizeEndpoint: "https://github.com/login/oauth/authorize",
         tokenEndpoint: "https://github.com/login/oauth/access_token",
+        ...(userScopes.length ? { scope: userScopes.join(" ") } : {}),
       },
       commandEnv: {
         GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",

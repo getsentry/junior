@@ -67,6 +67,28 @@ vercel env update GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-p
 
 Repeat for `preview` and `development` as needed. After env changes, redeploy so the new deployment picks up updated values.
 
+### Optional permission overrides
+
+By default, the GitHub App installation token request omits a permissions body, so GitHub grants the token the app's full installed permission envelope. To request a smaller installation-token permission set, pass `appPermissions` when registering the plugin:
+
+```ts
+githubPlugin({
+  appPermissions: {
+    contents: "read",
+    issues: "write",
+    pull_requests: "write",
+  },
+});
+```
+
+GitHub user OAuth does not request extra scopes by default. To request additional user OAuth scopes, pass `additionalUserScopes`; Junior will require the returned grant to include them before using the stored user token:
+
+```ts
+githubPlugin({
+  additionalUserScopes: ["read:org", "workflow"],
+});
+```
+
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.

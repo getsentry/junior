@@ -53,6 +53,41 @@ describe("github plugin", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("defaults GitHub App permissions and user OAuth scopes to all available app access", () => {
+    const plugin = githubPlugin();
+
+    expect(plugin.manifest.capabilities).toBeUndefined();
+    expect(plugin.manifest.oauth?.scope).toBeUndefined();
+  });
+
+  it("maps explicit GitHub App permissions and extra user OAuth scopes", () => {
+    const plugin = githubPlugin({
+      additionalUserScopes: ["read:org repo", "workflow", "repo"],
+      appPermissions: {
+        contents: "read",
+        issues: "write",
+        pull_requests: "write",
+      },
+    });
+
+    expect(plugin.manifest.capabilities).toEqual([
+      "github.contents.read",
+      "github.issues.write",
+      "github.pull-requests.write",
+    ]);
+    expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
+  });
+
+  it("rejects invalid explicit GitHub App permission levels", () => {
+    expect(() =>
+      githubPlugin({
+        appPermissions: {
+          issues: "admin" as "write",
+        },
+      }),
+    ).toThrow('githubPlugin appPermissions.issues must be "read" or "write"');
+  });
+
   it("serializes global git config writes during sandbox preparation", async () => {
     const started: string[] = [];
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];

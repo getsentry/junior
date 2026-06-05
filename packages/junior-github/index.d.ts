@@ -1,6 +1,10 @@
 import type { JuniorPluginRegistration } from "@sentry/junior-plugin-api";
 
+export type GitHubAppPermissionLevel = "read" | "write";
+
 export interface GitHubPluginOptions {
+  additionalUserScopes?: string[];
+  appPermissions?: Record<string, GitHubAppPermissionLevel>;
   botEmailEnv?: string;
   botNameEnv?: string;
   clientIdEnv?: string;
