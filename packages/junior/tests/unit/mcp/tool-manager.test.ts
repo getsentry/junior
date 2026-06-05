@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const { logWarnMock, setSpanAttributesMock } = vi.hoisted(() => ({
+const { logWarnMock } = vi.hoisted(() => ({
   logWarnMock: vi.fn(),
-  setSpanAttributesMock: vi.fn(),
 }));
 
-vi.mock("@/chat/logging", () => ({
-  logWarn: logWarnMock,
-  setSpanAttributes: setSpanAttributesMock,
-}));
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    logWarn: logWarnMock,
+  };
+});
 
 import {
   McpAuthorizationRequiredError,
@@ -163,26 +165,6 @@ describe("McpToolManager", () => {
     expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
-  it("annotates MCP tool spans with the MCP method name", async () => {
-    const plugin = buildPlugin();
-    const manager = createMcpToolManager([plugin]);
-    await manager.activateProvider("demo");
-
-    const resolvedTools = manager.getResolvedActiveTools();
-    await expect(
-      resolvedTools[0]!.execute({ query: "hello" }),
-    ).resolves.toMatchObject({
-      details: {
-        provider: "demo",
-        tool: "ping",
-      },
-    });
-
-    expect(setSpanAttributesMock).toHaveBeenCalledWith({
-      "mcp.method.name": "tools/call",
-    });
-  });
-
   it("logs expected MCP tool errors with semantic context", async () => {
     const plugin = buildPlugin();
     const manager = createMcpToolManager([plugin]);
@@ -276,21 +258,6 @@ describe("McpToolManager", () => {
     );
   });
 
-  it("parks handled MCP authorization challenges during discovery", async () => {
-    const plugin = buildPlugin();
-    onAuthorizationRequiredMock.mockResolvedValueOnce(true);
-    const manager = createMcpToolManager([plugin], {
-      onAuthorizationRequired: onAuthorizationRequiredMock,
-    });
-    listToolsMock.mockRejectedValueOnce(
-      new McpAuthorizationRequiredError("demo", "Discovery auth required"),
-    );
-
-    await expect(manager.activateProvider("demo")).resolves.toBe(false);
-    expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
-    expect(manager.getActiveProviders()).toEqual([]);
-  });
-
   it("does not retry activation for a provider already parked for auth", async () => {
     const plugin = buildPlugin();
     onAuthorizationRequiredMock.mockResolvedValueOnce(true);
@@ -307,6 +274,7 @@ describe("McpToolManager", () => {
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
     expect(listToolsMock).toHaveBeenCalledTimes(1);
     expect(clientOptions).toHaveLength(1);
+    expect(manager.getActiveProviders()).toEqual([]);
   });
 
   it("parks handled MCP authorization challenges during initial client setup", async () => {

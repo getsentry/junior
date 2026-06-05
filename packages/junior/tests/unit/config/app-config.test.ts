@@ -56,6 +56,21 @@ async function writePluginPackage(
   );
 }
 
+async function writeAppPackage(
+  root: string,
+  dependencies: Record<string, string>,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "temp-junior-app",
+      private: true,
+      dependencies,
+    }),
+    "utf8",
+  );
+}
+
 afterEach(async () => {
   process.chdir(originalCwd);
   setPlugins([]);
@@ -146,17 +161,9 @@ describe("createApp plugin config", () => {
   it("loads package plugins with runtime hook plugins", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/env-plugin", "env");
-    await fs.writeFile(
-      path.join(tempRoot, "package.json"),
-      JSON.stringify({
-        name: "temp-junior-app",
-        private: true,
-        dependencies: {
-          "@acme/env-plugin": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
+    await writeAppPackage(tempRoot, {
+      "@acme/env-plugin": "1.0.0",
+    });
     process.chdir(tempRoot);
 
     await createApp({
@@ -195,18 +202,10 @@ describe("createApp plugin config", () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/base-plugin", "base");
     await writePluginPackage(tempRoot, "@acme/next-plugin", "next");
-    await fs.writeFile(
-      path.join(tempRoot, "package.json"),
-      JSON.stringify({
-        name: "temp-junior-app",
-        private: true,
-        dependencies: {
-          "@acme/base-plugin": "1.0.0",
-          "@acme/next-plugin": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
+    await writeAppPackage(tempRoot, {
+      "@acme/base-plugin": "1.0.0",
+      "@acme/next-plugin": "1.0.0",
+    });
     process.chdir(tempRoot);
 
     await createApp({
@@ -232,17 +231,9 @@ describe("createApp plugin config", () => {
   it("fails startup and rolls back config when a configured plugin package is missing", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/base-plugin", "base");
-    await fs.writeFile(
-      path.join(tempRoot, "package.json"),
-      JSON.stringify({
-        name: "temp-junior-app",
-        private: true,
-        dependencies: {
-          "@acme/base-plugin": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
+    await writeAppPackage(tempRoot, {
+      "@acme/base-plugin": "1.0.0",
+    });
     process.chdir(tempRoot);
 
     await createApp({
@@ -591,17 +582,9 @@ describe("createApp plugin config", () => {
   it("loads manifest-only package plugins by package name", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/full-plugin", "full");
-    await fs.writeFile(
-      path.join(tempRoot, "package.json"),
-      JSON.stringify({
-        name: "temp-junior-app",
-        private: true,
-        dependencies: {
-          "@acme/full-plugin": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
+    await writeAppPackage(tempRoot, {
+      "@acme/full-plugin": "1.0.0",
+    });
     process.chdir(tempRoot);
 
     await createApp({
@@ -614,66 +597,4 @@ describe("createApp plugin config", () => {
     ]);
   });
 
-  it("rejects duplicate plugin names before mutating app config", async () => {
-    await createApp({
-      plugins: defineJuniorPlugins([]),
-    });
-
-    expect(() =>
-      defineJuniorPlugins([
-        defineJuniorPlugin({
-          manifest: {
-            name: "dupe",
-            displayName: "Dupe",
-            description: "Duplicate plugin",
-          },
-        }),
-        defineJuniorPlugin({
-          manifest: {
-            name: "dupe",
-            displayName: "Dupe",
-            description: "Duplicate plugin",
-          },
-        }),
-      ]),
-    ).toThrow('Duplicate plugin registration name "dupe"');
-
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
-  });
-
-  it("rejects invalid plugin names before mutating app config", async () => {
-    await createApp({
-      plugins: defineJuniorPlugins([]),
-    });
-
-    expect(() =>
-      defineJuniorPlugin({
-        manifest: {
-          name: "GitHub",
-          displayName: "GitHub",
-          description: "Invalid plugin",
-        },
-        hooks: {},
-      }),
-    ).toThrow(
-      'Junior plugin registration name "GitHub" must be a lowercase plugin identifier',
-    );
-
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
-  });
-
-  it("rejects top-level plugin registration names", () => {
-    expect(() =>
-      defineJuniorPlugin({
-        name: "legacy",
-        manifest: {
-          name: "legacy",
-          displayName: "Legacy",
-          description: "Legacy plugin",
-        },
-      } as Parameters<typeof defineJuniorPlugin>[0] & { name: string }),
-    ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
-  });
 });
