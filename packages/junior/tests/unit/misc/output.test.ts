@@ -106,6 +106,12 @@ describe("normalizeSlackReplyMarkdown", () => {
       "(<https://example.com/foo>)",
     );
   });
+
+  it("stops URL scan at pipe to prevent Slack link label spoofing", () => {
+    expect(
+      normalizeSlackReplyMarkdown("https://evil.com|trusted.com"),
+    ).toBe("<https://evil.com>|trusted.com");
+  });
 });
 
 describe("buildSlackOutputMessage", () => {

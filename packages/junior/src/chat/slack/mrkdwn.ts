@@ -97,7 +97,7 @@ function readBareUrl(
   let end = start;
   while (end < line.length) {
     const ch = line[end];
-    if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === '"' || ch === "`") {
+    if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === '"' || ch === "`" || ch === "|") {
       break;
     }
     end++;
