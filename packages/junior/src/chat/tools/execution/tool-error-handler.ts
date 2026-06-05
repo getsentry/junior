@@ -13,6 +13,22 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { SlackActionError } from "@/chat/slack/client";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
+interface ToolErrorHandlerServices {
+  genAiProviderName: string;
+  logException: typeof logException;
+  logInfo: typeof logInfo;
+  logWarn: typeof logWarn;
+  setSpanAttributes: typeof setSpanAttributes;
+}
+
+const defaultToolErrorHandlerServices: ToolErrorHandlerServices = {
+  genAiProviderName: GEN_AI_PROVIDER_NAME,
+  logException,
+  logInfo,
+  logWarn,
+  setSpanAttributes,
+};
+
 function isPluginToolInputError(error: unknown): boolean {
   return (
     error instanceof PluginToolInputError ||
@@ -54,11 +70,11 @@ export function handleToolExecutionError(
   toolCallId: string | undefined,
   shouldTrace: boolean,
   traceContext: LogContext,
-  conversationPrivacy?: ConversationPrivacy,
+  services: ToolErrorHandlerServices = defaultToolErrorHandlerServices,
 ): never {
   const errorType = getToolErrorType(error);
-  const errorMessage = getMcpAwareTelemetryMessage(error, conversationPrivacy);
-  setSpanAttributes({
+  const errorMessage = getMcpAwareErrorMessage(error);
+  services.setSpanAttributes({
     "error.type": errorType,
     ...(error instanceof PluginCredentialFailureError
       ? { "app.credential.provider": error.provider }
@@ -67,12 +83,12 @@ export function handleToolExecutionError(
 
   if (error instanceof PluginCredentialFailureError) {
     if (shouldTrace) {
-      logInfo(
+      services.logInfo(
         "plugin_credential_rejected",
         traceContext,
         {
           "app.credential.provider": error.provider,
-          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.provider.name": services.genAiProviderName,
           "gen_ai.operation.name": "execute_tool",
           "gen_ai.tool.name": toolName,
           ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
@@ -85,11 +101,11 @@ export function handleToolExecutionError(
   }
 
   if (shouldTrace) {
-    logWarn(
+    services.logWarn(
       "agent_tool_call_failed",
       traceContext,
       {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.provider.name": services.genAiProviderName,
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
@@ -106,12 +122,12 @@ export function handleToolExecutionError(
     error instanceof ToolInputError ||
     isPluginToolInputError(error);
   if (!isExpectedToolFailure) {
-    logException(
+    services.logException(
       error,
       "agent_tool_call_failed",
       {},
       {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.provider.name": services.genAiProviderName,
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),

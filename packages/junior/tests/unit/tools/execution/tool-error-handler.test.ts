@@ -1,28 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-
-const logExceptionMock = vi.fn();
-const logInfoMock = vi.fn();
-const logWarnMock = vi.fn();
-const setSpanAttributesMock = vi.fn();
-
-vi.mock("@/chat/logging", () => ({
-  logException: (...args: unknown[]) => logExceptionMock(...args),
-  logInfo: (...args: unknown[]) => logInfoMock(...args),
-  logWarn: (...args: unknown[]) => logWarnMock(...args),
-  setSpanAttributes: (...args: unknown[]) => setSpanAttributesMock(...args),
-}));
-
-vi.mock("@/chat/pi/client", () => ({
-  GEN_AI_PROVIDER_NAME: "test-provider",
-  resolveGatewayModel: (modelId: string) => modelId,
-}));
-
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import { McpToolError } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 
+type ToolErrorHandlerServices = NonNullable<
+  Parameters<typeof handleToolExecutionError>[5]
+>;
+
 describe("handleToolExecutionError", () => {
+  const services = {
+    genAiProviderName: "test-provider",
+    logException: vi.fn(),
+    logInfo: vi.fn(),
+    logWarn: vi.fn(),
+    setSpanAttributes: vi.fn(),
+  } satisfies ToolErrorHandlerServices;
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -30,11 +24,11 @@ describe("handleToolExecutionError", () => {
   it("reports system errors to Sentry via logException", () => {
     const error = new Error("sandbox API failed");
     expect(() =>
-      handleToolExecutionError(error, "editFile", "call_1", true, {}),
+      handleToolExecutionError(error, "editFile", "call_1", true, {}, services),
     ).toThrow(error);
 
-    expect(logExceptionMock).toHaveBeenCalledTimes(1);
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
+    expect(services.logException).toHaveBeenCalledTimes(1);
+    expect(services.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({ "error.type": "Error" }),
     );
   });
@@ -42,12 +36,12 @@ describe("handleToolExecutionError", () => {
   it("does not report ToolInputError to Sentry", () => {
     const error = new ToolInputError("Could not find edits[0] in file.ts");
     expect(() =>
-      handleToolExecutionError(error, "editFile", "call_1", true, {}),
+      handleToolExecutionError(error, "editFile", "call_1", true, {}, services),
     ).toThrow(error);
 
-    expect(logExceptionMock).not.toHaveBeenCalled();
-    expect(logWarnMock).toHaveBeenCalledTimes(1);
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
+    expect(services.logException).not.toHaveBeenCalled();
+    expect(services.logWarn).toHaveBeenCalledTimes(1);
+    expect(services.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({ "error.type": "tool_input_error" }),
     );
   });
@@ -56,13 +50,20 @@ describe("handleToolExecutionError", () => {
     const error = new McpToolError("remote tool failed");
 
     expect(() =>
-      handleToolExecutionError(error, "callMcpTool", "tool-call-id", true, {}),
+      handleToolExecutionError(
+        error,
+        "callMcpTool",
+        "tool-call-id",
+        true,
+        {},
+        services,
+      ),
     ).toThrow(error);
 
-    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+    expect(services.setSpanAttributes).toHaveBeenCalledWith({
       "error.type": "tool_error",
     });
-    expect(logWarnMock).toHaveBeenCalledWith(
+    expect(services.logWarn).toHaveBeenCalledWith(
       "agent_tool_call_failed",
       {},
       expect.objectContaining({
@@ -74,7 +75,7 @@ describe("handleToolExecutionError", () => {
       }),
       "Agent tool call failed",
     );
-    expect(logExceptionMock).not.toHaveBeenCalled();
+    expect(services.logException).not.toHaveBeenCalled();
   });
 
   it("logs plugin credential failures without exposing command text", () => {
@@ -84,14 +85,21 @@ describe("handleToolExecutionError", () => {
     );
 
     expect(() =>
-      handleToolExecutionError(error, "bash", "tool-call-id", true, {}),
+      handleToolExecutionError(
+        error,
+        "bash",
+        "tool-call-id",
+        true,
+        {},
+        services,
+      ),
     ).toThrow(error);
 
-    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+    expect(services.setSpanAttributes).toHaveBeenCalledWith({
       "app.credential.provider": "github",
       "error.type": "PluginCredentialFailureError",
     });
-    expect(logInfoMock).toHaveBeenCalledWith(
+    expect(services.logInfo).toHaveBeenCalledWith(
       "plugin_credential_rejected",
       {},
       expect.objectContaining({
@@ -103,9 +111,9 @@ describe("handleToolExecutionError", () => {
       }),
       "Plugin credentials were rejected during tool execution",
     );
-    expect(logWarnMock).not.toHaveBeenCalled();
-    expect(logExceptionMock).not.toHaveBeenCalled();
-    expect(JSON.stringify(logInfoMock.mock.calls)).not.toContain(
+    expect(services.logWarn).not.toHaveBeenCalled();
+    expect(services.logException).not.toHaveBeenCalled();
+    expect(JSON.stringify(services.logInfo.mock.calls)).not.toContain(
       "gh repo view secret",
     );
   });
