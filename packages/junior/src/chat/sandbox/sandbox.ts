@@ -94,6 +94,24 @@ export interface SandboxExecutor {
   dispose(): Promise<void>;
 }
 
+export interface SandboxExecutorOptions {
+  sandboxId?: string;
+  sandboxDependencyProfileHash?: string;
+  timeoutMs?: number;
+  traceContext?: LogContext;
+  tracePropagation?: SandboxEgressTracePropagationConfig;
+  credentialEgress?: CredentialContext;
+  agentHooks?: PluginHookRunner;
+  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
+  runBashCustomCommand?: (
+    command: string,
+  ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
+}
+
+export type SandboxExecutorFactory = (
+  options?: SandboxExecutorOptions,
+) => SandboxExecutor;
+
 const SANDBOX_TOOL_NAMES = new Set([
   "bash",
   "readFile",
@@ -133,19 +151,9 @@ function sandboxStreamInterruptedResult(toolName: string) {
 }
 
 /** Create one sandbox-backed tool executor facade for the current turn. */
-export function createSandboxExecutor(options?: {
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
-  credentialEgress?: CredentialContext;
-  agentHooks?: PluginHookRunner;
-  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
-  runBashCustomCommand?: (
-    command: string,
-  ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
-}): SandboxExecutor {
+export function createSandboxExecutor(
+  options?: SandboxExecutorOptions,
+): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};

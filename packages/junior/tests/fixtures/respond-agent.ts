@@ -4,6 +4,7 @@ interface ScriptedReplyAgentOptions {
   initialState: {
     model: unknown;
     systemPrompt: string;
+    thinkingLevel?: unknown;
     tools: unknown[];
   };
   prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -15,6 +16,7 @@ export interface ScriptedReplyAgent {
     messages: PiMessage[];
     model: unknown;
     systemPrompt: string;
+    thinkingLevel?: unknown;
     tools: unknown[];
   };
   steeringMessages: PiMessage[];
@@ -41,6 +43,7 @@ class TestReplyAgent implements ScriptedReplyAgent {
       messages: [],
       model: options.initialState.model,
       systemPrompt: options.initialState.systemPrompt,
+      thinkingLevel: options.initialState.thinkingLevel,
       tools: options.initialState.tools,
     };
   }

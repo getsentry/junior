@@ -95,6 +95,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   provider-retry/cooperative-yield and timeout-resume orchestration coverage
   into component runtime suites backed by `tests/fixtures/respond-agent.ts`
   instead of a Pi Agent module mock.
+- Added an explicit `sandboxExecutorFactory` port to `generateAssistantReply`
+  and moved lazy sandbox boot/metadata coverage into a component runtime suite
+  backed by real skill discovery plus `tests/fixtures/respond-sandbox.ts`.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -121,6 +124,7 @@ Files:
 - `packages/junior/tests/unit/runtime/respond-mcp-auth-resume.test.ts`
 - `packages/junior/tests/unit/runtime/respond-mcp-session-context.test.ts`
 - `packages/junior/tests/unit/runtime/respond-mcp-skill-loading.test.ts`
+- `packages/junior/tests/component/runtime/respond-lazy-sandbox.test.ts`
 - `packages/junior/tests/component/runtime/respond-timeout-resume.test.ts`
 - `packages/junior/tests/component/runtime/respond-provider-retry.test.ts`
 
@@ -130,11 +134,11 @@ These tests mock a broad runtime surface to drive `generateAssistantReply`-style
 behavior. They often prove multi-module orchestration, prompt/tool/runtime
 handoffs, auth pauses, or resume behavior from a unit layer.
 
-`respond-lazy-sandbox.test.ts` is partially improved: pure attachment assembly
-and lazy workspace cache/replacement mechanics now have direct unit coverage.
-The remaining file still uses a mocked runtime seam to prove that
-`generateAssistantReply` avoids sandbox booting unless a sandbox-backed tool is
-used and preserves sandbox metadata on error replies.
+`respond-lazy-sandbox.test.ts` now lives under `tests/component/runtime`, uses a
+scripted sandbox executor factory instead of a sandbox module mock, and reads a
+temporary skill from disk instead of mocking the skills module. It still proves
+the `generateAssistantReply` orchestration contract that sandbox boot is lazy
+and sandbox metadata survives failed turns.
 
 `respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now live
 under `tests/component/runtime` and drive Pi behavior through the explicit

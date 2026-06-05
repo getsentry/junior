@@ -80,6 +80,7 @@ import {
   createSandboxExecutor,
   type SandboxAcquiredState,
   type SandboxExecutor,
+  type SandboxExecutorFactory,
 } from "@/chat/sandbox/sandbox";
 import { createLazySandboxWorkspace } from "@/chat/sandbox/lazy-workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -290,6 +291,8 @@ export interface ReplyRequestContext {
   streamFn?: StreamFn;
   /** Override Pi Agent construction for controlled runtime harnesses. */
   agentFactory?: (options: ReplyAgentOptions) => ReplyAgent;
+  /** Override sandbox execution for controlled runtime hosts. */
+  sandboxExecutorFactory?: SandboxExecutorFactory;
   /** Reuse a preselected reasoning level when routing already made that choice. */
   turnThinkingSelection?: TurnThinkingSelection;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -675,38 +678,40 @@ export async function generateAssistantReply(
     const pluginHooks = createPluginHookRunner({
       requester: actorRequester,
     });
-    sandboxExecutor = createSandboxExecutor({
-      sandboxId: context.sandbox?.sandboxId,
-      sandboxDependencyProfileHash:
-        context.sandbox?.sandboxDependencyProfileHash,
-      traceContext: spanContext,
-      tracePropagation: context.sandbox?.tracePropagation,
-      credentialEgress: context.credentialContext,
-      agentHooks: pluginHooks,
-      onSandboxAcquired: async (sandbox) => {
-        lastKnownSandboxId = sandbox.sandboxId;
-        lastKnownSandboxDependencyProfileHash =
-          sandbox.sandboxDependencyProfileHash;
-        await context.onSandboxAcquired?.(sandbox);
+    sandboxExecutor = (context.sandboxExecutorFactory ?? createSandboxExecutor)(
+      {
+        sandboxId: context.sandbox?.sandboxId,
+        sandboxDependencyProfileHash:
+          context.sandbox?.sandboxDependencyProfileHash,
+        traceContext: spanContext,
+        tracePropagation: context.sandbox?.tracePropagation,
+        credentialEgress: context.credentialContext,
+        agentHooks: pluginHooks,
+        onSandboxAcquired: async (sandbox) => {
+          lastKnownSandboxId = sandbox.sandboxId;
+          lastKnownSandboxDependencyProfileHash =
+            sandbox.sandboxDependencyProfileHash;
+          await context.onSandboxAcquired?.(sandbox);
+        },
+        runBashCustomCommand: async (command) => {
+          const result = await maybeExecuteJrRpcCustomCommand(command, {
+            activeSkill: skillSandbox.getActiveSkill(),
+            channelConfiguration: context.channelConfiguration,
+            requesterId: actorRequester?.userId,
+            onConfigurationValueChanged: (key, value) => {
+              if (value === undefined) {
+                delete configurationValues[key];
+                return;
+              }
+              configurationValues[key] = value;
+            },
+          });
+          return result.handled
+            ? { handled: true, result: result.result }
+            : { handled: false };
+        },
       },
-      runBashCustomCommand: async (command) => {
-        const result = await maybeExecuteJrRpcCustomCommand(command, {
-          activeSkill: skillSandbox.getActiveSkill(),
-          channelConfiguration: context.channelConfiguration,
-          requesterId: actorRequester?.userId,
-          onConfigurationValueChanged: (key, value) => {
-            if (value === undefined) {
-              delete configurationValues[key];
-              return;
-            }
-            configurationValues[key] = value;
-          },
-        });
-        return result.handled
-          ? { handled: true, result: result.result }
-          : { handled: false };
-      },
-    });
+    );
     const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
     sandboxExecutor.configureReferenceFiles(listReferenceFiles());
