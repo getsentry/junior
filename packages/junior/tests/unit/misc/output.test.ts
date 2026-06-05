@@ -92,8 +92,21 @@ describe("normalizeSlackReplyMarkdown", () => {
       "<https://example.com/foo_bar/baz>",
     );
   });
-});
 
+  it("preserves a Markdown link whose URL contains balanced parentheses", () => {
+    expect(
+      normalizeSlackReplyMarkdown(
+        "[wiki](https://en.wikipedia.org/wiki/Foo_(bar))",
+      ),
+    ).toBe("[wiki](https://en.wikipedia.org/wiki/Foo_(bar))");
+  });
+
+  it("peels an enclosing closing parenthesis outside a bare URL", () => {
+    expect(normalizeSlackReplyMarkdown("(https://example.com/foo)")).toBe(
+      "(<https://example.com/foo>)",
+    );
+  });
+});
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {
