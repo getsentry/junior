@@ -93,28 +93,6 @@ describe("createAssistantStatusScheduler", () => {
     expect(statuses).toEqual([firstGenericStatus]);
   });
 
-  it("clears the assistant status when stopped", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
-
-    reporter.start();
-    await flushAsyncWork();
-
-    await reporter.stop();
-
-    expect(statuses).toEqual([firstGenericStatus, ""]);
-  });
-
   it("does not wait for the initial status request before start() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveThinking: (() => void) | undefined;

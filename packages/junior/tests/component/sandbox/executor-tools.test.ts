@@ -124,7 +124,7 @@ describe("sandbox executor tool execution", () => {
     });
   });
 
-  it("syncs sandbox files once when the first tool call also initializes tool executors", async () => {
+  it("syncs files and initializes tool executors once while sandbox is cached", async () => {
     const sandbox = makeSandbox("sbx_single_sync");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -135,6 +135,12 @@ describe("sandbox executor tool execution", () => {
       toolName: "bash",
       input: {
         command: "echo ok",
+      },
+    });
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo ok again",
       },
     });
 
@@ -167,29 +173,6 @@ describe("sandbox executor tool execution", () => {
     expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
     expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(1, 5000);
     expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(2, 5000);
-  });
-
-  it("does not re-sync skills when reusing a cached sandbox", async () => {
-    const sandbox = makeSandbox("sbx_cached_once");
-    sandboxCreateMock.mockResolvedValue(sandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo first",
-      },
-    });
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo second",
-      },
-    });
-
-    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
   });
 
   it("recreates cached sandboxes before reusing cached tool executors", async () => {

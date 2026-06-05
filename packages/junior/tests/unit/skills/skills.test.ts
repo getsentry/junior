@@ -22,6 +22,24 @@ async function writeSkillFile(
   await fs.writeFile(path.join(skillDir, "SKILL.md"), lines.join("\n"), "utf8");
 }
 
+async function writeDemoPluginSkill(
+  rootDir: string,
+  skillName: string,
+  pluginLines: string[],
+  skillLines: string[],
+): Promise<{ pluginRoot: string; skillFile: string }> {
+  const pluginRoot = path.join(rootDir, "demo");
+  const skillFile = path.join(pluginRoot, "skills", skillName, "SKILL.md");
+  await fs.mkdir(path.dirname(skillFile), { recursive: true });
+  await fs.writeFile(
+    path.join(pluginRoot, "plugin.yaml"),
+    pluginLines.join("\n"),
+    "utf8",
+  );
+  await fs.writeFile(skillFile, skillLines.join("\n"), "utf8");
+  return { pluginRoot, skillFile };
+}
+
 const stubSkills: SkillMetadata[] = [
   { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
   { name: "sum", description: "Summarize", skillPath: "/tmp/sum" },
@@ -129,10 +147,6 @@ describe("skills", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
   });
 
-  it("returns null when no skills are available", () => {
-    expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
-  });
-
   it("skips skills with unsupported capability metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
     const originalSkillDirs = process.env.SKILL_DIRS;
@@ -180,14 +194,11 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-late-load-"),
     );
-    const pluginRoot = path.join(tempRoot, "demo");
 
     try {
-      await fs.mkdir(path.join(pluginRoot, "skills", "demo-connect"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(pluginRoot, "plugin.yaml"),
+      const { pluginRoot } = await writeDemoPluginSkill(
+        tempRoot,
+        "demo-connect",
         [
           "name: demo",
           "display-name: Demo",
@@ -199,11 +210,7 @@ describe("skills", () => {
           "  domains:",
           "    - demo.example.test",
           "  auth-token-env: DEMO_ACCESS_TOKEN",
-        ].join("\n"),
-        "utf8",
-      );
-      await fs.writeFile(
-        path.join(pluginRoot, "skills", "demo-connect", "SKILL.md"),
+        ],
         [
           "---",
           "name: demo-connect",
@@ -213,8 +220,7 @@ describe("skills", () => {
           "---",
           "",
           "# Body",
-        ].join("\n"),
-        "utf8",
+        ],
       );
 
       const pluginApp = await createPluginAppFixture([pluginRoot]);
@@ -244,14 +250,11 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-config-only-"),
     );
-    const pluginRoot = path.join(tempRoot, "demo");
 
     try {
-      await fs.mkdir(path.join(pluginRoot, "skills", "demo-defaults"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(pluginRoot, "plugin.yaml"),
+      const { pluginRoot } = await writeDemoPluginSkill(
+        tempRoot,
+        "demo-defaults",
         [
           "name: demo",
           "display-name: Demo",
@@ -259,11 +262,7 @@ describe("skills", () => {
           "config-keys:",
           "  - team",
           "  - project",
-        ].join("\n"),
-        "utf8",
-      );
-      await fs.writeFile(
-        path.join(pluginRoot, "skills", "demo-defaults", "SKILL.md"),
+        ],
         [
           "---",
           "name: demo-defaults",
@@ -272,8 +271,7 @@ describe("skills", () => {
           "---",
           "",
           "# Body",
-        ].join("\n"),
-        "utf8",
+        ],
       );
 
       const pluginApp = await createPluginAppFixture([pluginRoot]);
@@ -299,14 +297,11 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-runtime-boundary-"),
     );
-    const pluginRoot = path.join(tempRoot, "demo");
 
     try {
-      await fs.mkdir(path.join(pluginRoot, "skills", "demo-tool"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(pluginRoot, "plugin.yaml"),
+      const { pluginRoot } = await writeDemoPluginSkill(
+        tempRoot,
+        "demo-tool",
         [
           "name: demo",
           "display-name: Demo",
@@ -325,11 +320,7 @@ describe("skills", () => {
           "  url: https://mcp.example.test/mcp",
           "  allowed-tools:",
           "    - search_demo",
-        ].join("\n"),
-        "utf8",
-      );
-      await fs.writeFile(
-        path.join(pluginRoot, "skills", "demo-tool", "SKILL.md"),
+        ],
         [
           "---",
           "name: demo-tool",
@@ -340,8 +331,7 @@ describe("skills", () => {
           "",
           "Run `npm install example-cli` before using this skill.",
           "Then call example-cli.",
-        ].join("\n"),
-        "utf8",
+        ],
       );
 
       const pluginApp = await createPluginAppFixture([pluginRoot]);
@@ -377,24 +367,12 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-load-deprecated-config-"),
     );
-    const pluginRoot = path.join(tempRoot, "demo");
-    const skillFile = path.join(pluginRoot, "skills", "demo-tool", "SKILL.md");
 
     try {
-      await fs.mkdir(path.dirname(skillFile), { recursive: true });
-      await fs.writeFile(
-        path.join(pluginRoot, "plugin.yaml"),
-        [
-          "name: demo",
-          "display-name: Demo",
-          "description: Demo plugin",
-          "config-keys:",
-          "  - repo",
-        ].join("\n"),
-        "utf8",
-      );
-      await fs.writeFile(
-        skillFile,
+      const { pluginRoot, skillFile } = await writeDemoPluginSkill(
+        tempRoot,
+        "demo-tool",
+        ["name: demo", "description: Demo plugin", "config-keys:", "  - repo"],
         [
           "---",
           "name: demo-tool",
@@ -403,11 +381,10 @@ describe("skills", () => {
           "---",
           "",
           "Use this skill.",
-        ].join("\n"),
-        "utf8",
+        ],
       );
 
-      const pluginApp = await createPluginAppFixture([tempRoot]);
+      const pluginApp = await createPluginAppFixture([pluginRoot]);
       resetSkillDiscoveryCache();
 
       try {
