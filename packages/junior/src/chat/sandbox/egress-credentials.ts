@@ -26,6 +26,17 @@ import {
 
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+interface SandboxEgressCredentialServices {
+  issueProviderCredentialLease: typeof issueProviderCredentialLease;
+  resolveProviderForHost: typeof resolveSandboxEgressProviderForHost;
+}
+
+const defaultSandboxEgressCredentialServices: SandboxEgressCredentialServices =
+  {
+    issueProviderCredentialLease,
+    resolveProviderForHost: resolveSandboxEgressProviderForHost,
+  };
+
 export type SandboxEgressGrantSelection =
   | {
       grant: PluginGrant;
@@ -104,9 +115,10 @@ function credentialSubjectFromContext(
 function assertLeaseTransformsOwnedByProvider(
   provider: string,
   lease: Pick<SandboxEgressCredentialLease, "headerTransforms">,
+  resolveProviderForHost: typeof resolveSandboxEgressProviderForHost,
 ): void {
   for (const transform of lease.headerTransforms) {
-    if (resolveSandboxEgressProviderForHost(transform.domain) !== provider) {
+    if (resolveProviderForHost(transform.domain) !== provider) {
       throw new Error(
         `Credential lease for ${provider} included header transform for unowned domain ${transform.domain}`,
       );
@@ -154,6 +166,7 @@ export async function sandboxEgressCredentialLease(
   provider: string,
   selection: SandboxEgressGrantSelection,
   context: SandboxEgressCredentialContext,
+  services: SandboxEgressCredentialServices = defaultSandboxEgressCredentialServices,
 ): Promise<SandboxEgressCredentialLease> {
   const { grant } = selection;
   const cached = await getSandboxEgressCredentialLease(
@@ -212,7 +225,7 @@ export async function sandboxEgressCredentialLease(
     // All CredentialUnavailableError throws in oauth-bearer-broker are user-actionable
     // (missing token, scope gap, expired connection) and should trigger OAuth re-auth.
     try {
-      lease = await issueProviderCredentialLease({
+      lease = await services.issueProviderCredentialLease({
         context: context.credentials,
         provider,
         reason: grant.reason ?? `sandbox-egress:${provider}:default`,
@@ -257,7 +270,11 @@ export async function sandboxEgressCredentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  assertLeaseTransformsOwnedByProvider(provider, cachedLease);
+  assertLeaseTransformsOwnedByProvider(
+    provider,
+    cachedLease,
+    services.resolveProviderForHost,
+  );
   await setSandboxEgressCredentialLease(context, cachedLease);
   return cachedLease;
 }

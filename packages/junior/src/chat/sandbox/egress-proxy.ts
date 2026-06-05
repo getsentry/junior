@@ -1,3 +1,5 @@
+import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import {
@@ -75,7 +77,8 @@ export type SandboxEgressHttpInterceptor = (input: {
 interface ProxyDeps {
   fetch?: typeof fetch;
   interceptHttp?: SandboxEgressHttpInterceptor;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
+  issueProviderCredentialLease?: typeof issueProviderCredentialLease;
+  resolveProviderForHost?: typeof resolveSandboxEgressProviderForHost;
   verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 
@@ -636,7 +639,9 @@ async function proxySandboxEgressRequestImpl(
   }
   const upstreamUrl = upstreamResult.url;
 
-  const provider = resolveSandboxEgressProviderForHost(upstreamUrl.hostname);
+  const provider = (
+    deps.resolveProviderForHost ?? resolveSandboxEgressProviderForHost
+  )(upstreamUrl.hostname);
   if (!provider) {
     logWarn(
       "sandbox_egress_provider_unresolved",
@@ -737,6 +742,12 @@ async function proxySandboxEgressVerifiedRequest(input: {
       provider,
       grantSelection,
       credentialContext,
+      {
+        issueProviderCredentialLease:
+          deps.issueProviderCredentialLease ?? issueProviderCredentialLease,
+        resolveProviderForHost:
+          deps.resolveProviderForHost ?? resolveSandboxEgressProviderForHost,
+      },
     );
   } catch (error) {
     if (error instanceof SandboxEgressCredentialError) {

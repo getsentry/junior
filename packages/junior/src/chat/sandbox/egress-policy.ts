@@ -11,6 +11,14 @@ import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 
+interface SandboxEgressPolicyServices {
+  getPluginProviders: typeof getPluginProviders;
+}
+
+const defaultSandboxEgressPolicyServices: SandboxEgressPolicyServices = {
+  getPluginProviders,
+};
+
 /** Return whether an outbound host is covered by a sandbox egress domain rule. */
 export function matchesSandboxEgressDomain(
   host: string,
@@ -27,8 +35,11 @@ function manifestDomains(manifest: PluginManifest): string[] {
   return [...domains].sort((left, right) => left.localeCompare(right));
 }
 
-function providerEntries(): Array<{ provider: string; domains: string[] }> {
-  return getPluginProviders()
+function providerEntries(
+  services: SandboxEgressPolicyServices,
+): Array<{ provider: string; domains: string[] }> {
+  return services
+    .getPluginProviders()
     .map((plugin) => ({
       provider: plugin.manifest.name,
       domains: manifestDomains(plugin.manifest),
@@ -40,8 +51,9 @@ function providerEntries(): Array<{ provider: string; domains: string[] }> {
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,
+  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
 ): string | undefined {
-  return providerEntries().find((entry) =>
+  return providerEntries(services).find((entry) =>
     entry.domains.some((domain) => matchesSandboxEgressDomain(host, domain)),
   )?.provider;
 }
@@ -59,16 +71,19 @@ function sandboxProxyUrl(credentialToken?: string): string {
   return new URL(path, baseUrl).toString();
 }
 
-/** Build the policy that forwards credentials and configured trace headers. */
-export function buildSandboxEgressNetworkPolicy(input?: {
-  credentialToken?: string;
-  traceConfig?: SandboxEgressTracePropagationConfig;
-  traceHeaders?: TracePropagationHeaders;
-}): NetworkPolicy {
+/** Build the policy that forwards provider requests back to Junior for credentials. */
+export function buildSandboxEgressNetworkPolicy(
+  input?: {
+    credentialToken?: string;
+    traceConfig?: SandboxEgressTracePropagationConfig;
+    traceHeaders?: TracePropagationHeaders;
+  },
+  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
+): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
   };
-  const entries = providerEntries();
+  const entries = providerEntries(services);
   const traceHeaders = Object.fromEntries(
     Object.entries(input?.traceHeaders ?? {}).filter(
       ([, value]) => typeof value === "string" && value.trim(),
@@ -122,13 +137,15 @@ export function buildSandboxEgressNetworkPolicy(input?: {
 }
 
 /** Resolve non-secret command environment values for registered sandbox providers. */
-export async function resolveSandboxCommandEnvironment(): Promise<
-  Record<string, string>
-> {
+export async function resolveSandboxCommandEnvironment(
+  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
+): Promise<Record<string, string>> {
   const env: Record<string, string> = {};
-  for (const plugin of getPluginProviders().sort((left, right) =>
-    left.manifest.name.localeCompare(right.manifest.name),
-  )) {
+  for (const plugin of services
+    .getPluginProviders()
+    .sort((left, right) =>
+      left.manifest.name.localeCompare(right.manifest.name),
+    )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
     if (credentials?.authTokenEnv) {

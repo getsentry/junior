@@ -52,6 +52,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 import {
   buildSandboxEgressNetworkPolicy as buildSandboxEgressNetworkPolicyImpl,
   matchesSandboxEgressDomain as matchesSandboxEgressDomainImpl,
+  resolveSandboxEgressProviderForHost as resolveSandboxEgressProviderForHostImpl,
   resolveSandboxCommandEnvironment as resolveSandboxCommandEnvironmentImpl,
 } from "@/chat/sandbox/egress-policy";
 import { verifyVercelSandboxOidcToken as verifyVercelSandboxOidcTokenImpl } from "@/chat/sandbox/egress-oidc";
@@ -71,6 +72,10 @@ import { ALL as sandboxEgressHandler } from "@/handlers/sandbox-egress-proxy";
 export const CredentialUnavailableError = CredentialUnavailableErrorImpl;
 export const SANDBOX_EGRESS_PROXY_PATH = SANDBOX_EGRESS_PROXY_PATH_IMPL;
 
+const egressPolicyServices = {
+  getPluginProviders: getPluginProvidersMock,
+};
+
 /** Call the route handler with mocks already registered. */
 export function ALL(request: Request): ReturnType<typeof sandboxEgressHandler> {
   return sandboxEgressHandler(request);
@@ -78,9 +83,9 @@ export function ALL(request: Request): ReturnType<typeof sandboxEgressHandler> {
 
 /** Build a sandbox egress network policy with mocked plugin providers. */
 export function buildSandboxEgressNetworkPolicy(
-  ...args: Parameters<typeof buildSandboxEgressNetworkPolicyImpl>
+  input?: Parameters<typeof buildSandboxEgressNetworkPolicyImpl>[0],
 ): ReturnType<typeof buildSandboxEgressNetworkPolicyImpl> {
-  return buildSandboxEgressNetworkPolicyImpl(...args);
+  return buildSandboxEgressNetworkPolicyImpl(input, egressPolicyServices);
 }
 
 /** Check domain matching through the real egress policy implementation. */
@@ -91,10 +96,10 @@ export function matchesSandboxEgressDomain(
 }
 
 /** Resolve command environment through the real policy implementation. */
-export function resolveSandboxCommandEnvironment(
-  ...args: Parameters<typeof resolveSandboxCommandEnvironmentImpl>
-): ReturnType<typeof resolveSandboxCommandEnvironmentImpl> {
-  return resolveSandboxCommandEnvironmentImpl(...args);
+export function resolveSandboxCommandEnvironment(): ReturnType<
+  typeof resolveSandboxCommandEnvironmentImpl
+> {
+  return resolveSandboxCommandEnvironmentImpl(egressPolicyServices);
 }
 
 /** Verify a sandbox OIDC token with mocked jose and discovery fetches. */
@@ -113,9 +118,15 @@ export function isSandboxEgressForwardedRequest(
 
 /** Proxy a request through the real egress implementation. */
 export function proxySandboxEgressRequest(
-  ...args: Parameters<typeof proxySandboxEgressRequestImpl>
+  request: Parameters<typeof proxySandboxEgressRequestImpl>[0],
+  deps: Parameters<typeof proxySandboxEgressRequestImpl>[1] = {},
 ): ReturnType<typeof proxySandboxEgressRequestImpl> {
-  return proxySandboxEgressRequestImpl(...args);
+  return proxySandboxEgressRequestImpl(request, {
+    ...deps,
+    issueProviderCredentialLease: issueProviderCredentialLeaseMock,
+    resolveProviderForHost: (host) =>
+      resolveSandboxEgressProviderForHostImpl(host, egressPolicyServices),
+  });
 }
 
 /** Create a signed egress credential token with the test secret. */
