@@ -20,6 +20,7 @@ vi.mock("@/chat/pi/client", () => ({
 
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import { McpToolError } from "@/chat/mcp/errors";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 
 describe("handleToolExecutionError", () => {
   beforeEach(() => {
@@ -51,15 +52,61 @@ describe("handleToolExecutionError", () => {
     );
   });
 
-  it("does not report McpToolError to Sentry", () => {
-    const error = new McpToolError("mcp tool failed");
+  it("uses the MCP semantic error type for MCP tool results", () => {
+    const error = new McpToolError("remote tool failed");
+
     expect(() =>
-      handleToolExecutionError(error, "mcpTool", "call_1", true, {}),
+      handleToolExecutionError(error, "callMcpTool", "tool-call-id", true, {}),
     ).toThrow(error);
 
+    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+      "error.type": "tool_error",
+    });
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "agent_tool_call_failed",
+      {},
+      expect.objectContaining({
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": "callMcpTool",
+        "gen_ai.tool.call.id": "tool-call-id",
+        "error.type": "tool_error",
+        "exception.message": "remote tool failed",
+      }),
+      "Agent tool call failed",
+    );
     expect(logExceptionMock).not.toHaveBeenCalled();
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ "error.type": "tool_error" }),
+  });
+
+  it("logs plugin credential failures without exposing command text", () => {
+    const error = new PluginCredentialFailureError(
+      "github",
+      "GitHub credentials were rejected while running `gh repo view secret`.",
+    );
+
+    expect(() =>
+      handleToolExecutionError(error, "bash", "tool-call-id", true, {}),
+    ).toThrow(error);
+
+    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+      "app.credential.provider": "github",
+      "error.type": "PluginCredentialFailureError",
+    });
+    expect(logInfoMock).toHaveBeenCalledWith(
+      "plugin_credential_rejected",
+      {},
+      expect.objectContaining({
+        "app.credential.provider": "github",
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": "bash",
+        "gen_ai.tool.call.id": "tool-call-id",
+        "error.type": "PluginCredentialFailureError",
+      }),
+      "Plugin credentials were rejected during tool execution",
+    );
+    expect(logWarnMock).not.toHaveBeenCalled();
+    expect(logExceptionMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(logInfoMock.mock.calls)).not.toContain(
+      "gh repo view secret",
     );
   });
 });
