@@ -1,6 +1,6 @@
 import type { FileUpload, PostableMessage } from "chat";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
-import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
+import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
@@ -257,7 +257,7 @@ export function splitSlackReplyText(
     interrupted?: boolean;
   },
 ): string[] {
-  const normalized = renderSlackMrkdwn(text);
+  const normalized = normalizeSlackReplyMarkdown(text);
   if (!normalized) {
     return [];
   }
@@ -308,7 +308,7 @@ export function getSlackInterruptionMarker(): string {
  * budget without needing continuation messages.
  */
 export function fitsSlackInlineBudget(text: string): boolean {
-  return fitsInlineBudget(renderSlackMrkdwn(text));
+  return fitsInlineBudget(normalizeSlackReplyMarkdown(text));
 }
 
 /**
@@ -326,7 +326,7 @@ export function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
 ): PostableMessage {
-  const normalized = renderSlackMrkdwn(text);
+  const normalized = normalizeSlackReplyMarkdown(text);
   const fileCount = files?.length ?? 0;
 
   if (!normalized) {
