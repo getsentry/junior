@@ -112,6 +112,18 @@ describe("normalizeSlackReplyMarkdown", () => {
       normalizeSlackReplyMarkdown("https://evil.com|trusted.com"),
     ).toBe("<https://evil.com>|trusted.com");
   });
+
+  it("stops URL scan at * so glued emphasis markers stay outside", () => {
+    expect(
+      normalizeSlackReplyMarkdown("see https://example.com**bold** here"),
+    ).toBe("see <https://example.com>**bold** here");
+  });
+
+  it("peels mixed trailing suffix in correct order (_  then .)", () => {
+    expect(normalizeSlackReplyMarkdown("https://example.com_.")).toBe(
+      "<https://example.com>_.",
+    );
+  });
 });
 
 describe("buildSlackOutputMessage", () => {

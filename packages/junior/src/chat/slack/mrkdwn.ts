@@ -97,7 +97,15 @@ function readBareUrl(
   let end = start;
   while (end < line.length) {
     const ch = line[end];
-    if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === '"' || ch === "`" || ch === "|") {
+    if (
+      /\s/.test(ch) ||
+      ch === "<" ||
+      ch === ">" ||
+      ch === '"' ||
+      ch === "`" ||
+      ch === "|" ||
+      ch === "*"
+    ) {
       break;
     }
     end++;
@@ -115,18 +123,14 @@ function readBareUrl(
     raw = raw.slice(0, -1);
   };
 
-  // Peel trailing emphasis markers — these are the core bug trigger.
-  while (raw.endsWith("*") || raw.endsWith("_")) {
-    peel();
-  }
+  // Peel trailing non-URL chars in a single stable loop so mixed suffixes
+  // (e.g. trailing `_` then `.`) are emitted in the correct order.
+  const shouldPeel = (): boolean =>
+    raw.endsWith("_") ||
+    /[.,!?;:]$/.test(raw) ||
+    (raw.endsWith(")") && hasUnmatchedClosingParen(raw));
 
-  // Peel trailing sentence punctuation.
-  while (/[.,!?;:]$/.test(raw)) {
-    peel();
-  }
-
-  // Peel unmatched closing parens, preserve balanced URL parens.
-  while (raw.endsWith(")") && hasUnmatchedClosingParen(raw)) {
+  while (raw.length > 0 && shouldPeel()) {
     peel();
   }
 
