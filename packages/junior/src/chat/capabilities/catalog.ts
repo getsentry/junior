@@ -60,12 +60,10 @@ function cloneProviderDefinition(
   };
 }
 
-/** Build (and cache) the capability catalog from registered plugins. */
-function getCapabilityCatalog(source: CapabilityCatalogSource) {
-  const signature = source.getPluginCatalogSignature();
-  if (cachedCatalog?.signature === signature) return cachedCatalog;
-
-  const providers = source.getPluginCapabilityProviders();
+function buildCapabilityCatalog(
+  signature: string,
+  providers: CapabilityProviderDefinition[],
+): NonNullable<typeof cachedCatalog> {
   const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
 
   for (const provider of providers) {
@@ -79,7 +77,24 @@ function getCapabilityCatalog(source: CapabilityCatalogSource) {
     }
   }
 
-  cachedCatalog = { signature, providers, capabilityToProvider };
+  return { signature, providers, capabilityToProvider };
+}
+
+/** Build (and cache) the capability catalog from registered plugins. */
+function getCapabilityCatalog(source: CapabilityCatalogSource) {
+  const signature = source.getPluginCatalogSignature();
+  if (source !== defaultCapabilityCatalogDeps) {
+    return buildCapabilityCatalog(
+      signature,
+      source.getPluginCapabilityProviders(),
+    );
+  }
+  if (cachedCatalog?.signature === signature) return cachedCatalog;
+
+  cachedCatalog = buildCapabilityCatalog(
+    signature,
+    source.getPluginCapabilityProviders(),
+  );
   return cachedCatalog;
 }
 

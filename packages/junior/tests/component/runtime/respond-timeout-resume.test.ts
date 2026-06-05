@@ -41,6 +41,15 @@ const turnThinkingSelection = {
   confidence: 1,
   reason: "test",
 } satisfies TurnThinkingSelection;
+const TEST_DESTINATION = {
+  platform: "local",
+  conversationId: "local:test:timeout_resume",
+} as const;
+const TEST_REQUESTER = {
+  platform: "local",
+  userId: "test-user",
+  userName: "Test User",
+} as const;
 
 const agentFactory = createScriptedReplyAgentFactory({
   abort() {
@@ -108,10 +117,16 @@ async function generateReply(
   message: string,
   options: Parameters<typeof generateAssistantReply>[1] = {},
 ) {
+  const { destination, harness, requester, ...restOptions } = options;
   return await generateAssistantReply(message, {
-    agentFactory,
-    turnThinkingSelection,
-    ...options,
+    destination: destination ?? TEST_DESTINATION,
+    requester: requester ? { ...TEST_REQUESTER, ...requester } : TEST_REQUESTER,
+    ...restOptions,
+    harness: {
+      agentFactory,
+      turnThinkingSelection,
+      ...harness,
+    },
   });
 }
 
@@ -196,7 +211,7 @@ describe("generateAssistantReply timeout resume", () => {
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -227,7 +242,7 @@ describe("generateAssistantReply timeout resume", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: AGENT_CONTINUE_MAX_SLICES,
+      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
       errorMessage: expect.stringContaining("slice limit"),
     });
   });

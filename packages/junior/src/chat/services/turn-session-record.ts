@@ -14,7 +14,7 @@ import {
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
-export const AGENT_CONTINUE_MAX_SLICES = 48;
+export const AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES = 48;
 
 export interface TurnSessionContext {
   conversationId?: string;
@@ -406,7 +406,7 @@ export async function persistTimeoutSessionRecord(args: {
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     );
-    if (nextSliceId > AGENT_CONTINUE_MAX_SLICES) {
+    if (nextSliceId > AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES) {
       return await upsertAgentTurnSessionRecord({
         ...((args.channelName ?? latestSessionRecord?.channelName)
           ? {
@@ -433,7 +433,7 @@ export async function persistTimeoutSessionRecord(args: {
           : {}),
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
+        errorMessage: `Agent continuation exceeded slice limit (${AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES})`,
         ...((args.requester ?? latestSessionRecord?.requester)
           ? { requester: args.requester ?? latestSessionRecord?.requester }
           : {}),

@@ -257,8 +257,11 @@ export async function createMcpAuthRuntimeSlackFixture() {
       return (messageText: string, context: ReplyRequestContext = {}) =>
         respond.generateAssistantReply(messageText, {
           ...context,
-          streamFn,
-          turnThinkingSelection: testThinkingSelection,
+          harness: {
+            ...context.harness,
+            streamFn,
+            turnThinkingSelection: testThinkingSelection,
+          },
         });
     },
 

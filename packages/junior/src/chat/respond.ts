@@ -220,6 +220,22 @@ export interface ReplyRuntimeServices {
   parseSkillInvocation: typeof parseSkillInvocation;
 }
 
+/** Host-owned execution ports for deterministic component, integration, and eval harnesses. */
+export interface ReplyRuntimeHarness {
+  /** Override the Pi model transport when a host owns deterministic execution. */
+  streamFn?: StreamFn;
+  /** Override Pi Agent construction for controlled runtime harnesses. */
+  agentFactory?: (options: ReplyAgentOptions) => ReplyAgent;
+  /** Override sandbox execution for controlled runtime hosts. */
+  sandboxExecutorFactory?: SandboxExecutorFactory;
+  /** Override MCP client construction for controlled runtime harnesses. */
+  mcpClientFactory?: McpToolManagerOptions["clientFactory"];
+  /** Override runtime discovery/auth services for controlled runtime harnesses. */
+  runtimeServices?: ReplyRuntimeServices;
+  /** Reuse a preselected reasoning level when routing already made that choice. */
+  turnThinkingSelection?: TurnThinkingSelection;
+}
+
 const defaultReplyRuntimeServices: ReplyRuntimeServices = {
   createMcpAuthOrchestration,
   discoverSkills,
@@ -314,18 +330,8 @@ export interface ReplyRequestContext {
     /** Per-turn override for app-owned sandbox egress trace propagation. */
     tracePropagation?: SandboxEgressTracePropagationConfig;
   };
-  /** Override the Pi model transport when a host owns deterministic execution. */
-  streamFn?: StreamFn;
-  /** Override Pi Agent construction for controlled runtime harnesses. */
-  agentFactory?: (options: ReplyAgentOptions) => ReplyAgent;
-  /** Override sandbox execution for controlled runtime hosts. */
-  sandboxExecutorFactory?: SandboxExecutorFactory;
-  /** Override MCP client construction for controlled runtime harnesses. */
-  mcpClientFactory?: McpToolManagerOptions["clientFactory"];
-  /** Override runtime discovery/auth services for controlled runtime harnesses. */
-  runtimeServices?: ReplyRuntimeServices;
-  /** Reuse a preselected reasoning level when routing already made that choice. */
-  turnThinkingSelection?: TurnThinkingSelection;
+  /** Deterministic execution ports owned by component, integration, or eval harnesses. */
+  harness?: ReplyRuntimeHarness;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   onArtifactStateUpdated?: (
     artifactState: ThreadArtifactsState,
@@ -509,8 +515,9 @@ export async function generateAssistantReply(
   assertCorrelationDestinationMatch(context);
 
   const replyStartedAtMs = Date.now();
+  const harness = context.harness ?? {};
   const runtimeServices =
-    context.runtimeServices ?? defaultReplyRuntimeServices;
+    harness.runtimeServices ?? defaultReplyRuntimeServices;
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
   const contextTurnDeadlineAtMs =
     typeof context.turnDeadlineAtMs === "number" &&
@@ -719,7 +726,7 @@ export async function generateAssistantReply(
     const pluginHooks = createPluginHookRunner({
       requester: actorRequester,
     });
-    sandboxExecutor = (context.sandboxExecutorFactory ?? createSandboxExecutor)(
+    sandboxExecutor = (harness.sandboxExecutorFactory ?? createSandboxExecutor)(
       {
         sandboxId: context.sandbox?.sandboxId,
         sandboxDependencyProfileHash:
@@ -815,7 +822,7 @@ export async function generateAssistantReply(
       ];
 
     thinkingSelection =
-      context.turnThinkingSelection ??
+      harness.turnThinkingSelection ??
       (await selectTurnThinkingLevel({
         completeObject,
         conversationContext: context.conversationContext,
@@ -899,8 +906,8 @@ export async function generateAssistantReply(
       runtimeServices.getPluginMcpProviders(),
       {
         authProviderFactory: mcpAuth.authProviderFactory,
-        ...(context.mcpClientFactory
-          ? { clientFactory: context.mcpClientFactory }
+        ...(harness.mcpClientFactory
+          ? { clientFactory: harness.mcpClientFactory }
           : {}),
         onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
       },
@@ -1270,10 +1277,10 @@ export async function generateAssistantReply(
       throw cooperativeYieldError;
     };
 
-    agent = (context.agentFactory ?? createDefaultReplyAgent)({
+    agent = (harness.agentFactory ?? createDefaultReplyAgent)({
       getApiKey: () => getPiGatewayApiKeyOverride(),
       streamFn:
-        context.streamFn ?? createTracedStreamFn({ conversationPrivacy }),
+        harness.streamFn ?? createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       prepareNextTurn: async () => {
         await drainSteeringMessages();

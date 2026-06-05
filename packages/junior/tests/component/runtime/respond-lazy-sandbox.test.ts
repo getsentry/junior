@@ -166,8 +166,8 @@ async function generateReply(
   message: string,
   options: Parameters<typeof generateAssistantReply>[1] = {},
 ) {
+  const { harness, ...restOptions } = options;
   return await generateAssistantReply(message, {
-    agentFactory,
     destination: {
       platform: "local",
       conversationId: "local:test:lazy_sandbox",
@@ -177,10 +177,14 @@ async function generateReply(
       userId: "test-user",
       userName: "Test User",
     },
-    sandboxExecutorFactory: sandboxExecutorFactory(),
     skillDirs: skillRoot ? [skillRoot] : [],
-    turnThinkingSelection: thinkingSelection("medium"),
-    ...options,
+    ...restOptions,
+    harness: {
+      agentFactory,
+      sandboxExecutorFactory: sandboxExecutorFactory(),
+      turnThinkingSelection: thinkingSelection("medium"),
+      ...harness,
+    },
   });
 }
 
@@ -209,7 +213,9 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
     const reply = await generateReply("hello", {
-      turnThinkingSelection: thinkingSelection("none"),
+      harness: {
+        turnThinkingSelection: thinkingSelection("none"),
+      },
     });
 
     expect(reply.text).toBe("Plain reply.");

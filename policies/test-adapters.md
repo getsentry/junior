@@ -16,7 +16,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Centralize temporary environment or configuration overrides in helpers that restore state automatically.
 - Make isolation explicit. Tests that use shared resources, fake clocks, singleton state, or process-global configuration must reset them locally or opt into an isolated/serial harness.
 - Keep test-only capabilities out of production singletons. Prefer injected ports, local factories, and test adapters over `setForTests` globals or module mocks.
-- Integration tests must use explicit composition or request-context ports for deterministic agent/model behavior; do not use module mocks to alter runtime wiring.
+- Integration tests must use explicit composition or named harness ports for deterministic agent/model behavior; do not use module mocks to alter runtime wiring.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.
 - Keep shared adapter contract tests in dedicated files named for the adapter or
   port contract. Do not mix test-adapter self-tests into product behavior suites.

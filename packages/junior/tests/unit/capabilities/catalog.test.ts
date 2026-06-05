@@ -125,4 +125,35 @@ describe("capability catalog", () => {
       },
     });
   });
+
+  it("does not share cache entries between injected sources", () => {
+    const firstSource = {
+      getPluginCatalogSignature: () => "shared-signature",
+      getPluginCapabilityProviders: () => [
+        {
+          provider: "first",
+          capabilities: ["first.read"],
+          configKeys: ["first.token"],
+        },
+      ],
+    };
+    const secondSource = {
+      getPluginCatalogSignature: () => "shared-signature",
+      getPluginCapabilityProviders: () => [
+        {
+          provider: "second",
+          capabilities: ["second.read"],
+          configKeys: ["second.token"],
+        },
+      ],
+    };
+
+    expect(getCapabilityProvider("first.read", firstSource)).toMatchObject({
+      provider: "first",
+    });
+    expect(getCapabilityProvider("first.read", secondSource)).toBeUndefined();
+    expect(getCapabilityProvider("second.read", secondSource)).toMatchObject({
+      provider: "second",
+    });
+  });
 });

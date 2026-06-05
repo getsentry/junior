@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = process.cwd();
+const scriptPath = fileURLToPath(import.meta.url);
+const juniorRoot = path.resolve(path.dirname(scriptPath), "..");
+const monorepoRoot = path.resolve(juniorRoot, "../..");
 
 const EVAL_SOURCE_EXTENSIONS = new Set([
   ".ts",
@@ -20,8 +23,16 @@ const FORBIDDEN_EVAL_PATTERNS = [
   /@\/chat\/slack-actions\//,
 ];
 
-const INTEGRATION_ROOT = path.join(repoRoot, "tests", "integration");
 const VI_MODULE_MOCK_PATTERN = /\bvi\.(?:mock|doMock)\(\s*["']([^"']+)["']/g;
+
+function defaultBoundaryCheckRoots() {
+  return {
+    evalsRoot: path.join(monorepoRoot, "packages", "junior-evals", "evals"),
+    integrationRoot: path.join(juniorRoot, "tests", "integration"),
+    mswRoot: path.join(juniorRoot, "tests", "msw"),
+    reportRoot: monorepoRoot,
+  };
+}
 
 async function pathExists(targetPath) {
   try {
@@ -48,8 +59,8 @@ async function listFilesRecursive(dirPath) {
   return files;
 }
 
-function toRelative(filePath) {
-  return path.relative(repoRoot, filePath).split(path.sep).join("/");
+function toRelative(filePath, reportRoot) {
+  return path.relative(reportRoot, filePath).split(path.sep).join("/");
 }
 
 function findPatternLineNumbers(source, pattern) {
@@ -66,47 +77,42 @@ function findPatternLineNumbers(source, pattern) {
 }
 
 function findViModuleMocks(source) {
-  const lines = source.split("\n");
   const mocks = [];
+  VI_MODULE_MOCK_PATTERN.lastIndex = 0;
 
-  for (let index = 0; index < lines.length; index += 1) {
-    VI_MODULE_MOCK_PATTERN.lastIndex = 0;
-    let match = VI_MODULE_MOCK_PATTERN.exec(lines[index]);
-    while (match) {
-      mocks.push({
-        lineNumber: index + 1,
-        moduleName: match[1],
-      });
-      match = VI_MODULE_MOCK_PATTERN.exec(lines[index]);
-    }
+  let match = VI_MODULE_MOCK_PATTERN.exec(source);
+  while (match) {
+    mocks.push({
+      lineNumber: source.slice(0, match.index).split("\n").length,
+      moduleName: match[1],
+    });
+    match = VI_MODULE_MOCK_PATTERN.exec(source);
   }
 
   return mocks;
 }
 
-async function checkMswDirectory() {
-  const mswPath = path.join(repoRoot, "tests", "msw");
-  if (!(await pathExists(mswPath))) {
+async function checkMswDirectory(mswRoot, reportRoot) {
+  if (!(await pathExists(mswRoot))) {
     return [];
   }
 
-  const files = await listFilesRecursive(mswPath);
+  const files = await listFilesRecursive(mswRoot);
   return files
     .filter((filePath) => /\.test\.[cm]?[jt]sx?$/.test(filePath))
     .map(
       (filePath) =>
-        `Unexpected test file under tests/msw: ${toRelative(filePath)}`,
+        `Unexpected test file under tests/msw: ${toRelative(filePath, reportRoot)}`,
     );
 }
 
-async function checkEvalSources() {
-  const evalsPath = path.join(repoRoot, "evals");
-  if (!(await pathExists(evalsPath))) {
+async function checkEvalSources(evalsRoot, reportRoot) {
+  if (!(await pathExists(evalsRoot))) {
     return [];
   }
 
   const violations = [];
-  const files = await listFilesRecursive(evalsPath);
+  const files = await listFilesRecursive(evalsRoot);
 
   for (const filePath of files) {
     const extension = path.extname(filePath);
@@ -121,7 +127,7 @@ async function checkEvalSources() {
         continue;
       }
       violations.push(
-        `Forbidden eval boundary pattern "${pattern.source}" in ${toRelative(filePath)} at line(s): ${lineNumbers.join(", ")}`,
+        `Forbidden eval boundary pattern "${pattern.source}" in ${toRelative(filePath, reportRoot)} at line(s): ${lineNumbers.join(", ")}`,
       );
     }
   }
@@ -129,23 +135,23 @@ async function checkEvalSources() {
   return violations;
 }
 
-async function checkIntegrationSources() {
-  if (!(await pathExists(INTEGRATION_ROOT))) {
+async function checkIntegrationSources(integrationRoot, reportRoot) {
+  if (!(await pathExists(integrationRoot))) {
     return [];
   }
 
   const violations = [];
-  const files = await listFilesRecursive(INTEGRATION_ROOT);
+  const files = await listFilesRecursive(integrationRoot);
   const testFiles = files.filter((filePath) =>
     /\.test\.[cm]?[jt]sx?$/.test(filePath),
   );
 
   for (const filePath of testFiles) {
     const source = await fs.readFile(filePath, "utf8");
-    const relativePath = toRelative(filePath);
+    const relativePath = toRelative(filePath, reportRoot);
     for (const mock of findViModuleMocks(source)) {
       violations.push(
-        `Forbidden integration module mock "${mock.moduleName}" in ${relativePath}:${mock.lineNumber}. Integration tests must use real runtime wiring and fake deterministic agent/model output only through explicit composition or request-context ports.`,
+        `Forbidden integration module mock "${mock.moduleName}" in ${relativePath}:${mock.lineNumber}. Integration tests must use real runtime wiring and fake deterministic agent/model output only through explicit composition or named harness ports.`,
       );
     }
   }
@@ -153,12 +159,30 @@ async function checkIntegrationSources() {
   return violations;
 }
 
-async function main() {
-  const violations = [
-    ...(await checkMswDirectory()),
-    ...(await checkEvalSources()),
-    ...(await checkIntegrationSources()),
+/** Return all test-boundary violations across Junior tests and evals. */
+export async function runBoundaryCheck(roots = {}) {
+  const resolvedRoots = {
+    ...defaultBoundaryCheckRoots(),
+    ...roots,
+  };
+  return [
+    ...(await checkMswDirectory(
+      resolvedRoots.mswRoot,
+      resolvedRoots.reportRoot,
+    )),
+    ...(await checkEvalSources(
+      resolvedRoots.evalsRoot,
+      resolvedRoots.reportRoot,
+    )),
+    ...(await checkIntegrationSources(
+      resolvedRoots.integrationRoot,
+      resolvedRoots.reportRoot,
+    )),
   ];
+}
+
+async function main() {
+  const violations = await runBoundaryCheck();
 
   if (violations.length > 0) {
     console.error("Slack test boundary check failed:");
@@ -171,4 +195,6 @@ async function main() {
   console.log("Slack test boundary check passed.");
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  await main();
+}

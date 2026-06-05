@@ -23,12 +23,12 @@ Do not default to unit tests for runtime behavior just because they are easier t
 
 ## Test Layers
 
-| Layer                 | Primary Goal                                             | Scope                                                                    | Allowed Substitutions                                                                       | Disallowed                                                                                            |
-| --------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Unit                  | Validate local deterministic invariants                  | Single module/function and tight collaborators                           | Local stubs/mocks (`vi.mock`, fakes)                                                        | Baseline product/runtime behavior, Slack HTTP contract assertions, and conversational quality scoring |
-| Component             | Validate deterministic service/runtime contracts         | Real domain modules plus memory state and explicit local ports           | Fake queue/clock/agent-runner ports, memory adapters, MSW for adapter contracts             | User-visible Slack delivery flows, model interpretation, broad runtime module mocks                   |
-| Integration           | Validate runtime/product behavior and external contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent/model output through explicit composition or request-context ports | Runtime module/function mocks for behavior paths                                                      |
-| Eval (Agent Behavior) | Validate agent-facing conversational outcomes end-to-end | End-to-end harnessed conversation flows scored by judge criteria         | Case-level behavior fixtures and controlled environment flags                               | Low-level HTTP payload-shape assertions and internals-only checks                                     |
+| Layer                 | Primary Goal                                             | Scope                                                                    | Allowed Substitutions                                                                     | Disallowed                                                                                            |
+| --------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Unit                  | Validate local deterministic invariants                  | Single module/function and tight collaborators                           | Local stubs/mocks (`vi.mock`, fakes)                                                      | Baseline product/runtime behavior, Slack HTTP contract assertions, and conversational quality scoring |
+| Component             | Validate deterministic service/runtime contracts         | Real domain modules plus memory state and explicit local ports           | Fake queue/clock/agent-runner ports, memory adapters, MSW for adapter contracts           | User-visible Slack delivery flows, model interpretation, broad runtime module mocks                   |
+| Integration           | Validate runtime/product behavior and external contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent/model output through explicit composition or named harness ports | Runtime module/function mocks for behavior paths                                                      |
+| Eval (Agent Behavior) | Validate agent-facing conversational outcomes end-to-end | End-to-end harnessed conversation flows scored by judge criteria         | Case-level behavior fixtures and controlled environment flags                             | Low-level HTTP payload-shape assertions and internals-only checks                                     |
 
 ## Canonical Specs
 
@@ -51,7 +51,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 6. Keep test names descriptive of outcomes, not implementation mechanics.
 7. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
 8. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
-9. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent/model output through explicit composition or request-context ports.
+9. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent/model output through explicit composition or named harness ports.
 10. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
 11. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
 12. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
@@ -98,7 +98,7 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 1. Mock one boundary, not a whole workflow.
 2. The mocked boundary must be the thing the layer is explicitly allowed to replace.
 3. If a component test needs fake ports, keep them explicit and role-named. Do not use module-level mocks to steer unrelated runtime branches.
-4. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `streamFn`, or other explicit ports owned by the runtime contract.
+4. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
 5. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
 6. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
 7. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.

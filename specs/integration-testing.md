@@ -36,8 +36,8 @@ In scope:
 Allowed:
 
 - Fake agent or service substitution at the composition boundary only (`createSlackRuntime(...)`, `createTestChatRuntime(...)`, or approved thin wrapper helpers over them).
-- Fake Pi model transport through `ReplyRequestContext.streamFn` when the test needs the real Pi `Agent` loop, tool execution, durable checkpoints, or auth-pause behavior.
-- Precomputed deterministic runtime decisions through explicit request-context ports when the decision is not the behavior under test.
+- Fake Pi model transport through `ReplyRequestContext.harness.streamFn` when the test needs the real Pi `Agent` loop, tool execution, durable checkpoints, or auth-pause behavior.
+- Precomputed deterministic runtime decisions through explicit `ReplyRequestContext.harness` ports when the decision is not the behavior under test.
 
 Disallowed in integration behavior tests:
 

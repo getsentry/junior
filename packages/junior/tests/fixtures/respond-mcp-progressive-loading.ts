@@ -486,21 +486,28 @@ const respondRuntimeServices = {
   getPluginProviders: () => [demoPlugin],
   loadSkillsByName: state.loadSkillsByNameMock,
   parseSkillInvocation: parseSkillInvocationImpl,
-} satisfies NonNullable<ReplyContext["runtimeServices"]>;
+} satisfies NonNullable<
+  NonNullable<ReplyContext["harness"]>["runtimeServices"]
+>;
 
 /** Run respond through the explicit MCP/agent/sandbox ports used by this fixture. */
 export async function generateAssistantReply(
   message: string,
   context: Parameters<typeof generateAssistantReplyImpl>[1] = {},
 ) {
+  const { harness, ...restContext } = context;
   return await generateAssistantReplyImpl(message, {
-    agentFactory,
-    mcpClientFactory,
     recordPendingAuth: async () => undefined,
-    runtimeServices: respondRuntimeServices,
-    sandboxExecutorFactory: createScriptedSandboxExecutorFactory(sandboxState),
-    turnThinkingSelection,
-    ...context,
+    ...restContext,
+    harness: {
+      agentFactory,
+      mcpClientFactory,
+      runtimeServices: respondRuntimeServices,
+      sandboxExecutorFactory:
+        createScriptedSandboxExecutorFactory(sandboxState),
+      turnThinkingSelection,
+      ...harness,
+    },
   });
 }
 
