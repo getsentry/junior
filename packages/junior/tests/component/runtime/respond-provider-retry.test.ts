@@ -1,146 +1,110 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
+import type { PiMessage } from "@/chat/pi/messages";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
+import {
+  createScriptedReplyAgentFactory,
+  type ScriptedReplyAgent,
+} from "../../fixtures/respond-agent";
 import "../../fixtures/respond-runtime";
 
-const { agentMode, counters } = vi.hoisted(() => ({
-  agentMode: {
-    value: "providerRetry" as
-      | "providerRetry"
-      | "cooperativeYield"
-      | "steering"
-      | "steeringSteerThrows",
+const { generateAssistantReply } = await import("@/chat/respond");
+const { isCooperativeTurnYieldError } = await import("@/chat/runtime/turn");
+const { getAwaitingTurnContinuationRequest } =
+  await import("@/chat/services/timeout-resume");
+const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+const turnSessionState = await import("@/chat/state/turn-session");
+
+type AgentMode =
+  | "providerRetry"
+  | "cooperativeYield"
+  | "steering"
+  | "steeringSteerThrows";
+
+const agentMode: { value: AgentMode } = {
+  value: "providerRetry",
+};
+const counters = {
+  continueCalls: 0,
+  promptCalls: 0,
+};
+const turnThinkingSelection = {
+  thinkingLevel: "medium",
+  confidence: 1,
+  reason: "test",
+} satisfies TurnThinkingSelection;
+
+const agentFactory = createScriptedReplyAgentFactory({
+  async continue(agent) {
+    counters.continueCalls += 1;
+    agent.state.messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "Recovered." }],
+      stopReason: "stop",
+      usage: {
+        input: 2,
+        output: 2,
+      },
+    } as PiMessage);
+    return {};
   },
-  counters: {
-    continueCalls: 0,
-    promptCalls: 0,
-  },
-}));
-
-vi.mock("@earendil-works/pi-agent-core", () => {
-  class MockAgent {
-    state: {
-      messages: unknown[];
-      model: unknown;
-      systemPrompt: string;
-      tools: unknown[];
-    };
-    private prepareNextTurn?: () => Promise<unknown> | unknown;
-    private steeringMessages: unknown[] = [];
-
-    constructor(input: {
-      initialState: {
-        model: unknown;
-        systemPrompt: string;
-        tools: unknown[];
-      };
-      prepareNextTurn?: () => Promise<unknown> | unknown;
-    }) {
-      this.state = {
-        messages: [],
-        model: input.initialState.model,
-        systemPrompt: input.initialState.systemPrompt,
-        tools: input.initialState.tools,
-      };
-      this.prepareNextTurn = input.prepareNextTurn;
-    }
-
-    subscribe() {
-      return () => undefined;
-    }
-
-    steer(message: unknown) {
-      if (agentMode.value === "steeringSteerThrows") {
-        throw new Error("steer failed");
-      }
-      this.steeringMessages.push(message);
-    }
-
-    abort() {
-      return undefined;
-    }
-
-    private recordRunFailure(error: unknown) {
-      this.state.messages.push({
+  async prompt(agent, message) {
+    counters.promptCalls += 1;
+    agent.state.messages.push(message as PiMessage);
+    if (
+      agentMode.value === "cooperativeYield" ||
+      agentMode.value === "steering" ||
+      agentMode.value === "steeringSteerThrows"
+    ) {
+      await agent.prepareNextTurn?.();
+      agent.state.messages.push(...agent.steeringMessages);
+      agent.state.messages.push({
         role: "assistant",
-        content: [{ type: "text", text: "" }],
-        stopReason: "error",
-        errorMessage: error instanceof Error ? error.message : String(error),
-        usage: {
-          input: 0,
-          output: 0,
-        },
-      });
-    }
-
-    async prompt(message: unknown) {
-      counters.promptCalls += 1;
-      this.state.messages.push(message);
-      if (
-        agentMode.value === "cooperativeYield" ||
-        agentMode.value === "steering" ||
-        agentMode.value === "steeringSteerThrows"
-      ) {
-        try {
-          await this.prepareNextTurn?.();
-        } catch (error) {
-          this.recordRunFailure(error);
-          return {};
-        }
-        this.state.messages.push(...this.steeringMessages);
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "Steered." }],
-          stopReason: "stop",
-          usage: {
-            input: 2,
-            output: 2,
-          },
-        });
-        return {};
-      }
-      this.state.messages.push({
-        role: "toolResult",
-        toolName: "bash",
-        isError: false,
-        content: [{ type: "text", text: "ok" }],
-      });
-      this.state.messages.push({
-        role: "assistant",
-        content: [],
-        stopReason: "error",
-        errorMessage: "Anthropic stream ended before message_stop",
-        usage: {
-          input: 10,
-          output: 1,
-        },
-      });
-      return {};
-    }
-
-    async continue() {
-      counters.continueCalls += 1;
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "Recovered." }],
+        content: [{ type: "text", text: "Steered." }],
         stopReason: "stop",
         usage: {
           input: 2,
           output: 2,
         },
-      });
+      } as PiMessage);
       return {};
     }
-  }
-
-  return { Agent: MockAgent };
+    agent.state.messages.push({
+      role: "toolResult",
+      toolName: "bash",
+      isError: false,
+      content: [{ type: "text", text: "ok" }],
+    } as PiMessage);
+    agent.state.messages.push({
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "Anthropic stream ended before message_stop",
+      usage: {
+        input: 10,
+        output: 1,
+      },
+    } as unknown as PiMessage);
+    return {};
+  },
+  steer(agent: ScriptedReplyAgent, message: unknown) {
+    if (agentMode.value === "steeringSteerThrows") {
+      throw new Error("steer failed");
+    }
+    agent.steeringMessages.push(message as PiMessage);
+  },
 });
 
-import { generateAssistantReply } from "@/chat/respond";
-import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
-import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import * as turnSessionState from "@/chat/state/turn-session";
-import { createJuniorReporting } from "@/reporting";
+async function generateReply(
+  message: string,
+  options: Parameters<typeof generateAssistantReply>[1] = {},
+) {
+  return await generateAssistantReply(message, {
+    ...options,
+    agentFactory,
+    turnThinkingSelection,
+  });
+}
 
 const TEST_DESTINATION = {
   platform: "slack",
@@ -153,7 +117,6 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "providerRetry";
     counters.continueCalls = 0;
     counters.promptCalls = 0;
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
   });
@@ -161,13 +124,11 @@ describe("generateAssistantReply provider retry", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
   it("continues from the last safe boundary after a transient provider stream error", async () => {
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    const replyPromise = generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
         turnId: "turn-1",
@@ -235,10 +196,8 @@ describe("generateAssistantReply provider retry", () => {
       },
     ] satisfies PiMessage[];
 
-    const reply = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      piMessages: priorMessages,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    const reply = await generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "slack:C123:1712345.0001",
         turnId: "turn-steering",
@@ -293,9 +252,8 @@ describe("generateAssistantReply provider retry", () => {
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
     agentMode.value = "cooperativeYield";
 
-    const error = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    const error = await generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-yield",
         turnId: "turn-yield",
@@ -340,8 +298,8 @@ describe("generateAssistantReply provider retry", () => {
   it("keeps steered messages when yielding after steering drain", async () => {
     agentMode.value = "cooperativeYield";
 
-    const error = await generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    const error = await generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-steering",
         turnId: "turn-yield-steering",
@@ -390,9 +348,8 @@ describe("generateAssistantReply provider retry", () => {
       .spyOn(turnSessionState, "upsertAgentTurnSessionRecord")
       .mockRejectedValue(new Error("storage unavailable"));
 
-    const error = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    const error = await generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-persist-failure",
         turnId: "turn-yield-persist-failure",
@@ -417,6 +374,12 @@ describe("generateAssistantReply provider retry", () => {
         "turn-yield-persist-failure",
       ),
     ).resolves.toBeUndefined();
+    await expect(
+      getAwaitingTurnContinuationRequest({
+        conversationId: "conversation-yield-persist-failure",
+        sessionId: "turn-yield-persist-failure",
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects steering injection when Pi steer fails", async () => {
@@ -424,9 +387,8 @@ describe("generateAssistantReply provider retry", () => {
     let injectRejected = false;
     let injectCompleted = false;
 
-    await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+    await generateReply("help me", {
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-steering-failure",
         turnId: "turn-steering-failure",

@@ -163,6 +163,52 @@ export type { ReplyRequestAttachment };
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
+type ReplyAgentOptions = {
+  getApiKey: () => string | undefined;
+  initialState: {
+    model: unknown;
+    systemPrompt: string;
+    thinkingLevel?: unknown;
+    tools: AgentTool[];
+  };
+  prepareNextTurn: () => Promise<unknown> | unknown;
+  steeringMode: "all";
+  streamFn: StreamFn;
+};
+
+type ReplyAgent = {
+  abort(): void;
+  continue(): Promise<unknown>;
+  prompt(message: unknown): Promise<unknown>;
+  state: {
+    messages: PiMessage[];
+    model: unknown;
+    systemPrompt: string;
+    tools: unknown[];
+  };
+  steer(message: unknown): void;
+  subscribe(
+    listener: (
+      event:
+        | { toolResults: unknown[]; type: "turn_end" }
+        | { type: "message_start" }
+        | {
+            assistantMessageEvent: {
+              delta?: string;
+              type?: string;
+            };
+            type: "message_update";
+          },
+    ) => void | Promise<void>,
+  ): () => void;
+};
+
+function createDefaultReplyAgent(options: ReplyAgentOptions): ReplyAgent {
+  return new Agent(
+    options as ConstructorParameters<typeof Agent>[0],
+  ) as ReplyAgent;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -242,6 +288,8 @@ export interface ReplyRequestContext {
   };
   /** Override the Pi model transport when a host owns deterministic execution. */
   streamFn?: StreamFn;
+  /** Override Pi Agent construction for controlled runtime harnesses. */
+  agentFactory?: (options: ReplyAgentOptions) => ReplyAgent;
   /** Reuse a preselected reasoning level when routing already made that choice. */
   turnThinkingSelection?: TurnThinkingSelection;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -753,7 +801,7 @@ export async function generateAssistantReply(
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
     let advisorTools: AgentTool[] = [];
-    let agent: Agent | undefined;
+    let agent: ReplyAgent | undefined;
     let latestSafeBoundaryMessages: PiMessage[] = [];
     const getResumeSnapshot = (): PiMessage[] => {
       const currentMessages = agent ? [...agent.state.messages] : [];
@@ -1171,7 +1219,7 @@ export async function generateAssistantReply(
       throw cooperativeYieldError;
     };
 
-    agent = new Agent({
+    agent = (context.agentFactory ?? createDefaultReplyAgent)({
       getApiKey: () => getPiGatewayApiKeyOverride(),
       streamFn:
         context.streamFn ?? createTracedStreamFn({ conversationPrivacy }),

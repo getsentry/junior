@@ -2,113 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import "../../fixtures/respond-runtime";
-
-const { promptAborted, promptMode } = vi.hoisted(() => ({
-  promptAborted: { value: false },
-  promptMode: {
-    value: "settlesAfterAbort" as
-      | "settlesAfterAbort"
-      | "hangsAfterAbort"
-      | "continueSettlesAfterAbort"
-      | "providerRetryThenHangs",
-  },
-}));
-
-vi.mock("@earendil-works/pi-agent-core", () => {
-  class MockAgent {
-    state: {
-      messages: unknown[];
-      model: unknown;
-      systemPrompt: string;
-      tools: unknown[];
-    };
-    private resolveAbort?: () => void;
-
-    constructor(input: {
-      initialState: {
-        model: unknown;
-        systemPrompt: string;
-        tools: unknown[];
-      };
-    }) {
-      this.state = {
-        messages: [],
-        model: input.initialState.model,
-        systemPrompt: input.initialState.systemPrompt,
-        tools: input.initialState.tools,
-      };
-    }
-
-    subscribe() {
-      return () => undefined;
-    }
-
-    abort() {
-      promptAborted.value = true;
-      this.resolveAbort?.();
-    }
-
-    async continue() {
-      if (promptMode.value === "continueSettlesAfterAbort") {
-        await new Promise<void>((resolve) => {
-          this.resolveAbort = resolve;
-        });
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "continued partial" }],
-        });
-        return {};
-      }
-      if (promptMode.value === "providerRetryThenHangs") {
-        await new Promise<void>((resolve) => {
-          this.resolveAbort = resolve;
-        });
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "continued partial" }],
-          stopReason: "stop",
-        });
-        return {};
-      }
-
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "continued" }],
-        stopReason: "stop",
-      });
-      return {};
-    }
-
-    async prompt(message: unknown) {
-      this.state.messages.push(message);
-      if (promptMode.value === "providerRetryThenHangs") {
-        await new Promise((resolve) => setTimeout(resolve, 8_000));
-        this.state.messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "provider error" }],
-          stopReason: "error",
-          errorMessage: "Provider returned error: 503 service unavailable",
-        });
-        return {};
-      }
-      if (promptMode.value === "hangsAfterAbort") {
-        await new Promise(() => undefined);
-        return {};
-      }
-      await new Promise<void>((resolve) => {
-        this.resolveAbort = resolve;
-      });
-      this.state.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "partial" }],
-      });
-      return {};
-    }
-  }
-
-  return { Agent: MockAgent };
-});
-
 import { generateAssistantReply } from "@/chat/respond";
 import {
   isRetryableTurnError,
@@ -120,6 +13,81 @@ import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
+import { createScriptedReplyAgentFactory } from "../../fixtures/respond-agent";
+
+type PromptMode =
+  | "settlesAfterAbort"
+  | "hangsAfterAbort"
+  | "continueSettlesAfterAbort"
+  | "providerRetryThenHangs";
+
+const promptAborted = { value: false };
+const promptMode: { value: PromptMode } = {
+  value: "settlesAfterAbort",
+};
+let resolveAbort: (() => void) | undefined;
+
+const agentFactory = createScriptedReplyAgentFactory({
+  abort() {
+    promptAborted.value = true;
+    resolveAbort?.();
+  },
+  async continue(agent) {
+    if (promptMode.value === "continueSettlesAfterAbort") {
+      await new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+      });
+      agent.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "continued partial" }],
+      } as PiMessage);
+      return {};
+    }
+    if (promptMode.value === "providerRetryThenHangs") {
+      await new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+      });
+      agent.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "continued partial" }],
+        stopReason: "stop",
+      } as PiMessage);
+      return {};
+    }
+
+    agent.state.messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "continued" }],
+      stopReason: "stop",
+    } as PiMessage);
+    return {};
+  },
+  async prompt(agent, message) {
+    agent.state.messages.push(message as PiMessage);
+    if (promptMode.value === "providerRetryThenHangs") {
+      await new Promise((resolve) => setTimeout(resolve, 8_000));
+      agent.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "provider error" }],
+        stopReason: "error",
+        errorMessage: "Provider returned error: 503 service unavailable",
+      } as PiMessage);
+      return {};
+    }
+    if (promptMode.value === "hangsAfterAbort") {
+      await new Promise(() => undefined);
+      return {};
+    }
+    await new Promise<void>((resolve) => {
+      resolveAbort = resolve;
+    });
+    agent.state.messages.push({
+      role: "assistant",
+      content: [{ type: "text", text: "partial" }],
+    } as PiMessage);
+    return {};
+  },
+});
 
 const TEST_DESTINATION = {
   platform: "slack",
@@ -137,6 +105,7 @@ describe("generateAssistantReply agent continuation", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     promptMode.value = "settlesAfterAbort";
+    resolveAbort = undefined;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
@@ -152,7 +121,7 @@ describe("generateAssistantReply agent continuation", () => {
     const onInputCommitted = vi.fn();
 
     const error = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
+      agentFactory,
       onInputCommitted,
     }).catch((caught) => caught);
 
@@ -162,8 +131,8 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("stores the last safe boundary and throws a retryable timeout error", async () => {
     const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
         turnId: "turn-1",
@@ -220,8 +189,8 @@ describe("generateAssistantReply agent continuation", () => {
     });
 
     const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-timeout-cap",
         turnId: "turn-timeout-cap",
@@ -253,8 +222,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
     const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       turnDeadlineAtMs: startedAtMs + 2_500,
       correlation: {
         conversationId: "conversation-short-deadline",
@@ -280,8 +249,8 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = generateAssistantReply("what is in this image?", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       omittedImageAttachmentCount: 1,
       correlation: {
         conversationId: "conversation-2",
@@ -319,8 +288,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-hung",
         turnId: "turn-hung",
@@ -361,8 +330,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
     const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      requester: TEST_REQUESTER,
+      agentFactory,
+      requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-retry",
         turnId: "turn-retry",

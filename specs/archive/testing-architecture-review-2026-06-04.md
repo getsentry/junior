@@ -91,6 +91,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   `tests/fixtures/oauth-resume-slack.ts` and split integration coverage by
   delivery, cumulative diagnostics, chunking, failure markers, and file
   delivery contracts.
+- Added an explicit `agentFactory` port to `generateAssistantReply` and moved
+  provider-retry/cooperative-yield and timeout-resume orchestration coverage
+  into component runtime suites backed by `tests/fixtures/respond-agent.ts`
+  instead of a Pi Agent module mock.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -117,8 +121,8 @@ Files:
 - `packages/junior/tests/unit/runtime/respond-mcp-auth-resume.test.ts`
 - `packages/junior/tests/unit/runtime/respond-mcp-session-context.test.ts`
 - `packages/junior/tests/unit/runtime/respond-mcp-skill-loading.test.ts`
-- `packages/junior/tests/unit/runtime/respond-timeout-resume.test.ts`
-- `packages/junior/tests/unit/runtime/respond-provider-retry.test.ts`
+- `packages/junior/tests/component/runtime/respond-timeout-resume.test.ts`
+- `packages/junior/tests/component/runtime/respond-provider-retry.test.ts`
 
 Problem:
 
@@ -132,10 +136,10 @@ The remaining file still uses a mocked runtime seam to prove that
 `generateAssistantReply` avoids sandbox booting unless a sandbox-backed tool is
 used and preserves sandbox metadata on error replies.
 
-`respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now share a
-single runtime mock fixture, which reduces duplication but does not change the
-layer assessment: the tests still prove turn orchestration through a mocked
-`generateAssistantReply` seam.
+`respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now live
+under `tests/component/runtime` and drive Pi behavior through the explicit
+`agentFactory` port. They still use the broader respond runtime fixture for
+ambient config/skill/sandbox setup, but no longer patch the Pi Agent module.
 
 The progressive MCP loading coverage now imports its dedicated mocked MCP
 runtime harness from fixtures and is split by scenario family. These suites still
