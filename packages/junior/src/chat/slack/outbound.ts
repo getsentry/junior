@@ -10,8 +10,71 @@ import { parseActorUserId } from "@/chat/requester";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
-function requireSlackConversationId(channelId: string, action: string): string {
-  const normalized = normalizeSlackConversationId(channelId);
+/** Slack Web API services used by the outbound boundary. */
+export interface SlackOutboundServices {
+  getSlackClient: typeof getSlackClient;
+  normalizeSlackConversationId: typeof normalizeSlackConversationId;
+  withSlackRetries: typeof withSlackRetries;
+}
+
+const defaultSlackOutboundServices: SlackOutboundServices = {
+  getSlackClient,
+  normalizeSlackConversationId,
+  withSlackRetries,
+};
+
+interface PostSlackMessageInput {
+  blocks?: SlackMessageBlock[];
+  channelId: string;
+  text: string;
+  threadTs?: string;
+  includePermalink?: boolean;
+}
+
+interface DeleteSlackMessageInput {
+  channelId: string;
+  timestamp: string;
+}
+
+interface PostSlackEphemeralMessageInput {
+  channelId: string;
+  userId: string;
+  text: string;
+  threadTs?: string;
+}
+
+interface UploadFilesToThreadInput {
+  channelId: string;
+  threadTs: string;
+  files: Array<{ data: Buffer; filename: string }>;
+}
+
+interface ReactionMessageInput {
+  channelId: string;
+  timestamp: string;
+  emoji: string;
+}
+
+/** Bound Slack outbound operations for a concrete Slack Web API service set. */
+export interface SlackOutboundBoundary {
+  addReactionToMessage(input: ReactionMessageInput): Promise<{ ok: true }>;
+  deleteSlackMessage(input: DeleteSlackMessageInput): Promise<void>;
+  postSlackEphemeralMessage(
+    input: PostSlackEphemeralMessageInput,
+  ): Promise<{ messageTs?: string }>;
+  postSlackMessage(
+    input: PostSlackMessageInput,
+  ): Promise<{ ts: string; permalink?: string }>;
+  removeReactionFromMessage(input: ReactionMessageInput): Promise<{ ok: true }>;
+  uploadFilesToThread(input: UploadFilesToThreadInput): Promise<void>;
+}
+
+function requireSlackConversationId(
+  channelId: string,
+  action: string,
+  services: Pick<SlackOutboundServices, "normalizeSlackConversationId">,
+): string {
+  const normalized = services.normalizeSlackConversationId(channelId);
   if (!normalized) {
     throw new Error(`${action} requires a valid channel ID`);
   }
@@ -52,11 +115,12 @@ function requireSlackMessageText(text: string, action: string): string {
 async function getPermalinkBestEffort(args: {
   channelId: string;
   messageTs: string;
+  services: SlackOutboundServices;
 }): Promise<string | undefined> {
   try {
-    const response = await withSlackRetries(
+    const response = await args.services.withSlackRetries(
       () =>
-        getSlackClient().chat.getPermalink({
+        args.services.getSlackClient().chat.getPermalink({
           channel: args.channelId,
           message_ts: args.messageTs,
         }),
@@ -70,16 +134,14 @@ async function getPermalinkBestEffort(args: {
 }
 
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
-export async function postSlackMessage(input: {
-  blocks?: SlackMessageBlock[];
-  channelId: string;
-  text: string;
-  threadTs?: string;
-  includePermalink?: boolean;
-}): Promise<{ ts: string; permalink?: string }> {
+export async function postSlackMessage(
+  input: PostSlackMessageInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<{ ts: string; permalink?: string }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack message posting",
+    services,
   );
   const text = requireSlackMessageText(input.text, "Slack message posting");
   const threadTs = input.threadTs
@@ -89,9 +151,9 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
-  const response = await withSlackRetries(
+  const response = await services.withSlackRetries(
     () =>
-      getSlackClient().chat.postMessage({
+      services.getSlackClient().chat.postMessage({
         channel: channelId,
         text,
         ...(input.blocks?.length
@@ -116,6 +178,7 @@ export async function postSlackMessage(input: {
           permalink: await getPermalinkBestEffort({
             channelId,
             messageTs: response.ts,
+            services,
           }),
         }
       : {}),
@@ -123,22 +186,23 @@ export async function postSlackMessage(input: {
 }
 
 /** Delete a previously posted Slack message through the shared outbound boundary. */
-export async function deleteSlackMessage(input: {
-  channelId: string;
-  timestamp: string;
-}): Promise<void> {
+export async function deleteSlackMessage(
+  input: DeleteSlackMessageInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<void> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack message deletion",
+    services,
   );
   const timestamp = requireSlackMessageTimestamp(
     input.timestamp,
     "Slack message deletion",
   );
 
-  await withSlackRetries(
+  await services.withSlackRetries(
     () =>
-      getSlackClient().chat.delete({
+      services.getSlackClient().chat.delete({
         channel: channelId,
         ts: timestamp,
       }),
@@ -151,15 +215,14 @@ export async function deleteSlackMessage(input: {
  * Post an ephemeral Slack message. Delivery is best-effort on Slack's side, but
  * request validation and Web API behavior are centralized here.
  */
-export async function postSlackEphemeralMessage(input: {
-  channelId: string;
-  userId: string;
-  text: string;
-  threadTs?: string;
-}): Promise<{ messageTs?: string }> {
+export async function postSlackEphemeralMessage(
+  input: PostSlackEphemeralMessageInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<{ messageTs?: string }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack ephemeral message posting",
+    services,
   );
   const userId = parseActorUserId(input.userId);
   if (!userId) {
@@ -176,9 +239,9 @@ export async function postSlackEphemeralMessage(input: {
       )
     : undefined;
 
-  const response = await withSlackRetries(
+  const response = await services.withSlackRetries(
     () =>
-      getSlackClient().chat.postEphemeral({
+      services.getSlackClient().chat.postEphemeral({
         channel: channelId,
         user: userId,
         text,
@@ -194,14 +257,14 @@ export async function postSlackEphemeralMessage(input: {
 }
 
 /** Upload files into a Slack thread via the shared outbound file boundary. */
-export async function uploadFilesToThread(input: {
-  channelId: string;
-  threadTs: string;
-  files: Array<{ data: Buffer; filename: string }>;
-}): Promise<void> {
+export async function uploadFilesToThread(
+  input: UploadFilesToThreadInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<void> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack file upload",
+    services,
   );
   const threadTs = requireSlackThreadTimestamp(
     input.threadTs,
@@ -223,9 +286,9 @@ export async function uploadFilesToThread(input: {
     };
   });
 
-  await withSlackRetries(
+  await services.withSlackRetries(
     () =>
-      getSlackClient().filesUploadV2({
+      services.getSlackClient().filesUploadV2({
         channel_id: channelId,
         thread_ts: threadTs,
         file_uploads: fileUploads,
@@ -236,14 +299,14 @@ export async function uploadFilesToThread(input: {
 }
 
 /** Add a reaction to a Slack message, treating `already_reacted` as idempotent success. */
-export async function addReactionToMessage(input: {
-  channelId: string;
-  timestamp: string;
-  emoji: string;
-}): Promise<{ ok: true }> {
+export async function addReactionToMessage(
+  input: ReactionMessageInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack reaction",
+    services,
   );
   const timestamp = requireSlackMessageTimestamp(
     input.timestamp,
@@ -255,9 +318,9 @@ export async function addReactionToMessage(input: {
   }
 
   try {
-    await withSlackRetries(
+    await services.withSlackRetries(
       () =>
-        getSlackClient().reactions.add({
+        services.getSlackClient().reactions.add({
           channel: channelId,
           timestamp,
           name: emoji,
@@ -276,14 +339,14 @@ export async function addReactionToMessage(input: {
 }
 
 /** Remove a reaction from a Slack message, treating `no_reaction` as idempotent success. */
-export async function removeReactionFromMessage(input: {
-  channelId: string;
-  timestamp: string;
-  emoji: string;
-}): Promise<{ ok: true }> {
+export async function removeReactionFromMessage(
+  input: ReactionMessageInput,
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack reaction removal",
+    services,
   );
   const timestamp = requireSlackMessageTimestamp(
     input.timestamp,
@@ -295,9 +358,9 @@ export async function removeReactionFromMessage(input: {
   }
 
   try {
-    await withSlackRetries(
+    await services.withSlackRetries(
       () =>
-        getSlackClient().reactions.remove({
+        services.getSlackClient().reactions.remove({
           channel: channelId,
           timestamp,
           name: emoji,
@@ -313,6 +376,22 @@ export async function removeReactionFromMessage(input: {
   }
 
   return { ok: true };
+}
+
+/** Create the shared Slack outbound boundary with explicit Slack Web API services. */
+export function createSlackOutboundBoundary(
+  services: SlackOutboundServices = defaultSlackOutboundServices,
+): SlackOutboundBoundary {
+  return {
+    addReactionToMessage: (input) => addReactionToMessage(input, services),
+    deleteSlackMessage: (input) => deleteSlackMessage(input, services),
+    postSlackEphemeralMessage: (input) =>
+      postSlackEphemeralMessage(input, services),
+    postSlackMessage: (input) => postSlackMessage(input, services),
+    removeReactionFromMessage: (input) =>
+      removeReactionFromMessage(input, services),
+    uploadFilesToThread: (input) => uploadFilesToThread(input, services),
+  };
 }
 
 export const slackOutboundPolicy = {
