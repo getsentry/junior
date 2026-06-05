@@ -8,7 +8,10 @@ async function loadHandler() {
   return import("@/chat/ingress/slash-command");
 }
 
-function createSlashEvent(text: string) {
+function createSlashEvent(
+  text: string,
+  userOverrides: Partial<SlashCommandEvent["user"]> = {},
+) {
   const postEphemeral = vi.fn(async () => {});
   const user = {
     userId: "U123",
@@ -16,6 +19,7 @@ function createSlashEvent(text: string) {
     fullName: "User",
     isBot: false,
     isMe: false,
+    ...userOverrides,
   };
   const event = {
     text,
@@ -58,6 +62,15 @@ describe("slash command ingress", () => {
       user,
       "Usage: `/team link <provider>`",
       { fallbackToDM: false },
+    );
+  });
+
+  it("requires a Slack requester id before credential commands", async () => {
+    const { handleSlashCommand } = await loadHandler();
+    const { event } = createSlashEvent("link github", { userId: "" });
+
+    await expect(handleSlashCommand(event)).rejects.toThrow(
+      "Slack slash command requires a requester user id",
     );
   });
 });

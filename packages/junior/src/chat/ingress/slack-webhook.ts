@@ -2,7 +2,6 @@ import type { SlackAdapter, SlackEvent } from "@chat-adapter/slack";
 import {
   ChannelImpl,
   ThreadImpl,
-  type Author,
   type Message,
   type SlashCommandEvent,
   type StateAdapter,
@@ -28,6 +27,7 @@ import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
+import { normalizeActorIdentity } from "@/chat/services/requester-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -413,17 +413,15 @@ async function handleSlackEvent(args: {
   );
 }
 
-function buildAuthorFromInteractive(
-  user: SlackInteractivePayload["user"],
-): Author {
-  const userId = user?.id ?? "unknown";
-  return {
-    userId,
-    userName: user?.username ?? user?.name ?? userId,
-    fullName: user?.name ?? user?.username ?? userId,
-    isBot: false,
-    isMe: false,
-  };
+function requireSlackPayloadUserId(
+  value: string | null | undefined,
+  source: string,
+): string {
+  const userId = value?.trim();
+  if (!userId) {
+    throw new Error(`${source} is missing a Slack user id`);
+  }
+  return userId;
 }
 
 async function handleSlashCommandForm(args: {
@@ -438,7 +436,18 @@ async function handleSlashCommandForm(args: {
     adapter: args.adapter,
     stateAdapter: args.state,
   });
-  const userId = args.params.get("user_id") || "unknown";
+  const userId = requireSlackPayloadUserId(
+    args.params.get("user_id"),
+    "Slack slash command payload",
+  );
+  const userIdentity = normalizeActorIdentity(
+    {
+      userId,
+      userName: args.params.get("user_name") ?? undefined,
+      fullName: args.params.get("user_name") ?? undefined,
+    },
+    userId,
+  ) ?? { userId };
   await withSpan(
     "chat.slash_command",
     "chat.slash_command",
@@ -453,8 +462,8 @@ async function handleSlashCommandForm(args: {
         raw,
         user: {
           userId,
-          userName: args.params.get("user_name") || userId,
-          fullName: args.params.get("user_name") || userId,
+          userName: userIdentity.userName ?? "",
+          fullName: userIdentity.fullName ?? "",
           isBot: false,
           isMe: false,
         },
@@ -589,7 +598,7 @@ async function handleSlackForm(args: {
       }),
     ).catch((error) => {
       logException(error, "slack_interactive_payload_failed", {
-        slackUserId: buildAuthorFromInteractive(payload.user).userId,
+        slackUserId: payload.user?.id?.trim() || undefined,
       });
     }),
   );

@@ -171,6 +171,26 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
+  it("does not store Slack ids as creator display identity", async () => {
+    const created = (await createTask(
+      createContext({
+        requester: {
+          userId: "U039RR91S",
+          userName: "U039RR91S",
+          fullName: "W039RR91S",
+        },
+      }),
+    )) as { task: { id: string } };
+
+    await expect(schedulerStore().getTask(created.task.id)).resolves.toEqual(
+      expect.objectContaining({
+        createdBy: {
+          slackUserId: "U039RR91S",
+        },
+      }),
+    );
+  });
+
   it("rejects invalid Slack workspace context before creating a task", async () => {
     const rejected = executeTool(
       createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),

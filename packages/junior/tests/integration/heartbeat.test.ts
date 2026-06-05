@@ -704,7 +704,15 @@ describe("trusted plugin heartbeat", () => {
     global.fetch = fetchMock as typeof fetch;
     setAgentPlugins([schedulerPlugin()]);
     const store = schedulerStore();
-    await store.saveTask(createTask());
+    await store.saveTask(
+      createTask({
+        createdBy: {
+          slackUserId: "U039RR91S",
+          userName: "U039RR91S",
+          fullName: "W039RR91S",
+        },
+      }),
+    );
 
     const firstWaitUntil = createWaitUntilCollector();
     const firstResponse = await heartbeat(
@@ -722,6 +730,12 @@ describe("trusted plugin heartbeat", () => {
       dispatchId: expect.any(String),
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
+    expect(dispatchRecord?.input).toContain(
+      "- creator_slack_user_id: U039RR91S",
+    );
+    expect(dispatchRecord?.input).not.toContain("creator_user_name");
+    expect(dispatchRecord?.input).not.toContain("creator_full_name");
 
     await withDispatchLock(running!.dispatchId!, async (state) => {
       const record = await state.get<DispatchRecord>(
@@ -776,7 +790,8 @@ describe("trusted plugin heartbeat", () => {
       createTask({
         createdBy: {
           slackUserId: "U456",
-          userName: "bob",
+          fullName: "W039RR91S",
+          userName: "U456",
         },
         id: "sched_plugin_blocked",
         status: "blocked",
@@ -824,7 +839,7 @@ describe("trusted plugin heartbeat", () => {
     expect(
       scheduler?.recordSets?.[1]?.records?.[0]?.values ?? {},
     ).toMatchObject({
-      author: "@bob",
+      author: "Slack User U456",
     });
     expect(JSON.stringify(feed)).not.toContain("Secret");
   });

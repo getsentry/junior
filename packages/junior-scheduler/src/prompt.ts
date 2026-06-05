@@ -3,6 +3,7 @@ import {
   type ScheduledRun,
   type ScheduledTask,
 } from "./types";
+import { sanitizeScheduledTaskPrincipal } from "./identity";
 
 function escapeXml(value: string): string {
   return value
@@ -35,7 +36,7 @@ export function buildScheduledTaskRunPrompt(args: {
 }): string {
   const { run, task } = args;
   const destination = task.destination;
-  const creator = task.createdBy;
+  const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
   const executionActor = task.executionActor ?? SCHEDULED_TASK_SYSTEM_ACTOR;
   if (!task.task.text?.trim()) {
     throw new Error("Scheduled task text is required");

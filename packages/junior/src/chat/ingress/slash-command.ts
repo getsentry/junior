@@ -13,12 +13,21 @@ async function postEphemeral(
   await event.channel.postEphemeral(event.user, text, { fallbackToDM: false });
 }
 
+function requireRequesterId(event: SlashCommandEvent): string {
+  const userId = event.user.userId?.trim();
+  if (!userId) {
+    throw new Error("Slack slash command requires a requester user id");
+  }
+  return userId;
+}
+
 function getCommandName(): string {
   return getChatConfig().slack.slashCommand;
 }
 
 async function handleLink(
   event: SlashCommandEvent,
+  requesterId: string,
   provider: string,
 ): Promise<void> {
   if (!isPluginProvider(provider)) {
@@ -36,7 +45,7 @@ async function handleLink(
 
   const raw = event.raw as { channel_id?: string };
   const result = await startOAuthFlow(provider, {
-    requesterId: event.user.userId,
+    requesterId,
     channelId: raw.channel_id,
   });
 
@@ -60,6 +69,7 @@ async function handleLink(
 
 async function handleUnlink(
   event: SlashCommandEvent,
+  requesterId: string,
   provider: string,
 ): Promise<void> {
   if (!isPluginProvider(provider)) {
@@ -76,11 +86,11 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await tokenStore.delete(event.user.userId, provider);
+  await tokenStore.delete(requesterId, provider);
 
   logInfo(
     "slash_command_unlink",
-    { slackUserId: event.user.userId },
+    { slackUserId: requesterId },
     { "app.credential.provider": provider },
     `Unlinked ${formatProviderLabel(provider)} account via ${getCommandName()} slash command`,
   );
@@ -114,10 +124,11 @@ export async function handleSlashCommand(
   }
 
   const normalized = provider.toLowerCase();
+  const requesterId = requireRequesterId(event);
 
   if (subcommand === "link") {
-    await handleLink(event, normalized);
+    await handleLink(event, requesterId, normalized);
   } else {
-    await handleUnlink(event, normalized);
+    await handleUnlink(event, requesterId, normalized);
   }
 }
