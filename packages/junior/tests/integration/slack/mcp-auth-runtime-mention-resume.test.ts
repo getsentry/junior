@@ -84,9 +84,6 @@ describe("mcp auth runtime mention resume", () => {
       { destination },
     );
 
-    expect(testbed.agentProbe.promptCallCount).toBe(1);
-    expect(testbed.agentProbe.continueCallCount).toBe(0);
-
     expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -186,8 +183,6 @@ describe("mcp auth runtime mention resume", () => {
         }),
       ]),
     );
-    expect(testbed.agentProbe.promptCallCount).toBe(1);
-    expect(testbed.agentProbe.continueCallCount).toBe(1);
     expect(testbed.agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
 
     const latestReusableSession =

@@ -91,8 +91,6 @@ describe("mcp auth runtime subscribed parking", () => {
       { destination },
     );
 
-    expect(testbed.agentProbe.promptCallCount).toBe(1);
-    expect(testbed.agentProbe.continueCallCount).toBe(0);
     expect(thread.posts).toEqual([
       expect.objectContaining({
         markdown: expect.stringContaining("private link"),

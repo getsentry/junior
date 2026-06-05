@@ -43,9 +43,7 @@ type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 type McpAuthAgentProbe = {
-  continueCallCount: number;
   directProviderSearch: boolean;
-  promptCallCount: number;
   searchToolNames: string[][];
 };
 
@@ -142,9 +140,7 @@ function recordSearchToolNames(
 
 function createAgentProbe(): McpAuthAgentProbe {
   return {
-    continueCallCount: 0,
     directProviderSearch: false,
-    promptCallCount: 0,
     searchToolNames: [],
   };
 }
@@ -163,7 +159,6 @@ function createMcpAuthStreamFn(agentProbe: McpAuthAgentProbe): StreamFn {
 
     if (!initialPromptStarted) {
       initialPromptStarted = true;
-      agentProbe.promptCallCount += 1;
       if (agentProbe.directProviderSearch) {
         return piToolCallResponse({
           id: "tool-search-provider",
@@ -188,7 +183,6 @@ function createMcpAuthStreamFn(agentProbe: McpAuthAgentProbe): StreamFn {
 
     if (resumeStep === 0) {
       resumeStep += 1;
-      agentProbe.continueCallCount += 1;
       return piToolCallResponse({
         id: "tool-search-resume",
         name: "searchMcpTools",

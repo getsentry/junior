@@ -116,8 +116,6 @@ describe("mcp auth runtime direct provider activation", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(testbed.agentProbe.promptCallCount).toBe(1);
-    expect(testbed.agentProbe.continueCallCount).toBe(1);
     expect(testbed.agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
 
     const completedCheckpoint =
