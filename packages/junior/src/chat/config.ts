@@ -1,11 +1,14 @@
 import { getModel } from "@earendil-works/pi-ai";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
+const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
+const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const ADVISOR_THINKING_LEVELS = [
   "minimal",
   "low",
@@ -39,10 +42,12 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 
 export interface BotConfig {
   advisor: AdvisorConfig;
+  completedReactionEmoji: string;
   fastModelId: string;
   loadingMessages: string[];
   modelId: string;
   modelContextWindowTokens?: number;
+  processingReactionEmoji: string;
   visionModelId?: string;
   turnTimeoutMs: number;
   userName: string;
@@ -196,6 +201,24 @@ function readAdvisorConfig(env: NodeJS.ProcessEnv): AdvisorConfig {
   };
 }
 
+function parseReactionEmoji(
+  envName: string,
+  rawValue: string | undefined,
+  defaultEmoji: string,
+): string {
+  const trimmed = toOptionalTrimmed(rawValue);
+  if (trimmed === undefined) {
+    return defaultEmoji;
+  }
+  const normalized = normalizeSlackEmojiName(trimmed);
+  if (!normalized) {
+    throw new Error(
+      `${envName} must be a valid Slack emoji name (for example "eyes" or ":white_check_mark:")`,
+    );
+  }
+  return normalized;
+}
+
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
@@ -211,6 +234,16 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
       DEFAULT_FAST_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    processingReactionEmoji: parseReactionEmoji(
+      "JUNIOR_PROCESSING_REACTION",
+      env.JUNIOR_PROCESSING_REACTION,
+      DEFAULT_PROCESSING_REACTION_EMOJI,
+    ),
+    completedReactionEmoji: parseReactionEmoji(
+      "JUNIOR_COMPLETED_REACTION",
+      env.JUNIOR_COMPLETED_REACTION,
+      DEFAULT_COMPLETED_REACTION_EMOJI,
+    ),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,

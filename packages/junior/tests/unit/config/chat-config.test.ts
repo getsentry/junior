@@ -177,6 +177,40 @@ describe("chat config", () => {
     );
   });
 
+  it("uses default reaction emojis when env vars are unset", async () => {
+    delete process.env.JUNIOR_PROCESSING_REACTION;
+    delete process.env.JUNIOR_COMPLETED_REACTION;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.processingReactionEmoji).toBe("eyes");
+    expect(botConfig.completedReactionEmoji).toBe("white_check_mark");
+  });
+
+  it("uses JUNIOR_PROCESSING_REACTION and JUNIOR_COMPLETED_REACTION when configured", async () => {
+    process.env.JUNIOR_PROCESSING_REACTION = "hourglass_flowing_sand";
+    process.env.JUNIOR_COMPLETED_REACTION = ":tada:";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.processingReactionEmoji).toBe("hourglass_flowing_sand");
+    expect(botConfig.completedReactionEmoji).toBe("tada");
+  });
+
+  it("throws at config load when JUNIOR_PROCESSING_REACTION is not a valid emoji name", async () => {
+    process.env.JUNIOR_PROCESSING_REACTION = "not valid emoji!";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_PROCESSING_REACTION must be a valid Slack emoji name",
+    );
+  });
+
+  it("throws at config load when JUNIOR_COMPLETED_REACTION is not a valid emoji name", async () => {
+    process.env.JUNIOR_COMPLETED_REACTION = "not valid emoji!";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_COMPLETED_REACTION must be a valid Slack emoji name",
+    );
+  });
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();
