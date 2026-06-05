@@ -14,6 +14,7 @@ describe("StateBackedMcpOAuthClientProvider credential state", () => {
     getMcpAuthSession: vi.fn(),
     getMcpServerSessionId: vi.fn(),
     getMcpStoredOAuthCredentials: vi.fn(),
+    now: vi.fn(() => 1_700_000_000_000),
     patchMcpAuthSession: vi.fn(),
     putMcpAuthSession: vi.fn(),
     putMcpServerSessionId: vi.fn(),
@@ -34,6 +35,8 @@ describe("StateBackedMcpOAuthClientProvider credential state", () => {
     services.getMcpAuthSession.mockReset();
     services.getMcpServerSessionId.mockReset();
     services.getMcpStoredOAuthCredentials.mockReset();
+    services.now.mockReset();
+    services.now.mockReturnValue(1_700_000_000_000);
     services.patchMcpAuthSession.mockReset();
     services.putMcpAuthSession.mockReset();
     services.putMcpServerSessionId.mockReset();
@@ -158,6 +161,8 @@ describe("StateBackedMcpOAuthClientProvider credential state", () => {
         userMessage: "/demo",
         channelId: "C123",
         authorizationUrl: "https://example.com/oauth/start",
+        createdAtMs: 1_700_000_000_000,
+        updatedAtMs: 1_700_000_000_000,
       }),
     );
     expect(services.patchMcpAuthSession).not.toHaveBeenCalled();

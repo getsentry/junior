@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 type BoundaryCheckModule = {
-  runBoundaryCheck(roots: {
+  runTestBoundaryCheck(roots: {
     evalsRoot: string;
     evalTestsRoot: string;
     integrationRoot: string;
@@ -15,7 +15,7 @@ type BoundaryCheckModule = {
 };
 
 let tempRoot: string;
-let runBoundaryCheck: BoundaryCheckModule["runBoundaryCheck"];
+let runTestBoundaryCheck: BoundaryCheckModule["runTestBoundaryCheck"];
 
 async function writeFixtureFile(
   relativePath: string,
@@ -39,7 +39,7 @@ function expectCalledSource(name: string): string {
 }
 
 async function checkTempRepo(): Promise<string[]> {
-  return await runBoundaryCheck({
+  return await runTestBoundaryCheck({
     evalsRoot: path.join(tempRoot, "packages/junior-evals/evals"),
     evalTestsRoot: path.join(tempRoot, "packages/junior-evals/tests"),
     integrationRoot: path.join(tempRoot, "packages/junior/tests/integration"),
@@ -49,16 +49,18 @@ async function checkTempRepo(): Promise<string[]> {
   });
 }
 
-describe("check-slack-test-boundary", () => {
+describe("check-test-boundaries", () => {
   beforeEach(async () => {
     tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-boundary-check-"),
     );
     const moduleUrl = new URL(
-      "../../../scripts/check-slack-test-boundary.mjs",
+      "../../../scripts/check-test-boundaries.mjs",
       import.meta.url,
     ).href;
-    ({ runBoundaryCheck } = (await import(moduleUrl)) as BoundaryCheckModule);
+    ({ runTestBoundaryCheck } = (await import(
+      moduleUrl
+    )) as BoundaryCheckModule);
   });
 
   afterEach(async () => {

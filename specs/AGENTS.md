@@ -68,7 +68,7 @@
 
 ```bash
 pnpm typecheck
-pnpm run test:slack-boundary
+pnpm run test:boundaries
 pnpm skills:check
 pnpm test
 ```

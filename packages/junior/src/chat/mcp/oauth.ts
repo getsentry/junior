@@ -17,6 +17,7 @@ interface McpOAuthServices {
   getLatestMcpAuthSessionForUserProvider: typeof getLatestMcpAuthSessionForUserProvider;
   getPluginDefinition: typeof getPluginDefinition;
   newAuthSessionId: () => string;
+  now: () => number;
   putMcpAuthSession: typeof putMcpAuthSession;
   resolveBaseUrl: typeof resolveBaseUrl;
 }
@@ -25,6 +26,7 @@ const defaultMcpOAuthServices: McpOAuthServices = {
   getLatestMcpAuthSessionForUserProvider,
   getPluginDefinition,
   newAuthSessionId: randomUUID,
+  now: Date.now,
   putMcpAuthSession,
   resolveBaseUrl,
 };
@@ -83,7 +85,7 @@ export async function createMcpOAuthClientProvider(
     existingSession.sessionId === input.sessionId
       ? existingSession
       : undefined;
-  const now = Date.now();
+  const now = services.now();
   const authSessionId =
     reusableSession?.authSessionId ?? services.newAuthSessionId();
 

@@ -24,6 +24,7 @@ interface StateBackedMcpOAuthClientProviderServices {
   getMcpAuthSession: typeof getMcpAuthSession;
   getMcpServerSessionId: typeof getMcpServerSessionId;
   getMcpStoredOAuthCredentials: typeof getMcpStoredOAuthCredentials;
+  now: () => number;
   patchMcpAuthSession: typeof patchMcpAuthSession;
   putMcpAuthSession: typeof putMcpAuthSession;
   putMcpServerSessionId: typeof putMcpServerSessionId;
@@ -36,6 +37,7 @@ const defaultStateBackedMcpOAuthClientProviderServices: StateBackedMcpOAuthClien
     getMcpAuthSession,
     getMcpServerSessionId,
     getMcpStoredOAuthCredentials,
+    now: Date.now,
     patchMcpAuthSession,
     putMcpAuthSession,
     putMcpServerSessionId,
@@ -263,7 +265,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       throw new Error(`Unknown MCP auth session: ${this.authSessionId}`);
     }
 
-    const now = Date.now();
+    const now = this.services.now();
     const nextSession: McpAuthSessionState = {
       authSessionId: this.authSessionId,
       ...this.sessionContext,

@@ -43,6 +43,7 @@ const mcpOAuthServices = {
   getPluginDefinition: (provider: string) =>
     provider === "demo" ? buildPlugin() : undefined,
   newAuthSessionId: () => "demo-auth-session",
+  now: () => 1_700_000_000_000,
   putMcpAuthSession,
   resolveBaseUrl: () => "https://junior.example.com",
 } satisfies McpOAuthServices;

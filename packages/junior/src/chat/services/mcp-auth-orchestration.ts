@@ -190,6 +190,7 @@ export function createMcpAuthOrchestration(
     const reusingPendingLink = canReusePendingAuthLink({
       pendingAuth: deps.pendingAuth,
       kind: "mcp",
+      nowMs: services.now(),
       provider,
       requesterId,
       sessionId,

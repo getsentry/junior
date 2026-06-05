@@ -239,8 +239,8 @@ async function checkObservabilityBoundaries(testRoot, reportRoot) {
   return violations;
 }
 
-/** Return all test-boundary violations across Junior tests and evals. */
-export async function runBoundaryCheck(roots = {}) {
+/** Return all boundary violations across Junior tests and evals. */
+export async function runTestBoundaryCheck(roots = {}) {
   const resolvedRoots = {
     ...defaultBoundaryCheckRoots(),
     ...roots,
@@ -270,7 +270,7 @@ export async function runBoundaryCheck(roots = {}) {
 }
 
 async function main() {
-  const violations = await runBoundaryCheck();
+  const violations = await runTestBoundaryCheck();
 
   if (violations.length > 0) {
     console.error("Test boundary check failed:");

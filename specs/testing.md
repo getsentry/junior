@@ -111,11 +111,11 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces major Slack and observability boundary rules:
+`pnpm --filter @sentry/junior run test:boundaries` enforces major Slack and observability boundary rules:
 
 - Eval files cannot import Slack contract internals.
 - Integration tests cannot use module mocks.
 - Behavior tests cannot mock logging, Sentry capture, span capture, or tracing helpers.
 - Behavior tests cannot assert internal telemetry emissions; rare telemetry contract tests live under `tests/unit/logging/**`.
 
-See `scripts/check-slack-test-boundary.mjs`.
+See `scripts/check-test-boundaries.mjs`.

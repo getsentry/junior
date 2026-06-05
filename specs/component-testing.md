@@ -48,7 +48,7 @@ Disallowed:
 
 - Broad dependency bags or service locators created only for tests.
 - `vi.mock` of runtime modules to force unrelated branches.
-- Module mocks for logging, Sentry capture, span capture, or tracing helpers. Instrumentation should run with the real component path unless the suite is a dedicated instrumentation contract test.
+- Module mocks for logging, Sentry capture, span capture, or tracing helpers. Instrumentation should run with the real component path; rare logging contract tests live under `tests/unit/logging/**`.
 - Fake Slack delivery and fake reply execution together to prove a single
   user-visible outcome. Use integration or eval for that.
 

@@ -127,4 +127,4 @@ Avoid:
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces integration boundary policy for all integration tests.
+`pnpm --filter @sentry/junior run test:boundaries` enforces integration boundary policy for all integration tests.
