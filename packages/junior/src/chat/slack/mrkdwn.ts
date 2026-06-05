@@ -185,51 +185,28 @@ function wrapBareUrlsOnLine(line: string): string {
 }
 
 /**
- * Apply a line transform to every line outside backtick-fenced code blocks.
- * Fenced lines are emitted unchanged.
- */
-function transformOutsideFences(
-  text: string,
-  transformLine: (line: string) => string,
-): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  let inFence = false;
-  let fenceLength = 0;
-
-  for (const line of lines) {
-    const trimmed = line.trimStart();
-
-    if (!inFence) {
-      const openMatch = trimmed.match(/^(`{3,})/);
-      if (openMatch) {
-        inFence = true;
-        fenceLength = openMatch[1].length;
-        out.push(line);
-        continue;
-      }
-      out.push(transformLine(line));
-      continue;
-    }
-
-    out.push(line);
-    const closeMatch = trimmed.match(/^(`{3,})\s*$/);
-    if (closeMatch && closeMatch[1].length >= fenceLength) {
-      inFence = false;
-      fenceLength = 0;
-    }
-  }
-
-  return out.join("\n");
-}
-
-/**
  * Pre-wrap bare http(s) URLs outside fenced code blocks as Slack explicit
  * links, preventing Slack's auto-linker from consuming adjacent formatting
  * markers into the URL.
+ *
+ * Uses the same fence-toggle rule as `ensureBlockSpacing` so both passes
+ * agree on which lines are code.
  */
 function wrapBareUrls(text: string): string {
-  return transformOutsideFences(text, wrapBareUrlsOnLine);
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    if (/^```/.test(line.trimStart())) {
+      inCodeBlock = !inCodeBlock;
+      out.push(line);
+      continue;
+    }
+    out.push(inCodeBlock ? line : wrapBareUrlsOnLine(line));
+  }
+
+  return out.join("\n");
 }
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */

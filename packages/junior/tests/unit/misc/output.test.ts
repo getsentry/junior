@@ -119,9 +119,17 @@ describe("normalizeSlackReplyMarkdown", () => {
     ).toBe("see <https://example.com>**bold** here");
   });
 
-  it("peels mixed trailing suffix in correct order (_  then .)", () => {
-    expect(normalizeSlackReplyMarkdown("https://example.com_.")).toBe(
-      "<https://example.com>_.",
+  it("peels mixed trailing suffix in correct order (_ then .)", () => {
+    expect(normalizeSlackReplyMarkdown("https://example.com/foo_.")).toBe(
+      "<https://example.com/foo>_.",
+    );
+  });
+
+  it("resumes URL wrapping after a fenced code block", () => {
+    const input =
+      "```python\nhttps://example.com/code**\n```\nhttps://example.com/outside**";
+    expect(normalizeSlackReplyMarkdown(input)).toBe(
+      "```python\nhttps://example.com/code**\n```\n\n<https://example.com/outside>**",
     );
   });
 });
