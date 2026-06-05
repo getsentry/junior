@@ -52,8 +52,8 @@ export type {
 } from "@/plugins";
 
 export interface JuniorAppOptions {
-  /** Bot behavior overrides applied after env parsing. */
-  bot?: {
+  /** Slack-specific overrides applied after env parsing. */
+  slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
     processingReactionEmoji?: string;
     /** Slack emoji shown after a turn completes. Defaults to `white_check_mark`. */
@@ -287,8 +287,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
   try {
     setConfigDefaults(options?.configDefaults);
-    if (options?.bot) {
-      applyBotConfigOverrides(options.bot);
+    if (options?.slack) {
+      applyBotConfigOverrides(options.slack);
     }
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
