@@ -256,16 +256,8 @@ export function readChatConfig(
         toOptionalTrimmed(env.SLACK_BOT_USER_TOKEN),
       clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
       clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
-      completedReactionEmoji: parseReactionEmoji(
-        "JUNIOR_COMPLETED_REACTION",
-        env.JUNIOR_COMPLETED_REACTION,
-        DEFAULT_COMPLETED_REACTION_EMOJI,
-      ),
-      processingReactionEmoji: parseReactionEmoji(
-        "JUNIOR_PROCESSING_REACTION",
-        env.JUNIOR_PROCESSING_REACTION,
-        DEFAULT_PROCESSING_REACTION_EMOJI,
-      ),
+      completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
+      processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
     },
