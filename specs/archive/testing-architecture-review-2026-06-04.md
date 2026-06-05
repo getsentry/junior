@@ -78,6 +78,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Moved timeout resume runner behavior out of a mocked handler unit suite and
   into component runtime suites backed by an explicit `resumeSlackTurn` test
   port.
+- Extracted runtime dependency snapshot mocks into
+  `tests/fixtures/runtime-dependency-snapshots.ts` and split cache/rebuild,
+  install/build, and instrumentation contracts into focused unit suites.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
