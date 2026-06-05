@@ -79,11 +79,11 @@ function createPluginAuthServices() {
   } satisfies PluginAuthServices;
 }
 
-function tokenStore(): UserTokenStore {
+function createTestUserTokenStore(): UserTokenStore {
   return {
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
+    get: vi.fn(async () => undefined),
+    set: vi.fn(async () => undefined),
+    delete: vi.fn(async () => undefined),
   };
 }
 
@@ -119,9 +119,8 @@ describe("createPluginAuthOrchestration", () => {
       ok: true,
       delivery: "fallback_dm",
     });
-    const userTokenStore = tokenStore();
+    const userTokenStore = createTestUserTokenStore();
     const abortAgent = vi.fn();
-
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
@@ -161,7 +160,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
         authorizationFlowMode: "disabled",
       },
       abortAgent,
@@ -199,7 +198,7 @@ describe("createPluginAuthOrchestration", () => {
   it("unlinks the stored token only after oauth restart is launched", async () => {
     const services = createPluginAuthServices();
     const order: string[] = [];
-    const userTokenStore = tokenStore();
+    const userTokenStore = createTestUserTokenStore();
     const abortAgent = vi.fn();
 
     services.startOAuthFlow.mockImplementation(async () => {
@@ -238,7 +237,7 @@ describe("createPluginAuthOrchestration", () => {
 
   it("reuses a pending oauth link using the injected clock", async () => {
     const services = createPluginAuthServices();
-    const userTokenStore = tokenStore();
+    const userTokenStore = createTestUserTokenStore();
     const abortAgent = vi.fn();
     const recordPendingAuth = vi.fn(async () => undefined);
     const orchestration = createPluginAuthOrchestration(
@@ -297,7 +296,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
       },
       vi.fn(),
       services,
@@ -319,7 +318,7 @@ describe("createPluginAuthOrchestration", () => {
       ok: true,
       delivery: "fallback_dm",
     });
-    const userTokenStore = tokenStore();
+    const userTokenStore = createTestUserTokenStore();
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
@@ -364,7 +363,7 @@ describe("createPluginAuthOrchestration", () => {
         sessionId: "run_new",
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
         pendingAuth: {
           kind: "plugin",
           provider: "sentry",
@@ -406,7 +405,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "inspect a repo",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
       },
       vi.fn(),
       services,
@@ -435,7 +434,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "inspect a repo",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
       },
       vi.fn(),
       services,
@@ -463,7 +462,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check GitHub",
-        userTokenStore: tokenStore(),
+        userTokenStore: createTestUserTokenStore(),
       },
       vi.fn(),
       services,
@@ -508,13 +507,15 @@ describe("createPluginAuthOrchestration", () => {
         {
           requesterId: "U123",
           userMessage: "create an issue",
-          userTokenStore: tokenStore(),
+          userTokenStore: createTestUserTokenStore(),
         },
         vi.fn(),
         services,
       );
 
-      await expect(orchestration.maybeHandleAuthSignal(input)).resolves.toBeUndefined();
+      await expect(
+        orchestration.maybeHandleAuthSignal(input),
+      ).resolves.toBeUndefined();
     }
 
     expect(services.startOAuthFlow).not.toHaveBeenCalled();
