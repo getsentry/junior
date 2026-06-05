@@ -13,6 +13,7 @@ import {
 } from "@/chat/tools/advisor/tool";
 import { tool } from "@/chat/tools/definition";
 import { createTestToolRuntimeContext } from "../../fixtures/tool-runtime";
+import { DEFAULT_TEST_NOW_MS } from "../../fixtures/vitest";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -34,7 +35,7 @@ function assistantMessage(text: string) {
     model: "test",
     stopReason: "stop" as const,
     content: [{ type: "text" as const, text }],
-    timestamp: Date.now(),
+    timestamp: DEFAULT_TEST_NOW_MS,
   };
 }
 

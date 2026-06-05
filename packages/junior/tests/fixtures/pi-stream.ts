@@ -1,5 +1,6 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
+import { DEFAULT_TEST_NOW_MS } from "./vitest";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
@@ -33,7 +34,7 @@ export function piAssistantMessage(
       ? "toolUse"
       : "stop",
     content,
-    timestamp: Date.now(),
+    timestamp: DEFAULT_TEST_NOW_MS,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   setRuntimeSnapshotLockHeld,
   setupRuntimeDependencySnapshotTest,
 } from "../../fixtures/runtime-dependency-snapshots";
+import { mockTestClock } from "../../fixtures/vitest";
 
 describe("runtime dependency snapshot cache", () => {
   beforeEach(setupRuntimeDependencySnapshotTest);
@@ -33,7 +34,7 @@ describe("runtime dependency snapshot cache", () => {
     expect(first.resolveOutcome).toBe("rebuilt");
     expect(first.rebuildReason).toBe("cache_miss");
 
-    vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
+    mockTestClock("2026-03-10T00:00:00.000Z");
 
     const second = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
@@ -64,7 +65,7 @@ describe("runtime dependency snapshot cache", () => {
     expect(first.resolveOutcome).toBe("rebuilt");
     expect(first.rebuildReason).toBe("cache_miss");
 
-    vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
+    mockTestClock("2026-03-10T00:00:00.000Z");
 
     const second = await resolveRuntimeDependencySnapshot({
       runtime: "node22",

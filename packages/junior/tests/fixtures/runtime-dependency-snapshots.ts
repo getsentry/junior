@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import { withSpan } from "@/chat/logging";
 import { resolveRuntimeDependencySnapshot as resolveRuntimeDependencySnapshotImpl } from "@/chat/sandbox/runtime-dependency-snapshots";
+import { mockTestClock } from "./vitest";
 
 export const sandboxCreateMock = vi.fn();
 export const getPluginRuntimeDependenciesMock = vi.fn();
@@ -102,8 +103,7 @@ export function setupRuntimeDependencySnapshotTest() {
   delete process.env.VERCEL_TOKEN;
   delete process.env.VERCEL_TEAM_ID;
   delete process.env.VERCEL_PROJECT_ID;
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-03-01T00:00:00.000Z"));
+  mockTestClock("2026-03-01T00:00:00.000Z");
 }
 
 /** Restores timer state after runtime dependency snapshot tests. */

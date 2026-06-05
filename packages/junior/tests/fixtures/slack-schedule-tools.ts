@@ -27,6 +27,7 @@ import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "./sql";
+import { DEFAULT_TEST_NOW_MS } from "./vitest";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -34,7 +35,7 @@ vi.hoisted(() => {
 
 export { PluginToolInputError };
 
-export const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
+export const TEST_TEAM_ID = `TSCHEDULE${DEFAULT_TEST_NOW_MS}`;
 let currentFixture: LocalJuniorSqlFixture | undefined;
 let currentSchedulerStore: SchedulerToolContext["store"] | undefined;
 

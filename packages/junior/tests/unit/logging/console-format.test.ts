@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mockTestClock } from "../../fixtures/vitest";
 
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 const ORIGINAL_CI = process.env.CI;
@@ -57,8 +58,7 @@ describe("console log formatting", () => {
     delete process.env.CI;
     delete process.env.JUNIOR_LOG_FORMAT;
     setStdoutIsTTY(false);
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
+    mockTestClock("2026-04-14T16:29:00.133Z");
 
     const infoSpy = vi
       .spyOn(console, "info")
@@ -92,8 +92,7 @@ describe("console log formatting", () => {
     delete process.env.CI;
     delete process.env.JUNIOR_LOG_FORMAT;
     setStdoutIsTTY(false);
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
+    mockTestClock("2026-04-14T16:29:00.133Z");
 
     const infoSpy = vi
       .spyOn(console, "info")
@@ -121,8 +120,7 @@ describe("console log formatting", () => {
     delete process.env.CI;
     delete process.env.JUNIOR_LOG_FORMAT;
     setStdoutIsTTY(false);
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
+    mockTestClock("2026-04-14T16:29:00.133Z");
 
     const infoSpy = vi
       .spyOn(console, "info")

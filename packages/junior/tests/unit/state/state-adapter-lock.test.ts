@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestMessage } from "../../fixtures/slack-harness";
+import { mockTestClock } from "../../fixtures/vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -30,8 +31,7 @@ describe("state adapter lock lease", () => {
   });
 
   it("keeps an active SDK-sized lock leased past the old static ttl", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(0));
+    mockTestClock(0);
 
     const { disconnectStateAdapter, getStateAdapter } =
       await loadMemoryStateAdapter();
@@ -58,8 +58,7 @@ describe("state adapter lock lease", () => {
   });
 
   it("stops the heartbeat when the lock is released", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(0));
+    mockTestClock(0);
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
@@ -77,8 +76,7 @@ describe("state adapter lock lease", () => {
   });
 
   it("stops heartbeating active locks after the configured turn window", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(0));
+    mockTestClock(0);
 
     const { getStateAdapter } = await loadMemoryStateAdapter({
       AGENT_TURN_TIMEOUT_MS: "10000",
@@ -102,8 +100,7 @@ describe("state adapter lock lease", () => {
   });
 
   it("does not heartbeat locks that request a longer explicit ttl", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(0));
+    mockTestClock(0);
 
     const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();

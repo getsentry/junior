@@ -47,7 +47,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 2. External HTTP is blocked by default in tests and evals; use MSW or the shared HTTP interceptor fixtures. Local URLs, model endpoints, and Vercel sandbox/OIDC control-plane traffic are the only live exceptions.
 3. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
 4. Use centralized fixtures/factories (`packages/junior/tests/fixtures/**`) over ad-hoc payload literals and one-off lifecycle setup when available.
-5. Use Vitest-native shared helpers (`packages/junior/tests/fixtures/vitest.ts`) for recurring env, fake-timer, and memory-state isolation.
+5. Use Vitest-native shared helpers (`packages/junior/tests/fixtures/vitest.ts`) for recurring env, clock, fake-timer, and memory-state isolation.
 6. Prefer asserting user-visible behavior and external contracts over implementation details.
 7. Keep test names descriptive of outcomes, not implementation mechanics.
 8. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
@@ -58,6 +58,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 13. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
 14. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
 15. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
+16. Prefer the shared default test clock helpers over ad-hoc `Date.now()` or inline `vi.setSystemTime(...)` setup when stable timestamps are part of the fixture contract.
 
 ## Coverage Budget (Avoid Over-Testing)
 
