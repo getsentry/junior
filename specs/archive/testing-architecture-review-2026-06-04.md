@@ -56,6 +56,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted subscribed-thread routing input defaults into
   `tests/fixtures/subscribed-decision.ts` and split the subscribed-decision
   suite into preflight, short-circuit, and classifier outcome files.
+- Extracted turn-session record setup/cleanup into
+  `tests/fixtures/turn-session-record.ts` and split the service suite by pause,
+  running, completed, and projection persistence contracts.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -202,6 +205,10 @@ Problem:
 Some routing unit tests look like branch inventories instead of behavior
 contracts. The subscribed-thread routing suite is now organized by decision
 stage, but the broader risk still applies to other large routing/service files.
+
+The turn-session record suite is also split by persistence contract. It remains
+unit-level because it is deterministic state adapter behavior, but future
+changes should keep pause, running, completed, and projection behavior separate.
 
 Direction:
 
