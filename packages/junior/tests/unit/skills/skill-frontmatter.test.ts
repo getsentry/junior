@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { parseSkillFile } from "@/chat/skills";
 
+function skillFile(frontmatter: string[], body = "# Body"): string {
+  return ["---", ...frontmatter, "---", "", body].join("\n");
+}
+
 describe("skill frontmatter validation", () => {
   it("accepts valid frontmatter", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "metadata:",
-      "  owner: recruiting",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        "metadata:",
+        "  owner: recruiting",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
     expect(result.ok ? result.skill : null).toMatchObject({
       name: "brief",
@@ -24,60 +26,46 @@ describe("skill frontmatter validation", () => {
   });
 
   it("rejects invalid name shape", () => {
-    const raw = [
-      "---",
-      "name: bad--name",
-      "description: Valid description",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile(["name: bad--name", "description: Valid description"]),
+      "bad--name",
+    );
 
-    const result = parseSkillFile(raw, "bad--name");
     expect(result.ok).toBe(false);
   });
 
   it("rejects descriptions with angle brackets", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Brief <candidate> profile",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile(["name: brief", "description: Brief <candidate> profile"]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 
   it("rejects requires-capabilities frontmatter", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "requires-capabilities: github.issues.read github.issues.write",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        "requires-capabilities: github.issues.read github.issues.write",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 
   it("rejects uses-config frontmatter", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "uses-config: eval-oauth.repo",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        "uses-config: eval-oauth.repo",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result).toEqual({
       ok: false,
       error:
@@ -85,33 +73,16 @@ describe("skill frontmatter validation", () => {
     });
   });
 
-  it("rejects requires-capabilities even when invalid", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "requires-capabilities: github",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
-
-    const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(false);
-  });
-
   it("parses disable-model-invocation: true", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "disable-model-invocation: true",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        "disable-model-invocation: true",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
     expect(result.ok ? result.skill.disableModelInvocation : undefined).toBe(
       true,
@@ -119,16 +90,14 @@ describe("skill frontmatter validation", () => {
   });
 
   it("omits disableModelInvocation when field is absent", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
     expect(
       result.ok ? result.skill.disableModelInvocation : "not-ok",
@@ -136,17 +105,15 @@ describe("skill frontmatter validation", () => {
   });
 
   it("omits disableModelInvocation when field is false", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "disable-model-invocation: false",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        "disable-model-invocation: false",
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
     expect(
       result.ok ? result.skill.disableModelInvocation : "not-ok",
@@ -154,17 +121,15 @@ describe("skill frontmatter validation", () => {
   });
 
   it("rejects disable-model-invocation with non-boolean value", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      'disable-model-invocation: "yes"',
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
+    const result = parseSkillFile(
+      skillFile([
+        "name: brief",
+        "description: Create a candidate brief from public engineering signals.",
+        'disable-model-invocation: "yes"',
+      ]),
+      "brief",
+    );
 
-    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 });

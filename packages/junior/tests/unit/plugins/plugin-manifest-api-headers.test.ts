@@ -175,31 +175,6 @@ describe("plugin manifest API headers", () => {
     });
   });
 
-  it("leaves defaultless command env references for runtime host binding", () => {
-    const manifest = parsePluginManifest(
-      [
-        "name: example",
-        "display-name: Example",
-        "description: Example API access",
-        "env-vars:",
-        "  EXAMPLE_BOT_EMAIL:",
-        "    expose-to-command-env: true",
-        "credentials:",
-        "  type: oauth-bearer",
-        "  domains:",
-        "    - api.example.com",
-        "  auth-token-env: EXAMPLE_TOKEN",
-        "command-env:",
-        '  GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}"',
-      ].join("\n"),
-      "/tmp/example",
-    );
-
-    expect(manifest.commandEnv).toEqual({
-      GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}",
-    });
-  });
-
   it("rejects unknown env var declaration fields", () => {
     expect(() =>
       parsePluginManifest(

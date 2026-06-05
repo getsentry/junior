@@ -47,6 +47,12 @@ type TestRollupBeforeHook = (
   config: TestBuildConfig,
 ) => Promise<void> | void;
 
+interface TestNitroFixtureOptions {
+  rootDir?: string;
+  serverDir?: string;
+  vercel?: TestVercelOptions;
+}
+
 async function makeTempDir(): Promise<string> {
   const tempDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "junior-nitro-plugin-module-"),
@@ -61,6 +67,30 @@ function getVercelOptions(nitro: {
   return nitro.options.vercel as TestVercelOptions;
 }
 
+function createNitroFixture(options: TestNitroFixtureOptions = {}) {
+  const rollupBeforeHooks: TestRollupBeforeHook[] = [];
+  const virtual: Record<string, (() => Promise<string>) | string> = {};
+  const nitro = {
+    hooks: {
+      hook(name: string, callback: TestRollupBeforeHook) {
+        if (name === "rollup:before") {
+          rollupBeforeHooks.push(callback);
+        }
+      },
+    },
+    options: {
+      output: {
+        serverDir: options.serverDir ?? "/tmp/junior-output",
+      },
+      rootDir: options.rootDir ?? "/tmp/junior-app",
+      vercel: options.vercel ?? {},
+      virtual,
+    },
+  };
+
+  return { nitro, rollupBeforeHooks, virtual };
+}
+
 afterEach(async () => {
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -69,20 +99,7 @@ afterEach(async () => {
 
 describe("juniorNitro plugin modules", () => {
   it("configures Vercel build output for heartbeat and conversation work", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
-        rootDir: "/tmp/junior-app",
-        vercel: {},
-        virtual,
-      },
-    };
+    const { nitro } = createNitroFixture();
 
     juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
@@ -113,45 +130,34 @@ describe("juniorNitro plugin modules", () => {
   });
 
   it("preserves existing Vercel route function settings", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
+    const { nitro } = createNitroFixture({
+      vercel: {
+        config: {
+          version: 3,
+          crons: [
+            {
+              path: JUNIOR_HEARTBEAT_ROUTE,
+              schedule: "*/5 * * * *",
+            },
+          ],
         },
-        rootDir: "/tmp/junior-app",
-        vercel: {
-          config: {
-            version: 3,
-            crons: [
+        functions: {
+          maxDuration: 120,
+          memory: 1024,
+        },
+        functionRules: {
+          [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
+            memory: 2048,
+            experimentalTriggers: [
               {
-                path: JUNIOR_HEARTBEAT_ROUTE,
-                schedule: "*/5 * * * *",
+                type: "queue/v2beta",
+                topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
               },
             ],
           },
-          functions: {
-            maxDuration: 120,
-            memory: 1024,
-          },
-          functionRules: {
-            [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
-              memory: 2048,
-              experimentalTriggers: [
-                {
-                  type: "queue/v2beta",
-                  topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
-                },
-              ],
-            },
-          },
         },
-        virtual,
       },
-    };
+    });
 
     juniorNitro({ maxDuration: 300 }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
@@ -181,20 +187,7 @@ describe("juniorNitro plugin modules", () => {
   });
 
   it("uses a custom Vercel conversation work queue topic", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
-        rootDir: "/tmp/junior-app",
-        vercel: {},
-        virtual,
-      },
-    };
+    const { nitro } = createNitroFixture();
 
     juniorNitro({ conversationWorkQueueTopic: "custom_work" }).nitro.setup(
       nitro,
@@ -213,31 +206,20 @@ describe("juniorNitro plugin modules", () => {
   });
 
   it("replaces a stale queue trigger when the topic changes", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
-        rootDir: "/tmp/junior-app",
-        vercel: {
-          functionRules: {
-            [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
-              experimentalTriggers: [
-                {
-                  type: "queue/v2beta",
-                  topic: "old_topic",
-                },
-              ],
-            },
+    const { nitro } = createNitroFixture({
+      vercel: {
+        functionRules: {
+          [JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]: {
+            experimentalTriggers: [
+              {
+                type: "queue/v2beta",
+                topic: "old_topic",
+              },
+            ],
           },
         },
-        virtual,
       },
-    };
+    });
 
     juniorNitro({ conversationWorkQueueTopic: "new_topic" }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
@@ -254,24 +236,13 @@ describe("juniorNitro plugin modules", () => {
   });
 
   it("preserves Vercel max function duration settings", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
+    const { nitro } = createNitroFixture({
+      vercel: {
+        functions: {
+          maxDuration: "max" as const,
         },
-        rootDir: "/tmp/junior-app",
-        vercel: {
-          functions: {
-            maxDuration: "max" as const,
-          },
-        },
-        virtual,
       },
-    };
+    });
 
     juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
@@ -301,20 +272,10 @@ describe("juniorNitro plugin modules", () => {
     };
     delete globalState.__juniorNitroPluginModuleImports;
 
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: path.join(tempRoot, ".output", "server"),
-        },
-        rootDir: tempRoot,
-        vercel: {},
-        virtual,
-      },
-    };
+    const { nitro, virtual } = createNitroFixture({
+      rootDir: tempRoot,
+      serverDir: path.join(tempRoot, ".output", "server"),
+    });
 
     juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -329,21 +290,8 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("rejects direct plugin sets with hooks because hooks need a runtime import", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
-        rootDir: "/tmp/junior-app",
-        vercel: {},
-        virtual,
-      },
-    };
+  it("rejects direct trusted plugin sets because hooks need a runtime import", () => {
+    const { nitro } = createNitroFixture();
 
     expect(() =>
       juniorNitro({
@@ -377,25 +325,10 @@ describe("juniorNitro plugin modules", () => {
       "utf8",
     );
 
-    const rollupBeforeHooks: TestRollupBeforeHook[] = [];
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook(name: string, callback: TestRollupBeforeHook) {
-          if (name === "rollup:before") {
-            rollupBeforeHooks.push(callback);
-          }
-        },
-      },
-      options: {
-        output: {
-          serverDir: path.join(tempRoot, ".output", "server"),
-        },
-        rootDir: tempRoot,
-        vercel: {},
-        virtual,
-      },
-    };
+    const { nitro, rollupBeforeHooks, virtual } = createNitroFixture({
+      rootDir: tempRoot,
+      serverDir: path.join(tempRoot, ".output", "server"),
+    });
 
     juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
 
@@ -458,25 +391,10 @@ describe("juniorNitro plugin modules", () => {
     );
     await fs.mkdir(serverDir, { recursive: true });
 
-    const rollupBeforeHooks: TestRollupBeforeHook[] = [];
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook(name: string, callback: TestRollupBeforeHook) {
-          if (name === "rollup:before") {
-            rollupBeforeHooks.push(callback);
-          }
-        },
-      },
-      options: {
-        output: {
-          serverDir,
-        },
-        rootDir: tempRoot,
-        vercel: {},
-        virtual,
-      },
-    };
+    const { nitro, rollupBeforeHooks } = createNitroFixture({
+      rootDir: tempRoot,
+      serverDir,
+    });
 
     juniorNitro({
       cwd: tempRoot,

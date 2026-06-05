@@ -1,15 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  type TurnResultInput,
+} from "@/chat/services/turn-result";
 
 const thinkingSelection = {
   thinkingLevel: "medium" as const,
   reason: "test",
 };
 
+type TurnResultCase = Partial<Omit<TurnResultInput, "newMessages">> &
+  Pick<TurnResultInput, "newMessages">;
+
+function resultFor(input: TurnResultCase) {
+  return buildTurnResult({
+    userInput: "Do the thing",
+    replyFiles: [],
+    artifactStatePatch: {},
+    toolCalls: [],
+    generatedFileCount: 0,
+    shouldTrace: false,
+    spanContext: {},
+    thinkingSelection,
+    ...input,
+  });
+}
+
 describe("buildTurnResult", () => {
   it("treats empty tool-only turns as execution failures", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -29,13 +49,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Open the GitHub issue",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -43,7 +56,7 @@ describe("buildTurnResult", () => {
   });
 
   it("ignores provisional assistant text that appears before the last tool result", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "assistant",
@@ -62,13 +75,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Pull the latest blog post and compare related articles",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["webSearch"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -77,7 +84,7 @@ describe("buildTurnResult", () => {
   });
 
   it("uses only terminal assistant text after tool results", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "assistant",
@@ -96,13 +103,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Pull the latest blog post and compare related articles",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["webSearch"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -111,7 +112,7 @@ describe("buildTurnResult", () => {
   });
 
   it("keeps assistant text across steered user messages", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "user",
@@ -133,13 +134,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "first request",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe(
@@ -150,7 +144,7 @@ describe("buildTurnResult", () => {
   });
 
   it("removes leaked thinking blocks from terminal assistant text", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "assistant",
@@ -173,14 +167,6 @@ describe("buildTurnResult", () => {
           stopReason: "stop",
         },
       ],
-      userInput: "Do the thing",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe(
@@ -197,7 +183,7 @@ describe("buildTurnResult", () => {
   });
 
   it("treats terminal provider errors without text as provider errors", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -212,14 +198,7 @@ describe("buildTurnResult", () => {
           errorMessage: "Anthropic stream ended before message_stop",
         },
       ],
-      userInput: "Do the thing",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["bash"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -231,7 +210,7 @@ describe("buildTurnResult", () => {
   });
 
   it("treats reaction-only turns as successful without fallback text", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -241,13 +220,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react to this",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -259,7 +232,7 @@ describe("buildTurnResult", () => {
   });
 
   it("suppresses empty thread text when a channel post is the successful side effect", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -269,13 +242,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "share the update",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["slackChannelPostMessage"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -288,7 +255,7 @@ describe("buildTurnResult", () => {
   });
 
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -303,13 +270,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react and confirm",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("Handled it.");
@@ -321,7 +282,7 @@ describe("buildTurnResult", () => {
   });
 
   it("suppresses model text for reaction-only requests", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -336,13 +297,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react to this",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -354,7 +309,7 @@ describe("buildTurnResult", () => {
   });
 
   it("keeps thread delivery enabled for reaction turns that fail validation", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -378,13 +333,7 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react and tell me what happened",
-      replyFiles: [],
-      artifactStatePatch: {},
       toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -410,7 +359,7 @@ describe("buildTurnResult", () => {
       "- More caveats that belong in the canvas.",
     ].join("\n");
 
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "toolResult",
@@ -425,15 +374,10 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "create a reusable reference",
-      replyFiles: [],
       artifactStatePatch: {
         lastCanvasUrl: "https://example.invalid/files/F123",
       },
       toolCalls: ["slackCanvasCreate"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
     });
 
     expect(reply.text).toBe(
@@ -444,7 +388,7 @@ describe("buildTurnResult", () => {
   });
 
   it("preserves structured timing and usage diagnostics", () => {
-    const reply = buildTurnResult({
+    const reply = resultFor({
       newMessages: [
         {
           role: "assistant",
@@ -452,15 +396,7 @@ describe("buildTurnResult", () => {
           stopReason: "stop",
         },
       ],
-      userInput: "Do the thing",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: [],
       durationMs: 1532,
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
       usage: {
         inputTokens: 321,
         outputTokens: 144,

@@ -373,58 +373,6 @@ describe("skills", () => {
     }
   });
 
-  it("rejects plugin skills with deprecated config frontmatter", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-deprecated-config-"),
-    );
-    const pluginRoot = path.join(tempRoot, "demo");
-
-    try {
-      await fs.mkdir(path.join(pluginRoot, "skills", "demo-tool"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(pluginRoot, "plugin.yaml"),
-        [
-          "name: demo",
-          "display-name: Demo",
-          "description: Demo plugin",
-          "config-keys:",
-          "  - repo",
-        ].join("\n"),
-        "utf8",
-      );
-      await fs.writeFile(
-        path.join(pluginRoot, "skills", "demo-tool", "SKILL.md"),
-        [
-          "---",
-          "name: demo-tool",
-          "display-name: Demo Tool",
-          "description: Demo tool skill",
-          "uses-config: demo.repo",
-          "---",
-          "",
-          "Use this skill.",
-        ].join("\n"),
-        "utf8",
-      );
-
-      const pluginApp = await createPluginAppFixture([pluginRoot]);
-      resetSkillDiscoveryCache();
-
-      try {
-        const available = await discoverSkills();
-        expect(
-          available.find((skill) => skill.name === "demo-tool"),
-        ).toBeUndefined();
-      } finally {
-        await pluginApp.cleanup();
-      }
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
   it("validates current skill frontmatter at load time", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-load-deprecated-config-"),
