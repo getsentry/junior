@@ -1,5 +1,22 @@
 import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+
+type EvalOutput = {
+  turn_diagnostics?: Array<{ thinkingLevel?: string }>;
+};
+
+function outputOf(result: { output?: unknown }): EvalOutput {
+  return (result.output ?? {}) as EvalOutput;
+}
+
+function expectThinkingLevel(output: EvalOutput, expected: string): void {
+  const levels =
+    output.turn_diagnostics
+      ?.map((diagnostic) => diagnostic.thinkingLevel)
+      .filter((level): level is string => typeof level === "string") ?? [];
+  expect(levels).toContain(expected);
+}
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
@@ -17,6 +34,33 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         fail: ["Do not return sandbox setup failure text."],
       }),
     });
+  });
+
+  it("when the task is a deterministic one-step transform, route with low thinking", async ({
+    run,
+  }) => {
+    const result = await run({
+      events: [
+        mention(
+          "@bot alphabetize these words and reply with only the sorted list: gamma, alpha, beta.",
+        ),
+      ],
+      requireSandboxReady: false,
+      criteria: rubric({
+        contract:
+          "A deterministic one-step transform uses low thinking and returns only the transformed result.",
+        pass: [
+          "assistant_posts contains exactly one concise reply.",
+          "The reply lists alpha, beta, gamma in that order.",
+          "turn_diagnostics shows the turn used low thinking.",
+        ],
+        fail: [
+          "Do not use tools or sandbox setup for this request.",
+          "Do not include process chatter or explanation around the sorted list.",
+        ],
+      }),
+    });
+    expectThinkingLevel(outputOf(result), "low");
   });
 
   it("when asked to post in channel, send a channel post instead of a thread reply", async ({
