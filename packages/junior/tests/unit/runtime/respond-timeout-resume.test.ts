@@ -462,4 +462,94 @@ describe("generateAssistantReply timeout resume", () => {
       }),
     ]);
   });
+
+  it("preserves full requester identity from session record when live Slack lookup is degraded", async () => {
+    // Simulate a prior successful turn that stored full identity in the session record.
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-identity",
+      sessionId: "turn-identity",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [{ role: "user", content: [{ type: "text", text: "help" }] }],
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "uname",
+        fullName: "Full Name",
+        email: "u@test.com",
+      },
+    });
+
+    // Drive the turn with a degraded live requester — only userId, no email/name.
+    // This simulates a continuation invocation where lookupSlackActorIdentity returned null.
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-identity",
+        turnId: "turn-identity",
+        channelId: "C123",
+        threadTs: "1712345.0007",
+        requesterId: "U123",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await replyPromise;
+
+    // The catch-path timeout persistence must write the completed requester,
+    // not overwrite it with the degraded { slackUserId: "U123" } value.
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-identity",
+      "turn-identity",
+    );
+    expect(sessionRecord?.requester).toMatchObject({
+      slackUserId: "U123",
+      slackUserName: "uname",
+      fullName: "Full Name",
+      email: "u@test.com",
+    });
+  });
+
+  it("does not blend stored requester identity onto a different live user", async () => {
+    // Seed a session record owned by Bob.
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-mismatch",
+      sessionId: "turn-mismatch",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      requester: {
+        slackUserId: "UBob",
+        slackUserName: "bob",
+        fullName: "Bob",
+        email: "bob@test.com",
+      },
+    });
+
+    // Drive the turn as Alice — different user id.
+    const replyPromise = generateAssistantReply("help me", {
+      requester: { userId: "UAlice" },
+      correlation: {
+        conversationId: "conversation-mismatch",
+        turnId: "turn-mismatch",
+        channelId: "C123",
+        threadTs: "1712345.0008",
+        requesterId: "UAlice",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await replyPromise;
+
+    const sessionRecord = await getAgentTurnSessionRecord(
+      "conversation-mismatch",
+      "turn-mismatch",
+    );
+    // Bob's identity must not appear on Alice's requester.
+    expect(sessionRecord?.requester?.email).not.toBe("bob@test.com");
+    expect(sessionRecord?.requester?.fullName).not.toBe("Bob");
+    expect(sessionRecord?.requester?.slackUserName).not.toBe("bob");
+    expect(sessionRecord?.requester?.slackUserId).toBe("UAlice");
+  });
 });

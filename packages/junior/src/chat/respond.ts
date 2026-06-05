@@ -340,33 +340,32 @@ function actorRequesterFromContext(
 }
 
 /**
- * Fill in missing identity fields on a live actor requester from a durable
- * session-record requester captured during a prior successful Slack lookup.
+ * Fill in missing display-identity fields on a live actor requester from a
+ * durable session-record requester captured during a prior successful Slack
+ * lookup.
  *
- * Live data wins when present; stored data fills gaps. Never blends fields
- * across different user ids.
+ * Only fills gaps when both user ids are present and equal — never infers
+ * display fields from a stored actor the live request has not proven to be.
+ * Live data always wins; stored data only fills gaps.
  */
 function completeActorRequesterFromSession(
   live: ActorIdentityInput | undefined,
   stored: AgentTurnRequester | undefined,
 ): ActorIdentityInput | undefined {
   if (!stored) return live;
+  const liveUserId = live?.userId;
   const storedUserId = stored.slackUserId;
-  // Safety: never blend identity across different users.
-  if (live?.userId && storedUserId && live.userId !== storedUserId) {
+  // Only complete when both ids are present and match.
+  if (!liveUserId || !storedUserId || liveUserId !== storedUserId) {
     return live;
   }
-  const userId = live?.userId ?? storedUserId;
-  const userName = live?.userName || stored.slackUserName;
-  const fullName = live?.fullName || stored.fullName;
-  const email = live?.email || stored.email;
-  const completed: ActorIdentityInput = {
-    ...(userId ? { userId } : {}),
-    ...(userName ? { userName } : {}),
-    ...(fullName ? { fullName } : {}),
-    ...(email ? { email } : {}),
+  return {
+    ...live,
+    userId: liveUserId,
+    userName: live.userName || stored.slackUserName,
+    fullName: live.fullName || stored.fullName,
+    email: live.email || stored.email,
   };
-  return Object.keys(completed).length > 0 ? completed : undefined;
 }
 
 function surfaceFromContext(
@@ -707,10 +706,15 @@ export async function generateAssistantReply(
     );
     // Complete identity from the durable session record so that a degraded
     // Slack profile lookup in a resume invocation cannot strip fields that
-    // were successfully captured in the original turn.
-    actorRequester = completeActorRequesterFromSession(
-      actorRequester,
-      existingSessionRecord?.requester,
+    // were successfully captured in the original turn. Normalize through
+    // actorRequesterFromContext so stored display fields pass the same
+    // cleanActorDisplayName / cleanActorEmail gates as the live context.
+    actorRequester = actorRequesterFromContext(
+      completeActorRequesterFromSession(
+        actorRequester,
+        existingSessionRecord?.requester,
+      ),
+      context.correlation?.requesterId,
     );
     requester = requesterFromContext(
       actorRequester,
