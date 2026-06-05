@@ -2,6 +2,7 @@ import type { Message } from "chat";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
+import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
@@ -24,6 +25,7 @@ function resolveMessageText(args: ConversationMessageInput): string {
 export function toConversationMessage(
   args: ConversationMessageInput,
 ): ConversationMessage {
+  const actor = getMessageActorIdentity(args.entry);
   const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
     args.entry.attachments,
   );
@@ -37,9 +39,9 @@ export function toConversationMessage(
     text: resolveMessageText(args),
     createdAtMs: args.entry.metadata.dateSent.getTime(),
     author: {
-      userId: args.entry.author.userId,
-      userName: args.entry.author.userName,
-      fullName: args.entry.author.fullName,
+      ...(actor?.userId ? { userId: actor.userId } : {}),
+      ...(actor?.userName ? { userName: actor.userName } : {}),
+      ...(actor?.fullName ? { fullName: actor.fullName } : {}),
       isBot:
         typeof args.entry.author.isBot === "boolean"
           ? args.entry.author.isBot

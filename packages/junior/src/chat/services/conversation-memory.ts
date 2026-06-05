@@ -7,6 +7,8 @@ import type {
 } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
+import { normalizeActorIdentity } from "@/chat/services/requester-identity";
+import { actorDisplayLabel } from "@/chat/services/message-actor-identity";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
@@ -70,10 +72,11 @@ function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
 ): string {
-  const displayName =
-    message.author?.fullName ||
-    message.author?.userName ||
-    (message.role === "assistant" ? botConfig.userName : message.role);
+  const actor = normalizeActorIdentity(message.author, message.author?.userId);
+  const displayName = actorDisplayLabel(
+    actor,
+    message.role === "assistant" ? botConfig.userName : message.role,
+  );
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
@@ -187,13 +190,23 @@ export function buildConversationContext(
     }
     lines.push("<thread-transcript>");
     for (const [index, message] of messages.entries()) {
-      const author = escapeXml(message.author?.userName ?? message.role);
+      const actor = normalizeActorIdentity(
+        message.author,
+        message.author?.userId,
+      );
+      const author = escapeXml(
+        actor?.userName ??
+          (message.role === "assistant" ? botConfig.userName : message.role),
+      );
+      const actorIdAttr = actor?.userId
+        ? ` actor_id="${escapeXml(actor.userId)}"`
+        : "";
       const ts = new Date(message.createdAtMs).toISOString();
       const slackTsAttr = message.meta?.slackTs
         ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
         : "";
       lines.push(
-        `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
+        `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
         renderConversationMessageLine(message, conversation),
         "  </message>",
       );

@@ -19,6 +19,13 @@ function clean(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
+function cleanActorUserId(value: string | undefined): string | undefined {
+  const normalized = clean(value);
+  return normalized && normalized.toLowerCase() !== "unknown"
+    ? normalized
+    : undefined;
+}
+
 function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_PATTERN.test(value);
 }
@@ -29,6 +36,9 @@ function cleanActorDisplayName(
 ): string | undefined {
   const normalized = clean(value);
   if (!normalized) {
+    return undefined;
+  }
+  if (normalized.toLowerCase() === "unknown") {
     return undefined;
   }
   if (userId && normalized === userId) {
@@ -47,8 +57,8 @@ export function normalizeActorIdentity(
   requester: ActorIdentityInput | undefined,
   requesterId?: string,
 ): ActorIdentityInput | undefined {
-  const contextUserId = clean(requesterId);
-  const requesterUserId = clean(requester?.userId);
+  const contextUserId = cleanActorUserId(requesterId);
+  const requesterUserId = cleanActorUserId(requester?.userId);
   const userId = contextUserId ?? requesterUserId;
   const canUseRequesterIdentity =
     !contextUserId || !requesterUserId || contextUserId === requesterUserId;
@@ -75,7 +85,7 @@ export function slackActorIdentity(
   userId: string,
   profile: SlackActorProfile | null | undefined,
 ): ActorIdentityInput {
-  const actorUserId = clean(userId);
+  const actorUserId = cleanActorUserId(userId);
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
   }

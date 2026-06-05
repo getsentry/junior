@@ -18,6 +18,32 @@ describe("requester identity", () => {
     ).toEqual({ userId: "U039RR91S" });
   });
 
+  it("does not promote synthetic unknown display names", () => {
+    expect(
+      normalizeActorIdentity(
+        {
+          fullName: "unknown",
+          userId: "U039RR91S",
+          userName: "unknown",
+        },
+        "U039RR91S",
+      ),
+    ).toEqual({ userId: "U039RR91S" });
+  });
+
+  it("does not preserve synthetic unknown actor ids", () => {
+    expect(
+      normalizeActorIdentity(
+        {
+          fullName: "unknown",
+          userId: "unknown",
+          userName: "unknown",
+        },
+        "unknown",
+      ),
+    ).toBeUndefined();
+  });
+
   it("builds Slack actor identity from the resolved Slack profile", () => {
     expect(
       slackActorIdentity("U039RR91S", {

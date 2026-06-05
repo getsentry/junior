@@ -39,6 +39,9 @@ import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
+import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import { lookupSlackUser } from "@/chat/slack/user";
+import type { SlackActorProfile } from "@/chat/services/requester-identity";
 
 export type SlackConversationRoute = "mention" | "subscribed";
 
@@ -53,12 +56,23 @@ export interface SlackConversationMessageMetadata {
 
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
+  lookupSlackUser?: (
+    userId: string,
+  ) => Promise<SlackActorProfile | null | undefined>;
   resumeAwaitingContinuation?: (conversationId: string) => Promise<boolean>;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     "handleNewMention" | "handleSubscribedMessage"
   >;
   state?: StateAdapter;
+}
+
+function requireSlackAuthorId(message: Message): string {
+  const authorId = message.author.userId?.trim();
+  if (!authorId || authorId.toLowerCase() === "unknown") {
+    throw new Error("Slack message requires an actor user id");
+  }
+  return authorId;
 }
 
 function getConnectedState(stateAdapter?: StateAdapter): StateAdapter {
@@ -111,6 +125,30 @@ function restoreMessage(args: {
   );
   rehydrateAttachmentFetchers(message);
   return message;
+}
+
+async function bindSlackActorIdentities(args: {
+  lookupSlackUser: (
+    userId: string,
+  ) => Promise<SlackActorProfile | null | undefined>;
+  messages: Message[];
+}): Promise<void> {
+  const byAuthorId = new Map<string, Message[]>();
+  for (const message of args.messages) {
+    const authorId = requireSlackAuthorId(message);
+    byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
+  }
+
+  await Promise.all(
+    [...byAuthorId].map(async ([authorId, messages]) => {
+      const profile = await args.lookupSlackUser(authorId);
+      await Promise.all(
+        messages.map((message) =>
+          ensureSlackMessageActorIdentity(message, async () => profile),
+        ),
+      );
+    }),
+  );
 }
 
 function restoreThread(args: {
@@ -230,6 +268,7 @@ export function createSlackConversationWorker(
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
   return async (context) => {
     const adapter = options.getSlackAdapter();
+    const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
     const state = getConnectedState(options.state);
     await state.connect();
 
@@ -274,6 +313,10 @@ export function createSlackConversationWorker(
         const messages = records.map((record) =>
           restoreMessage({ adapter, record }),
         );
+        await bindSlackActorIdentities({
+          lookupSlackUser: actorLookup,
+          messages,
+        });
         const latestMessage = messages[messages.length - 1];
         if (!latestMessage) {
           return;
@@ -380,6 +423,7 @@ export function buildSlackInboundMessage(args: {
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessageRecord {
+  const authorId = requireSlackAuthorId(args.message);
   return {
     conversationId: args.conversationId,
     inboundMessageId: [
@@ -393,7 +437,7 @@ export function buildSlackInboundMessage(args: {
     receivedAtMs: args.receivedAtMs,
     input: {
       text: args.message.text || " ",
-      authorId: args.message.author.userId,
+      authorId,
       attachments: args.message.attachments,
       metadata: {
         platform: "slack",

@@ -137,4 +137,29 @@ describe("buildConversationContext", () => {
     expect(context).toContain("Earlier thread summary.");
     expect(context).not.toContain("<thread-transcript>");
   });
+
+  it("does not render raw Slack ids as author display names", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "hello",
+        createdAtMs: 1000,
+        author: {
+          isBot: false,
+          userId: "U039RR91S",
+          userName: "U039RR91S",
+          fullName: "U039RR91S",
+        },
+      },
+    ];
+
+    const context = buildConversationContext(conversation);
+
+    expect(context).toContain('author="user"');
+    expect(context).toContain('actor_id="U039RR91S"');
+    expect(context).toContain("[user] user: hello");
+    expect(context).not.toContain("@U039RR91S");
+  });
 });

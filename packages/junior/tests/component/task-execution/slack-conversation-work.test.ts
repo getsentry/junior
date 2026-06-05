@@ -13,6 +13,7 @@ import {
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
+import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -35,6 +36,7 @@ type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 interface ProcessQueuedSlackWorkArgs {
   getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
+  lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
   resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
@@ -48,6 +50,7 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     queue: args.queue,
     run: createSlackConversationWorker({
       getSlackAdapter: args.getSlackAdapter,
+      lookupSlackUser: args.lookupSlackUser,
       resumeAwaitingContinuation: args.resumeAwaitingContinuation,
       runtime: args.runtime,
       state: args.state,
@@ -123,6 +126,40 @@ describe("Slack conversation work execution", () => {
         }),
       }),
     ]);
+  });
+
+  it("does not persist Slack mailbox messages without actor ids", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest({
+        team_id: "T123",
+        type: "event_callback",
+        event: {
+          type: "app_mention",
+          text: `<@${SLACK_BOT_USER_ID}> missing actor`,
+          channel: "C123",
+          ts: "1712345.0099",
+          event_ts: "1712345.0099",
+          channel_type: "channel",
+        },
+      }),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toBeUndefined();
   });
 
   it("routes edited Slack mentions through the durable mailbox", async () => {
@@ -280,6 +317,65 @@ describe("Slack conversation work execution", () => {
       queue,
       runtime,
       state,
+    });
+  });
+
+  it("binds resolved Slack actor identity before runtime handling", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    let capturedMessage: Message | undefined;
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> identify me`,
+          ts: "1712345.0003",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (_thread, message, hooks) => {
+        capturedMessage = message;
+        await hooks?.onInputCommitted?.();
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("unexpected subscribed route");
+      },
+    };
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        lookupSlackUser: async () => ({
+          email: "david@example.com",
+          fullName: "David Cramer",
+          userName: "dcramer",
+        }),
+        queue,
+        runtime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(capturedMessage?.author).toMatchObject({
+      userId: "U123",
+      userName: "dcramer",
+      fullName: "David Cramer",
+    });
+    expect(getMessageActorIdentity(capturedMessage!)).toEqual({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U123",
+      userName: "dcramer",
     });
   });
 

@@ -37,6 +37,7 @@ import {
   type TurnMessageText,
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
+import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -288,6 +289,10 @@ function buildLogContext(
   };
 }
 
+function requesterUserName(message: Message): string | undefined {
+  return getMessageActorIdentity(message)?.userName;
+}
+
 /** Build the Slack event runtime that routes mentions and subscribed messages. */
 export function createSlackTurnRuntime<
   TPreparedState,
@@ -409,7 +414,7 @@ export function createSlackTurnRuntime<
       logContext({
         threadId: args.context.threadId,
         requesterId: args.context.requesterId,
-        requesterUserName: args.message.author.userName,
+        requesterUserName: requesterUserName(args.message),
         channelId: args.context.channelId,
         runId: args.context.runId,
       }),
@@ -456,7 +461,7 @@ export function createSlackTurnRuntime<
           threadId,
           channelId,
           requesterId: message.author.userId,
-          requesterUserName: message.author.userName,
+          requesterUserName: requesterUserName(message),
           runId,
         });
         processingReaction = await processingReactions.start(context, message);
@@ -520,7 +525,7 @@ export function createSlackTurnRuntime<
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
           requesterId: message.author.userId,
-          requesterUserName: message.author.userName,
+          requesterUserName: requesterUserName(message),
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
@@ -585,7 +590,7 @@ export function createSlackTurnRuntime<
         const turnContext = logContext({
           threadId,
           requesterId: message.author.userId,
-          requesterUserName: message.author.userName,
+          requesterUserName: requesterUserName(message),
           channelId,
           runId,
         });
@@ -759,7 +764,7 @@ export function createSlackTurnRuntime<
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
           requesterId: message.author.userId,
-          requesterUserName: message.author.userName,
+          requesterUserName: requesterUserName(message),
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });

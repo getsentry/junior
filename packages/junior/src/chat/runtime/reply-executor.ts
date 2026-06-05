@@ -82,10 +82,8 @@ import {
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import {
-  slackActorIdentity,
-  type ActorIdentityInput,
-} from "@/chat/services/requester-identity";
+import type { ActorIdentityInput } from "@/chat/services/requester-identity";
+import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import {
   isCooperativeTurnYieldError,
@@ -331,6 +329,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           options.queuedMessages ?? [],
           currentText,
         ).userText;
+        await Promise.all(
+          (options.queuedMessages ?? []).map((queued) =>
+            ensureSlackMessageActorIdentity(
+              queued.message,
+              deps.services.lookupSlackUser,
+            ),
+          ),
+        );
+        const requesterIdentity = await ensureSlackMessageActorIdentity(
+          message,
+          deps.services.lookupSlackUser,
+        );
+        const requester = turnRequester(requesterIdentity);
 
         const preparedState =
           options.preparedState ??
@@ -352,14 +363,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
         const slackMessageTs = getSlackMessageTs(message);
         const turnId = buildDeterministicTurnId(message.id);
-        const slackProfile = await deps.services.lookupSlackUser(
-          message.author.userId,
-        );
-        const requesterIdentity = slackActorIdentity(
-          message.author.userId,
-          slackProfile,
-        );
-        const requester = turnRequester(requesterIdentity);
         const turnTraceContext = {
           conversationId,
           slackThreadId: threadId,
