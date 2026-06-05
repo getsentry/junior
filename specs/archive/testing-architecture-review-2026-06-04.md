@@ -95,6 +95,9 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
   provider-retry/cooperative-yield and timeout-resume orchestration coverage
   into component runtime suites backed by `tests/fixtures/respond-agent.ts`
   instead of a Pi Agent module mock.
+- Removed the broad `tests/fixtures/respond-runtime.ts` module-mock harness;
+  respond component suites now use explicit runtime env setup, scripted agents,
+  scripted sandbox execution, and preselected thinking levels.
 - Added an explicit `sandboxExecutorFactory` port to `generateAssistantReply`
   and moved lazy sandbox boot/metadata coverage into a component runtime suite
   backed by real skill discovery plus `tests/fixtures/respond-sandbox.ts`.
@@ -150,8 +153,8 @@ instead of a mocked skills module.
 
 `respond-provider-retry.test.ts` and `respond-timeout-resume.test.ts` now live
 under `tests/component/runtime` and drive Pi behavior through the explicit
-`agentFactory` port. They still use the broader respond runtime fixture for
-ambient config/skill/sandbox setup, but no longer patch the Pi Agent module.
+`agentFactory` port with shared deterministic import-time env setup and
+preselected thinking levels instead of the old broad respond runtime fixture.
 
 The progressive MCP loading coverage now imports its dedicated mocked MCP
 runtime harness from fixtures and is split by scenario family. These suites still
