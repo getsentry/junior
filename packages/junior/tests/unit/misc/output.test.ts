@@ -9,10 +9,76 @@ import {
 } from "@/chat/slack/output";
 import { ensureBlockSpacing, renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
+const mrkdwn = renderSlackMrkdwn;
+
 describe("renderSlackMrkdwn", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {
     expect(renderSlackMrkdwn("one\r\n- item a\n- item b\r\n\r\ntwo   ")).toBe(
       "one\n\n- item a\n- item b\n\ntwo",
+    );
+  });
+
+  // URL wrapping
+  it("wraps a bare URL adjacent to bold markers — the core bug", () => {
+    expect(
+      mrkdwn("**PR is up: https://github.com/getsentry/sentry-docs/pull/18263**"),
+    ).toBe(
+      "**PR is up: <https://github.com/getsentry/sentry-docs/pull/18263>**",
+    );
+  });
+
+  it("wraps a standalone bare URL", () => {
+    expect(mrkdwn("See https://example.com for details.")).toBe(
+      "See <https://example.com> for details.",
+    );
+  });
+
+  it("does not double-wrap an already-explicit Slack link", () => {
+    expect(mrkdwn("<https://example.com>")).toBe("<https://example.com>");
+  });
+
+  it("does not double-wrap an existing labeled Slack link", () => {
+    expect(mrkdwn("<https://example.com|label>")).toBe(
+      "<https://example.com|label>",
+    );
+  });
+
+  it("preserves URL inside inline code", () => {
+    expect(mrkdwn("`https://example.com/*`")).toBe("`https://example.com/*`");
+  });
+
+  it("preserves URL inside a fenced code block", () => {
+    const input = "before\n```\nhttps://example.com/*\n```\nafter";
+    expect(mrkdwn(input)).toBe("before\n\n```\nhttps://example.com/*\n```\n\nafter");
+  });
+
+  it("preserves a Markdown link without converting it", () => {
+    expect(mrkdwn("[PR](https://github.com/org/repo/pull/1)")).toBe(
+      "[PR](https://github.com/org/repo/pull/1)",
+    );
+  });
+
+  it("peels trailing sentence punctuation outside the URL", () => {
+    expect(mrkdwn("See https://example.com/foo.")).toBe(
+      "See <https://example.com/foo>.",
+    );
+  });
+
+  it("preserves balanced parentheses inside a URL", () => {
+    expect(
+      mrkdwn("See https://en.wikipedia.org/wiki/Foo_(bar) for info."),
+    ).toBe("See <https://en.wikipedia.org/wiki/Foo_(bar)> for info.");
+  });
+
+  it("preserves URL query strings and fragments", () => {
+    expect(
+      mrkdwn("https://example.com/search?q=foo&bar=1#section"),
+    ).toBe("<https://example.com/search?q=foo&bar=1#section>");
+  });
+
+  it("preserves URLs with underscores", () => {
+    expect(mrkdwn("https://example.com/foo_bar/baz")).toBe(
+      "<https://example.com/foo_bar/baz>",
     );
   });
 });
