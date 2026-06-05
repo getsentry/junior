@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}
-        uses: getsentry/codecov-action@0.3.7
+        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
