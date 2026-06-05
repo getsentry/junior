@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-04
-- Last Edited: 2026-06-04
+- Last Edited: 2026-06-05
 
 ## Purpose
 
@@ -59,6 +59,10 @@ rules live in `../testing.md`, `../unit-testing.md`, `../component-testing.md`,
 - Extracted turn-session record setup/cleanup into
   `tests/fixtures/turn-session-record.ts` and split the service suite by pause,
   running, completed, and projection persistence contracts.
+- Extracted Slack scheduler tool setup into
+  `tests/fixtures/slack-schedule-tools.ts` and split the broad integration
+  suite by create/default, validation, update/ownership, run/claiming, and
+  execution-mode contracts.
 - Added shared fixtures for recurring boundaries instead of leaving setup
   copied through behavior tests.
 
@@ -148,7 +152,11 @@ Direction:
 
 Files:
 
-- `packages/junior/tests/integration/slack-schedule-tools.test.ts`
+- `packages/junior/tests/integration/slack-schedule-create-tools.test.ts`
+- `packages/junior/tests/integration/slack-schedule-validation-tools.test.ts`
+- `packages/junior/tests/integration/slack-schedule-update-tools.test.ts`
+- `packages/junior/tests/integration/slack-schedule-run-tools.test.ts`
+- `packages/junior/tests/integration/slack-schedule-execution-mode.test.ts`
 - `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`
 - `packages/junior/tests/integration/mcp-auth-runtime-slack.test.ts`
 - `packages/junior/tests/integration/oauth-callback-slack.test.ts`
