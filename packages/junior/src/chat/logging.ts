@@ -140,6 +140,8 @@ const CONSOLE_PRIORITY_KEYS = [
   "messaging.destination.name",
   "app.run.id",
   "app.message.kind",
+  "app.message.delivery_kind",
+  "app.ai.run.kind",
 ] as const;
 const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
   CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index]),
@@ -1664,6 +1666,29 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
   )) {
     setAttribute.call(span, key, value);
   }
+}
+
+/** Add a named event with attributes to the currently active span. */
+export function addSpanEvent(
+  name: string,
+  attributes: Record<string, unknown> = {},
+): void {
+  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
+  const span = sentry.getActiveSpan?.();
+  if (!span) {
+    return;
+  }
+
+  const addEvent = (
+    span as {
+      addEvent?: (name: string, attributes?: Record<string, SpanAttributeValue>) => void;
+    }
+  ).addEvent;
+  if (typeof addEvent !== "function") {
+    return;
+  }
+
+  addEvent.call(span, name, normalizeSpanAttributes(attributes));
 }
 
 /** Set the status of the currently active Sentry span. */

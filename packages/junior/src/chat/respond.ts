@@ -17,6 +17,7 @@ import {
   logInfo,
   logWarn,
   serializeGenAiAttribute,
+  addSpanEvent,
   setSpanAttributes,
   setTags,
   withSpan,
@@ -1220,20 +1221,21 @@ export async function generateAssistantReply(
             ...agent!.state.messages,
             ...piMessages,
           ]);
-          for (const message of piMessages) {
-            agent!.steer(message);
+          for (let i = 0; i < piMessages.length; i++) {
+            agent!.steer(piMessages[i]);
+            addSpanEvent("gen_ai.user_message", {
+              "app.message.delivery_kind": "steering",
+              ...(messages[i].timestampMs
+                ? { "messaging.message.id": String(messages[i].timestampMs) }
+                : {}),
+            });
           }
           steeredMessageCount += piMessages.length;
         });
         if (steeredMessageCount > 0) {
-          logInfo(
-            "agent_turn_steering_messages_injected",
-            spanContext,
-            {
-              "app.ai.steering_message_count": steeredMessageCount,
-            },
-            "Agent turn steering messages injected",
-          );
+          setSpanAttributes({
+            "app.ai.steering_message_count": steeredMessageCount,
+          });
         }
       } catch (error) {
         if (isTurnInputCommitLostError(error)) {
@@ -1438,6 +1440,10 @@ export async function generateAssistantReply(
             }
           };
 
+          setSpanAttributes({
+            "app.ai.run.kind": resumedFromSessionRecord ? "resume" : "new",
+            "app.message.delivery_kind": "turn_start",
+          });
           let run = resumedFromSessionRecord
             ? agent.continue()
             : agent.prompt(freshPromptMessage);
