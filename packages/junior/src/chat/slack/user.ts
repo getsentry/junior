@@ -4,7 +4,6 @@ import {
   slackActorIdentity,
   type ActorIdentityInput,
 } from "@/chat/services/requester-identity";
-import type { AgentTurnRequester } from "@/chat/state/turn-session";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -129,18 +128,3 @@ export async function lookupSlackActorIdentity(
   return slackActorIdentity(userId, await lookupSlackUser(userId));
 }
 
-/**
- * Build actor identity for a resumed turn from the persisted session requester.
- *
- * The session requester is the single source of truth for continuation identity.
- * No Slack API call is made. Callers must ensure stored is present before calling.
- */
-export function resolveSlackResumeRequester(
-  stored: AgentTurnRequester,
-): ActorIdentityInput {
-  return slackActorIdentity(stored.slackUserId!, {
-    email: stored.email,
-    fullName: stored.fullName,
-    userName: stored.slackUserName,
-  });
-}

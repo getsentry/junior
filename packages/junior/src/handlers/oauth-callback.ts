@@ -43,9 +43,9 @@ import {
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
+import { slackActorIdentity } from "@/chat/services/requester-identity";
 import {
   lookupSlackActorIdentity,
-  resolveSlackResumeRequester,
 } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
@@ -333,7 +333,12 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
-      const requester = resolveSlackResumeRequester(lockedSessionRecord.requester!);
+      const sessionRequester = lockedSessionRecord.requester!;
+      const requester = slackActorIdentity(sessionRequester.slackUserId!, {
+        email: sessionRequester.email,
+        fullName: sessionRequester.fullName,
+        userName: sessionRequester.slackUserName,
+      });
 
       return {
         messageText: lockedPendingAuth
