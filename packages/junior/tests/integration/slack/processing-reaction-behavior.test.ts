@@ -38,16 +38,14 @@ function processingReaction(name: string, timestamp: string) {
 describe("Slack behavior: processing reaction", () => {
   it("adds eyes before mention work and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
-              text: "Done.",
-              diagnostics: successDiagnostics(),
-            };
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return {
+            text: "Done.",
+            diagnostics: successDiagnostics(),
+          };
         },
       },
     });
@@ -82,25 +80,21 @@ describe("Slack behavior: processing reaction", () => {
 
   it("does not add eyes when a subscribed message is skipped", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0,
-                reason: "side conversation",
-              },
-              text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return {
+            object: {
+              should_reply: false,
+              confidence: 0,
+              reason: "side conversation",
+            },
+            text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("assistant should not run for skipped message");
-          },
+        generateAssistantReply: async () => {
+          throw new Error("assistant should not run for skipped message");
         },
       },
     });
@@ -131,30 +125,26 @@ describe("Slack behavior: processing reaction", () => {
 
   it("adds eyes after a subscribed message is approved and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "direct follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct follow-up"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return {
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "direct follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"direct follow-up"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
-              text: "Done.",
-              diagnostics: successDiagnostics(),
-            };
-          },
+        generateAssistantReply: async () => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return {
+            text: "Done.",
+            diagnostics: successDiagnostics(),
+          };
         },
       },
     });
@@ -189,18 +179,16 @@ describe("Slack behavior: processing reaction", () => {
 
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            context?.onToolInvocation?.({
-              toolName: "slackMessageAddReaction",
-              params: { emoji: ":eyes:" },
-            });
-            return {
-              text: "Done.",
-              diagnostics: successDiagnostics(["slackMessageAddReaction"]),
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          context?.onToolInvocation?.({
+            toolName: "slackMessageAddReaction",
+            params: { emoji: ":eyes:" },
+          });
+          return {
+            text: "Done.",
+            diagnostics: successDiagnostics(["slackMessageAddReaction"]),
+          };
         },
       },
     });

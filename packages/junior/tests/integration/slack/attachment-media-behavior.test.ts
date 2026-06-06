@@ -33,21 +33,17 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply: async (_prompt, context) => {
-              const attachments = context?.userAttachments ?? [];
-              capturedAttachmentMediaTypes.push(
-                attachments.map((attachment) => attachment.mediaType),
-              );
-              capturedAttachmentNames.push(
-                attachments.map((attachment) => attachment.filename ?? ""),
-              );
-              return successfulAssistantReply("Processed attachments.");
-            },
+        adapters: {
+          describeImagesText: completeTextMock,
+          generateAssistantReply: async (_prompt, context) => {
+            const attachments = context?.userAttachments ?? [];
+            capturedAttachmentMediaTypes.push(
+              attachments.map((attachment) => attachment.mediaType),
+            );
+            capturedAttachmentNames.push(
+              attachments.map((attachment) => attachment.filename ?? ""),
+            );
+            return successfulAssistantReply("Processed attachments.");
           },
         },
       },
@@ -119,21 +115,19 @@ describe("Slack behavior: mixed attachment media", () => {
     const capturedOmittedImageCounts: number[] = [];
 
     const { slackRuntime } = await createSlackImageRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            capturedAttachmentMediaTypes.push(
-              attachments.map((attachment) => attachment.mediaType),
-            );
-            capturedAttachmentNames.push(
-              attachments.map((attachment) => attachment.filename ?? ""),
-            );
-            capturedOmittedImageCounts.push(
-              context?.omittedImageAttachmentCount ?? 0,
-            );
-            return successfulAssistantReply("Processed attachments.");
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          const attachments = context?.userAttachments ?? [];
+          capturedAttachmentMediaTypes.push(
+            attachments.map((attachment) => attachment.mediaType),
+          );
+          capturedAttachmentNames.push(
+            attachments.map((attachment) => attachment.filename ?? ""),
+          );
+          capturedOmittedImageCounts.push(
+            context?.omittedImageAttachmentCount ?? 0,
+          );
+          return successfulAssistantReply("Processed attachments.");
         },
       },
     });
@@ -183,14 +177,12 @@ describe("Slack behavior: mixed attachment media", () => {
     );
 
     const { slackRuntime } = await createSlackImageRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            capturedOmittedImageCounts.push(
-              context?.omittedImageAttachmentCount ?? 0,
-            );
-            return generateAssistantReply(prompt, context);
-          },
+      adapters: {
+        generateAssistantReply: async (prompt, context) => {
+          capturedOmittedImageCounts.push(
+            context?.omittedImageAttachmentCount ?? 0,
+          );
+          return generateAssistantReply(prompt, context);
         },
       },
     });

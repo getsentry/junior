@@ -35,21 +35,19 @@ describe("Slack behavior: turn continuation", () => {
     const conversationId = "slack:C_TIMEOUT:1700000000.000";
     const sessionId = "turn_msg-timeout";
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          scheduleAgentContinue,
-          generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_continue",
-              "simulated timeout continuation",
-              {
-                conversationId,
-                sessionId,
-                version: 3,
-                sliceId: 2,
-              },
-            );
-          },
+      adapters: {
+        scheduleAgentContinue,
+        generateAssistantReply: async () => {
+          throw new RetryableTurnError(
+            "agent_continue",
+            "simulated timeout continuation",
+            {
+              conversationId,
+              sessionId,
+              version: 3,
+              sliceId: 2,
+            },
+          );
         },
       },
     });
@@ -106,12 +104,10 @@ describe("Slack behavior: turn continuation", () => {
     const onInputCommitted = vi.fn();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
-        },
+      adapters: {
+        generateAssistantReply,
+        getAwaitingAgentContinueRequest,
+        scheduleAgentContinue,
       },
     });
 
@@ -179,10 +175,8 @@ describe("Slack behavior: turn continuation", () => {
       piMessages: createPiUserTurn("please keep working"),
     });
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
 
@@ -240,12 +234,10 @@ describe("Slack behavior: turn continuation", () => {
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
-        },
+      adapters: {
+        generateAssistantReply,
+        getAwaitingAgentContinueRequest,
+        scheduleAgentContinue,
       },
     });
 
@@ -290,12 +282,10 @@ describe("Slack behavior: turn continuation", () => {
     const generateAssistantReply = vi.fn();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
-        },
+      adapters: {
+        generateAssistantReply,
+        getAwaitingAgentContinueRequest,
+        scheduleAgentContinue,
       },
     });
 
@@ -336,12 +326,10 @@ describe("Slack behavior: turn continuation", () => {
     });
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
-        },
+      adapters: {
+        generateAssistantReply,
+        getAwaitingAgentContinueRequest,
+        scheduleAgentContinue,
       },
     });
 

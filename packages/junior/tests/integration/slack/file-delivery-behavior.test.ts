@@ -24,18 +24,16 @@ function findFilePost(calls: unknown[][]): unknown[] | undefined {
 describe("Slack behavior: file delivery", () => {
   it("ignores file followup plans when the assistant reply has no files", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.("Preview is ready.");
-            return successfulAssistantReply("Preview is ready.", {
-              deliveryPlan: {
-                mode: "thread",
-                postThreadText: true,
-                attachFiles: "followup",
-              },
-            });
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onTextDelta?.("Preview is ready.");
+          return successfulAssistantReply("Preview is ready.", {
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: true,
+              attachFiles: "followup",
+            },
+          });
         },
       },
     });
@@ -58,19 +56,17 @@ describe("Slack behavior: file delivery", () => {
 
   it("attaches generated files inline on the finalized reply post", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            return successfulAssistantReply("finalized content", {
-              files: [
-                {
-                  data: Buffer.from("fake-png"),
-                  filename: "generated.png",
-                  mimeType: "image/png",
-                },
-              ],
-            });
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          return successfulAssistantReply("finalized content", {
+            files: [
+              {
+                data: Buffer.from("fake-png"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+          });
         },
       },
     });

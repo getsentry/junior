@@ -28,22 +28,18 @@ describe("Slack behavior: attachment handling", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply: async (_prompt, context) => {
-              const attachments = context?.userAttachments ?? [];
-              capturedAttachmentCounts.push(attachments.length);
-              if (attachments[0]) {
-                capturedAttachmentMediaTypes.push(attachments[0].mediaType);
-              }
+        adapters: {
+          describeImagesText: completeTextMock,
+          generateAssistantReply: async (_prompt, context) => {
+            const attachments = context?.userAttachments ?? [];
+            capturedAttachmentCounts.push(attachments.length);
+            if (attachments[0]) {
+              capturedAttachmentMediaTypes.push(attachments[0].mediaType);
+            }
 
-              return successfulAssistantReply(
-                "Image received. The chart trend is upward.",
-              );
-            },
+            return successfulAssistantReply(
+              "Image received. The chart trend is upward.",
+            );
           },
         },
       },
@@ -93,13 +89,9 @@ describe("Slack behavior: attachment handling", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply,
-          },
+        adapters: {
+          describeImagesText: completeTextMock,
+          generateAssistantReply,
         },
       },
       {

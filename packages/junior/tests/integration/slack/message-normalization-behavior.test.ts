@@ -18,24 +18,20 @@ describe("Slack behavior: message normalization", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "direct mention follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          return {
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "direct mention follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply("Summary sent.");
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply("Summary sent.");
         },
       },
     });
@@ -63,12 +59,10 @@ describe("Slack behavior: message normalization", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply("Done.");
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply("Done.");
         },
       },
     });
@@ -96,12 +90,10 @@ describe("Slack behavior: message normalization", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply("Alert reviewed.");
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply("Alert reviewed.");
         },
       },
     });
@@ -147,12 +139,10 @@ describe("Slack behavior: message normalization", () => {
     let replyCalled = false;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return successfulAssistantReply("Should not happen");
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          replyCalled = true;
+          return successfulAssistantReply("Should not happen");
         },
       },
     });

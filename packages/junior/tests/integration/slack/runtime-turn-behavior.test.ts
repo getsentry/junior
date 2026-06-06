@@ -21,10 +21,8 @@ describe("Slack behavior: runtime turns", () => {
     const conversationId = "slack:C_REPLAY:1700000000.000";
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
     const thread = createTestThread({
@@ -98,11 +96,9 @@ describe("Slack behavior: runtime turns", () => {
 
   it("posts a safe error message when assistant reply generation throws", async () => {
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("LLM unavailable");
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          throw new Error("LLM unavailable");
         },
       },
     });
@@ -131,11 +127,8 @@ describe("Slack behavior: runtime turns", () => {
   it("does not persist an assistant message when final Slack delivery fails", async () => {
     const finalText = "This reply never reaches Slack.";
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply(finalText),
-        },
+      adapters: {
+        generateAssistantReply: async () => successfulAssistantReply(finalText),
       },
     });
     const thread = createTestThread({
@@ -199,17 +192,15 @@ describe("Slack behavior: runtime turns", () => {
       runId?: string;
     }> = [];
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedCorrelation.push({
-              conversationId: context?.correlation?.conversationId,
-              threadId: context?.correlation?.threadId,
-              turnId: context?.correlation?.turnId,
-              runId: context?.correlation?.runId,
-            });
-            return successfulAssistantReply("Done.");
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          capturedCorrelation.push({
+            conversationId: context?.correlation?.conversationId,
+            threadId: context?.correlation?.threadId,
+            turnId: context?.correlation?.turnId,
+            runId: context?.correlation?.runId,
+          });
+          return successfulAssistantReply("Done.");
         },
       },
     });

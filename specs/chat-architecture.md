@@ -165,6 +165,12 @@ The following boundaries are the canonical interfaces for the chat runtime. New 
 - Production singleton assembly belongs under `app/` rather than worker or runtime modules.
 - One thin test fixture may create local runtime instances for tests and evals.
 - Queue workers, ingress routers, and handlers must depend on a runtime instance or runtime factory, not import the production singleton.
+- App-wide backend selection belongs in module-owned adapter selectors or
+  registries, not in dependency parameters threaded through ordinary runtime
+  functions.
+- Runtime factories and test fixtures may expose role-named adapter overrides
+  for true per-scenario boundaries, but those names must describe the adapter
+  role rather than the internal production service that consumes it.
 
 Target role:
 
@@ -241,6 +247,9 @@ interface QueuedMessageDispatcher {
 - Test or eval-only plugin roots must be provided through local fixtures or composition-bound catalogs, not module-level global mutation.
 - Environment-driven mode switches must be isolated to composition roots.
 - Token stores should be created from the current state adapter at the call site or injected factory boundary, not hidden behind ambient module singletons.
+- Adapter registries are appropriate for process-wide catalogs and backend
+  selection, but they must not become mutable test-only service locators for
+  turn behavior.
 
 Target role:
 

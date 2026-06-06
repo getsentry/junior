@@ -255,28 +255,24 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     });
     const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => bot.getAdapter("slack"),
-      services: {
-        replyExecutor: {
-          lookupSlackUser: async () => ({
+      adapters: {
+        lookupSlackUser: async () => ({
+          email: "david@example.com",
+          fullName: "David Cramer",
+          userName: "dcramer",
+        }),
+        generateAssistantReply: async (_prompt, context) => {
+          expect(context?.requester).toEqual({
             email: "david@example.com",
             fullName: "David Cramer",
+            userId: "U123",
             userName: "dcramer",
-          }),
-          generateAssistantReply: async (_prompt, context) => {
-            expect(context?.requester).toEqual({
-              email: "david@example.com",
-              fullName: "David Cramer",
-              platform: "slack",
-              teamId: TEST_SLACK_TEAM_ID,
-              userId: "U123",
-              userName: "dcramer",
-            });
-            await context?.onTextDelta?.("Hello world");
-            return {
-              text: "Hello world",
-              diagnostics: makeDiagnostics(),
-            };
-          },
+          });
+          await context?.onTextDelta?.("Hello world");
+          return {
+            text: "Hello world",
+            diagnostics: makeDiagnostics(),
+          };
         },
       },
     });

@@ -114,21 +114,8 @@ function createTurnHarness(args: {
   });
   const runtime = createSlackRuntime({
     getSlackAdapter: () => adapter,
-    services: {
-      ...(args.services ?? {}),
-      replyExecutor: {
-        ...(args.services?.replyExecutor ?? {}),
-        generateAssistantReply: args.generateAssistantReply,
-      },
-      subscribedReplyPolicy: {
-        completeObject:
-          args.completeObject ??
-          completeObjectWithDecision(() => ({
-            should_reply: true,
-            confidence: 1,
-            reason: "steering follow-up",
-          })),
-      },
+    adapters: {
+      generateAssistantReply: args.generateAssistantReply,
     },
   });
   const services = {

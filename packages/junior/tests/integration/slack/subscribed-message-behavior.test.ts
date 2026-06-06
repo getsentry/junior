@@ -16,26 +16,22 @@ describe("Slack behavior: subscribed messages", () => {
     let classifierCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCallCount += 1;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0,
-                reason: "side conversation",
-              },
-              text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCallCount += 1;
+          return {
+            object: {
+              should_reply: false,
+              confidence: 0,
+              reason: "side conversation",
+            },
+            text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error(
-              "generateAssistantReply should not run when classifier skips reply",
-            );
-          },
+        generateAssistantReply: async () => {
+          throw new Error(
+            "generateAssistantReply should not run when classifier skips reply",
+          );
         },
       },
     });
@@ -95,27 +91,23 @@ describe("Slack behavior: subscribed messages", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCallCount += 1;
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "explicit ask",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"explicit ask"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCallCount += 1;
+          return {
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "explicit ask",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"explicit ask"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply(
-              "Action item captured: monitor dashboards for 30 minutes.",
-            );
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply(
+            "Action item captured: monitor dashboards for 30 minutes.",
+          );
         },
       },
     });
@@ -142,20 +134,16 @@ describe("Slack behavior: subscribed messages", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for explicit mentions",
-            );
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          throw new Error(
+            "classifier should be bypassed for explicit mentions",
+          );
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply("Yes. Shipping status is green.");
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply("Yes. Shipping status is green.");
         },
       },
     });
@@ -182,20 +170,16 @@ describe("Slack behavior: subscribed messages", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for queued explicit mentions",
-            );
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          throw new Error(
+            "classifier should be bypassed for queued explicit mentions",
+          );
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply("Handled queued subscribed turn.");
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply("Handled queued subscribed turn.");
         },
       },
     });
@@ -252,31 +236,27 @@ describe("Slack behavior: subscribed messages", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                should_unsubscribe: true,
-                confidence: 1,
-                reason:
-                  "user explicitly asked junior to stop participating in the thread",
-              },
-              text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"user explicitly asked junior to stop participating in the thread"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          return {
+            object: {
+              should_reply: false,
+              should_unsubscribe: true,
+              confidence: 1,
+              reason:
+                "user explicitly asked junior to stop participating in the thread",
+            },
+            text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"user explicitly asked junior to stop participating in the thread"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply(
-              replyCallCount === 1
-                ? "I can help with this thread."
-                : "I'm back because you mentioned me again.",
-            );
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply(
+            replyCallCount === 1
+              ? "I can help with this thread."
+              : "I'm back because you mentioned me again.",
+          );
         },
       },
     });

@@ -29,7 +29,7 @@ function makeDiagnostics() {
 }
 
 async function createDirectMessageBot(args: {
-  completeText: () => Promise<{ text: string; message: never }>;
+  describeImagesText: () => Promise<{ text: string; message: never }>;
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
 }) {
   const [{ createSlackRuntime }, { JuniorChat }, { createJuniorSlackAdapter }] =
@@ -51,13 +51,9 @@ async function createDirectMessageBot(args: {
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
-    services: {
-      visionContext: {
-        completeText: args.completeText,
-      },
-      replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
-      },
+    adapters: {
+      describeImagesText: args.describeImagesText,
+      generateAssistantReply: args.generateAssistantReply,
     },
   });
 
@@ -98,7 +94,7 @@ describe("Slack contract: message.im attachment ingress", () => {
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
     const bot = await createDirectMessageBot({
-      completeText: async () => ({
+      describeImagesText: async () => ({
         text: "Screenshot shows the current incident chart.",
         message: {} as never,
       }),

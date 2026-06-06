@@ -6,7 +6,7 @@ import {
   type SlackTurnRuntime,
 } from "@/chat/runtime/slack-runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { logException, logWarn, withSpan } from "@/chat/logging";
@@ -43,9 +43,8 @@ import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-p
 import { botConfig } from "@/chat/config";
 
 export interface CreateSlackRuntimeOptions {
+  adapters?: JuniorRuntimeAdapterOverrides;
   getSlackAdapter: () => SlackAdapter;
-  now?: () => number;
-  services?: JuniorRuntimeServiceOverrides;
 }
 
 async function persistAssistantContextChannelId(args: {
@@ -63,44 +62,11 @@ async function persistAssistantContextChannelId(args: {
   });
 }
 
-function clearSkippedTurnIfActive(
-  conversation: PreparedTurnState["conversation"],
-  messageId: string,
-): void {
-  if (
-    conversation.processing.activeTurnId === buildDeterministicTurnId(messageId)
-  ) {
-    conversation.processing.activeTurnId = undefined;
-  }
-}
-
-function upsertSkippedConversationMessage(
-  conversation: PreparedTurnState["conversation"],
-  args: {
-    decision: SubscribedReplyDecision;
-    message: Message;
-    text: TurnMessageText;
-  },
-): void {
-  const conversationMessage = toConversationMessage({
-    entry: args.message,
-    explicitMention: Boolean(args.message.isMention),
-    text: args.text.userText,
-  });
-  upsertConversationMessage(conversation, {
-    ...conversationMessage,
-    meta: {
-      ...conversationMessage.meta,
-      replied: false,
-      skippedReason: args.decision.reason,
-    },
-  });
-}
-
+/** Build a Slack runtime with production wiring plus optional scenario adapters. */
 export function createSlackRuntime(
   options: CreateSlackRuntimeOptions,
 ): SlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent> {
-  const services = createJuniorRuntimeServices(options.services);
+  const services = createJuniorRuntimeServices(options.adapters);
   const prepareTurnState = createPrepareTurnState({
     compactConversationIfNeeded:
       services.conversationMemory.compactConversationIfNeeded,
@@ -117,7 +83,6 @@ export function createSlackRuntime(
   return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
-    now: options.now ?? (() => Date.now()),
     getThreadId,
     getChannelId,
     getRunId,

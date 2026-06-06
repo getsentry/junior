@@ -36,6 +36,12 @@ Interfaces should expose the smallest useful capability while keeping ownership,
 - When a term is overloaded in the product or platform, define it once in the
   owning spec and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable boundary.
+- Use module-owned adapter selectors or registries for app-wide backends such
+  as state, plugin catalogs, and capability providers. Use explicit factory
+  adapter overrides only for real per-instance or per-scenario boundaries.
+- Do not expose nested service names as a public override API. Prefer
+  role-named adapters such as `generateAssistantReply`,
+  `classifySubscribedReply`, or `downloadSlackFile`.
 
 ## Exceptions
 

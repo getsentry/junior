@@ -64,15 +64,11 @@ describe("Slack behavior: image cache", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            downloadFile: downloadFileMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply,
-          },
+        adapters: {
+          listThreadReplies: listThreadRepliesMock,
+          downloadSlackFile: downloadFileMock,
+          describeImagesText: completeTextMock,
+          generateAssistantReply,
         },
       },
       {
@@ -182,15 +178,11 @@ describe("Slack behavior: image cache", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            downloadFile: downloadFileMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply,
-          },
+        adapters: {
+          listThreadReplies: listThreadRepliesMock,
+          downloadSlackFile: downloadFileMock,
+          describeImagesText: completeTextMock,
+          generateAssistantReply,
         },
       },
       {

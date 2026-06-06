@@ -46,42 +46,38 @@ describe("Slack behavior: Pi history", () => {
       },
     ] as PiMessage[];
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "direct mention follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          return {
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "direct mention follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            calls.push({
-              contextConversation: context?.conversationContext,
-              piMessages: context?.piMessages,
+        generateAssistantReply: async (_prompt, context) => {
+          calls.push({
+            contextConversation: context?.conversationContext,
+            piMessages: context?.piMessages,
+          });
+          if (
+            calls.length === 1 &&
+            context?.correlation?.conversationId &&
+            context.correlation.turnId
+          ) {
+            await upsertAgentTurnSessionRecord({
+              conversationId: context.correlation.conversationId,
+              sessionId: context.correlation.turnId,
+              sliceId: 1,
+              state: "completed",
+              piMessages: storedFirstTurnHistory,
             });
-            if (
-              calls.length === 1 &&
-              context?.correlation?.conversationId &&
-              context.correlation.turnId
-            ) {
-              await upsertAgentTurnSessionRecord({
-                conversationId: context.correlation.conversationId,
-                sessionId: context.correlation.turnId,
-                sliceId: 1,
-                state: "completed",
-                piMessages: storedFirstTurnHistory,
-              });
-            }
-            return successfulAssistantReply(
-              calls.length === 1 ? "First response." : "Second response.",
-            );
-          },
+          }
+          return successfulAssistantReply(
+            calls.length === 1 ? "First response." : "Second response.",
+          );
         },
       },
     });

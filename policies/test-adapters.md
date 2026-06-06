@@ -22,6 +22,15 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Integration tests must use explicit composition or named harness ports for deterministic agent/model behavior; do not use module mocks to alter runtime wiring.
 - Treat module mocks as rare. They should usually target third-party services, SDK clients, nondeterministic system boundaries, or one explicit injected port in a unit/component test.
 - Treat injected ports as product architecture, not test scaffolding. A port should be named for a real adapter boundary such as Slack delivery, state storage, queueing, model transport, sandbox execution, or HTTP; avoid generic `deps` objects that expose imported helper functions.
+- Prefer module-owned adapter selection for app-wide backends such as state,
+  plugins, capability catalogs, and provider registries. Test fixtures may
+  configure those modules through scoped env/config helpers, but tests should
+  not pass those backends through every ordinary function call.
+- Runtime and integration fixtures should expose scenario-named adapter
+  overrides, such as `generateAssistantReply`, `classifySubscribedReply`,
+  `listThreadReplies`, or `downloadSlackFile`. Do not expose nested production
+  service names such as `replyExecutor` or `visionContext` as the preferred
+  test API.
 - Do not mock logging, Sentry capture, span capture, or tracing helpers to quiet tests or avoid setup. Real telemetry should run through ordinary behavior tests.
 - If telemetry output must be inspected, keep it rare, put it in a dedicated logging contract test under `tests/unit/logging/**`, and mock only the minimal Sentry/span primitive needed to observe stable semantic behavior.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.

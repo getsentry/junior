@@ -19,26 +19,22 @@ describe("Slack behavior: thread continuity", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "direct mention follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          return {
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "direct mention follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply(
-              scriptedReplies[replyCallCount - 1] ?? "Unexpected extra reply",
-            );
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply(
+            scriptedReplies[replyCallCount - 1] ?? "Unexpected extra reply",
+          );
         },
       },
     });
@@ -77,12 +73,10 @@ describe("Slack behavior: thread continuity", () => {
   it("omits prior conversation context for a brand-new mention", async () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return successfulAssistantReply("First reply.");
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          capturedContexts.push(context?.conversationContext);
+          return successfulAssistantReply("First reply.");
         },
       },
     });
@@ -106,12 +100,10 @@ describe("Slack behavior: thread continuity", () => {
   it("builds first-turn context from the prior thread transcript only", async () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return successfulAssistantReply("Follow-up reply.");
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          capturedContexts.push(context?.conversationContext);
+          return successfulAssistantReply("Follow-up reply.");
         },
       },
     });
@@ -148,28 +140,21 @@ describe("Slack behavior: thread continuity", () => {
   it("does not include newer thread messages in subscribed-message context", async () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        conversationMemory: {
-          completeText: async () => ({ text: "Context thread" }) as never,
-        },
-        subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"follow-up"}',
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return successfulAssistantReply(
-              "Responding to first message only.",
-            );
-          },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({ text: "Context thread" }) as never,
+        classifySubscribedReply: async () =>
+          ({
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"follow-up"}',
+          }) as never,
+        generateAssistantReply: async (_prompt, context) => {
+          capturedContexts.push(context?.conversationContext);
+          return successfulAssistantReply("Responding to first message only.");
         },
       },
     });
@@ -209,12 +194,10 @@ describe("Slack behavior: thread continuity", () => {
   it("preserves persisted conversation state across multiple turns", async () => {
     let turnCount = 0;
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            turnCount += 1;
-            return successfulAssistantReply(`reply-${turnCount}`);
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          turnCount += 1;
+          return successfulAssistantReply(`reply-${turnCount}`);
         },
       },
     });

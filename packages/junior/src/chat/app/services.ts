@@ -41,76 +41,55 @@ export interface JuniorRuntimeServices {
   visionContext: VisionContextService;
 }
 
-export interface JuniorRuntimeServiceOverrides {
-  conversationMemory?: Partial<ConversationMemoryDeps>;
-  contextCompactor?: Partial<ContextCompactorDeps>;
-  replyExecutor?: Partial<Omit<ReplyExecutorServices, "generateThreadTitle">>;
-  subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
-  sandbox?: {
-    tracePropagation?: SandboxEgressTracePropagationConfig;
-  };
-  visionContext?: Partial<VisionContextDeps>;
+/** Scenario adapters for runtime tests and evals that need deterministic external boundaries. */
+export interface JuniorRuntimeAdapterOverrides {
+  compactConversationText?: ContextCompactorDeps["completeText"];
+  describeImagesText?: VisionContextDeps["completeText"];
+  downloadSlackFile?: VisionContextDeps["downloadFile"];
+  generateAssistantReply?: ReplyExecutorServices["generateAssistantReply"];
+  generateThreadTitleText?: ConversationMemoryDeps["completeText"];
+  getAwaitingAgentContinueRequest?: ReplyExecutorServices["getAwaitingAgentContinueRequest"];
+  listThreadReplies?: VisionContextDeps["listThreadReplies"];
+  lookupSlackUser?: ReplyExecutorServices["lookupSlackUser"];
+  scheduleAgentContinue?: ReplyExecutorServices["scheduleAgentContinue"];
+  classifySubscribedReply?: SubscribedReplyPolicyDeps["completeObject"];
+  autoCompactionTriggerTokens?: ContextCompactorDeps["autoCompactionTriggerTokens"];
 }
 
-/** Apply app-owned sandbox egress trace config unless a turn overrides it. */
-export function withSandboxTracePropagation(
-  generateReply: typeof generateAssistantReplyImpl,
-  tracePropagation?: SandboxEgressTracePropagationConfig,
-): typeof generateAssistantReplyImpl {
-  return async (messageText: string, context: AssistantReplyRequestContext) =>
-    await generateReply(messageText, {
-      ...context,
-      sandbox: {
-        ...context?.sandbox,
-        tracePropagation:
-          context?.sandbox?.tracePropagation ?? tracePropagation,
-      },
-    });
-}
-
+/** Compose the concrete service set used by the Slack runtime. */
 export function createJuniorRuntimeServices(
-  overrides: JuniorRuntimeServiceOverrides = {},
+  adapters: JuniorRuntimeAdapterOverrides = {},
 ): JuniorRuntimeServices {
   const conversationMemory = createConversationMemoryService({
-    completeText: overrides.conversationMemory?.completeText ?? completeText,
+    completeText: adapters.generateThreadTitleText ?? completeText,
   });
   const contextCompactor = createContextCompactor({
-    completeText: overrides.contextCompactor?.completeText ?? completeText,
-    autoCompactionTriggerTokens:
-      overrides.contextCompactor?.autoCompactionTriggerTokens,
+    completeText: adapters.compactConversationText ?? completeText,
+    autoCompactionTriggerTokens: adapters.autoCompactionTriggerTokens,
   });
   const visionContext = createVisionContextService({
-    completeText: overrides.visionContext?.completeText ?? completeText,
-    listThreadReplies:
-      overrides.visionContext?.listThreadReplies ?? listThreadReplies,
-    downloadFile:
-      overrides.visionContext?.downloadFile ?? downloadPrivateSlackFile,
+    completeText: adapters.describeImagesText ?? completeText,
+    listThreadReplies: adapters.listThreadReplies ?? listThreadReplies,
+    downloadFile: adapters.downloadSlackFile ?? downloadPrivateSlackFile,
   });
 
   return {
     conversationMemory,
     contextCompactor,
     replyExecutor: {
-      contextCompactor:
-        overrides.replyExecutor?.contextCompactor ?? contextCompactor,
+      contextCompactor,
       generateAssistantReply:
-        overrides.replyExecutor?.generateAssistantReply ??
-        withSandboxTracePropagation(
-          generateAssistantReplyImpl,
-          overrides.sandbox?.tracePropagation,
-        ),
+        adapters.generateAssistantReply ?? generateAssistantReplyImpl,
       getAwaitingAgentContinueRequest:
-        overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
+        adapters.getAwaitingAgentContinueRequest ??
         getAwaitingAgentContinueRequest,
-      lookupSlackUser:
-        overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
+      lookupSlackUser: adapters.lookupSlackUser ?? lookupSlackUser,
       scheduleAgentContinue:
-        overrides.replyExecutor?.scheduleAgentContinue ?? scheduleAgentContinue,
+        adapters.scheduleAgentContinue ?? scheduleAgentContinue,
       generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({
-      completeObject:
-        overrides.subscribedReplyPolicy?.completeObject ?? completeObject,
+      completeObject: adapters.classifySubscribedReply ?? completeObject,
     }),
     visionContext,
   };

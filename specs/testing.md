@@ -60,6 +60,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 15. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
 16. Prefer the shared default test clock helpers over ad-hoc `Date.now()` or inline `vi.setSystemTime(...)` setup when stable timestamps are part of the fixture contract.
 17. Do not add production dependency parameters merely to replace basic runtime behavior in tests. Use temp files for filesystem reads/writes, Vitest fake timers for `Date.now()`, env stubs for `process.env`, MSW for HTTP, and memory adapters for persistence.
+18. Prefer module-owned adapter registries or selection modules for app-wide backends. Use explicit runtime fixture adapter overrides only for real per-scenario boundaries such as model reply generation, Slack thread reads/files, queue wakeups, sandbox execution, or HTTP.
 
 ## Coverage Budget (Avoid Over-Testing)
 
@@ -107,7 +108,7 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 6. Instrumentation-output assertions should be rare. If instrumentation output is the contract under test, isolate it in `tests/unit/logging/**` and assert stable semantic attributes or capture behavior, not incidental call choreography.
 7. If product logic consumes a telemetry result such as a Sentry event ID, test the user-visible or state result through a small injected service port; do not globally mock telemetry for a full workflow.
 8. If a component test needs fake ports, keep them explicit and role-named. Do not use module-level mocks to steer unrelated runtime branches.
-9. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, service overrides, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
+9. Integration tests must not use `vi.mock` or `vi.doMock`; inject deterministic behavior through local factories, role-named runtime adapters, `ReplyRequestContext.harness.streamFn`, or other named harness ports owned by the runtime contract.
 10. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
 11. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
 12. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.

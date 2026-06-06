@@ -52,21 +52,17 @@ describe("Slack behavior: context compaction", () => {
     await persistThreadState(thread, { conversation });
 
     const { slackAdapter, slackRuntime } = createTestChatRuntime({
-      services: {
-        contextCompactor: {
-          completeText: async () =>
-            ({
-              text: "Compacted summary: old context is still relevant.",
-            }) as never,
-          autoCompactionTriggerTokens: 100,
-        },
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            calls.push({
-              piMessages: context?.piMessages,
-            });
-            return successfulAssistantReply("Done.");
-          },
+      adapters: {
+        compactConversationText: async () =>
+          ({
+            text: "Compacted summary: old context is still relevant.",
+          }) as never,
+        autoCompactionTriggerTokens: 100,
+        generateAssistantReply: async (_prompt, context) => {
+          calls.push({
+            piMessages: context?.piMessages,
+          });
+          return successfulAssistantReply("Done.");
         },
       },
     });
@@ -163,20 +159,16 @@ describe("Slack behavior: context compaction", () => {
     await persistThreadState(thread, { conversation });
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        contextCompactor: {
-          completeText: async () => {
-            throw new Error("active session record history should not compact");
-          },
-          autoCompactionTriggerTokens: 100,
+      adapters: {
+        compactConversationText: async () => {
+          throw new Error("active session record history should not compact");
         },
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            calls.push({
-              piMessages: context?.piMessages,
-            });
-            return successfulAssistantReply("Done.");
-          },
+        autoCompactionTriggerTokens: 100,
+        generateAssistantReply: async (_prompt, context) => {
+          calls.push({
+            piMessages: context?.piMessages,
+          });
+          return successfulAssistantReply("Done.");
         },
       },
     });

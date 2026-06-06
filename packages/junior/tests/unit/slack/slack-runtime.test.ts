@@ -9,6 +9,7 @@ import {
   createTestMessage,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { useMockedTestClock } from "../../fixtures/vitest";
 
 interface TestState {
   prepared: boolean;
@@ -20,7 +21,6 @@ function createMockDeps(
   return {
     assistantUserName: "test-bot",
     modelId: "test-model",
-    now: () => 1700000000000,
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
     getThreadId: (_thread, message) => message.threadId,
     getRunId: () => undefined,
@@ -48,6 +48,8 @@ function createMockDeps(
 }
 
 describe("createSlackTurnRuntime", () => {
+  useMockedTestClock(1_700_000_000_000);
+
   describe("handleNewMention", () => {
     it("subscribes thread and calls replyToThread with explicitMention: true", async () => {
       const deps = createMockDeps();

@@ -80,10 +80,8 @@ async function createEditedDmBot(args: {
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
-    services: {
-      replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
-      },
+    adapters: {
+      generateAssistantReply: args.generateAssistantReply,
     },
   });
 

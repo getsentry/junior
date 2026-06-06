@@ -144,14 +144,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     body?: string,
   ) => void;
   modelId: string;
-  now: () => number;
-  recordSkippedSteeringMessage: (args: {
-    decision: SubscribedReplyDecision;
-    message: Message;
-    text: TurnMessageText;
-    thread: Thread;
-  }) => Promise<void>;
-  recordSkippedSubscribedTurn: (args: {
+  recordSkippedSubscribedMessage: (args: {
     completedAtMs: number;
     decision: SubscribedReplyDecision;
     message: Message;

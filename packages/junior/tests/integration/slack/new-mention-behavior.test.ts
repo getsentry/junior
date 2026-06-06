@@ -13,23 +13,21 @@ describe("Slack behavior: new mention", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return {
-              text: "Acknowledged. Rollback is complete and error rates are stable.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return {
+            text: "Acknowledged. Rollback is complete and error rates are stable.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          };
         },
       },
     });
@@ -60,23 +58,21 @@ describe("Slack behavior: new mention", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return {
-              text: "Handled both updates.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return {
+            text: "Handled both updates.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          };
         },
       },
     });
@@ -127,30 +123,28 @@ describe("Slack behavior: new mention", () => {
     }> = [];
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            fakeReplyCalls.push({
-              inboundAttachmentCount: context?.inboundAttachmentCount,
-              filenames: attachments.map(
-                (attachment) => attachment.filename ?? "",
-              ),
-              attachmentText: attachments[0]?.data?.toString("utf8"),
-            });
-            return {
-              text: "Handled queued attachment.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          const attachments = context?.userAttachments ?? [];
+          fakeReplyCalls.push({
+            inboundAttachmentCount: context?.inboundAttachmentCount,
+            filenames: attachments.map(
+              (attachment) => attachment.filename ?? "",
+            ),
+            attachmentText: attachments[0]?.data?.toString("utf8"),
+          });
+          return {
+            text: "Handled queued attachment.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          };
         },
       },
     });
@@ -212,23 +206,21 @@ describe("Slack behavior: new mention", () => {
 
   it("suppresses thread reply when assistant marks delivery as channel_only", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            return {
-              text: "Posted in channel.",
-              deliveryMode: "channel_only",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: ["slackChannelPostMessage"],
-                toolErrorCount: 0,
-                toolResultCount: 1,
-                usedPrimaryText: true,
-              },
-            };
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          return {
+            text: "Posted in channel.",
+            deliveryMode: "channel_only",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: ["slackChannelPostMessage"],
+              toolErrorCount: 0,
+              toolResultCount: 1,
+              usedPrimaryText: true,
+            },
+          };
         },
       },
     });

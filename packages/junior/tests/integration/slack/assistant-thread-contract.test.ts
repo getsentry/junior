@@ -77,7 +77,7 @@ function completeTextResult(
 }
 
 async function createDirectMessageBot(args: {
-  completeText?: ConversationMemoryDeps["completeText"];
+  generateThreadTitleText?: ConversationMemoryDeps["completeText"];
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
 }) {
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
@@ -93,18 +93,14 @@ async function createDirectMessageBot(args: {
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
-    services: {
-      ...(args.completeText
+    adapters: {
+      ...(args.generateThreadTitleText
         ? {
-            conversationMemory: {
-              completeText:
-                args.completeText as ConversationMemoryDeps["completeText"],
-            },
+            generateThreadTitleText:
+              args.generateThreadTitleText as ConversationMemoryDeps["completeText"],
           }
         : {}),
-      replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
-      },
+      generateAssistantReply: args.generateAssistantReply,
     },
   });
 
@@ -133,10 +129,8 @@ async function createMentionBot(args: {
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
-    services: {
-      replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
-      },
+    adapters: {
+      generateAssistantReply: args.generateAssistantReply,
     },
   });
 
@@ -271,7 +265,7 @@ describe("Slack contract: assistant-thread delivery", () => {
 
   it("does not post assistant titles when the DM message omits thread_ts", async () => {
     const bot = await createDirectMessageBot({
-      completeText: async () =>
+      generateThreadTitleText: async () =>
         completeTextResult("Debugging Node.js Memory Leaks"),
       generateAssistantReply: async () => ({
         text: "Here is how to debug memory leaks.",

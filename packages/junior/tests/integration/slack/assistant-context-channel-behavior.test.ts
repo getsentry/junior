@@ -11,23 +11,21 @@ describe("Slack behavior: assistant context channel routing", () => {
     const capturedToolChannelIds: Array<string | undefined> = [];
 
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedToolChannelIds.push(context?.toolChannelId);
-            return {
-              text: "Canvas draft prepared.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          capturedToolChannelIds.push(context?.toolChannelId);
+          return {
+            text: "Canvas draft prepared.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          };
         },
       },
     });

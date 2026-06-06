@@ -23,13 +23,9 @@ describe("Slack behavior: image hydration", () => {
 
   it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
     const { slackRuntime } = await createSlackImageRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: listThreadRepliesMock,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => successfulAssistantReply("ok"),
-        },
+      adapters: {
+        listThreadReplies: listThreadRepliesMock,
+        generateAssistantReply: async () => successfulAssistantReply("ok"),
       },
     });
     const thread = createTestThread({
@@ -104,13 +100,9 @@ describe("Slack behavior: image hydration", () => {
 
   it("backfills older image messages after vision is enabled later", async () => {
     const firstRuntime = await createSlackImageRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: listThreadRepliesMock,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => successfulAssistantReply("ok"),
-        },
+      adapters: {
+        listThreadReplies: listThreadRepliesMock,
+        generateAssistantReply: async () => successfulAssistantReply("ok"),
       },
     });
     const firstThread = createTestThread({
@@ -163,15 +155,11 @@ describe("Slack behavior: image hydration", () => {
 
     const secondRuntime = await createSlackImageRuntime(
       {
-        services: {
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            downloadFile: downloadFileMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply: async () => successfulAssistantReply("ok"),
-          },
+        adapters: {
+          listThreadReplies: listThreadRepliesMock,
+          downloadSlackFile: downloadFileMock,
+          describeImagesText: completeTextMock,
+          generateAssistantReply: async () => successfulAssistantReply("ok"),
         },
       },
       {
@@ -268,22 +256,16 @@ describe("Slack behavior: image hydration", () => {
 
     const { slackRuntime } = await createSlackImageRuntime(
       {
-        services: {
-          subscribedReplyPolicy: {
-            completeObject: async () => {
-              throw new Error(
-                "classifier should not run for messages addressed to another bot",
-              );
-            },
+        adapters: {
+          classifySubscribedReply: async () => {
+            throw new Error(
+              "classifier should not run for messages addressed to another bot",
+            );
           },
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            downloadFile: downloadFileMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply,
-          },
+          listThreadReplies: listThreadRepliesMock,
+          downloadSlackFile: downloadFileMock,
+          describeImagesText: completeTextMock,
+          generateAssistantReply,
         },
       },
       {

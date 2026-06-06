@@ -1,24 +1,20 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import {
-  createSlackRuntime,
-  type CreateSlackRuntimeOptions,
-} from "@/chat/app/factory";
+import { createSlackRuntime } from "@/chat/app/factory";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import type { SlackTurnOptions } from "@/chat/runtime/slack-runtime";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createTestDestination, FakeSlackAdapter } from "./slack-harness";
 
+/** Create a local Slack runtime that uses fake Slack transport and real runtime wiring. */
 export function createTestChatRuntime(
   args: {
-    now?: CreateSlackRuntimeOptions["now"];
-    services?: JuniorRuntimeServiceOverrides;
+    adapters?: JuniorRuntimeAdapterOverrides;
     slackAdapter?: FakeSlackAdapter;
   } = {},
 ) {
   const slackAdapter = args.slackAdapter ?? new FakeSlackAdapter();
   const slackRuntime = createSlackRuntime({
+    adapters: args.adapters,
     getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
-    now: args.now,
-    services: args.services,
   });
   const turnOptions = (
     thread: Parameters<typeof slackRuntime.handleNewMention>[0],
@@ -36,7 +32,8 @@ export function createTestChatRuntime(
         thread: Parameters<typeof slackRuntime.handleNewMention>[0],
         message: Parameters<typeof slackRuntime.handleNewMention>[1],
         hooks?: Partial<SlackTurnOptions>,
-      ) => slackRuntime.handleNewMention(thread, message, turnOptions(thread, hooks)),
+      ) =>
+        slackRuntime.handleNewMention(thread, message, turnOptions(thread, hooks)),
       handleSubscribedMessage: (
         thread: Parameters<typeof slackRuntime.handleSubscribedMessage>[0],
         message: Parameters<typeof slackRuntime.handleSubscribedMessage>[1],

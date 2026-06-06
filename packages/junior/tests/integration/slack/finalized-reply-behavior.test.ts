@@ -46,16 +46,14 @@ function makeDiagnostics(
 describe("Slack behavior: finalized thread replies", () => {
   it("posts only the finalized assistant reply even when deltas were emitted", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.("Hello ");
-            await context?.onTextDelta?.("world");
-            return {
-              text: "Hello world",
-              diagnostics: makeDiagnostics(),
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onTextDelta?.("Hello ");
+          await context?.onTextDelta?.("world");
+          return {
+            text: "Hello world",
+            diagnostics: makeDiagnostics(),
+          };
         },
       },
     });
@@ -80,17 +78,15 @@ describe("Slack behavior: finalized thread replies", () => {
     const finalReply =
       "I checked five outlets. The dominant story is the escalating US-Iran conflict.";
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.("Fetching sources now...");
-            await context?.onAssistantMessageStart?.();
-            await context?.onTextDelta?.(finalReply);
-            return {
-              text: finalReply,
-              diagnostics: makeDiagnostics({ toolCalls: ["webSearch"] }),
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onTextDelta?.("Fetching sources now...");
+          await context?.onAssistantMessageStart?.();
+          await context?.onTextDelta?.(finalReply);
+          return {
+            text: finalReply,
+            diagnostics: makeDiagnostics({ toolCalls: ["webSearch"] }),
+          };
         },
       },
     });
@@ -113,14 +109,12 @@ describe("Slack behavior: finalized thread replies", () => {
 
   it("keeps file-only replies on the inline post path", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "",
-            files: [{ data: Buffer.from("hello"), filename: "hello.txt" }],
-            diagnostics: makeDiagnostics(),
-          }),
-        },
+      adapters: {
+        generateAssistantReply: async () => ({
+          text: "",
+          files: [{ data: Buffer.from("hello"), filename: "hello.txt" }],
+          diagnostics: makeDiagnostics(),
+        }),
       },
     });
 
@@ -145,19 +139,17 @@ describe("Slack behavior: finalized thread replies", () => {
 
   it("still delivers files when thread text is suppressed", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Posted it in channel.",
-            files: [{ data: Buffer.from("report"), filename: "report.txt" }],
-            deliveryPlan: {
-              mode: "channel_only",
-              postThreadText: false,
-              attachFiles: "inline",
-            },
-            diagnostics: makeDiagnostics(),
-          }),
-        },
+      adapters: {
+        generateAssistantReply: async () => ({
+          text: "Posted it in channel.",
+          files: [{ data: Buffer.from("report"), filename: "report.txt" }],
+          deliveryPlan: {
+            mode: "channel_only",
+            postThreadText: false,
+            attachFiles: "inline",
+          },
+          diagnostics: makeDiagnostics(),
+        }),
       },
     });
 
@@ -182,16 +174,14 @@ describe("Slack behavior: finalized thread replies", () => {
 
   it("does not delete an ack reply when it also carries files", async () => {
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "ok",
-            files: [{ data: Buffer.from("report"), filename: "report.txt" }],
-            diagnostics: makeDiagnostics({
-              toolCalls: ["slackMessageAddReaction"],
-            }),
+      adapters: {
+        generateAssistantReply: async () => ({
+          text: "ok",
+          files: [{ data: Buffer.from("report"), filename: "report.txt" }],
+          diagnostics: makeDiagnostics({
+            toolCalls: ["slackMessageAddReaction"],
           }),
-        },
+        }),
       },
     });
 
@@ -220,13 +210,11 @@ describe("Slack behavior: finalized thread replies", () => {
       (_, i) => `line ${i + 1}`,
     ).join("\n");
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: longReply,
-            diagnostics: makeDiagnostics(),
-          }),
-        },
+      adapters: {
+        generateAssistantReply: async () => ({
+          text: longReply,
+          diagnostics: makeDiagnostics(),
+        }),
       },
     });
 
@@ -256,13 +244,11 @@ describe("Slack behavior: finalized thread replies", () => {
     const repeated = "console.log('hello');\n".repeat(200);
     const longReply = `Here is the script:\n\`\`\`ts\n${repeated}\`\`\``;
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: longReply,
-            diagnostics: makeDiagnostics(),
-          }),
-        },
+      adapters: {
+        generateAssistantReply: async () => ({
+          text: longReply,
+          diagnostics: makeDiagnostics(),
+        }),
       },
     });
 
@@ -293,15 +279,13 @@ describe("Slack behavior: finalized thread replies", () => {
     const partialEnd = "This should continue into a second post.";
     const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.(partialStart);
-            return {
-              text: longReply,
-              diagnostics: makeDiagnostics({ outcome: "provider_error" }),
-            };
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onTextDelta?.(partialStart);
+          return {
+            text: longReply,
+            diagnostics: makeDiagnostics({ outcome: "provider_error" }),
+          };
         },
       },
     });

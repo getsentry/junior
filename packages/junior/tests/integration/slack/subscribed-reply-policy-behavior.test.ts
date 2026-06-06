@@ -16,25 +16,21 @@ describe("Slack behavior: subscribed reply policy", () => {
     let replyCalled = false;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "attachment acknowledgment",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment acknowledgment"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          return {
+            object: {
+              should_reply: false,
+              confidence: 0.95,
+              reason: "attachment acknowledgment",
+            },
+            text: '{"should_reply":false,"confidence":0.95,"reason":"attachment acknowledgment"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return successfulAssistantReply("This should never be posted.");
-          },
+        generateAssistantReply: async () => {
+          replyCalled = true;
+          return successfulAssistantReply("This should never be posted.");
         },
       },
     });
@@ -66,25 +62,21 @@ describe("Slack behavior: subscribed reply policy", () => {
     let replyCalled = false;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "passive legacy attachment",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"passive legacy attachment"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          return {
+            object: {
+              should_reply: false,
+              confidence: 0.95,
+              reason: "passive legacy attachment",
+            },
+            text: '{"should_reply":false,"confidence":0.95,"reason":"passive legacy attachment"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return successfulAssistantReply("This should never be posted.");
-          },
+        generateAssistantReply: async () => {
+          replyCalled = true;
+          return successfulAssistantReply("This should never be posted.");
         },
       },
     });
@@ -125,25 +117,21 @@ describe("Slack behavior: subscribed reply policy", () => {
     let replyCalled = false;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "attachment follow-up",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment follow-up"}',
-            } as never;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          return {
+            object: {
+              should_reply: false,
+              confidence: 0.95,
+              reason: "attachment follow-up",
+            },
+            text: '{"should_reply":false,"confidence":0.95,"reason":"attachment follow-up"}',
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return successfulAssistantReply("This should never be posted.");
-          },
+        generateAssistantReply: async () => {
+          replyCalled = true;
+          return successfulAssistantReply("This should never be posted.");
         },
       },
     });
@@ -188,20 +176,16 @@ describe("Slack behavior: subscribed reply policy", () => {
     let replyCalled = false;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for messages addressed to another bot",
-            );
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          throw new Error(
+            "classifier should be bypassed for messages addressed to another bot",
+          );
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return successfulAssistantReply("This should never be posted.");
-          },
+        generateAssistantReply: async () => {
+          replyCalled = true;
+          return successfulAssistantReply("This should never be posted.");
         },
       },
     });
@@ -251,24 +235,20 @@ describe("Slack behavior: subscribed reply policy", () => {
     let replyCallCount = 0;
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for directed follow-ups",
-            );
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          classifierCalled = true;
+          throw new Error(
+            "classifier should be bypassed for directed follow-ups",
+          );
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCallCount += 1;
-            return successfulAssistantReply(
-              replyCallCount === 1
-                ? "Budget noted."
-                : "You asked for the budget by Friday.",
-            );
-          },
+        generateAssistantReply: async () => {
+          replyCallCount += 1;
+          return successfulAssistantReply(
+            replyCallCount === 1
+              ? "Budget noted."
+              : "You asked for the budget by Friday.",
+          );
         },
       },
     });

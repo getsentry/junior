@@ -25,22 +25,18 @@ describe("mcp auth runtime subscribed parking", () => {
     const turnId = "turn_user-2";
     const generateAssistantReply = testbed.createMcpAuthReplyGenerator();
     const { slackRuntime } = testbed.chatRuntime.createTestChatRuntime({
-      services: {
-        replyExecutor: { generateAssistantReply },
-        subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "requires thread follow-up",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"requires thread follow-up"}',
-            }) as never,
-        },
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
+      adapters: {
+        generateAssistantReply,
+        classifySubscribedReply: async () =>
+          ({
+            object: {
+              should_reply: true,
+              confidence: 1,
+              reason: "requires thread follow-up",
+            },
+            text: '{"should_reply":true,"confidence":1,"reason":"requires thread follow-up"}',
+          }) as never,
+        listThreadReplies: async () => [],
       },
     });
 

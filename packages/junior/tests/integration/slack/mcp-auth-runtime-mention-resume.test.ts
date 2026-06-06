@@ -29,11 +29,9 @@ describe("mcp auth runtime mention resume", () => {
     const turnId = "turn_user-1";
     const generateAssistantReply = testbed.createMcpAuthReplyGenerator();
     const { slackRuntime } = testbed.chatRuntime.createTestChatRuntime({
-      services: {
-        replyExecutor: { generateAssistantReply },
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
+      adapters: {
+        generateAssistantReply,
+        listThreadReplies: async () => [],
       },
     });
 

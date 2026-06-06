@@ -22,24 +22,20 @@ describe("Slack contract: turn continuation", () => {
     const conversationId = "slack:C_TIMEOUT_API:1700000000.000";
     const sessionId = "turn_msg-timeout-api";
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
-        replyExecutor: {
-          scheduleAgentContinue,
-          generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_continue",
-              "simulated timeout continuation",
-              {
-                conversationId,
-                sessionId,
-                version: 3,
-                sliceId: 2,
-              },
-            );
-          },
+      adapters: {
+        listThreadReplies: async () => [],
+        scheduleAgentContinue,
+        generateAssistantReply: async () => {
+          throw new RetryableTurnError(
+            "agent_continue",
+            "simulated timeout continuation",
+            {
+              conversationId,
+              sessionId,
+              version: 3,
+              sliceId: 2,
+            },
+          );
         },
       },
     });

@@ -96,19 +96,13 @@ describe("Slack behavior: auth-pause turns", () => {
       threadId,
     }) => {
       const { slackRuntime } = createSlackBehaviorRuntime({
-        services: {
-          replyExecutor: {
-            generateAssistantReply: async () => {
-              throw new RetryableTurnError(
-                resumeReason,
-                "simulated auth pause",
-                {
-                  authDisposition: "link_sent",
-                  authKind,
-                  authProvider,
-                },
-              );
-            },
+        adapters: {
+          generateAssistantReply: async () => {
+            throw new RetryableTurnError(resumeReason, "simulated auth pause", {
+              authDisposition: "link_sent",
+              authKind,
+              authProvider,
+            });
           },
         },
       });
@@ -144,10 +138,8 @@ describe("Slack behavior: auth-pause turns", () => {
       piMessages: createPiUserTurn("please use notion"),
     });
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
 

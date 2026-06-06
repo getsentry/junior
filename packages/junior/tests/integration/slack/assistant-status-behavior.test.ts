@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -14,19 +14,16 @@ const emptyThreadReplies = async () => [];
 
 function createRuntime(
   args: {
-    services?: JuniorRuntimeServiceOverrides;
+    adapters?: JuniorRuntimeAdapterOverrides;
     slackAdapter?: FakeSlackAdapter;
   } = {},
 ) {
-  const services = args.services ?? {};
+  const adapters = args.adapters ?? {};
   return createTestChatRuntime({
     slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
+    adapters: {
+      listThreadReplies: emptyThreadReplies,
+      ...adapters,
     },
   });
 }
@@ -41,17 +38,15 @@ describe("Slack behavior: assistant status", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-            return successfulAssistantReply("Done.", {
-              diagnostics: {
-                toolCalls: ["bash"],
-                toolResultCount: 1,
-              },
-            });
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+          return successfulAssistantReply("Done.", {
+            diagnostics: {
+              toolCalls: ["bash"],
+              toolResultCount: 1,
+            },
+          });
         },
       },
     });
@@ -82,18 +77,16 @@ describe("Slack behavior: assistant status", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(makeAssistantStatus("drafting", "reply"));
-            return successfulAssistantReply("Done!", {
-              deliveryMode: "thread",
-              diagnostics: {
-                toolCalls: ["slackMessageAddReaction"],
-                toolResultCount: 1,
-              },
-            });
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onStatus?.(makeAssistantStatus("drafting", "reply"));
+          return successfulAssistantReply("Done!", {
+            deliveryMode: "thread",
+            diagnostics: {
+              toolCalls: ["slackMessageAddReaction"],
+              toolResultCount: 1,
+            },
+          });
         },
       },
     });
@@ -125,11 +118,9 @@ describe("Slack behavior: assistant status", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("model exploded");
-          },
+      adapters: {
+        generateAssistantReply: async () => {
+          throw new Error("model exploded");
         },
       },
     });
@@ -160,14 +151,12 @@ describe("Slack behavior: assistant status", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(
-              makeAssistantStatus("reading", "channel messages"),
-            );
-            return successfulAssistantReply("Done.");
-          },
+      adapters: {
+        generateAssistantReply: async (_prompt, context) => {
+          await context?.onStatus?.(
+            makeAssistantStatus("reading", "channel messages"),
+          );
+          return successfulAssistantReply("Done.");
         },
       },
     });
@@ -229,17 +218,14 @@ describe("Slack behavior: assistant status", () => {
     });
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () => ({ text: "Status thread" }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            replyStarted = true;
-            return successfulAssistantReply(
-              "Reply lands after the pending status is drained.",
-            );
-          },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({ text: "Status thread" }) as never,
+        generateAssistantReply: async () => {
+          replyStarted = true;
+          return successfulAssistantReply(
+            "Reply lands after the pending status is drained.",
+          );
         },
       },
     });

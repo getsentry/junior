@@ -1,4 +1,4 @@
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import { createTestChatRuntime } from "./chat-runtime";
 import type { FakeSlackAdapter } from "./slack-harness";
 
@@ -7,20 +7,17 @@ const emptyThreadReplies = async () => [];
 /** Create a Slack runtime harness with deterministic empty thread hydration. */
 export function createSlackBehaviorRuntime(
   args: {
-    services?: JuniorRuntimeServiceOverrides;
+    adapters?: JuniorRuntimeAdapterOverrides;
     slackAdapter?: FakeSlackAdapter;
   } = {},
 ) {
-  const services = args.services ?? {};
+  const adapters = args.adapters ?? {};
   return createTestChatRuntime({
-    slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
+    adapters: {
+      listThreadReplies: emptyThreadReplies,
+      ...adapters,
     },
+    slackAdapter: args.slackAdapter,
   });
 }
 

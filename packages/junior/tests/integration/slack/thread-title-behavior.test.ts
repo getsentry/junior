@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
@@ -29,18 +29,15 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
 }
 
 function createRuntime(args: {
-  services?: JuniorRuntimeServiceOverrides;
+  adapters?: JuniorRuntimeAdapterOverrides;
   slackAdapter: FakeSlackAdapter;
 }) {
-  const services = args.services ?? {};
+  const adapters = args.adapters ?? {};
   return createTestChatRuntime({
     slackAdapter: args.slackAdapter,
-    services: {
-      ...services,
-      visionContext: {
-        listThreadReplies: emptyThreadReplies,
-        ...(services.visionContext ?? {}),
-      },
+    adapters: {
+      listThreadReplies: emptyThreadReplies,
+      ...adapters,
     },
   });
 }
@@ -63,18 +60,14 @@ describe("Slack behavior: thread title", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Debugging Node.js Memory Leaks",
-              message: { role: "assistant", content: "" },
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("Here is how to debug memory leaks."),
-        },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({
+            text: "Debugging Node.js Memory Leaks",
+            message: { role: "assistant", content: "" },
+          }) as never,
+        generateAssistantReply: async () =>
+          successfulAssistantReply("Here is how to debug memory leaks."),
       },
     });
 
@@ -105,18 +98,14 @@ describe("Slack behavior: thread title", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Production Issue Summary",
-              message: { role: "assistant", content: "" },
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("Here is the updated answer."),
-        },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({
+            text: "Production Issue Summary",
+            message: { role: "assistant", content: "" },
+          }) as never,
+        generateAssistantReply: async () =>
+          successfulAssistantReply("Here is the updated answer."),
       },
     });
 
@@ -171,18 +160,14 @@ describe("Slack behavior: thread title", () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Today's Date",
-              message: { role: "assistant", content: "" },
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("Today is April 16, 2026."),
-        },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({
+            text: "Today's Date",
+            message: { role: "assistant", content: "" },
+          }) as never,
+        generateAssistantReply: async () =>
+          successfulAssistantReply("Today is April 16, 2026."),
       },
     });
 
@@ -227,21 +212,17 @@ describe("Slack behavior: thread title", () => {
     let resolveTitle: (() => void) | undefined;
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            await new Promise((resolve) => {
-              resolveTitle = () =>
-                resolve({
-                  text: "Today's Date",
-                  message: { role: "assistant", content: "" },
-                } as never);
-            }),
-        },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("Today is April 16, 2026."),
-        },
+      adapters: {
+        generateThreadTitleText: async () =>
+          await new Promise((resolve) => {
+            resolveTitle = () =>
+              resolve({
+                text: "Today's Date",
+                message: { role: "assistant", content: "" },
+              } as never);
+          }),
+        generateAssistantReply: async () =>
+          successfulAssistantReply("Today is April 16, 2026."),
       },
     });
 
@@ -275,19 +256,15 @@ describe("Slack behavior: thread title", () => {
     let turnCount = 0;
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Some Title",
-              message: { role: "assistant", content: "" },
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            turnCount += 1;
-            return successfulAssistantReply(`reply-${turnCount}`);
-          },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({
+            text: "Some Title",
+            message: { role: "assistant", content: "" },
+          }) as never,
+        generateAssistantReply: async () => {
+          turnCount += 1;
+          return successfulAssistantReply(`reply-${turnCount}`);
         },
       },
     });
@@ -338,18 +315,14 @@ describe("Slack behavior: thread title", () => {
     };
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Permission Safe Title",
-              message: { role: "assistant", content: "" },
-            }) as never,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("This reply should still succeed."),
-        },
+      adapters: {
+        generateThreadTitleText: async () =>
+          ({
+            text: "Permission Safe Title",
+            message: { role: "assistant", content: "" },
+          }) as never,
+        generateAssistantReply: async () =>
+          successfulAssistantReply("This reply should still succeed."),
       },
     });
 
@@ -385,20 +358,16 @@ describe("Slack behavior: thread title", () => {
     let titleGenerationCount = 0;
     const { slackRuntime } = createRuntime({
       slackAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () => {
-            titleGenerationCount += 1;
-            return {
-              text: "Stable Permission Title",
-              message: { role: "assistant", content: "" },
-            } as never;
-          },
+      adapters: {
+        generateThreadTitleText: async () => {
+          titleGenerationCount += 1;
+          return {
+            text: "Stable Permission Title",
+            message: { role: "assistant", content: "" },
+          } as never;
         },
-        replyExecutor: {
-          generateAssistantReply: async () =>
-            successfulAssistantReply("Reply still succeeds."),
-        },
+        generateAssistantReply: async () =>
+          successfulAssistantReply("Reply still succeeds."),
       },
     });
 

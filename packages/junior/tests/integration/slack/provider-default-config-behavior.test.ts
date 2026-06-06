@@ -11,10 +11,8 @@ describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {
     const generateAssistantReply = vi.fn();
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
     const channelStateRef = { value: {} };
@@ -70,10 +68,8 @@ describe("Slack behavior: provider default configuration", () => {
       },
     }));
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
     const channelStateRef = { value: {} };

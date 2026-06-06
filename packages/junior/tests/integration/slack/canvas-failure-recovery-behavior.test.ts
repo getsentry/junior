@@ -28,10 +28,8 @@ describe("Slack behavior: canvas failure recovery", () => {
       },
     );
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
     const thread = createTestThread({
@@ -66,10 +64,8 @@ describe("Slack behavior: canvas failure recovery", () => {
       throw new Error("forced unrelated failure");
     });
     const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply,
-        },
+      adapters: {
+        generateAssistantReply,
       },
     });
     const thread = createTestThread({
