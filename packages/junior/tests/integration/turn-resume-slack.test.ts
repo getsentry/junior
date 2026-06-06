@@ -119,7 +119,9 @@ describe("turn resume slack integration", () => {
         ],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
         errorMessage: "Agent turn timed out",
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -272,7 +274,9 @@ describe("turn resume slack integration", () => {
         ],
         resumeReason: "timeout",
         resumedFromSliceId: 4,
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
         errorMessage: "Agent turn timed out",
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -369,7 +373,9 @@ describe("turn resume slack integration", () => {
         ],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
         errorMessage: "Agent turn timed out",
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -460,7 +466,9 @@ describe("turn resume slack integration", () => {
         ],
         resumeReason: "timeout",
         resumedFromSliceId: 1,
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
         errorMessage: "Agent turn timed out",
+        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
       });
 
     generateAssistantReplyMock.mockResolvedValueOnce({

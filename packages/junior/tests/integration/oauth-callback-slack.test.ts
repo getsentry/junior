@@ -193,6 +193,7 @@ describe("oauth callback slack integration", () => {
       ],
       resumeReason: "auth",
       resumedFromSliceId: 1,
+      requester: { slackUserId: "U123" },
     });
 
     await stateAdapterModule
@@ -451,7 +452,9 @@ describe("oauth callback slack integration", () => {
       destination: SLACK_DESTINATION,
       piMessages: [],
       resumeReason: "auth",
+      requester: { slackUserId: "U123" },
       resumedFromSliceId: 1,
+      requester: { slackUserId: "U123" },
     });
     await stateAdapterModule
       .getStateAdapter()
@@ -645,6 +648,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
+      requester: { slackUserId: "U123" },
     });
 
     await stateAdapterModule
