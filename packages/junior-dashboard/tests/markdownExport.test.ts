@@ -11,13 +11,13 @@ describe("dashboard markdown export", () => {
     const startedAt = "2026-01-01T00:00:00.000Z";
     const detail = {
       conversationId: "slack:C1:222",
+      displayTitle: "Copy button discussion",
       generatedAt: "2026-01-01T00:00:08.000Z",
       turns: [
         {
           channel: "C1",
           channelName: "eng",
           conversationId: "slack:C1:222",
-          conversationTitle: "Copy button discussion",
           id: "turn-1",
           lastProgressAt: "2026-01-01T00:00:07.000Z",
           lastSeenAt: "2026-01-01T00:00:07.000Z",
@@ -25,7 +25,7 @@ describe("dashboard markdown export", () => {
           startedAt,
           status: "completed",
           surface: "slack",
-          title: "Turn turn-1",
+          displayTitle: "Conversation",
           transcriptAvailable: true,
           transcript: [
             {
@@ -103,13 +103,14 @@ describe("dashboard markdown export", () => {
   it("exports only safe redaction metadata for private transcripts", () => {
     const detail = {
       conversationId: "slack:D1:222",
+      displayTitle: "Direct Message",
       generatedAt: "2026-01-01T00:00:08.000Z",
       turns: [
         {
           channel: "D1",
           channelName: "Direct Message",
           conversationId: "slack:D1:222",
-          conversationTitle: "Direct Message",
+          displayTitle: "Direct Message",
           cumulativeDurationMs: 7_000,
           id: "turn-private",
           lastProgressAt: "2026-01-01T00:00:07.000Z",

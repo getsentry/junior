@@ -50,7 +50,7 @@ export type ConversationDetailFeed = DashboardConversationReport;
 export type Conversation = {
   channel?: string;
   channelName?: string;
-  conversationTitle?: string;
+  displayTitle: string;
   id: string;
   lastProgressAt: string;
   lastSeenAt: string;
@@ -60,7 +60,6 @@ export type Conversation = {
   startedAt: string;
   status: Session["status"];
   surface: Session["surface"];
-  title: string;
   traceId?: string;
   turns: Session[];
 };

@@ -55,11 +55,12 @@ function publicIncidentConversation(
 
   return {
     conversationId: INCIDENT_CONVERSATION_ID,
+    displayTitle: "Checkout latency triage",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: INCIDENT_CONVERSATION_ID,
-        conversationTitle: "Checkout latency triage",
+        displayTitle: "Checkout latency triage",
         id: "mock-incident-turn-1",
         status: "completed",
         startedAt,
@@ -74,7 +75,6 @@ function publicIncidentConversation(
           totalTokens: 9700,
         },
         surface: "slack",
-        title: "Turn mock-incident-turn-1",
         requesterIdentity: {
           fullName: "Avery Stone",
           slackUserId: "UQA111",
@@ -159,7 +159,7 @@ function publicIncidentConversation(
       },
       {
         conversationId: INCIDENT_CONVERSATION_ID,
-        conversationTitle: "Checkout latency triage",
+        displayTitle: "Checkout latency triage",
         id: "mock-incident-turn-2",
         status: "completed",
         startedAt: secondStartedAt,
@@ -174,7 +174,6 @@ function publicIncidentConversation(
           totalTokens: 9250,
         },
         surface: "slack",
-        title: "Turn mock-incident-turn-2",
         requesterIdentity: {
           fullName: "Morgan Lee",
           slackUserId: "UQA222",
@@ -251,11 +250,12 @@ function activeConversation(nowMs: number): DashboardConversationReport {
 
   return {
     conversationId: ACTIVE_CONVERSATION_ID,
+    displayTitle: "Deploy rollout watch",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: ACTIVE_CONVERSATION_ID,
-        conversationTitle: "Deploy rollout watch",
+        displayTitle: "Deploy rollout watch",
         id: "mock-active-turn-1",
         status: "active",
         startedAt,
@@ -268,7 +268,6 @@ function activeConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 8420,
         },
         surface: "slack",
-        title: "Turn mock-active-turn-1",
         requesterIdentity: {
           fullName: "Sam Rivera",
           slackUserId: "UQA333",
@@ -321,11 +320,12 @@ function privateConversation(nowMs: number): DashboardConversationReport {
 
   return {
     conversationId: PRIVATE_CONVERSATION_ID,
+    displayTitle: "Direct Message",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: PRIVATE_CONVERSATION_ID,
-        conversationTitle: "Direct Message",
+        displayTitle: "Direct Message",
         id: "mock-private-turn-1",
         status: "completed",
         startedAt,
@@ -339,7 +339,6 @@ function privateConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 3540,
         },
         surface: "slack",
-        title: "Turn mock-private-turn-1",
         requesterIdentity: {
           slackUserId: "UQA444",
           slackUserName: "private-user",
@@ -427,11 +426,12 @@ function hungConversation(nowMs: number): DashboardConversationReport {
 
   return {
     conversationId: HUNG_CONVERSATION_ID,
+    displayTitle: "Sandbox QA run",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: HUNG_CONVERSATION_ID,
-        conversationTitle: "Sandbox QA run",
+        displayTitle: "Sandbox QA run",
         id: "mock-hung-turn-1",
         status: "hung",
         startedAt,
@@ -444,7 +444,6 @@ function hungConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 12_000,
         },
         surface: "slack",
-        title: "Turn mock-hung-turn-1",
         requesterIdentity: {
           fullName: "Dana Chen",
           slackUserId: "UQA555",
@@ -504,11 +503,12 @@ function failedConversation(nowMs: number): DashboardConversationReport {
 
   return {
     conversationId: FAILED_CONVERSATION_ID,
+    displayTitle: "OAuth callback investigation",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: FAILED_CONVERSATION_ID,
-        conversationTitle: "OAuth callback investigation",
+        displayTitle: "OAuth callback investigation",
         id: "mock-failed-turn-1",
         status: "failed",
         startedAt,
@@ -521,7 +521,6 @@ function failedConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 4890,
         },
         surface: "slack",
-        title: "Turn mock-failed-turn-1",
         requesterIdentity: {
           fullName: "Riley Patel",
           slackUserId: "UQA666",
@@ -587,11 +586,12 @@ function schedulerConversation(nowMs: number): DashboardConversationReport {
 
   return {
     conversationId: SCHEDULER_CONVERSATION_ID,
+    displayTitle: "Daily operations digest",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: SCHEDULER_CONVERSATION_ID,
-        conversationTitle: "Daily operations digest",
+        displayTitle: "Daily operations digest",
         id: "mock-scheduler-turn-1",
         status: "completed",
         startedAt,
@@ -605,7 +605,6 @@ function schedulerConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 6960,
         },
         surface: "scheduler",
-        title: "Turn mock-scheduler-turn-1",
         transcriptAvailable: true,
         transcriptMessageCount: 2,
         transcript: [

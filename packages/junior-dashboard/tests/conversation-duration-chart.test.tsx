@@ -66,7 +66,7 @@ describe("conversation duration chart", () => {
         startedAt: "2026-06-02T09:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
+        displayTitle: "Conversation",
       },
       {
         completedAt: "2026-06-02T11:03:00.000Z",
@@ -78,7 +78,7 @@ describe("conversation duration chart", () => {
         startedAt: "2026-06-02T11:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-2",
+        displayTitle: "Conversation",
       },
       {
         conversationId: "conversation-active",
@@ -89,7 +89,7 @@ describe("conversation duration chart", () => {
         startedAt: "2026-06-02T11:30:00.000Z",
         status: "active",
         surface: "slack",
-        title: "Turn active-turn",
+        displayTitle: "Conversation",
       },
       {
         completedAt: "2026-06-02T10:10:00.000Z",
@@ -101,7 +101,7 @@ describe("conversation duration chart", () => {
         startedAt: "2026-05-20T09:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn carryover-turn",
+        displayTitle: "Conversation",
       },
       {
         completedAt: "2026-05-20T09:05:00.000Z",
@@ -113,7 +113,7 @@ describe("conversation duration chart", () => {
         startedAt: "2026-05-20T09:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn old-turn",
+        displayTitle: "Conversation",
       },
     ];
     const html = renderChart(sessions, nowMs);

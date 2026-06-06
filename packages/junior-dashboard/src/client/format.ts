@@ -559,41 +559,11 @@ function compareTimeAsc(a: string | undefined, b: string | undefined): number {
   return (parseTime(a) ?? 0) - (parseTime(b) ?? 0);
 }
 
-function isGenericTurnTitle(title: string, conversationId: string): boolean {
-  const normalized = title.trim();
-  return (
-    normalized.length === 0 ||
-    normalized === conversationId ||
-    /^Turn\s+\S+$/i.test(normalized) ||
-    /^Awaiting\s+\w+\s+resume$/i.test(normalized)
-  );
-}
-
-function meaningfulConversationTitle(
-  conversation: Conversation,
-): string | undefined {
-  return isGenericTurnTitle(conversation.title, conversation.id)
-    ? undefined
-    : conversation.title;
-}
-
-function getConversationTitle(conversation: Conversation): string {
-  const title = meaningfulConversationTitle(conversation);
-  if (title) return title;
-  if (conversation.surface === "slack") {
-    return (
-      slackLocationLabel(conversation, { includeId: false }) ?? "Conversation"
-    );
-  }
-  return "Conversation";
-}
-
-/** Choose the safe display title already prepared by the reporting API. */
+/** Return the display title prepared by the reporting API. */
 export function conversationDisplayTitle(
   conversation: Conversation | undefined,
 ): string {
-  if (!conversation) return "Conversation";
-  return conversation.conversationTitle ?? getConversationTitle(conversation);
+  return conversation?.displayTitle ?? "Conversation";
 }
 
 /** Prefer stable requester identifiers while keeping Slack ids as a last resort. */
@@ -939,14 +909,10 @@ export function buildConversations(sessions: Session[]): Conversation[] {
             ? "failed"
             : newest.status;
       const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
-      const conversationTitle = recentTurns.find(
-        (turn) => turn.conversationTitle,
-      )?.conversationTitle;
-
       return {
         channel: newest.channel,
-        channelName: recentTurns.find((turn) => turn.channelName)?.channelName,
-        conversationTitle,
+        channelName: newest.channelName,
+        displayTitle: newest.displayTitle,
         id,
         lastProgressAt: newest.lastProgressAt,
         lastSeenAt: newest.lastSeenAt,
@@ -956,7 +922,6 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         startedAt: oldest.startedAt,
         status,
         surface: newest.surface,
-        title: newest.title,
         traceId: newest.traceId,
         turns: sortedTurns,
       };

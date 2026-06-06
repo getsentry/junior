@@ -114,7 +114,7 @@ function toolRunTurn(toolCount: number): ConversationTurn {
     startedAt: "2026-01-01T00:00:00.000Z",
     status: "completed",
     surface: "slack",
-    title: "Turn turn-1",
+    displayTitle: "Conversation",
     transcript: Array.from({ length: toolCount }, (_, index) => ({
       role: "assistant",
       timestamp: Date.parse("2026-01-01T00:00:10.000Z") + index,
@@ -192,7 +192,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [],
       transcriptAvailable: true,
     } as ConversationTurn;
@@ -215,7 +215,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "system",
@@ -247,7 +247,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "user",
@@ -281,7 +281,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "assistant",
@@ -339,7 +339,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "assistant",
@@ -373,7 +373,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
     } satisfies Session;
 
     const html = renderToStaticMarkup(
@@ -415,10 +415,11 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "internal",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
     } satisfies Session;
     const detail = {
       conversationId: "conversation-1",
+      displayTitle: session.displayTitle,
       generatedAt: "2026-01-01T00:00:00.000Z",
       turns: [
         {
@@ -446,7 +447,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Readable transcript",
+      displayTitle: "Readable transcript",
     } satisfies Session;
 
     const data = dashboardData([session]);
@@ -490,7 +491,7 @@ describe("dashboard telemetry components", () => {
         startedAt: "2026-01-01T00:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
+        displayTitle: "Conversation",
       },
       {
         channel: "D1",
@@ -503,7 +504,7 @@ describe("dashboard telemetry components", () => {
         startedAt: "2026-01-01T00:02:00.000Z",
         status: "failed",
         surface: "slack",
-        title: "Turn turn-2",
+        displayTitle: "Conversation",
       },
       {
         channel: "C2",
@@ -517,7 +518,7 @@ describe("dashboard telemetry components", () => {
         startedAt: "2025-12-20T00:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Old thread",
+        displayTitle: "Old thread",
       },
     ];
     const data = dashboardData(sessions);
@@ -728,10 +729,11 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Readable transcript",
+      displayTitle: "Readable transcript",
     } satisfies Session;
     const detail = {
       conversationId: "conversation-1",
+      displayTitle: session.displayTitle,
       generatedAt: "2026-01-01T00:00:00.000Z",
       turns: [
         {
@@ -856,7 +858,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "internal",
-      title: "Raw XML",
+      displayTitle: "Raw XML",
       transcript: [
         {
           parts: [{ text: rawText, type: "text" }],
@@ -917,7 +919,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "assistant",
@@ -958,7 +960,7 @@ describe("dashboard telemetry components", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      title: "Turn turn-1",
+      displayTitle: "Conversation",
       transcript: [
         {
           role: "assistant",

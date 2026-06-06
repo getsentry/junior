@@ -234,12 +234,13 @@ describe("dashboard token formatting", () => {
     });
   });
 
-  it("does not synthesize conversation titles from requester display names", () => {
+  it("uses the API-supplied displayTitle directly", () => {
     const sessions: Session[] = [
       {
         channel: "C1",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
+        displayTitle: "Public Channel",
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
@@ -250,7 +251,6 @@ describe("dashboard token formatting", () => {
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
       },
     ];
     const [conversation] = buildConversations(sessions);
@@ -271,53 +271,29 @@ describe("dashboard token formatting", () => {
     ).toBe("Alice Reviewer");
   });
 
-  it("keeps meaningful conversation titles that start with turn", () => {
+  it("uses the displayTitle from the most recent turn", () => {
     const [conversation] = buildConversations([
       {
-        channel: "C1",
-        channelName: "engineering",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
+        displayTitle: "Older title",
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn around the API design",
-      },
-    ]);
-
-    expect(conversationDisplayTitle(conversation)).toBe(
-      "Turn around the API design",
-    );
-  });
-
-  it("uses the newest available conversation title", () => {
-    const [conversation] = buildConversations([
-      {
-        conversationId: "slack:C1:123",
-        conversationTitle: "Older title",
-        cumulativeDurationMs: 0,
-        id: "turn-1",
-        lastProgressAt: "2026-06-01T10:05:00.000Z",
-        lastSeenAt: "2026-06-01T10:05:00.000Z",
-        startedAt: "2026-06-01T10:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        title: "Turn turn-1",
       },
       {
         conversationId: "slack:C1:123",
-        conversationTitle: "Newer title",
         cumulativeDurationMs: 0,
+        displayTitle: "Newer title",
         id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
         startedAt: "2026-06-01T11:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-2",
       },
     ]);
 
@@ -330,7 +306,7 @@ describe("dashboard token formatting", () => {
         channel: "C1",
         channelName: "alice",
         conversationId: "slack:C1:123",
-        conversationTitle: "Alice",
+        displayTitle: "Alice",
         cumulativeDurationMs: 0,
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
@@ -342,7 +318,6 @@ describe("dashboard token formatting", () => {
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
       },
     ];
     const [conversation] = buildConversations(sessions);
@@ -358,13 +333,13 @@ describe("dashboard token formatting", () => {
       {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
+        displayTitle: "Conversation",
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
       },
     ]);
 
@@ -376,13 +351,13 @@ describe("dashboard token formatting", () => {
       {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
+        displayTitle: "Conversation",
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "completed",
         surface: "slack",
-        title: "Turn turn-1",
       },
     ]);
 

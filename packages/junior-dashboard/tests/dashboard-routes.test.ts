@@ -107,7 +107,7 @@ function reporting(): JuniorReporting {
             lastSeenAt: "2026-05-29T00:00:01.000Z",
             lastProgressAt: "2026-05-29T00:00:01.000Z",
             surface: "slack",
-            title: "Turn turn-1",
+            displayTitle: "Conversation",
             channel: "C1",
             sentryConversationUrl:
               "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
@@ -121,6 +121,7 @@ function reporting(): JuniorReporting {
         conversations: 1,
         durationMs: 0,
         failed: 0,
+        displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
         hung: 0,
         locations: [
@@ -161,7 +162,6 @@ function reporting(): JuniorReporting {
         reports: [
           {
             pluginName: "scheduler",
-            title: "Scheduler",
             metrics: [{ label: "active", value: "1" }],
           },
         ],
@@ -170,6 +170,7 @@ function reporting(): JuniorReporting {
     async getConversation(conversationId: string) {
       return {
         conversationId,
+        displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
         turns: [
           {
@@ -181,7 +182,7 @@ function reporting(): JuniorReporting {
             lastSeenAt: "2026-05-29T00:00:01.000Z",
             lastProgressAt: "2026-05-29T00:00:01.000Z",
             surface: "slack",
-            title: "Turn turn-1",
+            displayTitle: "Conversation",
             channel: "C1",
             transcriptAvailable: true,
             transcript: [
@@ -779,6 +780,7 @@ describe("dashboard routes", () => {
     const privateReporting = reporting();
     privateReporting.getConversation = async (conversationId: string) => ({
       conversationId,
+      displayTitle: "Conversation",
       generatedAt: "2026-05-29T00:00:00.000Z",
       turns: [
         {
@@ -790,7 +792,7 @@ describe("dashboard routes", () => {
           lastSeenAt: "2026-05-29T00:00:01.000Z",
           lastProgressAt: "2026-05-29T00:00:01.000Z",
           surface: "slack",
-          title: "Turn turn-1",
+          displayTitle: "Conversation",
           channel: "D1",
           transcriptAvailable: false,
           transcriptMessageCount: 2,

@@ -534,11 +534,12 @@ export function longReleaseConversation(
 
   return {
     conversationId: LONG_CONVERSATION_ID,
+    displayTitle: "Package release and self-update",
     generatedAt: iso(nowMs),
     turns: [
       {
         conversationId: LONG_CONVERSATION_ID,
-        conversationTitle: "Package release and self-update",
+        displayTitle: "Package release and self-update",
         id: "mock-release-turn-1",
         status: "completed",
         startedAt: firstStartedAt,
@@ -553,7 +554,6 @@ export function longReleaseConversation(
           outputTokens: 1037,
         },
         surface: "slack",
-        title: "Turn mock-release-turn-1",
         requesterIdentity: {
           fullName: "Jordan Blake",
           slackUserId: "UQA777",
@@ -570,7 +570,7 @@ export function longReleaseConversation(
       },
       {
         conversationId: LONG_CONVERSATION_ID,
-        conversationTitle: "Package release and self-update",
+        displayTitle: "Package release and self-update",
         id: "mock-release-turn-2",
         status: "completed",
         startedAt: secondStartedAt,
@@ -585,7 +585,6 @@ export function longReleaseConversation(
           outputTokens: 5765,
         },
         surface: "slack",
-        title: "Turn mock-release-turn-2",
         requesterIdentity: {
           fullName: "Jordan Blake",
           slackUserId: "UQA777",
