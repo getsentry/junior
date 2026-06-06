@@ -36,12 +36,7 @@ function createToolState(): ToolState {
 function createContext(userText: string): ToolRuntimeContext {
   return {
     channelId: "C123",
-    deliveryChannelId: "C123",
-    deliveryChannelCapabilities: {
-      canCreateCanvas: true,
-      canPostToChannel: true,
-      canAddReactions: true,
-    },
+    assistantContextChannelId: "C123",
     messageTs: "1700000000.321",
     userText,
     sandbox: {} as any,

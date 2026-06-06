@@ -978,12 +978,7 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getAgentPluginTools({
         channelId: "D_DM",              // raw conversation channel
-        deliveryChannelId: "C_JS",      // assistant context delivery channel
-        deliveryChannelCapabilities: {
-          canAddReactions: true,
-          canCreateCanvas: true,
-          canPostToChannel: true,
-        },
+        assistantContextChannelId: "C_JS",      // assistant context delivery channel
         teamId: TEAM_ID,
         requester: { userId: "U123", userName: "alice", fullName: "Alice" },
         sandbox: {} as any,

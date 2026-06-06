@@ -2,14 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTools } from "@/chat/tools";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
-
 const noopSandbox = {} as any;
 
 function ctx(channelId?: string) {
   return {
     channelId,
-    deliveryChannelCapabilities: resolveChannelCapabilities(channelId),
     sandbox: noopSandbox,
   };
 }

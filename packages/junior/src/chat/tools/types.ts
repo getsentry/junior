@@ -4,7 +4,6 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
-import type { ChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 
 export interface ImageGenerateToolDeps {
@@ -59,16 +58,15 @@ export interface ToolRuntimeContext {
    */
   conversationId?: string;
   /**
-   * Effective Slack delivery channel for first-class Slack tools (canvas,
-   * channel post, reactions, list messages). May be the assistant-context
-   * source channel (`assistantContextChannelId ?? channelId`).
+   * Slack assistant-panel source/context channel. Present when Slack associates
+   * this assistant thread with a source channel (e.g. the channel the user
+   * opened Junior from). Use `assistantContextChannelId ?? channelId` in
+   * first-class tools that intentionally route output back to that source.
+   *
+   * Not a second canonical channel. Not a state binding key. Never passed to
+   * plugin hooks — plugins receive only raw `channelId`.
    */
-  deliveryChannelId?: string;
-  /**
-   * Capabilities of `deliveryChannelId`, used to gate first-class Slack
-   * delivery tools in `createTools`.
-   */
-  deliveryChannelCapabilities: ChannelCapabilities;
+  assistantContextChannelId?: string;
   requester?: {
     userId?: string;
     userName?: string;

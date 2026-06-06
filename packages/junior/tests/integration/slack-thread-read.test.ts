@@ -13,11 +13,6 @@ function createContext(
 ): ToolRuntimeContext {
   return {
     channelId: "C_CURRENT",
-    deliveryChannelCapabilities: {
-      canCreateCanvas: true,
-      canPostToChannel: true,
-      canAddReactions: true,
-    },
     sandbox: {} as any,
     ...overrides,
   };
@@ -202,7 +197,7 @@ describe("slackThreadRead", () => {
     const tool = createSlackThreadReadTool(
       createContext({
         channelId: "D_DM",          // raw DM channel
-        deliveryChannelId: "G_PRIVATE", // assistant-context source
+        assistantContextChannelId: "G_PRIVATE", // assistant-context source
       }),
     );
     const result = await executeTool(tool, {

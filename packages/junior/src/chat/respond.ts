@@ -52,7 +52,6 @@ import {
   recordMcpProviderConnected,
 } from "@/chat/state/session-log";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type {
@@ -937,7 +936,7 @@ export async function generateAssistantReply(
     // ── Tool creation ────────────────────────────────────────────────
     const toolChannelId =
       context.toolChannelId ?? context.correlation?.channelId;
-    const deliveryChannelCapabilities = resolveChannelCapabilities(toolChannelId);
+    // assistantContextChannelId is the Slack source channel when an assistant panel context is active
     const loadableSkills = availableSkills.filter(
       (skill) =>
         skill.disableModelInvocation !== true ||
@@ -999,8 +998,8 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         conversationId: sessionConversationId,
-        deliveryChannelId: toolChannelId,
-        deliveryChannelCapabilities,
+        assistantContextChannelId: toolChannelId !== context.correlation?.channelId ? toolChannelId : undefined,
+        // capabilities computed in createTools from assistantContextChannelId ?? channelId
         requester: actorRequester,
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,

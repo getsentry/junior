@@ -4,7 +4,6 @@ import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
 import {
   createAdvisorToolDefinitions,
@@ -89,7 +88,6 @@ async function executeAdvisor(
 describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
-      deliveryChannelCapabilities: resolveChannelCapabilities("D12345"),
       sandbox: {} as any,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
@@ -183,7 +181,6 @@ describe("advisor tool", () => {
         [],
         {},
         {
-          deliveryChannelCapabilities: resolveChannelCapabilities("C12345"),
           sandbox: {} as any,
         },
       ),

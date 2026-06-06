@@ -146,7 +146,7 @@ export function getAgentPluginTools(
     const log = createAgentPluginLogger(plugin.name);
     // context.channelId is the raw conversation channel; plugins receive it
     // directly. First-class delivery tools (canvas, post, react, list messages)
-    // use ToolRuntimeContext.deliveryChannelId instead.
+    // use ToolRuntimeContext.assistantContextChannelId ?? channelId for output routing.
     const credentialSubject = createSlackDirectCredentialSubject({
       channelId: context.channelId,
       teamId: context.teamId,

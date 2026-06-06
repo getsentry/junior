@@ -87,11 +87,6 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getAgentPluginTools({
-        deliveryChannelCapabilities: {
-          canAddReactions: false,
-          canCreateCanvas: false,
-          canPostToChannel: false,
-        },
         requester: { userId: "U123" },
         sandbox: {} as any,
       });
@@ -125,11 +120,6 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getAgentPluginTools({
-          deliveryChannelCapabilities: {
-            canAddReactions: false,
-            canCreateCanvas: false,
-            canPostToChannel: false,
-          },
           sandbox: {} as any,
         }),
       ).toThrow("must be a camelCase identifier");
@@ -164,11 +154,6 @@ describe("agent plugin hooks", () => {
           [],
           {},
           {
-            deliveryChannelCapabilities: {
-              canAddReactions: false,
-              canCreateCanvas: false,
-              canPostToChannel: false,
-            },
             sandbox: {} as any,
           },
         ),
@@ -515,11 +500,6 @@ describe("getAgentPluginTools channel resolution", () => {
       }),
     ]);
     getAgentPluginTools({
-      deliveryChannelCapabilities: {
-        canAddReactions: true,
-        canCreateCanvas: true,
-        canPostToChannel: true,
-      },
       requester: { userId: "U123" },
       sandbox: {} as any,
       ...overrides,
@@ -534,7 +514,7 @@ describe("getAgentPluginTools channel resolution", () => {
   it("passes raw channelId to plugins, not the delivery channel", () => {
     const ctx = capturePluginContext({
       channelId: "D_DM",
-      deliveryChannelId: "C_SOURCE",
+      assistantContextChannelId: "C_SOURCE",
       teamId: "T123",
     });
 
@@ -555,12 +535,7 @@ describe("getAgentPluginTools channel resolution", () => {
     // Plugin capabilities reflect the DM, not the delivery channel.
     const ctx = capturePluginContext({
       channelId: "D_DM",
-      deliveryChannelId: "C_SOURCE",
-      deliveryChannelCapabilities: {
-        canAddReactions: true,
-        canCreateCanvas: true,
-        canPostToChannel: true, // reflects C_SOURCE delivery channel
-      },
+      assistantContextChannelId: "C_SOURCE",
       teamId: "T123",
     });
 
@@ -573,7 +548,7 @@ describe("getAgentPluginTools channel resolution", () => {
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
       channelId: "D_DM",
-      deliveryChannelId: "C_SOURCE",
+      assistantContextChannelId: "C_SOURCE",
       teamId: "T123",
       requester: { userId: "U123" },
     });

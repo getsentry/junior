@@ -1,3 +1,4 @@
+import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
@@ -125,13 +126,16 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  const { deliveryChannelCapabilities } = context;
+  // Compute output channel capabilities: assistant context source channel when
+  // present, otherwise the raw conversation channel.
+  const outputChannelId = context.assistantContextChannelId ?? context.channelId;
+  const outputCapabilities = resolveChannelCapabilities(outputChannelId);
 
-  if (deliveryChannelCapabilities.canCreateCanvas) {
+  if (outputCapabilities.canCreateCanvas) {
     tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
   }
 
-  if (deliveryChannelCapabilities.canPostToChannel) {
+  if (outputCapabilities.canPostToChannel) {
     tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
       context,
       state,
@@ -140,7 +144,9 @@ export function createTools(
       createSlackChannelListMessagesTool(context);
   }
 
-  if (deliveryChannelCapabilities.canAddReactions) {
+  // Reactions target the raw conversation channel (messageTs comes from the
+  // current inbound DM/thread message, not the source channel).
+  if (resolveChannelCapabilities(context.channelId).canAddReactions) {
     tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
       context,
       state,
