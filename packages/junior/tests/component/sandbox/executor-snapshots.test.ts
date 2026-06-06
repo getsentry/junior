@@ -93,48 +93,6 @@ describe("sandbox executor dependency snapshots", () => {
     });
   });
 
-  it("retries snapshot boot when Vercel reports snapshotting in progress", async () => {
-    const snapshotSandbox = makeSandbox("sbx_snapshot_ready");
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
-      snapshotId: "snap_retry",
-      profileHash: "hash_retry",
-      dependencyCount: 2,
-      cacheHit: true,
-      resolveOutcome: "cache_hit",
-    });
-    const snapshottingError = createApiError(
-      422,
-      "Unprocessable Entity",
-      "sandbox_snapshotting",
-      "Sandbox is creating a snapshot and will be stopped shortly.",
-    );
-    sandboxCreateMock
-      .mockRejectedValueOnce(snapshottingError)
-      .mockResolvedValueOnce(snapshotSandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    const sandbox = await executor.createSandbox();
-
-    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(1, {
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_retry",
-      },
-    });
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
-      timeout: 1000 * 60 * 30,
-      source: {
-        type: "snapshot",
-        snapshotId: "snap_retry",
-      },
-    });
-  });
-
   it("uses a fresh sandbox name when retrying snapshot boot with network policy", async () => {
     const snapshotSandbox = makeSandbox("sbx_snapshot_policy_ready");
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
@@ -167,7 +125,7 @@ describe("sandbox executor dependency snapshots", () => {
     const manager = createSandboxSessionManager({ createNetworkPolicy });
     manager.configureSkills([]);
 
-    await manager.createSandbox();
+    const sandbox = await manager.createSandbox();
 
     const firstCreate = sandboxCreateMock.mock.calls[0]?.[0] as {
       name?: string;
@@ -209,6 +167,7 @@ describe("sandbox executor dependency snapshots", () => {
         },
       },
     });
+    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
   });
 
   it("wraps snapshot resolution failures as sandbox setup errors", async () => {

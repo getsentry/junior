@@ -8,6 +8,7 @@ import {
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createJuniorReporting } from "@/reporting";
+import { mockTestClock } from "../../fixtures/vitest";
 
 const SYSTEM_MESSAGE = expect.objectContaining({
   role: "system",
@@ -325,11 +326,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports aggregate conversation stats beyond the session feed cap", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
+    mockTestClock("2026-06-04T12:00:00.000Z");
 
     for (let index = 0; index < 55; index += 1) {
       await recordAgentTurnSessionSummary({
@@ -366,24 +363,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports aggregate conversation stats by requester and location", async () => {
-    vi.useFakeTimers();
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
-
-    vi.setSystemTime(new Date("2026-05-20T10:02:00.000Z"));
-    await recordAgentTurnSessionSummary({
-      channelName: "old-project",
-      conversationId: "slack:C2:300",
-      cumulativeDurationMs: 8_000,
-      cumulativeUsage: { totalTokens: 500 },
-      requester: { fullName: "Casey" },
-      sessionId: "old-turn",
-      sliceId: 1,
-      startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
-      state: "completed",
-    });
-    vi.setSystemTime(new Date("2026-06-01T10:02:00.000Z"));
+    mockTestClock("2026-06-01T10:02:00.000Z");
     await recordAgentTurnSessionSummary({
       channelName: "proj-alpha",
       conversationId: "slack:C1:100",
@@ -395,7 +375,7 @@ describe("dashboard reporting", () => {
       startedAtMs: Date.parse("2026-06-01T10:00:00.000Z"),
       state: "completed",
     });
-    vi.setSystemTime(new Date("2026-06-01T10:04:00.000Z"));
+    mockTestClock("2026-06-01T10:04:00.000Z");
     await recordAgentTurnSessionSummary({
       channelName: "proj-alpha",
       conversationId: "slack:C1:100",
@@ -407,7 +387,7 @@ describe("dashboard reporting", () => {
       startedAtMs: Date.parse("2026-06-01T10:03:00.000Z"),
       state: "failed",
     });
-    vi.setSystemTime(new Date("2026-06-04T11:02:00.000Z"));
+    mockTestClock("2026-06-04T11:02:00.000Z");
     await recordAgentTurnSessionSummary({
       conversationId: "slack:D1:200",
       cumulativeDurationMs: 3_000,
@@ -417,8 +397,20 @@ describe("dashboard reporting", () => {
       startedAtMs: Date.parse("2026-06-04T11:00:00.000Z"),
       state: "awaiting_resume",
     });
+    mockTestClock("2026-05-20T10:02:00.000Z");
+    await recordAgentTurnSessionSummary({
+      channelName: "old-project",
+      conversationId: "slack:C2:300",
+      cumulativeDurationMs: 8_000,
+      cumulativeUsage: { totalTokens: 500 },
+      requester: { fullName: "Casey" },
+      sessionId: "old-turn",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
+      state: "completed",
+    });
 
-    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    mockTestClock("2026-06-04T12:00:00.000Z");
     const stats = await createJuniorReporting().getConversationStats();
 
     expect(stats).toMatchObject({
@@ -507,11 +499,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports aggregate scheduler and API locations from stored turn surfaces", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
+    mockTestClock("2026-06-04T12:00:00.000Z");
 
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_scheduler",
@@ -541,12 +529,8 @@ describe("dashboard reporting", () => {
   });
 
   it("hydrates capped aggregate samples before attributing cumulative turn metrics", async () => {
-    vi.useFakeTimers();
     const startedAtMs = Date.parse("2026-06-04T10:00:00.000Z");
-    vi.setSystemTime(new Date(startedAtMs));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
+    mockTestClock(startedAtMs);
 
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:baseline",
@@ -557,8 +541,8 @@ describe("dashboard reporting", () => {
       startedAtMs,
       state: "completed",
     });
-    for (let index = 0; index < 5_000; index += 1) {
-      vi.setSystemTime(new Date(startedAtMs + (index + 1) * 1000));
+    for (let index = 0; index < 4_999; index += 1) {
+      mockTestClock(startedAtMs + (index + 1) * 1000);
       await recordAgentTurnSessionSummary({
         conversationId: `slack:C_FILL:${index}`,
         cumulativeDurationMs: 1,
@@ -568,7 +552,7 @@ describe("dashboard reporting", () => {
         state: "completed",
       });
     }
-    vi.setSystemTime(new Date(startedAtMs + 5_001 * 1000));
+    mockTestClock(startedAtMs + 5_000 * 1000);
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:baseline",
       cumulativeDurationMs: 1_500,
@@ -589,11 +573,7 @@ describe("dashboard reporting", () => {
   }, 20_000);
 
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { createJuniorReporting } = await import("@/reporting");
+    mockTestClock("2026-06-04T12:00:00.000Z");
 
     for (let index = 0; index < 5_001; index += 1) {
       await recordAgentTurnSessionSummary({

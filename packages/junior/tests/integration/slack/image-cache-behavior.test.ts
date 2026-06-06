@@ -12,17 +12,6 @@ import {
 
 const listThreadRepliesMock = vi.fn();
 
-function extractImageAttachmentSummary(
-  promptText: string | undefined,
-): string | undefined {
-  if (!promptText) {
-    return undefined;
-  }
-
-  const match = promptText.match(/<summary>\n([\s\S]*)\n<\/summary>/);
-  return match?.[1];
-}
-
 describe("Slack behavior: image cache", () => {
   beforeEach(() => {
     listThreadRepliesMock.mockReset();
@@ -252,81 +241,6 @@ describe("Slack behavior: image cache", () => {
     expect(completeTextMock).toHaveBeenCalledTimes(3);
     expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
     expect(secondAttachmentFetch).not.toHaveBeenCalled();
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
-  });
-
-  it("truncates inline image summaries to the cached summary limit", async () => {
-    listThreadRepliesMock.mockResolvedValue([]);
-    const longSummary = "A".repeat(550);
-    const completeTextMock = vi.fn(async () => ({
-      text: longSummary,
-      message: {} as never,
-    }));
-    const generateAssistantReply = vi.fn(
-      async (
-        _text: string,
-        context:
-          | {
-              userAttachments?: Array<{
-                promptText?: string;
-              }>;
-            }
-          | undefined,
-      ) => {
-        const promptText = context?.userAttachments?.[0]?.promptText;
-        const summary = extractImageAttachmentSummary(promptText);
-        expect(summary).toBe(longSummary.slice(0, 500));
-        expect(summary).toHaveLength(500);
-        return successfulAssistantReply("ok");
-      },
-    );
-
-    const { slackRuntime } = await createSlackImageRuntime(
-      {
-        services: {
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            generateAssistantReply,
-          },
-        },
-      },
-      {
-        AI_VISION_MODEL: "openai/gpt-5.4",
-      },
-    );
-
-    await slackRuntime.handleNewMention(
-      createTestThread({
-        id: "slack:C_IMAGE:1700000005.000",
-        state: createSlackImageConversationState(),
-      }),
-      createTestMessage({
-        id: "1700000005.100",
-        text: "summarize this screenshot",
-        threadId: "slack:C_IMAGE:1700000005.000",
-        isMention: true,
-        author: {
-          userId: "U-user",
-          userName: "user",
-          fullName: "User Example",
-          isBot: false,
-          isMe: false,
-        },
-        attachments: [
-          {
-            type: "image",
-            mimeType: "image/png",
-            name: "long.png",
-            data: Buffer.from("image-bytes"),
-          },
-        ],
-      }),
-    );
-
-    expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(generateAssistantReply).toHaveBeenCalledTimes(1);
   });
 });

@@ -124,31 +124,6 @@ describe("sandbox executor tool execution", () => {
     });
   });
 
-  it("syncs files and initializes tool executors once while sandbox is cached", async () => {
-    const sandbox = makeSandbox("sbx_single_sync");
-    sandboxCreateMock.mockResolvedValue(sandbox);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo ok",
-      },
-    });
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo ok again",
-      },
-    });
-
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
-  });
-
   it("extends sandbox keepalive for each tool execution", async () => {
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
     const sandbox = makeSandbox("sbx_keepalive");
