@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupRuntimeDependencySnapshotTest,
-  getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstallMock,
-  getRuntimeSnapshotCacheEntries,
+  configureRuntimeDependencyPlugin,
+  getRuntimeSnapshotCacheEntry,
+  holdRuntimeSnapshotLock,
   makeRuntimeDependencySandbox,
+  releaseRuntimeSnapshotLock,
   resolveRuntimeDependencySnapshot,
   sandboxCreateMock,
   setRuntimeSnapshotCacheEntry,
-  setRuntimeSnapshotLockHeld,
   setupRuntimeDependencySnapshotTest,
 } from "../../fixtures/runtime-dependency-snapshots";
 import { mockTestClock } from "../../fixtures/vitest";
@@ -18,9 +18,9 @@ describe("runtime dependency snapshot cache", () => {
   afterEach(cleanupRuntimeDependencySnapshotTest);
 
   it("rebuilds stale snapshots for floating dependency selectors", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_1"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_2"));
@@ -48,10 +48,9 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("rebuilds stale snapshots for postinstall-only profiles", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
-      { cmd: "agent-browser", args: ["install"] },
-    ]);
+    configureRuntimeDependencyPlugin({
+      postinstall: [{ cmd: "agent-browser", args: ["install"] }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_post_1"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_post_2"));
@@ -79,9 +78,9 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("rebuilds when rebuild epoch changes", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_epoch_a"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_epoch_b"));
@@ -107,9 +106,9 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("reuses cached rebuilt snapshot during force rebuild when stale id differs", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock.mockResolvedValueOnce(
       makeRuntimeDependencySandbox("snap_new"),
     );
@@ -137,9 +136,9 @@ describe("runtime dependency snapshot cache", () => {
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_old"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_new"));
@@ -151,10 +150,13 @@ describe("runtime dependency snapshot cache", () => {
     expect(first.snapshotId).toBe("snap_old");
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
+    if (!first.profileHash) {
+      throw new Error("Expected snapshot profile hash");
+    }
 
-    setRuntimeSnapshotLockHeld(true);
+    await holdRuntimeSnapshotLock(first.profileHash);
     setTimeout(() => {
-      setRuntimeSnapshotLockHeld(false);
+      void releaseRuntimeSnapshotLock();
     }, 50);
 
     const second = await resolveRuntimeDependencySnapshot({
@@ -171,9 +173,9 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("rebuilds when forceRebuild is true without stale snapshot id", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_initial"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_forced"));
@@ -199,9 +201,9 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("reuses a concurrent rebuilt snapshot while waiting on force rebuild lock without stale id", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     sandboxCreateMock
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_initial"))
       .mockResolvedValueOnce(makeRuntimeDependencySandbox("snap_forced"));
@@ -213,8 +215,14 @@ describe("runtime dependency snapshot cache", () => {
     expect(first.snapshotId).toBe("snap_initial");
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
+    if (!first.profileHash) {
+      throw new Error("Expected snapshot profile hash");
+    }
 
-    const [cacheKey, cacheValue] = getRuntimeSnapshotCacheEntries()[0]!;
+    const cacheValue = await getRuntimeSnapshotCacheEntry(first.profileHash);
+    if (!cacheValue) {
+      throw new Error("Expected cached snapshot entry");
+    }
     const initialCached = JSON.parse(cacheValue) as {
       profileHash: string;
       snapshotId: string;
@@ -223,10 +231,10 @@ describe("runtime dependency snapshot cache", () => {
       dependencyCount: number;
     };
 
-    setRuntimeSnapshotLockHeld(true);
+    await holdRuntimeSnapshotLock(first.profileHash);
     setTimeout(() => {
-      setRuntimeSnapshotCacheEntry(
-        cacheKey,
+      void setRuntimeSnapshotCacheEntry(
+        first.profileHash!,
         JSON.stringify({
           ...initialCached,
           snapshotId: "snap_from_other_worker",
@@ -235,7 +243,7 @@ describe("runtime dependency snapshot cache", () => {
       );
     }, 100);
     setTimeout(() => {
-      setRuntimeSnapshotLockHeld(false);
+      void releaseRuntimeSnapshotLock();
     }, 1_100);
 
     const concurrent = resolveRuntimeDependencySnapshot({
@@ -254,7 +262,7 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("returns no_profile metadata when runtime dependency profile is empty", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
+    configureRuntimeDependencyPlugin({});
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",

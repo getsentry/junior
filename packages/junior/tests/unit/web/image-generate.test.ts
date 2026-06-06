@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { mockTestClock, stubTestEnv } from "../../fixtures/vitest";
 
 type ImageGenerateHooks = Parameters<typeof createImageGenerateTool>[0];
 type ImageGenerateDeps = NonNullable<
@@ -27,7 +28,6 @@ function createImageDeps(
   return {
     completeText,
     fetch: fetchMock,
-    getGatewayApiKey: () => "test-key",
     ...overrides,
   };
 }
@@ -83,12 +83,18 @@ async function executeImageGenerate(tool: ImageGenerateTool, prompt: string) {
 }
 
 describe("createImageGenerateTool", () => {
+  beforeEach(() => {
+    stubTestEnv({ AI_GATEWAY_API_KEY: "test-key" });
+  });
+
   afterEach(() => {
-    delete process.env.AI_IMAGE_MODEL;
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   it("uses the default image model when AI_IMAGE_MODEL is not set", async () => {
+    mockTestClock(1_737_000_000_000);
     completeText.mockResolvedValueOnce(completion("enriched prompt"));
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -100,10 +106,7 @@ describe("createImageGenerateTool", () => {
         uploads.push(...files.map((file) => ({ filename: file.filename })));
       },
     };
-    const tool = createImageGenerateTool(
-      hooks,
-      createImageDeps(fetchMock, { now: () => 1_737_000_000_000 }),
-    );
+    const tool = createImageGenerateTool(hooks, createImageDeps(fetchMock));
     const result = await executeImageGenerate(tool, "test prompt");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -131,7 +134,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("uses AI_IMAGE_MODEL when configured", async () => {
-    process.env.AI_IMAGE_MODEL = "openai/dall-e-3";
+    stubTestEnv({ AI_IMAGE_MODEL: "openai/dall-e-3" });
     completeText.mockResolvedValueOnce(completion("enriched cat"));
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -150,7 +153,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("returns an actionable error when model is not image-capable", async () => {
-    process.env.AI_IMAGE_MODEL = "google/gemini-3-pro-image";
+    stubTestEnv({ AI_IMAGE_MODEL: "google/gemini-3-pro-image" });
     completeText.mockResolvedValueOnce(completion("enriched prompt"));
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       createErrorResponse(

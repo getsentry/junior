@@ -36,6 +36,7 @@ Allowed:
 Recommended:
 
 - Default to no module mocks. If a unit test repeatedly needs an internal module mock, extract a small adapter/fixture or move the contract to a component test.
+- Do not add production dependency bags just to replace basic runtime behavior. Exercise filesystem code with temp directories, time-sensitive code with Vitest fake timers, env-sensitive code with env stubs, and pure code through ordinary function inputs.
 - Keep the mocked surface minimal.
 - Mock one boundary for one local invariant; do not stack mocks across persistence, Slack delivery, and reply execution just to simulate an end-to-end flow.
 - Assert behavior at module outputs rather than internal calls where practical.

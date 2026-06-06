@@ -1,9 +1,11 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnownBlock, SectionBlock } from "@slack/web-api";
 import { createHomeViewBuilder } from "@/chat/slack/app-home";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import type { PluginManifest } from "@/chat/plugins/types";
 import type {
   UserTokenStore,
   StoredTokens,
@@ -39,60 +41,61 @@ const expiredToken: StoredTokens = {
   expiresAt: DEFAULT_TEST_EXPIRED_AT_MS,
 };
 
-function defaultProviders(): ReturnType<
-  HomeViewBuilderDeps["getPluginProviders"]
-> {
+function defaultProviders(): PluginManifest[] {
   return [
     {
-      manifest: {
-        name: "sentry",
-        displayName: "Sentry",
-        description: "Sentry provider",
-        credentials: {
-          type: "oauth-bearer",
-        },
+      name: "sentry",
+      description: "Sentry provider",
+      capabilities: [],
+      configKeys: [],
+      credentials: {
+        type: "oauth-bearer",
+        domains: ["sentry.io"],
+        authTokenEnv: "SENTRY_AUTH_TOKEN",
       },
     },
     {
-      manifest: {
-        name: "notion",
-        displayName: "Notion",
-        description: "Notion provider",
-        mcp: {
-          transport: "http",
-          url: "https://mcp.notion.com/mcp",
-        },
+      name: "notion",
+      description: "Notion provider",
+      capabilities: [],
+      configKeys: [],
+      mcp: {
+        transport: "http",
+        url: "https://mcp.notion.com/mcp",
       },
     },
     {
-      manifest: {
-        name: "github",
-        displayName: "GitHub",
-        description: "GitHub provider",
-        domains: ["api.github.com", "github.com"],
-        oauth: {
-          clientIdEnv: "GITHUB_APP_CLIENT_ID",
-          clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
-          authorizeEndpoint: "https://github.com/login/oauth/authorize",
-          tokenEndpoint: "https://github.com/login/oauth/access_token",
-        },
+      name: "github",
+      description: "GitHub provider",
+      domains: ["api.github.com", "github.com"],
+      capabilities: [],
+      configKeys: [],
+      oauth: {
+        clientIdEnv: "GITHUB_APP_CLIENT_ID",
+        clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+        authorizeEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
       },
     },
     {
-      manifest: {
-        name: "example-bundle",
-        displayName: "Example Bundle",
-        description: "Bundle-only plugin",
-      },
+      name: "example-bundle",
+      description: "Bundle-only plugin",
+      capabilities: [],
+      configKeys: [],
     },
-  ] as ReturnType<HomeViewBuilderDeps["getPluginProviders"]>;
+  ];
+}
+
+function configureProviders(providers = defaultProviders()): void {
+  setPluginCatalogConfig({
+    inlineManifests: providers.map((manifest) => ({ manifest })),
+  });
 }
 
 function createBuilder(overrides: Partial<HomeViewBuilderDeps> = {}) {
   const deps: HomeViewBuilderDeps = {
     discoverSkills: vi.fn(async () => []),
     getMcpStoredOAuthCredentials: vi.fn(async () => undefined),
-    getPluginProviders: vi.fn(() => defaultProviders()),
     getRuntimeMetadata: vi.fn(() => ({})),
     homeDir: vi.fn(() => "/mock/app"),
     ...overrides,
@@ -101,6 +104,17 @@ function createBuilder(overrides: Partial<HomeViewBuilderDeps> = {}) {
     builder: createHomeViewBuilder(deps),
     deps,
   };
+}
+
+async function withTempHome(
+  run: (homePath: string) => Promise<void>,
+): Promise<void> {
+  const homePath = await fs.mkdtemp(path.join(os.tmpdir(), "junior-home-"));
+  try {
+    await run(homePath);
+  } finally {
+    await fs.rm(homePath, { recursive: true, force: true });
+  }
 }
 
 function findSection(
@@ -133,6 +147,14 @@ function getAllSectionText(blocks: KnownBlock[]): string {
 }
 
 describe("createHomeViewBuilder", () => {
+  beforeEach(() => {
+    configureProviders();
+  });
+
+  afterEach(() => {
+    setPluginCatalogConfig(undefined);
+  });
+
   it("shows version metadata from runtime metadata", async () => {
     const { builder } = createBuilder({
       getRuntimeMetadata: vi.fn(() => ({ version: "abc123def456" })),
@@ -222,7 +244,7 @@ describe("createHomeViewBuilder", () => {
     expect(section?.text?.text).toContain("sentry");
   });
 
-  it("shows GitHub App providers with user OAuth tokens", async () => {
+  it("shows GitHub providers with user OAuth tokens", async () => {
     const { builder, deps } = createBuilder();
     const store = createMockTokenStore({
       github: {
@@ -257,36 +279,34 @@ describe("createHomeViewBuilder", () => {
   });
 
   it("loads DESCRIPTION.md from app root for home intro text", async () => {
-    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-home-"));
-    try {
-      fs.writeFileSync(
-        path.join(appRoot, "DESCRIPTION.md"),
+    await withTempHome(async (homePath) => {
+      await fs.writeFile(
+        path.join(homePath, "DESCRIPTION.md"),
         "Custom app home intro",
         "utf8",
       );
-      const { builder } = createBuilder({ homeDir: vi.fn(() => appRoot) });
+      const { builder } = createBuilder({
+        homeDir: vi.fn(() => homePath),
+      });
       const store = createMockTokenStore({});
       const view = await builder.buildHomeView("U123", store);
 
       expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
-    } finally {
-      fs.rmSync(appRoot, { recursive: true, force: true });
-    }
+    });
   });
 
   it("falls back to default intro text when DESCRIPTION.md is missing", async () => {
-    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-home-"));
-    try {
-      const { builder } = createBuilder({ homeDir: vi.fn(() => appRoot) });
+    await withTempHome(async (homePath) => {
+      const { builder } = createBuilder({
+        homeDir: vi.fn(() => homePath),
+      });
       const store = createMockTokenStore({});
       const view = await builder.buildHomeView("U123", store);
 
       expect(getAllSectionText(view.blocks)).toContain(
         "I help your team investigate, summarize, and act on work in Slack.",
       );
-    } finally {
-      fs.rmSync(appRoot, { recursive: true, force: true });
-    }
+    });
   });
 
   it("shows available skills as read-only list", async () => {

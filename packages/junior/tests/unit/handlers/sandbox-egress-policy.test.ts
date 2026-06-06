@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildSandboxEgressNetworkPolicy,
   cleanupSandboxEgressProxyTest,
+  configureSandboxEgressPlugins,
   createSandboxEgressCredentialToken,
   EGRESS_ID,
-  getPluginProvidersMock,
   githubPlugin,
   headerOnlyPlugin,
   matchesSandboxEgressDomain,
@@ -58,7 +58,7 @@ describe("sandbox egress policy", () => {
   });
 
   it("adds trace propagation transforms only for configured domains", () => {
-    getPluginProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
+    configureSandboxEgressPlugins([sentryPlugin(), githubPlugin()]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -89,7 +89,7 @@ describe("sandbox egress policy", () => {
   });
 
   it("adds trace-only domains without provider forwarding", () => {
-    getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
+    configureSandboxEgressPlugins([sentryPlugin()]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -150,7 +150,7 @@ describe("sandbox egress policy", () => {
   });
 
   it("resolves command env for every registered sandbox provider", async () => {
-    getPluginProvidersMock.mockReturnValue([githubPlugin(), sentryPlugin()]);
+    configureSandboxEgressPlugins([githubPlugin(), sentryPlugin()]);
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       GITHUB_READ_ONLY: "1",
@@ -161,7 +161,7 @@ describe("sandbox egress policy", () => {
   });
 
   it("does not invent token env placeholders for domain-only providers", async () => {
-    getPluginProvidersMock.mockReturnValue([headerOnlyPlugin()]);
+    configureSandboxEgressPlugins([headerOnlyPlugin()]);
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       HEADER_ONLY_READ_ONLY: "1",

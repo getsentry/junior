@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupRuntimeDependencySnapshotTest,
-  getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstallMock,
+  configureRuntimeDependencyPlugin,
   getRuntimeDependencyScript,
   makeRuntimeDependencySandbox,
   resolveRuntimeDependencySnapshot,
@@ -15,9 +14,9 @@ describe("runtime dependency snapshot install", () => {
   afterEach(cleanupRuntimeDependencySnapshotTest);
 
   it("stops the build sandbox after snapshot creation succeeds", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
+    });
     const sandbox = makeRuntimeDependencySandbox("snap_stopped");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
@@ -33,9 +32,9 @@ describe("runtime dependency snapshot install", () => {
     process.env.VERCEL_TOKEN = "sandbox-token";
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "1.0.0" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "npm", package: "sentry", version: "1.0.0" }],
+    });
     const sandbox = makeRuntimeDependencySandbox("snap_creds");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
@@ -55,9 +54,9 @@ describe("runtime dependency snapshot install", () => {
   });
 
   it("installs system dependencies via dnf", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "system", package: "gh" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "system", package: "gh" }],
+    });
     const sandbox = makeRuntimeDependencySandbox("snap_system");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
@@ -75,14 +74,16 @@ describe("runtime dependency snapshot install", () => {
   });
 
   it("installs system dependencies from URL after sha256 verification", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      {
-        type: "system",
-        url: "https://example.com/tool.rpm",
-        sha256:
-          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [
+        {
+          type: "system",
+          url: "https://example.com/tool.rpm",
+          sha256:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      ],
+    });
     const sandbox = makeRuntimeDependencySandbox(
       "snap_system_url",
       async (params) => {
@@ -123,9 +124,9 @@ describe("runtime dependency snapshot install", () => {
   });
 
   it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "system", package: "gh" },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [{ type: "system", package: "gh" }],
+    });
     const sandbox = makeRuntimeDependencySandbox(
       "snap_system_fallback",
       async (params) => {
@@ -174,12 +175,12 @@ describe("runtime dependency snapshot install", () => {
   });
 
   it("runs runtime-postinstall commands after dependency install", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "example-cli", version: "latest" },
-    ]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
-      { cmd: "example-cli", args: ["install"] },
-    ]);
+    configureRuntimeDependencyPlugin({
+      dependencies: [
+        { type: "npm", package: "example-cli", version: "latest" },
+      ],
+      postinstall: [{ cmd: "example-cli", args: ["install"] }],
+    });
     const sandbox = makeRuntimeDependencySandbox("snap_postinstall");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 

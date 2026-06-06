@@ -8,11 +8,11 @@ import { consumeSandboxEgressPermissionDeniedSignal } from "@/chat/sandbox/egres
 import {
   activeSandboxEgressCredentialToken,
   cleanupSandboxEgressProxyTest,
+  configureSandboxEgressPlugins,
   createSandboxEgressCredentialToken,
   CredentialUnavailableError,
   egressRequest,
   EGRESS_ID,
-  getPluginProvidersMock,
   githubPlugin,
   issueProviderCredentialLeaseMock,
   mockGitHubLease,
@@ -53,7 +53,7 @@ describe("sandbox egress credentials", () => {
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {
-    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    configureSandboxEgressPlugins([githubPlugin()]);
     setActiveSandboxEgressCredentialToken(
       createSandboxEgressCredentialToken({
         credentials: {
@@ -84,7 +84,7 @@ describe("sandbox egress credentials", () => {
   });
 
   it("preserves delegated credential subjects under system actor contexts", async () => {
-    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    configureSandboxEgressPlugins([githubPlugin()]);
     setSandboxEgressSystemActor({
       subject: {
         type: "user",
@@ -274,7 +274,7 @@ describe("sandbox egress credentials", () => {
 
   it("records current GitHub grant reason and smart HTTP target on cached-lease 403", async () => {
     setSandboxEgressUserActor();
-    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    configureSandboxEgressPlugins([githubPlugin()]);
     const issueCredential = vi.fn((ctx: IssueCredentialHookContext) => {
       expect(ctx.grant).toMatchObject({
         name: "user-write",

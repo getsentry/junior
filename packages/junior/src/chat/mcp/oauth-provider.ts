@@ -19,31 +19,6 @@ import {
   type McpAuthSessionState,
 } from "./auth-store";
 
-interface StateBackedMcpOAuthClientProviderServices {
-  deleteMcpServerSessionId: typeof deleteMcpServerSessionId;
-  getMcpAuthSession: typeof getMcpAuthSession;
-  getMcpServerSessionId: typeof getMcpServerSessionId;
-  getMcpStoredOAuthCredentials: typeof getMcpStoredOAuthCredentials;
-  now: () => number;
-  patchMcpAuthSession: typeof patchMcpAuthSession;
-  putMcpAuthSession: typeof putMcpAuthSession;
-  putMcpServerSessionId: typeof putMcpServerSessionId;
-  putMcpStoredOAuthCredentials: typeof putMcpStoredOAuthCredentials;
-}
-
-const defaultStateBackedMcpOAuthClientProviderServices: StateBackedMcpOAuthClientProviderServices =
-  {
-    deleteMcpServerSessionId,
-    getMcpAuthSession,
-    getMcpServerSessionId,
-    getMcpStoredOAuthCredentials,
-    now: Date.now,
-    patchMcpAuthSession,
-    putMcpAuthSession,
-    putMcpServerSessionId,
-    putMcpStoredOAuthCredentials,
-  };
-
 type McpOAuthSessionContext = Omit<
   McpAuthSessionState,
   | "authSessionId"
@@ -71,7 +46,6 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     readonly authSessionId: string,
     private readonly callbackUrl: string,
     private readonly sessionContext?: McpOAuthSessionContext,
-    private readonly services: StateBackedMcpOAuthClientProviderServices = defaultStateBackedMcpOAuthClientProviderServices,
   ) {
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
@@ -86,7 +60,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
     const session = await this.getCredentialContext();
-    const credentials = await this.services.getMcpStoredOAuthCredentials(
+    const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
     );
@@ -98,23 +72,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   ): Promise<void> {
     const session = await this.getCredentialContext();
     const credentials =
-      (await this.services.getMcpStoredOAuthCredentials(
-        session.userId,
-        session.provider,
-      )) ?? {};
-    await this.services.putMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-      {
-        ...credentials,
-        clientInformation,
-      },
-    );
+      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
+      {};
+    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+      ...credentials,
+      clientInformation,
+    });
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
     const session = await this.getCredentialContext();
-    const credentials = await this.services.getMcpStoredOAuthCredentials(
+    const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
     );
@@ -124,18 +92,12 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     const session = await this.getCredentialContext();
     const credentials =
-      (await this.services.getMcpStoredOAuthCredentials(
-        session.userId,
-        session.provider,
-      )) ?? {};
-    await this.services.putMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-      {
-        ...credentials,
-        tokens,
-      },
-    );
+      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
+      {};
+    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+      ...credentials,
+      tokens,
+    });
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -159,23 +121,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
     const session = await this.getCredentialContext();
     const credentials =
-      (await this.services.getMcpStoredOAuthCredentials(
-        session.userId,
-        session.provider,
-      )) ?? {};
-    await this.services.putMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-      {
-        ...credentials,
-        discoveryState: state,
-      },
-    );
+      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
+      {};
+    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+      ...credentials,
+      discoveryState: state,
+    });
   }
 
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
     const session = await this.getCredentialContext();
-    const credentials = await this.services.getMcpStoredOAuthCredentials(
+    const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
     );
@@ -187,39 +143,31 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   ): Promise<void> {
     const session = await this.getCredentialContext();
     const credentials =
-      (await this.services.getMcpStoredOAuthCredentials(
-        session.userId,
-        session.provider,
-      )) ?? {};
+      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
+      {};
 
-    await this.services.putMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-      {
-        ...(scope === "tokens" || scope === "all"
-          ? {}
-          : credentials.tokens
-            ? { tokens: credentials.tokens }
-            : {}),
-        ...(scope === "client" || scope === "all"
-          ? {}
-          : credentials.clientInformation
-            ? { clientInformation: credentials.clientInformation }
-            : {}),
-        ...(scope === "discovery" || scope === "all"
-          ? {}
-          : credentials.discoveryState
-            ? { discoveryState: credentials.discoveryState }
-            : {}),
-      },
-    );
+    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+      ...(scope === "tokens" || scope === "all"
+        ? {}
+        : credentials.tokens
+          ? { tokens: credentials.tokens }
+          : {}),
+      ...(scope === "client" || scope === "all"
+        ? {}
+        : credentials.clientInformation
+          ? { clientInformation: credentials.clientInformation }
+          : {}),
+      ...(scope === "discovery" || scope === "all"
+        ? {}
+        : credentials.discoveryState
+          ? { discoveryState: credentials.discoveryState }
+          : {}),
+    });
 
     if (scope === "verifier" || scope === "all") {
-      const authSession = await this.services.getMcpAuthSession(
-        this.authSessionId,
-      );
+      const authSession = await getMcpAuthSession(this.authSessionId);
       if (authSession) {
-        await this.services.patchMcpAuthSession(this.authSessionId, {
+        await patchMcpAuthSession(this.authSessionId, {
           codeVerifier: undefined,
           ...(scope === "all" ? { authorizationUrl: undefined } : {}),
         });
@@ -229,27 +177,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
 
   async getMcpServerSessionId(): Promise<string | undefined> {
     const session = await this.getCredentialContext();
-    return await this.services.getMcpServerSessionId(
-      session.userId,
-      session.provider,
-    );
+    return await getMcpServerSessionId(session.userId, session.provider);
   }
 
   async saveMcpServerSessionId(sessionId: string | undefined): Promise<void> {
     const session = await this.getCredentialContext();
     if (!sessionId) {
-      await this.services.deleteMcpServerSessionId(
-        session.userId,
-        session.provider,
-      );
+      await deleteMcpServerSessionId(session.userId, session.provider);
       return;
     }
 
-    await this.services.putMcpServerSessionId(
-      session.userId,
-      session.provider,
-      sessionId,
-    );
+    await putMcpServerSessionId(session.userId, session.provider, sessionId);
   }
 
   private async getCredentialContext() {
@@ -257,15 +195,15 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   private async ensureSession(patch: Partial<McpAuthSessionState>) {
-    const existing = await this.services.getMcpAuthSession(this.authSessionId);
+    const existing = await getMcpAuthSession(this.authSessionId);
     if (existing) {
-      return await this.services.patchMcpAuthSession(this.authSessionId, patch);
+      return await patchMcpAuthSession(this.authSessionId, patch);
     }
     if (!this.sessionContext) {
       throw new Error(`Unknown MCP auth session: ${this.authSessionId}`);
     }
 
-    const now = this.services.now();
+    const now = Date.now();
     const nextSession: McpAuthSessionState = {
       authSessionId: this.authSessionId,
       ...this.sessionContext,
@@ -273,12 +211,12 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       createdAtMs: now,
       updatedAtMs: now,
     };
-    await this.services.putMcpAuthSession(nextSession);
+    await putMcpAuthSession(nextSession);
     return nextSession;
   }
 
   private async requireSession() {
-    const session = await this.services.getMcpAuthSession(this.authSessionId);
+    const session = await getMcpAuthSession(this.authSessionId);
     if (!session) {
       throw new Error(`Unknown MCP auth session: ${this.authSessionId}`);
     }

@@ -22,27 +22,21 @@ Rewrite the user's image request into a detailed image generation prompt that en
 
 interface ImageGenerateServices {
   completeText: typeof completeText;
-  getGatewayApiKey: typeof getGatewayApiKey;
-  now: () => number;
 }
 
 const defaultImageGenerateServices: ImageGenerateServices = {
   completeText,
-  getGatewayApiKey,
-  now: Date.now,
 };
 
 async function enrichImagePrompt(
   rawPrompt: string,
-  services: Pick<ImageGenerateServices, "completeText" | "now">,
+  services: ImageGenerateServices,
 ): Promise<string> {
   try {
     const { text } = await services.completeText({
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
-      messages: [
-        { role: "user", content: rawPrompt, timestamp: services.now() },
-      ],
+      messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
       maxTokens: 1024,
     });
     if (text && text.trim().length > 0) {
@@ -114,14 +108,10 @@ export function createImageGenerateTool(
       const services: ImageGenerateServices = {
         completeText:
           deps.completeText ?? defaultImageGenerateServices.completeText,
-        getGatewayApiKey:
-          deps.getGatewayApiKey ??
-          defaultImageGenerateServices.getGatewayApiKey,
-        now: deps.now ?? defaultImageGenerateServices.now,
       };
       // Raw fetch does not resolve AI Gateway env auth on its own, so this
       // path has to turn the documented env credential into a bearer token.
-      const apiKey = services.getGatewayApiKey();
+      const apiKey = getGatewayApiKey();
       if (!apiKey) {
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
@@ -188,7 +178,7 @@ export function createImageGenerateTool(
         const extension = extensionForMediaType(mimeType);
         uploads.push({
           data: bytes,
-          filename: `generated-image-${services.now()}-${index + 1}.${extension}`,
+          filename: `generated-image-${Date.now()}-${index + 1}.${extension}`,
           mimeType,
         });
       }

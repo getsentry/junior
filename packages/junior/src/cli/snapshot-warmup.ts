@@ -12,21 +12,9 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
-interface SnapshotCreateDeps {
-  disconnectStateAdapter: typeof disconnectStateAdapter;
-  getPluginProviders: typeof getPluginProviders;
-  getPluginRuntimeDependencies: typeof getPluginRuntimeDependencies;
-  getPluginRuntimePostinstall: typeof getPluginRuntimePostinstall;
+interface SnapshotCreateOptions {
   resolveRuntimeDependencySnapshot: typeof resolveRuntimeDependencySnapshot;
 }
-
-const defaultSnapshotCreateDeps: SnapshotCreateDeps = {
-  disconnectStateAdapter,
-  getPluginProviders,
-  getPluginRuntimeDependencies,
-  getPluginRuntimePostinstall,
-  resolveRuntimeDependencySnapshot,
-};
 
 function progressMessage(
   phase: RuntimeDependencySnapshotProgressPhase,
@@ -50,11 +38,8 @@ function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none";
 }
 
-function logSnapshotProfile(
-  log: (line: string) => void,
-  deps: SnapshotCreateDeps,
-): void {
-  const providers = deps.getPluginProviders();
+function logSnapshotProfile(log: (line: string) => void): void {
+  const providers = getPluginProviders();
   const pluginNames = providers.map((plugin) => plugin.manifest.name).sort();
   const snapshotPluginNames = providers
     .filter(
@@ -66,7 +51,7 @@ function logSnapshotProfile(
     .sort();
   const systemDependencies: string[] = [];
   const npmDependencies: string[] = [];
-  for (const dep of deps.getPluginRuntimeDependencies()) {
+  for (const dep of getPluginRuntimeDependencies()) {
     if (dep.type === "npm") {
       npmDependencies.push(`${dep.package}@${dep.version}`);
       continue;
@@ -74,11 +59,10 @@ function logSnapshotProfile(
 
     systemDependencies.push("package" in dep ? dep.package : dep.url);
   }
-  const postinstallCommands = deps
-    .getPluginRuntimePostinstall()
-    .map(({ cmd, args }) =>
+  const postinstallCommands = getPluginRuntimePostinstall().map(
+    ({ cmd, args }) =>
       [cmd, ...(args ?? [])].filter((part) => part.trim().length > 0).join(" "),
-    );
+  );
 
   log(`Loaded plugins (${pluginNames.length}): ${formatList(pluginNames)}`);
   log(
@@ -125,7 +109,7 @@ function logSnapshotProfile(
 
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
-  deps: SnapshotCreateDeps = defaultSnapshotCreateDeps,
+  options: SnapshotCreateOptions = { resolveRuntimeDependencySnapshot },
 ): Promise<void> {
   if (process.env.JUNIOR_SKIP_SNAPSHOT === "1") {
     log("Skipping sandbox snapshot create (JUNIOR_SKIP_SNAPSHOT=1)");
@@ -136,9 +120,9 @@ export async function runSnapshotCreate(
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 
   try {
-    logSnapshotProfile(log, deps);
+    logSnapshotProfile(log);
     const emitted = new Set<RuntimeDependencySnapshotProgressPhase>();
-    const snapshot = await deps.resolveRuntimeDependencySnapshot({
+    const snapshot = await options.resolveRuntimeDependencySnapshot({
       runtime,
       timeoutMs,
       onProgress: async (phase) => {
@@ -163,6 +147,6 @@ export async function runSnapshotCreate(
     ];
     log(`Sandbox snapshot create complete: ${fields.join(" ")}`);
   } finally {
-    await deps.disconnectStateAdapter();
+    await disconnectStateAdapter();
   }
 }

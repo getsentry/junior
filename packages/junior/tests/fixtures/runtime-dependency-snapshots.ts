@@ -1,50 +1,59 @@
 import { vi } from "vitest";
-import { withSpan } from "@/chat/logging";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import type {
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+} from "@/chat/plugins/types";
 import { resolveRuntimeDependencySnapshot as resolveRuntimeDependencySnapshotImpl } from "@/chat/sandbox/runtime-dependency-snapshots";
-import { mockTestClock } from "./vitest";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { mockTestClock, stubTestEnv } from "./vitest";
+
+const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
+const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";
+const SNAPSHOT_BUILD_LOCK_TTL_MS = 10 * 60 * 1000;
 
 export const sandboxCreateMock = vi.fn();
-export const getPluginRuntimeDependenciesMock = vi.fn();
-export const getPluginRuntimePostinstallMock = vi.fn();
 
-const store = new Map<string, string>();
-let lockHeld = false;
+let heldSnapshotLock: Awaited<
+  ReturnType<ReturnType<typeof getStateAdapter>["acquireLock"]>
+> | null = null;
 
-const stateAdapter = {
-  connect: vi.fn(async () => {}),
-  get: vi.fn(async (key: string) => store.get(key)),
-  set: vi.fn(async (key: string, value: string) => {
-    store.set(key, value);
-  }),
-  acquireLock: vi.fn(async () => {
-    if (lockHeld) {
-      return null;
-    }
-    lockHeld = true;
-    return { key: "lock" };
-  }),
-  releaseLock: vi.fn(async () => {
-    lockHeld = false;
-  }),
-};
-
-function runtimeDependencySnapshotServices() {
-  return {
-    createSandbox: sandboxCreateMock,
-    getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
-    getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
-    getStateAdapter: () => stateAdapter as never,
-    withSpan,
-  };
+/** Configure the real plugin registry with one runtime-dependency test plugin. */
+export function configureRuntimeDependencyPlugin(args: {
+  dependencies?: PluginRuntimeDependency[];
+  postinstall?: PluginRuntimePostinstallCommand[];
+}): void {
+  const dependencies = args.dependencies ?? [];
+  const postinstall = args.postinstall ?? [];
+  setPluginCatalogConfig({
+    inlineManifests:
+      dependencies.length > 0 || postinstall.length > 0
+        ? [
+            {
+              manifest: {
+                name: "runtime-deps",
+                description: "Runtime dependency test plugin",
+                capabilities: [],
+                configKeys: [],
+                ...(dependencies.length > 0
+                  ? { runtimeDependencies: dependencies }
+                  : {}),
+                ...(postinstall.length > 0
+                  ? { runtimePostinstall: postinstall }
+                  : {}),
+              },
+            },
+          ]
+        : [],
+  });
 }
 
 export async function resolveRuntimeDependencySnapshot(
   params: Parameters<typeof resolveRuntimeDependencySnapshotImpl>[0],
 ) {
-  return await resolveRuntimeDependencySnapshotImpl(
-    params,
-    runtimeDependencySnapshotServices(),
-  );
+  return await resolveRuntimeDependencySnapshotImpl(params, {
+    createSandbox: sandboxCreateMock as never,
+  });
 }
 
 /** Builds a fake Vercel sandbox for runtime dependency snapshot tests. */
@@ -86,18 +95,13 @@ export function getRuntimeDependencyScript(params: {
 }
 
 /** Resets runtime dependency snapshot mocks and environment before each test. */
-export function setupRuntimeDependencySnapshotTest() {
-  store.clear();
-  lockHeld = false;
+export async function setupRuntimeDependencySnapshotTest() {
+  vi.unstubAllEnvs();
+  stubTestEnv({ JUNIOR_STATE_ADAPTER: "memory" });
+  await releaseRuntimeSnapshotLock();
+  await disconnectStateAdapter();
   sandboxCreateMock.mockReset();
-  stateAdapter.connect.mockClear();
-  stateAdapter.get.mockClear();
-  stateAdapter.set.mockClear();
-  stateAdapter.acquireLock.mockClear();
-  stateAdapter.releaseLock.mockClear();
-  getPluginRuntimeDependenciesMock.mockReset();
-  getPluginRuntimePostinstallMock.mockReset();
-  getPluginRuntimePostinstallMock.mockReturnValue([]);
+  setPluginCatalogConfig(undefined);
   delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
   delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
   delete process.env.VERCEL_TOKEN;
@@ -106,22 +110,69 @@ export function setupRuntimeDependencySnapshotTest() {
   mockTestClock("2026-03-01T00:00:00.000Z");
 }
 
-/** Restores timer state after runtime dependency snapshot tests. */
-export function cleanupRuntimeDependencySnapshotTest() {
+/** Restores timer, registry, and state after runtime dependency snapshot tests. */
+export async function cleanupRuntimeDependencySnapshotTest() {
+  await releaseRuntimeSnapshotLock();
+  setPluginCatalogConfig(undefined);
+  await disconnectStateAdapter();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 }
 
-/** Returns the raw runtime snapshot cache entries held by the memory adapter. */
-export function getRuntimeSnapshotCacheEntries() {
-  return [...store.entries()];
+function snapshotCacheKey(profileHash: string): string {
+  return `${SNAPSHOT_CACHE_PREFIX}:${profileHash}`;
+}
+
+function snapshotLockKey(profileHash: string): string {
+  return `${SNAPSHOT_LOCK_PREFIX}:${profileHash}`;
+}
+
+/** Returns the raw runtime snapshot cache entry for one profile. */
+export async function getRuntimeSnapshotCacheEntry(
+  profileHash: string,
+): Promise<string | undefined> {
+  const state = getStateAdapter();
+  await state.connect();
+  const raw = await state.get(snapshotCacheKey(profileHash));
+  return typeof raw === "string" ? raw : undefined;
 }
 
 /** Writes a raw runtime snapshot cache entry for lock-wait scenarios. */
-export function setRuntimeSnapshotCacheEntry(key: string, value: string) {
-  store.set(key, value);
+export async function setRuntimeSnapshotCacheEntry(
+  profileHash: string,
+  value: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.set(
+    snapshotCacheKey(profileHash),
+    value,
+    30 * 24 * 60 * 60 * 1000,
+  );
 }
 
-/** Marks the fake snapshot build lock as held or available. */
-export function setRuntimeSnapshotLockHeld(value: boolean) {
-  lockHeld = value;
+/** Holds the snapshot build lock until `releaseRuntimeSnapshotLock` is called. */
+export async function holdRuntimeSnapshotLock(
+  profileHash: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  heldSnapshotLock = await state.acquireLock(
+    snapshotLockKey(profileHash),
+    SNAPSHOT_BUILD_LOCK_TTL_MS,
+  );
+  if (!heldSnapshotLock) {
+    throw new Error("Expected to acquire runtime snapshot lock");
+  }
+}
+
+/** Releases a lock held by `holdRuntimeSnapshotLock`, if present. */
+export async function releaseRuntimeSnapshotLock(): Promise<void> {
+  if (!heldSnapshotLock) {
+    return;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  await state.releaseLock(heldSnapshotLock);
+  heldSnapshotLock = null;
 }

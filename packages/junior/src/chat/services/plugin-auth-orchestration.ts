@@ -79,10 +79,6 @@ export interface PluginAuthOrchestration {
 }
 
 interface PluginAuthOrchestrationServices {
-  formatProviderLabel: typeof formatProviderLabel;
-  getPluginProviders: typeof getPluginProviders;
-  getPluginOAuthConfig: typeof getPluginOAuthConfig;
-  now: () => number;
   recordAuthorizationRequested: typeof recordAuthorizationRequested;
   startOAuthFlow: typeof startOAuthFlow;
   unlinkProvider: typeof unlinkProvider;
@@ -90,10 +86,6 @@ interface PluginAuthOrchestrationServices {
 
 const defaultPluginAuthOrchestrationServices: PluginAuthOrchestrationServices =
   {
-    formatProviderLabel,
-    getPluginProviders,
-    getPluginOAuthConfig,
-    now: Date.now,
     recordAuthorizationRequested,
     startOAuthFlow,
     unlinkProvider,
@@ -135,11 +127,9 @@ function pluginAuthRequiredSignal(details: unknown):
   };
 }
 
-function registeredProviderNames(
-  services: PluginAuthOrchestrationServices,
-): string[] {
+function registeredProviderNames(): string[] {
   const providers = new Set<string>();
-  for (const plugin of services.getPluginProviders()) {
+  for (const plugin of getPluginProviders()) {
     const domains = [
       ...(plugin.manifest.credentials?.domains ?? []),
       ...(plugin.manifest.domains ?? []),
@@ -179,7 +169,7 @@ export function createPluginAuthOrchestration(
     if (pendingPause) {
       throw pendingPause;
     }
-    if (!deps.requesterId || !services.getPluginOAuthConfig(provider)) {
+    if (!deps.requesterId || !getPluginOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
     if (deps.authorizationFlowMode === "disabled") {
@@ -194,12 +184,12 @@ export function createPluginAuthOrchestration(
       );
     }
 
-    const providerLabel = services.formatProviderLabel(provider);
+    const providerLabel = formatProviderLabel(provider);
     const reusingPendingLink = deps.sessionId
       ? canReusePendingAuthLink({
           pendingAuth: deps.pendingAuth,
           kind: "plugin",
-          nowMs: services.now(),
+          nowMs: Date.now(),
           provider,
           requesterId: deps.requesterId,
           ...(options?.scope ? { scope: options.scope } : {}),
@@ -251,7 +241,7 @@ export function createPluginAuthOrchestration(
         sessionId: deps.sessionId,
         linkSentAtMs: reusingPendingLink
           ? deps.pendingAuth!.linkSentAtMs
-          : services.now(),
+          : Date.now(),
       });
     }
     if (deps.conversationId && deps.sessionId && deps.requesterId) {
@@ -282,7 +272,7 @@ export function createPluginAuthOrchestration(
 
   return {
     maybeHandleAuthSignal: async (details) => {
-      const providers = registeredProviderNames(services);
+      const providers = registeredProviderNames();
       const signal = pluginAuthRequiredSignal(details);
       if (!signal || !providers.includes(signal.provider)) {
         return;
@@ -293,7 +283,7 @@ export function createPluginAuthOrchestration(
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??
-            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+            `${formatProviderLabel(provider)} credentials are unavailable.`,
         );
       }
 
@@ -306,7 +296,7 @@ export function createPluginAuthOrchestration(
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??
-            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+            `${formatProviderLabel(provider)} credentials are unavailable.`,
         );
       }
 
@@ -314,14 +304,14 @@ export function createPluginAuthOrchestration(
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??
-            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+            `${formatProviderLabel(provider)} credentials are unavailable.`,
         );
       }
-      if (!services.getPluginOAuthConfig(authorization.provider)) {
+      if (!getPluginOAuthConfig(authorization.provider)) {
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??
-            `${services.formatProviderLabel(provider)} credentials are unavailable.`,
+            `${formatProviderLabel(provider)} credentials are unavailable.`,
         );
       }
 

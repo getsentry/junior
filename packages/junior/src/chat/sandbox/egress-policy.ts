@@ -11,14 +11,6 @@ import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 
-interface SandboxEgressPolicyServices {
-  getPluginProviders: typeof getPluginProviders;
-}
-
-const defaultSandboxEgressPolicyServices: SandboxEgressPolicyServices = {
-  getPluginProviders,
-};
-
 /** Return whether an outbound host is covered by a sandbox egress domain rule. */
 export function matchesSandboxEgressDomain(
   host: string,
@@ -35,11 +27,8 @@ function manifestDomains(manifest: PluginManifest): string[] {
   return [...domains].sort((left, right) => left.localeCompare(right));
 }
 
-function providerEntries(
-  services: SandboxEgressPolicyServices,
-): Array<{ provider: string; domains: string[] }> {
-  return services
-    .getPluginProviders()
+function providerEntries(): Array<{ provider: string; domains: string[] }> {
+  return getPluginProviders()
     .map((plugin) => ({
       provider: plugin.manifest.name,
       domains: manifestDomains(plugin.manifest),
@@ -51,9 +40,8 @@ function providerEntries(
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,
-  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
 ): string | undefined {
-  return providerEntries(services).find((entry) =>
+  return providerEntries().find((entry) =>
     entry.domains.some((domain) => matchesSandboxEgressDomain(host, domain)),
   )?.provider;
 }
@@ -78,12 +66,11 @@ export function buildSandboxEgressNetworkPolicy(
     traceConfig?: SandboxEgressTracePropagationConfig;
     traceHeaders?: TracePropagationHeaders;
   },
-  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
 ): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
   };
-  const entries = providerEntries(services);
+  const entries = providerEntries();
   const traceHeaders = Object.fromEntries(
     Object.entries(input?.traceHeaders ?? {}).filter(
       ([, value]) => typeof value === "string" && value.trim(),
@@ -137,15 +124,13 @@ export function buildSandboxEgressNetworkPolicy(
 }
 
 /** Resolve non-secret command environment values for registered sandbox providers. */
-export async function resolveSandboxCommandEnvironment(
-  services: SandboxEgressPolicyServices = defaultSandboxEgressPolicyServices,
-): Promise<Record<string, string>> {
+export async function resolveSandboxCommandEnvironment(): Promise<
+  Record<string, string>
+> {
   const env: Record<string, string> = {};
-  for (const plugin of services
-    .getPluginProviders()
-    .sort((left, right) =>
-      left.manifest.name.localeCompare(right.manifest.name),
-    )) {
+  for (const plugin of getPluginProviders().sort((left, right) =>
+    left.manifest.name.localeCompare(right.manifest.name),
+  )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
     if (credentials?.authTokenEnv) {

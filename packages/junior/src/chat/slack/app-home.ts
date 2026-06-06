@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
@@ -22,7 +22,6 @@ interface HomeView {
 interface HomeViewBuilderDeps {
   discoverSkills: typeof discoverSkills;
   getMcpStoredOAuthCredentials: typeof getMcpStoredOAuthCredentials;
-  getPluginProviders: typeof getPluginProviders;
   getRuntimeMetadata: typeof getRuntimeMetadata;
   homeDir: typeof homeDir;
 }
@@ -43,7 +42,7 @@ function clampSectionText(text: string): string {
 function loadDescriptionText(deps: HomeViewBuilderDeps): string {
   const descriptionPath = path.join(deps.homeDir(), "DESCRIPTION.md");
   try {
-    const raw = fs.readFileSync(descriptionPath, "utf8").trim();
+    const raw = readFileSync(descriptionPath, "utf8").trim();
     if (raw.length > 0) {
       return clampSectionText(raw);
     }
@@ -128,7 +127,7 @@ export function createHomeViewBuilder(deps: HomeViewBuilderDeps) {
       const runtimeMetadata = deps.getRuntimeMetadata();
       const descriptionText = loadDescriptionText(deps);
       const skillsSummaryText = await buildSkillsSummaryText(deps);
-      const providers = deps.getPluginProviders();
+      const providers = getPluginProviders();
       const connectedSections: SectionBlock[] = [];
 
       for (const plugin of providers) {
@@ -229,7 +228,6 @@ export function createHomeViewBuilder(deps: HomeViewBuilderDeps) {
 const defaultHomeViewBuilder = createHomeViewBuilder({
   discoverSkills,
   getMcpStoredOAuthCredentials,
-  getPluginProviders,
   getRuntimeMetadata,
   homeDir,
 });

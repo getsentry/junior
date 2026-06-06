@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpAuthSessionState } from "@/chat/mcp/auth-store";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { useMockedTestClock } from "../../fixtures/vitest";
 
 type McpAuthServices = NonNullable<
   Parameters<typeof createMcpAuthOrchestration>[2]
@@ -70,9 +72,7 @@ function createMcpAuthServices() {
     ),
     deleteMcpAuthSession: vi.fn(async () => undefined),
     deliverPrivateMessage: vi.fn(async () => "fallback_dm" as const),
-    formatProviderLabel: vi.fn((provider: string) => provider),
     getMcpAuthSession: vi.fn(async () => authSession),
-    now: vi.fn(() => 1_700_000_000_000),
     patchMcpAuthSession: vi.fn(async (_authSessionId, patch) => ({
       ...authSession,
       ...patch,
@@ -89,20 +89,29 @@ function createMcpAuthServices() {
   } satisfies McpAuthServices;
 }
 
-function plugin(name: string): PluginDefinition {
-  return {
-    dir: `/plugins/${name}`,
-    manifest: {
-      name,
-      displayName: name,
-      description: `${name} plugin`,
-      capabilities: [],
-      configKeys: [],
-    },
-  };
-}
-
 describe("createMcpAuthOrchestration", () => {
+  useMockedTestClock(1_700_000_000_000);
+
+  beforeEach(() => {
+    setPluginCatalogConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "github",
+            displayName: "GitHub",
+            description: "GitHub MCP provider",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    setPluginCatalogConfig(undefined);
+  });
+
   it("returns a deterministic error instead of delivering auth links when authorization is disabled", async () => {
     const services = createMcpAuthServices();
     const abortAgent = vi.fn();
@@ -134,7 +143,7 @@ describe("createMcpAuthOrchestration", () => {
     expect(abortAgent).not.toHaveBeenCalled();
   });
 
-  it("uses injected services when reusing an existing pending auth link", async () => {
+  it("reuses an existing pending auth link without delivering a duplicate link", async () => {
     const services = createMcpAuthServices();
     const abortAgent = vi.fn();
     const recordPendingAuth = vi.fn(async () => undefined);

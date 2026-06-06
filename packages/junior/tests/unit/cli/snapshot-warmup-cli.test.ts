@@ -1,75 +1,79 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runSnapshotCreate } from "@/cli/snapshot-warmup";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import type {
-  PluginDefinition,
+  PluginManifest,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { stubTestEnv, useMemoryStateAdapter } from "../../fixtures/vitest";
 
-type SnapshotCreateDeps = NonNullable<Parameters<typeof runSnapshotCreate>[1]>;
+type SnapshotResolver = NonNullable<
+  Parameters<typeof runSnapshotCreate>[1]
+>["resolveRuntimeDependencySnapshot"];
 
-function createPluginDefinition(
+function createPluginManifest(
   name: string,
   options: {
     runtimeDependencies?: PluginRuntimeDependency[];
     runtimePostinstall?: PluginRuntimePostinstallCommand[];
   } = {},
-): PluginDefinition {
+): PluginManifest {
   return {
-    dir: `/tmp/${name}-plugin`,
-    manifest: {
-      name,
-      description: `${name} plugin`,
-      capabilities: [],
-      configKeys: [],
-      ...(options.runtimeDependencies
-        ? { runtimeDependencies: options.runtimeDependencies }
-        : {}),
-      ...(options.runtimePostinstall
-        ? { runtimePostinstall: options.runtimePostinstall }
-        : {}),
-    },
+    name,
+    description: `${name} plugin`,
+    capabilities: [],
+    configKeys: [],
+    ...(options.runtimeDependencies
+      ? { runtimeDependencies: options.runtimeDependencies }
+      : {}),
+    ...(options.runtimePostinstall
+      ? { runtimePostinstall: options.runtimePostinstall }
+      : {}),
   };
 }
 
-function createSnapshotCreateDeps() {
-  return {
-    disconnectStateAdapter: vi.fn<SnapshotCreateDeps["disconnectStateAdapter"]>(
-      async () => undefined,
-    ),
-    getPluginProviders: vi.fn<SnapshotCreateDeps["getPluginProviders"]>(
-      () => [],
-    ),
-    getPluginRuntimeDependencies: vi.fn<
-      SnapshotCreateDeps["getPluginRuntimeDependencies"]
-    >(() => []),
-    getPluginRuntimePostinstall: vi.fn<
-      SnapshotCreateDeps["getPluginRuntimePostinstall"]
-    >(() => []),
-    resolveRuntimeDependencySnapshot:
-      vi.fn<SnapshotCreateDeps["resolveRuntimeDependencySnapshot"]>(),
-  } satisfies SnapshotCreateDeps;
+function configurePlugins(manifests: PluginManifest[]): void {
+  setPluginCatalogConfig({
+    inlineManifests: manifests.map((manifest) => ({ manifest })),
+  });
 }
 
 describe("snapshot create cli", () => {
-  let deps: ReturnType<typeof createSnapshotCreateDeps>;
+  useMemoryStateAdapter();
 
-  beforeEach(() => {
-    deps = createSnapshotCreateDeps();
+  let resolveRuntimeDependencySnapshot: ReturnType<
+    typeof vi.fn<SnapshotResolver>
+  >;
+
+  beforeEach(async () => {
+    stubTestEnv({ JUNIOR_STATE_ADAPTER: "memory" });
+    await disconnectStateAdapter();
+    configurePlugins([]);
+    resolveRuntimeDependencySnapshot = vi.fn<SnapshotResolver>();
+  });
+
+  afterEach(async () => {
+    setPluginCatalogConfig(undefined);
+    await disconnectStateAdapter();
+    vi.unstubAllEnvs();
   });
 
   it("uses default runtime and timeout", async () => {
-    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
+    resolveRuntimeDependencySnapshot.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line), deps);
+    await runSnapshotCreate((line) => logs.push(line), {
+      resolveRuntimeDependencySnapshot,
+    });
 
-    expect(deps.resolveRuntimeDependencySnapshot).toHaveBeenCalledTimes(1);
-    expect(deps.resolveRuntimeDependencySnapshot).toHaveBeenCalledWith({
+    expect(resolveRuntimeDependencySnapshot).toHaveBeenCalledTimes(1);
+    expect(resolveRuntimeDependencySnapshot).toHaveBeenCalledWith({
       runtime: "node22",
       timeoutMs: 10 * 60 * 1000,
       onProgress: expect.any(Function),
@@ -78,8 +82,7 @@ describe("snapshot create cli", () => {
     expect(logs).toContain(
       "Sandbox snapshot inputs: plugins=0 system_dependencies=0 npm_dependencies=0 postinstall_commands=0",
     );
-    const resolveParams =
-      deps.resolveRuntimeDependencySnapshot.mock.calls[0]?.[0];
+    const resolveParams = resolveRuntimeDependencySnapshot.mock.calls[0]?.[0];
     if (!resolveParams?.onProgress) {
       throw new Error("Expected snapshot resolver to be called");
     }
@@ -91,24 +94,17 @@ describe("snapshot create cli", () => {
   });
 
   it("logs plugin and dependency inputs before snapshot resolution", async () => {
-    deps.getPluginProviders.mockReturnValue([
-      createPluginDefinition("agent-browser", {
+    configurePlugins([
+      createPluginManifest("agent-browser", {
         runtimeDependencies: [
           { type: "npm", package: "agent-browser", version: "latest" },
           { type: "system", package: "gtk3" },
         ],
         runtimePostinstall: [{ cmd: "agent-browser", args: ["install"] }],
       }),
-      createPluginDefinition("notion"),
+      createPluginManifest("notion"),
     ]);
-    deps.getPluginRuntimeDependencies.mockReturnValue([
-      { type: "system", package: "gtk3" },
-      { type: "npm", package: "agent-browser", version: "latest" },
-    ]);
-    deps.getPluginRuntimePostinstall.mockReturnValue([
-      { cmd: "agent-browser", args: ["install"] },
-    ]);
-    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
+    resolveRuntimeDependencySnapshot.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 2,
@@ -118,7 +114,9 @@ describe("snapshot create cli", () => {
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line), deps);
+    await runSnapshotCreate((line) => logs.push(line), {
+      resolveRuntimeDependencySnapshot,
+    });
 
     expect(logs).toContain("Loaded plugins (2): agent-browser, notion");
     expect(logs).toContain(
@@ -131,7 +129,7 @@ describe("snapshot create cli", () => {
   });
 
   it("logs cache hit metadata", async () => {
-    deps.resolveRuntimeDependencySnapshot.mockResolvedValue({
+    resolveRuntimeDependencySnapshot.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "abc",
       dependencyCount: 3,
@@ -140,7 +138,9 @@ describe("snapshot create cli", () => {
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line), deps);
+    await runSnapshotCreate((line) => logs.push(line), {
+      resolveRuntimeDependencySnapshot,
+    });
 
     const summary = logs[logs.length - 1];
     expect(summary).toContain("resolve_outcome=cache_hit");
@@ -151,13 +151,12 @@ describe("snapshot create cli", () => {
   });
 
   it("rethrows resolver errors", async () => {
-    deps.resolveRuntimeDependencySnapshot.mockRejectedValue(
+    resolveRuntimeDependencySnapshot.mockRejectedValue(
       new Error("OIDC missing"),
     );
 
-    await expect(runSnapshotCreate(undefined, deps)).rejects.toThrow(
-      "OIDC missing",
-    );
-    expect(deps.disconnectStateAdapter).toHaveBeenCalledTimes(1);
+    await expect(
+      runSnapshotCreate(undefined, { resolveRuntimeDependencySnapshot }),
+    ).rejects.toThrow("OIDC missing");
   });
 });

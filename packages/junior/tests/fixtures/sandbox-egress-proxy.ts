@@ -3,18 +3,12 @@ import { vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createRemoteJWKSetMock: vi.fn(() => async () => null),
   decodeJwtMock: vi.fn(),
-  getPluginDefinitionMock: vi.fn(),
-  getPluginOAuthConfigMock: vi.fn(),
-  getPluginProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
   jwtVerifyMock: vi.fn(),
 }));
 
 export const createRemoteJWKSetMock = mocks.createRemoteJWKSetMock;
 export const decodeJwtMock = mocks.decodeJwtMock;
-export const getPluginDefinitionMock = mocks.getPluginDefinitionMock;
-export const getPluginOAuthConfigMock = mocks.getPluginOAuthConfigMock;
-export const getPluginProvidersMock = mocks.getPluginProvidersMock;
 export const issueProviderCredentialLeaseMock =
   mocks.issueProviderCredentialLeaseMock;
 export const jwtVerifyMock = mocks.jwtVerifyMock;
@@ -38,12 +32,6 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginDefinition: mocks.getPluginDefinitionMock,
-  getPluginOAuthConfig: mocks.getPluginOAuthConfigMock,
-  getPluginProviders: mocks.getPluginProvidersMock,
-}));
-
 vi.mock("@/chat/capabilities/factory", () => ({
   createUserTokenStore: () => ({ kind: "user-token-store" }),
   issueProviderCredentialLease: mocks.issueProviderCredentialLeaseMock,
@@ -64,6 +52,8 @@ import {
   createSandboxEgressCredentialToken as createSandboxEgressCredentialTokenImpl,
   SANDBOX_EGRESS_PROXY_PATH as SANDBOX_EGRESS_PROXY_PATH_IMPL,
 } from "@/chat/sandbox/egress-session";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import type { PluginManifest } from "@/chat/plugins/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError as CredentialUnavailableErrorImpl } from "@/chat/credentials/broker";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -73,20 +63,16 @@ import { DEFAULT_TEST_EXPIRES_AT_ISO } from "./vitest";
 export const CredentialUnavailableError = CredentialUnavailableErrorImpl;
 export const SANDBOX_EGRESS_PROXY_PATH = SANDBOX_EGRESS_PROXY_PATH_IMPL;
 
-const egressPolicyServices = {
-  getPluginProviders: getPluginProvidersMock,
-};
-
 /** Call the route handler with mocks already registered. */
 export function ALL(request: Request): ReturnType<typeof sandboxEgressHandler> {
   return sandboxEgressHandler(request);
 }
 
-/** Build a sandbox egress network policy with mocked plugin providers. */
+/** Build a sandbox egress network policy through the real plugin registry. */
 export function buildSandboxEgressNetworkPolicy(
   input?: Parameters<typeof buildSandboxEgressNetworkPolicyImpl>[0],
 ): ReturnType<typeof buildSandboxEgressNetworkPolicyImpl> {
-  return buildSandboxEgressNetworkPolicyImpl(input, egressPolicyServices);
+  return buildSandboxEgressNetworkPolicyImpl(input);
 }
 
 /** Check domain matching through the real egress policy implementation. */
@@ -100,7 +86,7 @@ export function matchesSandboxEgressDomain(
 export function resolveSandboxCommandEnvironment(): ReturnType<
   typeof resolveSandboxCommandEnvironmentImpl
 > {
-  return resolveSandboxCommandEnvironmentImpl(egressPolicyServices);
+  return resolveSandboxCommandEnvironmentImpl();
 }
 
 /** Verify a sandbox OIDC token with mocked jose and discovery fetches. */
@@ -125,8 +111,7 @@ export function proxySandboxEgressRequest(
   return proxySandboxEgressRequestImpl(request, {
     ...deps,
     issueProviderCredentialLease: issueProviderCredentialLeaseMock,
-    resolveProviderForHost: (host) =>
-      resolveSandboxEgressProviderForHostImpl(host, egressPolicyServices),
+    resolveProviderForHost: resolveSandboxEgressProviderForHostImpl,
   });
 }
 
@@ -142,16 +127,22 @@ export const REQUESTER_ID = "U123";
 
 let activeCredentialToken: string | undefined;
 
+/** Configure sandbox egress plugin manifests through the real catalog. */
+export function configureSandboxEgressPlugins(
+  plugins: Array<{ manifest: PluginManifest }>,
+): void {
+  setPluginCatalogConfig({
+    inlineManifests: plugins.map(({ manifest }) => ({ manifest })),
+  });
+}
+
 /** Reset mocked proxy dependencies and memory state before each egress test. */
 export async function setupSandboxEgressProxyTest(): Promise<void> {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_SECRET = "test-secret";
   activeCredentialToken = undefined;
-  getPluginDefinitionMock.mockReset();
-  getPluginOAuthConfigMock.mockReset();
-  getPluginOAuthConfigMock.mockReturnValue(undefined);
-  getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
+  configureSandboxEgressPlugins([sentryPlugin()]);
   createRemoteJWKSetMock.mockClear();
   createRemoteJWKSetMock.mockReturnValue(async () => null);
   decodeJwtMock.mockReset();
@@ -163,6 +154,7 @@ export async function setupSandboxEgressProxyTest(): Promise<void> {
 /** Restore process globals and memory state after each egress test. */
 export async function cleanupSandboxEgressProxyTest(): Promise<void> {
   await disconnectStateAdapter();
+  setPluginCatalogConfig(undefined);
   delete process.env.JUNIOR_STATE_ADAPTER;
   delete process.env.JUNIOR_BASE_URL;
   delete process.env.JUNIOR_SECRET;
@@ -171,7 +163,7 @@ export async function cleanupSandboxEgressProxyTest(): Promise<void> {
 }
 
 /** Build the Sentry plugin fixture used by egress policy and forwarding tests. */
-export function sentryPlugin() {
+export function sentryPlugin(): { manifest: PluginManifest } {
   return {
     manifest: {
       name: "sentry",
@@ -180,7 +172,7 @@ export function sentryPlugin() {
       capabilities: ["sentry.api"],
       configKeys: [],
       envVars: {
-        SENTRY_BOT_EMAIL: {},
+        SENTRY_BOT_EMAIL: { exposeToCommandEnv: true },
       },
       commandEnv: {
         SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
@@ -197,7 +189,7 @@ export function sentryPlugin() {
 }
 
 /** Build the GitHub plugin fixture used by delegated credential tests. */
-export function githubPlugin() {
+export function githubPlugin(): { manifest: PluginManifest } {
   return {
     manifest: {
       name: "github",
@@ -216,7 +208,7 @@ export function githubPlugin() {
 }
 
 /** Build a provider with forwarding domains but no token placeholder. */
-export function headerOnlyPlugin() {
+export function headerOnlyPlugin(): { manifest: PluginManifest } {
   return {
     manifest: {
       name: "header-only",

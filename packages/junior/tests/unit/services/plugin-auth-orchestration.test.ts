@@ -1,8 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import type {
-  OAuthProviderConfig,
-  PluginDefinition,
-} from "@/chat/plugins/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import type { PluginManifest } from "@/chat/plugins/types";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import {
@@ -10,69 +8,57 @@ import {
   PluginAuthorizationPauseError,
   PluginCredentialFailureError,
 } from "@/chat/services/plugin-auth-orchestration";
+import { mockTestClock } from "../../fixtures/vitest";
 
 type PluginAuthServices = NonNullable<
   Parameters<typeof createPluginAuthOrchestration>[2]
 >;
 
-const pluginDefinitions = {
+const pluginManifests = {
   github: {
-    dir: "/tmp/github-plugin",
-    manifest: {
-      name: "github",
-      description: "GitHub provider",
-      capabilities: [],
-      configKeys: [],
-      credentials: {
-        type: "github-app",
-        domains: ["api.github.com"],
-        authTokenEnv: "GITHUB_TOKEN",
-        appIdEnv: "GITHUB_APP_ID",
-        privateKeyEnv: "GITHUB_PRIVATE_KEY",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
-      },
+    name: "github",
+    displayName: "GitHub",
+    description: "GitHub provider",
+    capabilities: [],
+    configKeys: [],
+    domains: ["api.github.com", "github.com"],
+    oauth: {
+      clientIdEnv: "GITHUB_CLIENT_ID",
+      clientSecretEnv: "GITHUB_CLIENT_SECRET",
+      authorizeEndpoint: "https://github.com/login/oauth/authorize",
+      tokenEndpoint: "https://github.com/login/oauth/access_token",
     },
   },
   sentry: {
-    dir: "/tmp/sentry-plugin",
-    manifest: {
-      name: "sentry",
-      description: "Sentry provider",
-      capabilities: [],
-      configKeys: [],
-      credentials: {
-        type: "oauth-bearer",
-        domains: ["sentry.io"],
-        authTokenEnv: "SENTRY_AUTH_TOKEN",
-      },
+    name: "sentry",
+    displayName: "Sentry",
+    description: "Sentry provider",
+    capabilities: [],
+    configKeys: [],
+    credentials: {
+      type: "oauth-bearer",
+      domains: ["sentry.io"],
+      authTokenEnv: "SENTRY_AUTH_TOKEN",
+    },
+    oauth: {
+      clientIdEnv: "SENTRY_CLIENT_ID",
+      clientSecretEnv: "SENTRY_CLIENT_SECRET",
+      authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+      tokenEndpoint: "https://sentry.io/oauth/token/",
     },
   },
-} satisfies Record<string, PluginDefinition>;
+} satisfies Record<string, PluginManifest>;
 
-const sentryOAuthConfig: OAuthProviderConfig = {
-  clientIdEnv: "SENTRY_CLIENT_ID",
-  clientSecretEnv: "SENTRY_CLIENT_SECRET",
-  authorizeEndpoint: "https://sentry.io/oauth/authorize/",
-  tokenEndpoint: "https://sentry.io/oauth/token/",
-  callbackPath: "/api/oauth/callback/sentry",
-};
-
-const githubOAuthConfig: OAuthProviderConfig = {
-  clientIdEnv: "GITHUB_CLIENT_ID",
-  clientSecretEnv: "GITHUB_CLIENT_SECRET",
-  authorizeEndpoint: "https://github.com/login/oauth/authorize",
-  tokenEndpoint: "https://github.com/login/oauth/access_token",
-  callbackPath: "/api/oauth/callback/github",
-};
+function configurePluginCatalog(): void {
+  setPluginCatalogConfig({
+    inlineManifests: Object.values(pluginManifests).map((manifest) => ({
+      manifest,
+    })),
+  });
+}
 
 function createPluginAuthServices() {
   return {
-    formatProviderLabel: vi.fn((provider: string) => provider),
-    getPluginProviders: vi.fn(() => Object.values(pluginDefinitions)),
-    getPluginOAuthConfig: vi.fn((provider: string) =>
-      provider === "sentry" ? sentryOAuthConfig : undefined,
-    ),
-    now: vi.fn(() => 1_700_000_000_000),
     recordAuthorizationRequested: vi.fn(async () => undefined),
     startOAuthFlow: vi.fn<PluginAuthServices["startOAuthFlow"]>(),
     unlinkProvider: vi.fn(async () => undefined),
@@ -113,6 +99,16 @@ async function expectPluginCredentialFailure(
 }
 
 describe("createPluginAuthOrchestration", () => {
+  beforeEach(() => {
+    mockTestClock(1_700_000_000_000);
+    configurePluginCatalog();
+  });
+
+  afterEach(() => {
+    setPluginCatalogConfig(undefined);
+    vi.useRealTimers();
+  });
+
   it("starts oauth recovery from a structured provider auth signal", async () => {
     const services = createPluginAuthServices();
     services.startOAuthFlow.mockResolvedValue({
@@ -235,7 +231,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses a pending oauth link using the injected clock", async () => {
+  it("reuses a pending oauth link using the current clock", async () => {
     const services = createPluginAuthServices();
     const userTokenStore = createTestUserTokenStore();
     const abortAgent = vi.fn();
@@ -311,9 +307,6 @@ describe("createPluginAuthOrchestration", () => {
 
   it("starts oauth recovery for GitHub write grant signals", async () => {
     const services = createPluginAuthServices();
-    services.getPluginOAuthConfig.mockImplementation((provider: string) =>
-      provider === "github" ? githubOAuthConfig : undefined,
-    );
     services.startOAuthFlow.mockResolvedValue({
       ok: true,
       delivery: "fallback_dm",
@@ -421,7 +414,7 @@ describe("createPluginAuthOrchestration", () => {
       }),
       {
         provider: "github",
-        message: "github credentials are unavailable.",
+        message: "GitHub credentials are unavailable.",
       },
     );
 
@@ -480,9 +473,6 @@ describe("createPluginAuthOrchestration", () => {
 
   it("no-ops for unregistered providers and invalid auth signals", async () => {
     const services = createPluginAuthServices();
-    services.getPluginOAuthConfig.mockImplementation((provider: string) =>
-      provider === "github" ? githubOAuthConfig : undefined,
-    );
     const inputs = [
       {
         auth_required: {

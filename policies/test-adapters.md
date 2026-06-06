@@ -9,6 +9,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Start from `specs/testing.md` for layer selection; use this policy for the fixture and adapter shape inside that layer.
 - Prefer shared test adapters over one-off mocks when a boundary recurs across tests.
 - Default to real modules and no mocks. Reach for a mock only after the real module, shared adapter, MSW handler, or explicit injected port cannot express the contract clearly.
+- Do not turn ordinary runtime facilities into production DI seams. Filesystem code should be tested with temp files, clocks with Vitest fake timers, environment reads with env stubs, and telemetry by letting the real telemetry path run unless a dedicated logging contract test needs to observe it.
 - A test adapter should implement the production-facing contract closely enough that tests can inject real payloads and observe resulting effects.
 - Give adapters small, role-specific introspection methods such as `queuedMessages()`, `messages()`, or `fileUploads()`. Do not expose broad mutable internals.
 - Model external side effects as outboxes or captured deliveries that are reset between tests.
@@ -20,6 +21,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Keep test-only capabilities out of production singletons. Prefer injected ports, local factories, and test adapters over `setForTests` globals or module mocks.
 - Integration tests must use explicit composition or named harness ports for deterministic agent/model behavior; do not use module mocks to alter runtime wiring.
 - Treat module mocks as rare. They should usually target third-party services, SDK clients, nondeterministic system boundaries, or one explicit injected port in a unit/component test.
+- Treat injected ports as product architecture, not test scaffolding. A port should be named for a real adapter boundary such as Slack delivery, state storage, queueing, model transport, sandbox execution, or HTTP; avoid generic `deps` objects that expose imported helper functions.
 - Do not mock logging, Sentry capture, span capture, or tracing helpers to quiet tests or avoid setup. Real telemetry should run through ordinary behavior tests.
 - If telemetry output must be inspected, keep it rare, put it in a dedicated logging contract test under `tests/unit/logging/**`, and mock only the minimal Sentry/span primitive needed to observe stable semantic behavior.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.

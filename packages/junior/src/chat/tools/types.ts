@@ -13,13 +13,11 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { loadSkillsByName, Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
-import type { completeText, getGatewayApiKey } from "@/chat/pi/client";
+import type { completeText } from "@/chat/pi/client";
 
 export interface ImageGenerateToolDeps {
   completeText?: typeof completeText;
   fetch?: typeof fetch;
-  getGatewayApiKey?: typeof getGatewayApiKey;
-  now?: () => number;
 }
 
 export interface WebFetchToolDeps {

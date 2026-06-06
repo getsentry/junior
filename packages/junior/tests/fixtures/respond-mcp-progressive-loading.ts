@@ -466,9 +466,7 @@ const mcpAuthServices = {
   },
   deleteMcpAuthSession: deleteMcpAuthSessionImpl,
   deliverPrivateMessage: state.deliverPrivateMessageMock,
-  formatProviderLabel: (provider) => provider,
   getMcpAuthSession: getMcpAuthSessionImpl,
-  now: Date.now,
   patchMcpAuthSession: patchMcpAuthSessionImpl,
   recordAuthorizationRequested: recordAuthorizationRequestedImpl,
 } satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[2]>;

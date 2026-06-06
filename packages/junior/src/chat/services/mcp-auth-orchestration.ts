@@ -78,9 +78,7 @@ interface McpAuthOrchestrationServices {
   ) => Promise<McpAuthProvider>;
   deleteMcpAuthSession: typeof deleteMcpAuthSession;
   deliverPrivateMessage: typeof deliverPrivateMessage;
-  formatProviderLabel: typeof formatProviderLabel;
   getMcpAuthSession: typeof getMcpAuthSession;
-  now: () => number;
   patchMcpAuthSession: typeof patchMcpAuthSession;
   recordAuthorizationRequested: typeof recordAuthorizationRequested;
 }
@@ -89,9 +87,7 @@ const defaultMcpAuthOrchestrationServices: McpAuthOrchestrationServices = {
   createMcpOAuthClientProvider,
   deleteMcpAuthSession,
   deliverPrivateMessage,
-  formatProviderLabel,
   getMcpAuthSession,
-  now: Date.now,
   patchMcpAuthSession,
   recordAuthorizationRequested,
 };
@@ -190,19 +186,19 @@ export function createMcpAuthOrchestration(
     const reusingPendingLink = canReusePendingAuthLink({
       pendingAuth: deps.pendingAuth,
       kind: "mcp",
-      nowMs: services.now(),
+      nowMs: Date.now(),
       provider,
       requesterId,
       sessionId,
     });
-    const providerLabel = services.formatProviderLabel(provider);
+    const providerLabel = formatProviderLabel(provider);
 
     if (!reusingPendingLink) {
       const delivery = await services.deliverPrivateMessage({
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         userId: authSession.userId,
-        text: `<${authSession.authorizationUrl}|Click here to link your ${services.formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
+        text: `<${authSession.authorizationUrl}|Click here to link your ${providerLabel} MCP access>. Once you've authorized, this thread will continue automatically.`,
       });
       if (!delivery) {
         throw new Error(
@@ -220,7 +216,7 @@ export function createMcpAuthOrchestration(
       sessionId,
       linkSentAtMs: reusingPendingLink
         ? deps.pendingAuth!.linkSentAtMs
-        : services.now(),
+        : Date.now(),
     });
     await services.recordAuthorizationRequested({
       conversationId,

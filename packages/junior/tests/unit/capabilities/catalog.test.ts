@@ -3,88 +3,65 @@ import {
   getCapabilityProvider,
   isKnownCapability,
   listCapabilityProviders,
-  type CapabilityProviderDefinition,
 } from "@/chat/capabilities/catalog";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import type { PluginManifest } from "@/chat/plugins/types";
 
-let currentSignature = "default";
-let currentProviders: CapabilityProviderDefinition[] = [];
-
-const catalogSource = {
-  getPluginCatalogSignature: () => currentSignature,
-  getPluginCapabilityProviders: () =>
-    currentProviders.map(cloneProviderDefinition),
-};
-
-function cloneProviderDefinition(
-  provider: CapabilityProviderDefinition,
-): CapabilityProviderDefinition {
-  return {
-    ...provider,
-    capabilities: [...provider.capabilities],
-    configKeys: [...provider.configKeys],
-    ...(provider.target
-      ? {
-          target: {
-            ...provider.target,
-            ...(provider.target.commandFlags
-              ? { commandFlags: [...provider.target.commandFlags] }
-              : {}),
-          },
-        }
-      : {}),
-  };
+function configureCatalog(manifests: PluginManifest[]): void {
+  setPluginCatalogConfig({
+    inlineManifests: manifests.map((manifest) => ({ manifest })),
+  });
 }
 
 afterEach(() => {
-  currentSignature = "default";
-  currentProviders = [];
+  setPluginCatalogConfig(undefined);
 });
 
 describe("capability catalog", () => {
   it("refreshes cached providers when the plugin catalog signature changes", () => {
-    currentSignature = "refresh:before";
-    currentProviders = [
+    configureCatalog([
       {
-        provider: "demo",
+        name: "demo",
+        description: "Demo plugin",
         capabilities: ["demo.read"],
         configKeys: ["demo.token"],
       },
-    ];
+    ]);
 
-    expect(getCapabilityProvider("demo.read", catalogSource)).toMatchObject({
+    expect(getCapabilityProvider("demo.read")).toMatchObject({
       provider: "demo",
     });
 
-    currentSignature = "refresh:after";
-    currentProviders = [
+    configureCatalog([
       {
-        provider: "other",
+        name: "other",
+        description: "Other plugin",
         capabilities: ["other.read"],
         configKeys: ["other.token"],
       },
-    ];
+    ]);
 
-    expect(getCapabilityProvider("demo.read", catalogSource)).toBeUndefined();
-    expect(isKnownCapability("other.read", catalogSource)).toBe(true);
+    expect(getCapabilityProvider("demo.read")).toBeUndefined();
+    expect(isKnownCapability("other.read")).toBe(true);
   });
 
   it("returns defensive copies from provider accessors", () => {
-    currentSignature = "defensive-copies";
-    currentProviders = [
+    configureCatalog([
       {
-        provider: "demo",
+        name: "demo",
+        description: "Demo plugin",
         capabilities: ["demo.read"],
-        configKeys: ["demo.token"],
+        configKeys: ["demo.token", "demo.repo"],
         target: {
           type: "repo",
-          configKey: "demo.repo",
+          configKey: "repo",
           commandFlags: ["--repo", "-R"],
         },
       },
-    ];
+    ]);
 
-    const listed = listCapabilityProviders(catalogSource);
-    const direct = getCapabilityProvider("demo.read", catalogSource);
+    const listed = listCapabilityProviders();
+    const direct = getCapabilityProvider("demo.read");
 
     expect(direct).toBeDefined();
     if (!direct) {
@@ -102,11 +79,11 @@ describe("capability catalog", () => {
     direct.target!.configKey = "direct.repo";
     direct.target!.commandFlags!.push("--direct");
 
-    expect(listCapabilityProviders(catalogSource)).toEqual([
+    expect(listCapabilityProviders()).toEqual([
       {
         provider: "demo",
         capabilities: ["demo.read"],
-        configKeys: ["demo.token"],
+        configKeys: ["demo.token", "demo.repo"],
         target: {
           type: "repo",
           configKey: "demo.repo",
@@ -114,46 +91,15 @@ describe("capability catalog", () => {
         },
       },
     ]);
-    expect(getCapabilityProvider("demo.read", catalogSource)).toEqual({
+    expect(getCapabilityProvider("demo.read")).toEqual({
       provider: "demo",
       capabilities: ["demo.read"],
-      configKeys: ["demo.token"],
+      configKeys: ["demo.token", "demo.repo"],
       target: {
         type: "repo",
         configKey: "demo.repo",
         commandFlags: ["--repo", "-R"],
       },
-    });
-  });
-
-  it("does not share cache entries between injected sources", () => {
-    const firstSource = {
-      getPluginCatalogSignature: () => "shared-signature",
-      getPluginCapabilityProviders: () => [
-        {
-          provider: "first",
-          capabilities: ["first.read"],
-          configKeys: ["first.token"],
-        },
-      ],
-    };
-    const secondSource = {
-      getPluginCatalogSignature: () => "shared-signature",
-      getPluginCapabilityProviders: () => [
-        {
-          provider: "second",
-          capabilities: ["second.read"],
-          configKeys: ["second.token"],
-        },
-      ],
-    };
-
-    expect(getCapabilityProvider("first.read", firstSource)).toMatchObject({
-      provider: "first",
-    });
-    expect(getCapabilityProvider("first.read", secondSource)).toBeUndefined();
-    expect(getCapabilityProvider("second.read", secondSource)).toMatchObject({
-      provider: "second",
     });
   });
 });

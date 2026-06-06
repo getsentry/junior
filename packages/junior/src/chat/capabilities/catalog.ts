@@ -4,15 +4,6 @@ import {
   getPluginCatalogSignature,
 } from "@/chat/plugins/registry";
 
-interface CapabilityCatalogSource {
-  getPluginCapabilityProviders(): CapabilityProviderDefinition[];
-  getPluginCatalogSignature(): string;
-}
-
-interface CapabilityCatalogDeps extends CapabilityCatalogSource {
-  logInfo: typeof logInfo;
-}
-
 export interface CapabilityProviderTargetDefinition {
   type: string;
   configKey: string;
@@ -33,12 +24,6 @@ let cachedCatalog:
       capabilityToProvider: Map<string, CapabilityProviderDefinition>;
     }
   | undefined;
-
-const defaultCapabilityCatalogDeps: CapabilityCatalogDeps = {
-  getPluginCapabilityProviders,
-  getPluginCatalogSignature,
-  logInfo,
-};
 
 function cloneProviderDefinition(
   provider: CapabilityProviderDefinition,
@@ -81,19 +66,13 @@ function buildCapabilityCatalog(
 }
 
 /** Build (and cache) the capability catalog from registered plugins. */
-function getCapabilityCatalog(source: CapabilityCatalogSource) {
-  const signature = source.getPluginCatalogSignature();
-  if (source !== defaultCapabilityCatalogDeps) {
-    return buildCapabilityCatalog(
-      signature,
-      source.getPluginCapabilityProviders(),
-    );
-  }
+function getCapabilityCatalog() {
+  const signature = getPluginCatalogSignature();
   if (cachedCatalog?.signature === signature) return cachedCatalog;
 
   cachedCatalog = buildCapabilityCatalog(
     signature,
-    source.getPluginCapabilityProviders(),
+    getPluginCapabilityProviders(),
   );
   return cachedCatalog;
 }
@@ -101,43 +80,34 @@ function getCapabilityCatalog(source: CapabilityCatalogSource) {
 /** Return the plugin provider that owns a capability. */
 export function getCapabilityProvider(
   capability: string,
-  source: CapabilityCatalogSource = defaultCapabilityCatalogDeps,
 ): CapabilityProviderDefinition | undefined {
-  const provider =
-    getCapabilityCatalog(source).capabilityToProvider.get(capability);
+  const provider = getCapabilityCatalog().capabilityToProvider.get(capability);
   return provider ? cloneProviderDefinition(provider) : undefined;
 }
 
 /** Check whether a capability is registered by any plugin provider. */
-export function isKnownCapability(
-  capability: string,
-  source: CapabilityCatalogSource = defaultCapabilityCatalogDeps,
-): boolean {
-  return getCapabilityCatalog(source).capabilityToProvider.has(capability);
+export function isKnownCapability(capability: string): boolean {
+  return getCapabilityCatalog().capabilityToProvider.has(capability);
 }
 
 /** List all registered capability providers. */
-export function listCapabilityProviders(
-  source: CapabilityCatalogSource = defaultCapabilityCatalogDeps,
-): CapabilityProviderDefinition[] {
-  return getCapabilityCatalog(source).providers.map(cloneProviderDefinition);
+export function listCapabilityProviders(): CapabilityProviderDefinition[] {
+  return getCapabilityCatalog().providers.map(cloneProviderDefinition);
 }
 
 let catalogLogged = false;
 
 /** Log the capability catalog contents once at startup. */
-export function logCapabilityCatalogLoadedOnce(
-  deps: CapabilityCatalogDeps = defaultCapabilityCatalogDeps,
-): void {
+export function logCapabilityCatalogLoadedOnce(): void {
   if (catalogLogged) return;
   catalogLogged = true;
 
-  const { providers } = getCapabilityCatalog(deps);
+  const { providers } = getCapabilityCatalog();
   const capabilityNames = providers.flatMap((p) => p.capabilities).sort();
   const configKeys = [
     ...new Set(providers.flatMap((p) => p.configKeys)),
   ].sort();
-  deps.logInfo(
+  logInfo(
     "capability_catalog_loaded",
     {},
     {
