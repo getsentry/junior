@@ -53,6 +53,7 @@ import {
   proxySandboxEgressRequest,
 } from "@/chat/sandbox/egress-proxy";
 import {
+  consumeSandboxEgressAuthRequiredSignal,
   createSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
 } from "@/chat/sandbox/egress-session";
@@ -606,6 +607,12 @@ describe("sandbox egress proxy", () => {
       provider: "github",
       reason: "sandbox-egress:github:write",
     });
+    await expect(
+      consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "github",
+      intent: "write",
+    });
   });
 
   it("requests read-intent credentials for GitHub GraphQL queries", async () => {
@@ -1017,6 +1024,12 @@ describe("sandbox egress proxy", () => {
     await expect(response.text()).resolves.toContain(
       "junior-auth-required provider=sentry intent=read 401 unauthorized",
     );
+    await expect(
+      consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "sentry",
+      intent: "read",
+    });
   });
 
   it("clears the cached credential lease so the next request re-issues after upstream 401", async () => {

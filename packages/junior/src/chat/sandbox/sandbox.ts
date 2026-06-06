@@ -10,7 +10,12 @@ import {
   buildSandboxEgressNetworkPolicy,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress-session";
+import {
+  clearSandboxEgressAuthRequiredSignal,
+  consumeSandboxEgressAuthRequiredSignal,
+  createSandboxEgressCredentialToken,
+  type SandboxEgressAuthRequiredSignal,
+} from "@/chat/sandbox/egress-session";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   isSandboxCommandStreamInterruptedError,
@@ -63,6 +68,7 @@ export interface BashCustomCommandResult {
   stderr: string;
   stdout_truncated: boolean;
   stderr_truncated: boolean;
+  auth_required?: SandboxEgressAuthRequiredSignal;
 }
 
 export interface SandboxAcquiredState {
@@ -225,6 +231,8 @@ export function createSandboxExecutor(options?: {
       "app.sandbox.command_length": command.length,
     });
     const executeBash = (await sessionManager.ensureToolExecutors()).bash;
+    const activeEgressId = sessionManager.getSandboxEgressId();
+    await clearSandboxEgressAuthRequiredSignal(activeEgressId);
     const result = await withSandboxSpan(
       "bash",
       "process.exec",
@@ -265,6 +273,10 @@ export function createSandboxExecutor(options?: {
         }
       },
     );
+    const authRequired =
+      result.exitCode !== 0
+        ? await consumeSandboxEgressAuthRequiredSignal(activeEgressId)
+        : undefined;
 
     return {
       result: {
@@ -278,6 +290,7 @@ export function createSandboxExecutor(options?: {
         stderr: result.stderr,
         stdout_truncated: result.stdoutTruncated,
         stderr_truncated: result.stderrTruncated,
+        ...(authRequired ? { auth_required: authRequired } : {}),
       } as T,
     };
   };

@@ -91,6 +91,7 @@ import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
+  setSandboxEgressAuthRequiredSignal,
 } from "@/chat/sandbox/egress-session";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -855,6 +856,98 @@ describe("createSandboxExecutor", () => {
       "export SENTRY_AUTH_TOKEN='host_managed_credential'",
     );
     expect(invocation.args?.[1]).toContain("sentry-cli issues list");
+  });
+
+  it("clears stale sandbox egress auth signals before running bash commands", async () => {
+    const sandbox = makeSandbox("sbx_stale_auth_signal");
+    sandbox.runCommand.mockImplementationOnce(async () => ({
+      exitCode: 1,
+      stdout: async () => "",
+      stderr: async () => "command-controlled output",
+    }));
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    await setSandboxEgressAuthRequiredSignal(
+      {
+        credentials: { actor: { type: "user", userId: "U123" } },
+        egressId: "sbx_stale_auth_signal_session",
+        expiresAtMs: Date.now() + 60_000,
+        contextId: "ctx-stale",
+      },
+      { provider: "github", intent: "write" },
+    );
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_stale_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<{
+      auth_required?: unknown;
+      exit_code: number;
+    }>({
+      toolName: "bash",
+      input: {
+        command: "printf stale",
+      },
+    });
+
+    expect(response.result.exit_code).toBe(1);
+    expect(response.result.auth_required).toBeUndefined();
+  });
+
+  it("attaches trusted sandbox egress auth signals to failed bash results", async () => {
+    const sandbox = makeSandbox("sbx_fresh_auth_signal");
+    sandbox.runCommand.mockImplementationOnce(async () => {
+      await setSandboxEgressAuthRequiredSignal(
+        {
+          credentials: { actor: { type: "user", userId: "U123" } },
+          egressId: "sbx_fresh_auth_signal_session",
+          expiresAtMs: Date.now() + 60_000,
+          contextId: "ctx-fresh",
+        },
+        { provider: "github", intent: "write" },
+      );
+      return {
+        exitCode: 1,
+        stdout: async () => "",
+        stderr: async () =>
+          "junior-auth-required provider=github intent=write 401 unauthorized",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_fresh_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<{
+      auth_required?: unknown;
+      exit_code: number;
+    }>({
+      toolName: "bash",
+      input: {
+        command: "gh issue create",
+      },
+    });
+
+    expect(response.result.exit_code).toBe(1);
+    expect(response.result.auth_required).toMatchObject({
+      provider: "github",
+      intent: "write",
+    });
   });
 
   it("configures lazy system actor credential context for sandbox egress", async () => {

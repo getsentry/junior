@@ -96,7 +96,6 @@ function isCommandAuthFailure(details: unknown): details is {
   }
 
   return [
-    /\bjunior-auth-required\b/,
     /\b401\b/,
     /\bunauthorized\b/,
     /\bbad credentials\b/,
@@ -148,67 +147,38 @@ function isGitHubSmartHttpAuthFailure(
   return /\bgzip:\s*invalid header\b/.test(text);
 }
 
-function isGitHubSmartHttpWriteCommand(command: string): boolean {
-  const words = commandWords(command);
-  if (words[0] === "git-receive-pack") {
-    return true;
-  }
-  if (words[0] !== "git") {
-    return false;
-  }
-
-  let index = 1;
-  while (index < words.length) {
-    const word = words[index];
-    if (!word) {
-      break;
-    }
-    if (word === "-c" || word === "-C") {
-      index += 2;
-      continue;
-    }
-    if (word.startsWith("-c") && word.includes("=")) {
-      index += 1;
-      continue;
-    }
-    if (
-      word === "--git-dir" ||
-      word === "--work-tree" ||
-      word === "--namespace"
-    ) {
-      index += 2;
-      continue;
-    }
-    if (
-      word.startsWith("--git-dir=") ||
-      word.startsWith("--work-tree=") ||
-      word.startsWith("--namespace=")
-    ) {
-      index += 1;
-      continue;
-    }
-    return word === "push";
-  }
-
-  return false;
-}
-
-function explicitAuthRequiredMarker(details: unknown):
+function trustedAuthRequiredSignal(details: unknown):
   | {
       intent?: "read" | "write";
       provider: string;
     }
   | undefined {
-  const match = /\bjunior-auth-required\s+provider=([a-z0-9-]+)\b/.exec(
-    commandText(details).toLowerCase(),
-  );
-  const provider = match?.[1];
-  if (!provider) {
+  if (!details || typeof details !== "object") {
     return undefined;
   }
-  const intent = /\bintent=(read|write)\b/.exec(
-    commandText(details).toLowerCase(),
-  )?.[1] as "read" | "write" | undefined;
+  const signal = (details as { auth_required?: unknown }).auth_required;
+  if (!signal || typeof signal !== "object") {
+    return undefined;
+  }
+  const record = signal as {
+    createdAtMs?: unknown;
+    intent?: unknown;
+    provider?: unknown;
+  };
+  if (typeof record.provider !== "string" || !record.provider) {
+    return undefined;
+  }
+  if (
+    typeof record.createdAtMs !== "number" ||
+    !Number.isFinite(record.createdAtMs)
+  ) {
+    return undefined;
+  }
+  const provider = record.provider.toLowerCase();
+  const intent =
+    record.intent === "read" || record.intent === "write"
+      ? record.intent
+      : undefined;
   return {
     provider,
     ...(intent ? { intent } : {}),
@@ -398,10 +368,10 @@ export function createPluginAuthOrchestration(
   return {
     handleCommandFailure: async (input) => {
       const providers = registeredProviderNames();
-      const explicitMarker = explicitAuthRequiredMarker(input.details);
+      const authSignal = trustedAuthRequiredSignal(input.details);
       const provider =
-        explicitMarker && providers.includes(explicitMarker.provider)
-          ? explicitMarker.provider
+        authSignal && providers.includes(authSignal.provider)
+          ? authSignal.provider
           : providers.find((availableProvider) =>
               commandTargetsProvider(
                 availableProvider,
@@ -414,6 +384,7 @@ export function createPluginAuthOrchestration(
       }
 
       const authFailure =
+        Boolean(authSignal) ||
         isCommandAuthFailure(input.details) ||
         isGitHubSmartHttpAuthFailure(provider, input.command, input.details);
       if (!authFailure) {
@@ -435,14 +406,7 @@ export function createPluginAuthOrchestration(
       if (
         provider === "github" &&
         credentialType === "github-app" &&
-        explicitMarker?.intent !== "write" &&
-        !(
-          isGitHubSmartHttpAuthFailure(
-            provider,
-            input.command,
-            input.details,
-          ) && isGitHubSmartHttpWriteCommand(input.command)
-        )
+        authSignal?.intent !== "write"
       ) {
         throw buildCredentialFailureError(provider, input.command);
       }

@@ -109,6 +109,7 @@ interface SandboxSessionManager {
   configureSkills(skills: SkillMetadata[]): void;
   configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
+  getSandboxEgressId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   createSandbox(): Promise<SandboxInstance>;
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
@@ -871,6 +872,9 @@ export function createSandboxSessionManager(options?: {
     },
     getSandboxId() {
       return sandbox ? sandbox.sandboxId : sandboxIdHint;
+    },
+    getSandboxEgressId() {
+      return sandbox?.sandboxEgressId;
     },
     getDependencyProfileHash() {
       return dependencyProfileHash;

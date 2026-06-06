@@ -13,6 +13,7 @@ export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
 const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
 const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
+const SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX = "sandbox-egress-auth-required";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -30,6 +31,12 @@ export interface SandboxEgressCredentialLease {
   headerTransforms: CredentialHeaderTransform[];
 }
 
+export interface SandboxEgressAuthRequiredSignal {
+  provider: string;
+  intent: CredentialIntent;
+  createdAtMs: number;
+}
+
 function leaseKey(
   provider: string,
   intent: CredentialIntent,
@@ -39,6 +46,10 @@ function leaseKey(
   const actorKey =
     actor.type === "user" ? `user:${actor.userId}` : `system:${actor.id}`;
   return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${intent}:${actorKey}:${context.egressId}:${context.contextId}`;
+}
+
+function authSignalKey(egressId: string): string {
+  return `${SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX}:${egressId}`;
 }
 
 function getSandboxEgressSecret(): string {
@@ -139,6 +150,29 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
+function parseAuthRequiredSignal(
+  value: unknown,
+): SandboxEgressAuthRequiredSignal | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Partial<SandboxEgressAuthRequiredSignal>;
+  if (
+    typeof record.provider !== "string" ||
+    !record.provider ||
+    (record.intent !== "read" && record.intent !== "write") ||
+    typeof record.createdAtMs !== "number" ||
+    !Number.isFinite(record.createdAtMs)
+  ) {
+    return undefined;
+  }
+  return {
+    provider: record.provider,
+    intent: record.intent,
+    createdAtMs: record.createdAtMs,
+  };
+}
+
 /** Create a signed actor/sandbox context token for lazy sandbox egress auth. */
 export function createSandboxEgressCredentialToken(input: {
   credentials: CredentialContext;
@@ -228,4 +262,49 @@ export async function clearSandboxEgressCredentialLease(
   const state = getStateAdapter();
   await state.connect();
   await state.delete(leaseKey(provider, intent, context));
+}
+
+/** Record that host-side sandbox egress returned an auth-required response. */
+export async function setSandboxEgressAuthRequiredSignal(
+  context: SandboxEgressCredentialContext,
+  signal: Omit<SandboxEgressAuthRequiredSignal, "createdAtMs">,
+): Promise<void> {
+  const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
+  const state = getStateAdapter();
+  await state.connect();
+  await state.set(
+    authSignalKey(context.egressId),
+    {
+      ...signal,
+      createdAtMs: Date.now(),
+    },
+    ttlMs,
+  );
+}
+
+/** Remove any pending host-side sandbox egress auth signal for a command. */
+export async function clearSandboxEgressAuthRequiredSignal(
+  egressId: string | undefined,
+): Promise<void> {
+  if (!egressId) {
+    return;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  await state.delete(authSignalKey(egressId));
+}
+
+/** Consume the host-side sandbox egress auth signal produced during a command. */
+export async function consumeSandboxEgressAuthRequiredSignal(
+  egressId: string | undefined,
+): Promise<SandboxEgressAuthRequiredSignal | undefined> {
+  if (!egressId) {
+    return undefined;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  const key = authSignalKey(egressId);
+  const signal = parseAuthRequiredSignal(await state.get(key));
+  await state.delete(key);
+  return signal;
 }

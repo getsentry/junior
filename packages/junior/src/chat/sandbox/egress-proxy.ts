@@ -18,6 +18,7 @@ import {
   getSandboxEgressCredentialLease,
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
+  setSandboxEgressAuthRequiredSignal,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialLease,
   type SandboxEgressCredentialContext,
@@ -555,6 +556,10 @@ export async function proxySandboxEgressRequest(
     lease = await credentialLease(provider, intent, credentialContext);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
+      await setSandboxEgressAuthRequiredSignal(credentialContext, {
+        provider: error.provider,
+        intent,
+      });
       logWarn(
         "sandbox_egress_credential_unavailable",
         {},
@@ -692,6 +697,10 @@ export async function proxySandboxEgressRequest(
       credentialContext,
     );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
+      await setSandboxEgressAuthRequiredSignal(credentialContext, {
+        provider,
+        intent,
+      });
       await upstream.body?.cancel().catch(() => undefined);
       return new Response(
         `junior-auth-required provider=${provider} intent=${intent} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
