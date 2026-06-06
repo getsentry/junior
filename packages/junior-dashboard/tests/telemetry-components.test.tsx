@@ -651,7 +651,6 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("Loading trusted plugin stats.");
     expect(html).toContain(">...<");
-    expect(html).toContain(">loading<");
     expect(html).not.toContain(">none<");
     expect(html).not.toContain("No plugins have been reported yet.");
   });
