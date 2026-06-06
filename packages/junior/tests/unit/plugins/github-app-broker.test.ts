@@ -39,6 +39,19 @@ const TEST_OAUTH_MANIFEST: PluginManifest = {
     clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
     authorizeEndpoint: "https://github.com/login/oauth/authorize",
     tokenEndpoint: "https://github.com/login/oauth/access_token",
+    treatEmptyScopeAsUnreported: true,
+  },
+};
+
+const TEST_OAUTH_MANIFEST_WITH_EXTRA_SCOPES: PluginManifest = {
+  ...TEST_MANIFEST,
+  oauth: {
+    clientIdEnv: "GITHUB_APP_CLIENT_ID",
+    clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+    authorizeEndpoint: "https://github.com/login/oauth/authorize",
+    tokenEndpoint: "https://github.com/login/oauth/access_token",
+    scope: "read:org repo",
+    treatEmptyScopeAsUnreported: true,
   },
 };
 const USER_CREDENTIAL_CONTEXT = {
@@ -568,6 +581,36 @@ describe("github app credential broker", () => {
       }),
     ).rejects.toBeInstanceOf(CredentialUnavailableError);
     expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("accepts stored GitHub user token whose scope was populated via treatEmptyScopeAsUnreported fallback", async () => {
+    setupValidEnv();
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("installation token should not be requested");
+    }) as unknown as typeof fetch;
+    // Callback stores token with fallback scope since GitHub App tokens return scope: ""
+    const store = userTokenStore({
+      accessToken: "user-token",
+      refreshToken: "user-refresh-token",
+      expiresAt: Date.now() + 30 * 60 * 1000,
+      scope: "read:org repo",
+    });
+
+    const broker = createGitHubAppBroker(
+      TEST_OAUTH_MANIFEST_WITH_EXTRA_SCOPES,
+      TEST_CREDENTIALS,
+      { userTokenStore: store },
+    );
+    const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
+      intent: "write",
+      reason: "test:extra-scopes-fallback-scope",
+    });
+
+    expect(lease.headerTransforms?.[0]).toEqual({
+      domain: "api.github.com",
+      headers: { Authorization: "Bearer user-token" },
+    });
   });
 
   it("refreshes expiring GitHub user tokens before write leases", async () => {

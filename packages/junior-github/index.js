@@ -169,6 +169,9 @@ export function githubPlugin(options = {}) {
         clientSecretEnv,
         authorizeEndpoint: "https://github.com/login/oauth/authorize",
         tokenEndpoint: "https://github.com/login/oauth/access_token",
+        // GitHub App user-to-server tokens always return scope: "" regardless
+        // of what was requested; treat empty response scope as unreported.
+        treatEmptyScopeAsUnreported: true,
         ...(userScopes.length ? { scope: userScopes.join(" ") } : {}),
       },
       commandEnv: {

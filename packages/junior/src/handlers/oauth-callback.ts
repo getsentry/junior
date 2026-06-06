@@ -623,6 +623,7 @@ export async function GET(
     parsedTokenResponse = parseOAuthTokenResponse(
       tokenData,
       providerConfig.scope,
+      { treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported },
     );
   } catch {
     return htmlErrorResponse(

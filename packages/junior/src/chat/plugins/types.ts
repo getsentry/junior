@@ -6,6 +6,14 @@ export interface PluginOAuthConfig {
   authorizeEndpoint: string;
   tokenEndpoint: string;
   scope?: string;
+  /**
+   * Set true when the provider returns an empty scope string even for authorized
+   * grants (e.g. GitHub App user-to-server tokens always return `scope: ""`
+   * regardless of what was requested). When enabled, an empty response scope
+   * falls back to the configured `scope` value instead of being treated as
+   * "no scopes granted".
+   */
+  treatEmptyScopeAsUnreported?: boolean;
   authorizeParams?: Record<string, string>;
   tokenAuthMethod?: "body" | "basic";
   tokenExtraHeaders?: Record<string, string>;

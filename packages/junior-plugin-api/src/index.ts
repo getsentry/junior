@@ -381,6 +381,14 @@ export interface JuniorPluginOAuthConfig {
   clientIdEnv: string;
   clientSecretEnv: string;
   scope?: string;
+  /**
+   * Set true when the provider returns an empty scope string even for authorized
+   * grants (e.g. GitHub App user-to-server tokens always return `scope: ""`
+   * regardless of what was requested). When enabled, an empty response scope
+   * falls back to the configured `scope` value instead of being treated as
+   * "no scopes granted".
+   */
+  treatEmptyScopeAsUnreported?: boolean;
   tokenAuthMethod?: "body" | "basic";
   tokenEndpoint: string;
   tokenExtraHeaders?: Record<string, string>;

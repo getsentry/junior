@@ -217,7 +217,9 @@ async function refreshUserAccessToken(
   }
 
   const data = (await response.json()) as Record<string, unknown>;
-  return parseOAuthTokenResponse(data, fallbackScope);
+  return parseOAuthTokenResponse(data, fallbackScope, {
+    treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
+  });
 }
 
 function leaseExpiry(expiresAt?: number): number {

@@ -58,6 +58,7 @@ describe("github plugin", () => {
 
     expect(plugin.manifest.capabilities).toBeUndefined();
     expect(plugin.manifest.oauth?.scope).toBeUndefined();
+    expect(plugin.manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
   it("maps explicit GitHub App permissions and extra user OAuth scopes", () => {

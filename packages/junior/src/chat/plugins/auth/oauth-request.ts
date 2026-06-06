@@ -72,6 +72,7 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
 export function parseOAuthTokenResponse(
   data: Record<string, unknown>,
   fallbackScope?: string,
+  options?: { treatEmptyScopeAsUnreported?: boolean },
 ): {
   accessToken: string;
   refreshToken: string;
@@ -88,7 +89,11 @@ export function parseOAuthTokenResponse(
     if (typeof responseScope !== "string") {
       throw new Error("OAuth token response returned invalid scope");
     }
-    scope = normalizeOAuthScope(responseScope);
+    const normalized = normalizeOAuthScope(responseScope);
+    scope =
+      normalized !== undefined || !options?.treatEmptyScopeAsUnreported
+        ? normalized
+        : normalizeOAuthScope(fallbackScope);
   } else {
     scope = normalizeOAuthScope(fallbackScope);
   }
