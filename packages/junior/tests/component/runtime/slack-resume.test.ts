@@ -53,8 +53,6 @@ describe("Slack resume runtime", () => {
         text: "default resumed answer",
         diagnostics: makeResumeDiagnostics(),
       })),
-      getAgentTurnSessionRecord:
-        testbed.turnSessionStore.getAgentTurnSessionRecord,
       getStateAdapter: testbed.getStateAdapter,
       logException: logExceptionMock,
       postSlackMessage: postMessageMock,

@@ -1,24 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   listAgentTurnSessionSummaries,
   recordAgentTurnSessionSummary,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createJuniorReporting } from "@/reporting";
 
-const SYSTEM_MESSAGE = {
+const SYSTEM_MESSAGE = expect.objectContaining({
   role: "system",
-  parts: [{ type: "text", text: "[system prompt]" }],
-};
+  parts: [
+    expect.objectContaining({
+      type: "text",
+      text: expect.stringContaining("You are a Slack-based helper assistant"),
+    }),
+  ],
+});
 
 const ORIGINAL_ENV = { ...process.env };
 
 function createReporting() {
-  return createJuniorReporting({
-    systemPrompt: () => "[system prompt]",
-  });
+  return createJuniorReporting();
 }
 
 describe("dashboard reporting", () => {

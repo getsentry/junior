@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createOauthResumeSlackFixture,
-  makeResumeDiagnostics,
-} from "../../fixtures/oauth-resume-slack";
+import { createOauthResumeSlackFixture } from "../../fixtures/oauth-resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
@@ -28,19 +25,12 @@ describe("oauth resume slack delivery", () => {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
-        requester: { userId: "U123" },
+        destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
         successfulAssistantReply(
           "The budget deadline you mentioned earlier was Friday.",
-          {
-            diagnostics: makeResumeDiagnostics("success", {
-              durationMs: 842,
-              usage: {
-                totalTokens: 1234,
-              },
-            }),
-          },
         ),
     });
 
