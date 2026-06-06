@@ -232,6 +232,7 @@ const oauthSourceSchema = z
         error: 'must be "body" or "basic"',
       })
       .optional(),
+    "treat-empty-scope-as-unreported": z.boolean().optional(),
   })
   .passthrough();
 
@@ -1213,6 +1214,9 @@ function parseManifestSource(
         ? { tokenAuthMethod: result.data["token-auth-method"] }
         : {}),
       ...(tokenExtraHeaders ? { tokenExtraHeaders } : {}),
+      ...(result.data["treat-empty-scope-as-unreported"]
+        ? { treatEmptyScopeAsUnreported: true }
+        : {}),
     };
   }
 

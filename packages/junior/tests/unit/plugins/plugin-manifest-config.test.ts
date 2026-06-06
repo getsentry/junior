@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parsePluginManifest } from "@/chat/plugins/manifest";
+import { parseInlinePluginManifest, parsePluginManifest } from "@/chat/plugins/manifest";
+import type { PluginManifest } from "@/chat/plugins/types";
 
 describe("plugin manifest config", () => {
   it("applies manifest config before validation", () => {
@@ -72,6 +73,61 @@ describe("plugin manifest config", () => {
         ? manifest.credentials.systemReadPermissions
         : undefined,
     ).toEqual(["contents", "pull_requests"]);
+  });
+
+  it("parses treat-empty-scope-as-unreported from YAML oauth block", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: github",
+        "description: GitHub",
+        "credentials:",
+        "  type: github-app",
+        "  domains:",
+        "    - api.github.com",
+        "    - github.com",
+        "  auth-token-env: GITHUB_TOKEN",
+        "  app-id-env: GITHUB_APP_ID",
+        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+        "  installation-id-env: GITHUB_INSTALLATION_ID",
+        "oauth:",
+        "  client-id-env: GITHUB_APP_CLIENT_ID",
+        "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
+        "  authorize-endpoint: https://github.com/login/oauth/authorize",
+        "  token-endpoint: https://github.com/login/oauth/access_token",
+        "  treat-empty-scope-as-unreported: true",
+      ].join("\n"),
+      "/plugins/github",
+    );
+
+    expect(manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
+  });
+
+  it("round-trips treatEmptyScopeAsUnreported through inline manifest parsing", () => {
+    const input: PluginManifest = {
+      name: "github",
+      description: "GitHub",
+      capabilities: [],
+      configKeys: [],
+      credentials: {
+        type: "github-app",
+        domains: ["api.github.com"],
+        authTokenEnv: "GITHUB_TOKEN",
+        appIdEnv: "GITHUB_APP_ID",
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+      },
+      oauth: {
+        clientIdEnv: "GITHUB_APP_CLIENT_ID",
+        clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+        authorizeEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
+        treatEmptyScopeAsUnreported: true,
+      },
+    };
+
+    const parsed = parseInlinePluginManifest(input, "/plugins/github");
+
+    expect(parsed.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
   it("allows GitHub App credentials to declare user OAuth", () => {

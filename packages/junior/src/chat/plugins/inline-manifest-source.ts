@@ -91,6 +91,11 @@ function inlineOauthSource(oauth: PluginManifest["oauth"]): unknown {
   setDefined(result, "authorize-params", oauth.authorizeParams);
   setDefined(result, "token-auth-method", oauth.tokenAuthMethod);
   setDefined(result, "token-extra-headers", oauth.tokenExtraHeaders);
+  setDefined(
+    result,
+    "treat-empty-scope-as-unreported",
+    oauth.treatEmptyScopeAsUnreported,
+  );
   return result;
 }
 

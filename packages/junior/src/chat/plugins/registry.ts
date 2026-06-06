@@ -505,6 +505,9 @@ export function getPluginOAuthConfig(
     ...(oauth.tokenExtraHeaders
       ? { tokenExtraHeaders: { ...oauth.tokenExtraHeaders } }
       : {}),
+    ...(oauth.treatEmptyScopeAsUnreported
+      ? { treatEmptyScopeAsUnreported: true }
+      : {}),
     callbackPath: `/api/oauth/callback/${plugin.manifest.name}`,
   };
 }
