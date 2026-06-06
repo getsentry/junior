@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { destinationKey, parseDestination } from "@/chat/destination";
 import type { ConversationQueueMessage } from "./queue";
 
 const CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT =
@@ -24,6 +25,7 @@ function buildSignedPayload(
     CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT,
     signedAtMs,
     message.conversationId,
+    destinationKey(message.destination),
   ].join(":");
 }
 
@@ -53,9 +55,11 @@ function parseSignedConversationQueueMessage(
     return undefined;
   }
   const record = value as Record<string, unknown>;
+  const destination = parseDestination(record.destination);
   if (
     typeof record.conversationId !== "string" ||
     !record.conversationId.trim() ||
+    !destination ||
     record.signatureVersion !== CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION ||
     typeof record.signedAtMs !== "number" ||
     !Number.isFinite(record.signedAtMs) ||
@@ -67,6 +71,7 @@ function parseSignedConversationQueueMessage(
 
   return {
     conversationId: record.conversationId,
+    destination,
     signature: record.signature,
     signatureVersion: CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION,
     signedAtMs: record.signedAtMs,
@@ -114,5 +119,8 @@ export function verifySignedConversationQueueMessage(
     return undefined;
   }
 
-  return { conversationId: message.conversationId };
+  return {
+    conversationId: message.conversationId,
+    destination: message.destination,
+  };
 }

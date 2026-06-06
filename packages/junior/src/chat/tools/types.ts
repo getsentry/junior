@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -57,6 +58,9 @@ export interface ToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
+
+  /** Runtime-owned destination for provider-neutral side effects. */
+  destination?: Destination;
 
   requester?: {
     userId?: string;

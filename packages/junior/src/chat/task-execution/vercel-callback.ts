@@ -1,6 +1,7 @@
 import { handleCallback } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
+import { parseDestination } from "@/chat/destination";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
 import { getVercelConversationWorkQueue } from "./vercel-queue";
@@ -30,17 +31,24 @@ export interface VercelConversationWorkCallbackOptions extends ProcessConversati
 function parseConversationQueueMessage(
   message: unknown,
 ): ConversationQueueMessage {
+  const destination = parseDestination(
+    (message as { destination?: unknown } | undefined)?.destination,
+  );
   if (
     !message ||
     typeof message !== "object" ||
     typeof (message as { conversationId?: unknown }).conversationId !==
       "string" ||
-    !(message as { conversationId: string }).conversationId.trim()
+    !(message as { conversationId: string }).conversationId.trim() ||
+    !destination
   ) {
-    throw new Error("Conversation queue message is missing conversationId");
+    throw new Error(
+      "Conversation queue message is missing destination context",
+    );
   }
   return {
     conversationId: (message as { conversationId: string }).conversationId,
+    destination,
   };
 }
 
@@ -60,7 +68,7 @@ export async function processConversationQueueMessage(
   options: ProcessConversationQueueMessageOptions,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
-  return await processConversationWork(parsed.conversationId, {
+  return await processConversationWork(parsed, {
     checkInIntervalMs: options.checkInIntervalMs,
     nowMs: options.nowMs,
     queue: options.queue ?? getVercelConversationWorkQueue(),

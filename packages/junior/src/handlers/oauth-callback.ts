@@ -4,6 +4,7 @@ import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   formatProviderLabel,
+  parseOAuthStatePayload,
   type OAuthStatePayload,
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
@@ -168,10 +169,12 @@ async function resumeOAuthSessionRecordTurn(
     !stored.resumeConversationId ||
     !stored.resumeSessionId ||
     !stored.channelId ||
+    !stored.destination ||
     !stored.threadTs
   ) {
     return false;
   }
+  const destination = stored.destination;
 
   const sessionRecord = await getAgentTurnSessionRecord(
     stored.resumeConversationId,
@@ -339,6 +342,7 @@ async function resumeOAuthSessionRecordTurn(
             },
           },
           requester,
+          destination,
           correlation: {
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,
@@ -417,6 +421,7 @@ async function resumeOAuthSessionRecordTurn(
           }
           await scheduleTurnTimeoutResume({
             conversationId: stored.resumeConversationId!,
+            destination,
             sessionId: lockedSessionId,
             expectedVersion: version,
           });
@@ -431,7 +436,14 @@ async function resumeOAuthSessionRecordTurn(
 async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
 ): Promise<void> {
-  if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
+  if (
+    !stored.pendingMessage ||
+    !stored.channelId ||
+    !stored.destination ||
+    !stored.threadTs
+  ) {
+    return;
+  }
 
   const threadId = `slack:${stored.channelId}:${stored.threadTs}`;
   const conversation = coerceThreadConversationState(
@@ -455,6 +467,13 @@ async function resumePendingOAuthMessage(
         actor: { type: "user", userId: stored.userId },
       },
       requester,
+      destination: stored.destination,
+      correlation: {
+        conversationId: threadId,
+        channelId: stored.channelId,
+        threadTs: stored.threadTs,
+        requesterId: stored.userId,
+      },
       conversationContext,
       piMessages: conversation.piMessages,
       configuration: stored.configuration,
@@ -524,7 +543,7 @@ export async function GET(
 
   const stateAdapter = getStateAdapter();
   const stateKey = `oauth-state:${state}`;
-  const stored = await stateAdapter.get<OAuthStatePayload>(stateKey);
+  const stored = parseOAuthStatePayload(await stateAdapter.get(stateKey));
   if (!stored) {
     return htmlErrorResponse(
       "Link expired",

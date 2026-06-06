@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
 
 function buildSession(
   authSessionId: string,
@@ -8,6 +13,7 @@ function buildSession(
     provider: string;
     userId: string;
     conversationId: string;
+    destination: typeof SLACK_DESTINATION;
     sessionId: string;
     userMessage: string;
   }> = {},
@@ -17,6 +23,7 @@ function buildSession(
     provider: overrides.provider ?? "notion",
     userId: overrides.userId ?? "U123",
     conversationId: overrides.conversationId ?? "conversation-1",
+    destination: overrides.destination ?? SLACK_DESTINATION,
     sessionId: overrides.sessionId ?? `turn-${authSessionId}`,
     userMessage: overrides.userMessage ?? "test notion skill",
     createdAtMs: 1,

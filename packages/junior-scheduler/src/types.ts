@@ -1,4 +1,7 @@
-import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+import type {
+  AgentPluginCredentialSubject,
+  Destination,
+} from "@sentry/junior-plugin-api";
 
 export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
 
@@ -26,18 +29,10 @@ export const SCHEDULED_TASK_SYSTEM_ACTOR = Object.freeze({
   id: "scheduled-task",
 } satisfies ScheduledTaskExecutionActor);
 
-export interface ScheduledTaskDestination {
-  platform: "slack";
-  teamId: string;
-  channelId: string;
-}
-
 export interface ScheduledTaskConversationAccess {
   audience: "direct" | "group" | "channel";
   visibility: "private" | "public" | "unknown";
 }
-
-export type ScheduledTaskCredentialSubject = AgentPluginCredentialSubject;
 
 export type ScheduledCalendarFrequency =
   | "daily"
@@ -76,8 +71,8 @@ export interface ScheduledTask {
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
-  credentialSubject?: ScheduledTaskCredentialSubject;
-  destination: ScheduledTaskDestination;
+  credentialSubject?: AgentPluginCredentialSubject;
+  destination: Destination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;
   nextRunAtMs?: number;

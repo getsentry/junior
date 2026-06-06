@@ -287,6 +287,7 @@ export async function runAgentDispatchSlice(
       conversationContext,
       artifactState: artifacts,
       piMessages: conversation.piMessages,
+      destination: dispatch.destination,
       correlation: {
         conversationId,
         threadId: conversationId,

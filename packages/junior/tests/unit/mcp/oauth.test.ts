@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
 
 function buildPlugin() {
   return {
@@ -52,6 +57,7 @@ describe("createMcpOAuthClientProvider", () => {
     const firstProvider = await createMcpOAuthClientProvider({
       provider: "demo",
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId: "turn-1",
       userId: "U123",
       userMessage: "use /demo",
@@ -66,6 +72,7 @@ describe("createMcpOAuthClientProvider", () => {
       provider: "demo",
       userId: "U123",
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId: "turn-1",
       userMessage: "use /demo",
       channelId: "C123",
@@ -81,6 +88,7 @@ describe("createMcpOAuthClientProvider", () => {
     const reusedProvider = await createMcpOAuthClientProvider({
       provider: "demo",
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId: "turn-1",
       userId: "U123",
       userMessage: "use /demo",
@@ -99,6 +107,7 @@ describe("createMcpOAuthClientProvider", () => {
       provider: "demo",
       userId: "U123",
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId: "turn-1",
       userMessage: "use /demo",
       channelId: "C123",

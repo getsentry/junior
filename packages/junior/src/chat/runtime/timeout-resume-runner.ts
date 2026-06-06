@@ -208,6 +208,7 @@ export async function resumeTimedOutTurn(
             },
           },
           requester,
+          destination: payload.destination,
           correlation: {
             conversationId: payload.conversationId,
             turnId: payload.sessionId,
@@ -278,6 +279,7 @@ export async function resumeTimedOutTurn(
 
           await scheduleTurnTimeoutResume({
             conversationId: payload.conversationId,
+            destination: payload.destination,
             sessionId: payload.sessionId,
             expectedVersion: version,
           });

@@ -16,8 +16,6 @@ export type {
   ScheduledRunStatus,
   ScheduledTask,
   ScheduledTaskConversationAccess,
-  ScheduledTaskCredentialSubject,
-  ScheduledTaskDestination,
   ScheduledTaskExecutionActor,
   ScheduledTaskPrincipal,
   ScheduledTaskRecurrence,

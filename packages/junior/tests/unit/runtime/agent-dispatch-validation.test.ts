@@ -65,6 +65,38 @@ describe("agent dispatch validation", () => {
     expect(() => validateDispatchOptions(validOptions)).not.toThrow();
   });
 
+  it("rejects malformed dispatch destination payloads", () => {
+    expect(() =>
+      validateDispatchOptions(
+        undefined as unknown as Parameters<typeof validateDispatchOptions>[0],
+      ),
+    ).toThrow("Dispatch options are required");
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        destination: undefined as unknown as typeof validOptions.destination,
+      }),
+    ).toThrow("Dispatch destination platform must be slack");
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        destination: {
+          ...validOptions.destination,
+          threadTs: "1700000000.000",
+        } as typeof validOptions.destination,
+      }),
+    ).toThrow("Dispatch destination must not include unknown fields");
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        destination: {
+          ...validOptions.destination,
+          channelId: "slack:C123:1700000000.000",
+        },
+      }),
+    ).toThrow("Dispatch destination channelId must be a Slack channel id");
+  });
+
   it("bounds durable idempotency and metadata keys", () => {
     expect(() =>
       validateDispatchOptions({
@@ -72,6 +104,13 @@ describe("agent dispatch validation", () => {
         idempotencyKey: "x".repeat(513),
       }),
     ).toThrow("Dispatch idempotencyKey exceeds the maximum length");
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        metadata: null as unknown as Record<string, string>,
+      }),
+    ).toThrow("Dispatch metadata values must be strings");
 
     expect(() =>
       validateDispatchOptions({
@@ -84,6 +123,15 @@ describe("agent dispatch validation", () => {
   });
 
   it("requires delegated credential subjects to target direct Slack conversations", () => {
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        credentialSubject: null as unknown as NonNullable<
+          Parameters<typeof validateDispatchOptions>[0]["credentialSubject"]
+        >,
+      }),
+    ).toThrow("Dispatch credentialSubject type must be user");
+
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
@@ -184,6 +232,16 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject must match the private direct Slack destination",
     );
 
+    const unboundRuntimeSubject = {
+      type: "user",
+      userId: "U123",
+      allowedWhen: "private-direct-conversation",
+    } as unknown as NonNullable<
+      Parameters<
+        typeof verifyDispatchCredentialSubjectAccess
+      >[0]["credentialSubject"]
+    >;
+
     await expect(
       verifyDispatchCredentialSubjectAccess({
         ...validOptions,
@@ -191,11 +249,7 @@ describe("agent dispatch validation", () => {
           ...validOptions.destination,
           channelId: "D123",
         },
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        } as any,
+        credentialSubject: unboundRuntimeSubject,
       }),
     ).rejects.toThrow(
       "Dispatch credentialSubject must match the private direct Slack destination",

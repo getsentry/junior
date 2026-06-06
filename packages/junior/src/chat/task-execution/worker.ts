@@ -1,7 +1,9 @@
 import type { StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
+import { sameDestination } from "@/chat/destination";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
-import type { ConversationWorkQueue } from "./queue";
+import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
 import {
   checkInConversationWork,
   completeConversationWork,
@@ -22,6 +24,7 @@ export const CONVERSATION_WORK_SOFT_YIELD_AFTER_MS = 240_000;
 export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
+  destination: Destination;
   drainMailbox(
     inject: (messages: InboundMessageRecord[]) => Promise<void>,
   ): Promise<InboundMessageRecord[]>;
@@ -66,13 +69,17 @@ function nudgeIdempotencyKey(
 
 async function sendWakeNudge(args: {
   conversationId: string;
+  destination: Destination;
   delayMs?: number;
   idempotencyKey: string;
   nowMs: number;
   options: ProcessConversationWorkOptions;
 }): Promise<void> {
   await args.options.queue.send(
-    { conversationId: args.conversationId },
+    {
+      conversationId: args.conversationId,
+      destination: args.destination,
+    },
     {
       delayMs: args.delayMs,
       idempotencyKey: args.idempotencyKey,
@@ -87,12 +94,14 @@ async function sendWakeNudge(args: {
 
 async function requestLostLeaseRecovery(args: {
   conversationId: string;
+  destination: Destination;
   leaseToken: string;
   nowMs: number;
   options: ProcessConversationWorkOptions;
 }): Promise<void> {
   const continuationMarked = await requestConversationContinuation({
     conversationId: args.conversationId,
+    destination: args.destination,
     leaseToken: args.leaseToken,
     nowMs: args.nowMs,
     state: args.options.state,
@@ -111,6 +120,7 @@ async function requestLostLeaseRecovery(args: {
   }
   await sendWakeNudge({
     conversationId: args.conversationId,
+    destination: args.destination,
     idempotencyKey: nudgeIdempotencyKey(
       "lost_lease",
       args.conversationId,
@@ -163,9 +173,10 @@ function startLeaseCheckIn(args: {
 
 /** Process one queue wake-up for a conversation. */
 export async function processConversationWork(
-  conversationId: string,
+  message: ConversationQueueMessage,
   options: ProcessConversationWorkOptions,
 ): Promise<ConversationWorkProcessResult> {
+  const conversationId = message.conversationId;
   const initial = await getConversationWorkState({
     conversationId,
     state: options.state,
@@ -178,6 +189,12 @@ export async function processConversationWork(
   ) {
     return { status: "no_work" };
   }
+  if (!sameDestination(initial.destination, message.destination)) {
+    throw new Error(
+      `Conversation work queue destination changed for ${conversationId}`,
+    );
+  }
+  const destination = initial.destination;
 
   const lease = await startConversationWork({
     conversationId,
@@ -191,6 +208,7 @@ export async function processConversationWork(
     const nudgeNowMs = now(options);
     await sendWakeNudge({
       conversationId,
+      destination,
       delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
       idempotencyKey: nudgeIdempotencyKey("active", conversationId, nudgeNowMs),
       nowMs: nudgeNowMs,
@@ -233,6 +251,7 @@ export async function processConversationWork(
 
   const workerContext: ConversationWorkerContext = {
     conversationId,
+    destination,
     leaseToken: lease.leaseToken,
     shouldYield: () => leaseLost || now(options) >= softYieldDeadlineMs,
     checkIn: async () => {
@@ -262,6 +281,7 @@ export async function processConversationWork(
     if (result.status === "lost_lease") {
       await requestLostLeaseRecovery({
         conversationId,
+        destination,
         leaseToken: lease.leaseToken,
         nowMs: now(options),
         options,
@@ -271,6 +291,7 @@ export async function processConversationWork(
     if (leaseLost) {
       await requestLostLeaseRecovery({
         conversationId,
+        destination,
         leaseToken: lease.leaseToken,
         nowMs: now(options),
         options,
@@ -281,6 +302,7 @@ export async function processConversationWork(
       const yieldNowMs = now(options);
       const continuationMarked = await requestConversationContinuation({
         conversationId,
+        destination,
         leaseToken: lease.leaseToken,
         nowMs: yieldNowMs,
         state: options.state,
@@ -290,6 +312,7 @@ export async function processConversationWork(
       }
       await sendWakeNudge({
         conversationId,
+        destination,
         idempotencyKey: nudgeIdempotencyKey(
           "yield",
           conversationId,
@@ -329,6 +352,7 @@ export async function processConversationWork(
       const nudgeNowMs = now(options);
       await sendWakeNudge({
         conversationId,
+        destination,
         idempotencyKey: nudgeIdempotencyKey(
           "pending",
           conversationId,
@@ -354,6 +378,7 @@ export async function processConversationWork(
     try {
       const continuationMarked = await requestConversationContinuation({
         conversationId,
+        destination,
         leaseToken: lease.leaseToken,
         nowMs: errorNowMs,
         state: options.state,
@@ -361,6 +386,7 @@ export async function processConversationWork(
       if (continuationMarked) {
         await sendWakeNudge({
           conversationId,
+          destination,
           idempotencyKey: nudgeIdempotencyKey(
             "error",
             conversationId,

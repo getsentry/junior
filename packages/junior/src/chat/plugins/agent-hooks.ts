@@ -144,9 +144,9 @@ export function getAgentPluginTools(
       continue;
     }
     const log = createAgentPluginLogger(plugin.name);
-    // context.channelId is the raw conversation channel; plugins receive it
-    // directly. First-class delivery tools (canvas, post, react, list messages)
-    // First-class output tools use context.channelId directly.
+    // Plugins receive the raw Slack conversation channel. The dispatch
+    // destination is the provider-neutral address for autonomous work.
+    const destination = context.destination;
     const credentialSubject = createSlackDirectCredentialSubject({
       channelId: context.channelId,
       teamId: context.teamId,
@@ -161,6 +161,7 @@ export function getAgentPluginTools(
       channelId: context.channelId,
       conversationId: context.conversationId,
       ...(credentialSubject ? { credentialSubject } : {}),
+      ...(destination ? { destination } : {}),
       teamId: context.teamId,
       messageTs: context.messageTs,
       threadTs: context.threadTs,

@@ -26,6 +26,7 @@ import {
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { createSlackDestination } from "@/chat/destination";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
   generateAssistantReply as generateAssistantReplyImpl,
@@ -297,6 +298,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
     const teamId = getTeamId(message);
+    const destination = createSlackDestination({ channelId, teamId });
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 
@@ -527,6 +529,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             state: "running",
             surface: "slack",
             requester,
+            destination,
             traceId: getActiveTraceId(),
           }).catch((error) => {
             logException(
@@ -739,6 +742,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               omittedImageAttachmentCount,
               userAttachments,
               slackConversation,
+              destination,
               surface: "slack",
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
@@ -926,6 +930,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               state: "completed",
               conversationTitle: titleUpdateResult?.title,
               requester,
+              destination,
               traceId: getActiveTraceId(),
             });
           }
@@ -974,11 +979,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             if (
               conversationIdForResume &&
               sessionIdForResume &&
-              typeof version === "number"
+              typeof version === "number" &&
+              destination
             ) {
               try {
                 await deps.services.scheduleTurnTimeoutResume({
                   conversationId: conversationIdForResume,
+                  destination,
                   sessionId: sessionIdForResume,
                   expectedVersion: version,
                 });
@@ -1087,6 +1094,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   startedAtMs: message.metadata.dateSent.getTime(),
                   state: "failed",
                   requester,
+                  destination,
                   traceId: getActiveTraceId(),
                 });
                 const sessionRecord = await getAgentTurnSessionRecord(

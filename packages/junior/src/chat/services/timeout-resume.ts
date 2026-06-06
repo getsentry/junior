@@ -7,6 +7,8 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
+import { parseDestination } from "@/chat/destination";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -23,6 +25,7 @@ const TURN_TIMEOUT_RESUME_SIGNATURE_HEADER = "x-junior-resume-signature";
 
 export interface TurnContinuationRequest {
   conversationId: string;
+  destination: Destination;
   expectedVersion: number;
   sessionId: string;
 }
@@ -51,9 +54,13 @@ export async function getAwaitingTurnContinuationRequest(args: {
   ) {
     return undefined;
   }
+  if (!sessionRecord.destination) {
+    return undefined;
+  }
 
   return {
     conversationId: args.conversationId,
+    destination: sessionRecord.destination,
     sessionId: args.sessionId,
     expectedVersion: sessionRecord.version,
   };
@@ -88,8 +95,7 @@ function timingSafeMatch(expected: string, actual: string): boolean {
 }
 
 /**
- * Parse the signed resume body, accepting the prior wire field for callbacks
- * that were already in flight during deployment rollover.
+ * Parse the signed resume body used by the durable conversation queue.
  */
 function parseTurnTimeoutResumeRequest(
   value: unknown,
@@ -99,22 +105,21 @@ function parseTurnTimeoutResumeRequest(
   }
 
   const record = value as Record<string, unknown>;
-  const expectedVersion =
-    typeof record.expectedVersion === "number"
-      ? record.expectedVersion
-      : record.expectedCheckpointVersion;
+  const destination = parseDestination(record.destination);
   if (
     typeof record.conversationId !== "string" ||
     typeof record.sessionId !== "string" ||
-    typeof expectedVersion !== "number"
+    typeof record.expectedVersion !== "number" ||
+    !destination
   ) {
     return undefined;
   }
 
   return {
     conversationId: record.conversationId,
+    destination,
     sessionId: record.sessionId,
-    expectedVersion,
+    expectedVersion: record.expectedVersion,
   };
 }
 
@@ -126,12 +131,16 @@ export async function scheduleTurnTimeoutResume(
   const nowMs = options.nowMs ?? Date.now();
   await requestConversationWork({
     conversationId: request.conversationId,
+    destination: request.destination,
     nowMs,
     state: options.state,
   });
   const queue = options.queue ?? getVercelConversationWorkQueue();
   await queue.send(
-    { conversationId: request.conversationId },
+    {
+      conversationId: request.conversationId,
+      destination: request.destination,
+    },
     {
       idempotencyKey: [
         "timeout",

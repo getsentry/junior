@@ -7,7 +7,9 @@
  * the exact continuable boundary without duplicating the log.
  */
 import { THREAD_STATE_TTL_MS } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord } from "@/chat/coerce";
+import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -43,6 +45,7 @@ export interface AgentTurnSessionRecord {
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
+  destination?: Destination;
   errorMessage?: string;
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
@@ -212,12 +215,17 @@ function parseAgentTurnSessionFields(
   const requester = parseAgentTurnRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
+  const destination =
+    parsed.destination === undefined
+      ? undefined
+      : parseDestination(parsed.destination);
   if (
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
     sliceId === undefined ||
     version === undefined ||
-    updatedAtMs === undefined
+    updatedAtMs === undefined ||
+    (parsed.destination !== undefined && !destination)
   ) {
     return undefined;
   }
@@ -236,6 +244,7 @@ function parseAgentTurnSessionFields(
     cumulativeDurationMs,
     ...(logSessionId ? { logSessionId } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
+    ...(destination ? { destination } : {}),
     ...(requester ? { requester } : {}),
     ...(Array.isArray(parsed.loadedSkillNames)
       ? {
@@ -367,6 +376,7 @@ function materializeAgentTurnSessionRecord(
     updatedAtMs: stored.updatedAtMs,
     piMessages,
     cumulativeDurationMs: stored.cumulativeDurationMs,
+    ...(stored.destination ? { destination: stored.destination } : {}),
     ...(stored.cumulativeUsage
       ? { cumulativeUsage: stored.cumulativeUsage }
       : {}),
@@ -439,6 +449,7 @@ function buildStoredRecord(args: {
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
+  destination?: Destination;
   committedMessageCount: number;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
@@ -473,6 +484,7 @@ function buildStoredRecord(args: {
     ...(args.logSessionId ? { logSessionId: args.logSessionId } : {}),
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
+    ...(args.destination ? { destination: args.destination } : {}),
     ...(args.requester ? { requester: args.requester } : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
@@ -552,6 +564,9 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.cumulativeUsage
         ? { cumulativeUsage: args.existing.cumulativeUsage }
         : {}),
+      ...(args.existing.destination
+        ? { destination: args.existing.destination }
+        : {}),
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
@@ -580,6 +595,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
+  destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   sessionId: string;
@@ -638,6 +654,9 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.cumulativeUsage
         ? { cumulativeUsage: args.cumulativeUsage }
         : {}),
+      ...((args.destination ?? existingRecord?.destination)
+        ? { destination: args.destination ?? existingRecord?.destination }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -666,6 +685,7 @@ export async function recordAgentTurnSessionSummary(args: {
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
+  destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   requester?: AgentTurnRequester;
@@ -709,6 +729,9 @@ export async function recordAgentTurnSessionSummary(args: {
         0,
       ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
         ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
+        : {}),
+      ...((args.destination ?? existing?.destination)
+        ? { destination: args.destination ?? existing?.destination }
         : {}),
       ...((args.requester ?? existing?.requester)
         ? { requester: args.requester ?? existing?.requester }

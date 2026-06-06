@@ -22,6 +22,8 @@ import {
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   CONVERSATION_ID,
+  SLACK_DESTINATION,
+  conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
   createNoopSlackWebhookRuntime,
@@ -105,9 +107,7 @@ describe("Slack conversation work execution", () => {
         conversationId: CONVERSATION_ID,
       }),
     ]);
-    expect(queue.queuedMessages()).toEqual([
-      { conversationId: CONVERSATION_ID },
-    ]);
+    expect(queue.queuedMessages()).toEqual([conversationQueueMessage()]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
@@ -730,6 +730,7 @@ describe("Slack conversation work execution", () => {
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: 1_000,
       state,
     });
@@ -738,12 +739,13 @@ describe("Slack conversation work execution", () => {
       sessionId: "turn-invalid-timeout",
       sliceId: 1,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [],
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         state,
         run: createSlackConversationWorker({
@@ -786,6 +788,7 @@ describe("Slack conversation work execution", () => {
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
       nowMs: 1_000,
       state,
     });
@@ -794,6 +797,7 @@ describe("Slack conversation work execution", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [
         {
@@ -839,7 +843,7 @@ describe("Slack conversation work execution", () => {
     });
 
     await expect(
-      processConversationWork(CONVERSATION_ID, {
+      processConversationWork(conversationQueueMessage(), {
         queue,
         state,
         run: createSlackConversationWorker({

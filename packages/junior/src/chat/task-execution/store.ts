@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { parseDestination, sameDestination } from "@/chat/destination";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type { ConversationWorkQueue } from "./queue";
@@ -31,6 +33,7 @@ export interface AgentInputMessage {
 export interface InboundMessageRecord {
   conversationId: string;
   createdAtMs: number;
+  destination: Destination;
   inboundMessageId: string;
   injectedAtMs?: number;
   input: AgentInputMessage;
@@ -47,6 +50,7 @@ export interface ConversationLease {
 
 export interface ConversationWorkState {
   conversationId: string;
+  destination: Destination;
   lastEnqueuedAtMs?: number;
   lease?: ConversationLease;
   messages: InboundMessageRecord[];
@@ -186,11 +190,13 @@ function normalizeMessage(value: unknown): InboundMessageRecord | undefined {
   const conversationId = toOptionalString(value.conversationId);
   const inboundMessageId = toOptionalString(value.inboundMessageId);
   const source = normalizeSource(value.source);
+  const destination = parseDestination(value.destination);
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const receivedAtMs = toOptionalNumber(value.receivedAtMs);
   const input = normalizeInput(value.input);
   if (
     !conversationId ||
+    !destination ||
     !inboundMessageId ||
     !source ||
     typeof createdAtMs !== "number" ||
@@ -201,6 +207,7 @@ function normalizeMessage(value: unknown): InboundMessageRecord | undefined {
   }
   return {
     conversationId,
+    destination,
     inboundMessageId,
     source,
     createdAtMs,
@@ -245,9 +252,11 @@ function normalizeWorkState(
     return undefined;
   }
   const storedConversationId = toOptionalString(value.conversationId);
+  const destination = parseDestination(value.destination);
   const updatedAtMs = toOptionalNumber(value.updatedAtMs);
   if (
     storedConversationId !== conversationId ||
+    !destination ||
     typeof updatedAtMs !== "number"
   ) {
     return undefined;
@@ -262,6 +271,7 @@ function normalizeWorkState(
   return {
     schemaVersion: CONVERSATION_WORK_SCHEMA_VERSION,
     conversationId,
+    destination,
     messages,
     needsRun: value.needsRun === true,
     updatedAtMs,
@@ -272,11 +282,13 @@ function normalizeWorkState(
 
 function emptyWorkState(args: {
   conversationId: string;
+  destination: Destination;
   nowMs: number;
 }): ConversationWorkState {
   return {
     schemaVersion: CONVERSATION_WORK_SCHEMA_VERSION,
     conversationId: args.conversationId,
+    destination: args.destination,
     messages: [],
     needsRun: false,
     updatedAtMs: args.nowMs,
@@ -457,6 +469,19 @@ function hasRunnableWork(state: ConversationWorkState): boolean {
   return state.needsRun || pendingMessages(state).length > 0;
 }
 
+function assertSameConversationDestination(args: {
+  conversationId: string;
+  current: Destination;
+  next: Destination;
+}): void {
+  if (sameDestination(args.current, args.next)) {
+    return;
+  }
+  throw new Error(
+    `Conversation work destination changed for ${args.conversationId}`,
+  );
+}
+
 /** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
@@ -494,8 +519,14 @@ export async function appendInboundMessage(args: {
         (await readWorkState(state, args.message.conversationId)) ??
         emptyWorkState({
           conversationId: args.message.conversationId,
+          destination: args.message.destination,
           nowMs,
         });
+      assertSameConversationDestination({
+        conversationId: args.message.conversationId,
+        current: current.destination,
+        next: args.message.destination,
+      });
       const existing = current.messages.find(
         (message) => message.inboundMessageId === args.message.inboundMessageId,
       );
@@ -546,7 +577,10 @@ export async function appendAndEnqueueInboundMessage(args: {
     idempotencyKey = duplicateInboundNudgeIdempotencyKey(args.message, nowMs);
   }
   const queueResult = await args.queue.send(
-    { conversationId: args.message.conversationId },
+    {
+      conversationId: args.message.conversationId,
+      destination: args.message.destination,
+    },
     { idempotencyKey },
   );
   await markConversationWorkEnqueued({
@@ -563,16 +597,25 @@ export async function appendAndEnqueueInboundMessage(args: {
 /** Mark a conversation runnable when there is no new mailbox message. */
 export async function requestConversationWork(args: {
   conversationId: string;
+  destination: Destination;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<RequestConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state) => {
     const existing = await readWorkState(state, args.conversationId);
+    if (existing) {
+      assertSameConversationDestination({
+        conversationId: args.conversationId,
+        current: existing.destination,
+        next: args.destination,
+      });
+    }
     const current =
       existing ??
       emptyWorkState({
         conversationId: args.conversationId,
+        destination: args.destination,
         nowMs,
       });
     await writeWorkState(state, {
@@ -770,6 +813,7 @@ export async function markConversationMessagesInjected(args: {
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestConversationContinuation(args: {
   conversationId: string;
+  destination: Destination;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -780,6 +824,11 @@ export async function requestConversationContinuation(args: {
     if (!current || current.lease?.leaseToken !== args.leaseToken) {
       return false;
     }
+    assertSameConversationDestination({
+      conversationId: args.conversationId,
+      current: current.destination,
+      next: args.destination,
+    });
     await writeWorkState(state, {
       ...current,
       needsRun: true,

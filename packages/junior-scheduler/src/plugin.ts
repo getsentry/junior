@@ -1,5 +1,6 @@
 import {
   defineJuniorPlugin,
+  type Destination,
   type Dispatch,
   type AgentPluginToolDefinition,
   type PluginOperationalReportContent,
@@ -53,18 +54,11 @@ function createSchedulerToolContext(
   ctx: ToolRegistrationHookContext,
 ): SchedulerToolContext {
   return {
-    channelCapabilities: ctx.channelCapabilities ?? {
-      canAddReactions: false,
-      canCreateCanvas: false,
-      canPostToChannel: false,
-    },
-    channelId: ctx.channelId,
     credentialSubject: ctx.credentialSubject,
-    messageTs: ctx.messageTs,
+    destination:
+      ctx.destination?.platform === "slack" ? ctx.destination : undefined,
     requester: ctx.requester,
     state: ctx.state,
-    teamId: ctx.teamId,
-    threadTs: ctx.threadTs,
     userText: ctx.userText,
   };
 }
@@ -189,7 +183,7 @@ function formatTimestamp(timestampMs: number | undefined): string {
     : "none";
 }
 
-function destinationLabel(destination: ScheduledTask["destination"]): string {
+function destinationLabel(destination: Destination): string {
   if (destination.channelId.startsWith("D")) {
     return "Direct Message";
   }
@@ -369,7 +363,11 @@ export function createSchedulerPlugin() {
     legacyStatePrefixes: ["junior:scheduler"],
     hooks: {
       tools(ctx) {
-        if (!ctx.channelId || !ctx.teamId || !ctx.requester?.userId) {
+        if (
+          !ctx.destination ||
+          ctx.destination.platform !== "slack" ||
+          !ctx.requester?.userId
+        ) {
           return {} as Record<string, AgentPluginToolDefinition<any>>;
         }
         const context = createSchedulerToolContext(ctx);

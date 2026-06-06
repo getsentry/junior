@@ -65,6 +65,7 @@ interface TrustedPluginHooks {
 - requester, when present
 - `channelId`: raw Slack conversation channel (`C/D/G`), never assistant-context overridden
 - `conversationId`: opaque Junior session identity (e.g. `slack:{channelId}:{threadTs}` for interactive turns)
+- `destination`: runtime-owned shared `Destination` for future autonomous work; Slack destinations carry raw `teamId` and `channelId`
 - `teamId` and thread/message timestamps, when present
 - namespaced plugin state
 - current user text

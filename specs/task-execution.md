@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -49,7 +49,7 @@ Junior uses a durable conversation mailbox plus a queue wake-up nudge.
 flowchart TD
   A[Inbound source event] --> B[Source-specific normalization]
   B --> C[Append inbound message to conversation mailbox]
-  C --> D[Send Vercel Queue nudge: conversationId]
+  C --> D[Send Vercel Queue nudge: conversationId + Destination]
   D --> E[Queue consumer]
   E --> F{Conversation lease active?}
   F -->|yes| G[Send delayed nudge and ack delivery]
@@ -71,7 +71,7 @@ Normative rules:
 
 1. Durable mailbox state is the source of truth for pending inbound work.
 2. Vercel Queue messages are wake-up nudges only. Their payload is
-   `{ conversationId }`.
+   `{ conversationId, destination }`.
 3. Queue delivery is at-least-once. Duplicate nudges must be cheap and safe.
 4. A worker may execute a conversation only while holding the conversation
    lease.
@@ -108,7 +108,7 @@ an active turn, or a stale follow-up. It always performs the same durable handof
 1. Verify the source request.
 2. Normalize a stable `conversationId` and `inboundMessageId`.
 3. Persist the inbound message into the conversation mailbox idempotently.
-4. Enqueue `{ conversationId }`.
+4. Enqueue `{ conversationId, destination }`.
 5. Return the source HTTP acknowledgement quickly.
 
 The source HTTP acknowledgement is not the late acknowledgement. Late
@@ -137,6 +137,7 @@ Conceptual shape:
 interface InboundMessageRecord {
   inboundMessageId: string;
   conversationId: string;
+  destination: Destination;
   source: "slack" | "scheduler" | "plugin";
   createdAtMs: number;
   receivedAtMs: number;
@@ -146,6 +147,7 @@ interface InboundMessageRecord {
 
 interface ConversationWorkState {
   conversationId: string;
+  destination: Destination;
   lease?: ConversationLease;
   lastEnqueuedAtMs?: number;
   updatedAtMs: number;
@@ -171,6 +173,7 @@ The queue message payload is:
 ```ts
 interface ConversationQueueMessage {
   conversationId: string;
+  destination: Destination;
 }
 ```
 
@@ -180,7 +183,8 @@ Queue consumer rules:
 2. If there is no pending or resumable work, acknowledge the queue delivery and
    exit.
 3. If another worker holds an unexpired lease, enqueue a delayed nudge for the
-   same `conversationId`, acknowledge the current delivery, and exit.
+   same `conversationId` and `destination`, acknowledge the current delivery,
+   and exit.
 4. If the lease is absent or expired, acquire a new lease and process.
 5. Acknowledge the queue delivery only after durable state is safe: final
    delivery recorded, lease released after cooperative yield, no work found, or
@@ -196,7 +200,7 @@ suppress a later legitimate recovery or continuation nudge inside the queue
 provider's idempotency window.
 
 The Vercel push consumer boundary is a thin adapter around the generic worker:
-it validates the `{ conversationId }` payload, uses `handleCallback`, and keeps
+it validates the `{ conversationId, destination }` payload, uses `handleCallback`, and keeps
 the Vercel visibility timeout slightly beyond the configured function timeout
 so redelivery does not race host teardown at the exact timeout boundary. The
 internal push endpoint is `/api/internal/agent/continue`, because each queue
@@ -251,7 +255,7 @@ A worker that owns the lease advances the conversation:
 4. Call `continue()`.
 5. At each safe boundary, drain newly pending mailbox messages into the same
    active conversation before another model call starts.
-6. If cooperative yield is due, enqueue `{ conversationId }`, release the lease,
+6. If cooperative yield is due, enqueue `{ conversationId, destination }`, release the lease,
    acknowledge the queue delivery, and exit.
 7. If the agent is final, drain the mailbox one last time before delivery. If new
    messages were pending, continue instead of posting a stale answer.
@@ -301,7 +305,7 @@ latest durable session-log boundary, queue redelivery, and heartbeat recovery.
 When yielding, the worker:
 
 1. Ensures all safe-boundary session-log writes are complete.
-2. Enqueues `{ conversationId }`.
+2. Enqueues `{ conversationId, destination }`.
 3. Releases the lease.
 4. Acknowledges the queue delivery.
 5. Exits without posting a routine continuation message to Slack.
@@ -352,10 +356,10 @@ On each bounded scan, heartbeat must:
 
 1. Find conversations with expired leases.
 2. Clear or replace the expired lease state.
-3. Enqueue `{ conversationId }`.
+3. Enqueue `{ conversationId, destination }`.
 4. Find conversations with pending mailbox messages, no unexpired lease, and no
    recent enqueue marker.
-5. Enqueue `{ conversationId }` for those stranded conversations.
+5. Enqueue `{ conversationId, destination }` for those stranded conversations.
 
 Heartbeat must not run the agent inline. It only repairs durable state and sends
 queue wake-up nudges.
@@ -367,7 +371,7 @@ the cron invocation. Remaining work is left for later heartbeats.
 
 Scheduler and trusted plugin work should enter the same execution system by
 creating or selecting a conversation identity, appending a normalized agent input
-message to the mailbox, and enqueueing `{ conversationId }`.
+message to the mailbox, and enqueueing `{ conversationId, destination }`.
 
 Source-specific scheduling, due-run claims, plugin idempotency, and destination
 selection remain owned by their domain specs. Once claimed, execution should use

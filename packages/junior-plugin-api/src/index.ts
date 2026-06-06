@@ -106,7 +106,7 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
 export interface ToolRegistrationHookContext extends AgentPluginContext {
   /**
    * Capabilities of `channelId` — the raw conversation channel exposed to
-   * this plugin. Recomputed from `channelId`, not from the delivery channel.
+   * this plugin. Recomputed from `channelId`, not from `destination`.
    */
   channelCapabilities?: {
     canAddReactions: boolean;
@@ -114,8 +114,8 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
     canPostToChannel: boolean;
   };
   /**
-   * The raw Slack channel ID for this conversation — the DM or direct channel
-   * where this turn is happening, without any assistant-context-source override.
+   * The raw Slack channel ID for this conversation — the DM or channel where
+   * this turn is happening, without any assistant-context-source override.
    * Use this as the stable binding key for state scoped to a Slack conversation.
    * `channelCapabilities` describes this channel.
    */
@@ -128,6 +128,12 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
    */
   conversationId?: string;
   credentialSubject?: AgentPluginCredentialSubject;
+  /**
+   * Runtime-owned destination suitable for future autonomous dispatch. For
+   * Slack, this is the raw conversation channel, not a thread timestamp or
+   * assistant-context source channel.
+   */
+  destination?: Destination;
   messageTs?: string;
   requester?: AgentPluginRequester;
   state: AgentPluginState;
@@ -142,13 +148,16 @@ export interface AgentPluginCredentialSubject {
   allowedWhen: "private-direct-conversation";
 }
 
+/** Provider-neutral address Junior can use to route future work or side effects. */
+export type Destination = {
+  platform: "slack";
+  teamId: string;
+  channelId: string;
+};
+
 export interface DispatchOptions {
   credentialSubject?: AgentPluginCredentialSubject;
-  destination: {
-    platform: "slack";
-    teamId: string;
-    channelId: string;
-  };
+  destination: Destination;
   idempotencyKey: string;
   input: string;
   metadata?: Record<string, string>;

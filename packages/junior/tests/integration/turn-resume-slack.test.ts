@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
@@ -44,7 +45,10 @@ function postResumeRequest(args: {
   expectedVersion: number;
 }): Promise<Response> {
   return turnResumeHandlerModule.POST(
-    turnResumeClient.request(args),
+    turnResumeClient.request({
+      ...args,
+      destination: SLACK_DESTINATION,
+    }),
     waitUntil.fn,
     {
       scheduleTurnTimeoutResume: (request) =>
@@ -105,6 +109,7 @@ describe("turn resume slack integration", () => {
         sessionId,
         sliceId: 2,
         state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
         piMessages: [
           {
             role: "user",
@@ -184,6 +189,7 @@ describe("turn resume slack integration", () => {
           userId: "U123",
           userName: "testuser",
         }),
+        destination: SLACK_DESTINATION,
         toolChannelId: "C999",
         inboundAttachmentCount: 2,
         omittedImageAttachmentCount: 1,
@@ -256,6 +262,7 @@ describe("turn resume slack integration", () => {
         sessionId,
         sliceId: 5,
         state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
         piMessages: [
           {
             role: "user",
@@ -328,6 +335,7 @@ describe("turn resume slack integration", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `timeout:${conversationId}:${sessionId}:`,
         ),
@@ -351,6 +359,7 @@ describe("turn resume slack integration", () => {
         sessionId,
         sliceId: 2,
         state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
         piMessages: [
           {
             role: "user",
@@ -424,6 +433,7 @@ describe("turn resume slack integration", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `timeout:${conversationId}:${sessionId}:`,
         ),
@@ -440,6 +450,7 @@ describe("turn resume slack integration", () => {
         sessionId,
         sliceId: 2,
         state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
         piMessages: [
           {
             role: "user",

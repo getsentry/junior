@@ -1,4 +1,7 @@
-import { defineJuniorPlugin, type ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   createAgentPluginHookRunner,
@@ -511,14 +514,27 @@ describe("getAgentPluginTools channel resolution", () => {
     return captured;
   }
 
-  it("passes channelId directly to plugin hooks", () => {
-    const ctx = capturePluginContext({ channelId: "D_DM", teamId: "T123" });
-    expect(ctx.channelId).toBe("D_DM");
+  it("passes runtime-owned destination directly to plugin hooks", () => {
+    const ctx = capturePluginContext({
+      channelId: "slack:DDM",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+      },
+      teamId: "T123",
+    });
+    expect(ctx.channelId).toBe("slack:DDM");
+    expect(ctx.destination).toEqual({
+      platform: "slack",
+      teamId: "T123",
+      channelId: "DDM",
+    });
   });
 
   it("computes channelCapabilities from channelId", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
-    const ctx = capturePluginContext({ channelId: "D_DM", teamId: "T123" });
+    const ctx = capturePluginContext({ channelId: "DDM", teamId: "T123" });
     expect(ctx.channelCapabilities?.canCreateCanvas).toBe(true);
     expect(ctx.channelCapabilities?.canAddReactions).toBe(true);
     expect(ctx.channelCapabilities?.canPostToChannel).toBe(false);
@@ -526,7 +542,7 @@ describe("getAgentPluginTools channel resolution", () => {
 
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
-      channelId: "D_DM",
+      channelId: "DDM",
       teamId: "T123",
       requester: { userId: "U123" },
     });
@@ -540,7 +556,7 @@ describe("getAgentPluginTools channel resolution", () => {
 
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
-      channelId: "C_SOURCE",
+      channelId: "CSOURCE",
       teamId: "T123",
       requester: { userId: "U123" },
     });
@@ -550,11 +566,19 @@ describe("getAgentPluginTools channel resolution", () => {
 
   it("exposes conversationId to plugins", () => {
     const ctx = capturePluginContext({
-      channelId: "D_DM",
-      conversationId: "slack:D_DM:1780479160.406339",
+      channelId: "DDM",
+      conversationId: "slack:DDM:1780479160.406339",
       teamId: "T123",
     });
 
-    expect(ctx.conversationId).toBe("slack:D_DM:1780479160.406339");
+    expect(ctx.conversationId).toBe("slack:DDM:1780479160.406339");
+  });
+
+  it("does not synthesize destination from loose Slack context", () => {
+    const ctx = capturePluginContext({
+      channelId: "DDM",
+      teamId: "T123",
+    });
+    expect(ctx.destination).toBeUndefined();
   });
 });

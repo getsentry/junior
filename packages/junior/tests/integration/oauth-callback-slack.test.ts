@@ -22,6 +22,11 @@ const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-oauth",
 );
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule =
@@ -100,6 +105,7 @@ describe("oauth callback slack integration", () => {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
+        destination: SLACK_DESTINATION,
         threadTs: "1700000000.001",
         pendingMessage: "list my sentry issues",
       });
@@ -142,6 +148,7 @@ describe("oauth callback slack integration", () => {
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "list my sentry issues",
       expect.objectContaining({
+        destination: SLACK_DESTINATION,
         conversationContext: expect.stringContaining(
           "You need the budget by Friday.",
         ),
@@ -176,6 +183,7 @@ describe("oauth callback slack integration", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -193,6 +201,7 @@ describe("oauth callback slack integration", () => {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
+        destination: SLACK_DESTINATION,
         threadTs: "1700000000.009",
         pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
@@ -273,6 +282,7 @@ describe("oauth callback slack integration", () => {
       "list my sentry issues",
       expect.objectContaining({
         requester: expect.objectContaining({ userId: "U123" }),
+        destination: SLACK_DESTINATION,
         correlation: expect.objectContaining({
           channelId: "C123",
           threadTs: "1700000000.009",
@@ -436,6 +446,7 @@ describe("oauth callback slack integration", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -446,6 +457,7 @@ describe("oauth callback slack integration", () => {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
+        destination: SLACK_DESTINATION,
         threadTs: "1700000000.011",
         pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
@@ -482,6 +494,7 @@ describe("oauth callback slack integration", () => {
       "list my sentry issues",
       expect.objectContaining({
         toolChannelId: "CFRESH",
+        destination: SLACK_DESTINATION,
         conversationContext: expect.stringContaining(
           "Fresh context loaded after the lock.",
         ),
@@ -518,6 +531,7 @@ describe("oauth callback slack integration", () => {
       sessionId,
       sliceId: 2,
       state: "abandoned",
+      destination: SLACK_DESTINATION,
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -529,6 +543,7 @@ describe("oauth callback slack integration", () => {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
+        destination: SLACK_DESTINATION,
         threadTs: "1700000000.010",
         pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,

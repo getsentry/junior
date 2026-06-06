@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type Destination,
+} from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
 import {
@@ -35,6 +38,11 @@ vi.hoisted(() => {
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} satisfies Destination;
 
 function schedulerStore() {
   return createSchedulerStore(createPluginState("scheduler"));
@@ -46,11 +54,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     id: "sched_plugin_1",
     createdAtMs: nextRunAtMs,
     createdBy: { slackUserId: "U123" },
-    destination: {
-      platform: "slack",
-      teamId: "T123",
-      channelId: "C123",
-    },
+    destination: SLACK_DESTINATION,
     nextRunAtMs,
     schedule: {
       description: "Once at noon",
@@ -230,6 +234,7 @@ describe("trusted plugin heartbeat", () => {
       conversationId,
       sessionId,
       sliceId: 2,
+      destination: SLACK_DESTINATION,
       state: "awaiting_resume",
       resumeReason: "timeout",
       piMessages: [
@@ -257,6 +262,7 @@ describe("trusted plugin heartbeat", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `timeout:${conversationId}:${sessionId}:`,
         ),
@@ -280,6 +286,7 @@ describe("trusted plugin heartbeat", () => {
       conversationId,
       sessionId,
       sliceId: 1,
+      destination: SLACK_DESTINATION,
       state: "awaiting_resume",
       resumeReason: "yield",
       piMessages: [
@@ -307,6 +314,7 @@ describe("trusted plugin heartbeat", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
           `timeout:${conversationId}:${sessionId}:`,
         ),
@@ -330,6 +338,7 @@ describe("trusted plugin heartbeat", () => {
       conversationId,
       sessionId,
       sliceId: 2,
+      destination: SLACK_DESTINATION,
       state: "awaiting_resume",
       resumeReason: "timeout",
       piMessages: [

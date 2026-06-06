@@ -5,6 +5,7 @@ import {
   type AgentTurnRequester,
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -129,6 +130,7 @@ export async function loadTurnSessionRecord(
 export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
+  destination?: Destination;
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
@@ -153,6 +155,9 @@ export async function persistRunningSessionRecord(args: {
       conversationId: args.conversationId,
       cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
+      ...((args.destination ?? latestSessionRecord?.destination)
+        ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "running",
@@ -191,6 +196,7 @@ export async function persistCompletedSessionRecord(args: {
   conversationId: string;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
+  destination?: Destination;
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
@@ -217,6 +223,9 @@ export async function persistCompletedSessionRecord(args: {
         latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
+      ...((args.destination ?? latestSessionRecord?.destination)
+        ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "completed",
@@ -258,6 +267,7 @@ export async function persistAuthPauseSessionRecord(args: {
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
+  destination?: Destination;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -291,6 +301,9 @@ export async function persistAuthPauseSessionRecord(args: {
         latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
+      ...((args.destination ?? latestSessionRecord?.destination)
+        ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -337,6 +350,7 @@ export async function persistTimeoutSessionRecord(args: {
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
+  destination?: Destination;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -376,6 +390,11 @@ export async function persistTimeoutSessionRecord(args: {
         conversationId: args.conversationId,
         cumulativeDurationMs,
         cumulativeUsage,
+        ...((args.destination ?? latestSessionRecord?.destination)
+          ? {
+              destination: args.destination ?? latestSessionRecord?.destination,
+            }
+          : {}),
         sessionId: args.sessionId,
         sliceId: args.currentSliceId,
         state: "failed",
@@ -404,6 +423,9 @@ export async function persistTimeoutSessionRecord(args: {
       conversationId: args.conversationId,
       cumulativeDurationMs,
       cumulativeUsage,
+      ...((args.destination ?? latestSessionRecord?.destination)
+        ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -449,6 +471,7 @@ export async function persistYieldSessionRecord(args: {
   currentSliceId: number;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
+  destination?: Destination;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -481,6 +504,9 @@ export async function persistYieldSessionRecord(args: {
         latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
+      ...((args.destination ?? latestSessionRecord?.destination)
+        ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
       sessionId: args.sessionId,
       sliceId: args.currentSliceId,
       state: "awaiting_resume",

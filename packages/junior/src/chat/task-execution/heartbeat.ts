@@ -1,4 +1,5 @@
 import type { StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { logException, logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
@@ -27,13 +28,17 @@ function heartbeatIdempotencyKey(
 
 async function sendRecoveryNudge(args: {
   conversationId: string;
+  destination: Destination;
   idempotencyKey: string;
   nowMs: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<void> {
   await args.queue.send(
-    { conversationId: args.conversationId },
+    {
+      conversationId: args.conversationId,
+      destination: args.destination,
+    },
     { idempotencyKey: args.idempotencyKey },
   );
   await markConversationWorkEnqueued({
@@ -80,6 +85,7 @@ export async function recoverConversationWork(args: {
         }
         await sendRecoveryNudge({
           conversationId,
+          destination: work.destination,
           idempotencyKey: heartbeatIdempotencyKey(
             "lease",
             conversationId,
@@ -111,6 +117,7 @@ export async function recoverConversationWork(args: {
 
       await sendRecoveryNudge({
         conversationId,
+        destination: work.destination,
         idempotencyKey: heartbeatIdempotencyKey(
           "pending",
           conversationId,

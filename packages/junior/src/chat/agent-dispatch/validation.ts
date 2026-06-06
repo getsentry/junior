@@ -1,4 +1,5 @@
-import type { BoundDispatchOptions, DispatchOptions } from "./types";
+import type { DispatchOptions } from "@sentry/junior-plugin-api";
+import type { BoundDispatchOptions } from "./types";
 import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
@@ -10,53 +11,90 @@ const MAX_METADATA_KEYS = 20;
 const MAX_METADATA_KEY_LENGTH = 128;
 const MAX_METADATA_VALUE_LENGTH = 512;
 
+function hasOnlyDestinationKeys(destination: Record<string, unknown>): boolean {
+  return Object.keys(destination).every(
+    (key) => key === "platform" || key === "teamId" || key === "channelId",
+  );
+}
+
 /** Validate plugin-provided dispatch options before core persists them. */
 export function validateDispatchOptions(options: DispatchOptions): void {
-  if (!options.idempotencyKey.trim()) {
+  const candidate = options as Partial<DispatchOptions> | undefined;
+  if (!candidate || typeof candidate !== "object") {
+    throw new Error("Dispatch options are required");
+  }
+  if (
+    typeof candidate.idempotencyKey !== "string" ||
+    !candidate.idempotencyKey.trim()
+  ) {
     throw new Error("Dispatch idempotencyKey is required");
   }
-  if (options.idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+  if (candidate.idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
     throw new Error("Dispatch idempotencyKey exceeds the maximum length");
   }
-  if (options.destination.platform !== "slack") {
+  const destination = candidate.destination as
+    | Partial<DispatchOptions["destination"]>
+    | undefined;
+  if (
+    !destination ||
+    typeof destination !== "object" ||
+    destination.platform !== "slack"
+  ) {
     throw new Error("Dispatch destination platform must be slack");
   }
-  if (!isSlackTeamId(options.destination.teamId)) {
+  if (!hasOnlyDestinationKeys(destination)) {
+    throw new Error("Dispatch destination must not include unknown fields");
+  }
+  if (
+    typeof destination.teamId !== "string" ||
+    !isSlackTeamId(destination.teamId)
+  ) {
     throw new Error("Dispatch destination teamId must be a Slack team id");
   }
-  if (!isSlackConversationId(options.destination.channelId)) {
+  if (
+    typeof destination.channelId !== "string" ||
+    !isSlackConversationId(destination.channelId)
+  ) {
     throw new Error(
       "Dispatch destination channelId must be a Slack channel id",
     );
   }
-  if (!options.input.trim()) {
+  if (typeof candidate.input !== "string" || !candidate.input.trim()) {
     throw new Error("Dispatch input is required");
   }
-  if (options.input.length > MAX_DISPATCH_INPUT_LENGTH) {
+  if (candidate.input.length > MAX_DISPATCH_INPUT_LENGTH) {
     throw new Error("Dispatch input exceeds the maximum length");
   }
-  if (options.credentialSubject) {
-    if (options.credentialSubject.type !== "user") {
+  const credentialSubject = candidate.credentialSubject;
+  if (credentialSubject !== undefined) {
+    if (!credentialSubject || typeof credentialSubject !== "object") {
       throw new Error("Dispatch credentialSubject type must be user");
     }
-    if (!isActorUserId(options.credentialSubject.userId)) {
+    if (credentialSubject.type !== "user") {
+      throw new Error("Dispatch credentialSubject type must be user");
+    }
+    if (!isActorUserId(credentialSubject.userId)) {
       throw new Error("Dispatch credentialSubject userId is required");
     }
-    if (
-      options.credentialSubject.allowedWhen !== "private-direct-conversation"
-    ) {
+    if (credentialSubject.allowedWhen !== "private-direct-conversation") {
       throw new Error(
         "Dispatch credentialSubject allowedWhen must be private-direct-conversation",
       );
     }
-    if (!isDmChannel(options.destination.channelId)) {
+    if (!isDmChannel(destination.channelId)) {
       throw new Error(
         "Dispatch credentialSubject requires a private direct Slack destination",
       );
     }
   }
-  const metadata = options.metadata ?? {};
-  const entries = Object.entries(metadata);
+  const metadata = candidate.metadata;
+  const entries: [string, unknown][] = [];
+  if (metadata !== undefined) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      throw new Error("Dispatch metadata values must be strings");
+    }
+    entries.push(...Object.entries(metadata));
+  }
   if (entries.length > MAX_METADATA_KEYS) {
     throw new Error("Dispatch metadata has too many keys");
   }

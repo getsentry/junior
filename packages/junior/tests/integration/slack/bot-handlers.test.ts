@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
@@ -54,6 +55,30 @@ function createRuntime(
       },
     },
   });
+}
+
+function slackDestination(channelId: string) {
+  return {
+    platform: "slack",
+    teamId: "T123",
+    channelId,
+  } satisfies Destination;
+}
+
+function rawSlackMessage(
+  conversationId: string,
+  destination: Destination,
+): Record<string, unknown> {
+  if (destination.platform !== "slack") {
+    throw new Error("Expected Slack destination");
+  }
+  const [, , threadTs = "1700000000.000"] = conversationId.split(":");
+  return {
+    channel: destination.channelId,
+    team_id: destination.teamId,
+    ts: threadTs,
+    thread_ts: threadTs,
+  };
 }
 
 function createAwaitingContinuationState(args: {
@@ -698,7 +723,8 @@ describe("bot handlers (integration)", () => {
 
   it("schedules durable continuation without posting a notice", async () => {
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const conversationId = "slack:C_TIMEOUT:1700000000.000";
+    const conversationId = "slack:C9TIMEOUT:1700000000.000";
+    const destination = slackDestination("C9TIMEOUT");
     const sessionId = "turn_msg-timeout";
     const { slackRuntime } = createRuntime({
       services: {
@@ -729,12 +755,14 @@ describe("bot handlers (integration)", () => {
           threadId: conversationId,
           text: "please keep working",
           isMention: true,
+          raw: rawSlackMessage(conversationId, destination),
         }),
       ),
     ).resolves.toBeUndefined();
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId,
       expectedVersion: 3,
     });
@@ -754,7 +782,8 @@ describe("bot handlers (integration)", () => {
   it("does not post a Slack continuation notice when a live turn times out", async () => {
     resetSlackApiMockState();
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const conversationId = "slack:C_TIMEOUT_API:1700000000.000";
+    const conversationId = "slack:C9TIMEAPI:1700000000.000";
+    const destination = slackDestination("C9TIMEAPI");
     const sessionId = "turn_msg-timeout-api";
     const { slackRuntime } = createRuntime({
       services: {
@@ -787,12 +816,14 @@ describe("bot handlers (integration)", () => {
           threadId: conversationId,
           text: "please keep working",
           isMention: true,
+          raw: rawSlackMessage(conversationId, destination),
         }),
       ),
     ).resolves.toBeUndefined();
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId,
       expectedVersion: 3,
     });
@@ -801,11 +832,13 @@ describe("bot handlers (integration)", () => {
   });
 
   it("reschedules an awaiting turn continuation without replying to the follow-up", async () => {
-    const conversationId = "slack:C_TIMEOUT_RETRY:1700000000.000";
+    const conversationId = "slack:C9TIMERTY:1700000000.000";
+    const destination = slackDestination("C9TIMERTY");
     const activeSessionId = "turn_msg-original";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -846,6 +879,7 @@ describe("bot handlers (integration)", () => {
     });
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1002,11 +1036,13 @@ describe("bot handlers (integration)", () => {
   });
 
   it("reschedules an awaiting continuation for repeated delivery of the active message", async () => {
-    const conversationId = "slack:C_TIMEOUT_DUPLICATE:1700000000.000";
+    const conversationId = "slack:C9TIMEDUP:1700000000.000";
+    const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1041,6 +1077,7 @@ describe("bot handlers (integration)", () => {
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1048,11 +1085,13 @@ describe("bot handlers (integration)", () => {
   });
 
   it("does not reschedule an awaiting continuation for an already-replied duplicate", async () => {
-    const conversationId = "slack:C_TIMEOUT_REPLIED_DUP:1700000000.000";
+    const conversationId = "slack:C9TIMEREPD:1700000000.000";
+    const destination = slackDestination("C9TIMEREPD");
     const activeSessionId = "turn_msg-replied-duplicate";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1096,11 +1135,13 @@ describe("bot handlers (integration)", () => {
   });
 
   it("keeps awaiting continuation state without a visible acknowledgement", async () => {
-    const conversationId = "slack:C_TIMEOUT_NOTICE_FAIL:1700000000.000";
+    const conversationId = "slack:C9TIMENOTI:1700000000.000";
+    const destination = slackDestination("C9TIMENOTI");
     const activeSessionId = "turn_msg-original";
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1132,6 +1173,7 @@ describe("bot handlers (integration)", () => {
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
@@ -1150,13 +1192,15 @@ describe("bot handlers (integration)", () => {
   });
 
   it("does not start a new turn when rescheduling an active continuation fails", async () => {
-    const conversationId = "slack:C_TIMEOUT_RETRY_FAIL:1700000000.000";
+    const conversationId = "slack:C9TIMEFAIL:1700000000.000";
+    const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
     const scheduleTurnTimeoutResume = vi
       .fn()
       .mockRejectedValue(new Error("resume callback unavailable"));
     const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
       conversationId,
+      destination,
       sessionId: activeSessionId,
       expectedVersion: 4,
     });

@@ -27,6 +27,11 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-auth",
 );
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
 
 type ArtifactStateModule = typeof import("@/chat/state/artifacts");
 type ConversationStateModule = typeof import("@/chat/state/conversation");
@@ -60,6 +65,7 @@ async function createPendingAuthSession(args: {
   const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
     provider: EVAL_MCP_AUTH_PROVIDER,
     conversationId: args.conversationId,
+    destination: SLACK_DESTINATION,
     sessionId: args.sessionId,
     userId: "U123",
     userMessage: args.userMessage,
@@ -93,6 +99,7 @@ async function createAwaitingMcpTurnRecord(args: {
     sessionId: args.sessionId,
     sliceId: 2,
     state: "awaiting_resume",
+    destination: SLACK_DESTINATION,
     piMessages: [
       {
         role: "user",
@@ -222,6 +229,7 @@ describe("mcp oauth callback slack integration", () => {
     const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
       provider: EVAL_MCP_AUTH_PROVIDER,
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId,
       userId: "U123",
       userMessage: "what did i say about the budget?",
@@ -258,6 +266,7 @@ describe("mcp oauth callback slack integration", () => {
       provider: EVAL_MCP_AUTH_PROVIDER,
       userId: "U123",
       conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
       sessionId,
       userMessage: "what did i say about the budget?",
       channelId: "C123",
@@ -303,6 +312,7 @@ describe("mcp oauth callback slack integration", () => {
       "what did i say about the budget?",
       expect.objectContaining({
         requester: expect.objectContaining({ userId: "U123" }),
+        destination: SLACK_DESTINATION,
         toolChannelId: "C999",
         inboundAttachmentCount: 1,
         omittedImageAttachmentCount: 1,
@@ -514,6 +524,7 @@ describe("mcp oauth callback slack integration", () => {
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "what did i say about the budget?",
       expect.objectContaining({
+        destination: SLACK_DESTINATION,
         toolChannelId: "CFRESH",
         conversationContext: expect.stringContaining(
           "Fresh MCP context loaded after the lock.",
@@ -549,6 +560,7 @@ describe("mcp oauth callback slack integration", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,

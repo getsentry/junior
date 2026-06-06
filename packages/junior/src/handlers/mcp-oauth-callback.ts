@@ -183,9 +183,14 @@ async function resumeAuthorizedMcpTurn(args: {
   provider: string;
 }): Promise<void> {
   const { authSession, provider } = args;
-  if (!authSession.channelId || !authSession.threadTs) {
+  if (
+    !authSession.channelId ||
+    !authSession.destination ||
+    !authSession.threadTs
+  ) {
     return;
   }
+  const destination = authSession.destination;
 
   const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
@@ -311,6 +316,7 @@ async function resumeAuthorizedMcpTurn(args: {
             actor: { type: "user", userId: authSession.userId },
           },
           requester,
+          destination,
           correlation: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,
@@ -405,6 +411,7 @@ async function resumeAuthorizedMcpTurn(args: {
           }
           await scheduleTurnTimeoutResume({
             conversationId: authSession.conversationId,
+            destination,
             sessionId: lockedSessionId,
             expectedVersion: version,
           });

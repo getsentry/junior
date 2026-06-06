@@ -1,4 +1,5 @@
 import type { Lock, StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -11,11 +12,17 @@ import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
+export const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const satisfies Destination;
 export const SLACK_BOT_USER_ID = "U_BOT";
 export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
 export interface ConversationQueueSendRecord {
   conversationId: string;
+  destination: Destination;
   delayMs?: number;
   idempotencyKey?: string;
 }
@@ -85,6 +92,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     }
     const record: ConversationQueueSendRecord = {
       conversationId: message.conversationId,
+      destination: message.destination,
     };
     if (options?.delayMs !== undefined) {
       record.delayMs = options.delayMs;
@@ -175,6 +183,7 @@ export function inboundMessage(
   return {
     conversationId: CONVERSATION_ID,
     inboundMessageId,
+    destination: SLACK_DESTINATION,
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,
@@ -182,6 +191,17 @@ export function inboundMessage(
       text: `message ${inboundMessageId}`,
       authorId: "U123",
     },
+    ...overrides,
+  };
+}
+
+/** Build a durable queue payload for the default Slack conversation fixture. */
+export function conversationQueueMessage(
+  overrides: Partial<ConversationQueueMessage> = {},
+): ConversationQueueMessage {
+  return {
+    conversationId: CONVERSATION_ID,
+    destination: SLACK_DESTINATION,
     ...overrides,
   };
 }

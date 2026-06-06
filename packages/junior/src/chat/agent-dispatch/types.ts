@@ -1,4 +1,4 @@
-import type { DispatchOptions as AgentPluginDispatchOptions } from "@sentry/junior-plugin-api";
+import type { Destination, DispatchOptions } from "@sentry/junior-plugin-api";
 import type {
   CredentialSubject,
   CredentialSystemActor,
@@ -12,10 +12,6 @@ export type DispatchStatus =
   | "failed"
   | "blocked";
 
-export type DispatchOptions = AgentPluginDispatchOptions;
-
-export type DispatchDestination = DispatchOptions["destination"];
-
 export interface BoundDispatchOptions extends Omit<
   DispatchOptions,
   "credentialSubject"
@@ -28,7 +24,7 @@ export interface DispatchRecord {
   attempt: number;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
-  destination: DispatchDestination;
+  destination: Destination;
   errorMessage?: string;
   id: string;
   idempotencyKey: string;

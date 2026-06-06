@@ -6,6 +6,7 @@
  * private-link delivery/reuse, session-log recording, and credential cleanup.
  */
 import { THREAD_STATE_TTL_MS } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -49,6 +50,7 @@ export interface PluginAuthOrchestrationDeps {
   sessionId?: string;
   requesterId?: string;
   channelId?: string;
+  destination?: Destination;
   threadTs?: string;
   userMessage: string;
   channelConfiguration?: ChannelConfigurationService;
@@ -257,6 +259,7 @@ export function createPluginAuthOrchestration(
       const oauthResult = await startOAuthFlow(provider, {
         requesterId: deps.requesterId,
         channelId: deps.channelId,
+        destination: deps.destination,
         threadTs: deps.threadTs,
         userMessage: deps.userMessage,
         channelConfiguration: deps.channelConfiguration,

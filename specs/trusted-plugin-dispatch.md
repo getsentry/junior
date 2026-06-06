@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -29,11 +29,7 @@ Trusted plugins may dispatch an agent request:
 ```ts
 const result = await ctx.agent.dispatch({
   idempotencyKey: run.id,
-  destination: {
-    platform: "slack",
-    teamId: task.destination.teamId,
-    channelId: task.destination.channelId,
-  },
+  destination: task.destination,
   input: buildScheduledTaskRunPrompt({ task, run, nowMs }),
   metadata: {
     taskId: task.id,
@@ -52,11 +48,7 @@ type DispatchOptions = {
     userId: string;
     allowedWhen: "private-direct-conversation";
   };
-  destination: {
-    platform: "slack";
-    teamId: string;
-    channelId: string;
-  };
+  destination: Destination;
   input: string;
   metadata?: Record<string, string>;
 };

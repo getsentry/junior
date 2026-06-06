@@ -49,6 +49,11 @@ import {
 } from "../../fixtures/wait-until";
 
 let waitUntil: WaitUntilCollector;
+const DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
 
 function postTurnResumeRequest(): Promise<Response> {
   return POST(
@@ -97,6 +102,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -146,6 +152,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -177,6 +184,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -226,6 +234,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -251,6 +260,7 @@ describe("turn resume handler", () => {
 
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version + 1,
     });
@@ -265,6 +275,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -314,6 +325,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -340,6 +352,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -389,6 +402,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -406,6 +420,7 @@ describe("turn resume handler", () => {
     expect(resumeSlackTurnMock).toHaveBeenCalledTimes(4);
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -419,6 +434,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -468,6 +484,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -519,6 +536,7 @@ describe("turn resume handler", () => {
       sessionId,
       sliceId: 5,
       state: "awaiting_resume",
+      destination: DESTINATION,
       piMessages: [
         {
           role: "user",
@@ -568,6 +586,7 @@ describe("turn resume handler", () => {
 
     verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
@@ -608,6 +627,7 @@ describe("turn resume handler", () => {
 
     expect(scheduleTurnTimeoutResumeMock).toHaveBeenCalledWith({
       conversationId,
+      destination: DESTINATION,
       sessionId,
       expectedVersion: sessionRecord.version + 1,
     });

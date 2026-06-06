@@ -1,5 +1,8 @@
+import type { Destination } from "@sentry/junior-plugin-api";
+
 export interface ConversationQueueMessage {
   conversationId: string;
+  destination: Destination;
 }
 
 export interface ConversationQueueSendOptions {

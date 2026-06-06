@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Destination } from "@sentry/junior-plugin-api";
 
 const { agentMode, counters } = vi.hoisted(() => ({
   agentMode: {
@@ -230,6 +231,12 @@ import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resu
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 
+const TEST_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} satisfies Destination;
+
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
     agentMode.value = "providerRetry";
@@ -327,6 +334,7 @@ describe("generateAssistantReply provider retry", () => {
         channelId: "C123",
         threadTs: "1712345.0003",
       },
+      destination: TEST_DESTINATION,
       shouldYield: () => true,
     }).then(
       () => undefined,
@@ -356,6 +364,7 @@ describe("generateAssistantReply provider retry", () => {
       }),
     ).resolves.toMatchObject({
       conversationId: "conversation-yield",
+      destination: TEST_DESTINATION,
       sessionId: "turn-yield",
       expectedVersion: sessionRecord?.version,
     });
@@ -372,6 +381,7 @@ describe("generateAssistantReply provider retry", () => {
         channelId: "C123",
         threadTs: "1712345.0005",
       },
+      destination: TEST_DESTINATION,
       drainSteeringMessages: async (inject) => {
         const messages = [
           { text: "actually do the other thing", timestampMs: 2_000 },

@@ -8,6 +8,7 @@
  * should stay outside this file.
  */
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -199,6 +200,7 @@ export interface ReplyRequestContext {
     email?: string;
   };
   slackConversation?: SlackConversationContext;
+  destination?: Destination;
   surface?: AgentTurnSurface;
   correlation?: {
     conversationId?: string;
@@ -885,6 +887,7 @@ export async function generateAssistantReply(
         sessionId,
         requesterId: authRequesterId,
         channelId: context.correlation?.channelId,
+        destination: context.destination,
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
         userMessage: userInput,
@@ -904,6 +907,7 @@ export async function generateAssistantReply(
         sessionId,
         requesterId: authRequesterId,
         channelId: context.correlation?.channelId,
+        destination: context.destination,
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,
         channelConfiguration: context.channelConfiguration,
@@ -995,6 +999,7 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         conversationId: sessionConversationId,
+        destination: context.destination,
         requester: actorRequester,
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,
@@ -1168,6 +1173,7 @@ export async function generateAssistantReply(
       const persisted = await persistRunningSessionRecord({
         channelName: context.correlation?.channelName,
         conversationId: sessionConversationId,
+        destination: context.destination,
         sessionId,
         sliceId: currentSliceId,
         messages,
@@ -1536,6 +1542,7 @@ export async function generateAssistantReply(
         conversationId: sessionConversationId,
         currentDurationMs: Date.now() - replyStartedAtMs,
         currentUsage: turnUsage,
+        destination: context.destination,
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
@@ -1579,6 +1586,7 @@ export async function generateAssistantReply(
       const sessionRecord = await persistYieldSessionRecord({
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
+        destination: context.destination,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,
@@ -1606,6 +1614,7 @@ export async function generateAssistantReply(
       const sessionRecord = await persistTimeoutSessionRecord({
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
+        destination: context.destination,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,
@@ -1656,6 +1665,7 @@ export async function generateAssistantReply(
       const sessionRecord = await persistAuthPauseSessionRecord({
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
+        destination: context.destination,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,

@@ -45,6 +45,7 @@ import {
   parseActorUserId,
   type SlackActorProfile,
 } from "@/chat/services/requester-identity";
+import { createSlackDestination } from "@/chat/destination";
 
 export type SlackConversationRoute = "mention" | "subscribed";
 
@@ -427,8 +428,16 @@ export function buildSlackInboundMessage(args: {
   thread: ThreadImpl;
 }): InboundMessageRecord {
   const authorId = requireSlackAuthorId(args.message);
+  const destination = createSlackDestination({
+    channelId: args.thread.channelId,
+    teamId: args.installation?.teamId,
+  });
+  if (!destination) {
+    throw new Error("Slack inbound message requires destination context");
+  }
   return {
     conversationId: args.conversationId,
+    destination,
     inboundMessageId: [
       "slack",
       args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",

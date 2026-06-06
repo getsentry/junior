@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
+import { destinationKey } from "@/chat/destination";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type {
@@ -57,10 +59,8 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
 }
 
 /** Map a dispatch destination to the lock key that serializes Slack delivery. */
-export function getDispatchDestinationLockId(
-  destination: DispatchRecord["destination"],
-): string {
-  return `slack:${destination.teamId}:${destination.channelId}`;
+export function getDispatchDestinationLockId(destination: Destination): string {
+  return destinationKey(destination);
 }
 
 /** Return the isolated persisted conversation key for one dispatch run. */

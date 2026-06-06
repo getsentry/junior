@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { getSlackClient, isDmChannel } from "@/chat/slack/client";
@@ -7,6 +9,7 @@ import {
   postSlackEphemeralMessage,
   postSlackMessage,
 } from "@/chat/slack/outbound";
+import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
@@ -15,6 +18,7 @@ export type OAuthStatePayload = {
   userId: string;
   provider: string;
   channelId?: string;
+  destination?: Destination;
   threadTs?: string;
   pendingMessage?: string;
   configuration?: Record<string, unknown>;
@@ -25,6 +29,7 @@ export type OAuthStatePayload = {
 type OAuthFlowInput = {
   requesterId: string;
   channelId?: string;
+  destination?: Destination;
   threadTs?: string;
   userMessage?: string;
   channelConfiguration?: ChannelConfigurationService;
@@ -34,6 +39,49 @@ type OAuthFlowInput = {
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Parse OAuth callback state that was persisted before a provider redirect. */
+export function parseOAuthStatePayload(
+  value: unknown,
+): OAuthStatePayload | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (typeof value.userId !== "string" || typeof value.provider !== "string") {
+    return undefined;
+  }
+  const destination = parseDestination(value.destination);
+  if (value.destination !== undefined && !destination) {
+    return undefined;
+  }
+  return {
+    userId: value.userId,
+    provider: value.provider,
+    ...(optionalString(value.channelId)
+      ? { channelId: optionalString(value.channelId) }
+      : {}),
+    ...(destination ? { destination } : {}),
+    ...(optionalString(value.threadTs)
+      ? { threadTs: optionalString(value.threadTs) }
+      : {}),
+    ...(optionalString(value.pendingMessage)
+      ? { pendingMessage: optionalString(value.pendingMessage) }
+      : {}),
+    ...(isRecord(value.configuration)
+      ? { configuration: value.configuration }
+      : {}),
+    ...(optionalString(value.resumeConversationId)
+      ? { resumeConversationId: optionalString(value.resumeConversationId) }
+      : {}),
+    ...(optionalString(value.resumeSessionId)
+      ? { resumeSessionId: optionalString(value.resumeSessionId) }
+      : {}),
+  };
+}
 
 /** Capitalize the first letter of a provider name for display. */
 export function formatProviderLabel(provider: string): string {
@@ -179,6 +227,7 @@ export async function startOAuthFlow(
       userId: input.requesterId,
       provider,
       ...(input.channelId ? { channelId: input.channelId } : {}),
+      ...(input.destination ? { destination: input.destination } : {}),
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
       ...(configuration && Object.keys(configuration).length > 0

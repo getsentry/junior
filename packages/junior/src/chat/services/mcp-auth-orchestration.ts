@@ -8,6 +8,7 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
@@ -40,6 +41,7 @@ export interface McpAuthOrchestrationDeps {
   sessionId?: string;
   requesterId?: string;
   channelId?: string;
+  destination?: Destination;
   threadTs?: string;
   toolChannelId?: string;
   userMessage: string;
@@ -87,6 +89,7 @@ export function createMcpAuthOrchestration(
     const provider = await createMcpOAuthClientProvider({
       provider: plugin.manifest.name,
       conversationId: deps.conversationId,
+      destination: deps.destination,
       sessionId: deps.sessionId,
       userId: deps.requesterId,
       userMessage: deps.userMessage,

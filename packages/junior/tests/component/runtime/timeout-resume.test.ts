@@ -5,7 +5,10 @@ import {
 } from "@/chat/services/timeout-resume";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
+import {
+  SLACK_DESTINATION,
+  createConversationWorkQueueTestAdapter,
+} from "../../fixtures/conversation-work";
 import { createTurnResumeTestClient } from "../../fixtures/turn-resume";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
@@ -49,6 +52,7 @@ describe("timeout resume callback signing", () => {
     await scheduleTurnTimeoutResume(
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         sessionId: "turn_msg_1",
         expectedVersion: 3,
       },
@@ -58,6 +62,7 @@ describe("timeout resume callback signing", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination: SLACK_DESTINATION,
         idempotencyKey: `timeout:${conversationId}:turn_msg_1:3`,
       },
     ]);
@@ -65,6 +70,7 @@ describe("timeout resume callback signing", () => {
       getConversationWorkState({ conversationId }),
     ).resolves.toMatchObject({
       conversationId,
+      destination: SLACK_DESTINATION,
       needsRun: true,
       lastEnqueuedAtMs: 1_000,
     });
@@ -76,32 +82,32 @@ describe("timeout resume callback signing", () => {
     });
     const request = client.request({
       conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
 
     await expect(verifyTurnTimeoutResumeRequest(request)).resolves.toEqual({
       conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
   });
 
-  it("accepts the previous expected checkpoint version field", async () => {
+  it("rejects requests without destination context", async () => {
     const client = createTurnResumeTestClient({
       juniorSecret: "resume-secret",
     });
-    const request = client.legacyRequest({
+    const request = client.requestWithoutDestination({
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
 
-    await expect(verifyTurnTimeoutResumeRequest(request)).resolves.toEqual({
-      conversationId: "slack:C123:1712345.0001",
-      sessionId: "turn_msg_1",
-      expectedVersion: 3,
-    });
+    await expect(
+      verifyTurnTimeoutResumeRequest(request),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects requests whose signature does not match the body", async () => {
@@ -110,6 +116,7 @@ describe("timeout resume callback signing", () => {
     });
     const request = client.invalidSignature({
       conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
@@ -125,6 +132,7 @@ describe("timeout resume callback signing", () => {
     });
     const request = client.request({
       conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
       sessionId: "turn_msg_1",
       expectedVersion: 3,
     });
