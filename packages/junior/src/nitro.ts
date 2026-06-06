@@ -12,7 +12,7 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -194,16 +194,6 @@ function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   );
 }
 
-function resolveConversationWorkQueueTopic(
-  options: JuniorNitroOptions,
-): string {
-  return (
-    options.conversationWorkQueueTopic?.trim() ||
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
-    DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
-  );
-}
-
 /**
  * Prevent import-in-the-middle and require-in-the-middle from being
  * externalized so Rolldown bundles them inline.
@@ -236,7 +226,9 @@ function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
 function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const defaultMaxDuration =
     options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  const queueTopic = resolveConversationWorkQueueTopic(options);
+  const queueTopic = resolveConversationWorkQueueTopic({
+    topic: options.conversationWorkQueueTopic,
+  });
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };

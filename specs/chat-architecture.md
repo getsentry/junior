@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -39,7 +39,7 @@ The core architecture is the flow of one Slack event through a durable agent tur
 flowchart TD
   A[Slack webhook event] --> B[Slack-specific ingress parsing and classification]
   B --> C[Append to durable conversation mailbox]
-  C --> D[Send Vercel Queue nudge: conversationId]
+  C --> D[Send Vercel Queue nudge: conversationId + Destination]
   D --> E[Queue worker acquires conversation lease]
   E --> E1[Load persisted thread state]
   E --> E2[Drain pending mailbox messages]
@@ -53,7 +53,7 @@ flowchart TD
   M --> N[Eager state updates: sandbox id, artifacts, pending auth]
   N --> L
   L --> Y{Safe boundary and soft yield due?}
-  Y -->|yes| YA[Enqueue conversationId, release lease, ack delivery]
+  Y -->|yes| YA[Enqueue conversationId + Destination, release lease, ack delivery]
   Y -->|no| L
   L --> Z{Safe boundary and mailbox has new input?}
   Z -->|yes| E2

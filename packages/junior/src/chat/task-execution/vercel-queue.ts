@@ -26,9 +26,13 @@ export interface VercelConversationWorkQueueOptions {
 
 let defaultQueue: ConversationWorkQueue | undefined;
 
-function getTopic(options: VercelConversationWorkQueueOptions): string {
+/** Resolve the Vercel Queue topic used for conversation wake-up nudges. */
+export function resolveConversationWorkQueueTopic(
+  options: Pick<VercelConversationWorkQueueOptions, "topic"> = {},
+): string {
+  const topic = options.topic?.trim();
   return (
-    options.topic ||
+    topic ||
     process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
     DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
   );
@@ -47,7 +51,7 @@ function toDelaySeconds(
 export function createVercelConversationWorkQueue(
   options: VercelConversationWorkQueueOptions = {},
 ): ConversationWorkQueue {
-  const topic = getTopic(options);
+  const topic = resolveConversationWorkQueueTopic(options);
   const client = options.client ?? new QueueClient();
 
   return {

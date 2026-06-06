@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
+import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import { juniorVercelConfig } from "@/vercel";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -45,5 +46,13 @@ describe("juniorVercelConfig", () => {
 describe("resolveConversationWorkVisibilityTimeoutSeconds", () => {
   it("keeps queue redelivery past the function timeout boundary", () => {
     expect(resolveConversationWorkVisibilityTimeoutSeconds(300)).toBe(330);
+  });
+});
+
+describe("resolveConversationWorkQueueTopic", () => {
+  it("normalizes explicit queue topics", () => {
+    expect(resolveConversationWorkQueueTopic({ topic: " local_work " })).toBe(
+      "local_work",
+    );
   });
 });

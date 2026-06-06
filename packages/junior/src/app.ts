@@ -39,6 +39,7 @@ import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import {
   createVercelConversationWorkCallback,
+  registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
 } from "@/chat/task-execution/vercel-callback";
 import { getProductionConversationWorkOptions } from "@/chat/app/production";
@@ -348,9 +349,20 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let agentContinuePOST:
     | ReturnType<typeof createVercelConversationWorkCallback>
     | undefined;
+  let conversationWorkOptions:
+    | VercelConversationWorkCallbackOptions
+    | undefined;
+  const getConversationWorkOptions = () => {
+    conversationWorkOptions ??=
+      options?.conversationWork ?? getProductionConversationWorkOptions();
+    return conversationWorkOptions;
+  };
+  if (process.env.NODE_ENV === "development") {
+    registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
+  }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
-      options?.conversationWork ?? getProductionConversationWorkOptions(),
+      getConversationWorkOptions(),
     );
     return agentContinuePOST(c.req.raw);
   });

@@ -1,10 +1,17 @@
-import { handleCallback } from "@vercel/queue";
+import {
+  handleCallback,
+  QueueClient,
+  registerDevConsumer,
+} from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination } from "@/chat/destination";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
-import { getVercelConversationWorkQueue } from "./vercel-queue";
+import {
+  getVercelConversationWorkQueue,
+  resolveConversationWorkQueueTopic,
+} from "./vercel-queue";
 import {
   processConversationWork,
   type ConversationWorkProcessResult,
@@ -14,6 +21,8 @@ import {
 import { verifySignedConversationQueueMessage } from "./queue-signing";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
+export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
+  "junior_conversation_work_dev";
 
 export interface ProcessConversationQueueMessageOptions {
   checkInIntervalMs?: number;
@@ -25,6 +34,7 @@ export interface ProcessConversationQueueMessageOptions {
 }
 
 export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
+  topic?: string;
   visibilityTimeoutSeconds?: number;
 }
 
@@ -78,24 +88,49 @@ export async function processConversationQueueMessage(
   });
 }
 
+async function handleConversationQueueMessage(
+  message: unknown,
+  options: VercelConversationWorkCallbackOptions,
+): Promise<void> {
+  const verified = verifySignedConversationQueueMessage(message);
+  if (!verified) {
+    throw new Error("Unauthorized conversation queue message");
+  }
+  await runWithTurnRequestDeadline(() =>
+    processConversationQueueMessage(verified, options),
+  );
+}
+
 /** Create the Vercel Queue push callback for conversation work nudges. */
 export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
   return handleCallback(
-    async (message: unknown) => {
-      const verified = verifySignedConversationQueueMessage(message);
-      if (!verified) {
-        throw new Error("Unauthorized conversation queue message");
-      }
-      await runWithTurnRequestDeadline(() =>
-        processConversationQueueMessage(verified, options),
-      );
-    },
+    (message: unknown) => handleConversationQueueMessage(message, options),
     {
       visibilityTimeoutSeconds:
         options.visibilityTimeoutSeconds ??
         resolveConversationWorkVisibilityTimeoutSeconds(),
     },
   );
+}
+
+/** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */
+export function registerVercelConversationWorkDevConsumer(
+  options: VercelConversationWorkCallbackOptions,
+): (() => void) | undefined {
+  if (process.env.NODE_ENV !== "development") {
+    return undefined;
+  }
+
+  return registerDevConsumer({
+    client: new QueueClient(),
+    consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
+    handler: (message: unknown) =>
+      handleConversationQueueMessage(message, options),
+    topic: resolveConversationWorkQueueTopic(options),
+    visibilityTimeoutSeconds:
+      options.visibilityTimeoutSeconds ??
+      resolveConversationWorkVisibilityTimeoutSeconds(),
+  });
 }
