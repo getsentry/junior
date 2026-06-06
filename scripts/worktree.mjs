@@ -170,12 +170,15 @@ function defaultWorktreeParent() {
 }
 
 function sanitizePathSegment(value) {
-  return value
+  return normalizeBranchName(value)
     .trim()
-    .replace(/^refs\/heads\//, "")
     .replace(/[^A-Za-z0-9._/-]+/g, "-")
     .replace(/\//g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function normalizeBranchName(value) {
+  return value.replace(/^refs\/heads\//, "");
 }
 
 function shortHash(value) {
@@ -263,7 +266,7 @@ function parseWorktreeList() {
 
 function findWorktree(identifier) {
   const resolvedIdentifier = comparablePath(identifier);
-  const normalizedIdentifier = identifier.replace(/^refs\/heads\//, "");
+  const normalizedIdentifier = normalizeBranchName(identifier);
   const matches = parseWorktreeList().filter((entry) => {
     const entryPath = comparablePath(entry.path);
 
@@ -587,7 +590,8 @@ function listWorktrees() {
 
 function createWorktree(args) {
   const { options, positional } = splitOptions(args);
-  const branch = positional[0];
+  const rawBranch = positional[0];
+  const branch = rawBranch ? normalizeBranchName(rawBranch) : null;
 
   if (!branch) {
     fail("Missing branch name.");
