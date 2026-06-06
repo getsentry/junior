@@ -3,6 +3,7 @@ import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
 } from "@/chat/agent-dispatch/validation";
+import { parseDispatchRecord } from "@/chat/agent-dispatch/store";
 import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
@@ -66,11 +67,9 @@ describe("agent dispatch validation", () => {
   });
 
   it("rejects malformed dispatch destination payloads", () => {
-    expect(() =>
-      validateDispatchOptions(
-        undefined as unknown as Parameters<typeof validateDispatchOptions>[0],
-      ),
-    ).toThrow("Dispatch options are required");
+    expect(() => validateDispatchOptions(undefined)).toThrow(
+      "Dispatch options are required",
+    );
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
@@ -80,10 +79,17 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
+        unexpected: "field",
+      }),
+    ).toThrow("Dispatch options must not include unknown fields");
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
         destination: {
           ...validOptions.destination,
           threadTs: "1700000000.000",
-        } as typeof validOptions.destination,
+        },
       }),
     ).toThrow("Dispatch destination must not include unknown fields");
     expect(() =>
@@ -95,6 +101,55 @@ describe("agent dispatch validation", () => {
         },
       }),
     ).toThrow("Dispatch destination channelId must be a Slack channel id");
+  });
+
+  it("rejects non-canonical dispatch records from durable state", () => {
+    const baseRecord = {
+      actor: { type: "system", id: "scheduler" },
+      attempt: 0,
+      createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      destination: validOptions.destination,
+      id: "dispatch_123",
+      idempotencyKey: "run-1",
+      input: "Run the scheduled task.",
+      maxAttempts: 5,
+      plugin: "scheduler",
+      status: "pending",
+      updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      version: 1,
+    };
+
+    expect(
+      parseDispatchRecord({
+        ...baseRecord,
+        destination: {
+          ...validOptions.destination,
+          threadTs: "1700000000.000",
+        },
+      }),
+    ).toBeUndefined();
+
+    expect(
+      parseDispatchRecord({
+        ...baseRecord,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D999",
+            signature: "v1=test",
+          },
+        },
+      }),
+    ).toBeUndefined();
   });
 
   it("bounds durable idempotency and metadata keys", () => {
@@ -126,9 +181,7 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        credentialSubject: null as unknown as NonNullable<
-          Parameters<typeof validateDispatchOptions>[0]["credentialSubject"]
-        >,
+        credentialSubject: null,
       }),
     ).toThrow("Dispatch credentialSubject type must be user");
 

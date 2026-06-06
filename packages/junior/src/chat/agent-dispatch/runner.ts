@@ -50,6 +50,7 @@ import {
   getDispatchStorageKey,
   getDispatchTurnId,
   isTerminalDispatchStatus,
+  parseDispatchRecord,
   updateDispatchRecord,
   withDispatchLock,
 } from "./store";
@@ -128,10 +129,12 @@ async function markDispatch(args: {
   status: DispatchRecord["status"];
 }): Promise<DispatchRecord> {
   return await withDispatchLock(args.dispatch.id, async (state) => {
-    const current =
-      (await state.get<DispatchRecord>(
-        getDispatchStorageKey(args.dispatch.id),
-      )) ?? args.dispatch;
+    const current = parseDispatchRecord(
+      await state.get(getDispatchStorageKey(args.dispatch.id)),
+    );
+    if (!current) {
+      throw new Error("Dispatch record is missing or invalid.");
+    }
     return await updateDispatchRecord(state, {
       ...current,
       status: args.status,
@@ -170,9 +173,9 @@ export async function runAgentDispatchSlice(
   const scheduleCallback = deps.scheduleCallback ?? scheduleDispatchCallback;
   const nowMs = Date.now();
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
-    const current =
-      (await state.get<DispatchRecord>(getDispatchStorageKey(callback.id))) ??
-      undefined;
+    const current = parseDispatchRecord(
+      await state.get(getDispatchStorageKey(callback.id)),
+    );
     if (
       !current ||
       !canClaimDispatch(current, nowMs) ||
@@ -213,11 +216,11 @@ export async function runAgentDispatchSlice(
     const startedDispatch = await withDispatchLock(
       dispatch.id,
       async (state) => {
-        const current =
-          (await state.get<DispatchRecord>(
-            getDispatchStorageKey(dispatch.id),
-          )) ?? dispatch;
+        const current = parseDispatchRecord(
+          await state.get(getDispatchStorageKey(dispatch.id)),
+        );
         if (
+          !current ||
           current.status !== "running" ||
           current.version !== dispatch.version ||
           current.attempt >= current.maxAttempts

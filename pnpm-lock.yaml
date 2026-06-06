@@ -345,6 +345,10 @@ importers:
   packages/junior-notion: {}
 
   packages/junior-plugin-api:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       oxlint:
         specifier: ^1.66.0
@@ -9167,7 +9171,9 @@ snapshots:
       - xml2js
       - zephyr-agent
 
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api': {}
+  '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
+    dependencies:
+      zod: 4.4.3
 
   '@sentry/junior@file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.43)(@opentelemetry/api@1.9.1)':
     dependencies:

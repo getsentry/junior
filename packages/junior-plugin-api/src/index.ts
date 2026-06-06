@@ -1,9 +1,94 @@
-export interface AgentPluginRequester {
-  userId?: string;
-  userName?: string;
-  fullName?: string;
-  email?: string;
-}
+import { z } from "zod";
+
+const slackTeamIdSchema = z.string().regex(/^T[A-Z0-9]+$/);
+const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);
+const exactActorUserIdSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => value === value.trim() && value.toLowerCase() !== "unknown",
+  );
+const nonBlankStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0);
+
+/** Runtime-owned provider-neutral address for routing future work or side effects. */
+export const destinationSchema = z
+  .object({
+    platform: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
+  })
+  .strict();
+
+/** Stable user credential subject shape accepted from trusted plugins. */
+export const agentPluginCredentialSubjectSchema = z
+  .object({
+    type: z.literal("user"),
+    userId: exactActorUserIdSchema,
+    allowedWhen: z.literal("private-direct-conversation"),
+  })
+  .strict();
+
+/** Runtime-provided requester identity visible to trusted plugin hooks. */
+export const agentPluginRequesterSchema = z
+  .object({
+    userId: exactActorUserIdSchema.optional(),
+    userName: nonBlankStringSchema.optional(),
+    fullName: nonBlankStringSchema.optional(),
+    email: nonBlankStringSchema.optional(),
+  })
+  .strict();
+
+const dispatchMetadataSchema = z
+  .record(z.string(), z.string())
+  .superRefine((metadata, ctx) => {
+    const entries = Object.entries(metadata);
+    if (entries.length > 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dispatch metadata has too many keys",
+      });
+      return;
+    }
+    for (const [key, value] of entries) {
+      if (!key.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch metadata values must be strings",
+          path: [key],
+        });
+        continue;
+      }
+      if (key.length > 128) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch metadata key exceeds the maximum length",
+          path: [key],
+        });
+      }
+      if (value.length > 512) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch metadata value exceeds the maximum length",
+          path: [key],
+        });
+      }
+    }
+  });
+
+/** Trusted plugin dispatch request accepted by Junior core. */
+export const dispatchOptionsSchema = z
+  .object({
+    idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
+    credentialSubject: agentPluginCredentialSubjectSchema.optional(),
+    destination: destinationSchema,
+    input: nonBlankStringSchema.pipe(z.string().max(32_000)),
+    metadata: dispatchMetadataSchema.optional(),
+  })
+  .strict();
+
+export type AgentPluginRequester = z.output<typeof agentPluginRequesterSchema>;
 
 export interface AgentPluginMetadata {
   name: string;
@@ -142,26 +227,13 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
   userText?: string;
 }
 
-export interface AgentPluginCredentialSubject {
-  type: "user";
-  userId: string;
-  allowedWhen: "private-direct-conversation";
-}
+export type AgentPluginCredentialSubject = z.output<
+  typeof agentPluginCredentialSubjectSchema
+>;
 
-/** Provider-neutral address Junior can use to route future work or side effects. */
-export type Destination = {
-  platform: "slack";
-  teamId: string;
-  channelId: string;
-};
+export type Destination = z.output<typeof destinationSchema>;
 
-export interface DispatchOptions {
-  credentialSubject?: AgentPluginCredentialSubject;
-  destination: Destination;
-  idempotencyKey: string;
-  input: string;
-  metadata?: Record<string, string>;
-}
+export type DispatchOptions = z.output<typeof dispatchOptionsSchema>;
 
 export interface DispatchResult {
   id: string;

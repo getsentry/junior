@@ -1,6 +1,8 @@
-import type {
-  AgentPluginReadState,
-  AgentPluginState,
+import {
+  agentPluginCredentialSubjectSchema,
+  destinationSchema,
+  type AgentPluginReadState,
+  type AgentPluginState,
 } from "@sentry/junior-plugin-api";
 import { getNextRunAtMs } from "./cadence";
 import type { ScheduledRun, ScheduledTask } from "./types";
@@ -355,11 +357,42 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
+function parseStoredTask(value: unknown): ScheduledTask | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Partial<ScheduledTask>;
+  const destination = destinationSchema.safeParse(record.destination);
+  if (!destination.success) {
+    return undefined;
+  }
+  const credentialSubject =
+    record.credentialSubject === undefined
+      ? undefined
+      : agentPluginCredentialSubjectSchema.safeParse(record.credentialSubject);
+  if (credentialSubject && !credentialSubject.success) {
+    return undefined;
+  }
+  return {
+    ...(record as ScheduledTask),
+    destination: destination.data,
+    ...(credentialSubject ? { credentialSubject: credentialSubject.data } : {}),
+  };
+}
+
+function requireStoredTask(task: ScheduledTask): ScheduledTask {
+  const parsed = parseStoredTask(task);
+  if (!parsed) {
+    throw new Error("Scheduled task routing context is invalid.");
+  }
+  return parsed;
+}
+
 async function getTaskFromState(
   state: AgentPluginReadState,
   taskId: string,
 ): Promise<ScheduledTask | undefined> {
-  return (await state.get<ScheduledTask>(taskKey(taskId))) ?? undefined;
+  return parseStoredTask(await state.get(taskKey(taskId)));
 }
 
 async function listTasksFromState(
@@ -425,10 +458,10 @@ class PluginStateSchedulerStore implements SchedulerStore {
   }
 
   async saveTask(task: ScheduledTask): Promise<void> {
+    const next = requireStoredTask(task);
     await withLock(this.state, taskLockKey(task.id), async () => {
-      const current =
-        (await this.state.get<ScheduledTask>(taskKey(task.id))) ?? undefined;
-      await this.saveTaskRecord(task, current);
+      const current = await getTaskFromState(this.state, task.id);
+      await this.saveTaskRecord(next, current);
     });
   }
 
@@ -570,8 +603,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
   }): Promise<void> {
     await withLock(this.state, taskLockKey(args.task.id), async () => {
       const current =
-        (await this.state.get<ScheduledTask>(taskKey(args.task.id))) ??
-        undefined;
+        (await getTaskFromState(this.state, args.task.id)) ?? undefined;
       if (
         !current ||
         current.status !== "active" ||
@@ -767,8 +799,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
   }): Promise<void> {
     await withLock(this.state, taskLockKey(args.run.taskId), async () => {
       const current =
-        (await this.state.get<ScheduledTask>(taskKey(args.run.taskId))) ??
-        undefined;
+        (await getTaskFromState(this.state, args.run.taskId)) ?? undefined;
       if (!current || current.status === "deleted") {
         return;
       }

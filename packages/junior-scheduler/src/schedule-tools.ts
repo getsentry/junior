@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import {
   AgentPluginToolInputError,
+  agentPluginCredentialSubjectSchema,
+  destinationSchema,
   type AgentPluginCredentialSubject,
   type Destination,
   type AgentPluginRequester,
@@ -33,23 +35,38 @@ const TASK_ID_PREFIX = "sched";
 const MAX_LISTED_TASKS = 50;
 const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 
+type SchemaIssue = {
+  code: string;
+  path: readonly PropertyKey[];
+};
+
 function throwToolInputError(error: string): never {
   throw new AgentPluginToolInputError(error);
 }
 
 function requireActiveDestination(context: SchedulerToolContext): Destination {
-  const destination = context.destination;
-  if (!destination || destination.platform !== "slack") {
+  const parsed = destinationSchema.safeParse(context.destination);
+  if (!parsed.success) {
+    const destination = context.destination as Partial<Destination> | undefined;
+    const issues = parsed.error.issues as readonly SchemaIssue[];
+    if (!destination || destination.platform !== "slack") {
+      throwToolInputError("No active Slack destination is available.");
+    }
+    if (issues.some((issue) => issue.code === "unrecognized_keys")) {
+      throwToolInputError(
+        "Active Slack destination must not include unknown fields.",
+      );
+    }
+    if (issues.some((issue) => issue.path[0] === "channelId")) {
+      throwToolInputError("Active Slack destination channel is invalid.");
+    }
+    if (issues.some((issue) => issue.path[0] === "teamId")) {
+      throwToolInputError("Active Slack destination workspace is invalid.");
+    }
     throwToolInputError("No active Slack destination is available.");
   }
-  if (!isSlackConversationId(destination.channelId)) {
-    throwToolInputError("Active Slack destination channel is invalid.");
-  }
-  if (!isSlackTeamId(destination.teamId)) {
-    throwToolInputError("Active Slack destination workspace is invalid.");
-  }
 
-  return destination;
+  return parsed.data;
 }
 
 function requireRequester(
@@ -81,14 +98,6 @@ function isDmChannel(channelId: string): boolean {
   return channelId.startsWith("D");
 }
 
-function isSlackTeamId(value: string): boolean {
-  return /^T[A-Z0-9]+$/.test(value);
-}
-
-function isSlackConversationId(value: string): boolean {
-  return /^(C|G|D)[A-Z0-9]+$/.test(value);
-}
-
 function getConversationAccess(
   destination: Destination,
 ): ScheduledTaskConversationAccess {
@@ -117,10 +126,14 @@ function getCredentialSubject(args: {
   if (!args.subject) {
     return undefined;
   }
+  const subject = agentPluginCredentialSubjectSchema.safeParse(args.subject);
+  if (!subject.success) {
+    throwToolInputError("Active Slack credential subject is invalid.");
+  }
   return {
-    type: args.subject.type,
-    userId: args.subject.userId,
-    allowedWhen: args.subject.allowedWhen,
+    type: subject.data.type,
+    userId: subject.data.userId,
+    allowedWhen: subject.data.allowedWhen,
   };
 }
 

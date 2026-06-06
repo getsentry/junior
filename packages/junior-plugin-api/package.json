@@ -21,6 +21,9 @@
     "dist",
     "src"
   ],
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepare": "pnpm run build",

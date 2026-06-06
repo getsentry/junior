@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import {
+  agentPluginCredentialSubjectSchema,
+  destinationSchema,
+  type Destination,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { destinationKey } from "@/chat/destination";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
@@ -17,6 +22,87 @@ const DISPATCH_LOCK_TTL_MS = 10 * 60 * 1000;
 const DISPATCH_INDEX_LOCK_TTL_MS = 10_000;
 const DISPATCH_INDEX_MAX_LENGTH = 10_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
+
+const nonEmptyExactStringSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => value === value.trim() && value.toLowerCase() !== "unknown",
+  );
+const dispatchStatusSchema = z.enum([
+  "pending",
+  "running",
+  "awaiting_resume",
+  "completed",
+  "failed",
+  "blocked",
+]);
+const dispatchActorSchema = z
+  .object({
+    type: z.literal("system"),
+    id: nonEmptyExactStringSchema,
+  })
+  .strict();
+const credentialSubjectBindingSchema = z
+  .object({
+    type: z.literal("slack-direct-conversation"),
+    teamId: z.string().min(1),
+    channelId: z.string().min(1),
+    signature: z.string().min(1),
+  })
+  .strict();
+const boundCredentialSubjectSchema = agentPluginCredentialSubjectSchema
+  .extend({
+    binding: credentialSubjectBindingSchema,
+  })
+  .strict();
+const dispatchRecordSchema = z
+  .object({
+    actor: dispatchActorSchema,
+    attempt: z.number().int().nonnegative(),
+    createdAtMs: z.number().finite(),
+    credentialSubject: boundCredentialSubjectSchema.optional(),
+    destination: destinationSchema,
+    errorMessage: z.string().optional(),
+    id: nonEmptyExactStringSchema,
+    idempotencyKey: z.string().min(1),
+    input: z.string().min(1),
+    lastCallbackAtMs: z.number().finite().optional(),
+    leaseExpiresAtMs: z.number().finite().optional(),
+    maxAttempts: z.number().int().positive(),
+    metadata: z.record(z.string(), z.string()).optional(),
+    plugin: nonEmptyExactStringSchema,
+    resultMessageTs: z.string().optional(),
+    status: dispatchStatusSchema,
+    updatedAtMs: z.number().finite(),
+    version: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((record, ctx) => {
+    const subject = record.credentialSubject;
+    if (!subject) {
+      return;
+    }
+    if (!record.destination.channelId.startsWith("D")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Dispatch credentialSubject requires a private direct Slack destination",
+        path: ["credentialSubject"],
+      });
+      return;
+    }
+    if (
+      subject.binding.teamId !== record.destination.teamId ||
+      subject.binding.channelId !== record.destination.channelId
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dispatch credentialSubject binding must match destination",
+        path: ["credentialSubject", "binding"],
+      });
+    }
+  });
 
 /** Keep dispatch persistence keys consistent across callback and recovery paths. */
 export function getDispatchStorageKey(id: string): string {
@@ -56,6 +142,14 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
     .digest("hex")
     .slice(0, 32);
   return `dispatch_${digest}`;
+}
+
+/** Parse persisted dispatch records before recovery, callbacks, or projections use them. */
+export function parseDispatchRecord(
+  value: unknown,
+): DispatchRecord | undefined {
+  const parsed = dispatchRecordSchema.safeParse(value);
+  return parsed.success ? (parsed.data as DispatchRecord) : undefined;
 }
 
 /** Map a dispatch destination to the lock key that serializes Slack delivery. */
@@ -167,12 +261,16 @@ async function putRecord(
   state: StateAdapter,
   record: DispatchRecord,
 ): Promise<void> {
+  const next = parseDispatchRecord(record);
+  if (!next) {
+    throw new Error("Dispatch record is invalid.");
+  }
   await state.set(
-    getDispatchStorageKey(record.id),
-    record,
+    getDispatchStorageKey(next.id),
+    next,
     JUNIOR_THREAD_STATE_TTL_MS,
   );
-  await syncIncompleteDispatchIndex(state, record);
+  await syncIncompleteDispatchIndex(state, next);
 }
 
 /** Load dispatch state for callback, recovery, and plugin projection paths. */
@@ -181,9 +279,7 @@ export async function getDispatchRecord(
 ): Promise<DispatchRecord | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return (
-    (await state.get<DispatchRecord>(getDispatchStorageKey(id))) ?? undefined
-  );
+  return parseDispatchRecord(await state.get(getDispatchStorageKey(id)));
 }
 
 /** Create a plugin dispatch idempotently from the plugin's idempotency key. */
@@ -194,8 +290,9 @@ export async function createOrGetDispatch(args: {
 }): Promise<DispatchCreateResult> {
   const id = buildDispatchId(args.plugin, args.options.idempotencyKey);
   return await withDispatchLock(id, async (state) => {
-    const existing =
-      (await state.get<DispatchRecord>(getDispatchStorageKey(id))) ?? undefined;
+    const existing = parseDispatchRecord(
+      await state.get(getDispatchStorageKey(id)),
+    );
     if (existing) {
       return { record: existing, status: "already_exists" };
     }

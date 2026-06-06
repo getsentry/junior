@@ -38,7 +38,7 @@ const result = await ctx.agent.dispatch({
 });
 ```
 
-Argument shape:
+Argument shape, inferred from the strict `dispatchOptionsSchema` exported by `@sentry/junior-plugin-api`:
 
 ```ts
 type DispatchOptions = {
@@ -92,7 +92,9 @@ type Dispatch = {
 
 - `idempotencyKey` is required.
 - Same plugin + idempotency key must not create two dispatch records.
+- Dispatch options must not include unknown top-level fields.
 - `destination.platform` must be `"slack"`.
+- Destination must match the strict shared `Destination` schema exactly and must not include unknown fields.
 - Destination must be a Slack public channel, private channel, or existing DM channel the bot can post to.
 - Destination must not be an existing Slack thread.
 - Destination uses a Slack channel id; it must not accept a user id.
@@ -101,6 +103,7 @@ type Dispatch = {
 - System dispatches have no requester, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
 - Plugin-provided user credential subjects use the stable unbound shape: `type`, `userId`, and `allowedWhen`. Plugin input must not include a binding or signature; bindings are runtime-owned.
 - Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting a dispatch record, core binds the subject to the dispatch destination with the current runtime secret and verifies the signed `teamId`/`channelId` proof locally. Dispatch must not make Slack API calls just to re-check a subject from an already verified turn context.
+- Persisted dispatch records that carry a bound credential subject must keep the subject binding's Slack team id and channel id equal to the record destination.
 - Scheduler tasks should store the stable unbound subject shape and let dispatch bind with the current runtime secret. Signed bindings belong in dispatch records, not long-lived scheduler task state.
 - Persisted dispatch records and sandbox egress credential contexts require the bound internal subject shape. Existing records or signed egress contexts that stored unbound system credential subjects are invalid and must be recreated or migrated.
 - Schedule-management tools are unavailable during system dispatches.
@@ -151,6 +154,7 @@ Stored dispatch records include:
 - result timestamp or error message
 
 Plugin-visible `Dispatch` is a projection, not the stored record.
+Core persists dispatch records only after plugin input has parsed through the shared schema and runtime credential binding has succeeded. Every callback, recovery, and projection path must parse stored dispatch records before use; malformed records are invalid state and must not be repaired from nearby Slack channel/thread metadata during normal runtime reads.
 
 Dispatch ids should be deterministic from plugin name and idempotency key. Duplicate calls return the existing dispatch id and may re-fire the callback only when the record is incomplete.
 

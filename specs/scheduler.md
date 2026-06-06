@@ -48,6 +48,8 @@ The stored task must include:
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
 Scheduled task destinations use Junior's shared `Destination` contract, not existing threads. For Slack, a scheduled task targets the raw Slack conversation channel in `ToolRegistrationHookContext.destination` — the DM or channel where the user is interacting with Junior — not the assistant-context source channel, current message timestamp, or thread timestamp. Scheduled output posts as a new message in that destination.
+The scheduler must parse active and stored destinations with the strict shared `Destination` schema from `@sentry/junior-plugin-api`. Unknown destination fields, missing required destination fields, legacy thread-shaped ids, and non-Slack team/channel ids are invalid rather than normalized during scheduler tool execution or store reads.
+When the scheduler stores an explicit delegated credential subject, it must parse that subject with the strict shared plugin credential-subject schema. Runtime-owned bindings or signatures must never be stored in scheduler task state.
 Each scheduled execution gets fresh dispatch-scoped conversation state. The runner must not load destination-level Slack conversation history as prior thread context for a scheduled run that is creating its own new message.
 
 The scheduler must distinguish conversation audience from visibility. A private direct conversation may attach an explicit user credential subject for scheduled tools; that subject may satisfy stored user OAuth lookup, but the scheduled run still executes as the system actor. A private group conversation or private channel is still multi-user and must not implicitly use one user's credentials. Unknown privacy or audience must fail closed for delegated user credentials.
@@ -275,7 +277,7 @@ Scheduler execution should emit safe task/run metadata only:
 - scheduled timestamp
 - task status
 - run status
-- destination platform and channel id
+- destination platform, team id, and channel id
 - execution actor type and id
 - creator Slack user id, when available
 

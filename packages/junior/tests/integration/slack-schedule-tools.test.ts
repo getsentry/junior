@@ -10,6 +10,7 @@ import {
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
+  type ScheduledTask,
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
@@ -243,6 +244,103 @@ describe("Slack schedule tools", () => {
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
+  });
+
+  it("rejects non-canonical Slack destination context before creating a task", async () => {
+    const rejected = createTask(
+      createContext({
+        destination: {
+          platform: "slack",
+          teamId: TEST_TEAM_ID,
+          channelId: "C123",
+          threadTs: "1700000000.000",
+        } as SchedulerToolContext["destination"],
+      }),
+    );
+
+    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(
+      "Active Slack destination must not include unknown fields.",
+    );
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects invalid Slack credential subject context before creating a task", async () => {
+    const rejected = createTask(
+      createContext({
+        channelId: "D123",
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: TEST_TEAM_ID,
+            channelId: "D123",
+            signature: "v1=test",
+          },
+        } as SchedulerToolContext["credentialSubject"],
+      }),
+    );
+
+    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(
+      "Active Slack credential subject is invalid.",
+    );
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects invalid scheduled task routing context at the store boundary", async () => {
+    await createTask();
+    const task = (await schedulerStore().listTasks()).at(0);
+    if (!task) {
+      throw new Error("Expected scheduled task to be created");
+    }
+
+    await expect(
+      schedulerStore().saveTask({
+        ...task,
+        id: "sched_bad_destination",
+        destination: {
+          platform: "slack",
+          teamId: "D_BAD_TEAM",
+          channelId: "D123",
+        },
+      }),
+    ).rejects.toThrow("Scheduled task routing context is invalid.");
+    await expect(
+      schedulerStore().getTask("sched_bad_destination"),
+    ).resolves.toBe(undefined);
+
+    await expect(
+      schedulerStore().saveTask({
+        ...task,
+        id: "sched_bad_credential_subject",
+        destination: {
+          platform: "slack",
+          teamId: TEST_TEAM_ID,
+          channelId: "D123",
+        },
+        credentialSubject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: TEST_TEAM_ID,
+            channelId: "D123",
+            signature: "v1=test",
+          },
+        } as ScheduledTask["credentialSubject"],
+      }),
+    ).rejects.toThrow("Scheduled task routing context is invalid.");
+    await expect(
+      schedulerStore().getTask("sched_bad_credential_subject"),
+    ).resolves.toBe(undefined);
   });
 
   it("creates explicit one-off reminders without a second confirmation", async () => {

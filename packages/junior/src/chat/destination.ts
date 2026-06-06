@@ -1,13 +1,6 @@
-import type { Destination } from "@sentry/junior-plugin-api";
-import { isRecord } from "@/chat/coerce";
+import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { normalizeSlackConversationId } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
-
-function hasOnlyDestinationKeys(value: Record<string, unknown>): boolean {
-  return Object.keys(value).every(
-    (key) => key === "platform" || key === "teamId" || key === "channelId",
-  );
-}
 
 /** Build Junior's canonical destination from Slack workspace and channel ids. */
 export function createSlackDestination(input: {
@@ -27,26 +20,8 @@ export function createSlackDestination(input: {
 
 /** Parse and validate a serialized destination that crossed a runtime boundary. */
 export function parseDestination(value: unknown): Destination | undefined {
-  if (
-    !isRecord(value) ||
-    !hasOnlyDestinationKeys(value) ||
-    value.platform !== "slack"
-  ) {
-    return undefined;
-  }
-  if (
-    typeof value.channelId !== "string" ||
-    typeof value.teamId !== "string" ||
-    !isSlackConversationId(value.channelId) ||
-    !isSlackTeamId(value.teamId)
-  ) {
-    return undefined;
-  }
-  return {
-    platform: "slack",
-    teamId: value.teamId,
-    channelId: value.channelId,
-  };
+  const parsed = destinationSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Compare two destinations without relying on object identity. */
