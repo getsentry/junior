@@ -11,6 +11,7 @@ import { cn } from "../styles";
 import type { TranscriptPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
 import { isPreviewableValue } from "./transcriptPreview";
+import { buildSearchDecorations, HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render a tool call/result pair in rich or raw transcript mode. */
 export function TranscriptToolView(props: {
@@ -50,6 +51,8 @@ export function TranscriptToolView(props: {
   const mobileSummaryMeta =
     duration ?? (props.call && !props.result ? "missing result" : undefined);
 
+  const search = useTranscriptSearch();
+
   if (props.view === "raw") {
     return (
       <ToolFrame
@@ -58,7 +61,7 @@ export function TranscriptToolView(props: {
         raw
         signature={
           <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
-            {toolName}
+            <HighlightText text={toolName} />
           </strong>
         }
       >
@@ -75,6 +78,9 @@ export function TranscriptToolView(props: {
     );
   }
 
+  const inputText = stringifyPartValue(input) || "{}";
+  const outputText = stringifyPartValue(output) || "{}";
+
   return (
     <ToolFrame
       expandable={hasExpandableContent}
@@ -83,7 +89,7 @@ export function TranscriptToolView(props: {
       signature={
         <>
           <strong className="min-w-0 break-words font-bold text-[#d6d6d6]">
-            {toolName}
+            <HighlightText text={toolName} />
           </strong>
           {isPreviewableValue(input) ? (
             <code className="min-w-0 break-words font-[inherit] text-[#b8b8b8] max-md:hidden">
@@ -96,7 +102,12 @@ export function TranscriptToolView(props: {
       {props.call ? (
         <ToolBodySection label="arguments">
           <HighlightedCode
-            code={stringifyPartValue(input) || "{}"}
+            code={inputText}
+            decorations={
+              search.active
+                ? buildSearchDecorations(inputText, search.normalizedQuery)
+                : undefined
+            }
             language="json"
           />
         </ToolBodySection>
@@ -104,7 +115,12 @@ export function TranscriptToolView(props: {
       {props.result ? (
         <ToolBodySection label="result">
           <HighlightedCode
-            code={stringifyPartValue(output) || "{}"}
+            code={outputText}
+            decorations={
+              search.active
+                ? buildSearchDecorations(outputText, search.normalizedQuery)
+                : undefined
+            }
             language="json"
           />
         </ToolBodySection>

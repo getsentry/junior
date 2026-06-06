@@ -60,6 +60,10 @@ import {
   mutedTranscriptMetaClass,
 } from "./transcriptStyles";
 import { previewToolValue } from "./transcriptPreview";
+import {
+  entryMatchesSearch,
+  useTranscriptSearch,
+} from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
@@ -261,6 +265,7 @@ function TranscriptEntryList(props: {
   renderThinking: (entry: TranscriptThinkingEntry, index: number) => ReactNode;
   renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
 }) {
+  const search = useTranscriptSearch();
   const rows: ReactNode[] = [];
 
   for (let index = 0; index < props.entries.length; ) {
@@ -273,26 +278,43 @@ function TranscriptEntryList(props: {
         tools.push(props.entries[index] as TranscriptToolEntry);
         index += 1;
       }
-      rows.push(
-        <TranscriptToolRun
-          entries={tools}
-          key={`${props.keyPrefix}:tool-run:${startIndex}`}
-          keyPrefix={props.keyPrefix}
-          renderTool={props.renderTool}
-          startIndex={startIndex}
-        />,
-      );
+      // When searching, filter within the original group to preserve group boundaries.
+      const visibleTools = search.active
+        ? tools.filter((tool) =>
+            entryMatchesSearch(tool, search.normalizedQuery),
+          )
+        : tools;
+
+      if (visibleTools.length > 0) {
+        rows.push(
+          <TranscriptToolRun
+            entries={visibleTools}
+            key={`${props.keyPrefix}:tool-run:${startIndex}`}
+            keyPrefix={props.keyPrefix}
+            renderTool={props.renderTool}
+            startIndex={startIndex}
+          />,
+        );
+      }
       continue;
     }
 
-    rows.push(
-      <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
-        {entry.kind === "thinking"
-          ? props.renderThinking(entry, index)
-          : props.renderMessage(entry, index)}
-      </Fragment>,
-    );
+    if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
+      rows.push(
+        <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
+          {entry.kind === "thinking"
+            ? props.renderThinking(entry, index)
+            : props.renderMessage(entry, index)}
+        </Fragment>,
+      );
+    }
     index += 1;
+  }
+
+  if (search.active && rows.length === 0) {
+    return (
+      <div className={transcriptEmptyClass()}>No events match your search.</div>
+    );
   }
 
   return <>{rows}</>;
@@ -548,6 +570,7 @@ function SystemMessageView(props: {
   view: TranscriptViewMode;
 }) {
   const [open, setOpen] = useState(false);
+  const { active: searchActive } = useTranscriptSearch();
   const rawText = messageRawText(props.message);
   const role = props.message.role;
   const byteCount = new TextEncoder().encode(rawText).byteLength;
@@ -557,6 +580,43 @@ function SystemMessageView(props: {
     0,
   );
   let seenRenderedChildren = 0;
+
+  // Force-expand the system prompt during search so highlighted matches are visible.
+  if (searchActive) {
+    return (
+      <article className={transcriptMessageClass(role)}>
+        <div className="block min-h-6">
+          <TranscriptMessageHeader
+            meta={[formatBytes(byteCount)]}
+            role={role}
+            turn={props.turn}
+          />
+        </div>
+        {props.view === "raw" ? (
+          <HighlightedCode
+            code={rawText || "{}"}
+            language={detectLanguage(rawText)}
+          />
+        ) : (
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+            {renderedParts.map((part, index) => {
+              const firstChildIndex = seenRenderedChildren;
+              seenRenderedChildren += countRenderedTranscriptChildren(part, role);
+              return (
+                <TranscriptPartView
+                  firstChildIndex={firstChildIndex}
+                  key={index}
+                  lastChildIndex={totalRenderedChildren - 1}
+                  part={part}
+                  role={role}
+                />
+              );
+            })}
+          </div>
+        )}
+      </article>
+    );
+  }
 
   return (
     <details

@@ -12,22 +12,31 @@ import {
   findTranscriptMarkdownLinks,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
+import { buildSearchDecorations, useTranscriptSearch } from "./transcriptSearch";
 
 const TRANSCRIPT_MARKDOWN_CACHE_KEY = "transcript-markdown";
 
 /** Render transcript markdown source with Shiki highlighting and safe links. */
 export function TranscriptMarkdown(props: { text: string }) {
+  const search = useTranscriptSearch();
   const links = findTranscriptMarkdownLinks(props.text);
+  const decorations = [
+    ...buildTranscriptMarkdownDecorations(links),
+    ...(search.active
+      ? buildSearchDecorations(props.text, search.normalizedQuery)
+      : []),
+  ];
   const highlighted = useQuery({
     queryKey: [
       "highlight",
       "markdown",
       props.text,
       TRANSCRIPT_MARKDOWN_CACHE_KEY,
+      ...(search.active ? [search.normalizedQuery] : []),
     ],
     queryFn: async (): Promise<ShikiHtml> =>
       (await codeToHtml(props.text, {
-        decorations: buildTranscriptMarkdownDecorations(links),
+        decorations,
         lang: "markdown",
         theme: "github-dark",
       })) as ShikiHtml,

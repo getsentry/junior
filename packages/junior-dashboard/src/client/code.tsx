@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { codeToHtml, type BundledLanguage } from "shiki/bundle/web";
+import { codeToHtml, type BundledLanguage, type DecorationItem } from "shiki/bundle/web";
 
 import { canRenderStructuredMarkup, parseMarkupNodes } from "./format";
 import type { CodeBlock, MarkupNode } from "./types";
@@ -129,12 +129,16 @@ function MarkupElementView(props: {
 /** Render highlighted code while keeping Shiki output responsive in transcripts. */
 export function HighlightedCode(props: {
   code: string;
+  decorations?: DecorationItem[];
   language: BundledLanguage;
 }) {
   const highlighted = useQuery({
-    queryKey: ["highlight", props.language, props.code],
+    queryKey: props.decorations?.length
+      ? ["highlight", props.language, props.code, props.decorations.length]
+      : ["highlight", props.language, props.code],
     queryFn: async (): Promise<ShikiHtml> =>
       (await codeToHtml(props.code, {
+        decorations: props.decorations,
         lang: props.language,
         theme: "github-dark",
       })) as ShikiHtml,
@@ -161,7 +165,7 @@ export function HighlightedCodeFallback(props: { children: ReactNode }) {
 export function HighlightedCodeHtml(props: { html: ShikiHtml }) {
   return (
     <div
-      className="min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:font-mono [&_pre]:text-[0.86rem] [&_pre]:leading-relaxed [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere]"
+      className="min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:font-mono [&_pre]:text-[0.86rem] [&_pre]:leading-relaxed [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic"
       dangerouslySetInnerHTML={{ __html: props.html }}
     />
   );

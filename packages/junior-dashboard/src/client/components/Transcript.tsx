@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { ArrowDownToLine } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowDownToLine, Search } from "lucide-react";
 
 import type { ConversationTurn } from "../types";
 import { cn } from "../styles";
@@ -12,6 +12,10 @@ import {
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
+import {
+  TranscriptSearchProvider,
+  turnHasMatch,
+} from "./transcriptSearch";
 
 /** Render ordered conversation transcript segments as message and tool events. */
 export function Transcript(props: {
@@ -20,11 +24,22 @@ export function Transcript(props: {
   turns: ConversationTurn[];
 }) {
   const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [search, setSearch] = useState("");
+
+  const normalizedSearch = search.trim().toLowerCase();
   const hasRedactedTurns = props.turns.some((turn) => turn.transcriptRedacted);
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
     version: transcriptBottomVersion(props.turns),
   });
+
+  const visibleTurns = useMemo(
+    () =>
+      normalizedSearch
+        ? props.turns.filter((turn) => turnHasMatch(turn, normalizedSearch))
+        : props.turns,
+    [props.turns, normalizedSearch],
+  );
 
   if (props.turns.length === 0) {
     return (
@@ -35,26 +50,54 @@ export function Transcript(props: {
   }
 
   return (
-    <div
-      className={cn("grid min-w-0", props.live && "max-sm:pr-12")}
-      ref={bottomPinning.contentRef}
-    >
-      <TranscriptHeader
-        actions={props.actions}
-        redacted={hasRedactedTurns}
-        value={view}
-        onChange={setView}
-      />
-      {props.turns.map((turn) => (
-        <ConversationTranscriptSegment key={turn.id} turn={turn} view={view} />
-      ))}
-      <div aria-hidden="true" className="h-px" ref={bottomPinning.anchorRef} />
-      <JumpToLatestButton
-        hasPendingUpdate={bottomPinning.hasPendingUpdate}
-        onClick={bottomPinning.jumpToBottom}
-        visible={bottomPinning.showJumpToLatest}
-      />
-    </div>
+    <TranscriptSearchProvider query={search}>
+      <div
+        className={cn("grid min-w-0", props.live && "max-sm:pr-12")}
+        ref={bottomPinning.contentRef}
+      >
+        <TranscriptHeader
+          actions={props.actions}
+          redacted={hasRedactedTurns}
+          value={view}
+          onChange={setView}
+        />
+        <div className="relative mb-4 mt-2">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555]"
+            size={13}
+            strokeWidth={2.5}
+          />
+          <input
+            aria-label="Search transcript"
+            className="h-8 w-full rounded-md border border-[#beaaff]/20 bg-white/[0.04] pl-8 pr-3 text-[0.82rem] text-[#d6d6d6] outline-none placeholder:text-[#555] focus:border-[#beaaff]/40 focus:ring-1 focus:ring-[#beaaff]/20"
+            placeholder="Search transcript…"
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+        </div>
+        {visibleTurns.length > 0 ? (
+          visibleTurns.map((turn) => (
+            <ConversationTranscriptSegment
+              key={turn.id}
+              turn={turn}
+              view={view}
+            />
+          ))
+        ) : normalizedSearch ? (
+          <div className={transcriptEmptyClass()}>
+            No events match your search.
+          </div>
+        ) : null}
+        <div aria-hidden="true" className="h-px" ref={bottomPinning.anchorRef} />
+        <JumpToLatestButton
+          hasPendingUpdate={bottomPinning.hasPendingUpdate}
+          onClick={bottomPinning.jumpToBottom}
+          visible={bottomPinning.showJumpToLatest}
+        />
+      </div>
+    </TranscriptSearchProvider>
   );
 }
 

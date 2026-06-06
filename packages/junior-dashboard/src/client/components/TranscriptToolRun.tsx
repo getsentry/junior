@@ -1,6 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 
 import type { RenderedToolEntry } from "./transcriptRenderModel";
+import { useTranscriptSearch } from "./transcriptSearch";
 
 const TOOL_RUN_REVEAL_THRESHOLD = 4;
 
@@ -12,8 +13,9 @@ export function TranscriptToolRun(props: {
   startIndex: number;
 }) {
   const [revealed, setRevealed] = useState(false);
+  const { active: searchActive } = useTranscriptSearch();
 
-  if (props.entries.length < TOOL_RUN_REVEAL_THRESHOLD || revealed) {
+  if (props.entries.length < TOOL_RUN_REVEAL_THRESHOLD || revealed || searchActive) {
     return (
       <>
         {renderToolEntries(

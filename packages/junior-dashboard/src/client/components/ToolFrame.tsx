@@ -5,6 +5,7 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
+import { useTranscriptSearch } from "./transcriptSearch";
 
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
@@ -16,6 +17,7 @@ export function ToolFrame(props: {
   signature: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const { active: searchActive } = useTranscriptSearch();
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
   const mobileSummaryMeta =
@@ -55,7 +57,8 @@ export function ToolFrame(props: {
       </div>
     ) : null;
 
-  if (props.raw || !interactive) {
+  // Force-expand tool details during search so highlighted matches are visible.
+  if (searchActive || props.raw || !interactive) {
     return (
       <div className={toolFrameClass()}>
         <div className={toolHeaderClass(false)}>{header}</div>
