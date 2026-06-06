@@ -12,16 +12,13 @@ import {
 // ─── Context ────────────────────────────────────────────────────────────────
 
 type TranscriptSearchContextValue = {
-  /** Raw query string as typed by the user. */
-  query: string;
-  /** Trimmed, lowercase query used for matching. */
+  /** Trimmed, lowercase query used for matching and Shiki cache keying. */
   normalizedQuery: string;
   /** True when the normalised query is non-empty. */
   active: boolean;
 };
 
 const defaultValue: TranscriptSearchContextValue = {
-  query: "",
   normalizedQuery: "",
   active: false,
 };
@@ -39,7 +36,7 @@ export function TranscriptSearchProvider({
   const normalizedQuery = query.trim().toLowerCase();
   return (
     <TranscriptSearchContext.Provider
-      value={{ query, normalizedQuery, active: normalizedQuery.length > 0 }}
+      value={{ normalizedQuery, active: normalizedQuery.length > 0 }}
     >
       {children}
     </TranscriptSearchContext.Provider>
