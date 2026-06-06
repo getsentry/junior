@@ -224,8 +224,8 @@ describe("dashboard reporting", () => {
         label: item.label,
       })),
     ).toEqual([
-      { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
       { conversations: 1, durationMs: 3_000, label: "Direct Message" },
+      { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
     ]);
   });
 

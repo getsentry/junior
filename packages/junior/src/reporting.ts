@@ -577,7 +577,6 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
-      right.turns - left.turns ||
       right.durationMs - left.durationMs ||
       left.label.localeCompare(right.label),
   );
