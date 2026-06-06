@@ -1,71 +1,15 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import type { createSlackRuntime } from "@/chat/app/factory";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
 } from "../../../evals/behavior-harness";
 
-type SlackRuntimeFactory = typeof createSlackRuntime;
-type SlackRuntime = ReturnType<SlackRuntimeFactory>;
-
 const { originalStateAdapterEnv } = vi.hoisted(() => {
   const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   return { originalStateAdapterEnv };
 });
-const observedRuntimeIds = {
-  destinationChannelId: undefined as string | undefined,
-  juniorBaseUrl: undefined as string | undefined,
-  messageThreadId: undefined as string | undefined,
-  threadId: undefined as string | undefined,
-};
-const noopAsync = vi.fn(async () => {});
-const handleNewMentionMock = vi.fn(
-  async (
-    thread: { id: string; post: (value: unknown) => Promise<void> },
-    message: { threadId?: string },
-    options?: { destination?: { channelId?: string } },
-  ) => {
-    observedRuntimeIds.destinationChannelId = options?.destination?.channelId;
-    observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
-    observedRuntimeIds.threadId = thread.id;
-    observedRuntimeIds.messageThreadId = message.threadId;
-    await thread.post("observed");
-  },
-);
-const handleSubscribedMessageMock = vi.fn(
-  async (
-    thread: { id: string; post: (value: unknown) => Promise<void> },
-    message: { threadId?: string },
-    options?: { destination?: { channelId?: string } },
-  ) => {
-    observedRuntimeIds.destinationChannelId = options?.destination?.channelId;
-    observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
-    observedRuntimeIds.threadId = thread.id;
-    observedRuntimeIds.messageThreadId = message.threadId;
-    await thread.post("observed");
-  },
-);
-const createSlackRuntimeMock = vi.fn(
-  (_options: Parameters<SlackRuntimeFactory>[0]) =>
-    ({
-      handleNewMention: handleNewMentionMock,
-      handleSubscribedMessage: handleSubscribedMessageMock,
-      handleAssistantThreadStarted: noopAsync,
-      handleAssistantContextChanged: noopAsync,
-    }) as unknown as SlackRuntime,
-);
-const createObservedSlackRuntime = ((options) =>
-  createSlackRuntimeMock(options)) as SlackRuntimeFactory;
-
-function runObservedEvalScenario(
-  scenario: Parameters<typeof runEvalScenario>[0],
-) {
-  return runEvalScenario(scenario, {
-    createSlackRuntime: createObservedSlackRuntime,
-  });
-}
 
 describe("behavior harness", () => {
   afterAll(() => {
@@ -76,19 +20,11 @@ describe("behavior harness", () => {
     process.env.JUNIOR_STATE_ADAPTER = originalStateAdapterEnv;
   });
 
-  afterEach(() => {
-    observedRuntimeIds.destinationChannelId = undefined;
-    observedRuntimeIds.juniorBaseUrl = undefined;
-    observedRuntimeIds.threadId = undefined;
-    observedRuntimeIds.messageThreadId = undefined;
-    handleNewMentionMock.mockClear();
-    handleSubscribedMessageMock.mockClear();
-    createSlackRuntimeMock.mockClear();
-    noopAsync.mockClear();
-  });
-
-  it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {
-    const result = await runObservedEvalScenario({
+  it("routes eval thread fixtures through the real Slack runtime", async () => {
+    const result = await runEvalScenario({
+      overrides: {
+        reply_texts: ["observed"],
+      },
       events: [
         {
           type: "new_mention",
@@ -109,11 +45,6 @@ describe("behavior harness", () => {
       ],
     });
 
-    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
-    expect(observedRuntimeIds.threadId).toBe("slack:CAUTH:1700000000.0001");
-    expect(observedRuntimeIds.messageThreadId).toBe(
-      "slack:CAUTH:1700000000.0001",
-    );
     expect(result.posts).toEqual([
       {
         channel: "CAUTH",
@@ -124,27 +55,6 @@ describe("behavior harness", () => {
     ]);
   });
 
-  it("normalizes eval destinations from adapter channel ids", async () => {
-    await runObservedEvalScenario({
-      events: [
-        {
-          type: "new_mention",
-          thread: {
-            id: "slack:CAUTH:1700000000.0001",
-          },
-          message: {
-            id: "m-auth-1",
-            text: "hello",
-            is_mention: true,
-          },
-        },
-      ],
-    });
-
-    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
-    expect(observedRuntimeIds.destinationChannelId).toBe("CAUTH");
-  });
-
   it("rejects sandbox HTTP interception evals without a tunnel token", async () => {
     const previousBaseUrl = process.env.JUNIOR_BASE_URL;
     const previousTunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
@@ -152,7 +62,7 @@ describe("behavior harness", () => {
     delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
     try {
       await expect(
-        runObservedEvalScenario({
+        runEvalScenario({
           overrides: {
             credential_providers: ["github"],
           },
@@ -180,7 +90,7 @@ describe("behavior harness", () => {
     delete process.env.JUNIOR_BASE_URL;
     try {
       await expect(
-        runObservedEvalScenario({
+        runEvalScenario({
           overrides: {
             credential_providers: ["github"],
           },
@@ -205,7 +115,11 @@ describe("behavior harness", () => {
       thread_ts: "1700000000.0002",
     };
 
-    const result = await runObservedEvalScenario({
+    const result = await runEvalScenario({
+      overrides: {
+        reply_texts: ["observed first", "observed second"],
+        subscribed_decisions: [{ should_reply: true, reason: "mentioned" }],
+      },
       events: [
         {
           type: "new_mention",
@@ -234,74 +148,18 @@ describe("behavior harness", () => {
       ],
     });
 
-    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
-    expect(handleSubscribedMessageMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([
       {
         channel: "CQUEUE",
         files: [],
-        text: "observed",
+        text: "observed first",
         thread_ts: "1700000000.0002",
       },
       {
         channel: "CQUEUE",
         files: [],
-        text: "observed",
+        text: "observed second",
         thread_ts: "1700000000.0002",
-      },
-    ]);
-  });
-
-  it("preserves attached file metadata on assistant thread posts", async () => {
-    handleNewMentionMock.mockImplementationOnce(
-      async (thread: { post: (value: unknown) => Promise<void> }) => {
-        await thread.post({
-          raw: "",
-          files: [
-            {
-              data: Buffer.from("png"),
-              filename: "generated.png",
-              mimeType: "image/png",
-            },
-          ],
-        });
-      },
-    );
-
-    const result = await runObservedEvalScenario({
-      events: [
-        {
-          type: "new_mention",
-          thread: {
-            id: "fixture-media-thread",
-            channel_id: "CMEDIA",
-            thread_ts: "1700000000.0003",
-          },
-          message: {
-            id: "m-media-1",
-            text: "show me how you feel",
-            is_mention: true,
-            author: {
-              user_id: "UMEDIA",
-            },
-          },
-        },
-      ],
-    });
-
-    expect(result.posts).toEqual([
-      {
-        channel: "CMEDIA",
-        text: "",
-        thread_ts: "1700000000.0003",
-        files: [
-          {
-            filename: "generated.png",
-            isImage: true,
-            mimeType: "image/png",
-            sizeBytes: 3,
-          },
-        ],
       },
     ]);
   });
@@ -310,7 +168,7 @@ describe("behavior harness", () => {
     const cwd = process.cwd();
 
     await expect(
-      runObservedEvalScenario({
+      runEvalScenario({
         events: [],
         overrides: {
           plugin_dirs: ["evals/fixtures/plugins"],

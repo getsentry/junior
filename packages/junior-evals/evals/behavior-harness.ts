@@ -18,7 +18,7 @@ import {
 } from "@junior-tests/fixtures/plugin-app";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { EmittedLogRecord } from "@/chat/logging";
 import {
@@ -182,7 +182,6 @@ export interface EvalScenario {
 }
 
 interface EvalScenarioRunOptions {
-  createSlackRuntime?: typeof createSlackRuntime;
   logRecords?: EmittedLogRecord[];
 }
 
@@ -1401,7 +1400,7 @@ function buildRuntimeServices(
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
   observations: RuntimeObservations,
-): JuniorRuntimeServiceOverrides {
+): JuniorRuntimeAdapterOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
@@ -1418,188 +1417,177 @@ function buildRuntimeServices(
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
 
-  const services: JuniorRuntimeServiceOverrides = {
+  const adapters: JuniorRuntimeAdapterOverrides = {
     ...(subscribedDecisions.length > 0
       ? {
-          subscribedReplyPolicy: {
-            // The mock bypasses the generic Zod-typed `completeObject` signature
-            // since we return a fixed fixture rather than parsing a schema.
-            completeObject: async () => {
-              const next =
-                subscribedDecisions[
-                  Math.min(decisionIndex, subscribedDecisions.length - 1)
-                ];
-              decisionIndex += 1;
-              return {
-                object: {
-                  should_reply: next.should_reply,
-                  confidence: next.should_reply ? 1 : 0,
-                  reason: next.reason,
-                },
-                text: JSON.stringify({
-                  should_reply: next.should_reply,
-                  confidence: next.should_reply ? 1 : 0,
-                  reason: next.reason,
-                }),
-              } as any;
-            },
+          classifySubscribedReply: async (params) => {
+            const next =
+              subscribedDecisions[
+                Math.min(decisionIndex, subscribedDecisions.length - 1)
+              ];
+            decisionIndex += 1;
+            const parsed = params.schema.parse({
+              should_reply: next.should_reply,
+              confidence: next.should_reply ? 1 : 0,
+              reason: next.reason,
+            });
+            return {
+              object: parsed,
+              text: JSON.stringify(parsed),
+            };
           },
         }
       : {}),
-    replyExecutor: {
-      generateAssistantReply: async (text, context) => {
-        replyCallCount += 1;
-        const mockImageGeneration = scenario.overrides?.mock_image_generation;
-        if (scenario.overrides?.fail_reply_call === replyCallCount) {
-          throw new Error(`forced reply failure on call ${replyCallCount}`);
+    generateAssistantReply: async (text, context) => {
+      replyCallCount += 1;
+      const mockImageGeneration = scenario.overrides?.mock_image_generation;
+      if (scenario.overrides?.fail_reply_call === replyCallCount) {
+        throw new Error(`forced reply failure on call ${replyCallCount}`);
+      }
+      const replyResult = replyResults[replyCallCount - 1];
+      if (replyResult) {
+        if (replyResult.stream_text) {
+          await context?.onTextDelta?.(replyResult.stream_text);
         }
-        const replyResult = replyResults[replyCallCount - 1];
-        if (replyResult) {
-          if (replyResult.stream_text) {
-            await context?.onTextDelta?.(replyResult.stream_text);
-          }
-          replyState.successfulCount += 1;
-          observations.toolInvocations.push(
-            ...(replyResult.tool_invocations ??
-              (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
-          );
-          const reply: AssistantReply = {
-            text: replyResult.text,
-            deliveryMode: "thread",
-            deliveryPlan: {
-              mode: "thread",
-              postThreadText: true,
-              attachFiles: "none",
-            },
-            diagnostics: {
-              assistantMessageCount: replyResult.assistant_message_count ?? 1,
-              ...(replyResult.error_message
-                ? { errorMessage: replyResult.error_message }
-                : {}),
-              modelId: "eval-reply-result",
-              outcome: replyResult.outcome ?? "success",
-              ...(replyResult.stop_reason
-                ? { stopReason: replyResult.stop_reason }
-                : {}),
-              toolCalls: replyResult.tool_calls ?? [],
-              toolErrorCount: replyResult.tool_error_count ?? 0,
-              toolResultCount: replyResult.tool_result_count ?? 0,
-              usedPrimaryText: replyResult.used_primary_text ?? true,
-            },
-          };
-          observations.turnDiagnostics.push(
-            toEvalTurnDiagnostics(reply.diagnostics),
-          );
-          return reply;
-        }
-        const replyText = replyTexts[replyState.successfulCount];
-        if (typeof replyText === "string") {
-          replyState.successfulCount += 1;
-          const reply: AssistantReply = {
-            text: replyText,
-            deliveryMode: "thread",
-            deliveryPlan: {
-              mode: "thread",
-              postThreadText: true,
-              attachFiles: "none",
-            },
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "eval-reply-text",
-              outcome: "success",
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          };
-          observations.turnDiagnostics.push(
-            toEvalTurnDiagnostics(reply.diagnostics),
-          );
-          return reply;
-        }
-
-        const gatewaySnapshot = snapshotEnv([
-          "AI_GATEWAY_API_KEY",
-          "VERCEL_OIDC_TOKEN",
-        ]);
-        const baseToolOverrides: ToolHooks["toolOverrides"] = {
-          ...(context?.toolOverrides ?? {}),
-        };
-        const toolOverrides = {
-          ...baseToolOverrides,
-          webFetch: createReplayWebFetchDeps(baseToolOverrides),
-          webSearch: createReplayWebSearchDeps(baseToolOverrides),
-          ...(mockImageGeneration
-            ? { imageGenerate: createMockImageGenerateDeps() }
-            : {}),
-        };
-        if (scenario.overrides?.unset_gateway_api_key) {
-          delete process.env.AI_GATEWAY_API_KEY;
-          delete process.env.VERCEL_OIDC_TOKEN;
-        }
-        let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
-        try {
-          reply = await Promise.race([
-            generateAssistantReply(text, {
-              ...context,
-              onToolInvocation: (invocation) => {
-                observations.toolInvocations.push(
-                  toEvalToolInvocation(invocation),
-                );
-              },
-              ...(env.configuredSkillDirs.length > 0
-                ? { skillDirs: env.configuredSkillDirs }
-                : {}),
-              toolOverrides,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
-                    ),
-                  ),
-                replyTimeoutMs,
-              ),
-            ),
-          ]);
-        } finally {
-          if (scenario.overrides?.unset_gateway_api_key) {
-            gatewaySnapshot.restore();
-          }
-        }
-
         replyState.successfulCount += 1;
+        observations.toolInvocations.push(
+          ...(replyResult.tool_invocations ??
+            (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
+        );
+        const reply: AssistantReply = {
+          text: replyResult.text,
+          deliveryMode: "thread",
+          deliveryPlan: {
+            mode: "thread",
+            postThreadText: true,
+            attachFiles: "none",
+          },
+          diagnostics: {
+            assistantMessageCount: replyResult.assistant_message_count ?? 1,
+            ...(replyResult.error_message
+              ? { errorMessage: replyResult.error_message }
+              : {}),
+            modelId: "eval-reply-result",
+            outcome: replyResult.outcome ?? "success",
+            ...(replyResult.stop_reason
+              ? { stopReason: replyResult.stop_reason }
+              : {}),
+            toolCalls: replyResult.tool_calls ?? [],
+            toolErrorCount: replyResult.tool_error_count ?? 0,
+            toolResultCount: replyResult.tool_result_count ?? 0,
+            usedPrimaryText: replyResult.used_primary_text ?? true,
+          },
+        };
         observations.turnDiagnostics.push(
           toEvalTurnDiagnostics(reply.diagnostics),
         );
         return reply;
-      },
-    },
-    visionContext: {
-      listThreadReplies: async ({ channelId, threadTs, targetMessageTs }) => {
-        const threadId = buildRuntimeThreadId({
-          id: `slack:${channelId}:${threadTs}`,
-          channel_id: channelId,
-          thread_ts: threadTs,
-        });
-        const replies = (threadRecordsById.get(threadId)?.transcript ?? []).map(
-          (message) => buildThreadReplyFromMessage(threadTs, message),
+      }
+      const replyText = replyTexts[replyState.successfulCount];
+      if (typeof replyText === "string") {
+        replyState.successfulCount += 1;
+        const reply: AssistantReply = {
+          text: replyText,
+          deliveryMode: "thread",
+          deliveryPlan: {
+            mode: "thread",
+            postThreadText: true,
+            attachFiles: "none",
+          },
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "eval-reply-text",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
+        observations.turnDiagnostics.push(
+          toEvalTurnDiagnostics(reply.diagnostics),
         );
-        if (!targetMessageTs || targetMessageTs.length === 0) {
-          return replies;
+        return reply;
+      }
+
+      const gatewaySnapshot = snapshotEnv([
+        "AI_GATEWAY_API_KEY",
+        "VERCEL_OIDC_TOKEN",
+      ]);
+      const baseToolOverrides: ToolHooks["toolOverrides"] = {
+        ...(context?.toolOverrides ?? {}),
+      };
+      const toolOverrides = {
+        ...baseToolOverrides,
+        webFetch: createReplayWebFetchDeps(baseToolOverrides),
+        webSearch: createReplayWebSearchDeps(baseToolOverrides),
+        ...(mockImageGeneration
+          ? { imageGenerate: createMockImageGenerateDeps() }
+          : {}),
+      };
+      if (scenario.overrides?.unset_gateway_api_key) {
+        delete process.env.AI_GATEWAY_API_KEY;
+        delete process.env.VERCEL_OIDC_TOKEN;
+      }
+      let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
+      try {
+        reply = await Promise.race([
+          generateAssistantReply(text, {
+            ...context,
+            onToolInvocation: (invocation) => {
+              observations.toolInvocations.push(
+                toEvalToolInvocation(invocation),
+              );
+            },
+            ...(env.configuredSkillDirs.length > 0
+              ? { skillDirs: env.configuredSkillDirs }
+              : {}),
+            toolOverrides,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+                  ),
+                ),
+              replyTimeoutMs,
+            ),
+          ),
+        ]);
+      } finally {
+        if (scenario.overrides?.unset_gateway_api_key) {
+          gatewaySnapshot.restore();
         }
-        const targets = new Set(targetMessageTs);
-        return replies.filter(
-          (reply) => typeof reply.ts === "string" && targets.has(reply.ts),
-        );
-      },
+      }
+
+      replyState.successfulCount += 1;
+      observations.turnDiagnostics.push(
+        toEvalTurnDiagnostics(reply.diagnostics),
+      );
+      return reply;
+    },
+    listThreadReplies: async ({ channelId, threadTs, targetMessageTs }) => {
+      const threadId = buildRuntimeThreadId({
+        id: `slack:${channelId}:${threadTs}`,
+        channel_id: channelId,
+        thread_ts: threadTs,
+      });
+      const replies = (threadRecordsById.get(threadId)?.transcript ?? []).map(
+        (message) => buildThreadReplyFromMessage(threadTs, message),
+      );
+      if (!targetMessageTs || targetMessageTs.length === 0) {
+        return replies;
+      }
+      const targets = new Set(targetMessageTs);
+      return replies.filter(
+        (reply) => typeof reply.ts === "string" && targets.has(reply.ts),
+      );
     },
   };
 
-  return services;
+  return adapters;
 }
 
 // ---------------------------------------------------------------------------
@@ -1839,17 +1827,16 @@ export async function runEvalScenario(
       return record;
     };
 
-    const services = buildRuntimeServices(
+    const adapters = buildRuntimeServices(
       scenario,
       env,
       threadRecordsById,
       observations,
     );
 
-    const createRuntime = options.createSlackRuntime ?? createSlackRuntime;
-    const slackRuntime = createRuntime({
+    const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => slackAdapter as any,
-      services,
+      adapters,
     });
 
     await processEvents({
