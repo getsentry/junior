@@ -243,6 +243,7 @@ describe("Slack conversation work execution", () => {
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
     const calls: Array<{
+      destination: unknown;
       message: Message;
       skipped: Message[];
       thread: Thread;
@@ -282,6 +283,7 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (thread, message, hooks) => {
         await hooks?.onInputCommitted?.();
         calls.push({
+          destination: hooks?.destination,
           thread,
           message,
           skipped: hooks?.messageContext?.skipped ?? [],
@@ -301,6 +303,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
+    expect(calls[0]?.destination).toEqual(SLACK_DESTINATION);
     expect(calls[0]?.thread.id).toBe(CONVERSATION_ID);
     expect(calls[0]?.message.id).toBe("1712345.0002");
     expect(calls[0]?.message.text).toContain("second");

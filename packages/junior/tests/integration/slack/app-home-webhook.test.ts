@@ -154,7 +154,10 @@ describe("Slack webhook: App Home events", () => {
     await queueSendEntered;
     expect(responseSettled).toBe(false);
     expect(queue.queuedMessages()).toEqual([
-      { conversationId: "slack:C123:1712345.0001" },
+      {
+        conversationId: "slack:C123:1712345.0001",
+        destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      },
     ]);
     expect(waitUntil.pendingCount()).toBe(0);
 
@@ -199,7 +202,10 @@ describe("Slack webhook: App Home events", () => {
     expect(response.status).toBe(200);
     expect(waitUntil.pendingCount()).toBe(0);
     expect(queue.queuedMessages()).toEqual([
-      { conversationId: "slack:C123:1712345.0002" },
+      {
+        conversationId: "slack:C123:1712345.0002",
+        destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      },
     ]);
   });
 

@@ -7,6 +7,7 @@
  * Pi/MCP internals and durable session storage behind injected services.
  */
 import type { Message, MessageContext, Thread } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
 import {
@@ -60,6 +61,10 @@ export interface ReplyHooks {
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
   onTurnStatePersisted?: () => Promise<void>;
   shouldYield?: () => boolean;
+}
+
+export interface SlackTurnOptions extends ReplyHooks {
+  destination?: Destination;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -160,6 +165,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     message: Message,
     options?: {
       beforeFirstResponsePost?: () => Promise<void>;
+      destination?: Destination;
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
@@ -266,12 +272,12 @@ export interface SlackTurnRuntime<
   handleNewMention: (
     thread: Thread,
     message: Message,
-    hooks?: ReplyHooks,
+    hooks?: SlackTurnOptions,
   ) => Promise<void>;
   handleSubscribedMessage: (
     thread: Thread,
     message: Message,
-    hooks?: ReplyHooks,
+    hooks?: SlackTurnOptions,
   ) => Promise<void>;
 }
 
@@ -456,7 +462,7 @@ export function createSlackTurnRuntime<
     async handleNewMention(
       thread: Thread,
       message: Message,
-      hooks?: ReplyHooks,
+      hooks?: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
@@ -517,6 +523,7 @@ export function createSlackTurnRuntime<
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            destination: hooks?.destination,
             queuedMessages,
             onInputCommitted,
             onToolInvocation: toolInvocationHook,
@@ -583,7 +590,7 @@ export function createSlackTurnRuntime<
     async handleSubscribedMessage(
       thread: Thread,
       message: Message,
-      hooks?: ReplyHooks,
+      hooks?: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
@@ -751,6 +758,7 @@ export function createSlackTurnRuntime<
 
           await deps.replyToThread(thread, message, {
             explicitMention: Boolean(message.isMention),
+            destination: hooks?.destination,
             preparedState,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             queuedMessages,

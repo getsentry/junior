@@ -373,6 +373,7 @@ describe("mcp auth runtime slack integration", () => {
         },
         raw: {
           channel: "C123",
+          team_id: "T123",
           ts: "1700000000.002",
           thread_ts: "1700000000.001",
         },
@@ -418,6 +419,7 @@ describe("mcp auth runtime slack integration", () => {
       userId: "U123",
       userMessage: "what did i say about the budget?",
       channelId: "C123",
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       threadTs: "1700000000.001",
       authorizationUrl: expect.stringContaining(
         "https://eval-auth.example.test/oauth/authorize",
@@ -612,6 +614,12 @@ describe("mcp auth runtime slack integration", () => {
           userId: "U123",
           userName: "dcramer",
         },
+        raw: {
+          channel: "C124",
+          team_id: "T123",
+          ts: "1700000000.004",
+          thread_ts: "1700000000.002",
+        },
       }),
     );
 
@@ -699,6 +707,7 @@ describe("mcp auth runtime slack integration", () => {
         },
         raw: {
           channel: "C125",
+          team_id: "T123",
           ts: "1700000000.004",
           thread_ts: "1700000000.003",
         },
@@ -725,6 +734,7 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       userId: "U123",
+      destination: { platform: "slack", teamId: "T123", channelId: "C125" },
     });
 
     const response =

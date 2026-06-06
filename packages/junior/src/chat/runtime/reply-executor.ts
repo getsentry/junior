@@ -8,6 +8,7 @@
  */
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
@@ -267,6 +268,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
+      destination?: Destination;
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
@@ -297,8 +299,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
-    const teamId = getTeamId(message);
-    const destination = createSlackDestination({ channelId, teamId });
+    const messageTeamId = getTeamId(message);
+    const destination =
+      options.destination ??
+      createSlackDestination({ channelId, teamId: messageTeamId });
+    const teamId = destination?.teamId ?? messageTeamId;
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 

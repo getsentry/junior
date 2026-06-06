@@ -779,6 +779,55 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBe(sessionId);
   });
 
+  it("schedules timeout continuations with the provided destination", async () => {
+    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const conversationId = "slack:C9TIMECTX:1700000000.000";
+    const destination = slackDestination("C9TIMECTX");
+    const sessionId = "turn_msg-timeout-context";
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          scheduleTurnTimeoutResume,
+          generateAssistantReply: async () => {
+            throw new RetryableTurnError(
+              "turn_timeout_resume",
+              "simulated timeout continuation",
+              {
+                conversationId,
+                sessionId,
+                version: 4,
+                sliceId: 2,
+              },
+            );
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: conversationId });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-timeout-context",
+        threadId: conversationId,
+        text: "please keep working",
+        isMention: true,
+        raw: rawSlackMessage(conversationId, {
+          ...destination,
+          teamId: "TWRONG",
+        }),
+      }),
+      { destination },
+    );
+
+    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+      conversationId,
+      destination,
+      sessionId,
+      expectedVersion: 4,
+    });
+  });
+
   it("does not post a Slack continuation notice when a live turn times out", async () => {
     resetSlackApiMockState();
     const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);

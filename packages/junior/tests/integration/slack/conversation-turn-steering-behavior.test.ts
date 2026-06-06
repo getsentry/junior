@@ -23,7 +23,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 
-const CHANNEL_ID = "C_STEER";
+const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
 
 function makeMessageEvent(args: {
@@ -163,15 +163,22 @@ describe("Slack behavior: durable turn steering", () => {
     ).resolves.toMatchObject({ status: 200 });
 
     const inboundMessageId = `slack:T123:${conversationId}:${THREAD_TS}`;
+    const destination = {
+      platform: "slack",
+      teamId: "T123",
+      channelId: CHANNEL_ID,
+    };
     expect(queue.sendAttempts()).toEqual([
       {
         conversationId,
+        destination,
         idempotencyKey: inboundMessageId,
       },
     ]);
     expect(queue.sentRecords()).toEqual([
       {
         conversationId,
+        destination,
         idempotencyKey: inboundMessageId,
       },
     ]);

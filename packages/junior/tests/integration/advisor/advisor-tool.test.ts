@@ -192,7 +192,6 @@ describe("advisor tool", () => {
       "listDir",
       "readFile",
       "slackCanvasRead",
-      "slackChannelListMessages",
       "slackListGetItems",
       "slackThreadRead",
       "slackUserLookup",
