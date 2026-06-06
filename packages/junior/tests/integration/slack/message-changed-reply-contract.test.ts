@@ -1,3 +1,4 @@
+import { createTestDestination } from "../../fixtures/slack-harness";
 import { describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -87,7 +88,9 @@ async function createEditedDmBot(args: {
   });
 
   bot.onDirectMessage((thread, message) =>
-    slackRuntime.handleNewMention(thread, message),
+    slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    }),
   );
 
   return bot;

@@ -27,7 +27,6 @@ import {
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
-import { createSlackDestination } from "@/chat/destination";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
   generateAssistantReply as generateAssistantReplyImpl,
@@ -38,7 +37,6 @@ import {
   getAssistantThreadContext,
   getChannelId,
   getMessageTs,
-  getTeamId,
   getThreadId,
   getThreadTs,
   getRunId,
@@ -268,7 +266,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
-      destination?: Destination;
+      destination: Destination;
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
@@ -280,7 +278,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         inject: (messages: QueuedTurnMessage[]) => Promise<void>,
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
-    } = {},
+    },
   ) {
     if (message.author.isMe) {
       return;
@@ -299,11 +297,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
-    const messageTeamId = getTeamId(message);
-    const destination =
-      options.destination ??
-      createSlackDestination({ channelId, teamId: messageTeamId });
-    const teamId = destination?.teamId ?? messageTeamId;
+    const destination = options.destination;
+    const teamId = destination.teamId;
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 

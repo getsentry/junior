@@ -4,6 +4,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
@@ -57,6 +58,7 @@ describe("Slack behavior: canvas failure recovery", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts).toHaveLength(1);
@@ -108,6 +110,7 @@ describe("Slack behavior: canvas failure recovery", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts).toHaveLength(1);

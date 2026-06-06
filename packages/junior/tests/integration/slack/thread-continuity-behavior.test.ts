@@ -3,6 +3,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
@@ -79,8 +80,12 @@ describe("Slack behavior: thread continuity", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, firstMessage);
-    await slackRuntime.handleSubscribedMessage(thread, secondMessage);
+    await slackRuntime.handleNewMention(thread, firstMessage, {
+      destination: createTestDestination(thread),
+    });
+    await slackRuntime.handleSubscribedMessage(thread, secondMessage, {
+      destination: createTestDestination(thread),
+    });
 
     expect(prompts).toHaveLength(2);
     expect(thread.posts).toHaveLength(2);

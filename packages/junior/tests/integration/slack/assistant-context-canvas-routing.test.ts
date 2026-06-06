@@ -9,6 +9,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
@@ -79,7 +80,9 @@ describe("Slack behavior: assistant context canvas routing", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     const canvasCreateCalls = getCapturedSlackApiCalls("canvases.create");
     expect(canvasCreateCalls).toHaveLength(1);

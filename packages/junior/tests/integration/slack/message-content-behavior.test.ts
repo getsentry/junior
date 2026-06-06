@@ -13,6 +13,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 interface CapturedCall {
@@ -75,7 +76,9 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toBe("please summarize the deploy status");
@@ -115,7 +118,9 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
@@ -172,7 +177,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toContain("Production deploy");
@@ -217,7 +224,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
@@ -310,14 +319,18 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, first);
+    await slackRuntime.handleNewMention(thread, first, {
+      destination: createTestDestination(thread),
+    });
 
     const persistedState = await getPersistedThreadState(thread.id);
     const conversation = coerceThreadConversationState(persistedState);
     conversation.processing.activeTurnId = "missing-active-turn";
     await persistThreadStateById(thread.id, { conversation });
 
-    await slackRuntime.handleSubscribedMessage(thread, second);
+    await slackRuntime.handleSubscribedMessage(thread, second, {
+      destination: createTestDestination(thread),
+    });
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
@@ -395,6 +408,7 @@ describe("Slack behavior: message content", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(calls).toHaveLength(1);
@@ -517,6 +531,7 @@ describe("Slack behavior: message content", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(calls).toHaveLength(1);

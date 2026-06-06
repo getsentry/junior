@@ -64,7 +64,7 @@ export interface ReplyHooks {
 }
 
 export interface SlackTurnOptions extends ReplyHooks {
-  destination?: Destination;
+  destination: Destination;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -163,9 +163,9 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   replyToThread: (
     thread: Thread,
     message: Message,
-    options?: {
+    options: {
       beforeFirstResponsePost?: () => Promise<void>;
-      destination?: Destination;
+      destination: Destination;
       explicitMention?: boolean;
       onInputCommitted?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
@@ -234,7 +234,7 @@ function getQueuedMessagesFromSlackMessages(
 }
 
 function createSteeringMessageDrain(
-  hooks: ReplyHooks | undefined,
+  hooks: ReplyHooks,
   options: {
     explicitMention: boolean;
     onMessagesAccepted?: (messages: Message[]) => Promise<void>;
@@ -245,7 +245,7 @@ function createSteeringMessageDrain(
       inject: (messages: QueuedTurnMessage[]) => Promise<void>,
     ) => Promise<QueuedTurnMessage[]>)
   | undefined {
-  if (!hooks?.drainSteeringMessages) {
+  if (!hooks.drainSteeringMessages) {
     return undefined;
   }
 
@@ -272,12 +272,12 @@ export interface SlackTurnRuntime<
   handleNewMention: (
     thread: Thread,
     message: Message,
-    hooks?: SlackTurnOptions,
+    hooks: SlackTurnOptions,
   ) => Promise<void>;
   handleSubscribedMessage: (
     thread: Thread,
     message: Message,
-    hooks?: SlackTurnOptions,
+    hooks: SlackTurnOptions,
   ) => Promise<void>;
 }
 
@@ -327,13 +327,13 @@ export function createSlackTurnRuntime<
 
   const createToolInvocationHook = (
     processingReaction: ProcessingReactionSession,
-    hooks: ReplyHooks | undefined,
+    hooks: ReplyHooks,
   ) => {
     return (invocation: TurnToolInvocation): void => {
       if (shouldKeepProcessingReactionForToolInvocation(invocation)) {
         processingReaction.keep();
       }
-      hooks?.onToolInvocation?.(invocation);
+      hooks.onToolInvocation?.(invocation);
     };
   };
 
@@ -462,7 +462,7 @@ export function createSlackTurnRuntime<
     async handleNewMention(
       thread: Thread,
       message: Message,
-      hooks?: SlackTurnOptions,
+      hooks: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
@@ -489,7 +489,7 @@ export function createSlackTurnRuntime<
 
         await deps.withSpan("chat.turn", "chat.turn", context, async () => {
           await thread.subscribe();
-          const queuedMessages = getQueuedMessages(hooks?.messageContext, {
+          const queuedMessages = getQueuedMessages(hooks.messageContext, {
             explicitMention: true,
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
@@ -506,7 +506,7 @@ export function createSlackTurnRuntime<
             );
           };
           const onInputCommitted = async (): Promise<void> => {
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
             await startQueuedProcessingReactions();
           };
           const drainSteeringMessages = createSteeringMessageDrain(hooks, {
@@ -522,15 +522,15 @@ export function createSlackTurnRuntime<
           });
           await deps.replyToThread(thread, message, {
             explicitMention: true,
-            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
-            destination: hooks?.destination,
+            beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+            destination: hooks.destination,
             queuedMessages,
             onInputCommitted,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
             drainSteeringMessages,
-            onTurnStatePersisted: hooks?.onTurnStatePersisted,
-            shouldYield: hooks?.shouldYield,
+            onTurnStatePersisted: hooks.onTurnStatePersisted,
+            shouldYield: hooks.shouldYield,
           });
         });
       } catch (error) {
@@ -569,7 +569,7 @@ export function createSlackTurnRuntime<
             "Sentry did not return an event ID for mention_handler_failed",
           );
         }
-        await hooks?.beforeFirstResponsePost?.();
+        await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
           thread,
           errorContext,
@@ -590,7 +590,7 @@ export function createSlackTurnRuntime<
     async handleSubscribedMessage(
       thread: Thread,
       message: Message,
-      hooks?: SlackTurnOptions,
+      hooks: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
@@ -631,7 +631,7 @@ export function createSlackTurnRuntime<
             channelId,
             runId,
           };
-          const queuedMessages = getQueuedMessages(hooks?.messageContext, {
+          const queuedMessages = getQueuedMessages(hooks.messageContext, {
             explicitMention: Boolean(message.isMention),
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
@@ -705,7 +705,7 @@ export function createSlackTurnRuntime<
             await maybeHandleThreadOptOutDecision({
               thread,
               decision,
-              beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+              beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             })
           ) {
             await skipSubscribedMessage({
@@ -748,7 +748,7 @@ export function createSlackTurnRuntime<
             );
           };
           const onInputCommitted = async (): Promise<void> => {
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
             await startQueuedProcessingReactions();
           };
           const toolInvocationHook = createToolInvocationHook(
@@ -758,16 +758,16 @@ export function createSlackTurnRuntime<
 
           await deps.replyToThread(thread, message, {
             explicitMention: Boolean(message.isMention),
-            destination: hooks?.destination,
+            destination: hooks.destination,
             preparedState,
-            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             queuedMessages,
             onInputCommitted,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
             drainSteeringMessages,
-            onTurnStatePersisted: hooks?.onTurnStatePersisted,
-            shouldYield: hooks?.shouldYield,
+            onTurnStatePersisted: hooks.onTurnStatePersisted,
+            shouldYield: hooks.shouldYield,
           });
         });
       } catch (error) {
@@ -806,7 +806,7 @@ export function createSlackTurnRuntime<
             "Sentry did not return an event ID for subscribed_message_handler_failed",
           );
         }
-        await hooks?.beforeFirstResponsePost?.();
+        await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
           thread,
           errorContext,

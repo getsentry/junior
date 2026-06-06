@@ -3,6 +3,7 @@ import type { Message } from "chat";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -101,7 +102,9 @@ describe("Slack behavior: attachment handling", () => {
       ] as Message["attachments"],
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
@@ -158,7 +161,9 @@ describe("Slack behavior: attachment handling", () => {
       ] as Message["attachments"],
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);

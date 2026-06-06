@@ -7,6 +7,7 @@ import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-p
 import {
   createTestThread,
   createTestMessage,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 interface TestState {
@@ -53,7 +54,9 @@ describe("createSlackTurnRuntime", () => {
       const thread = createTestThread({});
       const message = createTestMessage({ text: "hey bot" });
 
-      await runtime.handleNewMention(thread, message);
+      await runtime.handleNewMention(thread, message, {
+        destination: createTestDestination(thread),
+      });
 
       expect(thread.subscribeCalls).toBe(1);
       expect(deps.replyToThread).toHaveBeenCalledWith(
@@ -87,6 +90,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       await runtime.handleNewMention(thread, latest, {
+        destination: createTestDestination(thread),
         messageContext: {
           skipped: [skipped],
           totalSinceLastHandler: 2,
@@ -123,7 +127,9 @@ describe("createSlackTurnRuntime", () => {
         isMention: true,
       });
 
-      await runtime.handleSubscribedMessage(thread, message);
+      await runtime.handleSubscribedMessage(thread, message, {
+        destination: createTestDestination(thread),
+      });
 
       expect(deps.stripLeadingBotMention).toHaveBeenCalledWith(
         "<@U123> stripped text",
@@ -148,7 +154,9 @@ describe("createSlackTurnRuntime", () => {
       const thread = createTestThread({});
       const message = createTestMessage({});
 
-      await runtime.handleSubscribedMessage(thread, message);
+      await runtime.handleSubscribedMessage(thread, message, {
+        destination: createTestDestination(thread),
+      });
 
       expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ conversationContext: "some context" }),

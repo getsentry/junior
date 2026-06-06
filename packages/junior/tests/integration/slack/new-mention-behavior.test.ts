@@ -1,7 +1,10 @@
 import type { Message } from "chat";
 import { describe, expect, it } from "vitest";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
-import { FakeSlackAdapter } from "../../fixtures/slack-harness";
+import {
+  FakeSlackAdapter,
+  createTestDestination,
+} from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -67,7 +70,9 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(fakeReplyCalls).toHaveLength(1);
     expect(fakeReplyCalls[0]?.prompt).toContain("give me a status update");
@@ -118,6 +123,7 @@ describe("Slack behavior: new mention", () => {
     });
 
     await slackRuntime.handleNewMention(thread, latest, {
+      destination: createTestDestination(thread),
       messageContext: {
         skipped: [queued],
         totalSinceLastHandler: 2,
@@ -212,6 +218,7 @@ describe("Slack behavior: new mention", () => {
     });
 
     await slackRuntime.handleNewMention(thread, latest, {
+      destination: createTestDestination(thread),
       messageContext: {
         skipped: [queued],
         totalSinceLastHandler: 2,
@@ -268,6 +275,7 @@ describe("Slack behavior: new mention", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
@@ -317,6 +325,7 @@ describe("Slack behavior: new mention", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     // Reply posted then deleted to complete Slack's response cycle without visible noise
@@ -354,6 +363,7 @@ describe("Slack behavior: new mention", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
@@ -402,7 +412,9 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(thread.subscribeCalls).toBe(1);
     expect(thread.posts).toHaveLength(0);

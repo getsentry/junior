@@ -3,6 +3,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
@@ -59,7 +60,9 @@ describe("Slack behavior: file delivery", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(thread.posts.map(toPostedText)).toEqual(["Preview is ready."]);
   });

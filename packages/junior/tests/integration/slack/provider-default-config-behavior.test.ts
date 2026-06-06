@@ -3,6 +3,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
@@ -42,6 +43,7 @@ describe("Slack behavior: provider default configuration", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(generateAssistantReply).not.toHaveBeenCalled();
@@ -100,6 +102,7 @@ describe("Slack behavior: provider default configuration", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(generateAssistantReply).toHaveBeenCalledOnce();

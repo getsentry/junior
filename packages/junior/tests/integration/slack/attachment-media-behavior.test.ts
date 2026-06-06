@@ -3,6 +3,7 @@ import type { Message } from "chat";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -136,7 +137,9 @@ describe("Slack behavior: mixed attachment media", () => {
       ] as Message["attachments"],
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(imageFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
@@ -211,7 +214,9 @@ describe("Slack behavior: mixed attachment media", () => {
       ] as Message["attachments"],
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(imageFetch).not.toHaveBeenCalled();
     expect(capturedAttachmentMediaTypes).toEqual([["application/pdf"]]);
@@ -270,7 +275,9 @@ describe("Slack behavior: mixed attachment media", () => {
       ] as Message["attachments"],
     });
 
-    await slackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
 
     expect(imageFetch).not.toHaveBeenCalled();
     expect(generateAssistantReply).toHaveBeenCalledTimes(1);

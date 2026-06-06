@@ -219,7 +219,7 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async (thread, message, hooks) => {
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
             calls.push({ thread, message });
           },
           handleSubscribedMessage: async () => {
@@ -281,12 +281,12 @@ describe("Slack conversation work execution", () => {
 
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (thread, message, hooks) => {
-        await hooks?.onInputCommitted?.();
+        await hooks.onInputCommitted?.();
         calls.push({
-          destination: hooks?.destination,
+          destination: hooks.destination,
           thread,
           message,
-          skipped: hooks?.messageContext?.skipped ?? [],
+          skipped: hooks.messageContext?.skipped ?? [],
         });
       },
       handleSubscribedMessage: async () => {
@@ -348,7 +348,7 @@ describe("Slack conversation work execution", () => {
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, message, hooks) => {
         capturedMessage = message;
-        await hooks?.onInputCommitted?.();
+        await hooks.onInputCommitted?.();
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");
@@ -435,12 +435,12 @@ describe("Slack conversation work execution", () => {
 
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (thread, message, hooks) => {
-        await hooks?.onInputCommitted?.();
+        await hooks.onInputCommitted?.();
         subscribedValues.push(await thread.isSubscribed());
         calls.push({
           thread,
           message,
-          skipped: hooks?.messageContext?.skipped ?? [],
+          skipped: hooks.messageContext?.skipped ?? [],
         });
       },
       handleSubscribedMessage: async () => {
@@ -501,7 +501,7 @@ describe("Slack conversation work execution", () => {
         resumeAwaitingContinuation,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
             calls.push(message.text);
           },
           handleSubscribedMessage: async () => {
@@ -605,7 +605,7 @@ describe("Slack conversation work execution", () => {
     const drained: string[][] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
-        await hooks?.onInputCommitted?.();
+        await hooks.onInputCommitted?.();
         await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
             slackEnvelope({
@@ -617,7 +617,7 @@ describe("Slack conversation work execution", () => {
           services: ingressServices,
         });
         const messages =
-          (await hooks?.drainSteeringMessages?.(async (steering) => {
+          (await hooks.drainSteeringMessages?.(async (steering) => {
             injected.push(steering.map((message) => message.id));
           })) ?? [];
         drained.push(messages.map((message) => message.id));
@@ -1015,7 +1015,7 @@ describe("Slack conversation work execution", () => {
               queue,
               state,
             });
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1071,7 +1071,7 @@ describe("Slack conversation work execution", () => {
         runtime: {
           handleNewMention: async (_thread, _message, hooks) => {
             currentNowMs = 242_000;
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1119,7 +1119,7 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async (_thread, _message, hooks) => {
-            await hooks?.onInputCommitted?.();
+            await hooks.onInputCommitted?.();
             currentNowMs = 242_000;
             throw new CooperativeTurnYieldError();
           },

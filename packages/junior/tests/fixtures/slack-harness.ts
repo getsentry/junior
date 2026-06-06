@@ -6,6 +6,7 @@ import type {
   SentMessage,
   Thread,
 } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -15,9 +16,36 @@ function parseChannelFromThreadId(threadId: string): string | undefined {
   return undefined;
 }
 
+function parseChannelFromAdapterChannelId(
+  channelId: string | undefined,
+): string | undefined {
+  if (!channelId) return undefined;
+  const parts = channelId.split(":");
+  if (parts.length === 2 && parts[0] === "slack" && parts[1]) return parts[1];
+  return channelId;
+}
+
 function toAdapterChannelId(threadId: string): string | undefined {
   const channelId = parseChannelFromThreadId(threadId);
   return channelId ? `slack:${channelId}` : undefined;
+}
+
+export const TEST_SLACK_TEAM_ID = "TTEST";
+
+export function createTestDestination(
+  thread: Pick<Thread, "channelId" | "id">,
+): Destination {
+  const channelId =
+    parseChannelFromThreadId(thread.id) ??
+    parseChannelFromAdapterChannelId(thread.channelId);
+  if (!channelId) {
+    throw new Error("Test Slack destination requires a Slack channel id");
+  }
+  return {
+    platform: "slack",
+    teamId: TEST_SLACK_TEAM_ID,
+    channelId,
+  };
 }
 
 // ── Test Author ──────────────────────────────────────────────────────

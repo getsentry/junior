@@ -3,6 +3,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
@@ -61,6 +62,7 @@ describe("Slack behavior: processing reaction", () => {
           thread_ts: "1700007000.000000",
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(slackApiOutbox.reactionAdds()).toEqual([
@@ -113,6 +115,7 @@ describe("Slack behavior: processing reaction", () => {
           thread_ts: "1700007100.000000",
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts).toHaveLength(0);
@@ -166,6 +169,7 @@ describe("Slack behavior: processing reaction", () => {
           thread_ts: "1700007150.000000",
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(slackApiOutbox.reactionAdds()).toEqual([
@@ -211,6 +215,7 @@ describe("Slack behavior: processing reaction", () => {
           thread_ts: "1700007200.000000",
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);

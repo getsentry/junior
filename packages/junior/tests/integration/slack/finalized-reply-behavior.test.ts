@@ -9,6 +9,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
@@ -89,6 +90,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds).toEqual(["value"]);
@@ -123,6 +125,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds).toEqual(["value"]);
@@ -151,6 +154,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds).toEqual(["value"]);
@@ -187,6 +191,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds).toEqual(["value"]);
@@ -220,6 +225,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds).toEqual(["value"]);
@@ -254,6 +260,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds.every((kind) => kind === "value")).toBe(true);
@@ -289,6 +296,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts.length).toBeGreaterThan(1);
@@ -325,6 +333,7 @@ describe("Slack behavior: finalized thread replies", () => {
         isMention: true,
         threadId: thread.id,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.postKinds.every((kind) => kind === "value")).toBe(true);

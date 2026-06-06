@@ -3,6 +3,7 @@ import type { Thread } from "chat";
 import {
   createTestMessage,
   createTestThread,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 
 const listThreadRepliesMock = vi.fn();
@@ -139,6 +140,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(firstThread) },
     );
 
     const persisted = firstThread.getState();
@@ -162,6 +164,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(secondThread) },
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -226,6 +229,7 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
@@ -327,6 +331,7 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      { destination: createTestDestination(firstThread) },
     );
 
     listThreadRepliesMock.mockResolvedValue([
@@ -384,6 +389,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(secondThread) },
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -521,6 +527,7 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(generateAssistantReply).not.toHaveBeenCalled();
@@ -541,6 +548,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -673,6 +681,34 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      {
+        destination: createTestDestination(
+          createTestThread({
+            id: "slack:C_IMAGE:1700000003.000",
+            state: {
+              conversation: {
+                schemaVersion: 1,
+                messages: [],
+                compactions: [],
+                backfill: {
+                  completedAtMs: 1700000000000,
+                  source: "recent_messages",
+                },
+                processing: {},
+                stats: {
+                  estimatedContextTokens: 0,
+                  totalMessageCount: 0,
+                  compactedMessageCount: 0,
+                  updatedAtMs: 1700000000000,
+                },
+                vision: {
+                  byFileId: {},
+                },
+              },
+            },
+          }),
+        ),
+      },
     );
 
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
@@ -810,6 +846,34 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      {
+        destination: createTestDestination(
+          createTestThread({
+            id: "slack:C_IMAGE:1700000004.000",
+            state: {
+              conversation: {
+                schemaVersion: 1,
+                messages: [],
+                compactions: [],
+                backfill: {
+                  completedAtMs: 1700000000000,
+                  source: "recent_messages",
+                },
+                processing: {},
+                stats: {
+                  estimatedContextTokens: 0,
+                  totalMessageCount: 0,
+                  compactedMessageCount: 0,
+                  updatedAtMs: 1700000000000,
+                },
+                vision: {
+                  byFileId: {},
+                },
+              },
+            },
+          }),
+        ),
+      },
     );
 
     expect(downloadFileMock).toHaveBeenCalledTimes(2);
@@ -899,6 +963,34 @@ describe("bot image hydration", () => {
           },
         ],
       }),
+      {
+        destination: createTestDestination(
+          createTestThread({
+            id: "slack:C_IMAGE:1700000005.000",
+            state: {
+              conversation: {
+                schemaVersion: 1,
+                messages: [],
+                compactions: [],
+                backfill: {
+                  completedAtMs: 1700000000000,
+                  source: "recent_messages",
+                },
+                processing: {},
+                stats: {
+                  estimatedContextTokens: 0,
+                  totalMessageCount: 0,
+                  compactedMessageCount: 0,
+                  updatedAtMs: 1700000000000,
+                },
+                vision: {
+                  byFileId: {},
+                },
+              },
+            },
+          }),
+        ),
+      },
     );
 
     expect(completeTextMock).toHaveBeenCalledTimes(1);
@@ -948,6 +1040,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     const filePost = postSpy.mock.calls.find(
@@ -1010,6 +1103,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(postSpy.mock.calls).toHaveLength(1);

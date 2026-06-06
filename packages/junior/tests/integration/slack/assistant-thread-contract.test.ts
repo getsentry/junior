@@ -1,3 +1,4 @@
+import { createTestDestination } from "../../fixtures/slack-harness";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -98,7 +99,9 @@ async function createDirectMessageBot(args: {
   });
 
   bot.onDirectMessage((thread, message) =>
-    slackRuntime.handleNewMention(thread, message),
+    slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    }),
   );
 
   return bot;
@@ -128,7 +131,9 @@ async function createMentionBot(args: {
   });
 
   bot.onNewMention((thread, message) =>
-    slackRuntime.handleNewMention(thread, message),
+    slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    }),
   );
 
   return bot;

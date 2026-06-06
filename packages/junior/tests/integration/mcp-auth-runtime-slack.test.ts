@@ -339,6 +339,11 @@ describe("mcp auth runtime slack integration", () => {
       },
     });
 
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    };
     const thread = createTestThread({
       id: threadId,
       state: {
@@ -378,6 +383,7 @@ describe("mcp auth runtime slack integration", () => {
           thread_ts: "1700000000.001",
         },
       }),
+      { destination },
     );
 
     expect(agentProbe.promptCallCount).toBe(1);
@@ -419,7 +425,7 @@ describe("mcp auth runtime slack integration", () => {
       userId: "U123",
       userMessage: "what did i say about the budget?",
       channelId: "C123",
-      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      destination,
       threadTs: "1700000000.001",
       authorizationUrl: expect.stringContaining(
         "https://eval-auth.example.test/oauth/authorize",
@@ -582,6 +588,11 @@ describe("mcp auth runtime slack integration", () => {
       },
     });
 
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C124",
+    };
     const thread = createTestThread({
       id: threadId,
       state: {
@@ -621,6 +632,7 @@ describe("mcp auth runtime slack integration", () => {
           thread_ts: "1700000000.002",
         },
       }),
+      { destination },
     );
 
     expect(agentProbe.promptCallCount).toBe(1);
@@ -673,6 +685,11 @@ describe("mcp auth runtime slack integration", () => {
       },
     });
 
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C125",
+    };
     const thread = createTestThread({
       id: threadId,
       state: {
@@ -712,6 +729,7 @@ describe("mcp auth runtime slack integration", () => {
           thread_ts: "1700000000.003",
         },
       }),
+      { destination },
     );
 
     const pendingCheckpoint =
@@ -734,7 +752,7 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       userId: "U123",
-      destination: { platform: "slack", teamId: "T123", channelId: "C125" },
+      destination,
     });
 
     const response =

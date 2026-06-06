@@ -1,3 +1,4 @@
+import { createTestDestination } from "../../fixtures/slack-harness";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -277,7 +278,9 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     const waitUntil = slackWebhookClient.waitUntil();
 
     bot.onDirectMessage((thread, message) =>
-      slackRuntime.handleNewMention(thread, message),
+      slackRuntime.handleNewMention(thread, message, {
+        destination: createTestDestination(thread),
+      }),
     );
 
     const editedPayload = {

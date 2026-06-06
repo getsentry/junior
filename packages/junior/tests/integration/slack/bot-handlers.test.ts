@@ -17,6 +17,7 @@ import {
   FakeSlackAdapter,
   createTestThread,
   createTestMessage,
+  createTestDestination,
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 
@@ -182,6 +183,7 @@ describe("bot handlers (integration)", () => {
         text: "hey bot",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts.length).toBeGreaterThan(0);
@@ -273,6 +275,7 @@ describe("bot handlers (integration)", () => {
           text: "please answer once",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       ),
     ).resolves.toBeUndefined();
 
@@ -324,6 +327,7 @@ describe("bot handlers (integration)", () => {
         text: "<@UBOT> check this",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts.length).toBeGreaterThan(0);
@@ -358,6 +362,7 @@ describe("bot handlers (integration)", () => {
         threadId: "slack:C_SKIP:1700000000.000",
         text: "just chatting among ourselves",
       }),
+      { destination: createTestDestination(thread) },
     );
 
     // Should not have posted a reply (no generateAssistantReply call)
@@ -428,6 +433,7 @@ describe("bot handlers (integration)", () => {
         text: "trigger an error",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     const errorPost = thread.posts.find(
@@ -478,6 +484,7 @@ describe("bot handlers (integration)", () => {
           text: "please answer",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       ),
     ).rejects.toThrow("Slack unavailable");
 
@@ -562,6 +569,7 @@ describe("bot handlers (integration)", () => {
         text: "trace this turn",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(capturedCorrelation).toHaveLength(1);
@@ -604,6 +612,7 @@ describe("bot handlers (integration)", () => {
           text: "please use notion",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       ),
     ).resolves.toBeUndefined();
 
@@ -678,6 +687,7 @@ describe("bot handlers (integration)", () => {
           text: "please use github",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       ),
     ).resolves.toBeUndefined();
 
@@ -757,6 +767,7 @@ describe("bot handlers (integration)", () => {
           isMention: true,
           raw: rawSlackMessage(conversationId, destination),
         }),
+        { destination },
       ),
     ).resolves.toBeUndefined();
 
@@ -817,7 +828,9 @@ describe("bot handlers (integration)", () => {
           teamId: "TWRONG",
         }),
       }),
-      { destination },
+      {
+        destination,
+      },
     );
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
@@ -867,6 +880,7 @@ describe("bot handlers (integration)", () => {
           isMention: true,
           raw: rawSlackMessage(conversationId, destination),
         }),
+        { destination },
       ),
     ).resolves.toBeUndefined();
 
@@ -918,7 +932,11 @@ describe("bot handlers (integration)", () => {
           text: "what happened?",
           isMention: true,
         }),
-        { onInputCommitted, onTurnStatePersisted },
+        {
+          destination,
+          onInputCommitted,
+          onTurnStatePersisted,
+        },
       ),
     ).resolves.toBeUndefined();
 
@@ -992,7 +1010,10 @@ describe("bot handlers (integration)", () => {
         text: "any update?",
         isMention: true,
       }),
-      { onTurnStatePersisted },
+      {
+        destination: createTestDestination(thread),
+        onTurnStatePersisted,
+      },
     );
 
     expect(generateAssistantReply).not.toHaveBeenCalled();
@@ -1063,6 +1084,7 @@ describe("bot handlers (integration)", () => {
         text: "what happened?",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(generateAssistantReply).toHaveBeenCalledOnce();
@@ -1122,6 +1144,7 @@ describe("bot handlers (integration)", () => {
         text: "please keep working",
         isMention: true,
       }),
+      { destination },
     );
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
@@ -1173,7 +1196,10 @@ describe("bot handlers (integration)", () => {
         text: "please keep working",
         isMention: true,
       }),
-      { onTurnStatePersisted },
+      {
+        destination,
+        onTurnStatePersisted,
+      },
     );
 
     expect(getAwaitingTurnContinuationRequest).not.toHaveBeenCalled();
@@ -1218,6 +1244,7 @@ describe("bot handlers (integration)", () => {
         text: "what happened?",
         isMention: true,
       }),
+      { destination },
     );
 
     expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
@@ -1277,6 +1304,7 @@ describe("bot handlers (integration)", () => {
         text: "what happened?",
         isMention: true,
       }),
+      { destination },
     );
 
     expect(generateAssistantReply).not.toHaveBeenCalled();
@@ -1322,6 +1350,7 @@ describe("bot handlers (integration)", () => {
         text: "do work",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(thread.posts).toHaveLength(1);
@@ -1371,6 +1400,7 @@ describe("bot handlers (integration)", () => {
         text: "show the channel",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(fakeAdapter.statusCalls.length).toBeGreaterThan(0);
@@ -1430,15 +1460,19 @@ describe("bot handlers (integration)", () => {
     });
 
     let settled = false;
+    const thread = createTestThread({
+      id: "slack:D_STATUSBLOCK:1700000000.000",
+    });
     const turnPromise = slackRuntime
       .handleNewMention(
-        createTestThread({ id: "slack:D_STATUSBLOCK:1700000000.000" }),
+        thread,
         createTestMessage({
           id: "msg-status-block",
           threadId: "slack:D_STATUSBLOCK:1700000000.000",
           text: "show the channel",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       )
       .then(() => {
         settled = true;
@@ -1518,6 +1552,7 @@ describe("bot handlers (integration)", () => {
           text: "answer quickly",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       )
       .then(() => {
         settled = true;
@@ -1577,6 +1612,7 @@ describe("bot handlers (integration)", () => {
         text: "How do I debug memory leaks in Node?",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     await new Promise((r) => setTimeout(r, 0));
@@ -1644,6 +1680,7 @@ describe("bot handlers (integration)", () => {
         text: "Can you also include the regression window?",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     await new Promise((r) => setTimeout(r, 0));
@@ -1709,6 +1746,7 @@ describe("bot handlers (integration)", () => {
         text: "what's today's date",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     await new Promise((r) => setTimeout(r, 0));
@@ -1764,6 +1802,7 @@ describe("bot handlers (integration)", () => {
           text: "what's today's date",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       )
       .then(() => {
         settled = true;
@@ -1821,6 +1860,7 @@ describe("bot handlers (integration)", () => {
         text: "first message",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
     await new Promise((r) => setTimeout(r, 0));
 
@@ -1837,6 +1877,7 @@ describe("bot handlers (integration)", () => {
         text: "second message",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
     await new Promise((r) => setTimeout(r, 0));
 
@@ -1895,6 +1936,7 @@ describe("bot handlers (integration)", () => {
           text: "title this thread please",
           isMention: true,
         }),
+        { destination: createTestDestination(thread) },
       ),
     ).resolves.toBeUndefined();
     await new Promise((r) => setTimeout(r, 0));
@@ -1953,6 +1995,7 @@ describe("bot handlers (integration)", () => {
         text: "first message",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
     await slackRuntime.handleNewMention(
       thread,
@@ -1962,6 +2005,7 @@ describe("bot handlers (integration)", () => {
         text: "second message",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(titleGenerationCount).toBe(1);
@@ -2002,6 +2046,7 @@ describe("bot handlers (integration)", () => {
         text: "Can you summarize this?",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     expect(capturedContexts).toEqual([undefined]);
@@ -2050,7 +2095,9 @@ describe("bot handlers (integration)", () => {
     currentMessage.metadata.dateSent = new Date(1_700_000_001_000);
     thread.recentMessages = [priorMessage, currentMessage];
 
-    await slackRuntime.handleNewMention(thread, currentMessage);
+    await slackRuntime.handleNewMention(thread, currentMessage, {
+      destination: createTestDestination(thread),
+    });
 
     expect(capturedContexts).toHaveLength(1);
     expect(capturedContexts[0]).toContain("<thread-transcript>");
@@ -2124,7 +2171,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, firstMessage);
+    await slackRuntime.handleSubscribedMessage(thread, firstMessage, {
+      destination: createTestDestination(thread),
+    });
 
     expect(capturedContexts).toHaveLength(1);
     expect(capturedContexts[0]).toBeUndefined();
@@ -2164,6 +2213,7 @@ describe("bot handlers (integration)", () => {
         text: "first turn",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     const stateAfterFirstTurn = thread.getState();
@@ -2181,6 +2231,7 @@ describe("bot handlers (integration)", () => {
         text: "second turn",
         isMention: true,
       }),
+      { destination: createTestDestination(thread) },
     );
 
     const stateAfterSecondTurn = thread.getState();
