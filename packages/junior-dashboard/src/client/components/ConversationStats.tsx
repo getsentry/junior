@@ -131,7 +131,6 @@ function Leaderboard(props: {
 
 function LeaderboardRow(props: { index: number; item: ConversationStatsItem }) {
   const detail = [
-    plural("turn", props.item.turns),
     props.item.durationMs > 0 ? formatMs(props.item.durationMs) : undefined,
     props.item.tokens
       ? `${formatCompactNumber(props.item.tokens)} tokens`
