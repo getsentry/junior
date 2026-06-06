@@ -6,8 +6,6 @@ import type { DashboardData, Plugin, PluginReport, Skill } from "../types";
 
 type PluginRow = {
   name: string;
-  plugin?: Plugin;
-  report?: PluginReport;
   skills: Skill[];
 };
 
@@ -61,18 +59,6 @@ export function PluginsPage(props: { data?: DashboardData }) {
                     className="border-b border-white/10 px-4 py-2 font-semibold"
                     scope="col"
                   >
-                    Inventory
-                  </th>
-                  <th
-                    className="border-b border-white/10 px-4 py-2 font-semibold"
-                    scope="col"
-                  >
-                    Report
-                  </th>
-                  <th
-                    className="border-b border-white/10 px-4 py-2 font-semibold"
-                    scope="col"
-                  >
                     Skills
                   </th>
                 </tr>
@@ -80,7 +66,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-4 text-[#888]" colSpan={4}>
+                    <td className="px-4 py-4 text-[#888]" colSpan={2}>
                       No plugin inventory has been reported yet.
                     </td>
                   </tr>
@@ -89,16 +75,6 @@ export function PluginsPage(props: { data?: DashboardData }) {
                     <tr key={row.name}>
                       <td className="max-w-72 truncate border-b border-white/10 px-4 py-2.5 font-semibold text-white">
                         {row.name}
-                      </td>
-                      <td className="border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]">
-                        {row.plugin ? "loaded" : "report-only"}
-                      </td>
-                      <td className="border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]">
-                        {row.report
-                          ? (row.report.title ?? "available")
-                          : reportsPending
-                            ? "loading"
-                            : "none"}
                       </td>
                       <td className="max-w-96 truncate border-b border-white/10 px-4 py-2.5 text-[#d6d6d6]">
                         {row.skills.length
@@ -169,8 +145,6 @@ function buildPluginRows(input: {
     .sort((a, b) => a.localeCompare(b))
     .map((name) => ({
       name,
-      plugin: input.plugins.find((plugin) => plugin.name === name),
-      report: input.reports.find((report) => report.pluginName === name),
       skills: input.skills.filter((skill) => skill.pluginProvider === name),
     }));
 }
