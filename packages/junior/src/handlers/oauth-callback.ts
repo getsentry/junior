@@ -333,12 +333,15 @@ async function resumeOAuthSessionRecordTurn(
         }),
         ttlMs: THREAD_STATE_TTL_MS,
       });
-      const sessionRequester = lockedSessionRecord.requester!;
-      const requester = slackActorIdentity(sessionRequester.slackUserId!, {
-        email: sessionRequester.email,
-        fullName: sessionRequester.fullName,
-        userName: sessionRequester.slackUserName,
-      });
+      const sessionRequester = lockedSessionRecord.requester;
+      const requester = slackActorIdentity(
+        sessionRequester?.slackUserId ?? lockedUserMessage.author.userId,
+        sessionRequester?.slackUserId ? {
+          email: sessionRequester.email,
+          fullName: sessionRequester.fullName,
+          userName: sessionRequester.slackUserName,
+        } : undefined,
+      );
 
       return {
         messageText: lockedPendingAuth

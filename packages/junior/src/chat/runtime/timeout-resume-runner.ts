@@ -193,12 +193,15 @@ export async function resumeTimedOutTurn(
         excludeMessageId: userMessage.id,
       });
       const sandbox = getPersistedSandboxState(currentState);
-      const stored = sessionRecord.requester!;
-      const requester = slackActorIdentity(stored.slackUserId!, {
-        email: stored.email,
-        fullName: stored.fullName,
-        userName: stored.slackUserName,
-      });
+      const stored = sessionRecord.requester;
+      const requester = slackActorIdentity(
+        stored?.slackUserId ?? userMessage.author.userId,
+        stored?.slackUserId ? {
+          email: stored.email,
+          fullName: stored.fullName,
+          userName: stored.slackUserName,
+        } : undefined,
+      );
 
       return {
         messageText: userMessage.text,

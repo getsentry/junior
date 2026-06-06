@@ -73,7 +73,7 @@ export type AgentTurnSessionSummary = Omit<
 
 interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
-  "piMessages"
+  "piMessages" | "requester"
 > {
   committedMessageCount: number;
   logSessionId?: string;
@@ -123,27 +123,6 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
-function parseAgentTurnRequester(
-  value: unknown,
-): AgentTurnRequester | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const requester: AgentTurnRequester = {};
-  for (const field of [
-    "email",
-    "fullName",
-    "slackUserId",
-    "slackUserName",
-  ] as const) {
-    if (typeof value[field] === "string" && value[field].trim()) {
-      requester[field] = value[field].trim();
-    }
-  }
-
-  return Object.keys(requester).length > 0 ? requester : undefined;
-}
 
 function parseStoredRecord(
   value: unknown,
@@ -211,7 +190,6 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
-  const requester = parseAgentTurnRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
   const destination =
@@ -243,7 +221,6 @@ function parseAgentTurnSessionFields(
     ...(logSessionId ? { logSessionId } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     ...(destination ? { destination } : {}),
-    ...(requester ? { requester } : {}),
     ...(Array.isArray(parsed.loadedSkillNames)
       ? {
           loadedSkillNames: parsed.loadedSkillNames.filter(
@@ -355,21 +332,6 @@ function materializePiMessages(
   return undefined;
 }
 
-/**
- * Choose between a requester derived from the canonical session log and one
- * stored in the cursor. Log requester is preferred when it carries a usable
- * Slack user id; otherwise the cursor value is the fallback for old records.
- */
-function selectSessionRequester(
-  logRequester: AgentTurnRequester | undefined,
-  cursorRequester: AgentTurnRequester | undefined,
-): AgentTurnRequester | undefined {
-  if (logRequester?.slackUserId) {
-    return logRequester;
-  }
-  return cursorRequester;
-}
-
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
   piMessages: PiMessage[],
@@ -396,7 +358,7 @@ function materializeAgentTurnSessionRecord(
     ...(stored.loadedSkillNames
       ? { loadedSkillNames: stored.loadedSkillNames }
       : {}),
-    ...((requester ?? stored.requester) ? { requester: requester ?? stored.requester } : {}),
+    ...(requester ? { requester } : {}),
     ...(stored.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: stored.resumedFromSliceId }
       : {}),
@@ -451,8 +413,7 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  const requester = selectSessionRequester(logRequester, parsed.requester);
-  return materializeAgentTurnSessionRecord(parsed, piMessages, requester);
+  return materializeAgentTurnSessionRecord(parsed, piMessages, logRequester);
 }
 
 /** Build the storage record that advances optimistic resume versioning. */
@@ -467,7 +428,6 @@ function buildStoredRecord(args: {
   loadedSkillNames?: string[];
   logSessionId?: string;
   previousVersion?: number;
-  requester?: AgentTurnRequester;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -494,7 +454,6 @@ function buildStoredRecord(args: {
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.requester ? { requester: args.requester } : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
@@ -515,6 +474,7 @@ function buildStoredRecord(args: {
 async function setStoredRecord(args: {
   piMessages: PiMessage[];
   record: StoredAgentTurnSessionRecord;
+  requester?: AgentTurnRequester;
   ttlMs: number;
 }): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
@@ -532,7 +492,7 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
-  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
+  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages], args.requester);
 }
 
 /**
@@ -576,9 +536,7 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
-      ...(args.existing.requester
-        ? { requester: args.existing.requester }
-        : {}),
+
       ...(args.existing.resumeReason
         ? { resumeReason: args.existing.resumeReason }
         : {}),
@@ -630,6 +588,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   return await setStoredRecord({
     piMessages: args.piMessages,
     ttlMs,
+    requester: args.requester,
     record: buildStoredRecord({
       ...((args.channelName ?? existingRecord?.channelName)
         ? { channelName: args.channelName ?? existingRecord?.channelName }
@@ -660,9 +619,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.requester ?? existingRecord?.requester)
-        ? { requester: args.requester ?? existingRecord?.requester }
-        : {}),
+
       ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       ...(args.resumedFromSliceId !== undefined
@@ -725,9 +682,6 @@ export async function recordAgentTurnSessionSummary(args: {
         : {}),
       ...((args.destination ?? existing?.destination)
         ? { destination: args.destination ?? existing?.destination }
-        : {}),
-      ...((args.requester ?? existing?.requester)
-        ? { requester: args.requester ?? existing?.requester }
         : {}),
       ...(Array.isArray(args.loadedSkillNames)
         ? {
