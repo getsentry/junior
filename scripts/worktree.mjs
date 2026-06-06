@@ -218,6 +218,12 @@ function defaultBaseRef() {
   return "HEAD";
 }
 
+function configuredBaseRef() {
+  return (
+    process.env.JUNIOR_WORKTREE_BASE ?? gitConfigValue("junior.worktreeBase")
+  );
+}
+
 function parseWorktreeList() {
   const output = readGit(["worktree", "list", "--porcelain"]);
   const records = output
@@ -356,8 +362,12 @@ function resolveIncludePath(sourceRoot) {
   return null;
 }
 
-function readIncludePatterns() {
-  const includePath = resolveIncludePath(workspaceRoot);
+function readIncludePatterns(sourceRoot) {
+  const sourceIncludePath = resolveIncludePath(sourceRoot);
+  const workspaceIncludePath =
+    sourceRoot === workspaceRoot ? null : resolveIncludePath(workspaceRoot);
+  const includePath = sourceIncludePath ?? workspaceIncludePath;
+  const includeRoot = sourceIncludePath ? sourceRoot : workspaceRoot;
 
   if (!includePath) {
     return { patterns: [], source: null };
@@ -371,7 +381,7 @@ function readIncludePatterns() {
 
   return {
     patterns,
-    source: path.relative(workspaceRoot, includePath),
+    source: path.relative(includeRoot, includePath),
   };
 }
 
@@ -460,7 +470,7 @@ function includedFiles(sourceRoot, patterns) {
 }
 
 function copyIncludedFiles(sourceRoot, targetRoot) {
-  const { patterns, source } = readIncludePatterns();
+  const { patterns, source } = readIncludePatterns(sourceRoot);
 
   if (patterns.length === 0) {
     console.log(
@@ -589,8 +599,17 @@ function createWorktree(args) {
     options.path ??
       path.join(defaultWorktreeParent(), worktreePathSegment(branch)),
   );
-  const baseRef = options.from ?? defaultBaseRef();
-  const addArgs = branchExists(branch)
+  const existingBranch = branchExists(branch);
+  const explicitBaseRef = options.from ?? configuredBaseRef();
+
+  if (existingBranch && explicitBaseRef) {
+    fail(
+      `Branch "${branch}" already exists; --from and JUNIOR_WORKTREE_BASE only apply when creating a new branch.`,
+    );
+  }
+
+  const baseRef = existingBranch ? null : (options.from ?? defaultBaseRef());
+  const addArgs = existingBranch
     ? ["worktree", "add", targetRoot, branch]
     : ["worktree", "add", "-b", branch, targetRoot, baseRef];
 
@@ -622,7 +641,11 @@ function createWorktree(args) {
 
   console.log(`Worktree ready: ${targetRoot}`);
   console.log(`Branch: ${branch}`);
-  console.log(`Base: ${baseRef}`);
+  if (baseRef) {
+    console.log(`Base: ${baseRef}`);
+  } else {
+    console.log("Base: existing branch tip");
+  }
 
   if (options.open) {
     runShellCommand(options.open, targetRoot);
