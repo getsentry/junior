@@ -1,12 +1,14 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import type { CredentialContext } from "@/chat/credentials/context";
+import type { CredentialIntent } from "@/chat/credentials/broker";
 import {
-  parseCredentialContext,
-  type CredentialContext,
-} from "@/chat/credentials/context";
-import type {
-  CredentialHeaderTransform,
-  CredentialIntent,
-} from "@/chat/credentials/broker";
+  parseSandboxEgressAuthRequiredSignal,
+  sandboxEgressCredentialContextSchema,
+  sandboxEgressCredentialLeaseSchema,
+  type SandboxEgressAuthRequiredSignal,
+  type SandboxEgressCredentialContext,
+  type SandboxEgressCredentialLease,
+} from "@/chat/sandbox/egress-schemas";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
@@ -17,25 +19,11 @@ const SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX = "sandbox-egress-auth-required";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
-export interface SandboxEgressCredentialContext {
-  credentials: CredentialContext;
-  egressId: string;
-  expiresAtMs: number;
-  contextId: string;
-}
-
-export interface SandboxEgressCredentialLease {
-  provider: string;
-  intent: CredentialIntent;
-  expiresAt: string;
-  headerTransforms: CredentialHeaderTransform[];
-}
-
-export interface SandboxEgressAuthRequiredSignal {
-  provider: string;
-  intent: CredentialIntent;
-  createdAtMs: number;
-}
+export type {
+  SandboxEgressAuthRequiredSignal,
+  SandboxEgressCredentialContext,
+  SandboxEgressCredentialLease,
+};
 
 function leaseKey(
   provider: string,
@@ -86,91 +74,36 @@ function timingSafeMatch(expected: string, actual: string): boolean {
 function parseSandboxEgressContext(
   value: unknown,
 ): SandboxEgressCredentialContext | undefined {
-  if (!value || typeof value !== "object") {
+  const result = sandboxEgressCredentialContextSchema.safeParse(value);
+  if (!result.success) {
     return undefined;
   }
-  const record = value as Partial<SandboxEgressCredentialContext>;
-  const credentials = parseCredentialContext(record.credentials);
-  if (
-    !credentials ||
-    typeof record.egressId !== "string" ||
-    !record.egressId ||
-    typeof record.expiresAtMs !== "number" ||
-    !Number.isFinite(record.expiresAtMs) ||
-    typeof record.contextId !== "string" ||
-    !record.contextId
-  ) {
+  if (result.data.expiresAtMs <= Date.now()) {
     return undefined;
   }
-  if (record.expiresAtMs <= Date.now()) {
-    return undefined;
-  }
-  return {
-    credentials,
-    egressId: record.egressId,
-    expiresAtMs: record.expiresAtMs,
-    contextId: record.contextId,
-  };
+  return result.data;
 }
 
 function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
-  if (!value || typeof value !== "object") {
+  const result = sandboxEgressCredentialLeaseSchema.safeParse(value);
+  if (!result.success) {
     return undefined;
   }
-  const record = value as Partial<SandboxEgressCredentialLease>;
-  if (
-    typeof record.provider !== "string" ||
-    (record.intent !== "read" && record.intent !== "write") ||
-    typeof record.expiresAt !== "string" ||
-    !Array.isArray(record.headerTransforms)
-  ) {
-    return undefined;
-  }
-  const expiresAtMs = Date.parse(record.expiresAt);
+  const expiresAtMs = Date.parse(result.data.expiresAt);
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
     return undefined;
   }
-  const headerTransforms = record.headerTransforms.filter(
-    (transform): transform is CredentialHeaderTransform =>
-      Boolean(
-        transform &&
-        typeof transform.domain === "string" &&
-        transform.headers &&
-        typeof transform.headers === "object",
-      ),
-  );
-  if (headerTransforms.length === 0) {
-    return undefined;
-  }
-  return {
-    provider: record.provider,
-    intent: record.intent,
-    expiresAt: record.expiresAt,
-    headerTransforms,
-  };
+  return result.data;
 }
 
-function parseAuthRequiredSignal(
-  value: unknown,
-): SandboxEgressAuthRequiredSignal | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
+function mergeAuthRequiredSignal(
+  existing: SandboxEgressAuthRequiredSignal | undefined,
+  next: SandboxEgressAuthRequiredSignal,
+): SandboxEgressAuthRequiredSignal {
+  if (existing?.intent === "write" && next.intent === "read") {
+    return existing;
   }
-  const record = value as Partial<SandboxEgressAuthRequiredSignal>;
-  if (
-    typeof record.provider !== "string" ||
-    !record.provider ||
-    (record.intent !== "read" && record.intent !== "write") ||
-    typeof record.createdAtMs !== "number" ||
-    !Number.isFinite(record.createdAtMs)
-  ) {
-    return undefined;
-  }
-  return {
-    provider: record.provider,
-    intent: record.intent,
-    createdAtMs: record.createdAtMs,
-  };
+  return next;
 }
 
 /** Create a signed actor/sandbox context token for lazy sandbox egress auth. */
@@ -272,12 +205,14 @@ export async function setSandboxEgressAuthRequiredSignal(
   const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
   const state = getStateAdapter();
   await state.connect();
+  const key = authSignalKey(context.egressId);
+  const existing = parseSandboxEgressAuthRequiredSignal(await state.get(key));
   await state.set(
-    authSignalKey(context.egressId),
-    {
+    key,
+    mergeAuthRequiredSignal(existing, {
       ...signal,
       createdAtMs: Date.now(),
-    },
+    }),
     ttlMs,
   );
 }
@@ -304,7 +239,7 @@ export async function consumeSandboxEgressAuthRequiredSignal(
   const state = getStateAdapter();
   await state.connect();
   const key = authSignalKey(egressId);
-  const signal = parseAuthRequiredSignal(await state.get(key));
+  const signal = parseSandboxEgressAuthRequiredSignal(await state.get(key));
   await state.delete(key);
   return signal;
 }

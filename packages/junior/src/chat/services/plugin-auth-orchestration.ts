@@ -24,6 +24,7 @@ import {
   getPluginProviders,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
+import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-schemas";
 import type { Skill } from "@/chat/skills";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
@@ -149,7 +150,7 @@ function isGitHubSmartHttpAuthFailure(
 
 function trustedAuthRequiredSignal(details: unknown):
   | {
-      intent?: "read" | "write";
+      intent: "read" | "write";
       provider: string;
     }
   | undefined {
@@ -157,31 +158,13 @@ function trustedAuthRequiredSignal(details: unknown):
     return undefined;
   }
   const signal = (details as { auth_required?: unknown }).auth_required;
-  if (!signal || typeof signal !== "object") {
+  const parsedSignal = parseSandboxEgressAuthRequiredSignal(signal);
+  if (!parsedSignal) {
     return undefined;
   }
-  const record = signal as {
-    createdAtMs?: unknown;
-    intent?: unknown;
-    provider?: unknown;
-  };
-  if (typeof record.provider !== "string" || !record.provider) {
-    return undefined;
-  }
-  if (
-    typeof record.createdAtMs !== "number" ||
-    !Number.isFinite(record.createdAtMs)
-  ) {
-    return undefined;
-  }
-  const provider = record.provider.toLowerCase();
-  const intent =
-    record.intent === "read" || record.intent === "write"
-      ? record.intent
-      : undefined;
   return {
-    provider,
-    ...(intent ? { intent } : {}),
+    provider: parsedSignal.provider,
+    intent: parsedSignal.intent,
   };
 }
 

@@ -6,6 +6,10 @@ import {
   exampleDashboardMockConversations,
 } from "./dashboard.ts";
 
+process.env.GITHUB_APP_BOT_NAME ||= "sentry-junior[bot]";
+process.env.GITHUB_APP_BOT_EMAIL ||=
+  "264270552+sentry-junior[bot]@users.noreply.github.com";
+
 export const plugins = defineJuniorPlugins([
   juniorDashboardPlugin({
     authRequired: exampleDashboardAuthRequired(),

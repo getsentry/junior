@@ -615,6 +615,41 @@ describe("sandbox egress proxy", () => {
     });
   });
 
+  it("keeps write-intent auth signals when later read auth fails in the same sandbox session", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    issueProviderCredentialLeaseMock.mockRejectedValue(
+      new CredentialUnavailableError(
+        "github",
+        "GitHub access requires authorization.",
+      ),
+    );
+
+    const writeResponse = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        method: "POST",
+        path: "/repos/getsentry/junior/issues",
+      }),
+    );
+    expect(writeResponse.status).toBe(401);
+
+    const readResponse = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        path: "/repos/getsentry/junior",
+      }),
+    );
+    expect(readResponse.status).toBe(401);
+
+    await expect(
+      consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "github",
+      intent: "write",
+    });
+  });
+
   it("requests read-intent credentials for GitHub GraphQL queries", async () => {
     getPluginProvidersMock.mockReturnValue([githubPlugin()]);
     setSandboxEgressUserActor();

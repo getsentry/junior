@@ -35,6 +35,7 @@ Copy `.env.example` and set:
 - `AI_WEB_SEARCH_MODEL` (optional, overrides the `webSearch` tool model; defaults to a search-tuned model)
 - `JUNIOR_SECRET` (required outside `pnpm dev`; the local wrapper supplies a dev-only secret when unset)
 - `JUNIOR_SCHEDULER_SECRET` or `CRON_SECRET` (optional for `pnpm dev`; the local wrapper supplies a dev-only heartbeat secret when both are unset)
+- `GITHUB_APP_BOT_NAME` and `GITHUB_APP_BOT_EMAIL` default to the `sentry-junior` GitHub App bot identity for this example app.
 - Dashboard auth is enabled by default. `pnpm dev` disables dashboard auth only for local non-Vercel development.
 - `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` overlays read-only sample dashboard conversations for local visual QA.
 

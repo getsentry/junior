@@ -1,34 +1,64 @@
-import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { parseActorUserId } from "@/chat/services/requester-identity";
 
-export interface CredentialSubjectBinding {
-  type: "slack-direct-conversation";
-  teamId: string;
-  channelId: string;
-  signature: string;
-}
+const exactActorIdSchema = z
+  .string()
+  .refine((value) => parseActorUserId(value) === value);
 
-export type CredentialSystemActor = {
-  type: "system";
-  id: string;
-};
+const credentialSubjectBindingSchema = z
+  .object({
+    type: z.literal("slack-direct-conversation"),
+    teamId: z.string().min(1),
+    channelId: z.string().min(1),
+    signature: z.string().min(1),
+  })
+  .strict();
 
-export type CredentialSubject = AgentPluginCredentialSubject & {
-  binding: CredentialSubjectBinding;
-};
+const credentialUserActorSchema = z
+  .object({
+    type: z.literal("user"),
+    userId: exactActorIdSchema,
+  })
+  .strict();
 
-export type CredentialContext =
-  | {
-      actor: {
-        type: "user";
-        userId: string;
-      };
-      subject?: never;
-    }
-  | {
-      actor: CredentialSystemActor;
-      subject?: CredentialSubject;
-    };
+const credentialSystemActorSchema = z
+  .object({
+    type: z.literal("system"),
+    id: exactActorIdSchema,
+  })
+  .strict();
+
+export const credentialSubjectSchema = z
+  .object({
+    type: z.literal("user"),
+    userId: exactActorIdSchema,
+    allowedWhen: z.literal("private-direct-conversation"),
+    binding: credentialSubjectBindingSchema,
+  })
+  .strict();
+
+export const credentialContextSchema = z.union([
+  z
+    .object({
+      actor: credentialUserActorSchema,
+    })
+    .strict(),
+  z
+    .object({
+      actor: credentialSystemActorSchema,
+      subject: credentialSubjectSchema.optional(),
+    })
+    .strict(),
+]);
+
+export type CredentialSubjectBinding = z.output<
+  typeof credentialSubjectBindingSchema
+>;
+export type CredentialSystemActor = z.output<
+  typeof credentialSystemActorSchema
+>;
+export type CredentialSubject = z.output<typeof credentialSubjectSchema>;
+export type CredentialContext = z.output<typeof credentialContextSchema>;
 
 /** Return the user whose OAuth token may satisfy this credential request. */
 export function credentialUserSubjectId(
@@ -37,107 +67,13 @@ export function credentialUserSubjectId(
   if (context.actor.type === "user") {
     return context.actor.userId;
   }
-  return context.subject?.userId;
+  return "subject" in context ? context.subject?.userId : undefined;
 }
 
 /** Parse an untrusted credential context payload from sandbox egress state. */
 export function parseCredentialContext(
   value: unknown,
 ): CredentialContext | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const record = value as Partial<CredentialContext>;
-  const actor = parseActor(record.actor);
-  if (!actor) {
-    return undefined;
-  }
-  if (actor.type === "user") {
-    if ("subject" in record && record.subject !== undefined) {
-      return undefined;
-    }
-    return { actor };
-  }
-  if (!("subject" in record) || record.subject === undefined) {
-    return { actor };
-  }
-  const subject = parseSubject(record.subject);
-  if (!subject) {
-    return undefined;
-  }
-  return {
-    actor,
-    subject,
-  };
-}
-
-function parseActor(value: unknown): CredentialContext["actor"] | undefined {
-  if (value && typeof value === "object") {
-    const record = value as {
-      id?: unknown;
-      type?: unknown;
-      userId?: unknown;
-    };
-    const userId = parseActorUserId(
-      typeof record.userId === "string" ? record.userId : undefined,
-    );
-    if (record.type === "user" && userId) {
-      return { type: "user", userId };
-    }
-    const systemId =
-      typeof record.id === "string" &&
-      record.id.length > 0 &&
-      record.id === record.id.trim() &&
-      record.id.toLowerCase() !== "unknown"
-        ? record.id
-        : undefined;
-    if (record.type === "system" && systemId) {
-      return { type: "system", id: systemId };
-    }
-  }
-  return undefined;
-}
-
-function parseSubject(
-  value: unknown,
-): NonNullable<CredentialContext["subject"]> | undefined {
-  if (value && typeof value === "object") {
-    const record = value as Partial<NonNullable<CredentialContext["subject"]>>;
-    const userId = parseActorUserId(
-      typeof record.userId === "string" ? record.userId : undefined,
-    );
-    if (
-      record.type === "user" &&
-      userId &&
-      record.allowedWhen === "private-direct-conversation"
-    ) {
-      if (!record.binding || typeof record.binding !== "object") {
-        return undefined;
-      }
-      const binding = record.binding as Partial<CredentialSubjectBinding>;
-      if (
-        binding.type !== "slack-direct-conversation" ||
-        typeof binding.teamId !== "string" ||
-        !binding.teamId ||
-        typeof binding.channelId !== "string" ||
-        !binding.channelId ||
-        typeof binding.signature !== "string" ||
-        !binding.signature
-      ) {
-        return undefined;
-      }
-      return {
-        type: "user",
-        userId,
-        allowedWhen: "private-direct-conversation",
-        binding: {
-          type: "slack-direct-conversation",
-          teamId: binding.teamId,
-          channelId: binding.channelId,
-          signature: binding.signature,
-        },
-      };
-    }
-  }
-  return undefined;
+  const result = credentialContextSchema.safeParse(value);
+  return result.success ? result.data : undefined;
 }
