@@ -153,7 +153,7 @@ function LeaderboardRow(props: { index: number; item: ConversationStatsItem }) {
           {props.item.label}
         </div>
         <div className="mt-1 truncate text-[0.76rem] leading-tight text-[#888]">
-          {detail || "No turn details"}
+          {detail || "No details"}
         </div>
       </div>
       <div className="text-right text-xl font-extrabold leading-none text-white">
