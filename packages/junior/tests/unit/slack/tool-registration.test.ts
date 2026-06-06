@@ -38,6 +38,22 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
+  it("registers delivery tools from assistant context channel in DM turns", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("D12345"),
+        deliveryChannelId: "C12345",
+      },
+    );
+
+    expect(tools).toHaveProperty("slackChannelPostMessage");
+    expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("slackCanvasCreate");
+  });
+
   it("registers schedule tools only with complete Slack turn context", () => {
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
@@ -45,6 +61,11 @@ describe("Slack tool registration", () => {
       {},
       {
         ...ctx("C12345"),
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C12345",
+        },
         teamId: "T123",
         requester: {
           userId: "U123",

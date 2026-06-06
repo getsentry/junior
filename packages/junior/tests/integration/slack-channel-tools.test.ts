@@ -33,12 +33,16 @@ function createToolState(): ToolState {
   };
 }
 
-function createContext(userText: string): ToolRuntimeContext {
+function createContext(
+  userText: string,
+  overrides: Partial<ToolRuntimeContext> = {},
+): ToolRuntimeContext {
   return {
     channelId: "C123",
     messageTs: "1700000000.321",
     userText,
     sandbox: {} as any,
+    ...overrides,
   };
 }
 
@@ -76,6 +80,49 @@ describe("slack channel tools", () => {
       ts: "1700000000.111",
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+  });
+
+  it("uses assistant context channel for channel delivery tools in DM turns", async () => {
+    const context = createContext("share this in the current channel", {
+      channelId: "D123",
+      deliveryChannelId: "C_SHARED",
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        ts: "1700000000.112",
+        channel: "C_SHARED",
+      }),
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink: "https://example.invalid/permalink-shared",
+      }),
+    });
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.113", text: "shared", user: "U1" }],
+      }),
+    });
+
+    await executeTool(
+      createSlackChannelPostMessageTool(context, createToolState()),
+      { text: "Shared update" },
+    );
+    await executeTool(createSlackChannelListMessagesTool(context), {
+      limit: 10,
+    });
+
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
+    ).toMatchObject({
+      channel: "C_SHARED",
+      text: "Shared update",
+    });
+    expect(
+      getCapturedSlackApiCalls("conversations.history")[0]?.params,
+    ).toMatchObject({
+      channel: "C_SHARED",
+    });
   });
 
   it("posts to channel when explicit post intent is present and deduplicates within turn", async () => {

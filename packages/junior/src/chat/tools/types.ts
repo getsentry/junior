@@ -51,6 +51,13 @@ export interface ToolRuntimeContext {
    * `ToolRegistrationHookContext.channelId`.
    */
   channelId?: string;
+
+  /**
+   * Slack channel used by first-class delivery tools when assistant context
+   * points at a source channel different from the raw conversation channel.
+   */
+  deliveryChannelId?: string;
+
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

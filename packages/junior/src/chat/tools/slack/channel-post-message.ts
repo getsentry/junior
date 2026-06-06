@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
 export function createSlackChannelPostMessageTool(
@@ -19,7 +20,7 @@ export function createSlackChannelPostMessageTool(
       }),
     }),
     execute: async ({ text }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = getSlackDeliveryChannelId(context);
       if (!targetChannelId) {
         return {
           ok: false,

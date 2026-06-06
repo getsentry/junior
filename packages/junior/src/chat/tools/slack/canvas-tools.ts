@@ -9,6 +9,7 @@ import {
 } from "@/chat/tools/slack/canvases";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
 import { logError, logWarn } from "@/chat/logging";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
@@ -112,7 +113,7 @@ export function createSlackCanvasCreateTool(
       }),
     }),
     execute: async ({ title, markdown }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = getSlackDeliveryChannelId(context);
       if (!isConversationScopedChannel(targetChannelId)) {
         logError(
           "slack_canvas_create_invalid_context",

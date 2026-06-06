@@ -175,11 +175,41 @@ describe("slackThreadRead", () => {
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 
-  it("blocks reading a private group channel from a DM conversation", async () => {
-    // channelId is always the raw conversation channel (D_DM here).
-    // There is no assistant-context override — access checks use channelId directly.
-    // Reading G_PRIVATE from a DM is denied; the user must be in that private
-    // channel conversation to access its threads.
+  it("reads a private group channel from assistant context during DM turns", async () => {
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "private context root",
+          },
+        ],
+      }),
+    });
+
+    const tool = createSlackThreadReadTool(
+      createContext({
+        channelId: "D_DM",
+        deliveryChannelId: "G_PRIVATE",
+      }),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "G_PRIVATE",
+      ts: "1700000000.100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      channel_id: "G_PRIVATE",
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("blocks reading a private group channel from a DM conversation without assistant context", async () => {
     const tool = createSlackThreadReadTool(
       createContext({ channelId: "D_DM" }),
     );
@@ -193,7 +223,6 @@ describe("slackThreadRead", () => {
       channel_id: "G_PRIVATE",
     });
     expect(result.error).toContain("private channel");
-    // No Slack API call — blocked locally
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 

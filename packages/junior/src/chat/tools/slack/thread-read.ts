@@ -9,6 +9,7 @@ import {
   SLACK_TS_PATTERN,
   parseSlackMessageReference,
 } from "@/chat/tools/slack/slack-message-url";
+import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
@@ -173,9 +174,11 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
         };
       }
 
-      // Restrict private-thread reads to the active raw Slack conversation.
-      // Assistant-context source channels do not expand this tool's access.
-      const access = checkChannelAccess(channelId, context.channelId);
+      // Restrict private-thread reads to the active Slack delivery context.
+      const access = checkChannelAccess(
+        channelId,
+        getSlackDeliveryChannelId(context),
+      );
       if (!access.allowed) {
         return {
           ok: false,

@@ -999,6 +999,7 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         conversationId: sessionConversationId,
+        deliveryChannelId: context.toolChannelId,
         destination: context.destination,
         requester: actorRequester,
         teamId: context.correlation?.teamId,

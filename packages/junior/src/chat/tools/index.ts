@@ -14,6 +14,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
+import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
   createSlackCanvasCreateTool,
@@ -126,8 +127,9 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  const outputChannelId = context.channelId;
+  const outputChannelId = getSlackDeliveryChannelId(context);
   const outputCapabilities = resolveChannelCapabilities(outputChannelId);
+  const rawChannelCapabilities = resolveChannelCapabilities(context.channelId);
 
   if (outputCapabilities.canCreateCanvas) {
     tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
@@ -142,7 +144,7 @@ export function createTools(
       createSlackChannelListMessagesTool(context);
   }
 
-  if (outputCapabilities.canAddReactions) {
+  if (rawChannelCapabilities.canAddReactions) {
     tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
       context,
       state,

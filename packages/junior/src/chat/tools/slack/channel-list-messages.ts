@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
 import { tool } from "@/chat/tools/definition";
+import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 export function createSlackChannelListMessagesTool(
@@ -61,7 +62,7 @@ export function createSlackChannelListMessagesTool(
       inclusive,
       max_pages,
     }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = getSlackDeliveryChannelId(context);
       if (!targetChannelId) {
         return {
           ok: false,
