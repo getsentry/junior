@@ -218,12 +218,6 @@ function defaultBaseRef() {
   return "HEAD";
 }
 
-function configuredBaseRef() {
-  return (
-    process.env.JUNIOR_WORKTREE_BASE ?? gitConfigValue("junior.worktreeBase")
-  );
-}
-
 function parseWorktreeList() {
   const output = readGit(["worktree", "list", "--porcelain"]);
   const records = output
@@ -600,11 +594,10 @@ function createWorktree(args) {
       path.join(defaultWorktreeParent(), worktreePathSegment(branch)),
   );
   const existingBranch = branchExists(branch);
-  const explicitBaseRef = options.from ?? configuredBaseRef();
 
-  if (existingBranch && explicitBaseRef) {
+  if (existingBranch && options.from) {
     fail(
-      `Branch "${branch}" already exists; --from and JUNIOR_WORKTREE_BASE only apply when creating a new branch.`,
+      `Branch "${branch}" already exists; --from only applies when creating a new branch.`,
     );
   }
 
@@ -634,6 +627,16 @@ function createWorktree(args) {
       console.error(
         `Unable to remove incomplete worktree automatically. Run: git worktree remove --force ${JSON.stringify(targetRoot)}`,
       );
+    } else if (!existingBranch) {
+      const deleteResult = git(["branch", "-D", branch], {
+        stdio: "inherit",
+      });
+
+      if (deleteResult.status !== 0) {
+        console.error(
+          `Unable to delete newly-created branch automatically. Run: git branch -D ${JSON.stringify(branch)}`,
+        );
+      }
     }
 
     fail(error instanceof Error ? error.message : String(error));
