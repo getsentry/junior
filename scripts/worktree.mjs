@@ -135,6 +135,14 @@ function defaultCopySourceRoot() {
   return mainCheckoutRoot();
 }
 
+function copySourceRoot(options) {
+  return path.resolve(
+    options.source ??
+      process.env.JUNIOR_WORKTREE_SOURCE ??
+      defaultCopySourceRoot(),
+  );
+}
+
 function gitConfigValue(key) {
   const result = git(["config", "--get", key]);
 
@@ -541,11 +549,7 @@ function runDirectCommand(args, cwd) {
 function setupWorktree(args) {
   const { options, positional } = splitOptions(args);
   const targetRoot = path.resolve(positional[0] ?? process.cwd());
-  const sourceRoot = path.resolve(
-    options.source ??
-      process.env.JUNIOR_WORKTREE_SOURCE ??
-      defaultCopySourceRoot(),
-  );
+  const sourceRoot = copySourceRoot(options);
 
   copyIncludedFiles(sourceRoot, targetRoot);
 
@@ -612,7 +616,7 @@ function createWorktree(args) {
   try {
     setupCreatedWorktree(
       targetRoot,
-      defaultCopySourceRoot(),
+      copySourceRoot(options),
       options.install !== false,
     );
   } catch (error) {
