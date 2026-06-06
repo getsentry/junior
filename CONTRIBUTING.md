@@ -49,6 +49,28 @@ pnpm docs:check
 pnpm release:check
 ```
 
+## Worktree Helpers
+
+Worktrees are development-only contributor tooling. Use the repo helper when
+starting isolated branch work, especially when a coding agent such as Codex
+should work without taking over your main checkout:
+
+```bash
+pnpm worktree new codex/my-task --agent "codex"
+pnpm worktree new review/pr-123 --open "code ."
+pnpm worktree list
+pnpm worktree exec codex/my-task -- pnpm typecheck
+pnpm worktree remove codex/my-task
+```
+
+New worktrees are created under `../junior-worktrees` by default, copy matching
+local files from the primary checkout using `scripts/worktree.include`, and run
+`pnpm install`. The copied files include env files and Vercel project links, so
+fresh worktrees can run `pnpm dev`, `pnpm dev:env`, and focused checks without
+relinking every time. `pnpm worktree list` marks the checkout running the helper
+with `*`. Set `JUNIOR_WORKTREE_DIR`, `JUNIOR_WORKTREE_BASE`, or pass `--path`,
+`--from`, `--source`, or `--no-install` to override those defaults.
+
 Build and validate the published package artifacts:
 
 ```bash

@@ -2,6 +2,7 @@
 title: Development
 description: Local development workflow for the Junior monorepo.
 type: tutorial
+summary: Set up Junior locally, run checks, and use isolated worktrees for parallel agent or contributor tasks.
 prerequisites: []
 related:
   - /contribute/testing/
@@ -47,6 +48,42 @@ JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 ```
 
 The fixtures are read-only dashboard data and appear before any real local conversation sessions.
+
+## Work in isolated branches
+
+Worktrees are development-only contributor tooling. Use them when you want to keep your main checkout stable while reviewing a PR, testing a fix, or running a coding agent such as Codex on a task. The repo helper creates the Git worktree, copies local development files, and installs dependencies in the new checkout.
+
+```bash
+pnpm worktree new codex/fix-slack-retry --agent "codex"
+```
+
+Use `--open "code ."` instead of `--agent "codex"` when you want to open the worktree in an editor first:
+
+```bash
+pnpm worktree new review/pr-123 --open "code ."
+```
+
+New worktrees are created under `../junior-worktrees` by default. They start from `origin/main` when available, then copy matching local files from the primary checkout using `scripts/worktree.include`, including env files and Vercel project links.
+
+Run commands inside a worktree without changing directories:
+
+```bash
+pnpm worktree exec codex/fix-slack-retry -- pnpm typecheck
+```
+
+List active worktrees before switching contexts. The checkout running the helper is marked with `*`:
+
+```bash
+pnpm worktree list
+```
+
+After the branch is merged or no longer needed, remove the clean worktree:
+
+```bash
+pnpm worktree remove codex/fix-slack-retry
+```
+
+Set `JUNIOR_WORKTREE_DIR` to change the parent directory, set `JUNIOR_WORKTREE_BASE` to change the default base ref, or pass `--path`, `--from`, `--source`, or `--no-install` for one-off overrides.
 
 ## Common checks
 
