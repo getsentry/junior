@@ -224,8 +224,8 @@ describe("dashboard reporting", () => {
         label: item.label,
       })),
     ).toEqual([
-      { conversations: 1, durationMs: 3_000, label: "Direct Message" },
       { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
+      { conversations: 1, durationMs: 3_000, label: "Direct Message" },
     ]);
   });
 
@@ -568,6 +568,9 @@ describe("dashboard reporting", () => {
   it("redacts dashboard transcripts for non-public conversations", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
+    const { persistThreadStateById } = await import(
+      "@/chat/runtime/thread-state"
+    );
     const { createJuniorReporting } = await import("@/reporting");
     const privateToolArgs = Object.fromEntries(
       Array.from({ length: 25 }, (_, index) => [
@@ -576,13 +579,17 @@ describe("dashboard reporting", () => {
       ]),
     );
 
+    // Store the generated title in thread state — the canonical location.
+    await persistThreadStateById("slack:D1:222", {
+      artifacts: { assistantTitle: "sensitive generated thread title" },
+    });
+
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:D1:222",
       sessionId: "turn-private",
       sliceId: 1,
       state: "completed",
       channelName: "secret-dm-name",
-      conversationTitle: "sensitive generated thread title",
       requester: {
         email: "david@sentry.io",
         slackUserId: "U1",
@@ -613,7 +620,7 @@ describe("dashboard reporting", () => {
       await createJuniorReporting().getConversation("slack:D1:222");
 
     expect(report.turns[0]).toMatchObject({
-      conversationTitle: "Direct Message",
+      displayTitle: "Direct Message",
       channelName: "Direct Message",
       id: "turn-private",
       requesterIdentity: {
@@ -659,7 +666,7 @@ describe("dashboard reporting", () => {
       await createJuniorReporting().getConversation("slack:D1:333");
 
     expect(report.turns[0]).toMatchObject({
-      conversationTitle: "Direct Message",
+      displayTitle: "Direct Message",
       channelName: "Direct Message",
       id: "turn-private-expired",
       transcriptAvailable: false,

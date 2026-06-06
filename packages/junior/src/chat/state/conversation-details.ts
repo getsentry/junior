@@ -1,0 +1,248 @@
+/**
+ * Conversation-level display and context state.
+ *
+ * Intentionally separate from:
+ * - turn-session records (per-turn execution/resume/telemetry state)
+ * - thread state (runtime blob that includes full message history)
+ *
+ * Two independent keys, each written by a single owner:
+ *
+ *   junior:conversation:{id}:context   — written once at turn start via
+ *     setIfNotExists; owns channelName, originSurface, originRequester,
+ *     startedAtMs. Subsequent turns are no-ops.
+ *
+ *   junior:conversation:{id}:title     — written by title generation via
+ *     set; owns displayTitle and titleSourceMessageId.
+ *
+ * Because each key has exactly one writer and writes are single atomic ops,
+ * no lock or read-modify-write is needed.
+ */
+import { isRecord, toOptionalNumber } from "@/chat/coerce";
+import { getStateAdapter } from "./adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "./ttl";
+import type { AgentTurnRequester, AgentTurnSurface } from "./turn-session";
+
+const CONVERSATION_PREFIX = "junior:conversation";
+const CONVERSATION_DETAILS_TTL_MS = JUNIOR_THREAD_STATE_TTL_MS;
+
+function conversationContextKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:${conversationId}:context`;
+}
+
+function conversationTitleKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:${conversationId}:title`;
+}
+
+// ---------------------------------------------------------------------------
+// Public record type (assembled view from both keys)
+// ---------------------------------------------------------------------------
+
+export interface ConversationDetailsRecord {
+  conversationId: string;
+  /** Generated display title from the LLM. Absent until title has been produced. */
+  displayTitle?: string;
+  /** The message id used as input when generating the title. */
+  titleSourceMessageId?: string;
+  /** Slack channel name or equivalent location label. */
+  channelName?: string;
+  /** Surface on which the conversation was started. */
+  originSurface?: AgentTurnSurface;
+  /** Requester who initiated the conversation (first turn). */
+  originRequester?: AgentTurnRequester;
+  /** Timestamp of the first turn in the conversation. */
+  startedAtMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// Parsing helpers
+// ---------------------------------------------------------------------------
+
+function parseAgentTurnRequester(
+  value: unknown,
+): AgentTurnRequester | undefined {
+  if (!isRecord(value)) return undefined;
+  const requester: AgentTurnRequester = {
+    ...(typeof value.email === "string" ? { email: value.email } : {}),
+    ...(typeof value.fullName === "string" ? { fullName: value.fullName } : {}),
+    ...(typeof value.slackUserId === "string"
+      ? { slackUserId: value.slackUserId }
+      : {}),
+    ...(typeof value.slackUserName === "string"
+      ? { slackUserName: value.slackUserName }
+      : {}),
+  };
+  return Object.keys(requester).length > 0 ? requester : undefined;
+}
+
+function parseOriginSurface(value: unknown): AgentTurnSurface | undefined {
+  if (
+    value === "slack" ||
+    value === "api" ||
+    value === "scheduler" ||
+    value === "internal"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+interface StoredContext {
+  channelName?: string;
+  originSurface?: AgentTurnSurface;
+  originRequester?: AgentTurnRequester;
+  startedAtMs: number;
+}
+
+function parseContext(value: unknown): StoredContext | undefined {
+  if (!isRecord(value)) return undefined;
+  const startedAtMs = toOptionalNumber(value.startedAtMs);
+  if (startedAtMs === undefined) return undefined;
+  return {
+    ...(typeof value.channelName === "string" && value.channelName.trim()
+      ? { channelName: value.channelName.trim() }
+      : {}),
+    ...(parseOriginSurface(value.originSurface)
+      ? { originSurface: parseOriginSurface(value.originSurface) }
+      : {}),
+    ...(parseAgentTurnRequester(value.originRequester)
+      ? { originRequester: parseAgentTurnRequester(value.originRequester) }
+      : {}),
+    startedAtMs,
+  };
+}
+
+interface StoredTitle {
+  displayTitle: string;
+  titleSourceMessageId?: string;
+}
+
+function parseTitle(value: unknown): StoredTitle | undefined {
+  if (!isRecord(value)) return undefined;
+  const displayTitle =
+    typeof value.displayTitle === "string" && value.displayTitle.trim()
+      ? value.displayTitle.trim()
+      : undefined;
+  if (!displayTitle) return undefined;
+  return {
+    displayTitle,
+    ...(typeof value.titleSourceMessageId === "string"
+      ? { titleSourceMessageId: value.titleSourceMessageId }
+      : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Write path
+// ---------------------------------------------------------------------------
+
+/**
+ * Record the origin context for a conversation the first time it is seen.
+ *
+ * Uses setIfNotExists — subsequent turns are no-ops. No read, no lock.
+ */
+export async function initConversationContext(
+  conversationId: string,
+  context: {
+    channelName?: string;
+    originSurface?: AgentTurnSurface;
+    originRequester?: AgentTurnRequester;
+    startedAtMs: number;
+  },
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  await stateAdapter.setIfNotExists(
+    conversationContextKey(conversationId),
+    {
+      ...(context.channelName ? { channelName: context.channelName } : {}),
+      ...(context.originSurface
+        ? { originSurface: context.originSurface }
+        : {}),
+      ...(context.originRequester
+        ? { originRequester: context.originRequester }
+        : {}),
+      startedAtMs: context.startedAtMs,
+    },
+    CONVERSATION_DETAILS_TTL_MS,
+  );
+}
+
+/**
+ * Persist the LLM-generated title for a conversation.
+ *
+ * Plain set — title generation fires once per conversation. No read, no lock.
+ */
+export async function setConversationTitle(
+  conversationId: string,
+  title: { displayTitle: string; titleSourceMessageId?: string },
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  await stateAdapter.set(
+    conversationTitleKey(conversationId),
+    {
+      displayTitle: title.displayTitle,
+      ...(title.titleSourceMessageId
+        ? { titleSourceMessageId: title.titleSourceMessageId }
+        : {}),
+    },
+    CONVERSATION_DETAILS_TTL_MS,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Read path
+// ---------------------------------------------------------------------------
+
+/**
+ * Read conversation details for a single conversation.
+ * Assembles the context and title records in parallel.
+ * Returns undefined when no context record exists yet (conversation unseen).
+ */
+export async function getConversationDetails(
+  conversationId: string,
+): Promise<ConversationDetailsRecord | undefined> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const [rawContext, rawTitle] = await Promise.all([
+    stateAdapter.get<unknown>(conversationContextKey(conversationId)),
+    stateAdapter.get<unknown>(conversationTitleKey(conversationId)),
+  ]);
+  const context = parseContext(rawContext);
+  if (!context) return undefined;
+  const title = parseTitle(rawTitle);
+  return {
+    conversationId,
+    ...(title?.displayTitle ? { displayTitle: title.displayTitle } : {}),
+    ...(title?.titleSourceMessageId
+      ? { titleSourceMessageId: title.titleSourceMessageId }
+      : {}),
+    ...(context.channelName ? { channelName: context.channelName } : {}),
+    ...(context.originSurface ? { originSurface: context.originSurface } : {}),
+    ...(context.originRequester
+      ? { originRequester: context.originRequester }
+      : {}),
+    startedAtMs: context.startedAtMs,
+  };
+}
+
+/**
+ * Bulk-fetch conversation details for a set of conversation ids in parallel.
+ * Returns a map from conversationId → record (omits ids with no context record).
+ */
+export async function getConversationDetailsForIds(
+  conversationIds: Iterable<string>,
+): Promise<Map<string, ConversationDetailsRecord>> {
+  const uniqueIds = [...new Set(conversationIds)].filter(Boolean);
+  const entries = await Promise.all(
+    uniqueIds.map(async (id) => {
+      const details = await getConversationDetails(id);
+      return details ? ([id, details] as const) : undefined;
+    }),
+  );
+  const result = new Map<string, ConversationDetailsRecord>();
+  for (const entry of entries) {
+    if (entry) result.set(entry[0], entry[1]);
+  }
+  return result;
+}

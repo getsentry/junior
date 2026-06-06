@@ -30,6 +30,11 @@ import {
   type AgentTurnSurface,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
+import {
+  getConversationDetails,
+  getConversationDetailsForIds,
+  type ConversationDetailsRecord,
+} from "@/chat/state/conversation-details";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { GET as healthGET } from "@/handlers/health";
 import { getAgentPluginOperationalReports } from "@/chat/plugins/agent-hooks";
@@ -91,7 +96,10 @@ export interface DashboardRequesterIdentity {
 }
 
 export interface DashboardSessionReport {
-  conversationTitle?: string;
+  /** Always-populated display title. LLM-generated title when available, otherwise the
+   * Slack channel/conversation location label or a generic fallback. Privacy redaction
+   * wins over everything else for non-public conversations. */
+  displayTitle: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: DashboardTurnUsage;
   conversationId: string;
@@ -102,7 +110,6 @@ export interface DashboardSessionReport {
   lastProgressAt: string;
   completedAt?: string;
   surface: DashboardSurface;
-  title: string;
   requesterIdentity?: DashboardRequesterIdentity;
   channel?: string;
   channelName?: string;
@@ -164,6 +171,8 @@ export interface DashboardTurnReport extends DashboardSessionReport {
 
 export interface DashboardConversationReport {
   conversationId: string;
+  /** Always-populated display title, computed the same way as DashboardSessionReport.displayTitle. */
+  displayTitle: string;
   generatedAt: string;
   turns: DashboardTurnReport[];
 }
@@ -306,13 +315,6 @@ function surfaceFromSummary(
   return summary.surface ?? surfaceFromConversationId(summary.conversationId);
 }
 
-function titleFromSummary(summary: AgentTurnSessionSummary): string {
-  if (summary.state === "awaiting_resume" && summary.resumeReason) {
-    return `Awaiting ${summary.resumeReason} resume`;
-  }
-  return `Turn ${summary.sessionId}`;
-}
-
 function requesterIdentityReport(
   requester: AgentTurnRequester | undefined,
 ): DashboardRequesterIdentity | undefined {
@@ -359,14 +361,18 @@ function turnUsageReport(
 function sessionReportFromSummary(
   summary: AgentTurnSessionSummary,
   nowMs = Date.now(),
+  details?: ConversationDetailsRecord,
 ): DashboardSessionReport {
   const slackThread = parseSlackThreadId(summary.conversationId);
   const privacy = resolveConversationPrivacy({
     conversationId: summary.conversationId,
   });
+  // Prefer channelName from the details record (set at turn start); fall back
+  // to the per-turn summary field for sessions that pre-date details records.
+  const effectiveChannelName = details?.channelName ?? summary.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: summary.conversationId,
-    channelName: summary.channelName,
+    channelName: effectiveChannelName,
   });
   const privateLabel =
     privacy !== "public"
@@ -374,19 +380,30 @@ function sessionReportFromSummary(
         ? formatSlackConversationRedactedLabel(slackConversation)
         : PRIVATE_CONVERSATION_LABEL
       : undefined;
-  const conversationTitle = privateLabel ?? summary.conversationTitle;
-  const channelName = privateLabel ?? summary.channelName;
+  const channelName = privateLabel ?? effectiveChannelName;
+  // Surface: prefer origin surface from details (stable first-turn value).
+  const effectiveSurface =
+    details?.originSurface ?? surfaceFromSummary(summary);
+  // displayTitle: privacy label wins, then the LLM-generated title from the
+  // conversation details record, then the Slack location label, then generic.
+  const displayTitle =
+    privateLabel ??
+    details?.displayTitle ??
+    slackStatsLocationLabel({ channel: slackThread?.channelId, channelName: effectiveChannelName }) ??
+    surfaceFallbackLabel(effectiveSurface);
+  // Requester: prefer origin requester from details (stable first-turn identity).
+  const effectiveRequester = details?.originRequester ?? summary.requester;
   const sentryConversationUrl = buildSentryConversationUrl(
     summary.conversationId,
   );
   const sentryTraceUrl = summary.traceId
     ? buildSentryTraceUrl(summary.traceId)
     : undefined;
-  const requesterIdentity = requesterIdentityReport(summary.requester);
+  const requesterIdentity = requesterIdentityReport(effectiveRequester);
   const cumulativeUsage = turnUsageReport(summary.cumulativeUsage);
   return {
     conversationId: summary.conversationId,
-    ...(conversationTitle ? { conversationTitle } : {}),
+    displayTitle,
     id: summary.sessionId,
     status: statusFromCheckpoint(summary, nowMs),
     startedAt: new Date(summary.startedAtMs).toISOString(),
@@ -397,8 +414,7 @@ function sessionReportFromSummary(
       : {}),
     cumulativeDurationMs: summary.cumulativeDurationMs,
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
-    surface: surfaceFromSummary(summary),
-    title: titleFromSummary(summary),
+    surface: effectiveSurface,
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
@@ -531,17 +547,15 @@ function slackStatsLocationLabel(
   return name || channelId;
 }
 
+function surfaceFallbackLabel(surface: DashboardSurface): string {
+  if (surface === "scheduler") return "Scheduler";
+  if (surface === "api") return "API";
+  if (surface === "internal") return "Internal";
+  return "Conversation";
+}
+
 function locationLabel(turn: DashboardSessionReport): string {
-  return (
-    slackStatsLocationLabel(turn) ??
-    (turn.surface === "scheduler"
-      ? "Scheduler"
-      : turn.surface === "api"
-        ? "API"
-        : turn.surface === "internal"
-          ? "Internal"
-          : "Unknown")
-  );
+  return slackStatsLocationLabel(turn) ?? surfaceFallbackLabel(turn.surface);
 }
 
 function emptyStatsItem(label: string): DashboardConversationStatsItem {
@@ -577,6 +591,7 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
+      right.turns - left.turns ||
       right.durationMs - left.durationMs ||
       left.label.localeCompare(right.label),
   );
@@ -1040,11 +1055,18 @@ async function readSessions(): Promise<DashboardSessionFeed> {
   const summaries = await listAgentTurnSessionSummaries(
     DASHBOARD_SESSION_FEED_LIMIT,
   );
+  const detailsByConversationId = await getConversationDetailsForIds(
+    summaries.map((s) => s.conversationId),
+  );
   return {
     source: "turn_session_records",
     generatedAt: new Date(nowMs).toISOString(),
     sessions: summaries.map((summary) =>
-      sessionReportFromSummary(summary, nowMs),
+      sessionReportFromSummary(
+        summary,
+        nowMs,
+        detailsByConversationId.get(summary.conversationId),
+      ),
     ),
   };
 }
@@ -1088,9 +1110,11 @@ async function readPluginOperationalReports(): Promise<PluginOperationalReportFe
 async function readConversation(
   conversationId: string,
 ): Promise<DashboardConversationReport> {
-  const summaries = (
-    await listAgentTurnSessionSummariesForConversation(conversationId)
-  ).sort(
+  const [rawSummaries, details] = await Promise.all([
+    listAgentTurnSessionSummariesForConversation(conversationId),
+    getConversationDetails(conversationId),
+  ]);
+  const summaries = rawSummaries.sort(
     (left, right) =>
       left.startedAtMs - right.startedAtMs ||
       left.updatedAtMs - right.updatedAtMs ||
@@ -1130,7 +1154,7 @@ async function readConversation(
         (canExposeTranscript ? traceIdFromTranscript(transcript) : undefined);
       const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
       return {
-        ...sessionReportFromSummary(summary),
+        ...sessionReportFromSummary(summary, Date.now(), details),
         ...(traceId ? { traceId } : {}),
         ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
         transcriptAvailable: Boolean(sessionRecord) && canExposeTranscript,
@@ -1149,8 +1173,15 @@ async function readConversation(
     }),
   );
 
+  // displayTitle at conversation level: use the same source as per-turn reports.
+  // details.displayTitle is the canonical source; falls back to location label.
+  const firstTurn = turns[0];
+  const displayTitle =
+    firstTurn?.displayTitle ?? surfaceFallbackLabel(firstTurn?.surface ?? "slack");
+
   return {
     conversationId,
+    displayTitle,
     generatedAt: new Date().toISOString(),
     turns,
   };

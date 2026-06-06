@@ -40,7 +40,6 @@ export interface AgentTurnRequester {
 
 export interface AgentTurnSessionRecord {
   channelName?: string;
-  conversationTitle?: string;
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
@@ -90,6 +89,7 @@ function agentTurnSessionKey(
 function agentTurnSessionConversationIndexKey(conversationId: string): string {
   return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
 }
+
 
 function toFiniteNonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
@@ -196,11 +196,6 @@ function parseAgentTurnSessionFields(
     typeof parsed.channelName === "string" && parsed.channelName.trim()
       ? parsed.channelName.trim()
       : undefined;
-  const conversationTitle =
-    typeof parsed.conversationTitle === "string" &&
-    parsed.conversationTitle.trim()
-      ? parsed.conversationTitle.trim()
-      : undefined;
   const conversationId = parsed.conversationId;
   const sessionId = parsed.sessionId;
   const sliceId = toFiniteNonNegativeNumber(parsed.sliceId);
@@ -233,7 +228,6 @@ function parseAgentTurnSessionFields(
   return {
     version,
     ...(channelName ? { channelName } : {}),
-    ...(conversationTitle ? { conversationTitle } : {}),
     conversationId,
     sessionId,
     sliceId,
@@ -364,9 +358,6 @@ function materializeAgentTurnSessionRecord(
   return {
     version: stored.version,
     ...(stored.channelName ? { channelName: stored.channelName } : {}),
-    ...(stored.conversationTitle
-      ? { conversationTitle: stored.conversationTitle }
-      : {}),
     conversationId: stored.conversationId,
     sessionId: stored.sessionId,
     sliceId: stored.sliceId,
@@ -445,7 +436,6 @@ export async function getAgentTurnSessionRecord(
 /** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
   channelName?: string;
-  conversationTitle?: string;
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -470,9 +460,6 @@ function buildStoredRecord(args: {
   return {
     version: (args.previousVersion ?? 0) + 1,
     ...(args.channelName ? { channelName: args.channelName } : {}),
-    ...(args.conversationTitle
-      ? { conversationTitle: args.conversationTitle }
-      : {}),
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
@@ -553,9 +540,6 @@ async function updateAgentTurnSessionState(args: {
       state: args.state,
       committedMessageCount: parsed.committedMessageCount,
       ...(parsed.channelName ? { channelName: parsed.channelName } : {}),
-      ...(parsed.conversationTitle
-        ? { conversationTitle: parsed.conversationTitle }
-        : {}),
       startedAtMs: parsed.startedAtMs,
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
@@ -591,7 +575,6 @@ async function updateAgentTurnSessionState(args: {
 /** Commit stable Pi session state and advance the turn session record. */
 export async function upsertAgentTurnSessionRecord(args: {
   channelName?: string;
-  conversationTitle?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -627,12 +610,6 @@ export async function upsertAgentTurnSessionRecord(args: {
     record: buildStoredRecord({
       ...((args.channelName ?? existingRecord?.channelName)
         ? { channelName: args.channelName ?? existingRecord?.channelName }
-        : {}),
-      ...((args.conversationTitle ?? existingRecord?.conversationTitle)
-        ? {
-            conversationTitle:
-              args.conversationTitle ?? existingRecord?.conversationTitle,
-          }
         : {}),
       conversationId: args.conversationId,
       sessionId: args.sessionId,
@@ -681,7 +658,6 @@ export async function upsertAgentTurnSessionRecord(args: {
 /** Record turn-session metadata without storing conversation messages. */
 export async function recordAgentTurnSessionSummary(args: {
   channelName?: string;
-  conversationTitle?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -709,12 +685,6 @@ export async function recordAgentTurnSessionSummary(args: {
       version: existing?.version ?? 0,
       ...((args.channelName ?? existing?.channelName)
         ? { channelName: args.channelName ?? existing?.channelName }
-        : {}),
-      ...((args.conversationTitle ?? existing?.conversationTitle)
-        ? {
-            conversationTitle:
-              args.conversationTitle ?? existing?.conversationTitle,
-          }
         : {}),
       conversationId: args.conversationId,
       sessionId: args.sessionId,

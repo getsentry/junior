@@ -107,6 +107,10 @@ import {
   recordAgentTurnSessionSummary,
   type AgentTurnRequester,
 } from "@/chat/state/turn-session";
+import {
+  initConversationContext,
+  setConversationTitle,
+} from "@/chat/state/conversation-details";
 import { loadProjection } from "@/chat/state/session-log";
 import {
   stripRuntimeTurnContext,
@@ -518,14 +522,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           updateConversationStats,
         });
         if (conversationId) {
-          // Fire-and-forget: recording the "running" state is best-effort and
-          // must not delay reply generation.
+          const turnStartedAtMs = message.metadata.dateSent.getTime();
+          // Fire-and-forget: both calls are best-effort and must not delay
+          // reply generation. Keep them independent so a failure in one does
+          // not suppress observability of the other.
           void recordAgentTurnSessionSummary({
             channelName,
             conversationId,
             sessionId: turnId,
             sliceId: 1,
-            startedAtMs: message.metadata.dateSent.getTime(),
+            startedAtMs: turnStartedAtMs,
             state: "running",
             surface: "slack",
             requester,
@@ -536,10 +542,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               error,
               "agent_turn_summary_record_failed",
               turnTraceContext,
-              {
-                "app.agent.turn.state": "running",
-              },
+              { "app.agent.turn.state": "running" },
               "Failed to record running turn summary",
+            );
+          });
+          void initConversationContext(conversationId, {
+            channelName,
+            originSurface: "slack",
+            originRequester: requester,
+            startedAtMs: turnStartedAtMs,
+          }).catch((error) => {
+            logException(
+              error,
+              "conversation_details_context_init_failed",
+              turnTraceContext,
+              { "app.agent.turn.state": "running" },
+              "Failed to init conversation context at turn start",
             );
           });
         }
@@ -904,6 +922,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               titleUpdateResult.sourceMessageId;
             if (titleUpdateResult.title) {
               artifactStatePatch.assistantTitle = titleUpdateResult.title;
+              if (conversationId) {
+                // Persist the title to the conversation details record so
+                // reporting can read it without loading full thread state.
+                void setConversationTitle(conversationId, {
+                  displayTitle: titleUpdateResult.title,
+                  titleSourceMessageId: titleUpdateResult.sourceMessageId,
+                }).catch((error) => {
+                  logException(
+                    error,
+                    "conversation_details_title_set_failed",
+                    turnTraceContext,
+                    {},
+                    "Failed to set conversation title in details record",
+                  );
+                });
+              }
             }
           }
 
@@ -928,7 +962,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sliceId: 1,
               startedAtMs: message.metadata.dateSent.getTime(),
               state: "completed",
-              conversationTitle: titleUpdateResult?.title,
+              // conversationTitle is intentionally omitted: the title belongs
+              // to the conversation (thread state), not to individual turn
+              // records. Reporting reads it from thread state directly.
               requester,
               destination,
               traceId: getActiveTraceId(),
