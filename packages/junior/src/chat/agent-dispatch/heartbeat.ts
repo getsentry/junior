@@ -64,10 +64,11 @@ async function failDispatch(args: {
   record: DispatchRecord;
 }): Promise<void> {
   await withDispatchLock(args.record.id, async (state) => {
-    const current = parseDispatchRecord(
-      await state.get(getDispatchStorageKey(args.record.id)),
-    );
-    if (!current || isTerminalDispatchStatus(current.status)) {
+    const current =
+      parseDispatchRecord(
+        await state.get(getDispatchStorageKey(args.record.id)),
+      ) ?? args.record;
+    if (isTerminalDispatchStatus(current.status)) {
       return;
     }
     await updateDispatchRecord(state, {
@@ -77,7 +78,6 @@ async function failDispatch(args: {
     });
   });
 }
-
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,

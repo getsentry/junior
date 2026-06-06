@@ -628,6 +628,70 @@ describe("trusted plugin heartbeat", () => {
     });
   });
 
+  it("fails stale dispatches when the locked row no longer parses", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-exhausted-corrupt-row",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        input: "Run the scheduled task.",
+      },
+    });
+    await withDispatchLock(created.record.id, async (state) => {
+      const record = await state.get<DispatchRecord>(
+        getDispatchStorageKey(created.record.id),
+      );
+      if (!record) {
+        throw new Error("Expected dispatch record to exist");
+      }
+      await updateDispatchRecord(state, {
+        ...record,
+        attempt: record.maxAttempts,
+        lastCallbackAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      });
+    });
+
+    const state = getStateAdapter();
+    await state.connect();
+    const storageKey = getDispatchStorageKey(created.record.id);
+    const current = await state.get<DispatchRecord>(storageKey);
+    if (!current) {
+      throw new Error("Expected dispatch record to exist");
+    }
+    const corruptRecord = {
+      ...(current as unknown as Record<string, unknown>),
+    };
+    delete corruptRecord.destination;
+    const originalGet = state.get.bind(state);
+    let recordReads = 0;
+    state.get = (async (key: string) => {
+      if (key === storageKey && recordReads++ === 1) {
+        return corruptRecord;
+      }
+      return await originalGet(key);
+    }) as typeof state.get;
+
+    try {
+      await expect(
+        recoverStaleDispatches({
+          nowMs: Date.parse("2026-05-26T12:05:00.000Z"),
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      state.get = originalGet;
+    }
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "Dispatch exceeded retry attempts.",
+    });
+  });
+
   it("removes terminal dispatches from the recovery index", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
