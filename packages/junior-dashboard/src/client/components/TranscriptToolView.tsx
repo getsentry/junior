@@ -11,7 +11,7 @@ import { cn } from "../styles";
 import type { TranscriptPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
 import { isPreviewableValue } from "./transcriptPreview";
-import { buildSearchDecorations, HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { HighlightText } from "./transcriptSearch";
 
 /** Render a tool call/result pair in rich or raw transcript mode. */
 export function TranscriptToolView(props: {
@@ -51,8 +51,6 @@ export function TranscriptToolView(props: {
   const mobileSummaryMeta =
     duration ?? (props.call && !props.result ? "missing result" : undefined);
 
-  const search = useTranscriptSearch();
-
   if (props.view === "raw") {
     return (
       <ToolFrame
@@ -78,9 +76,6 @@ export function TranscriptToolView(props: {
     );
   }
 
-  const inputText = stringifyPartValue(input) || "{}";
-  const outputText = stringifyPartValue(output) || "{}";
-
   return (
     <ToolFrame
       expandable={hasExpandableContent}
@@ -102,12 +97,7 @@ export function TranscriptToolView(props: {
       {props.call ? (
         <ToolBodySection label="arguments">
           <HighlightedCode
-            code={inputText}
-            decorations={
-              search.active
-                ? buildSearchDecorations(inputText, search.normalizedQuery)
-                : undefined
-            }
+            code={stringifyPartValue(input) || "{}"}
             language="json"
           />
         </ToolBodySection>
@@ -115,12 +105,7 @@ export function TranscriptToolView(props: {
       {props.result ? (
         <ToolBodySection label="result">
           <HighlightedCode
-            code={outputText}
-            decorations={
-              search.active
-                ? buildSearchDecorations(outputText, search.normalizedQuery)
-                : undefined
-            }
+            code={stringifyPartValue(output) || "{}"}
             language="json"
           />
         </ToolBodySection>

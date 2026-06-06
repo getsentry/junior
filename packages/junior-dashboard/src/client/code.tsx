@@ -4,6 +4,10 @@ import { codeToHtml, type BundledLanguage, type DecorationItem } from "shiki/bun
 
 import { canRenderStructuredMarkup, parseMarkupNodes } from "./format";
 import type { CodeBlock, MarkupNode } from "./types";
+import {
+  buildSearchDecorations,
+  useTranscriptSearch,
+} from "./components/transcriptSearch";
 
 declare const shikiHtmlBrand: unique symbol;
 
@@ -126,19 +130,33 @@ function MarkupElementView(props: {
   );
 }
 
-/** Render highlighted code while keeping Shiki output responsive in transcripts. */
+/**
+ * Render highlighted code while keeping Shiki output responsive in transcripts.
+ * Automatically merges externally-provided decorations (e.g. link spans) with
+ * any active transcript search highlights from context.
+ */
 export function HighlightedCode(props: {
   code: string;
+  /** Extra Shiki decorations to apply in addition to search highlights. */
   decorations?: DecorationItem[];
   language: BundledLanguage;
 }) {
+  const search = useTranscriptSearch();
+  const searchDecorations = search.active
+    ? buildSearchDecorations(props.code, search.normalizedQuery)
+    : [];
+  const allDecorations = [
+    ...(props.decorations ?? []),
+    ...searchDecorations,
+  ];
+
   const highlighted = useQuery({
-    queryKey: props.decorations?.length
-      ? ["highlight", props.language, props.code, props.decorations.length]
+    queryKey: search.active
+      ? ["highlight", props.language, props.code, search.normalizedQuery]
       : ["highlight", props.language, props.code],
     queryFn: async (): Promise<ShikiHtml> =>
       (await codeToHtml(props.code, {
-        decorations: props.decorations,
+        decorations: allDecorations.length ? allDecorations : undefined,
         lang: props.language,
         theme: "github-dark",
       })) as ShikiHtml,
