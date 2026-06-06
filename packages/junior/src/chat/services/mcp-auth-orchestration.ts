@@ -108,6 +108,7 @@ export function createMcpAuthOrchestration(
 ): McpAuthOrchestration {
   let pendingPause: McpAuthorizationPauseError | undefined;
   const authSessionIdsByProvider = new Map<string, string>();
+  const providerLabelsByProvider = new Map<string, string>();
 
   const authProviderFactory = async (
     plugin: PluginDefinition,
@@ -138,6 +139,12 @@ export function createMcpAuthOrchestration(
       artifactState: deps.getArtifactState(),
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
+    if (plugin.manifest.displayName) {
+      providerLabelsByProvider.set(
+        plugin.manifest.name,
+        plugin.manifest.displayName,
+      );
+    }
     return provider;
   };
 
@@ -191,7 +198,8 @@ export function createMcpAuthOrchestration(
       requesterId,
       sessionId,
     });
-    const providerLabel = formatProviderLabel(provider);
+    const providerLabel =
+      providerLabelsByProvider.get(provider) ?? formatProviderLabel(provider);
 
     if (!reusingPendingLink) {
       const delivery = await services.deliverPrivateMessage({

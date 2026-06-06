@@ -32,6 +32,7 @@ export function configureRuntimeDependencyPlugin(args: {
             {
               manifest: {
                 name: "runtime-deps",
+                displayName: "Runtime Deps",
                 description: "Runtime dependency test plugin",
                 capabilities: [],
                 configKeys: [],

@@ -36,6 +36,7 @@ const hoisted = vi.hoisted(() => {
     skillsDir: "/tmp/plugins/demo/skills",
     manifest: {
       name: "demo",
+      displayName: "Demo",
       description: "Demo plugin",
       capabilities: [],
       configKeys: [],
@@ -76,11 +77,8 @@ const hoisted = vi.hoisted(() => {
       >(),
     omitFinalAssistantAfterTool: { value: false },
     promptCallCount: { value: 0 },
-    promptMessages: [] as unknown[],
-    promptSeedMessages: [] as unknown[][],
     pushPreToolAssistantMessage: { value: false },
     recordToolResultMessage: { value: false },
-    resumeMessages: [] as unknown[][],
     resumeTurnContextCounts: [] as number[],
     searchMcpToolNames: [] as string[][],
   };
@@ -116,11 +114,8 @@ export const respondMcpProgressiveLoadingHarness = {
   loadSkillsByNameMock: state.loadSkillsByNameMock,
   omitFinalAssistantAfterTool: state.omitFinalAssistantAfterTool,
   promptCallCount: state.promptCallCount,
-  promptMessages: state.promptMessages,
-  promptSeedMessages: state.promptSeedMessages,
   pushPreToolAssistantMessage: state.pushPreToolAssistantMessage,
   recordToolResultMessage: state.recordToolResultMessage,
-  resumeMessages: state.resumeMessages,
   resumeTurnContextCounts: state.resumeTurnContextCounts,
   searchMcpToolNames: state.searchMcpToolNames,
 };
@@ -231,7 +226,6 @@ const scriptedAgentFactory = createScriptedReplyAgentFactory({
   },
   async continue(agent) {
     state.continueCallCount.value += 1;
-    state.resumeMessages.push([...agent.state.messages]);
     state.resumeTurnContextCounts.push(
       agent.state.messages.filter(hasRuntimeTurnContext).length,
     );
@@ -259,8 +253,6 @@ const scriptedAgentFactory = createScriptedReplyAgentFactory({
   async prompt(agent, message) {
     state.promptCallCount.value += 1;
     abortedAgents.delete(agent);
-    state.promptMessages.push(message);
-    state.promptSeedMessages.push([...agent.state.messages]);
     agent.state.messages.push(message as PiMessage);
 
     let loadSkillResult: {
@@ -530,11 +522,8 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
   state.loadSkillsByNameMock.mockReset();
   state.omitFinalAssistantAfterTool.value = false;
   state.promptCallCount.value = 0;
-  state.promptMessages.length = 0;
-  state.promptSeedMessages.length = 0;
   state.pushPreToolAssistantMessage.value = false;
   state.recordToolResultMessage.value = false;
-  state.resumeMessages.length = 0;
   state.resumeTurnContextCounts.length = 0;
   abortedAgents = new WeakSet<object>();
 

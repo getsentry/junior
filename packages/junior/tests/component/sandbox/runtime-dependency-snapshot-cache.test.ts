@@ -135,7 +135,6 @@ describe("runtime dependency snapshot cache", () => {
   });
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
-    vi.useRealTimers();
     configureRuntimeDependencyPlugin({
       dependencies: [{ type: "npm", package: "sentry", version: "latest" }],
     });
@@ -155,16 +154,26 @@ describe("runtime dependency snapshot cache", () => {
     }
 
     await holdRuntimeSnapshotLock(first.profileHash);
-    setTimeout(() => {
-      void releaseRuntimeSnapshotLock();
-    }, 50);
-
-    const second = await resolveRuntimeDependencySnapshot({
+    let notifyWaitingForLock!: () => void;
+    const waitingForLock = new Promise<void>((resolve) => {
+      notifyWaitingForLock = resolve;
+    });
+    const secondPromise = resolveRuntimeDependencySnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
       forceRebuild: true,
       staleSnapshotId: "snap_old",
+      onProgress: (phase) => {
+        if (phase === "waiting_for_lock") {
+          notifyWaitingForLock();
+        }
+      },
     });
+    await waitingForLock;
+    await releaseRuntimeSnapshotLock();
+    await vi.advanceTimersByTimeAsync(500);
+
+    const second = await secondPromise;
     expect(second.snapshotId).toBe("snap_new");
     expect(second.cacheHit).toBe(false);
     expect(second.resolveOutcome).toBe("forced_rebuild");

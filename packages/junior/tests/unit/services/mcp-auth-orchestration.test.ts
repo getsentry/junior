@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { McpAuthSessionState } from "@/chat/mcp/auth-store";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { useMockedTestClock } from "../../fixtures/vitest";
@@ -17,6 +16,7 @@ const githubMcpPlugin: PluginDefinition = {
   dir: "/tmp/github-plugin",
   manifest: {
     name: "github",
+    displayName: "GitHub",
     description: "GitHub MCP provider",
     capabilities: [],
     configKeys: [],
@@ -91,26 +91,6 @@ function createMcpAuthServices() {
 
 describe("createMcpAuthOrchestration", () => {
   useMockedTestClock(1_700_000_000_000);
-
-  beforeEach(() => {
-    setPluginCatalogConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "github",
-            displayName: "GitHub",
-            description: "GitHub MCP provider",
-            capabilities: [],
-            configKeys: [],
-          },
-        },
-      ],
-    });
-  });
-
-  afterEach(() => {
-    setPluginCatalogConfig(undefined);
-  });
 
   it("returns a deterministic error instead of delivering auth links when authorization is disabled", async () => {
     const services = createMcpAuthServices();

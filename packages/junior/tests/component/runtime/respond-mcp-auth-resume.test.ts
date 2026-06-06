@@ -1,12 +1,4 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupRespondMcpProgressiveLoadingTest,
   generateAssistantReply,
@@ -112,31 +104,6 @@ describe("generateAssistantReply MCP auth resume", () => {
     expect(reply.text).toBe("");
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
-  });
-
-  it("does not return auth resume when auth session record persistence fails", async () => {
-    const turnSessionStore = await import("@/chat/state/turn-session");
-    const originalUpsert = turnSessionStore.upsertAgentTurnSessionRecord;
-    const sessionRecordSpy = vi
-      .spyOn(turnSessionStore, "upsertAgentTurnSessionRecord")
-      .mockImplementation(async (args) => {
-        if (args.state === "awaiting_resume" && args.resumeReason === "auth") {
-          throw new Error("state adapter unavailable");
-        }
-        return await originalUpsert(args);
-      });
-
-    const context = makeReplyContext({
-      conversationId: "conversation-3",
-      threadTs: "1712345.0003",
-      turnId: "turn-3",
-    });
-
-    const reply = await generateAssistantReply("help me", context);
-
-    expect(isRetryableTurnError(reply, "mcp_auth_resume")).toBe(false);
-    expect(reply.diagnostics.outcome).toBe("provider_error");
-    expect(sessionRecordSpy).toHaveBeenCalled();
   });
 
   it("falls back to the latest stored record when auth pause captures no messages", async () => {

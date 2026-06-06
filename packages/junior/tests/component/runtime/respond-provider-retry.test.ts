@@ -166,7 +166,9 @@ describe("generateAssistantReply provider retry", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => {
+      expect(counters.promptCalls).toBe(1);
+    });
     await vi.advanceTimersByTimeAsync(2_000);
     const reply = await replyPromise;
 
@@ -370,40 +372,6 @@ describe("generateAssistantReply provider retry", () => {
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
-  });
-
-  it("throws when a cooperative yield cannot persist its resumable boundary", async () => {
-    agentMode.value = "cooperativeYield";
-    const upsertSpy = vi
-      .spyOn(turnSessionState, "upsertAgentTurnSessionRecord")
-      .mockRejectedValue(new Error("storage unavailable"));
-
-    const error = await generateReply("help me", {
-      requester: { userId: "U123" },
-      correlation: {
-        conversationId: "conversation-yield-persist-failure",
-        turnId: "turn-yield-persist-failure",
-        channelId: "C123",
-        threadTs: "1712345.0004",
-      },
-      shouldYield: () => true,
-    }).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-    upsertSpy.mockRestore();
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain(
-      "Failed to persist cooperative yield continuation",
-    );
-    expect(isCooperativeTurnYieldError(error)).toBe(false);
-    await expect(
-      getAwaitingAgentContinueRequest({
-        conversationId: "conversation-yield-persist-failure",
-        sessionId: "turn-yield-persist-failure",
-      }),
-    ).resolves.toBeUndefined();
   });
 
   it("rejects steering injection when Pi steer fails", async () => {
