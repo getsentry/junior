@@ -65,7 +65,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
 
   const actorIdentityThread = {
     id: "thread-actor-identity",
-    channel_id: "C-actor-identity",
+    channel_id: "CACTORIDENTITY",
     thread_ts: "17000000.actor-identity",
   };
 
@@ -130,7 +130,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
 
   const continuityThread = {
     id: "thread-continuity",
-    channel_id: "C-continuity",
+    channel_id: "CCONTINUITY",
     thread_ts: "17000000.continuity",
   };
 

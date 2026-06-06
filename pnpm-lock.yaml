@@ -307,6 +307,9 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: link:../junior-github
+      '@sentry/junior-plugin-api':
+        specifier: workspace:*
+        version: link:../junior-plugin-api
       '@sentry/junior-scheduler':
         specifier: workspace:*
         version: link:../junior-scheduler

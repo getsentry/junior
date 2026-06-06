@@ -4,7 +4,7 @@ import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {
     id: "thread-passive-side-conversation",
-    channel_id: "C-passive-side-conversation",
+    channel_id: "CPASSIVESIDECONVERSATION",
     thread_ts: "17000000.passive-side-conversation",
   };
 
@@ -43,7 +43,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const directedFollowUpThread = {
     id: "thread-passive-directed-follow-up",
-    channel_id: "C-passive-directed-follow-up",
+    channel_id: "CPASSIVEDIRECTEDFOLLOWUP",
     thread_ts: "17000000.passive-directed-follow-up",
   };
 
@@ -75,7 +75,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const casualPronounThread = {
     id: "thread-passive-casual-pronoun",
-    channel_id: "C-passive-casual-pronoun",
+    channel_id: "CPASSIVECASUALPRONOUN",
     thread_ts: "17000000.passive-casual-pronoun",
   };
 
@@ -112,7 +112,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const domainVocabThread = {
     id: "thread-passive-domain-vocab",
-    channel_id: "C-passive-domain-vocab",
+    channel_id: "CPASSIVEDOMAINVOCAB",
     thread_ts: "17000000.passive-domain-vocab",
   };
 
@@ -148,7 +148,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const canYouThread = {
     id: "thread-passive-can-you",
-    channel_id: "C-passive-can-you",
+    channel_id: "CPASSIVECANYOU",
     thread_ts: "17000000.passive-can-you",
   };
 
@@ -176,7 +176,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const genuineFollowUpThread = {
     id: "thread-passive-genuine-follow-up",
-    channel_id: "C-passive-genuine-follow-up",
+    channel_id: "CPASSIVEGENUINEFOLLOWUP",
     thread_ts: "17000000.passive-genuine-follow-up",
   };
 
@@ -211,7 +211,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const terseFollowUpThread = {
     id: "thread-passive-terse-follow-up",
-    channel_id: "C-passive-terse-follow-up",
+    channel_id: "CPASSIVETERSEFOLLOWUP",
     thread_ts: "17000000.passive-terse-follow-up",
   };
 
@@ -246,7 +246,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const humansTookFloorThread = {
     id: "thread-passive-humans-took-floor",
-    channel_id: "C-passive-humans-took-floor",
+    channel_id: "CPASSIVEHUMANSTOOKFLOOR",
     thread_ts: "17000000.passive-humans-took-floor",
   };
 
@@ -281,7 +281,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
 
   const optOutThread = {
     id: "thread-opt-out",
-    channel_id: "C-opt-out",
+    channel_id: "COPTOUT",
     thread_ts: "17000000.optout",
   };
 

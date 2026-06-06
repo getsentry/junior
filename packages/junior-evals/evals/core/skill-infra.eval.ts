@@ -22,7 +22,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
 
   const candidateBriefThread = {
     id: "thread-candidate-brief-repeat",
-    channel_id: "C-candidate-brief",
+    channel_id: "CCANDIDATEBRIEF",
     thread_ts: "17000000.candidate-brief",
   };
 

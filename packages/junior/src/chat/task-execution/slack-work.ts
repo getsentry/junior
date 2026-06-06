@@ -14,7 +14,7 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
-import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
+import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { resumeTimedOutTurnWithLockRetry } from "@/chat/runtime/timeout-resume-runner";
 import {

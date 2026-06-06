@@ -478,7 +478,7 @@ export function mention(
     type: "new_mention" as const,
     thread: {
       id: `thread-${seq}`,
-      channel_id: `C-${seq}`,
+      channel_id: `C${seq}`,
       thread_ts: `17000000.${seq}`,
       ...opts?.thread,
     },
@@ -505,7 +505,7 @@ export function threadMessage(
     type: "subscribed_message" as const,
     thread: {
       id: `thread-${seq}`,
-      channel_id: `C-${seq}`,
+      channel_id: `C${seq}`,
       thread_ts: `17000000.${seq}`,
       ...opts?.thread,
     },
@@ -528,7 +528,7 @@ export function threadStart(opts?: {
     type: "assistant_thread_started" as const,
     thread: {
       id: `thread-${seq}`,
-      channel_id: `C-${seq}`,
+      channel_id: `C${seq}`,
       thread_ts: `17000000.${seq}`,
       ...opts?.thread,
     },

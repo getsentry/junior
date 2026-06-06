@@ -6,7 +6,7 @@ import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
-import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
+import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import {
   createRequestContext,

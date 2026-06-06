@@ -32,17 +32,17 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
 
   const defaultRepoThread = {
     id: "thread-default-repo",
-    channel_id: "C-default-repo",
+    channel_id: "CDEFAULTREPO",
     thread_ts: "17000000.default-repo",
   };
   const targetClassificationContextThread = {
     id: "thread-target-classification-context",
-    channel_id: "C-target-classification-context",
+    channel_id: "CTARGETCLASSIFICATIONCONTEXT",
     thread_ts: "17000000.target-classification-context",
   };
   const targetClassificationExplicitThread = {
     id: "thread-target-classification-explicit",
-    channel_id: "C-target-classification-explicit",
+    channel_id: "CTARGETCLASSIFICATIONEXPLICIT",
     thread_ts: "17000000.target-classification-explicit",
   };
 

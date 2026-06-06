@@ -5,7 +5,7 @@ import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
   const followUpThread = {
     id: "thread-sentry-follow-up",
-    channel_id: "C-sentry-follow-up",
+    channel_id: "CSENTRYFOLLOWUP",
     thread_ts: "17000000.sentry-follow-up",
   };
 

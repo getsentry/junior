@@ -62,7 +62,7 @@ function expectFinalThreadReply(
 describeEval("OAuth Workflows", slackEvals, (it) => {
   const mcpAuthResumeThread = {
     id: "thread-auth-resume",
-    channel_id: "C-auth-resume",
+    channel_id: "CAUTHRESUME",
     thread_ts: "17000000.auth-resume",
   };
 
@@ -116,7 +116,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
 
   const oauthResumeThread = {
     id: "thread-oauth-resume",
-    channel_id: "C-oauth-resume",
+    channel_id: "COAUTHRESUME",
     thread_ts: "17000000.oauth-resume",
   };
 
@@ -170,7 +170,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
 
   const oauthReconnectThread = {
     id: "thread-oauth-reconnect",
-    channel_id: "C-oauth-reconnect",
+    channel_id: "COAUTHRECONNECT",
     thread_ts: "17000000.oauth-reconnect",
   };
 

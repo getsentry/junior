@@ -1,4 +1,4 @@
-import type { ThreadMessageKind } from "@/chat/queue/thread-message-dispatcher";
+export type ThreadMessageKind = "new_mention" | "subscribed_message";
 
 /** Derive canonical Slack thread IDs from the raw event payload. */
 export function normalizeIncomingSlackThreadId(
