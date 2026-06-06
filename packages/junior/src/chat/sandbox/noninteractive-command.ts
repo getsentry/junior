@@ -1,0 +1,107 @@
+import type {
+  SandboxCommandInput,
+  SandboxCommandResult,
+  SandboxWorkspace,
+} from "@/chat/sandbox/workspace";
+
+interface NonInteractiveShellOptions {
+  env?: Record<string, string>;
+  pathPrefix?: string;
+}
+
+interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
+  args?: string[];
+  cmd: string;
+  cwd?: string;
+  login?: boolean;
+  sudo?: boolean;
+}
+
+const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
+  CI: "1",
+  TERM: "dumb",
+  NO_COLOR: "1",
+  PAGER: "cat",
+  GIT_PAGER: "cat",
+  GH_PROMPT_DISABLED: "1",
+  GH_NO_UPDATE_NOTIFIER: "1",
+  GH_NO_EXTENSION_UPDATE_NOTIFIER: "1",
+  GH_SPINNER_DISABLED: "1",
+  GIT_TERMINAL_PROMPT: "0",
+  GCM_INTERACTIVE: "never",
+  DEBIAN_FRONTEND: "noninteractive",
+  // Git credential isolation: prevent git from sending its own auth so the
+  // sandbox egress proxy's header transforms are the sole credential source.
+  GIT_ASKPASS: "/bin/true",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_KEY_0: "credential.helper",
+  GIT_CONFIG_VALUE_0: "",
+  GIT_CONFIG_KEY_1: "http.emptyAuth",
+  GIT_CONFIG_VALUE_1: "true",
+};
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function buildEnvExports(options: NonInteractiveShellOptions): string[] {
+  const lines: string[] = [];
+  if (options.pathPrefix) {
+    lines.push(`export PATH="${options.pathPrefix}"`);
+  }
+
+  for (const [key, value] of Object.entries(NON_INTERACTIVE_ENV)) {
+    lines.push(`export ${key}=${shellQuote(value)}`);
+  }
+
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    lines.push(`export ${key}=${shellQuote(value)}`);
+  }
+
+  return lines;
+}
+
+function toCommandScript(input: NonInteractiveCommandInput): string {
+  return [shellQuote(input.cmd), ...(input.args ?? []).map(shellQuote)].join(
+    " ",
+  );
+}
+
+/** Build one shell entrypoint that never waits on terminal input. */
+export function buildNonInteractiveShellScript(
+  script: string,
+  options: NonInteractiveShellOptions = {},
+): string {
+  return [...buildEnvExports(options), "exec </dev/null", script].join(" && ");
+}
+
+/** Wrap argv-style commands so every sandbox subprocess runs in non-interactive mode. */
+function buildNonInteractiveCommand(input: NonInteractiveCommandInput): {
+  args: string[];
+  cmd: "bash";
+} {
+  return {
+    cmd: "bash",
+    args: [
+      input.login ? "-lc" : "-c",
+      buildNonInteractiveShellScript(toCommandScript(input), {
+        env: input.env,
+        pathPrefix: input.pathPrefix,
+      }),
+    ],
+  };
+}
+
+/** Run a subprocess through one enforced non-interactive entrypoint. */
+export async function runNonInteractiveCommand(
+  sandbox: Pick<SandboxWorkspace, "runCommand">,
+  input: NonInteractiveCommandInput,
+): Promise<SandboxCommandResult> {
+  const command: SandboxCommandInput = {
+    ...buildNonInteractiveCommand(input),
+    ...(input.cwd ? { cwd: input.cwd } : {}),
+    ...(input.sudo !== undefined ? { sudo: input.sudo } : {}),
+  };
+  return await sandbox.runCommand(command);
+}

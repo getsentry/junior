@@ -1,0 +1,9 @@
+name: linear
+description: Linear issue tracking via hosted MCP server
+
+config-keys:
+  - team
+  - project
+
+mcp:
+  url: https://mcp.linear.app/mcp

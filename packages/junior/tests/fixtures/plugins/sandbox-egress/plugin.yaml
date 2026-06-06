@@ -1,0 +1,16 @@
+name: sandbox-egress-test
+description: Integration fixture for sandbox egress credential proxying
+
+capabilities:
+  - sandbox-egress-test.api
+
+credentials:
+  type: oauth-bearer
+  domains:
+    - sandbox-egress.example.test
+    - git.sandbox-egress.example.test
+  auth-token-env: SANDBOX_EGRESS_TEST_TOKEN
+  auth-token-placeholder: host_managed_credential
+
+command-env:
+  SANDBOX_EGRESS_TEST_READ_ONLY: "1"

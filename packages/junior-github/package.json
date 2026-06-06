@@ -1,0 +1,29 @@
+{
+  "name": "@sentry/junior-github",
+  "version": "0.68.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-github"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.d.ts",
+    "index.js",
+    "skills",
+    "SETUP.md"
+  ],
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*"
+  }
+}

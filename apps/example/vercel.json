@@ -1,0 +1,4 @@
+{
+  "framework": "nitro",
+  "buildCommand": "pnpm build"
+}
