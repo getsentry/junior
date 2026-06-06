@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -58,16 +59,21 @@ function formatCommand(args) {
 }
 
 function runRequired(command, args, options = {}) {
+  const { exitOnFailure = true, ...spawnOptions } = options;
   let result;
 
   try {
-    result = run(command, args, { stdio: "inherit", ...options });
+    result = run(command, args, { stdio: "inherit", ...spawnOptions });
   } catch (error) {
-    fail(
-      `Failed to run ${formatCommand([command, ...args])}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    const message = `Failed to run ${formatCommand([command, ...args])}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+
+    if (!exitOnFailure) {
+      throw new Error(message);
+    }
+
+    fail(message);
   }
 
   if (result.signal) {
@@ -76,6 +82,12 @@ function runRequired(command, args, options = {}) {
   }
 
   if (typeof result.status === "number" && result.status !== 0) {
+    if (!exitOnFailure) {
+      throw new Error(
+        `${formatCommand([command, ...args])} exited with status ${result.status}`,
+      );
+    }
+
     process.exit(result.status);
   }
 
@@ -158,6 +170,25 @@ function sanitizePathSegment(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+function shortHash(value) {
+  return createHash("sha1").update(value).digest("hex").slice(0, 8);
+}
+
+function worktreePathSegment(branch) {
+  const sanitized = sanitizePathSegment(branch) || "branch";
+  return `${sanitized}-${shortHash(branch)}`;
+}
+
+function comparablePath(value) {
+  const resolved = path.resolve(value);
+
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 function branchExists(branch) {
   return (
     git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).status ===
@@ -223,10 +254,16 @@ function parseWorktreeList() {
 }
 
 function findWorktree(identifier) {
-  const resolvedIdentifier = path.resolve(identifier);
+  const resolvedIdentifier = comparablePath(identifier);
   const normalizedIdentifier = identifier.replace(/^refs\/heads\//, "");
   const matches = parseWorktreeList().filter((entry) => {
-    if (entry.path === resolvedIdentifier || entry.path === identifier) {
+    const entryPath = comparablePath(entry.path);
+
+    if (
+      entryPath === resolvedIdentifier ||
+      entry.path === identifier ||
+      path.resolve(entry.path) === path.resolve(identifier)
+    ) {
       return true;
     }
 
@@ -235,7 +272,7 @@ function findWorktree(identifier) {
     }
 
     return (
-      path.basename(entry.path) === sanitizePathSegment(normalizedIdentifier)
+      path.basename(entry.path) === worktreePathSegment(normalizedIdentifier)
     );
   });
 
@@ -465,14 +502,17 @@ function copyIncludedFiles(sourceRoot, targetRoot) {
   return { copied, matched: files.length, source };
 }
 
-function installDependencies(targetRoot) {
+function installDependencies(targetRoot, options = {}) {
   if (!fs.existsSync(path.join(targetRoot, "pnpm-lock.yaml"))) {
     console.log("No pnpm-lock.yaml found; skipping dependency install.");
     return;
   }
 
   console.log("Installing dependencies with pnpm install...");
-  runRequired("pnpm", ["install"], { cwd: targetRoot });
+  runRequired("pnpm", ["install"], {
+    cwd: targetRoot,
+    exitOnFailure: options.exitOnFailure,
+  });
 }
 
 function runShellCommand(command, cwd) {
@@ -510,13 +550,21 @@ function setupWorktree(args) {
   }
 }
 
+function setupCreatedWorktree(targetRoot, sourceRoot, shouldInstall) {
+  copyIncludedFiles(sourceRoot, targetRoot);
+
+  if (shouldInstall) {
+    installDependencies(targetRoot, { exitOnFailure: false });
+  }
+}
+
 function listWorktrees() {
   const entries = parseWorktreeList();
-  const currentRoot = path.resolve(currentRepositoryRoot());
+  const currentRoot = comparablePath(currentRepositoryRoot());
 
   for (const entry of entries) {
     const label = entry.branch ?? "(detached)";
-    const marker = path.resolve(entry.path) === currentRoot ? "*" : " ";
+    const marker = comparablePath(entry.path) === currentRoot ? "*" : " ";
     const flags = [
       entry.bare ? "bare" : null,
       entry.locked ? "locked" : null,
@@ -539,7 +587,7 @@ function createWorktree(args) {
 
   const targetRoot = path.resolve(
     options.path ??
-      path.join(defaultWorktreeParent(), sanitizePathSegment(branch)),
+      path.join(defaultWorktreeParent(), worktreePathSegment(branch)),
   );
   const baseRef = options.from ?? defaultBaseRef();
   const addArgs = branchExists(branch)
@@ -548,12 +596,29 @@ function createWorktree(args) {
 
   fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
   runRequired("git", addArgs, { cwd: workspaceRoot });
-  setupWorktree([
-    targetRoot,
-    "--source",
-    defaultCopySourceRoot(),
-    ...(options.install === false ? ["--no-install"] : []),
-  ]);
+
+  try {
+    setupCreatedWorktree(
+      targetRoot,
+      defaultCopySourceRoot(),
+      options.install !== false,
+    );
+  } catch (error) {
+    console.error(
+      `Setup failed; removing incomplete worktree at ${targetRoot}.`,
+    );
+    const removeResult = git(["worktree", "remove", "--force", targetRoot], {
+      stdio: "inherit",
+    });
+
+    if (removeResult.status !== 0) {
+      console.error(
+        `Unable to remove incomplete worktree automatically. Run: git worktree remove --force ${JSON.stringify(targetRoot)}`,
+      );
+    }
+
+    fail(error instanceof Error ? error.message : String(error));
+  }
 
   console.log(`Worktree ready: ${targetRoot}`);
   console.log(`Branch: ${branch}`);
@@ -591,9 +656,9 @@ function removeWorktree(args) {
   }
 
   const entry = findWorktree(target);
-  const entryPath = path.resolve(entry.path);
-  const currentRoot = path.resolve(currentRepositoryRoot());
-  const mainRoot = path.resolve(mainCheckoutRoot());
+  const entryPath = comparablePath(entry.path);
+  const currentRoot = comparablePath(currentRepositoryRoot());
+  const mainRoot = comparablePath(mainCheckoutRoot());
 
   if (entryPath === currentRoot) {
     fail("Refusing to remove the worktree running this helper.");
