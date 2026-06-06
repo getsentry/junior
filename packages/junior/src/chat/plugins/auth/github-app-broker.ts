@@ -11,6 +11,7 @@ import {
   DEFAULT_GITHUB_SYSTEM_READ_SCOPES,
   githubCapabilitiesToPermissions,
   githubInstallationReadPermissions,
+  githubReadOnlyPermissionsFromPermissions,
   githubSystemReadPermissionsFromScopes,
 } from "@/chat/plugins/github-permissions";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
@@ -276,6 +277,9 @@ export function createGitHubAppBroker(
   const permissions = manifest.capabilities?.length
     ? githubCapabilitiesToPermissions(manifest.capabilities, provider)
     : undefined;
+  const readOnlyPermissions = permissions
+    ? githubReadOnlyPermissionsFromPermissions(permissions)
+    : undefined;
   const systemReadPermissions = credentials.systemReadPermissions?.length
     ? githubSystemReadPermissionsFromScopes(credentials.systemReadPermissions)
     : undefined;
@@ -290,6 +294,9 @@ export function createGitHubAppBroker(
     }
     if (systemReadPermissions) {
       return systemReadPermissions;
+    }
+    if (readOnlyPermissions) {
+      return readOnlyPermissions;
     }
 
     const installation = await githubRequest<{

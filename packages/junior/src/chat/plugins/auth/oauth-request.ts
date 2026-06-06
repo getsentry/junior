@@ -90,10 +90,13 @@ export function parseOAuthTokenResponse(
       throw new Error("OAuth token response returned invalid scope");
     }
     const normalized = normalizeOAuthScope(responseScope);
-    scope =
-      normalized !== undefined || !options?.treatEmptyScopeAsUnreported
-        ? normalized
-        : normalizeOAuthScope(fallbackScope);
+    if (normalized !== undefined) {
+      scope = normalized;
+    } else if (options?.treatEmptyScopeAsUnreported) {
+      scope = normalizeOAuthScope(fallbackScope);
+    } else {
+      throw new Error("OAuth token response returned empty scope");
+    }
   } else {
     scope = normalizeOAuthScope(fallbackScope);
   }

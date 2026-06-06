@@ -66,15 +66,19 @@ describe("github plugin", () => {
       additionalUserScopes: ["read:org repo", "workflow", "repo"],
       appPermissions: {
         contents: "read",
+        discussions: "read",
         issues: "write",
         pull_requests: "write",
+        repository_projects: "admin",
       },
     });
 
     expect(plugin.manifest.capabilities).toEqual([
       "github.contents.read",
+      "github.discussions.read",
       "github.issues.write",
       "github.pull-requests.write",
+      "github.repository-projects.admin",
     ]);
     expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
   });
@@ -86,7 +90,31 @@ describe("github plugin", () => {
           issues: "admin" as "write",
         },
       }),
-    ).toThrow('githubPlugin appPermissions.issues must be "read" or "write"');
+    ).toThrow('githubPlugin appPermissions.issues does not support "admin"');
+  });
+
+  it("rejects unknown explicit GitHub App permission levels", () => {
+    expect(() =>
+      githubPlugin({
+        appPermissions: {
+          issues: "owner" as "write",
+        },
+      }),
+    ).toThrow(
+      'githubPlugin appPermissions.issues must be "read", "write", or "admin".',
+    );
+  });
+
+  it("rejects unsupported explicit GitHub App permission names", () => {
+    expect(() =>
+      githubPlugin({
+        appPermissions: {
+          "pull-requestz": "read",
+        },
+      }),
+    ).toThrow(
+      'githubPlugin appPermissions contains unsupported permission "pull-requestz".',
+    );
   });
 
   it("serializes global git config writes during sandbox preparation", async () => {

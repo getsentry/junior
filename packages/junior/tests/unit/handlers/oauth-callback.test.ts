@@ -31,6 +31,7 @@ const {
     clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
     authorizeEndpoint: "https://github.com/login/oauth/authorize",
     tokenEndpoint: "https://github.com/login/oauth/access_token",
+    treatEmptyScopeAsUnreported: true,
     callbackPath: "/api/oauth/callback/github",
   },
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,

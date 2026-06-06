@@ -1,5 +1,63 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
+const GITHUB_PERMISSION_LEVELS = {
+  actions: ["read", "write"],
+  administration: ["read", "write"],
+  artifact_metadata: ["read", "write"],
+  attestations: ["read", "write"],
+  checks: ["read", "write"],
+  code_quality: ["read", "write"],
+  codespaces: ["read", "write"],
+  contents: ["read", "write"],
+  custom_properties_for_organizations: ["read", "write"],
+  dependabot_secrets: ["read", "write"],
+  deployments: ["read", "write"],
+  discussions: ["read", "write"],
+  email_addresses: ["read", "write"],
+  enterprise_custom_properties_for_organizations: ["read", "write", "admin"],
+  environments: ["read", "write"],
+  followers: ["read", "write"],
+  git_ssh_keys: ["read", "write"],
+  gpg_keys: ["read", "write"],
+  interaction_limits: ["read", "write"],
+  issues: ["read", "write"],
+  members: ["read", "write"],
+  merge_queues: ["read", "write"],
+  metadata: ["read", "write"],
+  organization_administration: ["read", "write"],
+  organization_announcement_banners: ["read", "write"],
+  organization_copilot_agent_settings: ["read", "write"],
+  organization_copilot_seat_management: ["read", "write"],
+  organization_custom_org_roles: ["read", "write"],
+  organization_custom_properties: ["read", "write", "admin"],
+  organization_custom_roles: ["read", "write"],
+  organization_events: ["read"],
+  organization_hooks: ["read", "write"],
+  organization_packages: ["read", "write"],
+  organization_personal_access_token_requests: ["read", "write"],
+  organization_personal_access_tokens: ["read", "write"],
+  organization_plan: ["read"],
+  organization_projects: ["read", "write", "admin"],
+  organization_secrets: ["read", "write"],
+  organization_self_hosted_runners: ["read", "write"],
+  organization_user_blocking: ["read", "write"],
+  packages: ["read", "write"],
+  pages: ["read", "write"],
+  profile: ["write"],
+  pull_requests: ["read", "write"],
+  repository_custom_properties: ["read", "write"],
+  repository_hooks: ["read", "write"],
+  repository_projects: ["read", "write", "admin"],
+  secret_scanning_alerts: ["read", "write"],
+  secrets: ["read", "write"],
+  security_events: ["read", "write"],
+  single_file: ["read", "write"],
+  starring: ["read", "write"],
+  statuses: ["read", "write"],
+  vulnerability_alerts: ["read", "write"],
+  workflows: ["write"],
+};
+
 function readEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value ? value : undefined;
@@ -30,17 +88,29 @@ function githubPermissionCapabilities(permissions) {
 
   return entries
     .map(([rawScope, rawLevel]) => {
-      const scope = String(rawScope).trim().replace(/_/g, "-");
-      if (!scope) {
+      const normalizedScope = String(rawScope).trim().replace(/-/g, "_");
+      if (!normalizedScope) {
         throw new Error(
           "githubPlugin appPermissions contains an empty permission name.",
         );
       }
-      if (rawLevel !== "read" && rawLevel !== "write") {
+      const supportedLevels = GITHUB_PERMISSION_LEVELS[normalizedScope];
+      if (!supportedLevels) {
         throw new Error(
-          `githubPlugin appPermissions.${rawScope} must be "read" or "write".`,
+          `githubPlugin appPermissions contains unsupported permission "${rawScope}".`,
         );
       }
+      if (rawLevel !== "read" && rawLevel !== "write" && rawLevel !== "admin") {
+        throw new Error(
+          `githubPlugin appPermissions.${rawScope} must be "read", "write", or "admin".`,
+        );
+      }
+      if (!supportedLevels.includes(rawLevel)) {
+        throw new Error(
+          `githubPlugin appPermissions.${rawScope} does not support "${rawLevel}".`,
+        );
+      }
+      const scope = normalizedScope.replace(/_/g, "-");
       return `github.${scope}.${rawLevel}`;
     })
     .sort();

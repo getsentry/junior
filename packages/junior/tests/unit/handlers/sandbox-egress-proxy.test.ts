@@ -578,6 +578,36 @@ describe("sandbox egress proxy", () => {
     });
   });
 
+  it("does not read GitHub REST write bodies before write auth is available", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    issueProviderCredentialLeaseMock.mockRejectedValue(
+      new CredentialUnavailableError(
+        "github",
+        "GitHub write access requires user authorization.",
+      ),
+    );
+
+    const request = egressRequest({
+      host: "api.github.com",
+      method: "POST",
+      path: "/repos/getsentry/junior/issues",
+      body: JSON.stringify({ title: "test" }),
+    });
+    const arrayBuffer = vi.spyOn(request, "arrayBuffer");
+
+    const response = await proxy(request);
+
+    expect(response.status).toBe(401);
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      intent: "write",
+      provider: "github",
+      reason: "sandbox-egress:github:write",
+    });
+  });
+
   it("requests read-intent credentials for GitHub GraphQL queries", async () => {
     getPluginProvidersMock.mockReturnValue([githubPlugin()]);
     setSandboxEgressUserActor();

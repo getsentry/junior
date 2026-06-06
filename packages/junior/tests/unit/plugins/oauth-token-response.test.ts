@@ -18,12 +18,13 @@ describe("parseOAuthTokenResponse", () => {
     expect(result.scope).toBe("repo");
   });
 
-  it("returns undefined scope when provider returns empty scope (strict default)", () => {
-    const result = parseOAuthTokenResponse(
-      { access_token: "access", refresh_token: "refresh", scope: "" },
-      "read:org repo",
-    );
-    expect(result.scope).toBeUndefined();
+  it("rejects an empty response scope by default", () => {
+    expect(() =>
+      parseOAuthTokenResponse(
+        { access_token: "access", refresh_token: "refresh", scope: "" },
+        "read:org repo",
+      ),
+    ).toThrow("OAuth token response returned empty scope");
   });
 
   it("uses fallback scope when provider returns empty scope and treatEmptyScopeAsUnreported is true", () => {

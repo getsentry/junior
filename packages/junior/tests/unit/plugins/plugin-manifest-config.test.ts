@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseInlinePluginManifest, parsePluginManifest } from "@/chat/plugins/manifest";
+import {
+  parseInlinePluginManifest,
+  parsePluginManifest,
+} from "@/chat/plugins/manifest";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 describe("plugin manifest config", () => {
@@ -40,6 +43,40 @@ describe("plugin manifest config", () => {
       "uploads.github.com",
     ]);
     expect(manifest.oauth?.scope).toBe("repo read:org workflow");
+  });
+
+  it("overrides empty OAuth scope reporting through manifest config", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: github",
+        "description: GitHub",
+        "credentials:",
+        "  type: github-app",
+        "  domains:",
+        "    - api.github.com",
+        "  auth-token-env: GITHUB_TOKEN",
+        "  app-id-env: GITHUB_APP_ID",
+        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+        "  installation-id-env: GITHUB_INSTALLATION_ID",
+        "oauth:",
+        "  client-id-env: GITHUB_APP_CLIENT_ID",
+        "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
+        "  authorize-endpoint: https://github.com/login/oauth/authorize",
+        "  token-endpoint: https://github.com/login/oauth/access_token",
+      ].join("\n"),
+      "/plugins/github",
+      {
+        manifests: {
+          github: {
+            oauth: {
+              treatEmptyScopeAsUnreported: true,
+            },
+          },
+        },
+      },
+    );
+
+    expect(manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
   it("overrides GitHub App system read permissions through manifest config", () => {

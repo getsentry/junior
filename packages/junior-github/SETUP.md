@@ -69,7 +69,7 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ### Optional permission overrides
 
-By default, the GitHub App installation token request omits a permissions body, so GitHub grants the token the app's full installed permission envelope. To request a smaller installation-token permission set, pass `appPermissions` when registering the plugin:
+By default, user-actor GitHub App installation token requests omit a permissions body, so GitHub grants the token the app's full installed permission envelope. System-actor installation token requests are always read-only; when `appPermissions` is configured, system tokens use the read-only projection of that same permission set. To request a smaller installation-token permission set, pass `appPermissions` when registering the plugin:
 
 ```ts
 githubPlugin({

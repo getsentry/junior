@@ -367,7 +367,12 @@ describe("github app credential broker", () => {
 
     const manifestWithCaps: PluginManifest = {
       ...TEST_MANIFEST,
-      capabilities: ["github.issues.read", "github.issues.write"],
+      capabilities: [
+        "github.discussions.read",
+        "github.issues.read",
+        "github.issues.write",
+        "github.repository-projects.admin",
+      ],
     };
     const broker = createGitHubAppBroker(manifestWithCaps, TEST_CREDENTIALS);
     await broker.issue({
@@ -377,7 +382,11 @@ describe("github app credential broker", () => {
 
     const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ issues: "write" });
+    expect(body.permissions).toEqual({
+      discussions: "read",
+      issues: "write",
+      repository_projects: "admin",
+    });
   });
 
   it("downgrades GitHub App installation permissions for system actors", async () => {
@@ -421,20 +430,13 @@ describe("github app credential broker", () => {
     });
   });
 
-  it("does not use manifest capabilities as the system permission override", async () => {
+  it("uses manifest capabilities as the default system permission ceiling", async () => {
     setupValidEnv();
-    mockGitHubApi({
-      installationPermissions: {
-        contents: "write",
-        deployments: "write",
-        issues: "write",
-        metadata: "read",
-      },
-    });
+    mockGitHubApi();
 
     const manifestWithCaps: PluginManifest = {
       ...TEST_MANIFEST,
-      capabilities: ["github.deployments.write"],
+      capabilities: ["github.deployments.write", "github.workflows.write"],
     };
     const broker = createGitHubAppBroker(manifestWithCaps, TEST_CREDENTIALS);
     await broker.issue({
@@ -443,14 +445,13 @@ describe("github app credential broker", () => {
     });
 
     const calls = vi.mocked(globalThis.fetch).mock.calls;
-    expect(String(calls[0]?.[0])).toBe(
+    expect(calls.map((call) => String(call[0]))).not.toContain(
       "https://api.github.com/app/installations/42",
     );
     const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({
-      contents: "read",
-      issues: "read",
+      deployments: "read",
       metadata: "read",
     });
   });

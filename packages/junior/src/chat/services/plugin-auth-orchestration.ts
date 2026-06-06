@@ -122,17 +122,75 @@ function commandText(details: unknown): string {
   return `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
 }
 
+function commandWords(command: string): string[] {
+  return command
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/^[;&|]+|[;&|]+$/g, ""))
+    .filter(Boolean);
+}
+
 function isGitHubSmartHttpAuthFailure(
   provider: string,
   command: string,
   details: unknown,
 ): boolean {
-  if (provider !== "github" || !/^\s*(?:gh|git)\b/i.test(command)) {
+  const words = commandWords(command);
+  if (
+    provider !== "github" ||
+    (words[0] !== "gh" && words[0] !== "git" && words[0] !== "git-receive-pack")
+  ) {
     return false;
   }
 
   const text = commandText(details).toLowerCase();
   return /\bgzip:\s*invalid header\b/.test(text);
+}
+
+function isGitHubSmartHttpWriteCommand(command: string): boolean {
+  const words = commandWords(command);
+  if (words[0] === "git-receive-pack") {
+    return true;
+  }
+  if (words[0] !== "git") {
+    return false;
+  }
+
+  let index = 1;
+  while (index < words.length) {
+    const word = words[index];
+    if (!word) {
+      break;
+    }
+    if (word === "-c" || word === "-C") {
+      index += 2;
+      continue;
+    }
+    if (word.startsWith("-c") && word.includes("=")) {
+      index += 1;
+      continue;
+    }
+    if (
+      word === "--git-dir" ||
+      word === "--work-tree" ||
+      word === "--namespace"
+    ) {
+      index += 2;
+      continue;
+    }
+    if (
+      word.startsWith("--git-dir=") ||
+      word.startsWith("--work-tree=") ||
+      word.startsWith("--namespace=")
+    ) {
+      index += 1;
+      continue;
+    }
+    return word === "push";
+  }
+
+  return false;
 }
 
 function explicitAuthRequiredMarker(details: unknown):
@@ -377,7 +435,14 @@ export function createPluginAuthOrchestration(
       if (
         provider === "github" &&
         credentialType === "github-app" &&
-        explicitMarker?.intent !== "write"
+        explicitMarker?.intent !== "write" &&
+        !(
+          isGitHubSmartHttpAuthFailure(
+            provider,
+            input.command,
+            input.details,
+          ) && isGitHubSmartHttpWriteCommand(input.command)
+        )
       ) {
         throw buildCredentialFailureError(provider, input.command);
       }

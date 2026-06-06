@@ -328,6 +328,50 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
+  it("starts oauth recovery for GitHub smart-http write failures", async () => {
+    getPluginOAuthConfig.mockImplementation((provider: string) =>
+      provider === "github" ? { provider } : undefined,
+    );
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const userTokenStore = {} as any;
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "push the branch",
+        userTokenStore,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "git push origin HEAD:refs/heads/test-branch",
+        details: {
+          exit_code: 128,
+          stderr: "fatal: unable to access repository: gzip: invalid header",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "github",
+      expect.objectContaining({
+        requesterId: "U123",
+        userMessage: "push the branch",
+      }),
+    );
+    expect(unlinkProvider).toHaveBeenCalledWith(
+      "U123",
+      "github",
+      userTokenStore,
+    );
+  });
+
   it("starts oauth recovery for explicit GitHub write-intent auth markers", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,

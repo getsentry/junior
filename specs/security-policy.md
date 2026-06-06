@@ -73,7 +73,7 @@ This policy applies to:
   falling back to installation writes.
 - Delegated user subjects do not satisfy GitHub write intent for system actors;
   system-initiated GitHub access remains installation-token read intent only.
-- For system actors, request an explicit read-only installation-token permission body. Use GitHub App `credentials.system-read-permissions` when configured, otherwise derive the safe default read subset from the installation permissions.
+- For system actors, request an explicit read-only installation-token permission body. Use GitHub App `credentials.system-read-permissions` when configured, otherwise use the read-only projection of manifest capabilities when present, otherwise derive the safe default read subset from the installation permissions.
 - Configure `GITHUB_APP_BOT_NAME` and `GITHUB_APP_BOT_EMAIL` as host env vars.
   They are public git author metadata, not credentials.
 - Declare both `api.github.com` and `github.com` in the GitHub plugin manifest

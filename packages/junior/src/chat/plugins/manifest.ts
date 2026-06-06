@@ -405,6 +405,11 @@ function manifestConfigPatch(
       setDefined(oauth, "authorize-params", config.oauth.authorizeParams);
       setDefined(oauth, "token-auth-method", config.oauth.tokenAuthMethod);
       setDefined(oauth, "token-extra-headers", config.oauth.tokenExtraHeaders);
+      setDefined(
+        oauth,
+        "treat-empty-scope-as-unreported",
+        config.oauth.treatEmptyScopeAsUnreported,
+      );
       result.oauth = oauth;
     }
   }
