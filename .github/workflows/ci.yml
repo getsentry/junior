@@ -57,6 +57,7 @@ jobs:
           coverage-format: istanbul
           disable-search: true
           junit-xml-pattern: packages/**/coverage/results.junit.xml
+          fail_ci_if_error: false
 
       - name: Pack release artifacts
         if: github.event_name == 'push'
