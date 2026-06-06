@@ -24,7 +24,6 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        assistantContextChannelId: "C123",
         messageTs: "1700000000.100",
         sandbox: {} as any,
       },
@@ -49,7 +48,6 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        assistantContextChannelId: "C123",
         messageTs: "1700000000.100",
         sandbox: {} as any,
       },
@@ -79,7 +77,6 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        assistantContextChannelId: "C123",
         messageTs: "1700000000.100",
         sandbox: {} as any,
       },

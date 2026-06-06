@@ -179,7 +179,7 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
       // channel even though context.channelId is now always the raw DM channel.
       const access = checkChannelAccess(
         channelId,
-        context.assistantContextChannelId ?? context.channelId,
+        context.channelId,
       );
       if (!access.allowed) {
         return {

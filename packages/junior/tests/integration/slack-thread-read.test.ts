@@ -175,30 +175,13 @@ describe("slackThreadRead", () => {
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 
-  it("allows reading a private channel via assistant-context delivery channel", async () => {
-    // Regression guard: in an assistant-panel DM whose source is G_PRIVATE,
-    // context.channelId = D_DM (raw) but context.deliveryChannelId = G_PRIVATE.
-    // Thread reads targeting G_PRIVATE must still be allowed because the user
-    // IS messaging from that private channel context.
-    queueSlackApiResponse("conversations.replies", {
-      body: conversationsRepliesPage({
-        threadTs: "1700000000.100000",
-        messages: [
-          {
-            ts: "1700000000.100000",
-            thread_ts: "1700000000.100000",
-            user: "U1",
-            text: "thread in private group",
-          },
-        ],
-      }),
-    });
-
+  it("blocks reading a private group channel from a DM conversation", async () => {
+    // channelId is always the raw conversation channel (D_DM here).
+    // There is no assistant-context override — access checks use channelId directly.
+    // Reading G_PRIVATE from a DM is denied; the user must be in that private
+    // channel conversation to access its threads.
     const tool = createSlackThreadReadTool(
-      createContext({
-        channelId: "D_DM",          // raw DM channel
-        assistantContextChannelId: "G_PRIVATE", // assistant-context source
-      }),
+      createContext({ channelId: "D_DM" }),
     );
     const result = await executeTool(tool, {
       channel_id: "G_PRIVATE",
@@ -206,11 +189,12 @@ describe("slackThreadRead", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
+      ok: false,
       channel_id: "G_PRIVATE",
-      count: 1,
     });
-    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+    expect(result.error).toContain("private channel");
+    // No Slack API call — blocked locally
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a private channel that is not the current channel", async () => {

@@ -57,16 +57,7 @@ export interface ToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
-  /**
-   * Slack assistant-panel source/context channel. Present when Slack associates
-   * this assistant thread with a source channel (e.g. the channel the user
-   * opened Junior from). Use `assistantContextChannelId ?? channelId` in
-   * first-class tools that intentionally route output back to that source.
-   *
-   * Not a second canonical channel. Not a state binding key. Never passed to
-   * plugin hooks — plugins receive only raw `channelId`.
-   */
-  assistantContextChannelId?: string;
+
   requester?: {
     userId?: string;
     userName?: string;

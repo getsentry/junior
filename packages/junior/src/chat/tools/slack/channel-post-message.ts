@@ -19,7 +19,7 @@ export function createSlackChannelPostMessageTool(
       }),
     }),
     execute: async ({ text }) => {
-      const targetChannelId = context.assistantContextChannelId ?? context.channelId;
+      const targetChannelId = context.channelId;
       if (!targetChannelId) {
         return {
           ok: false,

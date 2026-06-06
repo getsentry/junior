@@ -88,7 +88,6 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "C123",
-        assistantContextChannelId: "C123",
         sandbox: noopSandbox,
       },
       state,
@@ -141,7 +140,6 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "D123",
-        assistantContextChannelId: "D123",
         sandbox: noopSandbox,
       },
       state,
@@ -244,7 +242,6 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "C123",
-        assistantContextChannelId: "C123",
         sandbox: noopSandbox,
       },
       state,

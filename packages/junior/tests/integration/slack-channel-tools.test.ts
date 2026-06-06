@@ -36,7 +36,6 @@ function createToolState(): ToolState {
 function createContext(userText: string): ToolRuntimeContext {
   return {
     channelId: "C123",
-    assistantContextChannelId: "C123",
     messageTs: "1700000000.321",
     userText,
     sandbox: {} as any,

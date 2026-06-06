@@ -969,16 +969,14 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
     await disconnectStateAdapter();
   });
 
-  it("scheduler tools use raw conversation channel, not assistant context channel", async () => {
-    // Simulates a turn where assistantContextChannelId = C_JS (delivery),
-    // but correlation.channelId = D_DM (raw conversation). After the fix,
-    // getAgentPluginTools passes D_DM to the scheduler via pluginChannelId.
+  it("scheduler tools bind to the conversation channelId", async () => {
+    // Verifies that the real getAgentPluginTools wiring passes channelId through
+    // to the scheduler, which stores it as the task destination.
     const previous = setAgentPlugins([schedulerPlugin()]);
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getAgentPluginTools({
-        channelId: "D_DM",              // raw conversation channel
-        assistantContextChannelId: "C_JS",      // assistant context delivery channel
+        channelId: "D_DM",
         teamId: TEAM_ID,
         requester: { userId: "U123", userName: "alice", fullName: "Alice" },
         sandbox: {} as any,

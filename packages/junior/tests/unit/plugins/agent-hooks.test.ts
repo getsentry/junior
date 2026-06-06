@@ -511,35 +511,14 @@ describe("getAgentPluginTools channel resolution", () => {
     return captured;
   }
 
-  it("passes raw channelId to plugins, not the delivery channel", () => {
-    const ctx = capturePluginContext({
-      channelId: "D_DM",
-      assistantContextChannelId: "C_SOURCE",
-      teamId: "T123",
-    });
-
+  it("passes channelId directly to plugin hooks", () => {
+    const ctx = capturePluginContext({ channelId: "D_DM", teamId: "T123" });
     expect(ctx.channelId).toBe("D_DM");
   });
 
-  it("passes channelId when no delivery override differs", () => {
-    const ctx = capturePluginContext({
-      channelId: "C_SOURCE",
-      teamId: "T123",
-    });
-
-    expect(ctx.channelId).toBe("C_SOURCE");
-  });
-
-  it("computes channelCapabilities from channelId, not deliveryChannelId", () => {
-    // deliveryChannelId is a public channel (C); raw channelId is a DM (D).
-    // Plugin capabilities reflect the DM, not the delivery channel.
-    const ctx = capturePluginContext({
-      channelId: "D_DM",
-      assistantContextChannelId: "C_SOURCE",
-      teamId: "T123",
-    });
-
-    // DM: canvas and reactions yes, channel post no
+  it("computes channelCapabilities from channelId", () => {
+    // DM channel: canvas and reactions yes, standalone channel-post no
+    const ctx = capturePluginContext({ channelId: "D_DM", teamId: "T123" });
     expect(ctx.channelCapabilities?.canCreateCanvas).toBe(true);
     expect(ctx.channelCapabilities?.canAddReactions).toBe(true);
     expect(ctx.channelCapabilities?.canPostToChannel).toBe(false);
@@ -548,7 +527,6 @@ describe("getAgentPluginTools channel resolution", () => {
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
       channelId: "D_DM",
-      assistantContextChannelId: "C_SOURCE",
       teamId: "T123",
       requester: { userId: "U123" },
     });

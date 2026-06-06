@@ -934,9 +934,6 @@ export async function generateAssistantReply(
     });
 
     // ── Tool creation ────────────────────────────────────────────────
-    const toolChannelId =
-      context.toolChannelId ?? context.correlation?.channelId;
-    // assistantContextChannelId is the Slack source channel when an assistant panel context is active
     const loadableSkills = availableSkills.filter(
       (skill) =>
         skill.disableModelInvocation !== true ||
@@ -998,8 +995,6 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         conversationId: sessionConversationId,
-        assistantContextChannelId: toolChannelId !== context.correlation?.channelId ? toolChannelId : undefined,
-        // capabilities computed in createTools from assistantContextChannelId ?? channelId
         requester: actorRequester,
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,

@@ -126,9 +126,7 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  // Compute output channel capabilities: assistant context source channel when
-  // present, otherwise the raw conversation channel.
-  const outputChannelId = context.assistantContextChannelId ?? context.channelId;
+  const outputChannelId = context.channelId;
   const outputCapabilities = resolveChannelCapabilities(outputChannelId);
 
   if (outputCapabilities.canCreateCanvas) {
@@ -144,9 +142,7 @@ export function createTools(
       createSlackChannelListMessagesTool(context);
   }
 
-  // Reactions target the raw conversation channel (messageTs comes from the
-  // current inbound DM/thread message, not the source channel).
-  if (resolveChannelCapabilities(context.channelId).canAddReactions) {
+  if (outputCapabilities.canAddReactions) {
     tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
       context,
       state,
