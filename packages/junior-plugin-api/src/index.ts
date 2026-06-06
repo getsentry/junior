@@ -382,11 +382,18 @@ export interface JuniorPluginOAuthConfig {
   clientSecretEnv: string;
   scope?: string;
   /**
-   * Set true when the provider returns an empty scope string even for authorized
-   * grants (e.g. GitHub App user-to-server tokens always return `scope: ""`
-   * regardless of what was requested). When enabled, an empty response scope
-   * falls back to the configured `scope` value instead of being treated as
-   * "no scopes granted".
+   * Treat a provider token response with `scope: ""` like an omitted scope and
+   * fall back to the requested scope string when storing the token.
+   *
+   * Enable this only for providers whose token responses cannot report OAuth
+   * scopes even though Junior needs a local requested-scope string for
+   * reauthorization checks. The built-in GitHub App plugin enables this because
+   * GitHub App user-to-server tokens always return an empty scope value — their
+   * effective access is enforced by GitHub App permissions, installation
+   * repository access, and the requesting user's own access, not OAuth scopes.
+   *
+   * Do not enable this for standard OAuth providers where an explicit empty
+   * `scope` means the provider granted no scopes.
    */
   treatEmptyScopeAsUnreported?: boolean;
   tokenAuthMethod?: "body" | "basic";

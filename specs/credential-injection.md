@@ -73,6 +73,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
 - Runtime uses GitHub App installation tokens for read-intent leases and GitHub App user-to-server OAuth tokens for write-intent user leases.
+- GitHub App user-to-server tokens are not OAuth-scope-authorized. GitHub returns `scope: ""` for these token responses. Their effective access is the intersection of the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
+- Any configured GitHub user OAuth scope string is a Junior-local reauthorization contract only. It must not be treated as provider-verified proof that GitHub granted those scopes or as a mechanism for expanding GitHub App permissions.
 - When issuing installation tokens for non-system actors, runtime requests the full permission set declared by the GitHub plugin manifest.
 - GitHub App `credentials.system-read-permissions` declares the explicit read-only permission envelope for system actors when configured. These scope names are normalized to GitHub API permission names during plugin load and may use dashes in manifest YAML for readability.
 - Repo context is still important for command correctness, but credential issuance is provider-level and turn-bound.
@@ -91,6 +93,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Provider `401`/`403` responses discard the cached sandbox egress lease so the next request re-issues from current provider state.
 - When an upstream `401` is received for a request where Junior injected a provider credential, the proxy replaces the raw provider response body with the `junior-auth-required provider=<name> intent=<read|write> 401 unauthorized` sentinel. Plugin auth orchestration reads this sentinel, unlinks stored user tokens only for OAuth-backed recovery paths, and starts the private OAuth reconnect flow when the provider contract allows user authorization for that intent. `403` responses (permission denied for a valid token) pass through raw.
 - GitHub write-intent leases for user actors require a stored GitHub user-to-server OAuth token. Missing or stale user authorization returns the auth-required sentinel with `intent=write`, which starts the private OAuth flow and resumes the write after authorization.
+- For GitHub App user-to-server tokens, an empty provider `scope` response is treated as unreported scope information. Junior persists the requested scope string so future broker checks can detect local reauthorization-contract changes. Provider authorization is enforced by GitHub permissions and upstream `401`/`403` responses, not Junior scope checks.
 - GitHub read-intent leases continue to use GitHub App installation tokens. Read-intent GitHub credential failures are operational app/installation failures and must not trigger user OAuth.
 
 ## Sentry profile

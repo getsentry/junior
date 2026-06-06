@@ -81,13 +81,17 @@ githubPlugin({
 });
 ```
 
-GitHub user OAuth does not request extra scopes by default. To request additional user OAuth scopes, pass `additionalUserScopes`; Junior will require the returned grant to include them before using the stored user token:
+GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. GitHub returns an empty `scope` value for these tokens, so Junior cannot verify granted scopes from the token response.
+
+If you pass `additionalUserScopes`, Junior includes those values in the authorization URL and records the requested scope string as a local reauthorization contract. This does not expand or prove GitHub API permissions — configure GitHub App permissions with `appPermissions` and in the GitHub App settings for provider-enforced access:
 
 ```ts
 githubPlugin({
   additionalUserScopes: ["read:org", "workflow"],
 });
 ```
+
+Use `additionalUserScopes` only when an integration flow requires specific GitHub OAuth scope parameters in the authorization URL. Do not rely on it to authorize repository, Actions, or workflow writes — those are enforced by GitHub App permissions and the requesting user's own access.
 
 ## 3) Runtime behavior
 
