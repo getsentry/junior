@@ -10,8 +10,13 @@ import {
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import {
+  getAgentPluginTools,
+  setAgentPlugins,
+} from "@/chat/plugins/agent-hooks";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -517,6 +522,62 @@ describe("Slack schedule tools", () => {
     );
   });
 
+  it("binds tasks to the raw conversation channel, not the assistant context channel", async () => {
+    // The scheduler receives channelId already resolved to the raw conversation
+    // channel by getAgentPluginTools (pluginChannelId = context.channelId).
+    // This test verifies the scheduler contract: whatever channelId the tool context
+    // carries is the destination, and management works from any context with the
+    // same channel. The getAgentPluginTools wiring is verified in agent-hooks.test.ts.
+    //
+    // In practice: a DM opened via Slack’s “Ask Junior” panel from #js-alerts
+    // has getAgentPluginTools resolve channelId = D_DM (raw conversation) rather
+    // than C_JS (assistant source). Both creation and management from that DM
+    // use D_DM, so the context channel never drifts.
+    const dmCtx = createContext({ channelId: "D_DM" });
+    const created = (await createTask(dmCtx)) as { task: { id: string } };
+    const taskId = created.task.id;
+
+    // Task is bound to the DM channel, not any assistant source channel.
+    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+      destination: { channelId: "D_DM" },
+    });
+
+    // Any context that resolves to the same DM channel can list and manage.
+    const listed = await executeTool(
+      createSlackScheduleListTasksTool(createContext({ channelId: "D_DM" })),
+      {},
+    );
+    expect(listed).toMatchObject({
+      ok: true,
+      tasks: [{ id: taskId }],
+    });
+
+    const deleted = await executeTool(
+      createSlackScheduleDeleteTaskTool(createContext({ channelId: "D_DM" })),
+      { task_id: taskId },
+    );
+    expect(deleted).toMatchObject({
+      ok: true,
+      task: { id: taskId, status: "deleted" },
+    });
+  });
+
+  it("rejects management from a different conversation channel", async () => {
+    // A task created in Alice’s DM cannot be managed from Bob’s DM.
+    const created = (await createTask(
+      createContext({ channelId: "D_ALICE" }),
+    )) as { task: { id: string } };
+
+    await expect(
+      executeTool(
+        createSlackScheduleDeleteTaskTool(createContext({ channelId: "D_BOB" })),
+        { task_id: created.task.id },
+      ),
+    ).rejects.toThrow(
+      "Scheduled task can only be managed from the Slack destination where it was created.",
+    );
+  });
+
   it("allows another requester to manage tasks in the same Slack destination", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
@@ -893,6 +954,72 @@ describe("Slack schedule tools", () => {
       status: "pending",
     });
     expect(second).toBeUndefined();
+  });
+});
+
+describe("Slack schedule tool wiring via getAgentPluginTools", () => {
+  // These tests exercise the real agent-hooks.ts path where pluginChannelId is
+  // resolved as context.channelId (raw channel) before registering tools.
+
+  beforeEach(async () => {
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+  });
+
+  it("scheduler tools use raw conversation channel, not assistant context channel", async () => {
+    // Simulates a turn where assistantContextChannelId = C_JS (delivery),
+    // but correlation.channelId = D_DM (raw conversation). After the fix,
+    // getAgentPluginTools passes D_DM to the scheduler via pluginChannelId.
+    const previous = setAgentPlugins([schedulerPlugin()]);
+    try {
+      const TEAM_ID = `TWIRING${Date.now()}`;
+      const tools = getAgentPluginTools({
+        channelId: "D_DM",              // raw conversation channel
+        deliveryChannelId: "C_JS",      // assistant context delivery channel
+        deliveryChannelCapabilities: {
+          canAddReactions: true,
+          canCreateCanvas: true,
+          canPostToChannel: true,
+        },
+        teamId: TEAM_ID,
+        requester: { userId: "U123", userName: "alice", fullName: "Alice" },
+        sandbox: {} as any,
+      });
+
+      expect(tools).toHaveProperty("slackScheduleCreateTask");
+
+      // Create a task through the real wired tool.
+      const result = await executeTool(tools.slackScheduleCreateTask, {
+        task: "Wiring test: post a weekly digest.",
+        schedule: "Every Monday at 9am",
+        timezone: "America/Los_Angeles",
+        next_run_at: "2026-06-09T16:00:00.000Z",
+        recurrence: "weekly",
+      });
+
+      expect(result).toMatchObject({ ok: true });
+      const taskId = (result as { task: { id: string } }).task.id;
+
+      // Task destination must be the raw DM channel, NOT the assistant context.
+      const stored = await createSchedulerStore(
+        createPluginState("scheduler"),
+      ).getTask(taskId);
+      expect(stored).toMatchObject({
+        destination: { channelId: "D_DM", teamId: TEAM_ID },
+        conversationAccess: { audience: "direct", visibility: "private" },
+      });
+      // DM-based task gets a credential subject (private-direct exception).
+      expect(stored?.credentialSubject).toMatchObject({
+        type: "user",
+        userId: "U123",
+        allowedWhen: "private-direct-conversation",
+      });
+    } finally {
+      setAgentPlugins(previous);
+    }
   });
 });
 

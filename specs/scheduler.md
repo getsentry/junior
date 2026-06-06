@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -47,7 +47,7 @@ The stored task must include:
 
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
-Slack destinations are conversations, not existing threads. A scheduled task may target the active Slack DM or channel, and scheduled output posts as a new message in that conversation.
+Slack destinations are conversations, not existing threads. A scheduled task targets the raw Slack conversation channel (`channelId` in plugin context) — the DM or channel where the user is interacting with Junior — not the assistant-context delivery channel override. Scheduled output posts as a new message in that conversation.
 Each scheduled execution gets fresh dispatch-scoped conversation state. The runner must not load destination-level Slack conversation history as prior thread context for a scheduled run that is creating its own new message.
 
 The scheduler must distinguish conversation audience from visibility. A private direct conversation may attach an explicit user credential subject for scheduled tools; that subject may satisfy stored user OAuth lookup, but the scheduled run still executes as the system actor. A private group conversation or private channel is still multi-user and must not implicitly use one user's credentials. Unknown privacy or audience must fail closed for delegated user credentials.
@@ -253,7 +253,7 @@ Slack authoring creates clear scheduled-work requests immediately for the active
 
 Confirmation should show the executable task text, not only echo the user's text.
 Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
-Task creation must use the current active Slack conversation as the destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
+Task creation must use the current active Slack conversation as the destination. The destination is always the raw conversation channel (`ToolRegistrationHookContext.channelId`) — never the assistant-context source channel override. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
 List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.
 Blocked tasks must appear in list output with their blocked reason. After the missing requirement is fixed, a conversation manager can resume the task or run it now from the same destination conversation.
 

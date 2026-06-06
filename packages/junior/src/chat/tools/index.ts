@@ -125,13 +125,13 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  const { channelCapabilities } = context;
+  const { deliveryChannelCapabilities } = context;
 
-  if (channelCapabilities.canCreateCanvas) {
+  if (deliveryChannelCapabilities.canCreateCanvas) {
     tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
   }
 
-  if (channelCapabilities.canPostToChannel) {
+  if (deliveryChannelCapabilities.canPostToChannel) {
     tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
       context,
       state,
@@ -140,7 +140,7 @@ export function createTools(
       createSlackChannelListMessagesTool(context);
   }
 
-  if (channelCapabilities.canAddReactions) {
+  if (deliveryChannelCapabilities.canAddReactions) {
     tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
       context,
       state,

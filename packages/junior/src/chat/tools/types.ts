@@ -44,8 +44,31 @@ export interface ToolHooks {
 
 export interface ToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
+  /**
+   * Raw Slack channel/conversation container for this turn: `C...`, `D...`,
+   * or `G...`. Never overridden by assistant context. Stable binding key for
+   * state scoped to a Slack conversation. Passed to plugin hooks as-is via
+   * `ToolRegistrationHookContext.channelId`.
+   */
   channelId?: string;
-  channelCapabilities: ChannelCapabilities;
+  /**
+   * Opaque Junior conversation/session identity for this turn.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   * Scheduled/API turns use an internal id such as `agent-dispatch:{id}`.
+   * Do not parse as Slack unless the value starts with `slack:`.
+   */
+  conversationId?: string;
+  /**
+   * Effective Slack delivery channel for first-class Slack tools (canvas,
+   * channel post, reactions, list messages). May be the assistant-context
+   * source channel (`assistantContextChannelId ?? channelId`).
+   */
+  deliveryChannelId?: string;
+  /**
+   * Capabilities of `deliveryChannelId`, used to gate first-class Slack
+   * delivery tools in `createTools`.
+   */
+  deliveryChannelCapabilities: ChannelCapabilities;
   requester?: {
     userId?: string;
     userName?: string;

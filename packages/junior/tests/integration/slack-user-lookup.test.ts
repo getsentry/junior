@@ -343,7 +343,7 @@ describe("slackUserLookup", () => {
         {},
         {
           channelId: "C_TEST",
-          channelCapabilities: {
+          deliveryChannelCapabilities: {
             canCreateCanvas: true,
             canPostToChannel: true,
             canAddReactions: true,

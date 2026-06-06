@@ -21,6 +21,7 @@ import type {
   SandboxInstance,
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 
 /** Signal that a trusted plugin intentionally denied a tool execution. */
 export class AgentPluginHookDeniedError extends Error {
@@ -143,17 +144,22 @@ export function getAgentPluginTools(
       continue;
     }
     const log = createAgentPluginLogger(plugin.name);
+    // context.channelId is the raw conversation channel; plugins receive it
+    // directly. First-class delivery tools (canvas, post, react, list messages)
+    // use ToolRuntimeContext.deliveryChannelId instead.
     const credentialSubject = createSlackDirectCredentialSubject({
       channelId: context.channelId,
       teamId: context.teamId,
       userId: context.requester?.userId,
     });
+    const pluginCapabilities = resolveChannelCapabilities(context.channelId);
     const pluginTools = hook({
       plugin: { name: plugin.name },
       log,
       requester: context.requester,
-      channelCapabilities: context.channelCapabilities,
+      channelCapabilities: pluginCapabilities,
       channelId: context.channelId,
+      conversationId: context.conversationId,
       ...(credentialSubject ? { credentialSubject } : {}),
       teamId: context.teamId,
       messageTs: context.messageTs,

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-26
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-06
 
 ## Purpose
 
@@ -63,8 +63,9 @@ interface TrustedPluginHooks {
 
 - active conversation destination, when present
 - requester, when present
-- channel/team identifiers, when present
-- thread/message timestamps, when present
+- `channelId`: raw Slack conversation channel (`C/D/G`), never assistant-context overridden
+- `conversationId`: opaque Junior session identity (e.g. `slack:{channelId}:{threadTs}` for interactive turns)
+- `teamId` and thread/message timestamps, when present
 - namespaced plugin state
 - current user text
 - schedule-tool suppression for system dispatches

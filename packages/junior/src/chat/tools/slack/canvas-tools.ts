@@ -112,7 +112,7 @@ export function createSlackCanvasCreateTool(
       }),
     }),
     execute: async ({ title, markdown }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = context.deliveryChannelId;
       if (!isConversationScopedChannel(targetChannelId)) {
         logError(
           "slack_canvas_create_invalid_context",

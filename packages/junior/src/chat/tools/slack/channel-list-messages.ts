@@ -61,7 +61,7 @@ export function createSlackChannelListMessagesTool(
       inclusive,
       max_pages,
     }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = context.deliveryChannelId;
       if (!targetChannelId) {
         return {
           ok: false,

@@ -89,7 +89,7 @@ async function executeAdvisor(
 describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
-      channelCapabilities: resolveChannelCapabilities("D12345"),
+      deliveryChannelCapabilities: resolveChannelCapabilities("D12345"),
       sandbox: {} as any,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
@@ -183,7 +183,7 @@ describe("advisor tool", () => {
         [],
         {},
         {
-          channelCapabilities: resolveChannelCapabilities("C12345"),
+          deliveryChannelCapabilities: resolveChannelCapabilities("C12345"),
           sandbox: {} as any,
         },
       ),

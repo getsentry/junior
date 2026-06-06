@@ -24,7 +24,8 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        channelCapabilities: {
+        deliveryChannelId: "C123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: true,
           canAddReactions: true,
@@ -53,7 +54,8 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        channelCapabilities: {
+        deliveryChannelId: "C123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: true,
           canAddReactions: true,
@@ -87,7 +89,8 @@ describe("slackMessageAddReaction tool", () => {
     const tool = createSlackMessageAddReactionTool(
       {
         channelId: "C123",
-        channelCapabilities: {
+        deliveryChannelId: "C123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: true,
           canAddReactions: true,

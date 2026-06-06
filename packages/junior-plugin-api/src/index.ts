@@ -104,12 +104,29 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
 }
 
 export interface ToolRegistrationHookContext extends AgentPluginContext {
+  /**
+   * Capabilities of `channelId` — the raw conversation channel exposed to
+   * this plugin. Recomputed from `channelId`, not from the delivery channel.
+   */
   channelCapabilities?: {
     canAddReactions: boolean;
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
+  /**
+   * The raw Slack channel ID for this conversation — the DM or direct channel
+   * where this turn is happening, without any assistant-context-source override.
+   * Use this as the stable binding key for state scoped to a Slack conversation.
+   * `channelCapabilities` describes this channel.
+   */
   channelId?: string;
+  /**
+   * Opaque Junior conversation/session identity for this turn.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   * Scheduled/API turns use an internal id such as `agent-dispatch:{id}`.
+   * Do not parse as Slack unless the value starts with `slack:`.
+   */
+  conversationId?: string;
   credentialSubject?: AgentPluginCredentialSubject;
   messageTs?: string;
   requester?: AgentPluginRequester;

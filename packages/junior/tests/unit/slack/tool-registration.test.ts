@@ -9,7 +9,7 @@ const noopSandbox = {} as any;
 function ctx(channelId?: string) {
   return {
     channelId,
-    channelCapabilities: resolveChannelCapabilities(channelId),
+    deliveryChannelCapabilities: resolveChannelCapabilities(channelId),
     sandbox: noopSandbox,
   };
 }

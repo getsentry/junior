@@ -13,7 +13,7 @@ function createContext(
 ): ToolRuntimeContext {
   return {
     channelId: "C_CURRENT",
-    channelCapabilities: {
+    deliveryChannelCapabilities: {
       canCreateCanvas: true,
       canPostToChannel: true,
       canAddReactions: true,
@@ -177,6 +177,44 @@ describe("slackThreadRead", () => {
 
     // No extra API call for same-channel private reads
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("allows reading a private channel via assistant-context delivery channel", async () => {
+    // Regression guard: in an assistant-panel DM whose source is G_PRIVATE,
+    // context.channelId = D_DM (raw) but context.deliveryChannelId = G_PRIVATE.
+    // Thread reads targeting G_PRIVATE must still be allowed because the user
+    // IS messaging from that private channel context.
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "thread in private group",
+          },
+        ],
+      }),
+    });
+
+    const tool = createSlackThreadReadTool(
+      createContext({
+        channelId: "D_DM",          // raw DM channel
+        deliveryChannelId: "G_PRIVATE", // assistant-context source
+      }),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "G_PRIVATE",
+      ts: "1700000000.100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      channel_id: "G_PRIVATE",
+      count: 1,
+    });
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 

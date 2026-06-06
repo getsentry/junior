@@ -1,4 +1,4 @@
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { defineJuniorPlugin, type ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   createAgentPluginHookRunner,
@@ -87,7 +87,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getAgentPluginTools({
-        channelCapabilities: {
+        deliveryChannelCapabilities: {
           canAddReactions: false,
           canCreateCanvas: false,
           canPostToChannel: false,
@@ -125,7 +125,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getAgentPluginTools({
-          channelCapabilities: {
+          deliveryChannelCapabilities: {
             canAddReactions: false,
             canCreateCanvas: false,
             canPostToChannel: false,
@@ -164,7 +164,7 @@ describe("agent plugin hooks", () => {
           [],
           {},
           {
-            channelCapabilities: {
+            deliveryChannelCapabilities: {
               canAddReactions: false,
               canCreateCanvas: false,
               canPostToChannel: false,
@@ -495,5 +495,113 @@ describe("agent plugin hooks", () => {
     } finally {
       setAgentPlugins(previous);
     }
+  });
+});
+
+describe("getAgentPluginTools channel resolution", () => {
+  function capturePluginContext(
+    overrides: Partial<Parameters<typeof getAgentPluginTools>[0]> = {},
+  ) {
+    let captured: ToolRegistrationHookContext | undefined;
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        manifest: { name: "capture", description: "Capture plugin context" },
+        hooks: {
+          tools(ctx) {
+            captured = ctx;
+            return {};
+          },
+        },
+      }),
+    ]);
+    getAgentPluginTools({
+      deliveryChannelCapabilities: {
+        canAddReactions: true,
+        canCreateCanvas: true,
+        canPostToChannel: true,
+      },
+      requester: { userId: "U123" },
+      sandbox: {} as any,
+      ...overrides,
+    });
+    setAgentPlugins(previous);
+    if (!captured) {
+      throw new Error("capture plugin tools hook was not called");
+    }
+    return captured;
+  }
+
+  it("passes raw channelId to plugins, not the delivery channel", () => {
+    const ctx = capturePluginContext({
+      channelId: "D_DM",
+      deliveryChannelId: "C_SOURCE",
+      teamId: "T123",
+    });
+
+    expect(ctx.channelId).toBe("D_DM");
+  });
+
+  it("passes channelId when no delivery override differs", () => {
+    const ctx = capturePluginContext({
+      channelId: "C_SOURCE",
+      teamId: "T123",
+    });
+
+    expect(ctx.channelId).toBe("C_SOURCE");
+  });
+
+  it("computes channelCapabilities from channelId, not deliveryChannelId", () => {
+    // deliveryChannelId is a public channel (C); raw channelId is a DM (D).
+    // Plugin capabilities reflect the DM, not the delivery channel.
+    const ctx = capturePluginContext({
+      channelId: "D_DM",
+      deliveryChannelId: "C_SOURCE",
+      deliveryChannelCapabilities: {
+        canAddReactions: true,
+        canCreateCanvas: true,
+        canPostToChannel: true, // reflects C_SOURCE delivery channel
+      },
+      teamId: "T123",
+    });
+
+    // DM: canvas and reactions yes, channel post no
+    expect(ctx.channelCapabilities?.canCreateCanvas).toBe(true);
+    expect(ctx.channelCapabilities?.canAddReactions).toBe(true);
+    expect(ctx.channelCapabilities?.canPostToChannel).toBe(false);
+  });
+
+  it("creates a direct credential subject when channelId is a DM", () => {
+    const ctx = capturePluginContext({
+      channelId: "D_DM",
+      deliveryChannelId: "C_SOURCE",
+      teamId: "T123",
+      requester: { userId: "U123" },
+    });
+
+    expect(ctx.credentialSubject).toMatchObject({
+      type: "user",
+      userId: "U123",
+      allowedWhen: "private-direct-conversation",
+    });
+  });
+
+  it("does not create a credential subject when channelId is not a DM", () => {
+    const ctx = capturePluginContext({
+      channelId: "C_SOURCE",
+      teamId: "T123",
+      requester: { userId: "U123" },
+    });
+
+    expect(ctx.credentialSubject).toBeUndefined();
+  });
+
+  it("exposes conversationId to plugins", () => {
+    const ctx = capturePluginContext({
+      channelId: "D_DM",
+      conversationId: "slack:D_DM:1780479160.406339",
+      teamId: "T123",
+    });
+
+    expect(ctx.conversationId).toBe("slack:D_DM:1780479160.406339");
   });
 });

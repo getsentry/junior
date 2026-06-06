@@ -88,7 +88,8 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "C123",
-        channelCapabilities: {
+        deliveryChannelId: "C123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: true,
           canAddReactions: true,
@@ -145,7 +146,8 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "D123",
-        channelCapabilities: {
+        deliveryChannelId: "D123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: false,
           canAddReactions: true,
@@ -182,7 +184,7 @@ describe("tool idempotency", () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
       {
-        channelCapabilities: {
+        deliveryChannelCapabilities: {
           canCreateCanvas: false,
           canPostToChannel: false,
           canAddReactions: false,
@@ -257,7 +259,8 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         channelId: "C123",
-        channelCapabilities: {
+        deliveryChannelId: "C123",
+        deliveryChannelCapabilities: {
           canCreateCanvas: true,
           canPostToChannel: true,
           canAddReactions: true,

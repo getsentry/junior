@@ -937,7 +937,7 @@ export async function generateAssistantReply(
     // ── Tool creation ────────────────────────────────────────────────
     const toolChannelId =
       context.toolChannelId ?? context.correlation?.channelId;
-    const channelCapabilities = resolveChannelCapabilities(toolChannelId);
+    const deliveryChannelCapabilities = resolveChannelCapabilities(toolChannelId);
     const loadableSkills = availableSkills.filter(
       (skill) =>
         skill.disableModelInvocation !== true ||
@@ -997,8 +997,10 @@ export async function generateAssistantReply(
         },
       },
       {
-        channelId: toolChannelId,
-        channelCapabilities,
+        channelId: context.correlation?.channelId,
+        conversationId: sessionConversationId,
+        deliveryChannelId: toolChannelId,
+        deliveryChannelCapabilities,
         requester: actorRequester,
         teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,

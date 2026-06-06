@@ -173,7 +173,14 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
         };
       }
 
-      const access = checkChannelAccess(channelId, context.channelId);
+      // Use the delivery channel (assistant-context source channel when present,
+      // otherwise the raw conversation channel) so that a user messaging from
+      // an assistant-panel private group channel can still read threads in that
+      // channel even though context.channelId is now always the raw DM channel.
+      const access = checkChannelAccess(
+        channelId,
+        context.deliveryChannelId ?? context.channelId,
+      );
       if (!access.allowed) {
         return {
           ok: false,
