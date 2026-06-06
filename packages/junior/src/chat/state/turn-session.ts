@@ -11,7 +11,13 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
-import { commitMessages, loadMessages, loadProjection } from "./session-log";
+import {
+  commitMessages,
+  loadMessages,
+  loadProjection,
+  loadProjectionWithRequester,
+  type SessionRequester,
+} from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 
@@ -31,12 +37,11 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
-export interface AgentTurnRequester {
-  email?: string;
-  fullName?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-}
+/**
+ * Requester identity carried through a turn's lifetime.
+ * Re-exported from session-log for convenience; SessionRequester is canonical.
+ */
+export type AgentTurnRequester = SessionRequester;
 
 export interface AgentTurnSessionRecord {
   channelName?: string;
@@ -350,9 +355,25 @@ function materializePiMessages(
   return undefined;
 }
 
+/**
+ * Choose between a requester derived from the canonical session log and one
+ * stored in the cursor. Log requester is preferred when it carries a usable
+ * Slack user id; otherwise the cursor value is the fallback for old records.
+ */
+function selectSessionRequester(
+  logRequester: AgentTurnRequester | undefined,
+  cursorRequester: AgentTurnRequester | undefined,
+): AgentTurnRequester | undefined {
+  if (logRequester?.slackUserId) {
+    return logRequester;
+  }
+  return cursorRequester;
+}
+
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
   piMessages: PiMessage[],
+  requester?: AgentTurnRequester,
 ): AgentTurnSessionRecord {
   return {
     version: stored.version,
@@ -375,7 +396,7 @@ function materializeAgentTurnSessionRecord(
     ...(stored.loadedSkillNames
       ? { loadedSkillNames: stored.loadedSkillNames }
       : {}),
-    ...(stored.requester ? { requester: stored.requester } : {}),
+    ...((requester ?? stored.requester) ? { requester: requester ?? stored.requester } : {}),
     ...(stored.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: stored.resumedFromSliceId }
       : {}),
@@ -415,10 +436,11 @@ export async function getAgentTurnSessionRecord(
     messageCount: parsed.committedMessageCount,
     ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
-  const sessionProjection = await loadProjection({
-    conversationId,
-    ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
-  });
+  const { messages: sessionProjection, requester: logRequester } =
+    await loadProjectionWithRequester({
+      conversationId,
+      ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
+    });
   const piMessages = materializePiMessages(
     parsed.committedMessageCount,
     parsed.state === "running" || parsed.state === "awaiting_resume",
@@ -429,7 +451,8 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  return materializeAgentTurnSessionRecord(parsed, piMessages);
+  const requester = selectSessionRequester(logRequester, parsed.requester);
+  return materializeAgentTurnSessionRecord(parsed, piMessages, requester);
 }
 
 /** Build the storage record that advances optimistic resume versioning. */
@@ -601,6 +624,7 @@ export async function upsertAgentTurnSessionRecord(args: {
     conversationId: args.conversationId,
     messages: args.piMessages,
     ttlMs,
+    requester: args.requester,
   });
 
   return await setStoredRecord({

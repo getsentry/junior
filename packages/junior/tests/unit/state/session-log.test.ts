@@ -451,3 +451,122 @@ describe("agent session log store", () => {
     ).resolves.toEqual(firstProjection);
   });
 });
+
+describe("session log requester identity", () => {
+  it("attaches requester to the last new user message on commit", async () => {
+    const store = memoryStore();
+    const contextMsg: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "prior context" }],
+      timestamp: 1,
+    } as PiMessage;
+    const turnMsg: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "current question" }],
+      timestamp: 2,
+    } as PiMessage;
+
+    await commitMessages({
+      store,
+      conversationId: "conv-req-1",
+      messages: [contextMsg, turnMsg],
+      ttlMs: 60_000,
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+        fullName: "Alice Example",
+        email: "alice@sentry.io",
+      },
+    });
+
+    // Requester is attached to the LAST new user message (turnMsg), not contextMsg
+    const entries = store.entries;
+    const piEntries = entries.filter((e) => e.type === "pi_message");
+    expect(piEntries).toHaveLength(2);
+    expect((piEntries[0] as { requester?: unknown }).requester).toBeUndefined();
+    expect((piEntries[1] as { requester?: unknown }).requester).toMatchObject({
+      slackUserId: "U123",
+      slackUserName: "alice",
+      fullName: "Alice Example",
+      email: "alice@sentry.io",
+    });
+
+    // Requester is NOT on the Pi message object (not model-visible)
+    const msgPayload = piEntries[1] as { message?: { requester?: unknown } };
+    expect(msgPayload.message?.requester).toBeUndefined();
+  });
+
+  it("derives requester from session log via loadProjectionWithRequester", async () => {
+    const store = memoryStore();
+    const turnMsg: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "question" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await commitMessages({
+      store,
+      conversationId: "conv-req-2",
+      messages: [turnMsg],
+      ttlMs: 60_000,
+      requester: { slackUserId: "U456", email: "bob@sentry.io" },
+    });
+
+    const { loadProjectionWithRequester } = await import(
+      "@/chat/state/session-log"
+    );
+    const projection = await loadProjectionWithRequester({
+      store,
+      conversationId: "conv-req-2",
+    });
+
+    expect(projection.requester).toMatchObject({
+      slackUserId: "U456",
+      email: "bob@sentry.io",
+    });
+    expect(projection.messages).toHaveLength(1);
+  });
+
+  it("preserves requester through a projection reset", async () => {
+    const store = memoryStore();
+    const msg1: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+      timestamp: 1,
+    } as PiMessage;
+    const msg2: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "replaced" }],
+      timestamp: 2,
+    } as PiMessage;
+
+    // First commit with requester
+    await commitMessages({
+      store,
+      conversationId: "conv-req-3",
+      messages: [msg1],
+      ttlMs: 60_000,
+      requester: { slackUserId: "U789", email: "carol@sentry.io" },
+    });
+
+    // Trigger a reset by replacing history
+    await commitMessages({
+      store,
+      conversationId: "conv-req-3",
+      messages: [msg2],
+      ttlMs: 60_000,
+      requester: { slackUserId: "U789", email: "carol@sentry.io" },
+    });
+
+    const { loadProjectionWithRequester } = await import(
+      "@/chat/state/session-log"
+    );
+    const projection = await loadProjectionWithRequester({
+      store,
+      conversationId: "conv-req-3",
+    });
+
+    expect(projection.requester?.slackUserId).toBe("U789");
+    expect(projection.messages).toHaveLength(1);
+  });
+});

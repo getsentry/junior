@@ -112,7 +112,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
@@ -196,7 +195,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
@@ -289,7 +287,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
@@ -368,7 +365,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
@@ -452,7 +448,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
@@ -556,7 +551,6 @@ describe("turn resume handler", () => {
       ],
       resumeReason: "timeout",
       resumedFromSliceId: 4,
-      requester: { slackUserId: "U123" },
       errorMessage: "Agent turn timed out",
       requester: { slackUserId: "U123" },
     });
