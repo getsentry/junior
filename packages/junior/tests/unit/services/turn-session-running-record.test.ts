@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   cleanupTurnSessionRecordTest,
-  createTurnSessionRecordServices,
   piTextMessage,
   setupTurnSessionRecordTest,
 } from "../../fixtures/turn-session-record";
@@ -80,31 +79,6 @@ describe("turn session running records", () => {
       state: "running",
       piMessages: toolResultBoundary,
     });
-  });
-
-  it("reports running record storage failures", async () => {
-    const services = createTurnSessionRecordServices({
-      upsertAgentTurnSessionRecord: async () => {
-        throw new Error("storage unavailable");
-      },
-    });
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
-
-    await expect(
-      persistRunningSessionRecord(
-        {
-          conversationId: "conversation-storage-failure",
-          sessionId: "turn-storage-failure",
-          sliceId: 1,
-          messages: [piTextMessage("user", "help me", 1)],
-          logContext: {
-            modelId: "test-model",
-          },
-        },
-        services,
-      ),
-    ).resolves.toBe(false);
   });
 
   it("branches Pi session state from the recoverable cursor after trimming an unsafe assistant tail", async () => {

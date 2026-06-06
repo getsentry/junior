@@ -37,20 +37,6 @@ interface SessionRecordLogContext {
   modelId: string;
 }
 
-interface TurnSessionRecordServices {
-  getActiveTraceId: typeof getActiveTraceId;
-  getAgentTurnSessionRecord: typeof getAgentTurnSessionRecord;
-  logException: typeof logException;
-  upsertAgentTurnSessionRecord: typeof upsertAgentTurnSessionRecord;
-}
-
-const defaultTurnSessionRecordServices: TurnSessionRecordServices = {
-  getActiveTraceId,
-  getAgentTurnSessionRecord,
-  logException,
-  upsertAgentTurnSessionRecord,
-};
-
 function logSessionRecordError(
   error: unknown,
   eventName: string,
@@ -61,9 +47,8 @@ function logSessionRecordError(
   },
   attributes: Record<string, string | number>,
   message: string,
-  services: TurnSessionRecordServices,
 ): void {
-  services.logException(
+  logException(
     error,
     eventName,
     {
@@ -120,15 +105,11 @@ function resumableBoundary(
 /** Load turn session record state for a conversation/session pair. */
 export async function loadTurnSessionRecord(
   ctx: TurnSessionContext,
-  services: TurnSessionRecordServices = defaultTurnSessionRecordServices,
 ): Promise<TurnSessionState> {
   const canUseTurnSession = Boolean(ctx.conversationId && ctx.sessionId);
   const existingSessionRecord =
     canUseTurnSession && ctx.conversationId && ctx.sessionId
-      ? await services.getAgentTurnSessionRecord(
-          ctx.conversationId,
-          ctx.sessionId,
-        )
+      ? await getAgentTurnSessionRecord(ctx.conversationId, ctx.sessionId)
       : undefined;
   const hasAwaitingResumeRecord = Boolean(
     existingSessionRecord &&
@@ -146,33 +127,30 @@ export async function loadTurnSessionRecord(
 }
 
 /** Persist the latest safe in-progress boundary without scheduling continuation. */
-export async function persistRunningSessionRecord(
-  args: {
-    channelName?: string;
-    conversationId: string;
-    destination?: Destination;
-    sessionId: string;
-    sliceId: number;
-    messages: PiMessage[];
-    loadedSkillNames?: string[];
-    logContext: SessionRecordLogContext;
-    requester?: AgentTurnRequester;
-    surface?: AgentTurnSurface;
-    turnStartMessageIndex?: number;
-  },
-  services: TurnSessionRecordServices = defaultTurnSessionRecordServices,
-): Promise<boolean> {
+export async function persistRunningSessionRecord(args: {
+  channelName?: string;
+  conversationId: string;
+  destination?: Destination;
+  sessionId: string;
+  sliceId: number;
+  messages: PiMessage[];
+  loadedSkillNames?: string[];
+  logContext: SessionRecordLogContext;
+  requester?: StoredSlackRequester;
+  surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
+}): Promise<boolean> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return false;
   }
 
   try {
-    const latestSessionRecord = await services.getAgentTurnSessionRecord(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    const traceId = services.getActiveTraceId() ?? latestSessionRecord?.traceId;
-    await services.upsertAgentTurnSessionRecord({
+    const traceId = getActiveTraceId() ?? latestSessionRecord?.traceId;
+    await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
@@ -215,38 +193,34 @@ export async function persistRunningSessionRecord(
         "app.ai.resume_slice_id": args.sliceId,
       },
       "Failed to persist running turn session record",
-      services,
     );
     return false;
   }
 }
 
 /** Persist a completed turn session record. */
-export async function persistCompletedSessionRecord(
-  args: {
-    channelName?: string;
-    conversationId: string;
-    currentDurationMs?: number;
-    currentUsage?: AgentTurnUsage;
-    destination?: Destination;
-    sessionId: string;
-    sliceId: number;
-    allMessages: PiMessage[];
-    loadedSkillNames?: string[];
-    logContext: SessionRecordLogContext;
-    requester?: AgentTurnRequester;
-    surface?: AgentTurnSurface;
-    turnStartMessageIndex?: number;
-  },
-  services: TurnSessionRecordServices = defaultTurnSessionRecordServices,
-): Promise<void> {
+export async function persistCompletedSessionRecord(args: {
+  channelName?: string;
+  conversationId: string;
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
+  destination?: Destination;
+  sessionId: string;
+  sliceId: number;
+  allMessages: PiMessage[];
+  loadedSkillNames?: string[];
+  logContext: SessionRecordLogContext;
+  requester?: StoredSlackRequester;
+  surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
+}): Promise<void> {
   try {
-    const latestSessionRecord = await services.getAgentTurnSessionRecord(
+    const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    const traceId = services.getActiveTraceId() ?? latestSessionRecord?.traceId;
-    await services.upsertAgentTurnSessionRecord({
+    const traceId = getActiveTraceId() ?? latestSessionRecord?.traceId;
+    await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
         : {}),
@@ -294,7 +268,6 @@ export async function persistCompletedSessionRecord(
         "app.ai.resume_slice_id": args.sliceId,
       },
       "Failed to persist completed turn session record",
-      services,
     );
   }
 }
@@ -377,7 +350,6 @@ export async function persistAuthPauseSessionRecord(args: {
         "app.ai.resume_next_slice_id": nextSliceId,
       },
       "Failed to persist auth session record before retry",
-      defaultTurnSessionRecordServices,
     );
   }
   return undefined;
@@ -500,7 +472,6 @@ export async function persistTimeoutSessionRecord(args: {
         "app.ai.resume_next_slice_id": nextSliceId,
       },
       "Failed to persist timeout session record before scheduling resume",
-      defaultTurnSessionRecordServices,
     );
     return undefined;
   }
@@ -581,7 +552,6 @@ export async function persistYieldSessionRecord(args: {
         "app.ai.resume_slice_id": args.currentSliceId,
       },
       "Failed to persist cooperative yield session record",
-      defaultTurnSessionRecordServices,
     );
     return undefined;
   }

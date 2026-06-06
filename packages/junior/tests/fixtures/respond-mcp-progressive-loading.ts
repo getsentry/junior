@@ -1,7 +1,10 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { deliverPrivateMessage } from "@/chat/oauth-flow";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type {
   PluginMcpClientOptions,
   PluginMcpListedTool,
@@ -22,77 +25,65 @@ import {
 import { DEFAULT_TEST_NOW_MS } from "./vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
+const originalCwd = process.cwd();
 
-const hoisted = vi.hoisted(() => {
-  const DEMO_SKILL = {
-    name: "demo-skill",
-    description: "Demo skill",
-    skillPath: "/tmp/skills/demo-skill",
-    pluginProvider: "demo",
-  } as const;
+const DEMO_SKILL: SkillMetadata = {
+  name: "demo-skill",
+  description: "Demo skill",
+  skillPath: path.join(os.tmpdir(), "junior-demo-skill-placeholder"),
+  pluginProvider: "demo",
+};
 
-  const demoPlugin: PluginDefinition = {
-    dir: "/tmp/plugins/demo",
-    skillsDir: "/tmp/plugins/demo/skills",
-    manifest: {
-      name: "demo",
-      displayName: "Demo",
-      description: "Demo plugin",
-      capabilities: [],
-      configKeys: [],
-      mcp: {
-        transport: "http",
-        url: "https://mcp.example.com",
-        allowedTools: ["ping"],
-      },
+const demoPlugin: PluginDefinition = {
+  dir: path.join(os.tmpdir(), "junior-demo-plugin-placeholder"),
+  skillsDir: path.join(os.tmpdir(), "junior-demo-plugin-placeholder", "skills"),
+  manifest: {
+    name: "demo",
+    displayName: "Demo",
+    description: "Demo plugin",
+    capabilities: [],
+    configKeys: [],
+    mcp: {
+      transport: "http",
+      url: "https://mcp.example.com",
+      allowedTools: ["ping"],
     },
-  };
+  },
+};
 
-  const state = {
-    agentInitialToolNames: [] as string[][],
-    callToolMock:
-      vi.fn<
-        (
-          plugin: PluginDefinition,
-          name: string,
-          args: Record<string, unknown> | undefined,
-        ) => Promise<PluginMcpToolCallResult>
-      >(),
-    clientOptions: [] as Array<Record<string, unknown>>,
-    completeEmptyAssistantOnAbort: { value: false },
-    continueCallCount: { value: 0 },
-    continueStopsOnAbort: { value: false },
-    deliverPrivateMessageMock: vi.fn<typeof deliverPrivateMessage>(),
-    listToolsMock:
-      vi.fn<
-        (
-          plugin: PluginDefinition,
-          options: PluginMcpClientOptions,
-        ) => Promise<PluginMcpListedTool[]>
-      >(),
-    loadSkillExecutionErrorCount: { value: 0 },
-    loadSkillsByNameMock:
-      vi.fn<
-        (skillNames: string[], available: SkillMetadata[]) => Promise<Skill[]>
-      >(),
-    omitFinalAssistantAfterTool: { value: false },
-    promptCallCount: { value: 0 },
-    pushPreToolAssistantMessage: { value: false },
-    recordToolResultMessage: { value: false },
-    resumeTurnContextCounts: [] as number[],
-    searchMcpToolNames: [] as string[][],
-  };
-
-  return {
-    DEMO_SKILL,
-    demoPlugin,
-    state,
-  };
-});
-
-const { DEMO_SKILL, demoPlugin, state } = hoisted;
+const state = {
+  agentInitialToolNames: [] as string[][],
+  callToolMock:
+    vi.fn<
+      (
+        plugin: PluginDefinition,
+        name: string,
+        args: Record<string, unknown> | undefined,
+      ) => Promise<PluginMcpToolCallResult>
+    >(),
+  clientOptions: [] as Array<Record<string, unknown>>,
+  completeEmptyAssistantOnAbort: { value: false },
+  continueCallCount: { value: 0 },
+  continueStopsOnAbort: { value: false },
+  deliverPrivateMessageMock: vi.fn<typeof deliverPrivateMessage>(),
+  listToolsMock:
+    vi.fn<
+      (
+        plugin: PluginDefinition,
+        options: PluginMcpClientOptions,
+      ) => Promise<PluginMcpListedTool[]>
+    >(),
+  loadSkillExecutionErrorCount: { value: 0 },
+  omitFinalAssistantAfterTool: { value: false },
+  promptCallCount: { value: 0 },
+  pushPreToolAssistantMessage: { value: false },
+  recordToolResultMessage: { value: false },
+  resumeTurnContextCounts: [] as number[],
+  searchMcpToolNames: [] as string[][],
+};
 
 let abortedAgents = new WeakSet<object>();
+let demoAppRoot: string | undefined;
 const sandboxState = createScriptedSandboxExecutorState();
 const turnThinkingSelection = {
   thinkingLevel: "medium",
@@ -111,7 +102,6 @@ export const respondMcpProgressiveLoadingHarness = {
   deliverPrivateMessageMock: state.deliverPrivateMessageMock,
   listToolsMock: state.listToolsMock,
   loadSkillExecutionErrorCount: state.loadSkillExecutionErrorCount,
-  loadSkillsByNameMock: state.loadSkillsByNameMock,
   omitFinalAssistantAfterTool: state.omitFinalAssistantAfterTool,
   promptCallCount: state.promptCallCount,
   pushPreToolAssistantMessage: state.pushPreToolAssistantMessage,
@@ -119,14 +109,6 @@ export const respondMcpProgressiveLoadingHarness = {
   resumeTurnContextCounts: state.resumeTurnContextCounts,
   searchMcpToolNames: state.searchMcpToolNames,
 };
-
-/** Build the loaded demo skill shape used by progressive MCP tests. */
-export function makeDemoLoadedSkill() {
-  return {
-    ...DEMO_SKILL,
-    body: "Skill instructions",
-  };
-}
 
 /** Build a demo MCP tool with the minimal schema needed by the fake client. */
 export function makeDemoMcpTool(name: "ping" | "mutate") {
@@ -147,6 +129,53 @@ export function makeDemoMcpTool(name: "ping" | "mutate") {
 /** Build the full demo MCP tool list exposed by the fake plugin provider. */
 export function makeDemoMcpTools() {
   return [makeDemoMcpTool("ping"), makeDemoMcpTool("mutate")];
+}
+
+async function createDemoPluginApp(): Promise<void> {
+  demoAppRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), "junior-respond-mcp-plugin-"),
+  );
+  const pluginDir = path.join(demoAppRoot, "app", "plugins", "demo");
+  const skillsDir = path.join(pluginDir, "skills");
+  const skillDir = path.join(skillsDir, DEMO_SKILL.name);
+
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(
+    path.join(demoAppRoot, "app", "SOUL.md"),
+    "# Test app\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(pluginDir, "plugin.yaml"),
+    [
+      "name: demo",
+      "display-name: Demo",
+      "description: Demo plugin",
+      "mcp:",
+      "  transport: http",
+      "  url: https://mcp.example.com",
+      "  allowedTools:",
+      "    - ping",
+    ].join("\n"),
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(skillDir, "SKILL.md"),
+    [
+      "---",
+      `name: ${DEMO_SKILL.name}`,
+      `description: ${DEMO_SKILL.description}`,
+      "---",
+      "",
+      "Skill instructions",
+    ].join("\n"),
+    "utf8",
+  );
+
+  DEMO_SKILL.skillPath = skillDir;
+  demoPlugin.dir = pluginDir;
+  demoPlugin.skillsDir = skillsDir;
+  process.chdir(demoAppRoot);
 }
 
 /** Build the reply context shared by progressive MCP runtime tests. */
@@ -395,6 +424,7 @@ const {
   putMcpAuthSession: putMcpAuthSessionImpl,
 } = await import("@/chat/mcp/auth-store");
 const {
+  discoverSkills: discoverSkillsImpl,
   findSkillByName: findSkillByNameImpl,
   parseSkillInvocation: parseSkillInvocationImpl,
 } = await import("@/chat/skills");
@@ -470,12 +500,11 @@ type ReplyContext = NonNullable<
 const respondRuntimeServices = {
   createMcpAuthOrchestration: (deps, abortAgent) =>
     createMcpAuthOrchestrationImpl(deps, abortAgent, mcpAuthServices),
-  discoverSkills: async () => [DEMO_SKILL],
+  discoverSkills: discoverSkillsImpl,
   findSkillByName: findSkillByNameImpl,
   getConfigDefaults: getConfigDefaultsImpl,
   getPluginMcpProviders: () => [demoPlugin],
   getPluginProviders: () => [demoPlugin],
-  loadSkillsByName: state.loadSkillsByNameMock,
   parseSkillInvocation: parseSkillInvocationImpl,
 } satisfies NonNullable<
   NonNullable<ReplyContext["harness"]>["runtimeServices"]
@@ -509,6 +538,13 @@ export { McpAuthorizationRequiredError };
 
 /** Reset MCP/respond runtime state before each progressive-loading test. */
 export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
+  if (demoAppRoot) {
+    await fs.rm(demoAppRoot, { recursive: true, force: true });
+    demoAppRoot = undefined;
+  }
+  process.chdir(originalCwd);
+  await createDemoPluginApp();
+
   state.agentInitialToolNames.length = 0;
   state.callToolMock.mockReset();
   state.clientOptions.length = 0;
@@ -519,7 +555,6 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
   state.listToolsMock.mockReset();
   state.searchMcpToolNames.length = 0;
   state.loadSkillExecutionErrorCount.value = 0;
-  state.loadSkillsByNameMock.mockReset();
   state.omitFinalAssistantAfterTool.value = false;
   state.promptCallCount.value = 0;
   state.pushPreToolAssistantMessage.value = false;
@@ -534,7 +569,6 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
     content: [{ type: "text", text: "pong" }],
     isError: false,
   });
-  state.loadSkillsByNameMock.mockResolvedValue([makeDemoLoadedSkill()]);
   state.listToolsMock
     .mockImplementationOnce(async (plugin, options) => {
       await options.authProvider?.redirectToAuthorization?.(
@@ -554,6 +588,11 @@ export async function setupRespondMcpProgressiveLoadingTest(): Promise<void> {
 export async function cleanupRespondMcpProgressiveLoadingTest(): Promise<void> {
   await disconnectStateAdapterImpl();
   delete process.env.JUNIOR_BASE_URL;
+  process.chdir(originalCwd);
+  if (demoAppRoot) {
+    await fs.rm(demoAppRoot, { recursive: true, force: true });
+    demoAppRoot = undefined;
+  }
   vi.restoreAllMocks();
 }
 

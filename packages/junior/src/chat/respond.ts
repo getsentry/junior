@@ -37,7 +37,6 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
   findSkillByName,
-  loadSkillsByName,
   parseSkillInvocation,
   type Skill,
 } from "@/chat/skills";
@@ -216,7 +215,6 @@ export interface ReplyRuntimeServices {
   getConfigDefaults: typeof getConfigDefaults;
   getPluginMcpProviders: typeof getPluginMcpProviders;
   getPluginProviders: typeof getPluginProviders;
-  loadSkillsByName: typeof loadSkillsByName;
   parseSkillInvocation: typeof parseSkillInvocation;
 }
 
@@ -243,7 +241,6 @@ const defaultReplyRuntimeServices: ReplyRuntimeServices = {
   getConfigDefaults,
   getPluginMcpProviders,
   getPluginProviders,
-  loadSkillsByName,
   parseSkillInvocation,
 };
 
@@ -690,9 +687,7 @@ export async function generateAssistantReply(
     const syncLoadedSkillNamesForResume = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
     };
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills, {
-      loadSkillsByName: runtimeServices.loadSkillsByName,
-    });
+    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     // ── Turn Session Record ────────────────────────────────────────
     const { conversationId: sessionConversationId, sessionId } =

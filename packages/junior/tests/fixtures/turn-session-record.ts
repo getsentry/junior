@@ -1,12 +1,7 @@
 import { vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import type * as TurnSessionRecordModule from "@/chat/services/turn-session-record";
 
 const ORIGINAL_ENV = { ...process.env };
-
-type TurnSessionRecordServices = NonNullable<
-  Parameters<typeof TurnSessionRecordModule.persistRunningSessionRecord>[1]
->;
 
 /** Reset module state and use the memory adapter for turn-session record tests. */
 export async function setupTurnSessionRecordTest(): Promise<void> {
@@ -27,26 +22,6 @@ export async function cleanupTurnSessionRecordTest(): Promise<void> {
   vi.doUnmock("@/chat/state/turn-session");
   vi.resetModules();
   process.env = { ...ORIGINAL_ENV };
-}
-
-/** Build explicit turn-session persistence services for failure-path tests. */
-export function createTurnSessionRecordServices(
-  overrides: Partial<TurnSessionRecordServices> = {},
-): TurnSessionRecordServices {
-  return {
-    getActiveTraceId: vi.fn(() => undefined),
-    getAgentTurnSessionRecord: vi.fn(async () => undefined),
-    logException: vi.fn(),
-    upsertAgentTurnSessionRecord: vi.fn(async (record) => ({
-      ...record,
-      cumulativeDurationMs: record.cumulativeDurationMs ?? 0,
-      lastProgressAtMs: 1,
-      startedAtMs: 1,
-      updatedAtMs: 1,
-      version: 1,
-    })),
-    ...overrides,
-  };
 }
 
 /** Build a Pi text message fixture for turn-session record boundaries. */

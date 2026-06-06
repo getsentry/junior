@@ -27,14 +27,6 @@ export type LoadSkillMetadata = Pick<
   "mcp_provider" | "available_tool_count"
 >;
 
-interface LoadSkillServices {
-  loadSkillsByName: typeof loadSkillsByName;
-}
-
-const defaultLoadSkillServices: LoadSkillServices = {
-  loadSkillsByName,
-};
-
 function toLoadedSkill(
   result: LoadSkillResult,
   availableSkills: SkillMetadata[],
@@ -67,7 +59,6 @@ function toLoadedSkill(
 async function loadSkillFromHost(
   availableSkills: SkillMetadata[],
   skillName: string,
-  services: LoadSkillServices,
 ): Promise<LoadSkillResult> {
   const requested = skillName.trim().toLowerCase();
   const skill = availableSkills.find(
@@ -83,10 +74,7 @@ async function loadSkillFromHost(
 
   const skillDir = sandboxSkillDir(skill.name);
   const skillFilePath = sandboxSkillFile(skill.name);
-  const [loaded] = await services.loadSkillsByName(
-    [skill.name],
-    availableSkills,
-  );
+  const [loaded] = await loadSkillsByName([skill.name], availableSkills);
   if (!loaded) {
     throw new Error(`failed to load ${skill.name}`);
   }
@@ -107,17 +95,11 @@ async function loadSkillFromHost(
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
-    loadSkillsByName?: typeof loadSkillsByName;
     onSkillLoaded?: (
       skill: Skill,
     ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   },
 ) {
-  const services: LoadSkillServices = {
-    loadSkillsByName:
-      options?.loadSkillsByName ?? defaultLoadSkillServices.loadSkillsByName,
-  };
-
   return tool({
     description:
       "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the result includes mcp_provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
@@ -128,11 +110,7 @@ export function createLoadSkillTool(
       }),
     }),
     execute: async ({ skill_name }) => {
-      const result = await loadSkillFromHost(
-        availableSkills,
-        skill_name,
-        services,
-      );
+      const result = await loadSkillFromHost(availableSkills, skill_name);
       const loadedSkill = toLoadedSkill(result, availableSkills);
       if (loadedSkill) {
         const metadata = await options?.onSkillLoaded?.(loadedSkill);

@@ -10,14 +10,6 @@ const MAX_SKILL_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_SKILL_FILE_CHARS = 20_000;
 const DEFAULT_MAX_SKILL_LIST_ENTRIES = 200;
 
-interface SkillSandboxServices {
-  loadSkillsByName: typeof loadSkillsByName;
-}
-
-const defaultSkillSandboxServices: SkillSandboxServices = {
-  loadSkillsByName,
-};
-
 function normalizePathForOutput(value: string): string {
   return value.split(path.sep).join("/");
 }
@@ -73,17 +65,11 @@ export class SkillSandbox {
   private readonly availableByName = new Map<string, SkillMetadata>();
   private readonly loadedSkills = new Map<string, Skill>();
   private activeSkillName: string | null = null;
-  private readonly services: SkillSandboxServices;
 
-  constructor(
-    availableSkills: SkillMetadata[],
-    preloadedSkills: Skill[] = [],
-    services: SkillSandboxServices = defaultSkillSandboxServices,
-  ) {
+  constructor(availableSkills: SkillMetadata[], preloadedSkills: Skill[] = []) {
     this.availableSkills = [...availableSkills].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-    this.services = services;
     for (const skill of this.availableSkills) {
       this.availableByName.set(normalizeSkillName(skill.name), skill);
     }
@@ -125,10 +111,7 @@ export class SkillSandbox {
       return null;
     }
 
-    const [loaded] = await this.services.loadSkillsByName(
-      [meta.name],
-      this.availableSkills,
-    );
+    const [loaded] = await loadSkillsByName([meta.name], this.availableSkills);
     if (!loaded) {
       return null;
     }

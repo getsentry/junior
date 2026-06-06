@@ -89,9 +89,6 @@ export function createTools(
   const state = createToolState(hooks, context);
   const tools: Record<string, ToolDefinition<any>> = {
     loadSkill: createLoadSkillTool(availableSkills, {
-      ...(context.loadSkillsByName
-        ? { loadSkillsByName: context.loadSkillsByName }
-        : {}),
       onSkillLoaded: hooks.onSkillLoaded,
     }),
     reportProgress: createReportProgressTool(),
