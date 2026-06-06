@@ -149,12 +149,12 @@ function gitConfigValue(key) {
 function defaultWorktreeParent() {
   const configured =
     process.env.JUNIOR_WORKTREE_DIR ?? gitConfigValue("junior.worktreeDir");
+  const mainRoot = mainCheckoutRoot();
 
   if (configured?.trim()) {
-    return path.resolve(configured);
+    return path.resolve(mainRoot, configured.trim());
   }
 
-  const mainRoot = mainCheckoutRoot();
   return path.join(
     path.dirname(mainRoot),
     `${path.basename(mainRoot)}-worktrees`,

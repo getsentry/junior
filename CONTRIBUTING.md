@@ -69,7 +69,8 @@ local files from the primary checkout using `scripts/worktree.include`, and run
 fresh worktrees can run `pnpm dev`, `pnpm dev:env`, and focused checks without
 relinking every time. `pnpm worktree list` marks the checkout running the helper
 with `*`. Set `JUNIOR_WORKTREE_DIR`, `JUNIOR_WORKTREE_BASE`, or pass `--path`,
-`--from`, `--source`, or `--no-install` to override those defaults. `--from`
+`--from`, `--source`, or `--no-install` to override those defaults. Relative
+`JUNIOR_WORKTREE_DIR` values resolve from the primary checkout root. `--from`
 and `JUNIOR_WORKTREE_BASE` only apply when creating a new branch; existing
 branches open at their current tip.
 
