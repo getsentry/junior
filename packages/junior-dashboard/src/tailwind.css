@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+}
+
+@source "./app.ts";
+@source "./dashboardLoader.ts";
+@source "./client.tsx";
+@source "./client/**/*.{ts,tsx}";
+
+@keyframes junior-rainbow-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
+}

@@ -1,0 +1,20 @@
+import { defineCollection } from "astro:content";
+import { z } from "astro/zod";
+import { docsLoader } from "@astrojs/starlight/loaders";
+import { docsSchema } from "@astrojs/starlight/schema";
+
+export const collections = {
+  docs: defineCollection({
+    loader: docsLoader(),
+    schema: docsSchema({
+      extend: z.object({
+        type: z
+          .enum(["conceptual", "tutorial", "reference", "troubleshooting"])
+          .optional(),
+        summary: z.string().optional(),
+        prerequisites: z.array(z.string()).optional(),
+        related: z.array(z.string()).optional(),
+      }),
+    }),
+  }),
+};

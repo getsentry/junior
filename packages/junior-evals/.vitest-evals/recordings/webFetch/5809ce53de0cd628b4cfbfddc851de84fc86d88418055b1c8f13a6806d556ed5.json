@@ -1,0 +1,22 @@
+{
+  "writtenAt": "2026-05-20T23:48:01.611Z",
+  "toolName": "webFetch",
+  "input": {
+    "url": "https://docs.slack.dev/changelog/2025/10/7/chat-streaming",
+    "max_chars": 6000
+  },
+  "output": {
+    "url": "https://docs.slack.dev/changelog/2025/10/7/chat-streaming",
+    "content": "We've introduced a new suite of features to help Slack apps provide an end-user experience typical of LLM tools:\n\n- Slack apps can now stream in their responses to the end user using three new API methods.\n- There are new Block Kit components to allow end users to quickly interact with AI responses.\n- The Node and Python Slack SDKs have new utilities to streamline integration of these new features.\n\nRead on for more info!\n\n### Streaming messages[​](#streaming-messages \"Direct link to Streaming messages\")\n\nThree Web API methods work together to enable Slack apps to provide end users a text streaming experience similar to typical LLM tools:\n\n- The [chat.startStream](/reference/methods/chat.startStream) method starts the text stream.\n- The [chat.appendStream](/reference/methods/chat.appendStream) method appends text to the stream.\n- The [chat.stopStream](/reference/methods/chat.stopStream) method stops the text stream.\n\n### Interacting with AI responses[​](#interacting-with-ai-responses \"Direct link to Interacting with AI responses\")\n\nThree new Block Kit components allow more user interaction with agent responses:\n\n- The [feedback\\_buttons](/reference/block-kit/block-elements/feedback-buttons-element) block element allows users to provide feedback on whether an AI response was positive or negative.\n- The [icon\\_button](/reference/block-kit/block-elements/icon-button-element) provides a way for users to quickly trigger actions like deleting AI responses.\n- The [context\\_actions](/reference/block-kit/blocks/context-actions-block) block provides a container for these interactive elements.\n\n### Supported by Slack SDKs and Bolt framework[​](#supported-by-slack-sdks-and-bolt-framework \"Direct link to Supported by Slack SDKs and Bolt framework\")\n\nThe [Python Slack SDK](/tools/python-slack-sdk) and [Node Slack SDK](/tools/node-slack-sdk) each fully support these new features — with a new `streamer` helper utility to aid developers in tying them all together.\n\nHere's a simplified example in Python:\n\n```\nstreamer = client.chat_stream(\n    channel=channel_id,\n    recipient_team_id=team_id,\n    recipient_user_id=user_id,\n    thread_ts=thread_ts,\n)\n\nfor event in returned_message:\n    streamer.append(markdown_text=f\"{chunk-received-from-llm}\")\n\nstreamer.stop(blocks=feedback_block)\n\n```\n\nThis utility can also be used in the Bolt frameworks based upon these SDKs. Read more in the _Using AI in apps_ section of your preferred Bolt flavor: [Python](/tools/bolt-python/concepts/ai-apps#text-streaming) or [JavaScript](/tools/bolt-js/concepts/ai-apps#text-streaming).\n\nWe've also updated our app agent template repos to use these new features. Pick your flavor of Bolt and give it a try.\n\nGet started with the [Bolt for Python agent template](https://github.com/slack-samples/bolt-python-assistant-template):\n\n```\nslack create --template slack-samples/bolt-python-assistant-template\nslack run\n\n```\n\nGet started with the [Bolt for JavaScript agent template](https://github.com/slack-samples/bolt-js-assistant-template):\n\n```\nslack create --template slack-samples/bolt-js-assistant-template\nslack run\n\n```\n\nRead all the details in the [Bolt Python release notes](https://github.com/slackapi/bolt-python/releases/tag/v1.26.0) and [Bolt JS release notes](https://github.com/slackapi/bolt-js/releases/tag/%40slack%2Fbolt%404.5.0).",
+    "title": "New features designed for Slack apps sending AI responses | Slack Developer Docs",
+    "content_type": "text/html; charset=utf-8",
+    "source_bytes": 63791,
+    "extracted_chars": 3345,
+    "truncated": false
+  },
+  "metadata": {
+    "cacheKey": "5809ce53de0cd628b4cfbfddc851de84fc86d88418055b1c8f13a6806d556ed5",
+    "version": "web-fetch-v1",
+    "mode": "auto"
+  }
+}

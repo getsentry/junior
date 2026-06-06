@@ -1,0 +1,18 @@
+{
+  "name": "@sentry/junior-agent-browser",
+  "version": "0.68.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-agent-browser"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

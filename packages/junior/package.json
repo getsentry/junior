@@ -1,0 +1,98 @@
+{
+  "name": "@sentry/junior",
+  "version": "0.68.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "types": "./dist/app.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "bin": {
+    "junior": "bin/junior.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    },
+    "./instrumentation": {
+      "types": "./dist/instrumentation.d.ts",
+      "default": "./dist/instrumentation.js"
+    },
+    "./nitro": {
+      "types": "./dist/nitro.d.ts",
+      "default": "./dist/nitro.js"
+    },
+    "./reporting": {
+      "types": "./dist/reporting.d.ts",
+      "default": "./dist/reporting.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel.d.ts",
+      "default": "./dist/vercel.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts",
+    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsup.config.ts",
+    "test": "pnpm run test:slack-boundary && pnpm run test:arch-boundary && vitest run --maxWorkers=4",
+    "test:watch": "vitest",
+    "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
+    "test:arch-boundary": "depcruise --config .dependency-cruiser.mjs src/chat",
+    "typecheck": "tsc --noEmit",
+    "skills:check": "node scripts/check-skills.mjs",
+    "test:coverage": "pnpm run test:slack-boundary && pnpm run test:arch-boundary && vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
+  },
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
+    "@ai-sdk/gateway": "^3.0.119",
+    "@chat-adapter/slack": "4.29.0",
+    "@chat-adapter/state-memory": "4.29.0",
+    "@chat-adapter/state-redis": "4.29.0",
+    "@logtape/logtape": "^2.1.1",
+    "@earendil-works/pi-agent-core": "0.74.2",
+    "@earendil-works/pi-ai": "0.74.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@sinclair/typebox": "^0.34.49",
+    "@slack/web-api": "^7.16.0",
+    "@sentry/node": "catalog:",
+    "@vercel/functions": "^3.6.0",
+    "@vercel/queue": "^0.2.0",
+    "@vercel/sandbox": "2.0.0",
+    "ai": "^6.0.190",
+    "bash-tool": "^1.3.16",
+    "chat": "4.29.0",
+    "hono": "^4.12.22",
+    "jose": "^6.2.3",
+    "just-bash": "3.0.1",
+    "node-html-markdown": "^2.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@sentry/junior-scheduler": "workspace:*",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "^4.1.7",
+    "dependency-cruiser": "^17.4.0",
+    "msw": "^2.14.6",
+    "nitro": "3.0.260522-beta",
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vercel": "^54.4.0",
+    "vitest": "^4.1.7"
+  }
+}

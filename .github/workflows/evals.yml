@@ -1,0 +1,139 @@
+name: Evals
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      evals_changed: ${{ steps.changes.outputs.evals_changed }}
+      evals_requested: ${{ steps.request.outputs.evals_requested }}
+      gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
+      sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: request
+        run: |
+          set -euo pipefail
+
+          action="$(jq -r '.action // ""' "$GITHUB_EVENT_PATH")"
+          requested=false
+          if [[ "$action" == "labeled" ]]; then
+            if [[ "$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")" == "trigger-evals" ]]; then
+              requested=true
+            fi
+          elif jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            requested=true
+          fi
+
+          echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
+
+      - id: changes
+        run: |
+          set -euo pipefail
+
+          base_ref="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
+          head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
+
+          if git diff --quiet "$base_ref" "$head_ref" -- \
+            packages/junior-evals/evals \
+            packages/junior-evals/vitest.evals.config.ts \
+            packages/junior/src; then
+            echo "evals_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "evals_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: secrets
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]]; then
+            echo "gateway_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gateway_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]]; then
+            echo "sandbox_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sandbox_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: decision
+        env:
+          EVALS_CHANGED: ${{ steps.changes.outputs.evals_changed }}
+          EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
+          GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
+          SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
+        run: |
+          set -euo pipefail
+
+          should_run=false
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+            should_run=true
+          fi
+
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Eval Gate"
+            echo
+            echo "- evals_changed: $EVALS_CHANGED"
+            echo "- evals_requested: $EVALS_REQUESTED"
+            echo "- gateway_ready: $GATEWAY_READY"
+            echo "- sandbox_ready: $SANDBOX_READY"
+            echo "- will_run: $should_run"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  evals:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sentry/junior-evals evals

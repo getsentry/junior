@@ -1,0 +1,25 @@
+name: vercel
+description: Query Vercel deployments and logs with the Vercel CLI
+
+config-keys:
+  - project
+  - team
+
+capabilities:
+  - api
+
+env-vars:
+  JUNIOR_VERCEL_TOKEN:
+
+domains:
+  - api.vercel.com
+
+api-headers:
+  Authorization: Bearer ${JUNIOR_VERCEL_TOKEN}
+
+command-env:
+  VERCEL_TOKEN: host_managed_credential
+
+runtime-dependencies:
+  - type: npm
+    package: vercel
