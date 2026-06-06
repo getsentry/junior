@@ -206,10 +206,8 @@ describe("sandbox executor tool execution", () => {
       stdout: "second\n",
       exit_code: 0,
     });
-    expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(1);
-    expect(firstSandbox.runCommand).toHaveBeenCalledTimes(1);
-    expect(secondSandbox.runCommand).toHaveBeenCalledTimes(1);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(executor.getSandboxId()).toBe("sbx_cached_second");
   });
 
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {

@@ -1,23 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { toPostedText } from "../../fixtures/slack-posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-  return String(value);
-}
 
 describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {

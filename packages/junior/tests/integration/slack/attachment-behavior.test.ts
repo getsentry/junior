@@ -1,48 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "chat";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import {
+  createSlackImageRuntime,
+  resetSlackImageRuntimeEnv,
+} from "../../fixtures/slack-image-runtime";
+import { toPostedText } from "../../fixtures/slack-posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
 
-const ORIGINAL_ENV = { ...process.env };
-
-async function createRuntime(
-  args: Parameters<
-    typeof import("../../fixtures/chat-runtime").createTestChatRuntime
-  >[0],
-) {
-  process.env = {
-    ...ORIGINAL_ENV,
-    AI_VISION_MODEL: "openai/gpt-5.4",
-    SLACK_BOT_TOKEN: "",
-    SLACK_BOT_USER_TOKEN: "",
-  };
-  vi.resetModules();
-  const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
-  return createTestChatRuntime(args);
-}
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-
-  return String(value);
-}
-
 describe("Slack behavior: attachment handling", () => {
   afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    vi.resetModules();
+    resetSlackImageRuntimeEnv();
   });
 
   it("rehydrates attachment data and forwards it to the agent context", async () => {
@@ -54,35 +26,31 @@ describe("Slack behavior: attachment handling", () => {
     const capturedAttachmentCounts: number[] = [];
     const capturedAttachmentMediaTypes: string[] = [];
 
-    const { slackRuntime } = await createRuntime({
-      services: {
-        visionContext: {
-          completeText: completeTextMock,
-        },
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            capturedAttachmentCounts.push(attachments.length);
-            if (attachments[0]) {
-              capturedAttachmentMediaTypes.push(attachments[0].mediaType);
-            }
+    const { slackRuntime } = await createSlackImageRuntime(
+      {
+        services: {
+          visionContext: {
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply: async (_prompt, context) => {
+              const attachments = context?.userAttachments ?? [];
+              capturedAttachmentCounts.push(attachments.length);
+              if (attachments[0]) {
+                capturedAttachmentMediaTypes.push(attachments[0].mediaType);
+              }
 
-            return {
-              text: "Image received. The chart trend is upward.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+              return successfulAssistantReply(
+                "Image received. The chart trend is upward.",
+              );
+            },
           },
         },
       },
-    });
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004000.000" });
     const message = createTestMessage({
@@ -119,29 +87,25 @@ describe("Slack behavior: attachment handling", () => {
     const completeTextMock = vi.fn(async () => {
       throw new Error("vision unavailable");
     });
-    const generateAssistantReply = vi.fn(async () => ({
-      text: "should not post",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "fake-agent-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    }));
+    const generateAssistantReply = vi.fn(async () =>
+      successfulAssistantReply("should not post"),
+    );
 
-    const { slackRuntime } = await createRuntime({
-      services: {
-        visionContext: {
-          completeText: completeTextMock,
-        },
-        replyExecutor: {
-          generateAssistantReply,
+    const { slackRuntime } = await createSlackImageRuntime(
+      {
+        services: {
+          visionContext: {
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply,
+          },
         },
       },
-    });
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004001.000" });
     const message = createTestMessage({

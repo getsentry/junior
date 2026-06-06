@@ -1,24 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ReplyRequestContext } from "@/chat/respond";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { toPostedText } from "../../fixtures/slack-posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-  return String(value);
-}
 
 describe("Slack behavior: canvas failure recovery", () => {
   it("points to a created canvas when reply generation fails before final text", async () => {

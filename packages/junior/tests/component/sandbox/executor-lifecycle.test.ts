@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createApiError,
-  createBashTool,
   createSandboxExecutor,
   createSandboxSessionManager,
   cleanupSandboxExecutorTest,
@@ -67,27 +66,6 @@ describe("sandbox executor lifecycle", () => {
     });
   });
 
-  it("prepares a cached sandbox only once", async () => {
-    const freshSandbox = makeSandbox("sbx_fresh");
-    const onSandboxPrepare = vi.fn();
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
-
-    const manager = createSandboxSessionManager({
-      onSandboxPrepare,
-    });
-    manager.configureSkills([]);
-
-    await manager.createSandbox();
-    await manager.createSandbox();
-
-    expect(onSandboxPrepare).toHaveBeenCalledTimes(1);
-    expect(onSandboxPrepare).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sandboxId: "sbx_fresh",
-      }),
-    );
-  });
-
   it("shares in-flight sandbox setup across parallel executor initialization", async () => {
     const freshSandbox = makeSandbox("sbx_parallel_boot");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
@@ -124,7 +102,6 @@ describe("sandbox executor lifecycle", () => {
     ]);
 
     expect(firstExecutors).toBe(secondExecutors);
-    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
   });
 
   it("reports acquired sandbox metadata when restoring from a sandbox id hint", async () => {

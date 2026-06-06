@@ -1,50 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "chat";
+import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import {
+  createSlackImageRuntime,
+  resetSlackImageRuntimeEnv,
+} from "../../fixtures/slack-image-runtime";
+import { toPostedText } from "../../fixtures/slack-posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
 
-const ORIGINAL_ENV = { ...process.env };
-
-async function createRuntime(
-  args: Parameters<
-    typeof import("../../fixtures/chat-runtime").createTestChatRuntime
-  >[0],
-  env: NodeJS.ProcessEnv = {},
-) {
-  process.env = {
-    ...ORIGINAL_ENV,
-    AI_VISION_MODEL: "",
-    SLACK_BOT_TOKEN: "",
-    SLACK_BOT_USER_TOKEN: "",
-    ...env,
-  };
-  vi.resetModules();
-  const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
-  return createTestChatRuntime(args);
-}
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-
-  return String(value);
-}
-
 describe("Slack behavior: mixed attachment media", () => {
   afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    vi.resetModules();
+    resetSlackImageRuntimeEnv();
   });
 
   it("keeps valid attachments while skipping oversized and failed fetch attachments", async () => {
@@ -61,7 +31,7 @@ describe("Slack behavior: mixed attachment media", () => {
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
 
-    const { slackRuntime } = await createRuntime(
+    const { slackRuntime } = await createSlackImageRuntime(
       {
         services: {
           visionContext: {
@@ -76,18 +46,7 @@ describe("Slack behavior: mixed attachment media", () => {
               capturedAttachmentNames.push(
                 attachments.map((attachment) => attachment.filename ?? ""),
               );
-              return {
-                text: "Processed attachments.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "fake-agent-model",
-                  outcome: "success",
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              };
+              return successfulAssistantReply("Processed attachments.");
             },
           },
         },
@@ -159,7 +118,7 @@ describe("Slack behavior: mixed attachment media", () => {
     const capturedAttachmentNames: string[][] = [];
     const capturedOmittedImageCounts: number[] = [];
 
-    const { slackRuntime } = await createRuntime({
+    const { slackRuntime } = await createSlackImageRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
@@ -173,18 +132,7 @@ describe("Slack behavior: mixed attachment media", () => {
             capturedOmittedImageCounts.push(
               context?.omittedImageAttachmentCount ?? 0,
             );
-            return {
-              text: "Processed attachments.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return successfulAssistantReply("Processed attachments.");
           },
         },
       },
@@ -228,23 +176,13 @@ describe("Slack behavior: mixed attachment media", () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const capturedOmittedImageCounts: number[] = [];
     const generateAssistantReply = vi.fn(
-      async (_prompt?: string, _context?: unknown) => {
-        return {
-          text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success" as const,
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        };
-      },
+      async (_prompt?: string, _context?: unknown) =>
+        successfulAssistantReply(
+          "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
+        ),
     );
 
-    const { slackRuntime } = await createRuntime({
+    const { slackRuntime } = await createSlackImageRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async (prompt, context) => {

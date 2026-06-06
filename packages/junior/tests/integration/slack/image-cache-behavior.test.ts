@@ -48,7 +48,6 @@ describe("Slack behavior: image cache", () => {
               userAttachments?: Array<{
                 filename?: string;
                 mediaType?: string;
-                promptText?: string;
               }>;
             }
           | undefined,
@@ -57,7 +56,6 @@ describe("Slack behavior: image cache", () => {
           expect.objectContaining({
             mediaType: "image/png",
             filename: "screen.png",
-            promptText: expect.stringContaining("Current screenshot summary"),
           }),
         ]);
         return successfulAssistantReply("ok");
@@ -166,7 +164,6 @@ describe("Slack behavior: image cache", () => {
           | {
               userAttachments?: Array<{
                 filename?: string;
-                promptText?: string;
               }>;
             }
           | undefined,
@@ -174,11 +171,9 @@ describe("Slack behavior: image cache", () => {
         expect(context?.userAttachments).toEqual([
           expect.objectContaining({
             filename: "first.png",
-            promptText: expect.stringContaining("First attachment summary"),
           }),
           expect.objectContaining({
             filename: "second.png",
-            promptText: expect.stringContaining("Second cached summary"),
           }),
         ]);
         return successfulAssistantReply("ok");

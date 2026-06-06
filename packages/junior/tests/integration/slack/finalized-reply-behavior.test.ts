@@ -11,28 +11,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-    const raw = (value as { raw?: unknown }).raw;
-    if (typeof raw === "string") {
-      return raw;
-    }
-    if ("files" in value) {
-      return "";
-    }
-  }
-
-  return String(value);
-}
+import { toPostedText } from "../../fixtures/slack-posts";
 
 function toPostedFiles(value: unknown): Array<{ filename: string }> {
   if (

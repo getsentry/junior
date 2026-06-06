@@ -2,25 +2,11 @@ import type { Message } from "chat";
 import { describe, expect, it } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { conversationMessages } from "../../fixtures/slack-behavior";
+import { toPostedText } from "../../fixtures/slack-posts";
 import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-
-  return String(value);
-}
 
 describe("Slack behavior: new mention", () => {
   it("handles a mention with real runtime wiring and fake agent response", async () => {
