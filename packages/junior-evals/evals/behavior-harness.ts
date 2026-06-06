@@ -98,6 +98,7 @@ interface EvalEventThreadFixture {
 }
 
 interface EvalEventMessageFixture {
+  attachments?: Message["attachments"];
   author?: {
     full_name?: string;
     is_bot?: boolean;
@@ -1026,7 +1027,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     id: event.message.id ?? "",
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
-    attachments: [],
+    attachments: event.message.attachments ?? [],
     metadata: { dateSent: new Date(), edited: false },
     channelId: event.thread.channel_id,
     threadId: runtimeThreadId,

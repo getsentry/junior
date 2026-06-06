@@ -4,6 +4,7 @@ import {
   type DescribeEvalOptions,
   type JudgeContext,
 } from "vitest-evals";
+import type { Message } from "chat";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import {
   toJsonValue,
@@ -479,6 +480,7 @@ const DEFAULT_AUTHOR = {
 };
 
 type AuthorOverrides = Partial<typeof DEFAULT_AUTHOR>;
+type AttachmentOverrides = Message["attachments"];
 
 interface ThreadOverrides {
   id?: string;
@@ -489,7 +491,11 @@ interface ThreadOverrides {
 /** Builds a first-turn mention event for a harnessed Slack eval. */
 export function mention(
   text: string,
-  opts?: { author?: AuthorOverrides; thread?: ThreadOverrides },
+  opts?: {
+    attachments?: AttachmentOverrides;
+    author?: AuthorOverrides;
+    thread?: ThreadOverrides;
+  },
 ) {
   const seq = nextId();
   return {
@@ -504,6 +510,7 @@ export function mention(
       id: `m-${seq}`,
       text,
       is_mention: true,
+      attachments: opts?.attachments,
       author: { ...DEFAULT_AUTHOR, ...opts?.author },
     },
   };
@@ -513,6 +520,7 @@ export function mention(
 export function threadMessage(
   text: string,
   opts?: {
+    attachments?: AttachmentOverrides;
     author?: AuthorOverrides;
     thread?: ThreadOverrides;
     is_mention?: boolean;
@@ -531,6 +539,7 @@ export function threadMessage(
       id: `m-${seq}`,
       text,
       is_mention: opts?.is_mention ?? false,
+      attachments: opts?.attachments,
       author: { ...DEFAULT_AUTHOR, ...opts?.author },
     },
   };

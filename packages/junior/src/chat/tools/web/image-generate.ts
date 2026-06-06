@@ -20,20 +20,12 @@ ${JUNIOR_PERSONALITY}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
-interface ImageGenerateServices {
-  completeText: typeof completeText;
-}
-
-const defaultImageGenerateServices: ImageGenerateServices = {
-  completeText,
-};
-
 async function enrichImagePrompt(
   rawPrompt: string,
-  services: ImageGenerateServices,
+  completeTextImpl: typeof completeText,
 ): Promise<string> {
   try {
-    const { text } = await services.completeText({
+    const { text } = await completeTextImpl({
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
@@ -105,10 +97,7 @@ export function createImageGenerateTool(
     }),
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
-      const services: ImageGenerateServices = {
-        completeText:
-          deps.completeText ?? defaultImageGenerateServices.completeText,
-      };
+      const completeTextImpl = deps.completeText ?? completeText;
       // Raw fetch does not resolve AI Gateway env auth on its own, so this
       // path has to turn the documented env credential into a bearer token.
       const apiKey = getGatewayApiKey();
@@ -116,7 +105,7 @@ export function createImageGenerateTool(
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
-      const enrichedPrompt = await enrichImagePrompt(prompt, services);
+      const enrichedPrompt = await enrichImagePrompt(prompt, completeTextImpl);
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {
