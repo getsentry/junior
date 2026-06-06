@@ -63,6 +63,27 @@ pnpm worktree exec codex/my-task -- pnpm typecheck
 pnpm worktree remove codex/my-task
 ```
 
+Codex app worktrees are separate from the repo helper. When you choose
+**Worktree** in Codex, Codex creates managed, disposable worktrees under
+`$CODEX_HOME/worktrees`; do not point `JUNIOR_WORKTREE_DIR` there or rely on
+that directory for long-lived branch work. Use the repo helper when you want a
+named local worktree you can keep, inspect, and remove yourself.
+
+Make sure Codex trusts the main checkout before starting agent work. In Codex,
+trust the project from the app prompt, or add the checkout to
+`~/.codex/config.toml`:
+
+```toml
+[projects."/absolute/path/to/junior"]
+trust_level = "trusted"
+```
+
+If you create a long-lived helper worktree and open it as its own Codex project,
+trust that worktree path too. Shared repo instructions stay in `AGENTS.md`;
+personal Codex defaults such as model, sandbox, approvals, and MCP servers stay
+in `~/.codex/config.toml` or your personal `.codex/config.toml` layers, not in
+these dev-only helper files.
+
 New worktrees are created under `../junior-worktrees` by default, copy matching
 local files from the primary checkout using `scripts/worktree.include`, and run
 `pnpm install`. The copied files include env files and Vercel project links, so
