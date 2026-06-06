@@ -46,6 +46,7 @@ const OTHER_SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C456",
 } as const;
+const CONVERSATION_WORK_STATE_KEY = `junior:conversation-work:state:${CONVERSATION_ID}`;
 
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
@@ -90,6 +91,35 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(queue.sendAttempts()).toHaveLength(1);
     expect(queue.sentRecords()).toHaveLength(1);
+  });
+
+  it("does not overwrite malformed persisted conversation work", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const legacyMessage = {
+      ...(inboundMessage("legacy") as unknown as Record<string, unknown>),
+    };
+    delete legacyMessage.destination;
+    const legacyWork = {
+      schemaVersion: 1,
+      conversationId: CONVERSATION_ID,
+      messages: [legacyMessage],
+      needsRun: true,
+      updatedAtMs: 1_000,
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, legacyWork);
+
+    await expect(
+      appendInboundMessage({
+        message: inboundMessage("m2"),
+        nowMs: 2_000,
+        state,
+      }),
+    ).rejects.toThrow("Conversation work state is invalid");
+
+    await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
+      legacyWork,
+    );
   });
 
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {

@@ -10,6 +10,7 @@ const {
   const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   const observedRuntimeIds = {
+    destinationChannelId: undefined as string | undefined,
     juniorBaseUrl: undefined as string | undefined,
     messageThreadId: undefined as string | undefined,
     threadId: undefined as string | undefined,
@@ -23,7 +24,10 @@ const {
       async (
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
+        options?: { destination?: { channelId?: string } },
       ) => {
+        observedRuntimeIds.destinationChannelId =
+          options?.destination?.channelId;
         observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
@@ -34,7 +38,10 @@ const {
       async (
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
+        options?: { destination?: { channelId?: string } },
       ) => {
+        observedRuntimeIds.destinationChannelId =
+          options?.destination?.channelId;
         observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
@@ -68,6 +75,7 @@ describe("behavior harness", () => {
   });
 
   afterEach(() => {
+    observedRuntimeIds.destinationChannelId = undefined;
     observedRuntimeIds.juniorBaseUrl = undefined;
     observedRuntimeIds.threadId = undefined;
     observedRuntimeIds.messageThreadId = undefined;
@@ -83,7 +91,7 @@ describe("behavior harness", () => {
           type: "new_mention",
           thread: {
             id: "fixture-auth-thread",
-            channel_id: "C_AUTH",
+            channel_id: "CAUTH",
             thread_ts: "1700000000.0001",
           },
           message: {
@@ -91,7 +99,7 @@ describe("behavior harness", () => {
             text: "hello",
             is_mention: true,
             author: {
-              user_id: "U_AUTH",
+              user_id: "UAUTH",
             },
           },
         },
@@ -99,18 +107,39 @@ describe("behavior harness", () => {
     });
 
     expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
-    expect(observedRuntimeIds.threadId).toBe("slack:C_AUTH:1700000000.0001");
+    expect(observedRuntimeIds.threadId).toBe("slack:CAUTH:1700000000.0001");
     expect(observedRuntimeIds.messageThreadId).toBe(
-      "slack:C_AUTH:1700000000.0001",
+      "slack:CAUTH:1700000000.0001",
     );
     expect(result.posts).toEqual([
       {
-        channel: "C_AUTH",
+        channel: "CAUTH",
         files: [],
         text: "observed",
         thread_ts: "1700000000.0001",
       },
     ]);
+  });
+
+  it("normalizes eval destinations from adapter channel ids", async () => {
+    await runEvalScenario({
+      events: [
+        {
+          type: "new_mention",
+          thread: {
+            id: "slack:CAUTH:1700000000.0001",
+          },
+          message: {
+            id: "m-auth-1",
+            text: "hello",
+            is_mention: true,
+          },
+        },
+      ],
+    });
+
+    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
+    expect(observedRuntimeIds.destinationChannelId).toBe("CAUTH");
   });
 
   it("rejects sandbox HTTP interception evals without a tunnel token", async () => {
@@ -169,7 +198,7 @@ describe("behavior harness", () => {
   it("routes two same-thread mention-shaped events through the queued runtime in order", async () => {
     const thread = {
       id: "fixture-thread",
-      channel_id: "C_QUEUE",
+      channel_id: "CQUEUE",
       thread_ts: "1700000000.0002",
     };
 
@@ -183,7 +212,7 @@ describe("behavior harness", () => {
             text: "first",
             is_mention: true,
             author: {
-              user_id: "U_QUEUE",
+              user_id: "UQUEUE",
             },
           },
         },
@@ -195,7 +224,7 @@ describe("behavior harness", () => {
             text: "<@U_APP> second",
             is_mention: true,
             author: {
-              user_id: "U_QUEUE",
+              user_id: "UQUEUE",
             },
           },
         },
@@ -206,13 +235,13 @@ describe("behavior harness", () => {
     expect(handleSubscribedMessageMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([
       {
-        channel: "C_QUEUE",
+        channel: "CQUEUE",
         files: [],
         text: "observed",
         thread_ts: "1700000000.0002",
       },
       {
-        channel: "C_QUEUE",
+        channel: "CQUEUE",
         files: [],
         text: "observed",
         thread_ts: "1700000000.0002",
@@ -242,7 +271,7 @@ describe("behavior harness", () => {
           type: "new_mention",
           thread: {
             id: "fixture-media-thread",
-            channel_id: "C_MEDIA",
+            channel_id: "CMEDIA",
             thread_ts: "1700000000.0003",
           },
           message: {
@@ -250,7 +279,7 @@ describe("behavior harness", () => {
             text: "show me how you feel",
             is_mention: true,
             author: {
-              user_id: "U_MEDIA",
+              user_id: "UMEDIA",
             },
           },
         },
@@ -259,7 +288,7 @@ describe("behavior harness", () => {
 
     expect(result.posts).toEqual([
       {
-        channel: "C_MEDIA",
+        channel: "CMEDIA",
         text: "",
         thread_ts: "1700000000.0003",
         files: [
@@ -309,7 +338,7 @@ describe("behavior harness", () => {
         url: "https://slack.test/api/chat.postMessage",
         headers: {},
         params: {
-          channel: "C_TEST",
+          channel: "CTEST",
           text: "Created a canvas with the full notes.",
         },
       },
@@ -323,7 +352,7 @@ describe("behavior harness", () => {
     ]);
     expect(artifacts.channelPosts).toEqual([
       {
-        channel: "C_TEST",
+        channel: "CTEST",
         text: "Created a canvas with the full notes.",
       },
     ]);

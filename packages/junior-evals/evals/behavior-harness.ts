@@ -65,6 +65,7 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
+import { createSlackDestination } from "@/chat/destination";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 
@@ -422,11 +423,14 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
 }
 
 function createEvalDestination(thread: TestThread): Destination {
-  return {
-    platform: "slack",
+  const destination = createSlackDestination({
     teamId: EVAL_SLACK_TEAM_ID,
     channelId: thread.channelId,
-  };
+  });
+  if (!destination) {
+    throw new Error("Eval Slack destination requires a Slack channel id");
+  }
+  return destination;
 }
 
 // ---------------------------------------------------------------------------
@@ -1598,7 +1602,7 @@ async function processEvents(args: {
   ): Promise<void> => {
     const lifecycleEvent: AssistantLifecycleEvent = {
       threadId: event.thread.id,
-      channelId: event.thread.channel_id ?? "C_EVAL",
+      channelId: event.thread.channel_id ?? "CEVAL",
       threadTs: event.thread.thread_ts ?? "0",
       userId: event.user_id ?? "U-eval",
     };

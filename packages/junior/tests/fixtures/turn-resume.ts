@@ -56,6 +56,20 @@ export class TurnResumeTestClient {
     });
   }
 
+  requestWithLegacyCheckpointVersion(
+    payload: Omit<TurnResumeTestRequest, "expectedVersion"> & {
+      expectedCheckpointVersion: number;
+    },
+  ): Request {
+    const body = JSON.stringify(payload);
+    const timestamp = Date.now().toString();
+    return this.buildRequest({
+      body,
+      signature: this.sign(body, timestamp),
+      timestamp,
+    });
+  }
+
   waitUntil(): WaitUntilCollector {
     return createWaitUntilCollector();
   }

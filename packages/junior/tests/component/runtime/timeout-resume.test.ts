@@ -95,6 +95,25 @@ describe("timeout resume callback signing", () => {
     });
   });
 
+  it("accepts signed callbacks already in flight with the old version field", async () => {
+    const client = createTurnResumeTestClient({
+      juniorSecret: "resume-secret",
+    });
+    const request = client.requestWithLegacyCheckpointVersion({
+      conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
+      sessionId: "turn_msg_1",
+      expectedCheckpointVersion: 3,
+    });
+
+    await expect(verifyTurnTimeoutResumeRequest(request)).resolves.toEqual({
+      conversationId: "slack:C123:1712345.0001",
+      destination: SLACK_DESTINATION,
+      sessionId: "turn_msg_1",
+      expectedVersion: 3,
+    });
+  });
+
   it("rejects requests without destination context", async () => {
     const client = createTurnResumeTestClient({
       juniorSecret: "resume-secret",

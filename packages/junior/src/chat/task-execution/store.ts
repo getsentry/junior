@@ -443,10 +443,15 @@ async function readWorkState(
   state: StateAdapter,
   conversationId: string,
 ): Promise<ConversationWorkState | undefined> {
-  return normalizeWorkState(
-    conversationId,
-    await state.get(stateKey(conversationId)),
-  );
+  const raw = await state.get(stateKey(conversationId));
+  if (raw == null) {
+    return undefined;
+  }
+  const work = normalizeWorkState(conversationId, raw);
+  if (!work) {
+    throw new Error(`Conversation work state is invalid for ${conversationId}`);
+  }
+  return work;
 }
 
 async function writeWorkState(

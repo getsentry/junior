@@ -106,10 +106,15 @@ function parseTurnTimeoutResumeRequest(
 
   const record = value as Record<string, unknown>;
   const destination = parseDestination(record.destination);
+  let expectedVersion = record.expectedVersion;
+  if (typeof expectedVersion !== "number") {
+    // Accept callbacks signed before the queue-resume destination cutover.
+    expectedVersion = record.expectedCheckpointVersion;
+  }
   if (
     typeof record.conversationId !== "string" ||
     typeof record.sessionId !== "string" ||
-    typeof record.expectedVersion !== "number" ||
+    typeof expectedVersion !== "number" ||
     !destination
   ) {
     return undefined;
@@ -119,7 +124,7 @@ function parseTurnTimeoutResumeRequest(
     conversationId: record.conversationId,
     destination,
     sessionId: record.sessionId,
-    expectedVersion: record.expectedVersion,
+    expectedVersion,
   };
 }
 
