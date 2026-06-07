@@ -573,6 +573,10 @@ function githubGraphqlAccess(method, upstreamUrl) {
   if (HTTP_READ_METHODS.has(method)) {
     return "read";
   }
+  // GitHub GraphQL POST bodies can be read queries or write mutations. The
+  // egress hook intentionally does not read sandbox request bodies, so non-read
+  // methods require user-write attribution rather than risking an unattributed
+  // mutation through an installation-read token.
   return "write";
 }
 

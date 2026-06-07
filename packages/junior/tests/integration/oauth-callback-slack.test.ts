@@ -524,6 +524,114 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
+  it("resumes the latest pending OAuth session when a reused link points at an abandoned session", async () => {
+    const conversationId = "slack:C123:1700000000.012";
+    const oldSessionId = "turn_msg_old_12";
+    const newSessionId = "turn_msg_new_12";
+
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: oldSessionId,
+      sliceId: 2,
+      state: "abandoned",
+      destination: SLACK_DESTINATION,
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+    });
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: newSessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+    });
+
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-reused-link-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        destination: SLACK_DESTINATION,
+        threadTs: "1700000000.012",
+        pendingMessage: "old request",
+        resumeConversationId: conversationId,
+        resumeSessionId: oldSessionId,
+      });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [
+            {
+              id: "msg.old.12",
+              role: "user",
+              text: "old request",
+              createdAtMs: 1,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+            {
+              id: "msg.new.12",
+              role: "user",
+              text: "new request",
+              createdAtMs: 2,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+              meta: {
+                slackTs: "1700000000.0123",
+              },
+            },
+          ],
+          processing: {
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              requesterId: "U123",
+              sessionId: newSessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-reused-link-state",
+      code: "eval-oauth-code",
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "new request",
+      expect.objectContaining({
+        correlation: expect.objectContaining({
+          turnId: newSessionId,
+        }),
+      }),
+    );
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel: "C123",
+            thread_ts: "1700000000.012",
+            text: "Here are your Sentry issues.",
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("does not re-post the pending message when the session record is already abandoned", async () => {
     const conversationId = "slack:C123:1700000000.010";
     const sessionId = "turn_msg_10";

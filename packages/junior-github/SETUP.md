@@ -118,7 +118,7 @@ git -C repo fetch --depth=50 origin
 git -C repo fetch --unshallow
 ```
 
-GitHub operations still require a GitHub skill to be active; the runtime injects credentials automatically when one is loaded:
+Load the relevant GitHub skill for command guidance and repo context:
 
 ```bash
 gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
@@ -127,7 +127,7 @@ gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sa
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
 The plugin uses `installation-read` for read-only GitHub traffic and `user-write` for mutations. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes and merges, pull requests for PR mutations, actions/workflows for workflow operations.
 
-GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the relevant GitHub skill first, keep repo context explicit, and let the plugin choose the required grant for the outbound request.
+GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is provider-domain scoped for sandbox traffic to `api.github.com` and `github.com` during turns with a signed credential context. Keep repo context explicit, and let the plugin choose the required grant for the outbound request.
 
 Be careful with mixed-surface PR commands:
 
