@@ -158,8 +158,26 @@ function routingAttributes(
   };
   if (upstreamUrl) {
     attributes["app.sandbox.egress.upstream_path"] = upstreamUrl.pathname;
+    const gitService = upstreamUrl.searchParams.get("service");
+    if (
+      upstreamUrl.hostname.toLowerCase() === "github.com" &&
+      (gitService === "git-upload-pack" || gitService === "git-receive-pack")
+    ) {
+      attributes["app.sandbox.egress.git_service"] = gitService;
+    }
   }
   return attributes;
+}
+
+function displayedUpstreamPath(upstreamUrl: URL): string {
+  const gitService = upstreamUrl.searchParams.get("service");
+  if (
+    upstreamUrl.hostname.toLowerCase() === "github.com" &&
+    (gitService === "git-upload-pack" || gitService === "git-receive-pack")
+  ) {
+    return `${upstreamUrl.pathname}?service=${gitService}`;
+  }
+  return upstreamUrl.pathname;
 }
 
 function logSandboxEgressUpstreamRequest(input: {
@@ -192,7 +210,7 @@ function logSandboxEgressUpstreamRequest(input: {
       ...routingAttributes(input.request, input.upstreamUrl),
       "app.sandbox.egress.upstream_ok": input.upstream.ok,
     },
-    `Sandbox egress ${input.request.method} ${input.upstreamUrl.hostname}${input.upstreamUrl.pathname} -> ${input.upstream.status}`,
+    `Sandbox egress ${input.request.method} ${input.upstreamUrl.hostname}${displayedUpstreamPath(input.upstreamUrl)} -> ${input.upstream.status}`,
   );
 }
 

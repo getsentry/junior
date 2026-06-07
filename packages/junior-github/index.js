@@ -546,7 +546,14 @@ function createPermissionCache() {
 
 function githubSmartHttpAccess(upstreamUrl) {
   const pathname = upstreamUrl.pathname.toLowerCase();
-  const service = upstreamUrl.searchParams.get("service");
+  const service = upstreamUrl.searchParams.get("service")?.toLowerCase();
+  const isSmartHttpPath =
+    pathname.endsWith("/info/refs") ||
+    pathname.endsWith("/git-receive-pack") ||
+    pathname.endsWith("/git-upload-pack");
+  if (!isSmartHttpPath) {
+    return undefined;
+  }
   if (
     pathname.endsWith("/git-receive-pack") ||
     service === "git-receive-pack"

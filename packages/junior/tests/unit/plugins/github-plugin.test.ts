@@ -226,6 +226,39 @@ describe("github plugin", () => {
     });
   });
 
+  it("only treats Git smart HTTP service parameters as write evidence on Git paths", async () => {
+    expect(
+      await grantForEgress({
+        method: "GET",
+        url: "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
+      }),
+    ).toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.git-write",
+    });
+    expect(
+      await grantForEgress({
+        method: "GET",
+        url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.git-read",
+    });
+    expect(
+      await grantForEgress({
+        method: "GET",
+        url: "https://github.com/getsentry/junior/releases/download/v1.0.0/archive.tar.gz?service=git-receive-pack",
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.api-read",
+    });
+  });
+
   it("treats GitHub GraphQL GET as read and POST as write", async () => {
     expect(
       await grantForEgress({
