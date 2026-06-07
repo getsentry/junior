@@ -92,6 +92,7 @@ import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
+  setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-session";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -858,7 +859,7 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("sentry-cli issues list");
   });
 
-  it("clears stale sandbox egress auth signals before running bash commands", async () => {
+  it("clears stale sandbox egress signals before running bash commands", async () => {
     const sandbox = makeSandbox("sbx_stale_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => ({
       exitCode: 1,
@@ -887,6 +888,24 @@ describe("createSandboxExecutor", () => {
         },
       },
     );
+    await setSandboxEgressPermissionDeniedSignal(
+      {
+        credentials: { actor: { type: "user", userId: "U123" } },
+        egressId: "sbx_stale_auth_signal_session",
+        expiresAtMs: Date.now() + 60_000,
+        contextId: "ctx-stale-permission",
+      },
+      {
+        provider: "github",
+        grant: {
+          name: "user-write",
+          access: "write",
+        },
+        status: 403,
+        upstreamHost: "github.com",
+        upstreamPath: "/getsentry/junior.git/info/refs",
+      },
+    );
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_stale_auth_signal",
@@ -896,6 +915,7 @@ describe("createSandboxExecutor", () => {
     const response = await executor.execute<{
       auth_required?: unknown;
       exit_code: number;
+      permission_denied?: unknown;
     }>({
       toolName: "bash",
       input: {
@@ -905,6 +925,7 @@ describe("createSandboxExecutor", () => {
 
     expect(response.result.exit_code).toBe(1);
     expect(response.result.auth_required).toBeUndefined();
+    expect(response.result.permission_denied).toBeUndefined();
   });
 
   it("attaches trusted sandbox egress auth signals to failed bash results", async () => {
@@ -962,6 +983,73 @@ describe("createSandboxExecutor", () => {
         name: "user-write",
         access: "write",
       },
+    });
+  });
+
+  it("attaches trusted sandbox egress permission signals to failed bash results", async () => {
+    const sandbox = makeSandbox("sbx_permission_signal");
+    sandbox.runCommand.mockImplementationOnce(async () => {
+      await setSandboxEgressPermissionDeniedSignal(
+        {
+          credentials: { actor: { type: "user", userId: "U123" } },
+          egressId: "sbx_permission_signal_session",
+          expiresAtMs: Date.now() + 60_000,
+          contextId: "ctx-permission",
+        },
+        {
+          provider: "github",
+          grant: {
+            name: "user-write",
+            access: "write",
+            reason: "github.git-write",
+          },
+          status: 403,
+          upstreamHost: "github.com",
+          upstreamPath: "/getsentry/junior.git/info/refs",
+          acceptedPermissions: "contents=write",
+        },
+      );
+      return {
+        exitCode: 1,
+        stdout: async () => "",
+        stderr: async () => "remote: Permission denied",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_permission_signal",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<{
+      exit_code: number;
+      permission_denied?: unknown;
+    }>({
+      toolName: "bash",
+      input: {
+        command: "git push",
+      },
+    });
+
+    expect(response.result.exit_code).toBe(1);
+    expect(response.result.permission_denied).toMatchObject({
+      provider: "github",
+      grant: {
+        name: "user-write",
+        access: "write",
+        reason: "github.git-write",
+      },
+      status: 403,
+      upstreamHost: "github.com",
+      upstreamPath: "/getsentry/junior.git/info/refs",
+      acceptedPermissions: "contents=write",
     });
   });
 

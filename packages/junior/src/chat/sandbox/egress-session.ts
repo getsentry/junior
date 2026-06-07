@@ -2,11 +2,13 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   parseSandboxEgressAuthRequiredSignal,
+  parseSandboxEgressPermissionDeniedSignal,
   sandboxEgressCredentialContextSchema,
   sandboxEgressCredentialLeaseSchema,
   type SandboxEgressAuthRequiredSignal,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
+  type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-schemas";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -15,6 +17,8 @@ export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
 const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
 const SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX = "sandbox-egress-auth-required";
+const SANDBOX_EGRESS_PERMISSION_SIGNAL_PREFIX =
+  "sandbox-egress-permission-denied";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -22,6 +26,7 @@ export type {
   SandboxEgressAuthRequiredSignal,
   SandboxEgressCredentialContext,
   SandboxEgressCredentialLease,
+  SandboxEgressPermissionDeniedSignal,
 };
 
 function leaseKey(
@@ -40,6 +45,13 @@ function authSignalKey(
   access: SandboxEgressAuthRequiredSignal["grant"]["access"],
 ): string {
   return `${SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX}:${egressId}:${access}`;
+}
+
+function permissionSignalKey(
+  egressId: string,
+  access: SandboxEgressPermissionDeniedSignal["grant"]["access"],
+): string {
+  return `${SANDBOX_EGRESS_PERMISSION_SIGNAL_PREFIX}:${egressId}:${access}`;
 }
 
 function base64Url(input: string): string {
@@ -207,8 +219,26 @@ export async function setSandboxEgressAuthRequiredSignal(
   );
 }
 
-/** Remove any pending host-side sandbox egress auth signal for a command. */
-export async function clearSandboxEgressAuthRequiredSignal(
+/** Record that host-side sandbox egress saw an upstream permission denial. */
+export async function setSandboxEgressPermissionDeniedSignal(
+  context: SandboxEgressCredentialContext,
+  signal: Omit<SandboxEgressPermissionDeniedSignal, "createdAtMs">,
+): Promise<void> {
+  const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
+  const state = getStateAdapter();
+  await state.connect();
+  await state.set(
+    permissionSignalKey(context.egressId, signal.grant.access),
+    {
+      ...signal,
+      createdAtMs: Date.now(),
+    },
+    ttlMs,
+  );
+}
+
+/** Remove any pending host-side sandbox egress signals for a command. */
+export async function clearSandboxEgressSignals(
   egressId: string | undefined,
 ): Promise<void> {
   if (!egressId) {
@@ -219,6 +249,8 @@ export async function clearSandboxEgressAuthRequiredSignal(
   await Promise.all([
     state.delete(authSignalKey(egressId, "read")),
     state.delete(authSignalKey(egressId, "write")),
+    state.delete(permissionSignalKey(egressId, "read")),
+    state.delete(permissionSignalKey(egressId, "write")),
   ]);
 }
 
@@ -241,6 +273,29 @@ export async function consumeSandboxEgressAuthRequiredSignal(
   await Promise.all([
     state.delete(authSignalKey(egressId, "read")),
     state.delete(authSignalKey(egressId, "write")),
+  ]);
+  return signal;
+}
+
+/** Consume the host-side sandbox egress permission signal produced during a command. */
+export async function consumeSandboxEgressPermissionDeniedSignal(
+  egressId: string | undefined,
+): Promise<SandboxEgressPermissionDeniedSignal | undefined> {
+  if (!egressId) {
+    return undefined;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  const [writeSignal, readSignal] = await Promise.all([
+    state.get(permissionSignalKey(egressId, "write")),
+    state.get(permissionSignalKey(egressId, "read")),
+  ]);
+  const signal =
+    parseSandboxEgressPermissionDeniedSignal(writeSignal) ??
+    parseSandboxEgressPermissionDeniedSignal(readSignal);
+  await Promise.all([
+    state.delete(permissionSignalKey(egressId, "read")),
+    state.delete(permissionSignalKey(egressId, "write")),
   ]);
   return signal;
 }

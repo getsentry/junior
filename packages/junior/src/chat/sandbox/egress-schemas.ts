@@ -54,6 +54,19 @@ export const sandboxEgressAuthRequiredSignalSchema = z
     }
   });
 
+export const sandboxEgressPermissionDeniedSignalSchema = z
+  .object({
+    acceptedPermissions: z.string().optional(),
+    grant: sandboxEgressGrantSchema,
+    provider: providerNameSchema,
+    sso: z.string().optional(),
+    status: z.literal(403),
+    upstreamHost: z.string().min(1),
+    upstreamPath: z.string().min(1),
+    createdAtMs: finiteNumberSchema,
+  })
+  .strict();
+
 export type SandboxEgressCredentialContext = z.output<
   typeof sandboxEgressCredentialContextSchema
 >;
@@ -64,11 +77,22 @@ export type SandboxEgressCredentialLease = z.output<
 export type SandboxEgressAuthRequiredSignal = z.output<
   typeof sandboxEgressAuthRequiredSignalSchema
 >;
+export type SandboxEgressPermissionDeniedSignal = z.output<
+  typeof sandboxEgressPermissionDeniedSignalSchema
+>;
 
 /** Parse a host-owned sandbox egress auth signal from state or tool results. */
 export function parseSandboxEgressAuthRequiredSignal(
   value: unknown,
 ): SandboxEgressAuthRequiredSignal | undefined {
   const result = sandboxEgressAuthRequiredSignalSchema.safeParse(value);
+  return result.success ? result.data : undefined;
+}
+
+/** Parse a host-owned sandbox egress permission-denied signal from state or tool results. */
+export function parseSandboxEgressPermissionDeniedSignal(
+  value: unknown,
+): SandboxEgressPermissionDeniedSignal | undefined {
+  const result = sandboxEgressPermissionDeniedSignalSchema.safeParse(value);
   return result.success ? result.data : undefined;
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 const {
   getPluginDefinitionMock,
@@ -41,11 +42,13 @@ import {
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
+import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
 } from "@/chat/sandbox/egress-proxy";
 import {
+  consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
 } from "@/chat/sandbox/egress-session";
@@ -94,7 +97,7 @@ function githubPlugin() {
         GITHUB_READ_ONLY: "1",
       },
       credentials: {
-        type: "plugin-managed",
+        type: "plugin-managed" as const,
         domains: ["api.github.com", "github.com"],
         authTokenEnv: "GITHUB_TOKEN",
         authTokenPlaceholder: "ghp_host_managed_credential",
@@ -115,7 +118,7 @@ function headerOnlyPlugin() {
         HEADER_ONLY_READ_ONLY: "1",
       },
       credentials: {
-        type: "plugin-managed",
+        type: "plugin-managed" as const,
         domains: ["api.example.com"],
       },
     },
@@ -703,6 +706,18 @@ describe("sandbox egress proxy", () => {
     const body = await response.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
+    await expect(
+      consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "sentry",
+      grant: {
+        name: "default",
+        access: "read",
+      },
+      status: 403,
+      upstreamHost: "sentry.io",
+      upstreamPath: "/api/0/issues/1",
+    });
 
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
@@ -710,6 +725,95 @@ describe("sandbox egress proxy", () => {
     );
     expect(secondResponse.status).toBe(403);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records GitHub permission headers and smart HTTP targets on 403", async () => {
+    setSandboxEgressUserActor();
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    const previous = setAgentPlugins([
+      defineJuniorPlugin({
+        manifest: githubPlugin().manifest,
+        hooks: {
+          grantForEgress(ctx) {
+            expect(ctx.request).toEqual({
+              method: "GET",
+              url: "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
+            });
+            return {
+              name: "user-write",
+              access: "write",
+              reason: "github.git-write",
+            };
+          },
+          issueCredential(ctx) {
+            expect(ctx.grant).toMatchObject({
+              name: "user-write",
+              access: "write",
+              reason: "github.git-write",
+            });
+            return {
+              type: "lease",
+              lease: {
+                expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                headerTransforms: [
+                  {
+                    domain: "github.com",
+                    headers: { Authorization: "Bearer github-user-token" },
+                  },
+                ],
+              },
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
+        expect(String(url)).toBe(
+          "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
+        );
+        expect(new Headers(init?.headers).get("authorization")).toBe(
+          "Bearer github-user-token",
+        );
+        return new Response("write denied", {
+          status: 403,
+          headers: {
+            "x-accepted-github-permissions": "contents=write",
+            "x-github-sso":
+              "required; url=https://github.com/orgs/getsentry/sso",
+          },
+        });
+      });
+
+      const response = await proxy(
+        egressRequest({
+          host: "github.com",
+          path: "/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
+        }),
+        fetchMock as typeof fetch,
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.text()).resolves.toBe("write denied");
+      await expect(
+        consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+      ).resolves.toMatchObject({
+        provider: "github",
+        grant: {
+          name: "user-write",
+          access: "write",
+          reason: "github.git-write",
+        },
+        status: 403,
+        upstreamHost: "github.com",
+        upstreamPath:
+          "/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
+        acceptedPermissions: "contents=write",
+        sso: "required; url=https://github.com/orgs/getsentry/sso",
+      });
+    } finally {
+      setAgentPlugins(previous);
+    }
   });
 
   it("applies provider header transforms to matching upstream hosts", async () => {

@@ -11,10 +11,12 @@ import {
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import {
-  clearSandboxEgressAuthRequiredSignal,
+  clearSandboxEgressSignals,
   consumeSandboxEgressAuthRequiredSignal,
+  consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
   type SandboxEgressAuthRequiredSignal,
+  type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-session";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
@@ -69,6 +71,7 @@ export interface BashCustomCommandResult {
   stdout_truncated: boolean;
   stderr_truncated: boolean;
   auth_required?: SandboxEgressAuthRequiredSignal;
+  permission_denied?: SandboxEgressPermissionDeniedSignal;
 }
 
 export interface SandboxAcquiredState {
@@ -232,7 +235,7 @@ export function createSandboxExecutor(options?: {
     });
     const executeBash = (await sessionManager.ensureToolExecutors()).bash;
     const activeEgressId = sessionManager.getSandboxEgressId();
-    await clearSandboxEgressAuthRequiredSignal(activeEgressId);
+    await clearSandboxEgressSignals(activeEgressId);
     const result = await withSandboxSpan(
       "bash",
       "process.exec",
@@ -277,6 +280,10 @@ export function createSandboxExecutor(options?: {
       result.exitCode !== 0
         ? await consumeSandboxEgressAuthRequiredSignal(activeEgressId)
         : undefined;
+    const permissionDenied =
+      result.exitCode !== 0
+        ? await consumeSandboxEgressPermissionDeniedSignal(activeEgressId)
+        : undefined;
 
     return {
       result: {
@@ -291,6 +298,7 @@ export function createSandboxExecutor(options?: {
         stdout_truncated: result.stdoutTruncated,
         stderr_truncated: result.stderrTruncated,
         ...(authRequired ? { auth_required: authRequired } : {}),
+        ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
       } as T,
     };
   };

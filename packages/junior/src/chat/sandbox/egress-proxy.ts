@@ -17,6 +17,7 @@ import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
+  setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress-session";
 import type { JWTPayload } from "jose";
@@ -193,6 +194,20 @@ function upstreamPermissionAttributes(
     "app.github.accepted_permissions":
       upstream.headers.get("x-accepted-github-permissions") ?? undefined,
     "app.github.sso": upstream.headers.get("x-github-sso") ?? undefined,
+  };
+}
+
+function githubPermissionHeaders(upstream: Response): {
+  acceptedPermissions?: string;
+  sso?: string;
+} {
+  const acceptedPermissions = upstream.headers.get(
+    "x-accepted-github-permissions",
+  );
+  const sso = upstream.headers.get("x-github-sso");
+  return {
+    ...(acceptedPermissions ? { acceptedPermissions } : {}),
+    ...(sso ? { sso } : {}),
   };
 }
 
@@ -724,6 +739,15 @@ export async function proxySandboxEgressRequest(
         provider,
         grant: lease.grant,
         message: `Provider rejected the injected ${provider} credential.\n`,
+      });
+    } else {
+      await setSandboxEgressPermissionDeniedSignal(credentialContext, {
+        provider,
+        grant: lease.grant,
+        status: UPSTREAM_PERMISSION_REJECTION_STATUS,
+        upstreamHost: upstreamUrl.hostname,
+        upstreamPath: displayedUpstreamPath(upstreamUrl),
+        ...(provider === "github" ? githubPermissionHeaders(upstream) : {}),
       });
     }
   }
