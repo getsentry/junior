@@ -433,7 +433,7 @@ describe("github plugin", () => {
     ]);
   });
 
-  it("requires user authorization context for user-write credentials", async () => {
+  it("requires user authorization context before issuing a user-write lease", async () => {
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const missingActor = await plugin.hooks?.issueCredential?.({
       actor: { type: "system", id: "scheduler" },
@@ -464,7 +464,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("issues user-write credentials from stored current-user tokens", async () => {
+  it("issues a credential lease for a user-write grant from stored current-user tokens", async () => {
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
       githubIssueCredentialContext({
@@ -506,7 +506,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("issues user-write credentials from delegated credential subject tokens", async () => {
+  it("issues a credential lease for a user-write grant from delegated subject tokens", async () => {
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
       githubIssueCredentialContext({
