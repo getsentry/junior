@@ -27,7 +27,7 @@ Start here:
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
-| `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
+| `@sentry/junior-github`        | GitHub plugin package for repository, code, and issue workflows              |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
