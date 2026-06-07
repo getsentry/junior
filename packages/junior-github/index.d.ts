@@ -16,12 +16,15 @@ export interface GitHubPluginOptions {
   /**
    * GitHub App installation permissions Junior should request for app tokens.
    *
-   * Keys may use GitHub permission names with underscores or hyphens. Levels
-   * may be `read`, `write`, or `admin` when GitHub supports that level for the
-   * permission. When omitted, user-actor app tokens inherit the installed app
-   * permission envelope; system-actor app tokens remain read-only.
+   * Keys may use GitHub permission names with underscores or hyphens. Junior
+   * records these as plugin capabilities and requests read-only installation
+   * tokens by scoping read-capable permissions down to `read`.
+   * GitHub remains the source of truth for whether a permission exists.
    */
   appPermissions?: Record<string, GitHubAppPermissionLevel>;
+
+  /** Environment variable containing the GitHub App id. */
+  appIdEnv?: string;
 
   /** Environment variable containing Junior's Git committer email. */
   botEmailEnv?: string;
@@ -34,9 +37,15 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App OAuth client secret. */
   clientSecretEnv?: string;
+
+  /** Environment variable containing the GitHub App installation id. */
+  installationIdEnv?: string;
+
+  /** Environment variable containing the GitHub App private key. */
+  privateKeyEnv?: string;
 }
 
-/** Register GitHub manifest content and trusted commit attribution hooks. */
+/** Register GitHub manifest content and trusted runtime hooks. */
 export function githubPlugin(
   options?: GitHubPluginOptions,
 ): JuniorPluginRegistration;

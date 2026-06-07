@@ -30,6 +30,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "@sentry/junior-plugin-api": path.resolve(
+        __dirname,
+        "../junior-plugin-api/src/index.ts",
+      ),
     },
   },
   test: {

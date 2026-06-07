@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
+import {
+  agentPluginAuthorizationSchema,
+  agentPluginCredentialHeaderTransformSchema,
+  agentPluginGrantSchema,
+} from "@sentry/junior-plugin-api";
 
 const finiteNumberSchema = z.number().refine(Number.isFinite);
 const providerNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
-const credentialIntentSchema = z.union([z.literal("read"), z.literal("write")]);
 
-const credentialHeaderTransformSchema = z
-  .object({
-    domain: z.string().min(1),
-    headers: z.record(z.string(), z.string()),
-  })
-  .strict();
+export const sandboxEgressGrantSchema = agentPluginGrantSchema;
 
 export const sandboxEgressCredentialContextSchema = z
   .object({
@@ -23,24 +22,42 @@ export const sandboxEgressCredentialContextSchema = z
 
 export const sandboxEgressCredentialLeaseSchema = z
   .object({
+    authorization: agentPluginAuthorizationSchema.optional(),
+    grant: sandboxEgressGrantSchema,
     provider: providerNameSchema,
-    intent: credentialIntentSchema,
     expiresAt: z.string().min(1),
-    headerTransforms: z.array(credentialHeaderTransformSchema).min(1),
+    headerTransforms: z
+      .array(agentPluginCredentialHeaderTransformSchema)
+      .min(1),
   })
   .strict();
 
 export const sandboxEgressAuthRequiredSignalSchema = z
   .object({
+    authorization: agentPluginAuthorizationSchema.optional(),
+    grant: sandboxEgressGrantSchema,
     provider: providerNameSchema,
-    intent: credentialIntentSchema,
+    message: z.string().optional(),
     createdAtMs: finiteNumberSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((signal, ctx) => {
+    if (
+      signal.authorization &&
+      signal.authorization.provider !== signal.provider
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Auth signal authorization provider must match provider",
+        path: ["authorization", "provider"],
+      });
+    }
+  });
 
 export type SandboxEgressCredentialContext = z.output<
   typeof sandboxEgressCredentialContextSchema
 >;
+export type SandboxEgressGrant = z.output<typeof sandboxEgressGrantSchema>;
 export type SandboxEgressCredentialLease = z.output<
   typeof sandboxEgressCredentialLeaseSchema
 >;

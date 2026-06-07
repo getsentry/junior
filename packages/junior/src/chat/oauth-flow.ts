@@ -24,6 +24,7 @@ export type OAuthStatePayload = {
   configuration?: Record<string, unknown>;
   resumeConversationId?: string;
   resumeSessionId?: string;
+  scope?: string;
 };
 
 type OAuthFlowInput = {
@@ -36,6 +37,7 @@ type OAuthFlowInput = {
   activeSkillName?: string;
   resumeConversationId?: string;
   resumeSessionId?: string;
+  scope?: string;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -79,6 +81,9 @@ export function parseOAuthStatePayload(
       : {}),
     ...(optionalString(value.resumeSessionId)
       ? { resumeSessionId: optionalString(value.resumeSessionId) }
+      : {}),
+    ...(optionalString(value.scope)
+      ? { scope: optionalString(value.scope) }
       : {}),
   };
 }
@@ -220,6 +225,7 @@ export async function startOAuthFlow(
       ? await input.channelConfiguration.resolveValues()
       : undefined;
   const state = randomBytes(32).toString("hex");
+  const requestedScope = input.scope ?? providerConfig.scope;
 
   await getStateAdapter().set(
     `oauth-state:${state}`,
@@ -239,6 +245,7 @@ export async function startOAuthFlow(
       ...(input.resumeSessionId
         ? { resumeSessionId: input.resumeSessionId }
         : {}),
+      ...(requestedScope ? { scope: requestedScope } : {}),
     } satisfies OAuthStatePayload,
     OAUTH_STATE_TTL_MS,
   );
@@ -249,8 +256,8 @@ export async function startOAuthFlow(
     redirect_uri: `${baseUrl}${providerConfig.callbackPath}`,
     response_type: "code",
   });
-  if (providerConfig.scope) {
-    authorizeParams.set("scope", providerConfig.scope);
+  if (requestedScope) {
+    authorizeParams.set("scope", requestedScope);
   }
   for (const [key, value] of Object.entries(
     providerConfig.authorizeParams ?? {},

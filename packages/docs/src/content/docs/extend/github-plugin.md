@@ -40,13 +40,15 @@ export const plugins = defineJuniorPlugins([
 
 Set these values in the host environment:
 
-| Variable                 | Required | Purpose                                         |
-| ------------------------ | -------- | ----------------------------------------------- |
-| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                            |
-| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key.                         |
-| `GITHUB_INSTALLATION_ID` | Yes      | Repository or organization installation target. |
-| `GITHUB_APP_BOT_NAME`    | Yes      | Git author name, for example `<app-slug>[bot]`. |
-| `GITHUB_APP_BOT_EMAIL`   | Yes      | Git author noreply email for the App bot user.  |
+| Variable                   | Required | Purpose                                             |
+| -------------------------- | -------- | --------------------------------------------------- |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-write auth.     |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-write auth. |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                             |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.     |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author name, for example `<app-slug>[bot]`.     |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | Git author noreply email for the App bot user.      |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
 `GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
@@ -57,6 +59,8 @@ Vercel example:
 
 ```bash
 vercel env add GITHUB_APP_ID production
+vercel env add GITHUB_APP_CLIENT_ID production
+vercel env add GITHUB_APP_CLIENT_SECRET production
 vercel env add GITHUB_INSTALLATION_ID production
 vercel env add GITHUB_APP_BOT_NAME production
 vercel env add GITHUB_APP_BOT_EMAIL production

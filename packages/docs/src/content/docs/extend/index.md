@@ -231,8 +231,8 @@ runtime-postinstall:
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
 - `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin
 - `command-env`: optional sandbox env vars for CLI placeholders, deployment defaults, public install metadata, and host env bindings explicitly marked safe for sandbox exposure
-- `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
-- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
+- `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `plugin-managed`. Plugin-managed manifests require matching trusted `grantForEgress` and `issueCredential` hooks.
+- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`, or with `plugin-managed` when trusted hooks request user authorization
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
@@ -260,7 +260,7 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with `oauth-bearer` credentials. When paired with `oauth-bearer` credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Plugin-managed providers should issue any extra headers from `issueCredential`. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
 ```yaml
 env-vars:

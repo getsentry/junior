@@ -20,6 +20,8 @@
   "files": [
     "index.d.ts",
     "index.js",
+    "graphql.js",
+    "permissions.js",
     "skills",
     "SETUP.md"
   ],

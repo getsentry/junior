@@ -208,6 +208,7 @@ async function resumeOAuthSessionRecordTurn(
     kind: "plugin",
     provider: stored.provider,
     requesterId: stored.userId,
+    ...(stored.scope ? { scope: stored.scope } : {}),
   });
 
   const resolvedSessionId = pendingAuth?.sessionId ?? stored.resumeSessionId;
@@ -270,6 +271,7 @@ async function resumeOAuthSessionRecordTurn(
         kind: "plugin",
         provider: stored.provider,
         requesterId: stored.userId,
+        ...(stored.scope ? { scope: stored.scope } : {}),
       });
       const lockedSessionId =
         lockedPendingAuth?.sessionId ?? stored.resumeSessionId!;
@@ -582,6 +584,7 @@ export async function GET(
   }
 
   const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
+  const requestedScope = stored.scope ?? providerConfig.scope;
 
   let tokenResponse: Response;
   try {
@@ -617,14 +620,12 @@ export async function GET(
     );
   }
 
-  const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
   let parsedTokenResponse;
   try {
-    parsedTokenResponse = parseOAuthTokenResponse(
-      tokenData,
-      providerConfig.scope,
-      { treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported },
-    );
+    const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
+    parsedTokenResponse = parseOAuthTokenResponse(tokenData, requestedScope, {
+      treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported,
+    });
   } catch {
     return htmlErrorResponse(
       "Connection failed",
@@ -633,7 +634,7 @@ export async function GET(
     );
   }
 
-  if (!hasRequiredOAuthScope(parsedTokenResponse.scope, providerConfig.scope)) {
+  if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
     return htmlErrorResponse(
       "Connection failed",
       `The ${providerLabel} authorization did not grant the access Junior requires. Return to Slack and ask Junior to connect your ${providerLabel} account again.`,

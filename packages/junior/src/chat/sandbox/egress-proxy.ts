@@ -1,27 +1,23 @@
-import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
-import {
-  CredentialUnavailableError,
-  type CredentialIntent,
-} from "@/chat/credentials/broker";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/logging";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress-policy";
 import {
-  githubSandboxEgressBodylessIntent,
-  githubSandboxEgressIntent,
-} from "@/chat/sandbox/github-intent";
+  authorizationForSandboxEgressGrant,
+  hasSandboxEgressLeaseTransformForHost,
+  recordSandboxEgressCredentialNeeded,
+  sandboxEgressCredentialLease,
+  SandboxEgressCredentialNeededError,
+  selectSandboxEgressGrant,
+} from "@/chat/sandbox/egress-credentials";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
   clearSandboxEgressCredentialLease,
-  getSandboxEgressCredentialLease,
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
-  setSandboxEgressAuthRequiredSignal,
-  setSandboxEgressCredentialLease,
   type SandboxEgressCredentialLease,
-  type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress-session";
 import type { JWTPayload } from "jose";
 
@@ -54,7 +50,6 @@ const DECODED_RESPONSE_HEADERS = new Set([
 ]);
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
-const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
 export type SandboxEgressHttpInterceptor = (input: {
@@ -78,6 +73,23 @@ function jsonError(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }
 
+function authRequiredResponse(input: {
+  grant: Pick<SandboxEgressCredentialLease["grant"], "access" | "name">;
+  message: string;
+  provider: string;
+}): Response {
+  return new Response(
+    `junior-auth-required provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
+    {
+      status: 401,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    },
+  );
+}
+
 function shouldLogSandboxEgressInfo(): boolean {
   const environment = (
     process.env.SENTRY_ENVIRONMENT ??
@@ -91,9 +103,10 @@ function shouldLogSandboxEgressInfo(): boolean {
 }
 
 function egressAttributes(input: {
+  access?: "read" | "write";
   egressId?: string;
+  credential?: string;
   host?: string;
-  intent?: CredentialIntent;
   method?: string;
   path?: string;
   provider?: string;
@@ -102,7 +115,8 @@ function egressAttributes(input: {
   return {
     ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : {}),
     ...(input.provider ? { "app.credential.provider": input.provider } : {}),
-    ...(input.intent ? { "app.credential.intent": input.intent } : {}),
+    ...(input.credential ? { "app.credential.name": input.credential } : {}),
+    ...(input.access ? { "app.credential.access": input.access } : {}),
     ...(input.host ? { "server.address": input.host } : {}),
     ...(input.method ? { "http.request.method": input.method } : {}),
     ...(input.path ? { "url.path": input.path } : {}),
@@ -149,8 +163,9 @@ function routingAttributes(
 }
 
 function logSandboxEgressUpstreamRequest(input: {
+  access?: "read" | "write";
+  credential: string;
   egressId: string;
-  intent: CredentialIntent;
   provider: string;
   request: Request;
   upstream: Response;
@@ -165,9 +180,10 @@ function logSandboxEgressUpstreamRequest(input: {
     {},
     {
       ...egressAttributes({
+        access: input.access,
+        credential: input.credential,
         egressId: input.egressId,
         host: input.upstreamUrl.hostname,
-        intent: input.intent,
         method: input.request.method,
         path: input.upstreamUrl.pathname,
         provider: input.provider,
@@ -333,77 +349,6 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
-/** Classify provider traffic so credential brokers can choose user-write auth only when runtime evidence requires it. */
-export function credentialIntentForSandboxEgressRequest(input: {
-  body?: ArrayBuffer;
-  provider: string;
-  method: string;
-  upstreamUrl: URL;
-}): CredentialIntent {
-  if (input.provider === "github") {
-    return githubSandboxEgressIntent(input);
-  }
-
-  return HTTP_READ_METHODS.has(input.method.toUpperCase()) ? "read" : "write";
-}
-
-function credentialIntentWithoutBody(input: {
-  provider: string;
-  method: string;
-  upstreamUrl: URL;
-}): CredentialIntent | undefined {
-  if (input.provider === "github") {
-    return githubSandboxEgressBodylessIntent(input);
-  }
-  return HTTP_READ_METHODS.has(input.method.toUpperCase()) ? "read" : "write";
-}
-
-async function credentialLease(
-  provider: string,
-  intent: CredentialIntent,
-  context: SandboxEgressCredentialContext,
-): Promise<SandboxEgressCredentialLease> {
-  const cached = await getSandboxEgressCredentialLease(
-    provider,
-    intent,
-    context,
-  );
-  if (cached) {
-    return cached;
-  }
-
-  const lease = await issueProviderCredentialLease({
-    context: context.credentials,
-    intent,
-    provider,
-    reason: `sandbox-egress:${provider}:${intent}`,
-  });
-  const headerTransforms = lease.headerTransforms ?? [];
-  if (headerTransforms.length === 0) {
-    throw new Error(
-      `Credential lease for ${provider} did not include header transforms`,
-    );
-  }
-
-  const cachedLease: SandboxEgressCredentialLease = {
-    provider,
-    intent,
-    expiresAt: lease.expiresAt,
-    headerTransforms,
-  };
-  await setSandboxEgressCredentialLease(context, cachedLease);
-  return cachedLease;
-}
-
-function hasTransformForHost(
-  lease: SandboxEgressCredentialLease,
-  host: string,
-): boolean {
-  return lease.headerTransforms.some((transform) =>
-    matchesSandboxEgressDomain(host, transform.domain),
-  );
-}
-
 /** Return whether a request appears to be from the Vercel Sandbox egress proxy. */
 export function isSandboxEgressForwardedRequest(request: Request): boolean {
   return Boolean(
@@ -497,12 +442,6 @@ export async function proxySandboxEgressRequest(
     );
     return jsonError("No provider owns forwarded host", 403);
   }
-  const provisionalIntent =
-    credentialIntentWithoutBody({
-      provider,
-      method: request.method,
-      upstreamUrl,
-    }) ?? "write";
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's signed
   // credential context identifies which provider credentials may be issued
@@ -518,7 +457,6 @@ export async function proxySandboxEgressRequest(
         ...egressAttributes({
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
-          intent: provisionalIntent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -534,40 +472,80 @@ export async function proxySandboxEgressRequest(
     );
   }
 
-  const bodylessIntent = credentialIntentWithoutBody({
+  let bodyPromise: Promise<ArrayBuffer | undefined> | undefined;
+  const readBody = async () => {
+    bodyPromise ??= requestBodyBytes(request);
+    return await bodyPromise;
+  };
+  const grantSelection = await selectSandboxEgressGrant({
+    body: async () => {
+      const body = await readBody();
+      return body === undefined ? undefined : new Uint8Array(body);
+    },
     provider,
     method: request.method,
     upstreamUrl,
   });
-  let body: ArrayBuffer | undefined;
-  let intent = bodylessIntent;
-  if (!intent) {
-    body = await requestBodyBytes(request);
-    intent = credentialIntentForSandboxEgressRequest({
-      body,
-      provider,
-      method: request.method,
-      upstreamUrl,
-    });
-  }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(provider, intent, credentialContext);
+    lease = await sandboxEgressCredentialLease(
+      provider,
+      grantSelection,
+      credentialContext,
+    );
   } catch (error) {
-    if (error instanceof CredentialUnavailableError) {
-      await setSandboxEgressAuthRequiredSignal(credentialContext, {
+    if (error instanceof SandboxEgressCredentialNeededError) {
+      await recordSandboxEgressCredentialNeeded(credentialContext, {
         provider: error.provider,
-        intent,
+        grant: error.grant,
+        authorization: error.authorization,
+        message: error.message,
+      });
+      logWarn(
+        "sandbox_egress_credential_needed",
+        {},
+        {
+          ...egressAttributes({
+            access: error.grant.access,
+            credential: error.grant.name,
+            egressId: activeEgressId,
+            host: upstreamUrl.hostname,
+            method: request.method,
+            path: upstreamUrl.pathname,
+            provider: error.provider,
+            status: 401,
+          }),
+          ...routingAttributes(request, upstreamUrl),
+        },
+        "Sandbox egress provider credential needs user authorization",
+      );
+      return authRequiredResponse({
+        provider: error.provider,
+        grant: error.grant,
+        message: error.message,
+      });
+    }
+    if (error instanceof CredentialUnavailableError) {
+      const failedGrant = grantSelection.grant;
+      await recordSandboxEgressCredentialNeeded(credentialContext, {
+        provider: error.provider,
+        grant: failedGrant,
+        authorization: authorizationForSandboxEgressGrant(
+          error.provider,
+          grantSelection,
+        ),
+        message: error.message,
       });
       logWarn(
         "sandbox_egress_credential_unavailable",
         {},
         {
           ...egressAttributes({
+            access: failedGrant.access,
+            credential: failedGrant.name,
             egressId: activeEgressId,
             host: upstreamUrl.hostname,
-            intent,
             method: request.method,
             path: upstreamUrl.pathname,
             provider,
@@ -577,26 +555,25 @@ export async function proxySandboxEgressRequest(
         },
         "Sandbox egress provider credential is unavailable",
       );
-      return new Response(
-        `junior-auth-required provider=${error.provider} intent=${intent} 401 unauthorized\n${error.message}`,
-        {
-          status: 401,
-          headers: { "content-type": "text/plain; charset=utf-8" },
-        },
-      );
+      return authRequiredResponse({
+        provider: error.provider,
+        grant: failedGrant,
+        message: error.message,
+      });
     }
     throw error;
   }
 
-  if (!hasTransformForHost(lease, upstreamUrl.hostname)) {
+  if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
     logWarn(
       "sandbox_egress_transform_missing",
       {},
       {
         ...egressAttributes({
+          access: lease.grant.access,
+          credential: lease.grant.name,
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
-          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -614,7 +591,7 @@ export async function proxySandboxEgressRequest(
 
   const fetchImpl = deps.fetch ?? fetch;
   const headers = requestHeaders(request, lease, upstreamUrl.hostname);
-  body ??= await requestBodyBytes(request);
+  const body = await readBody();
   const intercepted = await deps.interceptHttp?.({
     provider,
     request: new Request(upstreamUrl, {
@@ -635,8 +612,9 @@ export async function proxySandboxEgressRequest(
     redirect: "manual",
   });
   logSandboxEgressUpstreamRequest({
+    access: lease.grant.access,
+    credential: lease.grant.name,
     egressId: activeEgressId,
-    intent,
     provider,
     request,
     upstream,
@@ -648,9 +626,10 @@ export async function proxySandboxEgressRequest(
       {},
       {
         ...egressAttributes({
+          access: lease.grant.access,
+          credential: lease.grant.name,
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
-          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -671,9 +650,10 @@ export async function proxySandboxEgressRequest(
       {},
       {
         ...egressAttributes({
+          access: lease.grant.access,
+          credential: lease.grant.name,
           egressId: activeEgressId,
           host: upstreamUrl.hostname,
-          intent,
           method: request.method,
           path: upstreamUrl.pathname,
           provider,
@@ -693,25 +673,22 @@ export async function proxySandboxEgressRequest(
     );
     await clearSandboxEgressCredentialLease(
       provider,
-      intent,
+      lease.grant.name,
       credentialContext,
     );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
-      await setSandboxEgressAuthRequiredSignal(credentialContext, {
+      await recordSandboxEgressCredentialNeeded(credentialContext, {
         provider,
-        intent,
+        grant: lease.grant,
+        authorization: lease.authorization,
+        message: `Provider rejected the injected ${provider} credential.`,
       });
       await upstream.body?.cancel().catch(() => undefined);
-      return new Response(
-        `junior-auth-required provider=${provider} intent=${intent} 401 unauthorized\nProvider rejected the injected ${provider} credential.\n`,
-        {
-          status: 401,
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        },
-      );
+      return authRequiredResponse({
+        provider,
+        grant: lease.grant,
+        message: `Provider rejected the injected ${provider} credential.\n`,
+      });
     }
   }
 

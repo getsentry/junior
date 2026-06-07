@@ -879,7 +879,13 @@ describe("createSandboxExecutor", () => {
         expiresAtMs: Date.now() + 60_000,
         contextId: "ctx-stale",
       },
-      { provider: "github", intent: "write" },
+      {
+        provider: "github",
+        grant: {
+          name: "user-write",
+          access: "write",
+        },
+      },
     );
 
     const executor = createSandboxExecutor({
@@ -911,13 +917,19 @@ describe("createSandboxExecutor", () => {
           expiresAtMs: Date.now() + 60_000,
           contextId: "ctx-fresh",
         },
-        { provider: "github", intent: "write" },
+        {
+          provider: "github",
+          grant: {
+            name: "user-write",
+            access: "write",
+          },
+        },
       );
       return {
         exitCode: 1,
         stdout: async () => "",
         stderr: async () =>
-          "junior-auth-required provider=github intent=write 401 unauthorized",
+          "junior-auth-required provider=github grant=user-write access=write 401 unauthorized",
       };
     });
     sandboxGetMock.mockResolvedValue(sandbox);
@@ -946,7 +958,10 @@ describe("createSandboxExecutor", () => {
     expect(response.result.exit_code).toBe(1);
     expect(response.result.auth_required).toMatchObject({
       provider: "github",
-      intent: "write",
+      grant: {
+        name: "user-write",
+        access: "write",
+      },
     });
   });
 

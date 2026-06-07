@@ -35,7 +35,7 @@ vi.mock("@/chat/plugins/registry", () => ({
         name: "github",
         description: "GitHub provider",
         credentials: {
-          type: "github-app",
+          type: "plugin-managed",
         },
         oauth: {
           clientIdEnv: "GITHUB_APP_CLIENT_ID",

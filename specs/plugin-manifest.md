@@ -72,12 +72,12 @@ target:
 - `config-keys`: short names qualified to `<plugin>.<key>` by the registry.
 - `domains`: plugin-level domains for API header injection. Required when `api-headers` is set.
 - `api-headers`: headers injected for matching `domains`. Secret values must come from `${NAME}` placeholders declared in `env-vars` without defaults.
-- `credentials.type`: `"oauth-bearer"` or `"github-app"`.
+- `credentials.type`: `"oauth-bearer"` or `"plugin-managed"`. Plugin-managed manifests require a matching trusted plugin registration with both `grantForEgress` and `issueCredential`.
 - `credentials.domains`: domains that receive runtime-managed credential headers. Include every host that needs credentials, such as both `api.github.com` and `github.com` for GitHub App git HTTPS auth.
-- `credentials.auth-token-env`: host env var for static token fallback outside credential-context-bound turns and for sandbox placeholder naming.
+- `credentials.auth-token-env`: sandbox placeholder env var name. For `oauth-bearer` credentials, this can also name a static host token used outside credential-context-bound turns. For `plugin-managed` credentials, trusted hooks issue credentials instead.
 - `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility.
-- `credentials.system-read-permissions`: optional GitHub App-only list of read scopes for system actors. Manifest entries may use dashes for readability and are normalized to GitHub API permission names at load. If omitted, manifest capabilities become the default read-only ceiling for system actors; if no capabilities are declared, the broker derives a safe read-only subset from the installation permissions.
-- `oauth`: required for OAuth bearer providers. GitHub App providers may also declare OAuth so write-intent GitHub requests can use user-to-server tokens. Endpoints must be HTTPS.
+- `credentials.api-headers`: optional extra headers for `oauth-bearer` credentials only. Plugin-managed hooks must issue any extra headers in their credential lease.
+- `oauth`: required for OAuth bearer providers. Plugin-managed providers may also declare OAuth so trusted hooks can request user authorization when a plugin-defined grant is unavailable. Endpoints must be HTTPS.
 - `target.config-key`: must appear in `config-keys`.
 - `runtime-dependencies`: optional sandbox dependencies. `type` is `"npm"` or `"system"`.
 - `runtime-postinstall`: optional commands run after dependency install and before snapshot capture.

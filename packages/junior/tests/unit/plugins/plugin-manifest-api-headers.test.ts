@@ -148,10 +148,21 @@ describe("plugin manifest API headers", () => {
     )) as typeof import("../../../../junior-github/index.js");
     const manifest = githubPlugin().manifest!;
 
-    expect(manifest.envVars).toEqual({
+    expect(manifest.envVars).toMatchObject({
+      GITHUB_APP_CLIENT_ID: {},
+      GITHUB_APP_CLIENT_SECRET: {},
+      GITHUB_APP_ID: {},
+      GITHUB_APP_PRIVATE_KEY: {},
+      GITHUB_INSTALLATION_ID: {},
       GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
       GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
     });
+    expect(
+      Object.entries(manifest.envVars ?? {})
+        .filter(([, declaration]) => declaration.exposeToCommandEnv)
+        .map(([name]) => name)
+        .sort(),
+    ).toEqual(["GITHUB_APP_BOT_EMAIL", "GITHUB_APP_BOT_NAME"]);
     expect(manifest.commandEnv).toMatchObject({
       GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
       GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
@@ -356,6 +367,27 @@ describe("plugin manifest API headers", () => {
       domains: ["api.example.com"],
       authTokenEnv: "EXAMPLE_TOKEN",
     });
+  });
+
+  it("rejects plugin-managed credential API headers", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "credentials:",
+          "  type: plugin-managed",
+          "  domains:",
+          "    - api.example.com",
+          "  auth-token-env: EXAMPLE_TOKEN",
+          "  api-headers:",
+          "    X-Api-Version: 2026-01-01",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example credentials.api-headers is only supported for oauth-bearer credentials",
+    );
   });
 
   it("reports domains when credentials and headers are missing", () => {

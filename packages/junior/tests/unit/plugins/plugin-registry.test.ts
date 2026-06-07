@@ -16,21 +16,18 @@ afterEach(() => {
 describe("plugin registry", () => {
   it("propagates treatEmptyScopeAsUnreported through inline manifest registration to getPluginOAuthConfig", async () => {
     vi.doMock("@/chat/discovery", () => ({ pluginRoots: () => [] }));
-    vi.doMock(
-      "@/chat/plugins/package-discovery",
-      async (importOriginal) => ({
-        ...(await importOriginal<
-          typeof import("@/chat/plugins/package-discovery")
-        >()),
-        discoverInstalledPluginPackageContent: () => ({
-          packageNames: [],
-          packages: [],
-          manifestRoots: [],
-          skillRoots: [],
-          tracingIncludes: [],
-        }),
+    vi.doMock("@/chat/plugins/package-discovery", async (importOriginal) => ({
+      ...(await importOriginal<
+        typeof import("@/chat/plugins/package-discovery")
+      >()),
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: [],
+        packages: [],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
       }),
-    );
+    }));
 
     const inlineManifest: PluginManifest = {
       name: "github",
@@ -38,12 +35,9 @@ describe("plugin registry", () => {
       capabilities: [],
       configKeys: [],
       credentials: {
-        type: "github-app",
+        type: "plugin-managed",
         domains: ["api.github.com"],
         authTokenEnv: "GITHUB_TOKEN",
-        appIdEnv: "GITHUB_APP_ID",
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
       },
       oauth: {
         clientIdEnv: "GITHUB_APP_CLIENT_ID",

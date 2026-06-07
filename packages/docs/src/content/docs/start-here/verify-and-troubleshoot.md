@@ -34,7 +34,7 @@ related:
 - `webhook_handler_failed`
 - `queue_callback_failed`
 - `agent_turn_failed`
-- `credential_issue_failed`
+- `sandbox_egress_credential_unavailable`
 
 ## Recovery order
 

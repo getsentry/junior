@@ -70,6 +70,10 @@ const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
   "ALL",
 ]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
   const prefixes = plugin.legacyStatePrefixes;
   if (prefixes === undefined) {
@@ -555,10 +559,6 @@ export async function getAgentPluginOperationalReports(
     }
   }
   return reports;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function normalizeEnv(value: unknown): Record<string, string> {

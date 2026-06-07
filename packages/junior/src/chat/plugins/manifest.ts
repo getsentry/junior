@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import type {
-  GitHubAppCredentials,
   PluginEnvVarDeclaration,
   PluginMcpConfig,
   PluginOAuthConfig,
   OAuthBearerCredentials,
   PluginCredentials,
+  PluginManagedCredentials,
   PluginCatalogConfig,
   PluginManifest,
   PluginManifestConfig,
@@ -17,7 +17,6 @@ import type {
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
 import { inlineManifestSource } from "./inline-manifest-source";
-import { normalizeGitHubSystemReadPermissionScopes } from "./github-permissions";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
@@ -172,24 +171,18 @@ const domainsSchema = z
 const baseCredentialsSchema = z
   .object({
     domains: domainsSchema.optional(),
-    "api-headers": stringMapSchema.optional(),
     "auth-token-env": envVarString,
     "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   })
   .passthrough();
 
 const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
+  "api-headers": stringMapSchema.optional(),
   type: z.literal("oauth-bearer"),
 });
 
-const githubAppCredentialsSchema = baseCredentialsSchema.extend({
-  type: z.literal("github-app"),
-  "app-id-env": envVarString,
-  "private-key-env": envVarString,
-  "installation-id-env": envVarString,
-  "system-read-permissions": nonEmptyStringArraySchema(
-    "system-read-permissions",
-  ).optional(),
+const pluginManagedCredentialsSchema = baseCredentialsSchema.extend({
+  type: z.literal("plugin-managed"),
 });
 
 const runtimeDependencyEntrySchema = z
@@ -357,22 +350,6 @@ function manifestConfigPatch(
         credentials,
         "auth-token-placeholder",
         config.credentials.authTokenPlaceholder,
-      );
-      setDefined(credentials, "app-id-env", config.credentials.appIdEnv);
-      setDefined(
-        credentials,
-        "private-key-env",
-        config.credentials.privateKeyEnv,
-      );
-      setDefined(
-        credentials,
-        "installation-id-env",
-        config.credentials.installationIdEnv,
-      );
-      setDefined(
-        credentials,
-        "system-read-permissions",
-        config.credentials.systemReadPermissions,
       );
       result.credentials = credentials;
     }
@@ -629,11 +606,6 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   }
   if (credentials) {
     hostOnlyRefs.add(credentials.authTokenEnv);
-    if (credentials.type === "github-app") {
-      hostOnlyRefs.add(credentials.appIdEnv);
-      hostOnlyRefs.add(credentials.privateKeyEnv);
-      hostOnlyRefs.add(credentials.installationIdEnv);
-    }
   }
   if (oauth) {
     hostOnlyRefs.add(oauth.clientIdEnv);
@@ -683,8 +655,8 @@ function normalizeCredentials(
   const schema =
     data.type === "oauth-bearer"
       ? oauthBearerCredentialsSchema
-      : data.type === "github-app"
-        ? githubAppCredentialsSchema
+      : data.type === "plugin-managed"
+        ? pluginManagedCredentialsSchema
         : undefined;
 
   if (!schema) {
@@ -697,14 +669,22 @@ function normalizeCredentials(
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} credentials`));
   }
+  if (
+    result.data.type === "plugin-managed" &&
+    data["api-headers"] !== undefined
+  ) {
+    throw new Error(
+      `Plugin ${name} credentials.api-headers is only supported for oauth-bearer credentials; plugin-managed hooks must issue any extra headers in their credential lease`,
+    );
+  }
 
   if (!result.data.domains) {
     throw new Error(`Plugin ${name} credentials requires domains`);
   }
   const domains = result.data.domains;
 
-  if (result.data.type === "oauth-bearer") {
-    const apiHeaders = result.data["api-headers"]
+  const apiHeaders =
+    result.data.type === "oauth-bearer" && result.data["api-headers"]
       ? normalizeStringMap(
           result.data["api-headers"],
           `Plugin ${name} credentials.api-headers`,
@@ -712,44 +692,15 @@ function normalizeCredentials(
         )
       : undefined;
 
-    return {
-      type: "oauth-bearer",
-      domains,
-      ...(apiHeaders ? { apiHeaders } : {}),
-      authTokenEnv: result.data["auth-token-env"],
-      ...(result.data["auth-token-placeholder"]
-        ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
-        : {}),
-    } satisfies OAuthBearerCredentials;
-  }
-
-  const apiHeaders = result.data["api-headers"]
-    ? normalizeStringMap(
-        result.data["api-headers"],
-        `Plugin ${name} credentials.api-headers`,
-        { forbiddenKeys: FORBIDDEN_API_HEADER_NAMES },
-      )
-    : undefined;
-  const systemReadPermissions = result.data["system-read-permissions"]
-    ? normalizeGitHubSystemReadPermissionScopes(
-        result.data["system-read-permissions"],
-        `Plugin ${name} credentials.system-read-permissions`,
-      )
-    : undefined;
-
   return {
-    type: "github-app",
+    type: result.data.type,
     domains,
     ...(apiHeaders ? { apiHeaders } : {}),
     authTokenEnv: result.data["auth-token-env"],
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
       : {}),
-    appIdEnv: result.data["app-id-env"],
-    privateKeyEnv: result.data["private-key-env"],
-    installationIdEnv: result.data["installation-id-env"],
-    ...(systemReadPermissions ? { systemReadPermissions } : {}),
-  } satisfies GitHubAppCredentials;
+  } satisfies OAuthBearerCredentials | PluginManagedCredentials;
 }
 
 function normalizeRuntimeDependencies(
@@ -1177,10 +1128,10 @@ function parseManifestSource(
     }
     if (
       credentials.type !== "oauth-bearer" &&
-      credentials.type !== "github-app"
+      credentials.type !== "plugin-managed"
     ) {
       throw new Error(
-        `Plugin ${data.name} oauth requires credentials.type "oauth-bearer" or "github-app"`,
+        `Plugin ${data.name} oauth requires credentials.type "oauth-bearer" or "plugin-managed"`,
       );
     }
 

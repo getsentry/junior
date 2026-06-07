@@ -51,13 +51,10 @@ describe("plugin manifest config", () => {
         "name: github",
         "description: GitHub",
         "credentials:",
-        "  type: github-app",
+        "  type: plugin-managed",
         "  domains:",
         "    - api.github.com",
         "  auth-token-env: GITHUB_TOKEN",
-        "  app-id-env: GITHUB_APP_ID",
-        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
-        "  installation-id-env: GITHUB_INSTALLATION_ID",
         "oauth:",
         "  client-id-env: GITHUB_APP_CLIENT_ID",
         "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
@@ -79,53 +76,17 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
-  it("overrides GitHub App system read permissions through manifest config", () => {
-    const manifest = parsePluginManifest(
-      [
-        "name: github",
-        "description: GitHub",
-        "credentials:",
-        "  type: github-app",
-        "  domains:",
-        "    - api.github.com",
-        "  auth-token-env: GITHUB_TOKEN",
-        "  app-id-env: GITHUB_APP_ID",
-        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
-        "  installation-id-env: GITHUB_INSTALLATION_ID",
-      ].join("\n"),
-      "/plugins/github",
-      {
-        manifests: {
-          github: {
-            credentials: {
-              systemReadPermissions: ["contents", "pull-requests"],
-            },
-          },
-        },
-      },
-    );
-
-    expect(
-      manifest.credentials?.type === "github-app"
-        ? manifest.credentials.systemReadPermissions
-        : undefined,
-    ).toEqual(["contents", "pull_requests"]);
-  });
-
   it("parses treat-empty-scope-as-unreported from YAML oauth block", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
         "description: GitHub",
         "credentials:",
-        "  type: github-app",
+        "  type: plugin-managed",
         "  domains:",
         "    - api.github.com",
         "    - github.com",
         "  auth-token-env: GITHUB_TOKEN",
-        "  app-id-env: GITHUB_APP_ID",
-        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
-        "  installation-id-env: GITHUB_INSTALLATION_ID",
         "oauth:",
         "  client-id-env: GITHUB_APP_CLIENT_ID",
         "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
@@ -146,12 +107,9 @@ describe("plugin manifest config", () => {
       capabilities: [],
       configKeys: [],
       credentials: {
-        type: "github-app",
+        type: "plugin-managed",
         domains: ["api.github.com"],
         authTokenEnv: "GITHUB_TOKEN",
-        appIdEnv: "GITHUB_APP_ID",
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
       },
       oauth: {
         clientIdEnv: "GITHUB_APP_CLIENT_ID",
@@ -167,20 +125,17 @@ describe("plugin manifest config", () => {
     expect(parsed.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
-  it("allows GitHub App credentials to declare user OAuth", () => {
+  it("allows plugin-managed credentials to declare user OAuth", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
         "description: GitHub",
         "credentials:",
-        "  type: github-app",
+        "  type: plugin-managed",
         "  domains:",
         "    - api.github.com",
         "    - github.com",
         "  auth-token-env: GITHUB_TOKEN",
-        "  app-id-env: GITHUB_APP_ID",
-        "  private-key-env: GITHUB_APP_PRIVATE_KEY",
-        "  installation-id-env: GITHUB_INSTALLATION_ID",
         "oauth:",
         "  client-id-env: GITHUB_APP_CLIENT_ID",
         "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
@@ -190,35 +145,11 @@ describe("plugin manifest config", () => {
       "/plugins/github",
     );
 
-    expect(manifest.credentials?.type).toBe("github-app");
+    expect(manifest.credentials?.type).toBe("plugin-managed");
     expect(manifest.oauth).toMatchObject({
       clientIdEnv: "GITHUB_APP_CLIENT_ID",
       clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
     });
-  });
-
-  it("rejects invalid GitHub App system read permissions during manifest parsing", () => {
-    expect(() =>
-      parsePluginManifest(
-        [
-          "name: github",
-          "description: GitHub",
-          "credentials:",
-          "  type: github-app",
-          "  domains:",
-          "    - api.github.com",
-          "  auth-token-env: GITHUB_TOKEN",
-          "  app-id-env: GITHUB_APP_ID",
-          "  private-key-env: GITHUB_APP_PRIVATE_KEY",
-          "  installation-id-env: GITHUB_INSTALLATION_ID",
-          "  system-read-permissions:",
-          "    - typo-scope",
-        ].join("\n"),
-        "/plugins/github",
-      ),
-    ).toThrow(
-      'Plugin github credentials.system-read-permissions contains unsupported scope "typo-scope"',
-    );
   });
 
   it("removes optional map entries with null config values", () => {

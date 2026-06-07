@@ -44,23 +44,15 @@ function inlineCredentialsSource(
   const result: ManifestSource = {};
   setDefined(result, "type", credentials.type);
   setDefined(result, "domains", credentials.domains);
-  setDefined(result, "api-headers", credentials.apiHeaders);
+  if (credentials.type === "oauth-bearer") {
+    setDefined(result, "api-headers", credentials.apiHeaders);
+  }
   setDefined(result, "auth-token-env", credentials.authTokenEnv);
   setDefined(
     result,
     "auth-token-placeholder",
     credentials.authTokenPlaceholder,
   );
-  if (credentials.type === "github-app") {
-    setDefined(result, "app-id-env", credentials.appIdEnv);
-    setDefined(result, "private-key-env", credentials.privateKeyEnv);
-    setDefined(result, "installation-id-env", credentials.installationIdEnv);
-    setDefined(
-      result,
-      "system-read-permissions",
-      credentials.systemReadPermissions,
-    );
-  }
   return result;
 }
 

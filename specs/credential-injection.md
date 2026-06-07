@@ -47,7 +47,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Plugin manifests may define sandbox-visible `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or host env bindings explicitly marked `expose-to-command-env`; provider auth secrets that should remain host-only belong in credentials or API headers.
 - Do not inject long-lived secrets into sandbox files.
 - Credential issuance is intentionally lazy to avoid wasted token minting and provider compute for commands that never touch authenticated domains.
-- Do not infer provider intent from bash commands, skill prose, or planned work to pre-scope tokens. Fine-grained token scopes are desirable, but guessing intent is not a safe authorization boundary; provider/domain matching at request time is the contract.
+- Do not infer provider access from bash commands, skill prose, or planned work to pre-scope tokens. Fine-grained token scopes are desirable, but guessing access needs is not a safe authorization boundary; provider/domain matching at request time is the contract.
 
 ### Sandbox egress proxy
 
@@ -72,11 +72,10 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 ### Permission model
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
-- Runtime uses GitHub App installation tokens for read-intent leases and GitHub App user-to-server OAuth tokens for write-intent user leases.
+- The GitHub plugin selects `installation-read` grants for read egress and `user-write` grants for write egress, then issues GitHub App installation tokens or GitHub App user-to-server OAuth tokens for those grants.
 - GitHub App user-to-server tokens are not OAuth-scope-authorized. GitHub returns `scope: ""` for these token responses. Their effective access is the intersection of the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
 - Any configured GitHub user OAuth scope string is a Junior-local reauthorization contract only. It must not be treated as provider-verified proof that GitHub granted those scopes or as a mechanism for expanding GitHub App permissions.
-- When issuing installation tokens for non-system actors, runtime requests the full permission set declared by the GitHub plugin manifest.
-- GitHub App `credentials.system-read-permissions` declares the explicit read-only permission envelope for system actors when configured. These scope names are normalized to GitHub API permission names during plugin load and may use dashes in manifest YAML for readability.
+- When issuing installation tokens, the GitHub plugin requests an explicit read-only permission body.
 - Repo context is still important for command correctness, but credential issuance is provider-level and turn-bound.
 
 ### Lease behavior
@@ -85,17 +84,19 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The GitHub API host is the declared `api.github.com` or `api.*` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
-- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but read-intent and write-intent leases are cached separately.
-- GitHub read intent is derived from runtime-visible HTTP evidence, including safe HTTP methods, bounded GitHub GraphQL `query`/anonymous selection bodies, and `git-upload-pack`. GitHub write intent is derived from runtime-visible mutation evidence, including non-read HTTP methods, GitHub GraphQL `mutation` bodies selected by `operationName` when present, and `git-receive-pack`; ambiguous GraphQL bodies remain write intent.
-- When a GitHub App lease is issued for a system actor, runtime must send an explicit read-only permissions body instead of inheriting the installation's default permissions.
-- If GitHub App `credentials.system-read-permissions` is declared, runtime requests only those scopes plus `metadata`, all at `read`.
-- If no system read permissions are declared and the manifest declares GitHub App capabilities, runtime requests the read-only projection of those capabilities plus `metadata`.
-- If no system read permissions or manifest capabilities are declared, runtime reads the installation permission envelope and requests only the safe default read subset that the installation actually has: `metadata`, `contents`, `issues`, `pull_requests`, `checks`, `statuses`, and `actions`.
+- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but distinct plugin grant names are cached separately.
+- GitHub read grants are derived by the GitHub plugin from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL query operations, and `git-upload-pack`. GitHub write grants are derived from runtime-visible write evidence, including write-specific REST URLs, GraphQL mutation or ambiguous GraphQL operations, non-read HTTP methods, and `git-receive-pack`.
+- When a GitHub App installation lease is issued, the GitHub plugin sends an explicit read-only permissions body instead of inheriting the installation's default permissions.
+- If the plugin declares GitHub App permissions, each read-capable configured
+  permission is requested at `read` level for installation-read leases.
+- If no GitHub App permissions are declared, the plugin reads the installation
+  permission envelope once per process and requests each read-capable
+  discovered permission at `read` level.
 - Provider `401`/`403` responses discard the cached sandbox egress lease so the next request re-issues from current provider state.
-- When an upstream `401` is received for a request where Junior injected a provider credential, the proxy replaces the raw provider response body with the command-readable `junior-auth-required provider=<name> intent=<read|write> 401 unauthorized` sentinel and records a host-side auth-required signal for the active sandbox egress session. Plugin auth orchestration must trust only the host-side signal for provider intent; raw command stdout/stderr is attacker-influenceable and must not prove GitHub write intent or trigger user-token unlink. `403` responses (permission denied for a valid token) pass through raw.
-- GitHub write-intent leases for user actors require a stored GitHub user-to-server OAuth token. Missing or stale user authorization returns the auth-required sentinel with `intent=write`, which starts the private OAuth flow and resumes the write after authorization.
+- When an upstream `401` is received for a request where Junior injected a provider credential, the proxy replaces the raw provider response body with the command-readable `junior-auth-required provider=<name> grant=<grant> access=<read|write> 401 unauthorized` sentinel and records a host-side auth-required signal for the active sandbox egress session. Plugin auth orchestration must trust only the host-side signal for provider grant requirements; raw command stdout/stderr is attacker-influenceable and must not prove GitHub write access or trigger user-token unlink. `403` responses (permission denied for a valid token) pass through raw.
+- GitHub `user-write` grants require a stored GitHub user-to-server OAuth token. Missing or stale user authorization returns the auth-required sentinel with `grant=user-write access=write`, which starts the private OAuth flow and resumes the write after authorization.
 - For GitHub App user-to-server tokens, an empty provider `scope` response is treated as unreported scope information. Junior persists the requested scope string so future broker checks can detect local reauthorization-contract changes. Provider authorization is enforced by GitHub permissions and upstream `401`/`403` responses, not Junior scope checks.
-- GitHub read-intent leases continue to use GitHub App installation tokens. Read-intent GitHub credential failures are operational app/installation failures and must not trigger user OAuth.
+- GitHub `installation-read` grants continue to use GitHub App installation tokens. Read-grant GitHub credential failures are operational app/installation failures and must not trigger user OAuth.
 
 ## Sentry profile
 
@@ -114,9 +115,10 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 Emit events without secret material:
 
-- `credential_issue_request`
-- `credential_issue_success`
-- `credential_issue_failed`
+- `sandbox_egress_upstream_request`
+- `sandbox_egress_credential_needed`
+- `sandbox_egress_credential_unavailable`
+- `sandbox_egress_upstream_auth_rejected`
 
 ## Non-goals
 

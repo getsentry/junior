@@ -3,7 +3,6 @@ import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type {
   CredentialBroker,
-  CredentialIntent,
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -37,6 +36,9 @@ function createProviderCredentialRouter(
     if (!plugin.manifest.credentials && !plugin.manifest.apiHeaders) {
       continue;
     }
+    if (plugin.manifest.credentials?.type === "plugin-managed") {
+      continue;
+    }
     brokersByProvider[name] = createPluginBroker(name, { userTokenStore });
   }
 
@@ -58,7 +60,6 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
 /** Issue one provider credential lease for host-side sandbox egress proxying. */
 export async function issueProviderCredentialLease(input: {
   context: CredentialContext;
-  intent?: CredentialIntent;
   provider: string;
   reason: string;
 }): Promise<CredentialLease> {

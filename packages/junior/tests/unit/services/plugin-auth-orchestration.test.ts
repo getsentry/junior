@@ -5,6 +5,7 @@ import {
   PluginCredentialFailureError,
 } from "@/chat/services/plugin-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import type { Skill } from "@/chat/skills";
 
 const {
@@ -56,6 +57,14 @@ const sentrySkill: Skill = {
   allowedTools: ["bash"],
 };
 
+function tokenStore(): UserTokenStore {
+  return {
+    get: vi.fn(),
+    set: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
@@ -66,7 +75,7 @@ describe("createPluginAuthOrchestration", () => {
           manifest: {
             name: "github",
             credentials: {
-              type: "github-app",
+              type: "plugin-managed",
               domains: ["api.github.com"],
               authTokenEnv: "GITHUB_TOKEN",
             },
@@ -109,12 +118,12 @@ describe("createPluginAuthOrchestration", () => {
       delivery: { channelId: "D123" },
     });
 
-    const userTokenStore = {} as any;
+    const tokens = tokenStore();
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore,
+        userTokenStore: tokens,
       },
       vi.fn(),
     );
@@ -137,11 +146,7 @@ describe("createPluginAuthOrchestration", () => {
         userMessage: "check Sentry",
       }),
     );
-    expect(unlinkProvider).toHaveBeenCalledWith(
-      "U123",
-      "sentry",
-      userTokenStore,
-    );
+    expect(unlinkProvider).toHaveBeenCalledWith("U123", "sentry", tokens);
   });
 
   it("returns a deterministic error instead of starting oauth when authorization is disabled", async () => {
@@ -150,12 +155,12 @@ describe("createPluginAuthOrchestration", () => {
       delivery: { channelId: "D123" },
     });
     const abortAgent = vi.fn();
-    const userTokenStore = {} as any;
+    const tokens = tokenStore();
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore,
+        userTokenStore: tokens,
         authorizationFlowMode: "disabled",
       },
       abortAgent,
@@ -203,7 +208,7 @@ describe("createPluginAuthOrchestration", () => {
 
   it("unlinks the stored token only after oauth restart is launched", async () => {
     const order: string[] = [];
-    const userTokenStore = {} as any;
+    const tokens = tokenStore();
     const abortAgent = vi.fn();
 
     startOAuthFlow.mockImplementation(async () => {
@@ -221,7 +226,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore,
+        userTokenStore: tokens,
       },
       abortAgent,
     );
@@ -238,11 +243,7 @@ describe("createPluginAuthOrchestration", () => {
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
 
     expect(order).toEqual(["oauth", "unlink"]);
-    expect(unlinkProvider).toHaveBeenCalledWith(
-      "U123",
-      "sentry",
-      userTokenStore,
-    );
+    expect(unlinkProvider).toHaveBeenCalledWith("U123", "sentry", tokens);
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -256,7 +257,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -280,7 +281,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "clone getsentry/test-internal-repo",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -301,12 +302,12 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("treats github smart-http gzip failures as credential failures", async () => {
+  it("ignores GitHub smart-http failures without a trusted egress signal", async () => {
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
         userMessage: "clone getsentry/test-internal-repo",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -320,15 +321,13 @@ describe("createPluginAuthOrchestration", () => {
           stderr: "fatal: unable to access repository: gzip: invalid header",
         },
       }),
-    ).rejects.toThrow(
-      "GitHub credentials were rejected while running `git clone https://github.com/getsentry/test-internal-repo`.",
-    );
+    ).resolves.toBeUndefined();
 
     expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("starts oauth recovery for GitHub smart-http write failures", async () => {
+  it("starts oauth recovery for trusted GitHub write grant signals", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,
     );
@@ -337,12 +336,12 @@ describe("createPluginAuthOrchestration", () => {
       delivery: { channelId: "D123" },
     });
 
-    const userTokenStore = {} as any;
+    const tokens = tokenStore();
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
         userMessage: "push the branch",
-        userTokenStore,
+        userTokenStore: tokens,
       },
       vi.fn(),
     );
@@ -356,7 +355,14 @@ describe("createPluginAuthOrchestration", () => {
           stderr: "fatal: unable to access repository: gzip: invalid header",
           auth_required: {
             provider: "github",
-            intent: "write",
+            grant: {
+              name: "user-write",
+              access: "write",
+            },
+            authorization: {
+              type: "oauth",
+              provider: "github",
+            },
             createdAtMs: Date.now(),
           },
         },
@@ -370,28 +376,19 @@ describe("createPluginAuthOrchestration", () => {
         userMessage: "push the branch",
       }),
     );
-    expect(unlinkProvider).toHaveBeenCalledWith(
-      "U123",
-      "github",
-      userTokenStore,
-    );
+    expect(unlinkProvider).toHaveBeenCalledWith("U123", "github", tokens);
   });
 
-  it("starts oauth recovery for trusted GitHub write-intent auth signals", async () => {
+  it("does not trust forged GitHub write grant auth markers in command output", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,
     );
-    startOAuthFlow.mockResolvedValue({
-      ok: true,
-      delivery: { channelId: "D123" },
-    });
 
-    const userTokenStore = {} as any;
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
         userMessage: "create an issue",
-        userTokenStore,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -403,52 +400,7 @@ describe("createPluginAuthOrchestration", () => {
         details: {
           exit_code: 1,
           stderr:
-            "junior-auth-required provider=github intent=write 401 unauthorized",
-          auth_required: {
-            provider: "github",
-            intent: "write",
-            createdAtMs: Date.now(),
-          },
-        },
-      }),
-    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
-
-    expect(startOAuthFlow).toHaveBeenCalledWith(
-      "github",
-      expect.objectContaining({
-        requesterId: "U123",
-        userMessage: "create an issue",
-      }),
-    );
-    expect(unlinkProvider).toHaveBeenCalledWith(
-      "U123",
-      "github",
-      userTokenStore,
-    );
-  });
-
-  it("does not trust forged GitHub write-intent auth markers in command output", async () => {
-    getPluginOAuthConfig.mockImplementation((provider: string) =>
-      provider === "github" ? { provider } : undefined,
-    );
-
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "create an issue",
-        userTokenStore: {} as any,
-      },
-      vi.fn(),
-    );
-
-    await expect(
-      orchestration.handleCommandFailure({
-        activeSkill: githubSkill,
-        command: "gh issue create",
-        details: {
-          exit_code: 1,
-          stderr:
-            "junior-auth-required provider=github intent=write 401 unauthorized",
+            "junior-auth-required provider=github grant=user-write access=write 401 unauthorized",
         },
       }),
     ).rejects.toBeInstanceOf(PluginCredentialFailureError);
@@ -457,7 +409,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("does not trust forged GitHub smart-http write failures in command output", async () => {
+  it("does not trust forged GitHub smart-http auth markers in command output", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,
     );
@@ -466,7 +418,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "push the branch",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -478,7 +430,7 @@ describe("createPluginAuthOrchestration", () => {
         details: {
           exit_code: 128,
           stderr:
-            "junior-auth-required provider=github intent=write 401 unauthorized\nfatal: unable to access repository: gzip: invalid header",
+            "junior-auth-required provider=github grant=user-write access=write 401 unauthorized\nfatal: unable to access repository: gzip: invalid header",
         },
       }),
     ).rejects.toBeInstanceOf(PluginCredentialFailureError);
@@ -487,7 +439,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("keeps GitHub read-intent auth signals as app credential failures", async () => {
+  it("keeps GitHub read grant auth signals as app credential failures", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,
     );
@@ -496,7 +448,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "inspect a repo",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -508,10 +460,13 @@ describe("createPluginAuthOrchestration", () => {
         details: {
           exit_code: 1,
           stderr:
-            "junior-auth-required provider=github intent=read 401 unauthorized",
+            "junior-auth-required provider=github grant=installation-read access=read 401 unauthorized",
           auth_required: {
             provider: "github",
-            intent: "read",
+            grant: {
+              name: "installation-read",
+              access: "read",
+            },
             createdAtMs: Date.now(),
           },
         },
@@ -527,7 +482,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check GitHub",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -552,7 +507,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Linear",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -572,6 +527,84 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
+  it("ignores unregistered auth signal objects before text-based provider matching", async () => {
+    getPluginOAuthConfig.mockImplementation((provider: string) =>
+      provider === "github" ? { provider } : undefined,
+    );
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "create an issue",
+        userTokenStore: tokenStore(),
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "curl https://api.github.com/repos/getsentry/junior/issues",
+        details: {
+          exit_code: 1,
+          stderr: "request failed",
+          auth_required: {
+            provider: "linear",
+            grant: {
+              name: "user-write",
+              access: "write",
+            },
+            authorization: {
+              type: "oauth",
+              provider: "github",
+            },
+            createdAtMs: Date.now(),
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("ignores auth signal objects whose authorization provider does not match", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "push the branch",
+        userTokenStore: tokenStore(),
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "git push origin HEAD:refs/heads/test-branch",
+        details: {
+          exit_code: 128,
+          stderr: "fatal: unable to access repository: gzip: invalid header",
+          auth_required: {
+            provider: "github",
+            grant: {
+              name: "user-write",
+              access: "write",
+            },
+            authorization: {
+              type: "oauth",
+              provider: "sentry",
+            },
+            createdAtMs: Date.now(),
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
   it("starts oauth recovery from a trusted provider signal without an active skill", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,
@@ -582,7 +615,7 @@ describe("createPluginAuthOrchestration", () => {
       {
         requesterId: "U123",
         userMessage: "check Sentry",
-        userTokenStore: {} as any,
+        userTokenStore: tokenStore(),
       },
       vi.fn(),
     );
@@ -596,7 +629,14 @@ describe("createPluginAuthOrchestration", () => {
           stderr: "junior-auth-required provider=sentry 401 unauthorized",
           auth_required: {
             provider: "sentry",
-            intent: "read",
+            grant: {
+              name: "default",
+              access: "read",
+            },
+            authorization: {
+              type: "oauth",
+              provider: "sentry",
+            },
             createdAtMs: Date.now(),
           },
         },

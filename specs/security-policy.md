@@ -62,18 +62,22 @@ This policy applies to:
 
 ### GitHub baseline
 
-- Use GitHub App installation auth for read intent.
+- Use GitHub App installation auth for `installation-read` grants.
 - Keep `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, and
   `GITHUB_APP_CLIENT_SECRET` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
-- For write-intent user actors, require a stored GitHub App user-to-server OAuth
-  token so GitHub mutations are attributed to the requesting user with the app
-  badge. Missing user authorization must pause for private OAuth rather than
-  falling back to installation writes.
-- Delegated user subjects do not satisfy GitHub write intent for system actors;
-  system-initiated GitHub access remains installation-token read intent only.
-- For system actors, request an explicit read-only installation-token permission body. Use GitHub App `credentials.system-read-permissions` when configured, otherwise use the read-only projection of manifest capabilities when present, otherwise derive the safe default read subset from the installation permissions.
+- For GitHub `user-write` grants, require a stored GitHub App user-to-server
+  OAuth token from the current user actor or an explicit delegated user subject
+  allowed by the identity, scheduler, and dispatch specs. GitHub mutations must
+  be attributed to that GitHub user with the app badge.
+- Missing GitHub user authorization in an interactive user turn must pause for
+  private OAuth. System-actor runs must block when no allowed delegated user
+  token is available; they must not fall back to installation writes.
+- For GitHub installation-token grants, the GitHub plugin must request an
+  explicit read-only permission body. Configured or installation-discovered
+  read-capable permissions must be requested at `read` level, with
+  `metadata: read` included.
 - Configure `GITHUB_APP_BOT_NAME` and `GITHUB_APP_BOT_EMAIL` as host env vars.
   They are public git author metadata, not credentials.
 - Declare both `api.github.com` and `github.com` in the GitHub plugin manifest

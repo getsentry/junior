@@ -54,6 +54,7 @@ export interface ConversationPendingAuthState {
   linkSentAtMs: number;
   provider: string;
   requesterId: string;
+  scope?: string;
   sessionId: string;
 }
 
@@ -200,6 +201,7 @@ function coercePendingAuthState(
   const kind = value.kind;
   const provider = toOptionalString(value.provider);
   const requesterId = toOptionalString(value.requesterId);
+  const scope = toOptionalString(value.scope);
   const sessionId = toOptionalString(value.sessionId);
   const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
   if (
@@ -216,6 +218,7 @@ function coercePendingAuthState(
     kind,
     provider,
     requesterId,
+    ...(scope ? { scope } : {}),
     sessionId,
     linkSentAtMs,
   };

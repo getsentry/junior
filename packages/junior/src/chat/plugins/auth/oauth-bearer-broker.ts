@@ -20,10 +20,34 @@ import type { OAuthBearerCredentials, PluginManifest } from "../types";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+class OAuthRefreshRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthRefreshRejectedError";
+  }
+}
+
+function parseRefreshError(text: string): string | undefined {
+  if (!text.trim()) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { error?: unknown }).error === "string"
+      ? (parsed as { error: string }).error
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function refreshAccessToken(
   refreshToken: string,
   oauth: NonNullable<PluginManifest["oauth"]>,
-  fallbackScope?: string,
+  requestedScope?: string,
 ): Promise<{
   accessToken: string;
   refreshToken: string;
@@ -55,11 +79,19 @@ async function refreshAccessToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.status}`);
+    const errorCode = parseRefreshError(await response.text());
+    if (errorCode === "invalid_grant" || errorCode === "bad_refresh_token") {
+      throw new OAuthRefreshRejectedError(
+        `Token refresh rejected: ${errorCode}`,
+      );
+    }
+    throw new Error(
+      `Token refresh failed: ${response.status}${errorCode ? ` ${errorCode}` : ""}`,
+    );
   }
 
   const data = (await response.json()) as Record<string, unknown>;
-  return parseOAuthTokenResponse(data, fallbackScope, {
+  return parseOAuthTokenResponse(data, requestedScope, {
     treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
   });
 }
@@ -157,17 +189,13 @@ export function createOAuthBearerBroker(
               if (error instanceof CredentialUnavailableError) {
                 throw error;
               }
-              if (stored.expiresAt > Date.now()) {
-                return buildLease(
-                  stored.accessToken,
-                  getLeaseExpiry(stored.expiresAt),
-                  input.reason,
+              if (error instanceof OAuthRefreshRejectedError) {
+                throw new CredentialUnavailableError(
+                  provider,
+                  `Your ${provider} connection has expired.`,
                 );
               }
-              throw new CredentialUnavailableError(
-                provider,
-                `Your ${provider} connection has expired.`,
-              );
+              throw error;
             }
           }
 

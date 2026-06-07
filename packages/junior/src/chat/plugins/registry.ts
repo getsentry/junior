@@ -4,7 +4,6 @@ import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
-import { createGitHubAppBroker } from "./auth/github-app-broker";
 import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { createApiHeadersBroker } from "./auth/api-headers-broker";
@@ -583,8 +582,10 @@ export function createPluginBroker(
     broker = createApiHeadersBroker(plugin.manifest);
   } else if (credentials.type === "oauth-bearer") {
     broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
-  } else if (credentials.type === "github-app") {
-    broker = createGitHubAppBroker(plugin.manifest, credentials, deps);
+  } else if (credentials.type === "plugin-managed") {
+    throw new Error(
+      `Provider "${name}" uses plugin-managed credentials and must issue them through trusted plugin hooks.`,
+    );
   } else {
     throw new Error(`Unsupported credentials type for plugin "${name}"`);
   }

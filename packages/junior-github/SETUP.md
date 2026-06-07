@@ -69,7 +69,7 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ### Optional permission overrides
 
-By default, user-actor GitHub App installation token requests omit a permissions body, so GitHub grants the token the app's full installed permission envelope. System-actor installation token requests are always read-only; when `appPermissions` is configured, system tokens use the read-only projection of that same permission set. To request a smaller installation-token permission set, pass `appPermissions` when registering the plugin:
+By default, `installation-read` grants read the app installation's current permission envelope once per process and scopes read-capable permissions down to `read` when requesting a token. To declare the app permission envelope in the plugin and avoid that installation lookup, pass `appPermissions` when registering the plugin:
 
 ```ts
 githubPlugin({
@@ -80,6 +80,8 @@ githubPlugin({
   },
 });
 ```
+
+Junior records these permissions as plugin capabilities. Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. GitHub remains the source of truth for whether a permission name or level exists.
 
 GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. GitHub returns an empty `scope` value for these tokens, so Junior cannot verify granted scopes from the token response.
 
@@ -96,10 +98,10 @@ Use `additionalUserScopes` only when an integration flow requires specific GitHu
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The runtime classifies GitHub traffic from the forwarded HTTP request: safe API methods, read-only GraphQL queries, and `git-upload-pack` use read intent; API mutations, GraphQL mutations, and `git-receive-pack` use write intent.
-- Write intent requires the requester to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses the turn, sends a private authorization link, and resumes after approval.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe API methods, GraphQL queries, and `git-upload-pack` use the `installation-read` grant. Write-specific REST URLs, GraphQL mutations or ambiguous GraphQL operations, non-read API methods, and `git-receive-pack` use the `user-write` grant.
+- `user-write` requires the requester, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
 - Git commits use the requester as the commit author, Junior as committer, and a Junior `Co-authored-by` trailer.
-- Issued credentials are reused only within the current turn, and read/write credential leases are cached separately.
+- Issued credentials are reused only within the current turn, and credential leases are cached separately by plugin grant name.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage
@@ -126,9 +128,9 @@ gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sa
 ```
 
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-The runtime uses `github.issues.read` for read-only issue commands, `github.issues.write` for issue edits, comments, and labels, `github.contents.write` for pushes and merge operations, and `github.pull-requests.write` for PR mutations after the branch is already on the remote.
+The plugin uses `installation-read` for read-only GitHub traffic and `user-write` for mutations. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes and merges, pull requests for PR mutations, actions/workflows for workflow operations.
 
-GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the relevant GitHub skill first, keep repo context explicit, and let the runtime choose the required capability for the command.
+GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the relevant GitHub skill first, keep repo context explicit, and let the plugin choose the required grant for the outbound request.
 
 Be careful with mixed-surface PR commands:
 
@@ -163,6 +165,8 @@ jr-rpc config set github.repo getsentry/junior
 
 1. Confirm host env vars are present in prod:
    - `GITHUB_APP_ID`
+   - `GITHUB_APP_CLIENT_ID`
+   - `GITHUB_APP_CLIENT_SECRET`
    - `GITHUB_APP_PRIVATE_KEY`
    - `GITHUB_INSTALLATION_ID`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
@@ -176,10 +180,9 @@ jr-rpc config set github.repo getsentry/junior
 10. Verify raw token values are never printed in output or logs.
 11. Check logs for:
 
-- `credential_issue_request`
-- `credential_issue_success`
-- `credential_inject_start`
-- `credential_inject_cleanup`
+- `sandbox_egress_upstream_request`
+- `sandbox_egress_credential_needed`
+- `sandbox_egress_upstream_auth_rejected`
 
 12. Verify logs contain no token/private-key values.
 13. Negative test: target a repo without app installation and confirm explicit failure.

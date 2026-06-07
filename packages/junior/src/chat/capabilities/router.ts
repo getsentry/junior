@@ -1,6 +1,5 @@
 import type {
   CredentialBroker,
-  CredentialIntent,
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -8,7 +7,6 @@ import type { CredentialContext } from "@/chat/credentials/context";
 export interface CredentialRouter {
   issue(input: {
     context: CredentialContext;
-    intent?: CredentialIntent;
     provider: string;
     reason: string;
   }): Promise<CredentialLease>;
@@ -23,7 +21,6 @@ export class ProviderCredentialRouter implements CredentialRouter {
 
   async issue(input: {
     context: CredentialContext;
-    intent?: CredentialIntent;
     provider: string;
     reason: string;
   }): Promise<CredentialLease> {
@@ -36,7 +33,6 @@ export class ProviderCredentialRouter implements CredentialRouter {
 
     return await broker.issue({
       context: input.context,
-      ...(input.intent ? { intent: input.intent } : {}),
       reason: input.reason,
     });
   }

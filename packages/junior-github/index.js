@@ -1,66 +1,47 @@
+import { createPrivateKey, createSign } from "node:crypto";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  normalizePermissions,
+  permissionCapabilities,
+  readGrantPermissions,
+} from "./permissions.js";
+import { graphqlAccessFromBody } from "./graphql.js";
 
-const GITHUB_PERMISSION_LEVELS = {
-  actions: ["read", "write"],
-  administration: ["read", "write"],
-  artifact_metadata: ["read", "write"],
-  attestations: ["read", "write"],
-  checks: ["read", "write"],
-  code_quality: ["read", "write"],
-  codespaces: ["read", "write"],
-  contents: ["read", "write"],
-  custom_properties_for_organizations: ["read", "write"],
-  dependabot_secrets: ["read", "write"],
-  deployments: ["read", "write"],
-  discussions: ["read", "write"],
-  email_addresses: ["read", "write"],
-  enterprise_custom_properties_for_organizations: ["read", "write", "admin"],
-  environments: ["read", "write"],
-  followers: ["read", "write"],
-  git_ssh_keys: ["read", "write"],
-  gpg_keys: ["read", "write"],
-  interaction_limits: ["read", "write"],
-  issues: ["read", "write"],
-  members: ["read", "write"],
-  merge_queues: ["read", "write"],
-  metadata: ["read", "write"],
-  organization_administration: ["read", "write"],
-  organization_announcement_banners: ["read", "write"],
-  organization_copilot_agent_settings: ["read", "write"],
-  organization_copilot_seat_management: ["read", "write"],
-  organization_custom_org_roles: ["read", "write"],
-  organization_custom_properties: ["read", "write", "admin"],
-  organization_custom_roles: ["read", "write"],
-  organization_events: ["read"],
-  organization_hooks: ["read", "write"],
-  organization_packages: ["read", "write"],
-  organization_personal_access_token_requests: ["read", "write"],
-  organization_personal_access_tokens: ["read", "write"],
-  organization_plan: ["read"],
-  organization_projects: ["read", "write", "admin"],
-  organization_secrets: ["read", "write"],
-  organization_self_hosted_runners: ["read", "write"],
-  organization_user_blocking: ["read", "write"],
-  packages: ["read", "write"],
-  pages: ["read", "write"],
-  profile: ["write"],
-  pull_requests: ["read", "write"],
-  repository_custom_properties: ["read", "write"],
-  repository_hooks: ["read", "write"],
-  repository_projects: ["read", "write", "admin"],
-  secret_scanning_alerts: ["read", "write"],
-  secrets: ["read", "write"],
-  security_events: ["read", "write"],
-  single_file: ["read", "write"],
-  starring: ["read", "write"],
-  statuses: ["read", "write"],
-  vulnerability_alerts: ["read", "write"],
-  workflows: ["write"],
-};
+const GITHUB_APP_ID_ENV = "GITHUB_APP_ID";
+const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
+const GITHUB_INSTALLATION_ID_ENV = "GITHUB_INSTALLATION_ID";
+const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
+const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
+const MAX_LEASE_MS = 60 * 60 * 1000;
+const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+class GitHubUserRefreshRejectedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "GitHubUserRefreshRejectedError";
+  }
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
 function readEnv(name) {
   const value = process.env[name];
-  return typeof value === "string" && value ? value : undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function requireEnv(name) {
+  const value = readEnv(name);
+  if (!value) {
+    throw new Error(`Missing ${name}`);
+  }
+  return value;
 }
 
 function normalizeScopeList(scopes) {
@@ -74,46 +55,21 @@ function normalizeScopeList(scopes) {
   ].sort();
 }
 
-function githubPermissionCapabilities(permissions) {
-  if (permissions === undefined) {
-    return undefined;
-  }
+function normalizeOAuthScope(scope) {
+  const normalized = normalizeScopeList(scope ? [scope] : []);
+  return normalized.length ? normalized.join(" ") : undefined;
+}
 
-  const entries = Object.entries(permissions);
-  if (entries.length === 0) {
-    throw new Error(
-      "githubPlugin appPermissions must contain at least one permission when provided.",
-    );
+function hasRequiredOAuthScope(storedScope, requiredScope) {
+  const required = normalizeScopeList(requiredScope ? [requiredScope] : []);
+  if (required.length === 0) {
+    return true;
   }
-
-  return entries
-    .map(([rawScope, rawLevel]) => {
-      const normalizedScope = String(rawScope).trim().replace(/-/g, "_");
-      if (!normalizedScope) {
-        throw new Error(
-          "githubPlugin appPermissions contains an empty permission name.",
-        );
-      }
-      const supportedLevels = GITHUB_PERMISSION_LEVELS[normalizedScope];
-      if (!supportedLevels) {
-        throw new Error(
-          `githubPlugin appPermissions contains unsupported permission "${rawScope}".`,
-        );
-      }
-      if (rawLevel !== "read" && rawLevel !== "write" && rawLevel !== "admin") {
-        throw new Error(
-          `githubPlugin appPermissions.${rawScope} must be "read", "write", or "admin".`,
-        );
-      }
-      if (!supportedLevels.includes(rawLevel)) {
-        throw new Error(
-          `githubPlugin appPermissions.${rawScope} does not support "${rawLevel}".`,
-        );
-      }
-      const scope = normalizedScope.replace(/_/g, "-");
-      return `github.${scope}.${rawLevel}`;
-    })
-    .sort();
+  const stored = new Set(normalizeScopeList(storedScope ? [storedScope] : []));
+  if (stored.size === 0) {
+    return false;
+  }
+  return required.every((scope) => stored.has(scope));
 }
 
 function cleanIdentityPart(value) {
@@ -204,14 +160,528 @@ async function configureGit(ctx, key, value) {
   }
 }
 
-/** Register trusted GitHub runtime hooks for commit attribution and package loading. */
+function base64Url(input) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function normalizePrivateKey(raw) {
+  let normalized = raw.trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+
+  normalized = normalized.replace(/\r\n/g, "\n");
+  if (normalized.includes("\\n")) {
+    normalized = normalized.replace(/\\n/g, "\n");
+  }
+
+  if (!normalized.includes("-----BEGIN")) {
+    try {
+      const decoded = Buffer.from(normalized, "base64").toString("utf8").trim();
+      if (decoded.includes("-----BEGIN")) {
+        normalized = decoded;
+      }
+    } catch {
+      // Let crypto validation report the key format error.
+    }
+  }
+
+  return normalized;
+}
+
+function getPrivateKey(envName) {
+  const normalized = normalizePrivateKey(requireEnv(envName));
+  let key;
+  try {
+    key = createPrivateKey({ key: normalized, format: "pem" });
+  } catch {
+    throw new Error(
+      `Invalid ${envName}: expected a PEM-encoded RSA private key (raw PEM, escaped newlines, or base64-encoded PEM)`,
+    );
+  }
+
+  if (key.asymmetricKeyType !== "rsa") {
+    throw new Error(
+      `Invalid ${envName}: GitHub App signing requires an RSA private key`,
+    );
+  }
+  return key;
+}
+
+function createAppJwt(appId, privateKeyEnv) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = { iat: now - 60, exp: now + 9 * 60, iss: appId };
+  const encodedHeader = base64Url(JSON.stringify(header));
+  const encodedPayload = base64Url(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(signingInput);
+  signer.end();
+  const signature = signer
+    .sign(getPrivateKey(privateKeyEnv))
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  return `${signingInput}.${signature}`;
+}
+
+async function githubRequest(apiBase, path, params) {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: params.method ?? "GET",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${params.token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(params.body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(params.body ? { body: JSON.stringify(params.body) } : {}),
+  });
+
+  const text = await response.text();
+  let parsed;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      parsed && typeof parsed === "object" && typeof parsed.message === "string"
+        ? parsed.message
+        : `GitHub API error ${response.status}`;
+    throw new Error(message);
+  }
+  return parsed;
+}
+
+function buildOAuthTokenRequest(input) {
+  const payload = {
+    ...input.payload,
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+  };
+  return {
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(payload),
+  };
+}
+
+function parseOAuthError(text) {
+  if (!text.trim()) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isRecord(parsed) && typeof parsed.error === "string"
+      ? parsed.error
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseOAuthTokenResponse(data, requestedScope) {
+  if (typeof data.access_token !== "string" || !data.access_token.trim()) {
+    throw new Error("OAuth token response missing access_token");
+  }
+  if (typeof data.refresh_token !== "string" || !data.refresh_token.trim()) {
+    throw new Error("OAuth token response missing refresh_token");
+  }
+  const scope =
+    typeof data.scope === "string" && normalizeOAuthScope(data.scope)
+      ? normalizeOAuthScope(data.scope)
+      : normalizeOAuthScope(requestedScope);
+  const result = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    ...(scope ? { scope } : {}),
+  };
+  if (data.expires_in === undefined) {
+    return result;
+  }
+  if (
+    typeof data.expires_in !== "number" ||
+    !Number.isFinite(data.expires_in) ||
+    data.expires_in <= 0
+  ) {
+    throw new Error("OAuth token response returned invalid expires_in");
+  }
+  return {
+    ...result,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+}
+
+async function refreshUserAccessToken(input) {
+  const clientId = requireEnv(input.clientIdEnv);
+  const clientSecret = requireEnv(input.clientSecretEnv);
+  const request = buildOAuthTokenRequest({
+    clientId,
+    clientSecret,
+    payload: {
+      grant_type: "refresh_token",
+      refresh_token: input.refreshToken,
+    },
+  });
+  const response = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
+  });
+  if (!response.ok) {
+    const errorCode = parseOAuthError(await response.text());
+    if (errorCode === "bad_refresh_token" || errorCode === "invalid_grant") {
+      throw new GitHubUserRefreshRejectedError(
+        `GitHub user token refresh rejected: ${errorCode}`,
+      );
+    }
+    throw new Error(
+      `GitHub user token refresh failed: ${response.status}${errorCode ? ` ${errorCode}` : ""}`,
+    );
+  }
+  return parseOAuthTokenResponse(await response.json(), input.requestedScope);
+}
+
+function leaseExpiry(expiresAt) {
+  return expiresAt
+    ? Math.min(expiresAt, Date.now() + MAX_LEASE_MS)
+    : Date.now() + MAX_LEASE_MS;
+}
+
+function isGitSmartHttpDomain(domain) {
+  return domain.toLowerCase() === "github.com";
+}
+
+function authorizationFor(domain, token) {
+  if (isGitSmartHttpDomain(domain)) {
+    return `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  }
+  return `Bearer ${token}`;
+}
+
+function createCredentialLease(input) {
+  return {
+    type: "lease",
+    lease: {
+      ...(input.authorization ? { authorization: input.authorization } : {}),
+      expiresAt: new Date(input.expiresAtMs).toISOString(),
+      headerTransforms: ["api.github.com", "github.com"].map((domain) => ({
+        domain,
+        headers: {
+          Authorization: authorizationFor(domain, input.token),
+        },
+      })),
+    },
+  };
+}
+
+function githubUserAuthorization(scope) {
+  return {
+    type: "oauth",
+    provider: "github",
+    ...(scope ? { scope } : {}),
+  };
+}
+
+function credentialNeeded(message, scope, allowAuthorization = true) {
+  return {
+    type: "needed",
+    message,
+    ...(allowAuthorization
+      ? { authorization: githubUserAuthorization(scope) }
+      : {}),
+  };
+}
+
+function parseInstallationTokenResponse(data) {
+  if (!isRecord(data)) {
+    throw new Error("GitHub installation token response is invalid");
+  }
+  const token = data.token;
+  if (typeof token !== "string" || !token.trim()) {
+    throw new Error("GitHub installation token response missing token");
+  }
+  const expiresAt = data.expires_at;
+  const expiresAtMs =
+    typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    throw new Error(
+      "GitHub installation token response returned invalid expires_at",
+    );
+  }
+  return { token, expiresAtMs };
+}
+
+function readInstallationPermissions(installation) {
+  if (!isRecord(installation) || !isRecord(installation.permissions)) {
+    throw new Error("GitHub installation response missing permissions");
+  }
+  return readGrantPermissions(installation.permissions);
+}
+
+async function issueUserCredential(ctx, options) {
+  const scope = options.userScope;
+  const tokenSlot = ctx.tokens.currentUser ?? ctx.tokens.credentialSubject;
+  if (!tokenSlot) {
+    return credentialNeeded(
+      "GitHub write access requires a current user or delegated user credential subject.",
+      scope,
+      false,
+    );
+  }
+
+  const stored = await tokenSlot.get();
+  if (!stored) {
+    return credentialNeeded(
+      "GitHub write access requires user authorization.",
+      scope,
+    );
+  }
+  if (!hasRequiredOAuthScope(stored.scope, scope)) {
+    return credentialNeeded(
+      "Your GitHub authorization needs to be refreshed.",
+      scope,
+    );
+  }
+
+  const now = Date.now();
+  if (
+    stored.expiresAt !== undefined &&
+    stored.expiresAt - now < REFRESH_BUFFER_MS
+  ) {
+    let refreshed;
+    try {
+      refreshed = await refreshUserAccessToken({
+        clientIdEnv: options.clientIdEnv,
+        clientSecretEnv: options.clientSecretEnv,
+        refreshToken: stored.refreshToken,
+        requestedScope: stored.scope ?? scope,
+      });
+    } catch (error) {
+      if (!(error instanceof GitHubUserRefreshRejectedError)) {
+        throw error;
+      }
+      return credentialNeeded("Your GitHub authorization has expired.", scope);
+    }
+    if (!hasRequiredOAuthScope(refreshed.scope, scope)) {
+      return credentialNeeded(
+        "Your GitHub authorization needs to be refreshed.",
+        scope,
+      );
+    }
+    await tokenSlot.set(refreshed);
+    return createCredentialLease({
+      token: refreshed.accessToken,
+      expiresAtMs: leaseExpiry(refreshed.expiresAt),
+      authorization: githubUserAuthorization(scope),
+    });
+  }
+
+  if (stored.expiresAt === undefined || stored.expiresAt > Date.now()) {
+    return createCredentialLease({
+      token: stored.accessToken,
+      expiresAtMs: leaseExpiry(stored.expiresAt),
+      authorization: githubUserAuthorization(scope),
+    });
+  }
+
+  return credentialNeeded("Your GitHub authorization has expired.", scope);
+}
+
+async function issueInstallationCredential(options) {
+  const appId = requireEnv(options.appIdEnv);
+  const installationIdRaw = requireEnv(options.installationIdEnv);
+  const installationId = Number(installationIdRaw);
+  if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+    throw new Error(`Invalid ${options.installationIdEnv}`);
+  }
+
+  const appJwt = createAppJwt(appId, options.privateKeyEnv);
+  let tokenPermissions = options.readPermissions;
+  if (!tokenPermissions) {
+    tokenPermissions = await options.loadReadPermissions({
+      appJwt,
+      installationId,
+    });
+  }
+
+  const accessTokenResponse = await githubRequest(
+    "https://api.github.com",
+    `/app/installations/${installationId}/access_tokens`,
+    {
+      method: "POST",
+      token: appJwt,
+      body: { permissions: tokenPermissions },
+    },
+  );
+  const parsedToken = parseInstallationTokenResponse(accessTokenResponse);
+  const expiresAtMs = Math.min(
+    parsedToken.expiresAtMs,
+    Date.now() + MAX_LEASE_MS,
+  );
+  return createCredentialLease({
+    token: parsedToken.token,
+    expiresAtMs,
+  });
+}
+
+function createPermissionCache() {
+  let cached;
+  let pending;
+  return async ({ appJwt, installationId }) => {
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.permissions;
+    }
+    pending ??= githubRequest(
+      "https://api.github.com",
+      `/app/installations/${installationId}`,
+      { token: appJwt },
+    )
+      .then((installation) => {
+        const permissions = readInstallationPermissions(installation);
+        cached = {
+          expiresAtMs: Date.now() + MAX_LEASE_MS,
+          permissions,
+        };
+        return permissions;
+      })
+      .finally(() => {
+        pending = undefined;
+      });
+    return await pending;
+  };
+}
+
+function githubSmartHttpAccess(upstreamUrl) {
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  const service = upstreamUrl.searchParams.get("service");
+  if (
+    pathname.endsWith("/git-receive-pack") ||
+    service === "git-receive-pack"
+  ) {
+    return "write";
+  }
+  if (pathname.endsWith("/git-upload-pack") || service === "git-upload-pack") {
+    return "read";
+  }
+  return undefined;
+}
+
+function isGitHubGraphqlUrl(upstreamUrl) {
+  return (
+    upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
+    upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
+  );
+}
+
+async function githubGraphqlAccess(ctx, method, upstreamUrl) {
+  if (!isGitHubGraphqlUrl(upstreamUrl)) {
+    return undefined;
+  }
+  if (HTTP_READ_METHODS.has(method)) {
+    return "read";
+  }
+  if (method !== "POST") {
+    return "write";
+  }
+  return graphqlAccessFromBody(await ctx.request.body());
+}
+
+function githubApiWriteReason(method, upstreamUrl) {
+  if (method.toUpperCase() !== "POST") {
+    return undefined;
+  }
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  if (/^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
+    return "github.issue-create";
+  }
+  if (/^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
+    return "github.pull-create";
+  }
+  return undefined;
+}
+
+function grantForAccess(access, reason) {
+  if (access === "write") {
+    return {
+      name: "user-write",
+      access: "write",
+      reason,
+    };
+  }
+  return {
+    name: "installation-read",
+    access: "read",
+    reason,
+  };
+}
+
+async function githubGrantForEgress(ctx) {
+  const method = ctx.request.method.toUpperCase();
+  const upstreamUrl = new URL(ctx.request.url);
+  const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
+  if (smartHttpAccess) {
+    return grantForAccess(
+      smartHttpAccess,
+      smartHttpAccess === "write" ? "github.git-write" : "github.git-read",
+    );
+  }
+
+  const writeReason = githubApiWriteReason(method, upstreamUrl);
+  if (writeReason) {
+    return grantForAccess("write", writeReason);
+  }
+
+  const graphqlAccess = await githubGraphqlAccess(ctx, method, upstreamUrl);
+  if (graphqlAccess) {
+    return grantForAccess(
+      graphqlAccess,
+      graphqlAccess === "write"
+        ? "github.graphql-write"
+        : "github.graphql-read",
+    );
+  }
+
+  const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
+  return grantForAccess(
+    access,
+    access === "write" ? "github.api-write" : "github.api-read",
+  );
+}
+
+/** Register trusted GitHub runtime hooks for repository workflows. */
 export function githubPlugin(options = {}) {
   const botNameEnv = options.botNameEnv ?? "GITHUB_APP_BOT_NAME";
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
   const clientIdEnv = options.clientIdEnv ?? "GITHUB_APP_CLIENT_ID";
   const clientSecretEnv = options.clientSecretEnv ?? "GITHUB_APP_CLIENT_SECRET";
-  const appCapabilities = githubPermissionCapabilities(options.appPermissions);
+  const appIdEnv = options.appIdEnv ?? GITHUB_APP_ID_ENV;
+  const privateKeyEnv = options.privateKeyEnv ?? GITHUB_APP_PRIVATE_KEY_ENV;
+  const installationIdEnv =
+    options.installationIdEnv ?? GITHUB_INSTALLATION_ID_ENV;
+  const appPermissions = normalizePermissions(options.appPermissions);
+  const appReadPermissions = appPermissions
+    ? readGrantPermissions(appPermissions)
+    : undefined;
+  const loadReadPermissions = createPermissionCache();
+  const appCapabilities = permissionCapabilities(options.appPermissions);
   const userScopes = normalizeScopeList(options.additionalUserScopes);
+  const userScope = userScopes.length ? userScopes.join(" ") : undefined;
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -222,17 +692,19 @@ export function githubPlugin(options = {}) {
       ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
       envVars: {
-        GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
-        GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
+        [appIdEnv]: {},
+        [privateKeyEnv]: {},
+        [installationIdEnv]: {},
+        [clientIdEnv]: {},
+        [clientSecretEnv]: {},
+        [botNameEnv]: { exposeToCommandEnv: true },
+        [botEmailEnv]: { exposeToCommandEnv: true },
       },
       credentials: {
-        type: "github-app",
+        type: "plugin-managed",
         domains: ["api.github.com", "github.com"],
-        authTokenEnv: "GITHUB_TOKEN",
-        authTokenPlaceholder: "ghp_host_managed_credential",
-        appIdEnv: "GITHUB_APP_ID",
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
+        authTokenEnv: GITHUB_AUTH_TOKEN_ENV,
+        authTokenPlaceholder: GITHUB_AUTH_TOKEN_PLACEHOLDER,
       },
       oauth: {
         clientIdEnv,
@@ -242,11 +714,11 @@ export function githubPlugin(options = {}) {
         // GitHub App user-to-server tokens always return scope: "" regardless
         // of what was requested; treat empty response scope as unreported.
         treatEmptyScopeAsUnreported: true,
-        ...(userScopes.length ? { scope: userScopes.join(" ") } : {}),
+        ...(userScope ? { scope: userScope } : {}),
       },
       commandEnv: {
-        GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
-        GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
+        GIT_COMMITTER_NAME: `\${${botNameEnv}}`,
+        GIT_COMMITTER_EMAIL: `\${${botEmailEnv}}`,
       },
       target: {
         type: "repo",
@@ -312,6 +784,30 @@ export function githubPlugin(options = {}) {
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
         ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", botName);
         ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", botEmail);
+      },
+      grantForEgress(ctx) {
+        return githubGrantForEgress(ctx);
+      },
+      async issueCredential(ctx) {
+        if (ctx.grant.name === "installation-read") {
+          return await issueInstallationCredential({
+            appIdEnv,
+            privateKeyEnv,
+            installationIdEnv,
+            readPermissions: appReadPermissions,
+            loadReadPermissions,
+          });
+        }
+        if (ctx.grant.name === "user-write") {
+          return await issueUserCredential(ctx, {
+            clientIdEnv,
+            clientSecretEnv,
+            userScope,
+          });
+        }
+        throw new Error(
+          `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
+        );
       },
     },
   });

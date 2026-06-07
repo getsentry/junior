@@ -354,9 +354,155 @@ export interface SlackConversationLinkHookContext extends AgentPluginContext {
   conversationId: string;
 }
 
+const agentPluginProviderNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
+const agentPluginGrantNameSchema = z.string().regex(/^[a-z][a-z0-9.-]*$/);
+const agentPluginGrantAccessSchema = z.union([
+  z.literal("read"),
+  z.literal("write"),
+]);
+
+/** Runtime schema for provider authorization a plugin may request. */
+export const agentPluginAuthorizationSchema = z
+  .object({
+    provider: agentPluginProviderNameSchema,
+    scope: nonBlankStringSchema.optional(),
+    type: z.literal("oauth"),
+  })
+  .strict();
+
+/** Runtime schema for a plugin-defined outbound credential grant. */
+export const agentPluginGrantSchema = z
+  .object({
+    access: agentPluginGrantAccessSchema,
+    name: agentPluginGrantNameSchema,
+    reason: nonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Runtime schema for plugin-issued header mutations. */
+export const agentPluginCredentialHeaderTransformSchema = z
+  .object({
+    domain: z.string().min(1),
+    headers: z
+      .record(z.string(), z.string())
+      .refine((headers) => Object.keys(headers).length > 0),
+  })
+  .strict();
+
+/** Runtime schema for a short-lived plugin-issued credential lease. */
+export const agentPluginCredentialLeaseSchema = z
+  .object({
+    authorization: agentPluginAuthorizationSchema.optional(),
+    expiresAt: z.string().refine((value) => Number.isFinite(Date.parse(value))),
+    headerTransforms: z
+      .array(agentPluginCredentialHeaderTransformSchema)
+      .min(1),
+  })
+  .strict();
+
+/** Runtime schema for the result returned by a plugin credential hook. */
+export const agentPluginCredentialResultSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      lease: agentPluginCredentialLeaseSchema,
+      type: z.literal("lease"),
+    })
+    .strict(),
+  z
+    .object({
+      authorization: agentPluginAuthorizationSchema.optional(),
+      message: nonBlankStringSchema,
+      type: z.literal("needed"),
+    })
+    .strict(),
+]);
+
+export type AgentPluginGrantAccess = z.output<
+  typeof agentPluginGrantAccessSchema
+>;
+
+/** Provider authorization Junior can start when a plugin-owned grant is missing. */
+export type AgentPluginAuthorization = z.output<
+  typeof agentPluginAuthorizationSchema
+>;
+
+/** Plugin-defined grant required before Junior can forward one outbound request. */
+export type AgentPluginGrant = z.output<typeof agentPluginGrantSchema>;
+
+/** Request details available while selecting the grant for sandbox egress. */
+export interface AgentPluginEgressRequest {
+  body(): Promise<Uint8Array | undefined>;
+  method: string;
+  url: string;
+}
+
+export interface EgressHookContext extends AgentPluginContext {
+  request: AgentPluginEgressRequest;
+}
+
+/** Header mutations a plugin-issued credential lease may apply to owned domains. */
+export type AgentPluginCredentialHeaderTransform = z.output<
+  typeof agentPluginCredentialHeaderTransformSchema
+>;
+
+/** Short-lived credential headers issued by a plugin for a selected grant. */
+export type AgentPluginCredentialLease = z.output<
+  typeof agentPluginCredentialLeaseSchema
+>;
+
+export type AgentPluginCredentialResult = z.output<
+  typeof agentPluginCredentialResultSchema
+>;
+
+export type AgentPluginCredentialActor =
+  | {
+      type: "system";
+      id: string;
+    }
+  | {
+      type: "user";
+      userId: string;
+    };
+
+export interface AgentPluginResolvedCredentialUser {
+  type: "user";
+  userId: string;
+}
+
+export interface AgentPluginStoredTokens {
+  accessToken: string;
+  expiresAt?: number;
+  refreshToken: string;
+  scope?: string;
+}
+
+export interface AgentPluginUserTokenSlot {
+  get(): Promise<AgentPluginStoredTokens | undefined>;
+  set(tokens: AgentPluginStoredTokens): Promise<void>;
+  userId: string;
+}
+
+export interface AgentPluginTokenStore {
+  credentialSubject?: AgentPluginUserTokenSlot;
+  currentUser?: AgentPluginUserTokenSlot;
+}
+
+export interface IssueCredentialHookContext extends AgentPluginContext {
+  actor: AgentPluginCredentialActor;
+  credentialSubject?: AgentPluginResolvedCredentialUser;
+  grant: AgentPluginGrant;
+  tokens: AgentPluginTokenStore;
+}
+
 export interface AgentPluginHooks {
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  grantForEgress?(
+    ctx: EgressHookContext,
+  ): Promise<AgentPluginGrant | undefined> | AgentPluginGrant | undefined;
+  issueCredential?(
+    ctx: IssueCredentialHookContext,
+  ): Promise<AgentPluginCredentialResult> | AgentPluginCredentialResult;
   routes?(ctx: RouteRegistrationHookContext): AgentPluginRoute[];
   tools?(
     ctx: ToolRegistrationHookContext,
@@ -409,20 +555,16 @@ export interface JuniorPluginOAuthBearerCredentials {
   type: "oauth-bearer";
 }
 
-export interface JuniorPluginGitHubAppCredentials {
-  apiHeaders?: Record<string, string>;
-  appIdEnv: string;
+export interface JuniorPluginManagedCredentials {
   authTokenEnv: string;
   authTokenPlaceholder?: string;
   domains: string[];
-  installationIdEnv: string;
-  privateKeyEnv: string;
-  type: "github-app";
+  type: "plugin-managed";
 }
 
 export type JuniorPluginCredentials =
   | JuniorPluginOAuthBearerCredentials
-  | JuniorPluginGitHubAppCredentials;
+  | JuniorPluginManagedCredentials;
 
 export interface JuniorPluginNpmRuntimeDependency {
   package: string;

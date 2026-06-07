@@ -122,35 +122,18 @@ function commandText(details: unknown): string {
   return `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
 }
 
-function commandWords(command: string): string[] {
-  return command
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .map((word) => word.replace(/^[;&|]+|[;&|]+$/g, ""))
-    .filter(Boolean);
-}
-
-function isGitHubSmartHttpAuthFailure(
-  provider: string,
-  command: string,
-  details: unknown,
-): boolean {
-  const words = commandWords(command);
-  if (
-    provider !== "github" ||
-    (words[0] !== "gh" && words[0] !== "git" && words[0] !== "git-receive-pack")
-  ) {
-    return false;
-  }
-
-  const text = commandText(details).toLowerCase();
-  return /\bgzip:\s*invalid header\b/.test(text);
-}
-
 function trustedAuthRequiredSignal(details: unknown):
   | {
-      intent: "read" | "write";
+      authorization?: {
+        provider: string;
+        scope?: string;
+        type: "oauth";
+      };
+      grant: {
+        access: "read" | "write";
+        name: string;
+        reason?: string;
+      };
       provider: string;
     }
   | undefined {
@@ -164,7 +147,10 @@ function trustedAuthRequiredSignal(details: unknown):
   }
   return {
     provider: parsedSignal.provider,
-    intent: parsedSignal.intent,
+    grant: parsedSignal.grant,
+    ...(parsedSignal.authorization
+      ? { authorization: parsedSignal.authorization }
+      : {}),
   };
 }
 
@@ -190,10 +176,6 @@ function commandTargetsProvider(
   const normalizedCommand = command.trim().toLowerCase();
   if (!normalizedCommand) {
     return false;
-  }
-
-  if (provider === "github" && /^(gh|git)\b/.test(normalizedCommand)) {
-    return true;
   }
 
   const plugin = getPluginDefinition(provider);
@@ -231,19 +213,12 @@ function buildCredentialFailureError(
   provider: string,
   command: string,
 ): PluginCredentialFailureError {
-  const providerLabel =
-    provider === "github" ? "GitHub" : formatProviderLabel(provider);
-  const plugin = getPluginDefinition(provider);
-  const credentialType = plugin?.manifest.credentials?.type;
+  const providerLabel = formatProviderLabel(provider);
   const commandSummary = formatCommand(command);
-  const remediation =
-    provider === "github" && credentialType === "github-app"
-      ? "Verify the GitHub App installation covers the target repository and the host GitHub App environment variables are current."
-      : `Verify the ${providerLabel} provider credentials before retrying.`;
 
   return new PluginCredentialFailureError(
     provider,
-    `${providerLabel} credentials were rejected while running \`${commandSummary}\`. ${remediation}`,
+    `${providerLabel} credentials were rejected while running \`${commandSummary}\`. Verify the ${providerLabel} provider credentials before retrying.`,
   );
 }
 
@@ -260,6 +235,7 @@ export function createPluginAuthOrchestration(
     provider: string,
     activeSkill: Skill | null,
     options?: {
+      scope?: string;
       unlinkExistingProvider?: boolean;
     },
   ): Promise<never> => {
@@ -279,6 +255,7 @@ export function createPluginAuthOrchestration(
       kind: "plugin",
       provider,
       requesterId: deps.requesterId,
+      ...(options?.scope ? { scope: options.scope } : {}),
     });
 
     if (!reusingPendingLink) {
@@ -290,6 +267,7 @@ export function createPluginAuthOrchestration(
         userMessage: deps.userMessage,
         channelConfiguration: deps.channelConfiguration,
         activeSkillName: activeSkill?.name ?? undefined,
+        ...(options?.scope ? { scope: options.scope } : {}),
         resumeConversationId: deps.conversationId,
         resumeSessionId: deps.sessionId,
       });
@@ -317,6 +295,7 @@ export function createPluginAuthOrchestration(
         kind: "plugin",
         provider,
         requesterId: deps.requesterId,
+        ...(options?.scope ? { scope: options.scope } : {}),
         sessionId: deps.sessionId,
         linkSentAtMs: reusingPendingLink
           ? deps.currentPendingAuth!.linkSentAtMs
@@ -351,28 +330,42 @@ export function createPluginAuthOrchestration(
   return {
     handleCommandFailure: async (input) => {
       const providers = registeredProviderNames();
-      const authSignal = trustedAuthRequiredSignal(input.details);
-      const provider =
-        authSignal && providers.includes(authSignal.provider)
-          ? authSignal.provider
-          : providers.find((availableProvider) =>
-              commandTargetsProvider(
-                availableProvider,
-                input.command,
-                input.details,
-              ),
-            );
+      const parsedAuthSignal = trustedAuthRequiredSignal(input.details);
+      const authSignal =
+        parsedAuthSignal && providers.includes(parsedAuthSignal.provider)
+          ? parsedAuthSignal
+          : undefined;
+      const provider = authSignal
+        ? authSignal.provider
+        : providers.find((availableProvider) =>
+            commandTargetsProvider(
+              availableProvider,
+              input.command,
+              input.details,
+            ),
+          );
       if (!provider) {
         return;
       }
 
       const authFailure =
-        Boolean(authSignal) ||
-        isCommandAuthFailure(input.details) ||
-        isGitHubSmartHttpAuthFailure(provider, input.command, input.details);
+        Boolean(authSignal) || isCommandAuthFailure(input.details);
       if (!authFailure) {
         return;
       }
+
+      const credentialType =
+        getPluginDefinition(provider)?.manifest.credentials?.type;
+      const providerOAuth = getPluginOAuthConfig(provider);
+      const authorization =
+        authSignal?.authorization ??
+        (!authSignal && credentialType !== "plugin-managed" && providerOAuth
+          ? {
+              type: "oauth" as const,
+              provider,
+              ...(providerOAuth.scope ? { scope: providerOAuth.scope } : {}),
+            }
+          : undefined);
 
       if (!deps.requesterId || !deps.userTokenStore) {
         if (deps.authorizationFlowMode === "disabled") {
@@ -381,20 +374,15 @@ export function createPluginAuthOrchestration(
         throw buildCredentialFailureError(provider, input.command);
       }
 
-      if (!getPluginOAuthConfig(provider)) {
+      if (authorization?.type !== "oauth") {
         throw buildCredentialFailureError(provider, input.command);
       }
-      const credentialType =
-        getPluginDefinition(provider)?.manifest.credentials?.type;
-      if (
-        provider === "github" &&
-        credentialType === "github-app" &&
-        authSignal?.intent !== "write"
-      ) {
+      if (!getPluginOAuthConfig(authorization.provider)) {
         throw buildCredentialFailureError(provider, input.command);
       }
 
-      await startAuthorizationPause(provider, input.activeSkill, {
+      await startAuthorizationPause(authorization.provider, input.activeSkill, {
+        ...(authorization.scope ? { scope: authorization.scope } : {}),
         unlinkExistingProvider: true,
       });
     },

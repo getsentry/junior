@@ -239,6 +239,70 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
   });
 
+  it("rejects plugin-managed manifests without trusted credential hooks", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+
+    await expect(
+      createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "trusted",
+              description: "Trusted plugin",
+              credentials: {
+                type: "plugin-managed",
+                domains: ["api.example.com"],
+                authTokenEnv: "TRUSTED_TOKEN",
+              },
+            },
+            hooks: {},
+          }),
+        ]),
+      }),
+    ).rejects.toThrow(
+      'Plugin "trusted" uses plugin-managed credentials and its trusted registration must include grantForEgress and issueCredential hooks.',
+    );
+
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
+
+  it("loads plugin-managed manifests with trusted credential hooks", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "trusted",
+            description: "Trusted plugin",
+            credentials: {
+              type: "plugin-managed",
+              domains: ["api.example.com"],
+              authTokenEnv: "TRUSTED_TOKEN",
+            },
+          },
+          hooks: {
+            grantForEgress() {
+              return { name: "default", access: "read" };
+            },
+            issueCredential() {
+              return {
+                type: "needed",
+                message: "Trusted plugin credentials are unavailable.",
+              };
+            },
+          },
+        }),
+      ]),
+    });
+
+    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "trusted",
+    ]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+  });
+
   it("does not assign app skills to trusted inline plugins", async () => {
     const tempRoot = await makeTempDir();
     await fs.mkdir(path.join(tempRoot, "skills", "notes"), {

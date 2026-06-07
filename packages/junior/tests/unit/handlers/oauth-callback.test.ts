@@ -5,6 +5,7 @@ const {
   EXAMPLE_OAUTH_CONFIG,
   GITHUB_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
+  lookupSlackActorIdentityMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
   BASE_URL: "https://example.com",
@@ -34,6 +35,7 @@ const {
     treatEmptyScopeAsUnreported: true,
     callbackPath: "/api/oauth/callback/github",
   },
+  lookupSlackActorIdentityMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
@@ -78,6 +80,10 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
+vi.mock("@/chat/slack/user", () => ({
+  lookupSlackActorIdentity: lookupSlackActorIdentityMock,
+}));
+
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
@@ -94,6 +100,11 @@ beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   await disconnectStateAdapter();
   await getStateAdapter().connect();
+  lookupSlackActorIdentityMock.mockReset();
+  lookupSlackActorIdentityMock.mockResolvedValue({
+    userId: "U777",
+    userName: "requester",
+  });
   waitUntilCallbacks.length = 0;
 });
 
@@ -151,6 +162,17 @@ function mockFailedFetch(status: number) {
   const fetchMock = vi.fn(async () => ({
     ok: false,
     status,
+  }));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+function mockInvalidJsonFetch() {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    json: async () => {
+      throw new SyntaxError("Unexpected token");
+    },
   }));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
@@ -453,6 +475,31 @@ describe("oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("failed");
+  });
+
+  it("returns styled HTML 500 when token exchange returns invalid JSON", async () => {
+    const stateKey = "oauth-state:invalid-token-json";
+    await putStoredState(stateKey, {
+      userId: "U789",
+      provider: "sentry",
+    });
+
+    configureSentryOAuthEnv();
+    mockInvalidJsonFetch();
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/sentry?code=bad-code&state=invalid-token-json",
+      ),
+      "sentry",
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(500);
+    const body = await response.text();
+    expect(body).toContain("<!DOCTYPE html>");
+    expect(body).toContain("incomplete token response");
+    expect(await getStoredTokens("U789", "sentry")).toBeUndefined();
   });
 
   it("returns styled HTML 400 when user denies authorization", async () => {

@@ -227,6 +227,64 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(stored?.refreshToken).toBe("new-refresh-token");
   });
 
+  it("does not issue a stale lease when token refresh is rejected", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+        }),
+    ) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    await expect(
+      broker.issue({
+        context: USER_CREDENTIAL_CONTEXT,
+        reason: "test:refresh-failure",
+      }),
+    ).rejects.toThrow(CredentialUnavailableError);
+  });
+
+  it("surfaces operational token refresh failures", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        }),
+    ) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    await expect(
+      broker.issue({
+        context: USER_CREDENTIAL_CONTEXT,
+        reason: "test:refresh-failure",
+      }),
+    ).rejects.toThrow("Token refresh failed: 500 server_error");
+  });
+
   it("requires stored tokens to include the configured OAuth scope", async () => {
     const tokenStore = createMockTokenStore({
       "U123:sentry": {

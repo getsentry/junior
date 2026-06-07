@@ -241,6 +241,26 @@ function validatePluginRegistrations(
   }
 }
 
+function validatePluginManagedCredentialHooks(
+  registrations: JuniorPluginRegistration[],
+): void {
+  const trustedPlugins = new Map(
+    registrations.map((registration) => [registration.name, registration]),
+  );
+
+  for (const provider of getPluginProviders()) {
+    if (provider.manifest.credentials?.type !== "plugin-managed") {
+      continue;
+    }
+    const hooks = trustedPlugins.get(provider.manifest.name)?.hooks;
+    if (!hooks?.grantForEgress || !hooks?.issueCredential) {
+      throw new Error(
+        `Plugin "${provider.manifest.name}" uses plugin-managed credentials and its trusted registration must include grantForEgress and issueCredential hooks.`,
+      );
+    }
+  }
+}
+
 /** Mount trusted plugin HTTP handlers before core routes claim those paths. */
 function mountAgentPluginRoutes(
   app: Hono,
@@ -295,6 +315,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
+      validatePluginManagedCredentialHooks(
+        configuredPlugins?.registrations ?? [],
+      );
     }
     agentPluginRoutes = getAgentPluginRoutes();
   } catch (error) {

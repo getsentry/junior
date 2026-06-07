@@ -79,4 +79,62 @@ describe("capability factory", () => {
     });
     expect(lease.provider).toBe("example");
   });
+
+  it("skips plugin-managed providers in the generic credential router", async () => {
+    const broker = {
+      issue: vi.fn(async () => ({
+        id: "lease-1",
+        provider: "sentry",
+        env: {},
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })),
+    };
+    createPluginBrokerMock.mockReturnValue(broker);
+    getPluginProvidersMock.mockReturnValue([
+      {
+        manifest: {
+          name: "github",
+          description: "GitHub",
+          capabilities: ["github.api"],
+          configKeys: [],
+          credentials: {
+            type: "plugin-managed",
+            domains: ["api.github.com"],
+            authTokenEnv: "GITHUB_TOKEN",
+          },
+        },
+        dir: "/tmp/github",
+        skillsDir: "/tmp/github/skills",
+      },
+      {
+        manifest: {
+          name: "sentry",
+          description: "Sentry",
+          capabilities: ["sentry.api"],
+          configKeys: [],
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["sentry.io"],
+            authTokenEnv: "SENTRY_AUTH_TOKEN",
+          },
+        },
+        dir: "/tmp/sentry",
+        skillsDir: "/tmp/sentry/skills",
+      },
+    ]);
+
+    const { issueProviderCredentialLease } =
+      await import("@/chat/capabilities/factory");
+
+    await issueProviderCredentialLease({
+      context: USER_CREDENTIAL_CONTEXT,
+      provider: "sentry",
+      reason: "test:oauth",
+    });
+
+    expect(createPluginBrokerMock).toHaveBeenCalledTimes(1);
+    expect(createPluginBrokerMock).toHaveBeenCalledWith("sentry", {
+      userTokenStore: expect.any(Object),
+    });
+  });
 });
