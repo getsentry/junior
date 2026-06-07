@@ -226,7 +226,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("only treats Git smart HTTP service parameters as write evidence on Git paths", async () => {
+  it("selects user-write for Git push discovery GET requests", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -237,6 +237,9 @@ describe("github plugin", () => {
       access: "write",
       reason: "github.git-write",
     });
+  });
+
+  it("only treats Git smart HTTP service parameters as grant evidence on Git paths", async () => {
     expect(
       await grantForEgress({
         method: "GET",
