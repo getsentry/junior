@@ -103,6 +103,25 @@ function githubPlugin() {
   };
 }
 
+function headerOnlyPlugin() {
+  return {
+    manifest: {
+      name: "header-only",
+      description: "Header-only",
+      capabilities: ["header-only.api"],
+      configKeys: [],
+      envVars: {},
+      commandEnv: {
+        HEADER_ONLY_READ_ONLY: "1",
+      },
+      credentials: {
+        type: "plugin-managed",
+        domains: ["api.example.com"],
+      },
+    },
+  };
+}
+
 function setSandboxEgressUserActor(userId = REQUESTER_ID): void {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: { actor: { type: "user", userId } },
@@ -298,6 +317,14 @@ describe("sandbox egress proxy", () => {
       GITHUB_TOKEN: "ghp_host_managed_credential",
       SENTRY_READ_ONLY: "1",
       SENTRY_AUTH_TOKEN: "host_managed_credential",
+    });
+  });
+
+  it("does not invent token env placeholders for plugin-managed providers", async () => {
+    getPluginProvidersMock.mockReturnValue([headerOnlyPlugin()]);
+
+    await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
+      HEADER_ONLY_READ_ONLY: "1",
     });
   });
 

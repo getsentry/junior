@@ -431,7 +431,6 @@ export type AgentPluginGrant = z.output<typeof agentPluginGrantSchema>;
 
 /** Request details available while selecting the grant for sandbox egress. */
 export interface AgentPluginEgressRequest {
-  body(): Promise<Uint8Array | undefined>;
   method: string;
   url: string;
 }
@@ -556,7 +555,7 @@ export interface JuniorPluginOAuthBearerCredentials {
 }
 
 export interface JuniorPluginManagedCredentials {
-  authTokenEnv: string;
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
   domains: string[];
   type: "plugin-managed";

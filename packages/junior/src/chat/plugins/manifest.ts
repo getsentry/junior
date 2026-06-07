@@ -171,17 +171,19 @@ const domainsSchema = z
 const baseCredentialsSchema = z
   .object({
     domains: domainsSchema.optional(),
-    "auth-token-env": envVarString,
-    "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   })
   .passthrough();
 
 const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
   "api-headers": stringMapSchema.optional(),
+  "auth-token-env": envVarString,
+  "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   type: z.literal("oauth-bearer"),
 });
 
 const pluginManagedCredentialsSchema = baseCredentialsSchema.extend({
+  "auth-token-env": envVarString.optional(),
+  "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   type: z.literal("plugin-managed"),
 });
 
@@ -605,7 +607,9 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
     }
   }
   if (credentials) {
-    hostOnlyRefs.add(credentials.authTokenEnv);
+    if (credentials.authTokenEnv) {
+      hostOnlyRefs.add(credentials.authTokenEnv);
+    }
   }
   if (oauth) {
     hostOnlyRefs.add(oauth.clientIdEnv);
@@ -683,8 +687,8 @@ function normalizeCredentials(
   }
   const domains = result.data.domains;
 
-  const apiHeaders =
-    result.data.type === "oauth-bearer" && result.data["api-headers"]
+  if (result.data.type === "oauth-bearer") {
+    const apiHeaders = result.data["api-headers"]
       ? normalizeStringMap(
           result.data["api-headers"],
           `Plugin ${name} credentials.api-headers`,
@@ -692,15 +696,33 @@ function normalizeCredentials(
         )
       : undefined;
 
+    return {
+      type: "oauth-bearer",
+      domains,
+      ...(apiHeaders ? { apiHeaders } : {}),
+      authTokenEnv: result.data["auth-token-env"],
+      ...(result.data["auth-token-placeholder"]
+        ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
+        : {}),
+    } satisfies OAuthBearerCredentials;
+  }
+
+  if (result.data["auth-token-placeholder"] && !result.data["auth-token-env"]) {
+    throw new Error(
+      `Plugin ${name} credentials.auth-token-placeholder requires auth-token-env`,
+    );
+  }
+
   return {
-    type: result.data.type,
+    type: "plugin-managed",
     domains,
-    ...(apiHeaders ? { apiHeaders } : {}),
-    authTokenEnv: result.data["auth-token-env"],
+    ...(result.data["auth-token-env"]
+      ? { authTokenEnv: result.data["auth-token-env"] }
+      : {}),
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
       : {}),
-  } satisfies OAuthBearerCredentials | PluginManagedCredentials;
+  } satisfies PluginManagedCredentials;
 }
 
 function normalizeRuntimeDependencies(

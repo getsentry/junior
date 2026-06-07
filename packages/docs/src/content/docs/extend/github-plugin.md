@@ -9,7 +9,7 @@ related:
   - /reference/runtime-commands/
 ---
 
-The GitHub plugin uses a GitHub App so Junior can create and update GitHub issues and pull requests through normal GitHub requests without asking users to manage GitHub credentials directly.
+The GitHub plugin uses a GitHub App so Junior can read repositories with installation tokens and create or update GitHub issues and pull requests with user-to-server tokens attributed to the requesting GitHub user with the app badge.
 
 ## Install
 
@@ -81,7 +81,7 @@ Create and install a GitHub App before you verify GitHub workflows:
    - Workflows: Write
    - Metadata: Read
 4. Install the app on the repository or organization Junior should access.
-5. Copy the App ID, installation ID, bot name, and bot noreply email into your deployment environment.
+5. Copy the App ID, OAuth client ID/secret, installation ID, bot name, and bot noreply email into your deployment environment.
 
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
@@ -97,15 +97,16 @@ Create a GitHub issue in owner/repo titled "Junior GitHub plugin check" with bod
 Then confirm:
 
 1. The issue is created in the expected repository.
-2. The author is the GitHub App identity you installed.
-3. A follow-up GitHub request can update or comment on the same issue without asking the user to handle tokens manually.
+2. The author is the requesting GitHub user with the GitHub App badge.
+3. A follow-up GitHub request can update or comment on the same issue without asking the user to handle tokens manually after authorization.
 4. A pushed branch can be turned into a draft PR when Junior uses explicit repo targeting and `--head` during `gh pr create`.
 
 ## Security model
 
-- Junior mints GitHub App installation tokens on the host, not in the sandbox.
+- Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow the installation token.
+- Read requests use GitHub App installation tokens. Write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
+- The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow issued credentials.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.
 - It is not a full containment boundary. The agent can still request broader GitHub capabilities when a task genuinely needs them, so operators should treat GitHub App installation scope as the real trust boundary.

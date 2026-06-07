@@ -5,7 +5,6 @@ import {
   permissionCapabilities,
   readGrantPermissions,
 } from "./permissions.js";
-import { graphqlAccessFromBody } from "./graphql.js";
 
 const GITHUB_APP_ID_ENV = "GITHUB_APP_ID";
 const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
@@ -168,42 +167,14 @@ function base64Url(input) {
     .replace(/\//g, "_");
 }
 
-function normalizePrivateKey(raw) {
-  let normalized = raw.trim();
-  if (
-    (normalized.startsWith('"') && normalized.endsWith('"')) ||
-    (normalized.startsWith("'") && normalized.endsWith("'"))
-  ) {
-    normalized = normalized.slice(1, -1);
-  }
-
-  normalized = normalized.replace(/\r\n/g, "\n");
-  if (normalized.includes("\\n")) {
-    normalized = normalized.replace(/\\n/g, "\n");
-  }
-
-  if (!normalized.includes("-----BEGIN")) {
-    try {
-      const decoded = Buffer.from(normalized, "base64").toString("utf8").trim();
-      if (decoded.includes("-----BEGIN")) {
-        normalized = decoded;
-      }
-    } catch {
-      // Let crypto validation report the key format error.
-    }
-  }
-
-  return normalized;
-}
-
 function getPrivateKey(envName) {
-  const normalized = normalizePrivateKey(requireEnv(envName));
+  const raw = requireEnv(envName);
   let key;
   try {
-    key = createPrivateKey({ key: normalized, format: "pem" });
+    key = createPrivateKey({ key: raw, format: "pem" });
   } catch {
     throw new Error(
-      `Invalid ${envName}: expected a PEM-encoded RSA private key (raw PEM, escaped newlines, or base64-encoded PEM)`,
+      `Invalid ${envName}: expected a PEM-encoded RSA private key`,
     );
   }
 
@@ -296,16 +267,22 @@ function parseOAuthError(text) {
 }
 
 function parseOAuthTokenResponse(data, requestedScope) {
+  if (!isRecord(data)) {
+    throw new Error("OAuth token response is invalid");
+  }
   if (typeof data.access_token !== "string" || !data.access_token.trim()) {
     throw new Error("OAuth token response missing access_token");
   }
   if (typeof data.refresh_token !== "string" || !data.refresh_token.trim()) {
     throw new Error("OAuth token response missing refresh_token");
   }
-  const scope =
-    typeof data.scope === "string" && normalizeOAuthScope(data.scope)
-      ? normalizeOAuthScope(data.scope)
-      : normalizeOAuthScope(requestedScope);
+  let scope = normalizeOAuthScope(requestedScope);
+  if (data.scope !== undefined) {
+    if (typeof data.scope !== "string") {
+      throw new Error("OAuth token response returned invalid scope");
+    }
+    scope = normalizeOAuthScope(data.scope) ?? scope;
+  }
   const result = {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
@@ -589,17 +566,14 @@ function isGitHubGraphqlUrl(upstreamUrl) {
   );
 }
 
-async function githubGraphqlAccess(ctx, method, upstreamUrl) {
+function githubGraphqlAccess(method, upstreamUrl) {
   if (!isGitHubGraphqlUrl(upstreamUrl)) {
     return undefined;
   }
   if (HTTP_READ_METHODS.has(method)) {
     return "read";
   }
-  if (method !== "POST") {
-    return "write";
-  }
-  return graphqlAccessFromBody(await ctx.request.body());
+  return "write";
 }
 
 function githubApiWriteReason(method, upstreamUrl) {
@@ -647,7 +621,7 @@ async function githubGrantForEgress(ctx) {
     return grantForAccess("write", writeReason);
   }
 
-  const graphqlAccess = await githubGraphqlAccess(ctx, method, upstreamUrl);
+  const graphqlAccess = githubGraphqlAccess(method, upstreamUrl);
   if (graphqlAccess) {
     return grantForAccess(
       graphqlAccess,
@@ -679,7 +653,7 @@ export function githubPlugin(options = {}) {
     ? readGrantPermissions(appPermissions)
     : undefined;
   const loadReadPermissions = createPermissionCache();
-  const appCapabilities = permissionCapabilities(options.appPermissions);
+  const appCapabilities = permissionCapabilities(appPermissions);
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
 

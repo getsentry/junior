@@ -100,7 +100,6 @@ describe("capability factory", () => {
           credentials: {
             type: "plugin-managed",
             domains: ["api.github.com"],
-            authTokenEnv: "GITHUB_TOKEN",
           },
         },
         dir: "/tmp/github",

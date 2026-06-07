@@ -43,7 +43,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 - Enablement happens when sandbox traffic reaches a registered provider domain, not at skill-load time.
 - Delivery uses the Vercel Sandbox firewall request proxy for provider domains when available, with host-side header injection on the forwarded request.
-- Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
+- Plugin-managed credentials may define `auth-token-env` and a provider-specific `auth-token-placeholder` for CLI compatibility; request credentials still come from plugin hooks.
 - Plugin manifests may define sandbox-visible `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or host env bindings explicitly marked `expose-to-command-env`; provider auth secrets that should remain host-only belong in credentials or API headers.
 - Do not inject long-lived secrets into sandbox files.
 - Credential issuance is intentionally lazy to avoid wasted token minting and provider compute for commands that never touch authenticated domains.
@@ -81,11 +81,11 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 ### Lease behavior
 
 - Header transforms target the domains declared by the GitHub plugin manifest.
-- The GitHub API host is the declared `api.github.com` or `api.*` domain, independent of manifest order.
+- The GitHub API host is the exact declared `api.github.com` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
 - Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but distinct plugin grant names are cached separately.
-- GitHub read grants are derived by the GitHub plugin from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL query operations, and `git-upload-pack`. GitHub write grants are derived from runtime-visible write evidence, including write-specific REST URLs, GraphQL mutation or ambiguous GraphQL operations, non-read HTTP methods, and `git-receive-pack`.
+- GitHub read grants are derived by the GitHub plugin from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, and `git-upload-pack`. GitHub write grants are derived from runtime-visible write evidence, including write-specific REST URLs, non-read GraphQL methods, other non-read HTTP methods, and `git-receive-pack`.
 - When a GitHub App installation lease is issued, the GitHub plugin sends an explicit read-only permissions body instead of inheriting the installation's default permissions.
 - If the plugin declares GitHub App permissions, each read-capable configured
   permission is requested at `read` level for installation-read leases.

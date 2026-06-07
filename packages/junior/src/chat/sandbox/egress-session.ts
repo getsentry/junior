@@ -1,5 +1,4 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import type { Lock } from "chat";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   parseSandboxEgressAuthRequiredSignal,
@@ -18,7 +17,6 @@ const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
 const SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX = "sandbox-egress-auth-required";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
-const AUTH_SIGNAL_LOCK_TTL_MS = 30_000;
 
 export type {
   SandboxEgressAuthRequiredSignal,
@@ -37,8 +35,11 @@ function leaseKey(
   return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grantName}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
-function authSignalKey(egressId: string): string {
-  return `${SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX}:${egressId}`;
+function authSignalKey(
+  egressId: string,
+  access: SandboxEgressAuthRequiredSignal["grant"]["access"],
+): string {
+  return `${SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX}:${egressId}:${access}`;
 }
 
 function base64Url(input: string): string {
@@ -87,77 +88,6 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
     return undefined;
   }
   return result.data;
-}
-
-function authSignalLockKey(egressId: string): string {
-  return `${authSignalKey(egressId)}:lock`;
-}
-
-async function withAuthSignalLock<T>(
-  egressId: string,
-  callback: () => Promise<T>,
-): Promise<T> {
-  const state = getStateAdapter();
-  await state.connect();
-  const lock: Lock | null = await state.acquireLock(
-    authSignalLockKey(egressId),
-    AUTH_SIGNAL_LOCK_TTL_MS,
-  );
-  if (!lock) {
-    throw new Error(
-      `Could not acquire sandbox egress auth signal lock for ${egressId}`,
-    );
-  }
-
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
-}
-
-function parseAuthSignals(value: unknown): SandboxEgressAuthRequiredSignal[] {
-  if (value === undefined || value === null) {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error("Invalid sandbox egress auth signal state");
-  }
-  return value.map((entry) => {
-    const signal = parseSandboxEgressAuthRequiredSignal(entry);
-    if (!signal) {
-      throw new Error("Invalid sandbox egress auth signal state");
-    }
-    return signal;
-  });
-}
-
-function sameGrant(
-  left: SandboxEgressAuthRequiredSignal,
-  right: SandboxEgressAuthRequiredSignal,
-): boolean {
-  return (
-    left.provider === right.provider &&
-    left.grant.name === right.grant.name &&
-    left.grant.access === right.grant.access
-  );
-}
-
-function mergeAuthSignal(
-  existing: SandboxEgressAuthRequiredSignal[],
-  next: SandboxEgressAuthRequiredSignal,
-): SandboxEgressAuthRequiredSignal[] {
-  return existing.some((signal) => sameGrant(signal, next))
-    ? existing
-    : [...existing, next];
-}
-
-function selectAuthSignal(
-  signals: SandboxEgressAuthRequiredSignal[],
-): SandboxEgressAuthRequiredSignal | undefined {
-  return (
-    signals.find((signal) => signal.grant.access === "write") ?? signals[0]
-  );
 }
 
 function getSandboxEgressSecret(): string {
@@ -215,7 +145,7 @@ export function parseSandboxEgressCredentialToken(
   }
 }
 
-/** Cache a short-lived credential lease for repeated forwarded requests for one actor/sandbox context. */
+/** Cache a short-lived credential lease for one actor/sandbox context and grant. */
 export async function setSandboxEgressCredentialLease(
   context: SandboxEgressCredentialContext,
   lease: SandboxEgressCredentialLease,
@@ -237,7 +167,7 @@ export async function setSandboxEgressCredentialLease(
   );
 }
 
-/** Load a cached egress credential lease for an actor/sandbox context/provider pair. */
+/** Load a cached egress credential lease for one actor/sandbox context and grant. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
   grantName: string,
@@ -265,21 +195,16 @@ export async function setSandboxEgressAuthRequiredSignal(
   signal: Omit<SandboxEgressAuthRequiredSignal, "createdAtMs">,
 ): Promise<void> {
   const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
-  await withAuthSignalLock(context.egressId, async () => {
-    const state = getStateAdapter();
-    const next = {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.set(
+    authSignalKey(context.egressId, signal.grant.access),
+    {
       ...signal,
       createdAtMs: Date.now(),
-    };
-    const existing = parseAuthSignals(
-      await state.get(authSignalKey(context.egressId)),
-    );
-    await state.set(
-      authSignalKey(context.egressId),
-      mergeAuthSignal(existing, next),
-      ttlMs,
-    );
-  });
+    },
+    ttlMs,
+  );
 }
 
 /** Remove any pending host-side sandbox egress auth signal for a command. */
@@ -289,9 +214,12 @@ export async function clearSandboxEgressAuthRequiredSignal(
   if (!egressId) {
     return;
   }
-  await withAuthSignalLock(egressId, async () => {
-    await getStateAdapter().delete(authSignalKey(egressId));
-  });
+  const state = getStateAdapter();
+  await state.connect();
+  await Promise.all([
+    state.delete(authSignalKey(egressId, "read")),
+    state.delete(authSignalKey(egressId, "write")),
+  ]);
 }
 
 /** Consume the host-side sandbox egress auth signal produced during a command. */
@@ -301,11 +229,18 @@ export async function consumeSandboxEgressAuthRequiredSignal(
   if (!egressId) {
     return undefined;
   }
-  return await withAuthSignalLock(egressId, async () => {
-    const state = getStateAdapter();
-    const key = authSignalKey(egressId);
-    const signal = selectAuthSignal(parseAuthSignals(await state.get(key)));
-    await state.delete(key);
-    return signal;
-  });
+  const state = getStateAdapter();
+  await state.connect();
+  const [writeSignal, readSignal] = await Promise.all([
+    state.get(authSignalKey(egressId, "write")),
+    state.get(authSignalKey(egressId, "read")),
+  ]);
+  const signal =
+    parseSandboxEgressAuthRequiredSignal(writeSignal) ??
+    parseSandboxEgressAuthRequiredSignal(readSignal);
+  await Promise.all([
+    state.delete(authSignalKey(egressId, "read")),
+    state.delete(authSignalKey(egressId, "write")),
+  ]);
+  return signal;
 }

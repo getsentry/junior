@@ -7,7 +7,6 @@ import {
 import {
   authorizationForSandboxEgressGrant,
   hasSandboxEgressLeaseTransformForHost,
-  recordSandboxEgressCredentialNeeded,
   sandboxEgressCredentialLease,
   SandboxEgressCredentialNeededError,
   selectSandboxEgressGrant,
@@ -17,6 +16,7 @@ import {
   clearSandboxEgressCredentialLease,
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
+  setSandboxEgressAuthRequiredSignal,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress-session";
 import type { JWTPayload } from "jose";
@@ -472,16 +472,7 @@ export async function proxySandboxEgressRequest(
     );
   }
 
-  let bodyPromise: Promise<ArrayBuffer | undefined> | undefined;
-  const readBody = async () => {
-    bodyPromise ??= requestBodyBytes(request);
-    return await bodyPromise;
-  };
   const grantSelection = await selectSandboxEgressGrant({
-    body: async () => {
-      const body = await readBody();
-      return body === undefined ? undefined : new Uint8Array(body);
-    },
     provider,
     method: request.method,
     upstreamUrl,
@@ -496,10 +487,10 @@ export async function proxySandboxEgressRequest(
     );
   } catch (error) {
     if (error instanceof SandboxEgressCredentialNeededError) {
-      await recordSandboxEgressCredentialNeeded(credentialContext, {
+      await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider: error.provider,
         grant: error.grant,
-        authorization: error.authorization,
+        ...(error.authorization ? { authorization: error.authorization } : {}),
         message: error.message,
       });
       logWarn(
@@ -528,13 +519,14 @@ export async function proxySandboxEgressRequest(
     }
     if (error instanceof CredentialUnavailableError) {
       const failedGrant = grantSelection.grant;
-      await recordSandboxEgressCredentialNeeded(credentialContext, {
+      const authorization = authorizationForSandboxEgressGrant(
+        error.provider,
+        grantSelection,
+      );
+      await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider: error.provider,
         grant: failedGrant,
-        authorization: authorizationForSandboxEgressGrant(
-          error.provider,
-          grantSelection,
-        ),
+        ...(authorization ? { authorization } : {}),
         message: error.message,
       });
       logWarn(
@@ -591,7 +583,7 @@ export async function proxySandboxEgressRequest(
 
   const fetchImpl = deps.fetch ?? fetch;
   const headers = requestHeaders(request, lease, upstreamUrl.hostname);
-  const body = await readBody();
+  const body = await requestBodyBytes(request);
   const intercepted = await deps.interceptHttp?.({
     provider,
     request: new Request(upstreamUrl, {
@@ -677,10 +669,10 @@ export async function proxySandboxEgressRequest(
       credentialContext,
     );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
-      await recordSandboxEgressCredentialNeeded(credentialContext, {
+      await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider,
         grant: lease.grant,
-        authorization: lease.authorization,
+        ...(lease.authorization ? { authorization: lease.authorization } : {}),
         message: `Provider rejected the injected ${provider} credential.`,
       });
       await upstream.body?.cancel().catch(() => undefined);

@@ -206,6 +206,7 @@ describe("oauth callback slack integration", () => {
         pendingMessage: "list my sentry issues",
         resumeConversationId: conversationId,
         resumeSessionId: sessionId,
+        scope: "read",
       });
     await stateAdapterModule
       .getStateAdapter()
@@ -242,6 +243,7 @@ describe("oauth callback slack integration", () => {
               kind: "plugin",
               provider: "eval-oauth",
               requesterId: "U123",
+              scope: "read",
               sessionId,
               linkSentAtMs: 1,
             },

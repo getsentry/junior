@@ -1,4 +1,8 @@
 import path from "node:path";
+import {
+  defineJuniorPlugin,
+  type AgentPluginHooks,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPluginAppFixture,
@@ -14,6 +18,7 @@ const BASE_URL = "https://junior.example.com";
 const EGRESS_ID = "sbx_integration_session";
 const REQUESTER_ID = "U123";
 const PROVIDER_HOST = "sandbox-egress.example.test";
+const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
 
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress-policy");
 type EgressProxyModule = typeof import("@/chat/sandbox/egress-proxy");
@@ -78,6 +83,63 @@ function proxiedRequest(input: {
         ? { "content-type": "application/json" }
         : {}),
       ...(input.headers ?? {}),
+    },
+  });
+}
+
+async function registerManagedEgressPlugin(input?: {
+  issueCredential?: NonNullable<AgentPluginHooks["issueCredential"]>;
+}) {
+  const { createApp, defineJuniorPlugins } = await import("@/app");
+  await createApp({
+    plugins: defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "managed-egress",
+          description: "Managed egress integration fixture",
+          capabilities: ["api"],
+          credentials: {
+            type: "plugin-managed",
+            domains: [MANAGED_PROVIDER_HOST],
+          },
+        },
+        hooks: {
+          grantForEgress(ctx) {
+            return ctx.request.method === "POST"
+              ? {
+                  name: "user-write",
+                  access: "write",
+                  reason: "managed.write",
+                }
+              : {
+                  name: "installation-read",
+                  access: "read",
+                  reason: "managed.read",
+                };
+          },
+          issueCredential:
+            input?.issueCredential ??
+            ((ctx) => ({
+              type: "lease",
+              lease: {
+                expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                headerTransforms: [
+                  {
+                    domain: MANAGED_PROVIDER_HOST,
+                    headers: {
+                      Authorization: `Bearer ${ctx.grant.name}`,
+                    },
+                  },
+                ],
+              },
+            })),
+        },
+      }),
+    ]),
+    waitUntil(task) {
+      if (typeof task === "function") {
+        void task();
+      }
     },
   });
 }
@@ -181,5 +243,115 @@ describe("sandbox egress proxy integration", () => {
     expect(
       interceptHttp.mock.calls[0]?.[0].request.headers.get("authorization"),
     ).toBe("Bearer integration-egress-token");
+  });
+
+  it("uses plugin-managed egress hooks to issue request-scoped credentials", async () => {
+    await registerManagedEgressPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) =>
+        new Response(new Headers(init?.headers).get("authorization")),
+    );
+
+    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        upstreamHost: MANAGED_PROVIDER_HOST,
+        upstreamPath: "/v1/issues",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    expect(readResponse.status).toBe(200);
+    await expect(readResponse.text()).resolves.toBe("Bearer installation-read");
+
+    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamHost: MANAGED_PROVIDER_HOST,
+        upstreamPath: "/v1/issues",
+        body: JSON.stringify({ title: "test" }),
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(writeResponse.status).toBe(200);
+    await expect(writeResponse.text()).resolves.toBe("Bearer user-write");
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("records plugin-managed write auth needs over earlier read failures", async () => {
+    await registerManagedEgressPlugin({
+      issueCredential(ctx) {
+        return {
+          type: "needed",
+          message: `${ctx.grant.name} needs auth`,
+        };
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
+
+    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        upstreamHost: MANAGED_PROVIDER_HOST,
+        upstreamPath: "/v1/issues",
+      }),
+      {
+        fetch: vi.fn() as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    expect(readResponse.status).toBe(401);
+
+    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamHost: MANAGED_PROVIDER_HOST,
+        upstreamPath: "/v1/issues",
+        body: JSON.stringify({ title: "test" }),
+      }),
+      {
+        fetch: vi.fn() as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    expect(writeResponse.status).toBe(401);
+    await expect(writeResponse.text()).resolves.toContain(
+      "junior-auth-required provider=managed-egress grant=user-write access=write",
+    );
+
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "managed-egress",
+      grant: {
+        name: "user-write",
+        access: "write",
+      },
+    });
   });
 });

@@ -64,12 +64,11 @@ export function readGrantPermissions(permissions) {
 
 /** Expose configured permissions as plugin capabilities for host policy checks. */
 export function permissionCapabilities(permissions) {
-  const normalizedPermissions = normalizePermissions(permissions);
-  if (normalizedPermissions === undefined) {
+  if (permissions === undefined) {
     return undefined;
   }
 
-  return Object.entries(normalizedPermissions)
+  return Object.entries(permissions)
     .map(([normalizedScope, rawLevel]) => {
       const scope = normalizedScope.replace(/_/g, "-");
       return `github.${scope}.${rawLevel}`;

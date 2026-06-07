@@ -34,7 +34,7 @@ export interface OAuthBearerCredentials {
 export interface PluginManagedCredentials {
   type: "plugin-managed";
   domains: string[];
-  authTokenEnv: string;
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
 }
 

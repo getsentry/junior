@@ -55,23 +55,14 @@ const pluginLog = {
   warn() {},
 };
 
-async function grantForEgress(input: {
-  body?: unknown;
-  method: string;
-  url: string;
-}) {
+async function grantForEgress(input: { method: string; url: string }) {
   const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
-  const body =
-    input.body === undefined
-      ? undefined
-      : new TextEncoder().encode(JSON.stringify(input.body));
   return await plugin.hooks?.grantForEgress?.({
     log: pluginLog,
     plugin: { name: "github" },
     request: {
       method: input.method,
       url: input.url,
-      body: async () => body,
     },
   });
 }
@@ -235,36 +226,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("does not read REST egress bodies while selecting GitHub grants", async () => {
-    const plugin = githubPlugin();
-    const body = vi.fn(async () =>
-      new TextEncoder().encode(JSON.stringify({ title: "test" })),
-    );
-
-    await plugin.hooks?.grantForEgress?.({
-      log: pluginLog,
-      plugin: { name: "github" },
-      request: {
-        method: "POST",
-        url: "https://api.github.com/repos/getsentry/junior/issues",
-        body,
-      },
-    });
-    expect(body).not.toHaveBeenCalled();
-
-    await plugin.hooks?.grantForEgress?.({
-      log: pluginLog,
-      plugin: { name: "github" },
-      request: {
-        method: "POST",
-        url: "https://api.github.com/repos/getsentry/junior/releases",
-        body,
-      },
-    });
-    expect(body).not.toHaveBeenCalled();
-  });
-
-  it("classifies GitHub GraphQL requests from the selected operation", async () => {
+  it("treats GitHub GraphQL GET as read and POST as write", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -279,52 +241,6 @@ describe("github plugin", () => {
       await grantForEgress({
         method: "POST",
         url: "https://api.github.com/graphql",
-        body: { query: "query { viewer { login } }" },
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        body: {
-          query: "mutation { createIssue(input: {}) { issue { id } } }",
-        },
-      }),
-    ).toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        body: {
-          operationName: "ReadViewer",
-          query:
-            "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
-        },
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-  });
-
-  it("treats ambiguous GitHub GraphQL POST bodies as write access", async () => {
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        body: {
-          query:
-            "query ReadViewer { viewer { login } } mutation WriteIssue { createIssue(input: {}) { issue { id } } }",
-        },
       }),
     ).toMatchObject({
       name: "user-write",
@@ -401,68 +317,6 @@ describe("github plugin", () => {
         },
       },
     });
-  });
-
-  it("rejects malformed GitHub App installation token responses", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-        }),
-      ),
-    );
-
-    const plugin = githubPlugin({
-      appPermissions: {
-        contents: "read",
-      },
-    });
-
-    await expect(
-      plugin.hooks?.issueCredential?.({
-        actor: { type: "system", id: "scheduler" },
-        grant: {
-          name: "installation-read",
-          access: "read",
-          reason: "github.api-read",
-        },
-        log: pluginLog,
-        plugin: { name: "github" },
-        tokens: {},
-      }),
-    ).rejects.toThrow("GitHub installation token response missing token");
-  });
-
-  it("rejects invalid GitHub App installation ids before issuing tokens", async () => {
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "0";
-    process.env.GITHUB_APP_PRIVATE_KEY = "not-needed";
-    vi.stubGlobal("fetch", vi.fn());
-
-    const plugin = githubPlugin();
-    await expect(
-      plugin.hooks?.issueCredential?.({
-        actor: { type: "system", id: "scheduler" },
-        grant: {
-          name: "installation-read",
-          access: "read",
-          reason: "github.api-read",
-        },
-        log: pluginLog,
-        plugin: { name: "github" },
-        tokens: {},
-      }),
-    ).rejects.toThrow("Invalid GITHUB_INSTALLATION_ID");
-
-    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("caches implicit GitHub App installation permissions", async () => {
@@ -544,49 +398,6 @@ describe("github plugin", () => {
         },
       },
     ]);
-  });
-
-  it("rejects malformed GitHub App installation permission responses", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: URL | string) => {
-        if (String(url).endsWith("/app/installations/456")) {
-          return Response.json({
-            permissions: {
-              issues: "owner",
-            },
-          });
-        }
-        return Response.json({
-          token: "installation-token",
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-        });
-      }),
-    );
-
-    const plugin = githubPlugin();
-    await expect(
-      plugin.hooks?.issueCredential?.({
-        actor: { type: "system", id: "scheduler" },
-        grant: {
-          name: "installation-read",
-          access: "read",
-          reason: "github.api-read",
-        },
-        log: pluginLog,
-        plugin: { name: "github" },
-        tokens: {},
-      }),
-    ).rejects.toThrow(
-      'GitHub permission "issues" returned invalid level "owner".',
-    );
   });
 
   it("requires user authorization context for user-write credentials", async () => {
@@ -767,11 +578,9 @@ describe("github plugin", () => {
     ).rejects.toThrow("GitHub user token refresh failed: 500 server_error");
   });
 
-  it("serializes global git config writes during sandbox preparation", async () => {
+  it("prepares git attribution hooks and sandbox git config", async () => {
     const started: string[] = [];
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];
-    let running = 0;
-    let maxRunning = 0;
 
     const plugin = githubPlugin();
     const ctx: SandboxPrepareHookContext = {
@@ -792,10 +601,6 @@ describe("github plugin", () => {
           expect(input.args?.slice(0, 2)).toEqual(["config", "--global"]);
 
           started.push(String(input.args?.[2]));
-          running += 1;
-          maxRunning = Math.max(maxRunning, running);
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          running -= 1;
 
           return { exitCode: 0, stderr: "", stdout: "" };
         },
@@ -823,7 +628,6 @@ describe("github plugin", () => {
       "credential.helper",
       "http.emptyAuth",
     ]);
-    expect(maxRunning).toBe(1);
   });
 
   it("injects requester author and Junior coauthor env only for resolved requester identity", () => {

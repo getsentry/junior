@@ -183,7 +183,9 @@ function commandTargetsProvider(
   const manifest = plugin?.manifest;
   const credentials = manifest?.credentials;
   if (credentials) {
-    candidates.add(credentials.authTokenEnv.toLowerCase());
+    if (credentials.authTokenEnv) {
+      candidates.add(credentials.authTokenEnv.toLowerCase());
+    }
     for (const domain of credentials.domains) {
       candidates.add(domain.toLowerCase());
     }

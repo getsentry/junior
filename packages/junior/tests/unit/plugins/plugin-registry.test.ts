@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginCatalogConfig, PluginManifest } from "@/chat/plugins/types";
 
 const originalCwd = process.cwd();
 
@@ -14,51 +13,6 @@ afterEach(() => {
 });
 
 describe("plugin registry", () => {
-  it("propagates treatEmptyScopeAsUnreported through inline manifest registration to getPluginOAuthConfig", async () => {
-    vi.doMock("@/chat/discovery", () => ({ pluginRoots: () => [] }));
-    vi.doMock("@/chat/plugins/package-discovery", async (importOriginal) => ({
-      ...(await importOriginal<
-        typeof import("@/chat/plugins/package-discovery")
-      >()),
-      discoverInstalledPluginPackageContent: () => ({
-        packageNames: [],
-        packages: [],
-        manifestRoots: [],
-        skillRoots: [],
-        tracingIncludes: [],
-      }),
-    }));
-
-    const inlineManifest: PluginManifest = {
-      name: "github",
-      description: "GitHub",
-      capabilities: [],
-      configKeys: [],
-      credentials: {
-        type: "plugin-managed",
-        domains: ["api.github.com"],
-        authTokenEnv: "GITHUB_TOKEN",
-      },
-      oauth: {
-        clientIdEnv: "GITHUB_APP_CLIENT_ID",
-        clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
-        authorizeEndpoint: "https://github.com/login/oauth/authorize",
-        tokenEndpoint: "https://github.com/login/oauth/access_token",
-        treatEmptyScopeAsUnreported: true,
-      },
-    };
-
-    const config: PluginCatalogConfig = {
-      inlineManifests: [{ manifest: inlineManifest }],
-    };
-
-    const registry = await import("@/chat/plugins/registry");
-    registry.setPluginCatalogConfig(config);
-
-    const oauthConfig = registry.getPluginOAuthConfig("github");
-    expect(oauthConfig?.treatEmptyScopeAsUnreported).toBe(true);
-  });
-
   it("is empty when no local or installed plugin packages are present", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-empty-"),

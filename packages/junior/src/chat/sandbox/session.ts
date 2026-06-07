@@ -747,10 +747,6 @@ export function createSandboxSessionManager(options?: {
           if (input.signal?.aborted) {
             return getCommandAbortedResult();
           }
-          await refreshNetworkPolicy(sandboxInstance);
-          if (input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
           const sandboxCommandEnv = await resolveCommandEnv();
           if (input.signal?.aborted) {
             return getCommandAbortedResult();

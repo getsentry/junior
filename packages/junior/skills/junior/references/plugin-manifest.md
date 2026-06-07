@@ -52,7 +52,8 @@ oauth:
 
 `plugin-managed` credentials are defined by a trusted code plugin, not by extra
 provider-specific manifest fields. The manifest declares domains and sandbox
-placeholder names; the plugin hooks choose grants and issue credential leases.
+placeholder env names when a CLI needs one; the plugin hooks choose grants and
+issue credential leases.
 
 ```ts
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -86,6 +87,7 @@ mcp:
 - `api-headers` requires `domains`.
 - `domains` requires `api-headers`.
 - `oauth` requires `credentials.type: oauth-bearer` or `plugin-managed`.
+- `plugin-managed` `auth-token-placeholder` requires `auth-token-env`.
 - `mcp.url` env refs must be declared in `env-vars`.
 - API-header env refs must not declare defaults.
 - `command-env` env refs must not reuse API-header, credential, or OAuth env vars.

@@ -254,7 +254,6 @@ describe("createApp plugin config", () => {
               credentials: {
                 type: "plugin-managed",
                 domains: ["api.example.com"],
-                authTokenEnv: "TRUSTED_TOKEN",
               },
             },
             hooks: {},
@@ -279,7 +278,6 @@ describe("createApp plugin config", () => {
             credentials: {
               type: "plugin-managed",
               domains: ["api.example.com"],
-              authTokenEnv: "TRUSTED_TOKEN",
             },
           },
           hooks: {

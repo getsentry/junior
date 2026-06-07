@@ -20,7 +20,6 @@ import {
 } from "@/chat/sandbox/egress-policy";
 import {
   getSandboxEgressCredentialLease,
-  setSandboxEgressAuthRequiredSignal,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
@@ -113,7 +112,6 @@ function assertLeaseTransformsOwnedByProvider(
 
 /** Select the plugin-defined or default grant needed for one outbound request. */
 export async function selectSandboxEgressGrant(input: {
-  body: () => Promise<Uint8Array | undefined>;
   method: string;
   provider: string;
   upstreamUrl: URL;
@@ -128,7 +126,6 @@ export async function selectSandboxEgressGrant(input: {
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,
-    body: input.body,
   });
   if (!pluginGrant) {
     throw new Error(
@@ -148,24 +145,6 @@ export function authorizationForSandboxEgressGrant(
     : undefined;
 }
 
-/** Persist an auth-required signal for the current sandbox egress session. */
-export async function recordSandboxEgressCredentialNeeded(
-  context: SandboxEgressCredentialContext,
-  input: {
-    authorization?: AgentPluginAuthorization;
-    grant: AgentPluginGrant;
-    message?: string;
-    provider: string;
-  },
-): Promise<void> {
-  await setSandboxEgressAuthRequiredSignal(context, {
-    provider: input.provider,
-    grant: input.grant,
-    ...(input.authorization ? { authorization: input.authorization } : {}),
-    ...(input.message ? { message: input.message } : {}),
-  });
-}
-
 /** Return a cached or newly issued credential lease for a selected grant. */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -182,13 +161,11 @@ export async function sandboxEgressCredentialLease(
     return cached;
   }
 
-  let lease:
-    | {
-        authorization?: AgentPluginAuthorization;
-        expiresAt: string;
-        headerTransforms?: SandboxEgressCredentialLease["headerTransforms"];
-      }
-    | undefined;
+  let lease: {
+    authorization?: AgentPluginAuthorization;
+    expiresAt: string;
+    headerTransforms?: SandboxEgressCredentialLease["headerTransforms"];
+  };
 
   if (selection.source === "plugin") {
     const credentialSubject = credentialSubjectFromContext(context);
@@ -199,18 +176,13 @@ export async function sandboxEgressCredentialLease(
       ...(credentialSubject ? { credentialSubject } : {}),
       userTokenStore: createUserTokenStore(),
     });
-    if (pluginResult?.type === "needed") {
+    if (pluginResult.type === "needed") {
       throw new SandboxEgressCredentialNeededError({
         provider,
         grant,
         authorization: pluginResult.authorization,
         message: pluginResult.message,
       });
-    }
-    if (!pluginResult) {
-      throw new Error(
-        `Trusted plugin "${provider}" did not issue selected grant "${grant.name}"`,
-      );
     }
     lease = pluginResult.lease;
   } else {

@@ -965,6 +965,69 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("prefers write sandbox egress auth signals over read signals", async () => {
+    const sandbox = makeSandbox("sbx_mixed_auth_signal");
+    sandbox.runCommand.mockImplementationOnce(async () => {
+      const context = {
+        credentials: { actor: { type: "user" as const, userId: "U123" } },
+        egressId: "sbx_mixed_auth_signal_session",
+        expiresAtMs: Date.now() + 60_000,
+        contextId: "ctx-mixed",
+      };
+      await setSandboxEgressAuthRequiredSignal(context, {
+        provider: "github",
+        grant: {
+          name: "user-write",
+          access: "write",
+        },
+      });
+      await setSandboxEgressAuthRequiredSignal(context, {
+        provider: "github",
+        grant: {
+          name: "installation-read",
+          access: "read",
+        },
+      });
+      return {
+        exitCode: 1,
+        stdout: async () => "",
+        stderr: async () =>
+          "junior-auth-required provider=github grant=user-write access=write 401 unauthorized",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_mixed_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<{
+      auth_required?: unknown;
+      exit_code: number;
+    }>({
+      toolName: "bash",
+      input: {
+        command: "gh issue create",
+      },
+    });
+
+    expect(response.result.exit_code).toBe(1);
+    expect(response.result.auth_required).toMatchObject({
+      provider: "github",
+      grant: {
+        name: "user-write",
+        access: "write",
+      },
+    });
+  });
+
   it("configures lazy system actor credential context for sandbox egress", async () => {
     const sandbox = makeSandbox("sbx_authorize_system_credentials");
     sandbox.runCommand.mockImplementationOnce(async () => {
