@@ -127,6 +127,15 @@ gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sa
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
 The plugin uses `installation-read` for read-only GitHub traffic and `user-write` for mutations. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes and merges, pull requests for PR mutations, actions/workflows for workflow operations.
 
+Committing and pushing code uses more than one GitHub surface:
+
+- Creating the local Git commit does not call GitHub. Junior sets the requester as author and the GitHub App bot as committer in the sandbox.
+- Pushing a branch with Git smart HTTP (`git push`) uses the `user-write` grant and requires the GitHub App to have `Contents: write` on the target repository. The requesting user must also have write access to that repository.
+- REST Git database writes used by some `gh` flows also require `Contents: write`: create blob (`POST /git/blobs`), create tree (`POST /git/trees`), create commit (`POST /git/commits`), and create/update refs (`POST /git/refs`, `PATCH /git/refs/{ref}`). Changes to workflow files may also require `Workflows: write`.
+- Opening the PR after the branch exists is separate: `gh pr create --head` needs pull-request write permission, but it should not create or push commits itself.
+
+Fork creation is not part of the default PR path. `POST /repos/{owner}/{repo}/forks` uses the `user-write` grant, but GitHub requires `Administration: write` and `Contents: read`, and the app must be installed on both the source and destination accounts. Do not grant `Administration: write` for routine PR creation; push a branch explicitly and create the PR with `--head` instead.
+
 GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is provider-domain scoped for sandbox traffic to `api.github.com` and `github.com` during turns with a signed credential context. Keep repo context explicit, and let the plugin choose the required grant for the outbound request.
 
 Be careful with mixed-surface PR commands:

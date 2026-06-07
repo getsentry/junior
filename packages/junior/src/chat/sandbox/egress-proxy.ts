@@ -106,6 +106,7 @@ function egressAttributes(input: {
   egressId?: string;
   grantAccess?: "read" | "write";
   grantName?: string;
+  grantReason?: string;
   host?: string;
   method?: string;
   path?: string;
@@ -117,6 +118,7 @@ function egressAttributes(input: {
     ...(input.provider ? { "app.provider.name": input.provider } : {}),
     ...(input.grantName ? { "app.grant.name": input.grantName } : {}),
     ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : {}),
+    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : {}),
     ...(input.host ? { "server.address": input.host } : {}),
     ...(input.method ? { "http.request.method": input.method } : {}),
     ...(input.path ? { "url.path": input.path } : {}),
@@ -198,6 +200,7 @@ function logSandboxEgressUpstreamRequest(input: {
   egressId: string;
   grantAccess?: "read" | "write";
   grantName: string;
+  grantReason?: string;
   provider: string;
   request: Request;
   upstream: Response;
@@ -215,6 +218,7 @@ function logSandboxEgressUpstreamRequest(input: {
         egressId: input.egressId,
         grantAccess: input.grantAccess,
         grantName: input.grantName,
+        grantReason: input.grantReason,
         host: input.upstreamUrl.hostname,
         method: input.request.method,
         path: input.upstreamUrl.pathname,
@@ -533,6 +537,7 @@ export async function proxySandboxEgressRequest(
             egressId: activeEgressId,
             grantAccess: error.grant.access,
             grantName: error.grant.name,
+            grantReason: error.grant.reason,
             host: upstreamUrl.hostname,
             method: request.method,
             path: upstreamUrl.pathname,
@@ -569,6 +574,7 @@ export async function proxySandboxEgressRequest(
             egressId: activeEgressId,
             grantAccess: failedGrant.access,
             grantName: failedGrant.name,
+            grantReason: failedGrant.reason,
             host: upstreamUrl.hostname,
             method: request.method,
             path: upstreamUrl.pathname,
@@ -597,6 +603,7 @@ export async function proxySandboxEgressRequest(
           egressId: activeEgressId,
           grantAccess: lease.grant.access,
           grantName: lease.grant.name,
+          grantReason: lease.grant.reason,
           host: upstreamUrl.hostname,
           method: request.method,
           path: upstreamUrl.pathname,
@@ -639,6 +646,7 @@ export async function proxySandboxEgressRequest(
     egressId: activeEgressId,
     grantAccess: lease.grant.access,
     grantName: lease.grant.name,
+    grantReason: lease.grant.reason,
     provider,
     request,
     upstream,
@@ -653,6 +661,7 @@ export async function proxySandboxEgressRequest(
           egressId: activeEgressId,
           grantAccess: lease.grant.access,
           grantName: lease.grant.name,
+          grantReason: lease.grant.reason,
           host: upstreamUrl.hostname,
           method: request.method,
           path: upstreamUrl.pathname,
@@ -678,6 +687,7 @@ export async function proxySandboxEgressRequest(
           egressId: activeEgressId,
           grantAccess: lease.grant.access,
           grantName: lease.grant.name,
+          grantReason: lease.grant.reason,
           host: upstreamUrl.hostname,
           method: request.method,
           path: upstreamUrl.pathname,

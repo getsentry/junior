@@ -101,6 +101,8 @@ Then confirm:
 3. A follow-up GitHub request can update or comment on the same issue without asking the user to handle tokens manually after authorization.
 4. A pushed branch can be turned into a draft PR when Junior uses explicit repo targeting and `--head` during `gh pr create`.
 
+For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch or writes Git objects through the REST API. Those operations require `Contents: write` on the target repository and write access for the requesting GitHub user. If the commit changes workflow files under `.github/workflows`, expect `Workflows: write` as well. Creating the PR after the branch exists is a separate pull-request write operation.
+
 ## Security model
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
@@ -117,6 +119,7 @@ Then confirm:
 - `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
+- Fork creation failures: GitHub requires `Administration: write` and `Contents: read`, plus app installation on both source and destination accounts. Routine PR creation should push a branch explicitly and use `gh pr create --head` instead of creating a fork.
 
 ## Next step
 

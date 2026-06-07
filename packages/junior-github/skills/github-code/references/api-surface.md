@@ -10,14 +10,16 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## GitHub App permission guidance
 
-| Permission capability        | Commands                                                                             |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
-| `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
-| `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
-| `github.contents.write`      | `git push`, `gh api` (create/update file contents), `gh pr merge`                    |
-| `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
-| `github.pull-requests.write` | `gh pr create --head <branch>` after explicit push, `gh pr edit`, `gh pr close`      |
+| Permission capability                                  | Commands                                                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `github.actions.read`                                  | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
+| `github.actions.write`                                 | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
+| `github.contents.read`                                 | `gh repo clone`, `git fetch`                                                         |
+| `github.contents.write`                                | `git push`, REST Git database writes, `gh api` create/update contents, `gh pr merge` |
+| `github.workflows.write`                               | Workflow-file changes under `.github/workflows`                                      |
+| `github.pull-requests.read`                            | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
+| `github.pull-requests.write`                           | `gh pr create --head <branch>` after explicit push, `gh pr edit`, `gh pr close`      |
+| `github.administration.write` + `github.contents.read` | `gh repo fork`; avoid for routine PR creation                                        |
 
 ## Command matrix
 
@@ -59,7 +61,11 @@ jr-rpc config set github.repo owner/repo
 
 - Prefer `--json` output for machine-readable parsing where available.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
+- A local `git commit` does not call GitHub. Pushing that commit does: `git push` requires `github.contents.write` on the target repo and requester write access.
+- REST Git commit construction also requires `github.contents.write`: `POST /git/blobs`, `POST /git/trees`, `POST /git/commits`, `POST /git/refs`, and `PATCH /git/refs/{ref}`.
+- If the commit changes workflow files under `.github/workflows`, expect `github.workflows.write` in addition to contents write.
 - Before `gh pr create`, push the head branch explicitly, then use `--head` so `gh` does not trigger hidden push/fork behavior. That push requires GitHub write access to the remote.
+- Do not use fork creation as the normal PR path. GitHub requires Administration write plus Contents read for `POST /repos/{owner}/{repo}/forks`, and the app must be installed on both source and destination accounts.
 - If the explicit `git push` fails with 401/403 or another auth/permission error, verify the repo context and retry once. If it still fails, report the exact command failure and the GitHub App installation/permission remediation.
 - `gh pr edit` is not a single-permission command: title/body/base/reviewer changes need pull request write permission; label, assignee, and milestone changes need issue write permission (use the `github-issues` skill); project flags are outside the current GitHub App permission guidance.
 - `gh pr close --comment` may need `github.issues.write` (use `github-issues`); `gh pr close --delete-branch` needs `github.contents.write`.

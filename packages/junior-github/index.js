@@ -598,6 +598,9 @@ function githubApiWriteReason(method, upstreamUrl) {
   if (/^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
     return "github.pull-create";
   }
+  if (/^\/repos\/[^/]+\/[^/]+\/forks$/.test(pathname)) {
+    return "github.fork-create";
+  }
   return undefined;
 }
 

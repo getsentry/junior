@@ -201,6 +201,16 @@ describe("github plugin", () => {
       access: "write",
       reason: "github.issue-create",
     });
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/forks",
+      }),
+    ).toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.fork-create",
+    });
   });
 
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
