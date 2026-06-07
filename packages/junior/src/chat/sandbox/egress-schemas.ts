@@ -58,7 +58,9 @@ export const sandboxEgressPermissionDeniedSignalSchema = z
   .object({
     acceptedPermissions: z.string().optional(),
     grant: sandboxEgressGrantSchema,
+    message: z.string().min(1),
     provider: providerNameSchema,
+    source: z.literal("upstream"),
     sso: z.string().optional(),
     status: z.literal(403),
     upstreamHost: z.string().min(1),

@@ -211,6 +211,13 @@ function githubPermissionHeaders(upstream: Response): {
   };
 }
 
+function permissionDeniedMessage(
+  provider: string,
+  grant: SandboxEgressCredentialLease["grant"],
+): string {
+  return `${provider} returned HTTP 403 after Junior injected the ${grant.name} grant. Junior forwarded the request; this is not a local runtime block.`;
+}
+
 function logSandboxEgressUpstreamRequest(input: {
   egressId: string;
   grantAccess?: "read" | "write";
@@ -744,6 +751,8 @@ export async function proxySandboxEgressRequest(
       await setSandboxEgressPermissionDeniedSignal(credentialContext, {
         provider,
         grant: lease.grant,
+        message: permissionDeniedMessage(provider, lease.grant),
+        source: "upstream",
         status: UPSTREAM_PERMISSION_REJECTION_STATUS,
         upstreamHost: upstreamUrl.hostname,
         upstreamPath: displayedUpstreamPath(upstreamUrl),

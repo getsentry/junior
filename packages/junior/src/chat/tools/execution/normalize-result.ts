@@ -37,6 +37,60 @@ function toToolContentText(value: unknown): string {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function upstreamPermissionDeniedText(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.permission_denied)) {
+    return undefined;
+  }
+  const signal = value.permission_denied;
+  if (signal.source !== "upstream" || signal.status !== 403) {
+    return undefined;
+  }
+  const provider = stringField(signal, "provider");
+  const message = stringField(signal, "message");
+  const upstreamHost = stringField(signal, "upstreamHost");
+  const upstreamPath = stringField(signal, "upstreamPath");
+  if (!provider || !message || !upstreamHost || !upstreamPath) {
+    return undefined;
+  }
+  const grant = isRecord(signal.grant) ? signal.grant : {};
+  const grantName = stringField(grant, "name");
+  const grantAccess = stringField(grant, "access");
+  const grantReason = stringField(grant, "reason");
+  const command = stringField(value, "command");
+  const stderr = stringField(value, "stderr").trim();
+  const stdout = stringField(value, "stdout").trim();
+  const acceptedPermissions = stringField(signal, "acceptedPermissions");
+  const sso = stringField(signal, "sso");
+
+  return [
+    "Upstream permission denied.",
+    message,
+    "",
+    `Provider: ${provider}`,
+    `Grant: ${grantName || "unknown"}${grantAccess ? ` (${grantAccess}${grantReason ? `, ${grantReason}` : ""})` : ""}`,
+    `Upstream: ${upstreamHost}${upstreamPath}`,
+    "Status: 403",
+    ...(acceptedPermissions
+      ? [`Accepted provider permissions: ${acceptedPermissions}`]
+      : []),
+    ...(sso ? [`Provider SSO: ${sso}`] : []),
+    ...(command ? [`Command: ${command}`] : []),
+    "",
+    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block; diagnose provider-side permissions, installation scope, SSO, or requester-provider account access.",
+    ...(stderr ? ["", `stderr:\n${stderr}`] : []),
+    ...(stdout ? ["", `stdout:\n${stdout}`] : []),
+  ].join("\n");
+}
+
 /** Unwrap sandbox envelope and detect structured results. */
 export function normalizeToolResult(
   result: unknown,
@@ -55,7 +109,14 @@ export function normalizeToolResult(
   }
 
   return {
-    content: [{ type: "text", text: toToolContentText(unwrapped) }],
+    content: [
+      {
+        type: "text",
+        text:
+          upstreamPermissionDeniedText(unwrapped) ??
+          toToolContentText(unwrapped),
+      },
+    ],
     details: unwrapped,
   };
 }

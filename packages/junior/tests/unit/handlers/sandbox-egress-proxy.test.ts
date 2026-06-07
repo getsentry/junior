@@ -717,6 +717,9 @@ describe("sandbox egress proxy", () => {
         name: "default",
         access: "read",
       },
+      message:
+        "sentry returned HTTP 403 after Junior injected the default grant. Junior forwarded the request; this is not a local runtime block.",
+      source: "upstream",
       status: 403,
       upstreamHost: "sentry.io",
       upstreamPath: "/api/0/issues/1",
@@ -830,6 +833,9 @@ describe("sandbox egress proxy", () => {
           access: "write",
           reason: "github.git-write",
         },
+        message:
+          "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+        source: "upstream",
         status: 403,
         upstreamHost: "github.com",
         upstreamPath:

@@ -901,6 +901,9 @@ describe("createSandboxExecutor", () => {
           name: "user-write",
           access: "write",
         },
+        message:
+          "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+        source: "upstream",
         status: 403,
         upstreamHost: "github.com",
         upstreamPath: "/getsentry/junior.git/info/refs",
@@ -1003,6 +1006,9 @@ describe("createSandboxExecutor", () => {
             access: "write",
             reason: "github.git-write",
           },
+          message:
+            "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+          source: "upstream",
           status: 403,
           upstreamHost: "github.com",
           upstreamPath: "/getsentry/junior.git/info/refs",
@@ -1046,6 +1052,9 @@ describe("createSandboxExecutor", () => {
         access: "write",
         reason: "github.git-write",
       },
+      message:
+        "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+      source: "upstream",
       status: 403,
       upstreamHost: "github.com",
       upstreamPath: "/getsentry/junior.git/info/refs",
