@@ -2,7 +2,7 @@
 
 **Junior is moving quickly. If you're interested in using it, we'd love to hear your feedback.**
 
-Junior is a Slack bot runtime powered by Hono.
+Junior is a Slack bot runtime powered by Hono. It connects to external tools through plugins, giving teams a single Slack-native interface for investigations, context summaries, and automated actions.
 
 Use it to investigate issues, summarize context, and take action from Slack with connected tools.
 
