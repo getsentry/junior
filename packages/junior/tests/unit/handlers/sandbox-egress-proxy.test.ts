@@ -677,25 +677,15 @@ describe("sandbox egress proxy", () => {
 
   it("passes through upstream 403 responses without overriding the body", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock
-      .mockResolvedValueOnce({
-        id: "lease-1",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      })
-      .mockResolvedValueOnce({
-        id: "lease-2",
-        provider: "sentry",
-        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-        headerTransforms: [
-          { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+    issueProviderCredentialLeaseMock.mockResolvedValue({
+      id: "lease-1",
+      provider: "sentry",
+      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+      headerTransforms: [
+        { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
+      ],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const fetchMock = vi.fn().mockImplementation(
       async () =>
@@ -714,13 +704,12 @@ describe("sandbox egress proxy", () => {
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
 
-    // 403 still clears the egress lease so the next request re-issues
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
       fetchMock as typeof fetch,
     );
     expect(secondResponse.status).toBe(403);
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
   it("applies provider header transforms to matching upstream hosts", async () => {

@@ -180,6 +180,20 @@ function displayedUpstreamPath(upstreamUrl: URL): string {
   return upstreamUrl.pathname;
 }
 
+function upstreamPermissionAttributes(
+  provider: string,
+  upstream: Response,
+): Record<string, unknown> {
+  if (provider !== "github") {
+    return {};
+  }
+  return {
+    "app.github.accepted_permissions":
+      upstream.headers.get("x-accepted-github-permissions") ?? undefined,
+    "app.github.sso": upstream.headers.get("x-github-sso") ?? undefined,
+  };
+}
+
 function logSandboxEgressUpstreamRequest(input: {
   access?: "read" | "write";
   credential: string;
@@ -646,6 +660,7 @@ export async function proxySandboxEgressRequest(
           status: upstream.status,
         }),
         ...routingAttributes(request, upstreamUrl),
+        ...upstreamPermissionAttributes(provider, upstream),
         "error.type": `http_${upstream.status}`,
       },
       `Sandbox egress upstream returned HTTP ${upstream.status}`,
@@ -670,6 +685,7 @@ export async function proxySandboxEgressRequest(
           status: upstream.status,
         }),
         ...routingAttributes(request, upstreamUrl),
+        ...upstreamPermissionAttributes(provider, upstream),
         ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
           ? {
               "app.sandbox.egress.www_authenticate":
@@ -681,12 +697,12 @@ export async function proxySandboxEgressRequest(
         ? "Sandbox egress upstream auth rejected injected credential"
         : "Sandbox egress upstream permission denied",
     );
-    await clearSandboxEgressCredentialLease(
-      provider,
-      lease.grant.name,
-      credentialContext,
-    );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant.name,
+        credentialContext,
+      );
       await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider,
         grant: lease.grant,
