@@ -84,7 +84,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The GitHub API host is the exact declared `api.github.com` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
-- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but distinct plugin grant names are cached separately.
+- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but distinct plugin grant names are cached separately. Cached leases reuse issued headers only; logs and auth/permission signals must use the grant metadata selected for the current outbound request.
 - GitHub read grants are derived by the GitHub plugin from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, and `git-upload-pack`. GitHub write grants are derived from runtime-visible write evidence, including write-specific REST URLs, non-read GraphQL methods, other non-read HTTP methods, and `git-receive-pack`.
 - When a GitHub App installation lease is issued, the GitHub plugin sends an explicit read-only permissions body instead of inheriting the installation's default permissions.
 - If the plugin declares GitHub App permissions, each read-capable configured

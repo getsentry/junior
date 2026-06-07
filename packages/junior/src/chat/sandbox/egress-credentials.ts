@@ -158,7 +158,15 @@ export async function sandboxEgressCredentialLease(
     context,
   );
   if (cached) {
-    return cached;
+    if (cached.grant.access !== grant.access) {
+      throw new Error(
+        `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
+      );
+    }
+    return {
+      ...cached,
+      grant,
+    };
   }
 
   let lease: {

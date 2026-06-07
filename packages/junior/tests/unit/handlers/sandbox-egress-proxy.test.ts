@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type IssueCredentialHookContext,
+} from "@sentry/junior-plugin-api";
 
 const {
   getPluginDefinitionMock,
@@ -727,53 +730,64 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it("records GitHub permission headers and smart HTTP targets on 403", async () => {
+  it("records current GitHub grant reason and smart HTTP target on cached-lease 403", async () => {
     setSandboxEgressUserActor();
     getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    const issueCredential = vi.fn((ctx: IssueCredentialHookContext) => {
+      expect(ctx.grant).toMatchObject({
+        name: "user-write",
+        access: "write",
+        reason: "github.graphql-write",
+      });
+      return {
+        type: "lease" as const,
+        lease: {
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: { Authorization: "Bearer github-user-token" },
+            },
+            {
+              domain: "github.com",
+              headers: { Authorization: "Bearer github-user-token" },
+            },
+          ],
+        },
+      };
+    });
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         manifest: githubPlugin().manifest,
         hooks: {
           grantForEgress(ctx) {
-            expect(ctx.request).toEqual({
-              method: "GET",
-              url: "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
-            });
+            if (ctx.request.url === "https://api.github.com/graphql") {
+              return {
+                name: "user-write",
+                access: "write",
+                reason: "github.graphql-write",
+              };
+            }
             return {
               name: "user-write",
               access: "write",
               reason: "github.git-write",
             };
           },
-          issueCredential(ctx) {
-            expect(ctx.grant).toMatchObject({
-              name: "user-write",
-              access: "write",
-              reason: "github.git-write",
-            });
-            return {
-              type: "lease",
-              lease: {
-                expiresAt: new Date(Date.now() + 60_000).toISOString(),
-                headerTransforms: [
-                  {
-                    domain: "github.com",
-                    headers: { Authorization: "Bearer github-user-token" },
-                  },
-                ],
-              },
-            };
-          },
+          issueCredential,
         },
       }),
     ]);
     try {
       const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
-        expect(String(url)).toBe(
-          "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
-        );
         expect(new Headers(init?.headers).get("authorization")).toBe(
           "Bearer github-user-token",
+        );
+        if (String(url) === "https://api.github.com/graphql") {
+          return new Response("ok");
+        }
+        expect(String(url)).toBe(
+          "https://github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
         );
         return new Response("write denied", {
           status: 403,
@@ -785,6 +799,17 @@ describe("sandbox egress proxy", () => {
         });
       });
 
+      const graphqlResponse = await proxy(
+        egressRequest({
+          host: "api.github.com",
+          method: "POST",
+          path: "/graphql",
+          body: "{}",
+        }),
+        fetchMock as typeof fetch,
+      );
+      expect(graphqlResponse.status).toBe(200);
+
       const response = await proxy(
         egressRequest({
           host: "github.com",
@@ -795,6 +820,7 @@ describe("sandbox egress proxy", () => {
 
       expect(response.status).toBe(403);
       await expect(response.text()).resolves.toBe("write denied");
+      expect(issueCredential).toHaveBeenCalledTimes(1);
       await expect(
         consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
       ).resolves.toMatchObject({
