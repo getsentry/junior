@@ -3,7 +3,7 @@ import type {
   InlinePluginManifestDefinition,
   PluginCatalogConfig,
   PluginManifestConfig,
-} from "@/chat/plugins/types";
+} from "./chat/plugins/types";
 
 export type JuniorPluginInput = JuniorPluginRegistration | string;
 

@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [app.ts:55](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L55)
+Defined in: [junior/src/app.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L54)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [app.ts:55](https://github.com/getsentry/junior/blob/main/packages/j
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [app.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L64)
+Defined in: [junior/src/app.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L63)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
@@ -23,7 +23,7 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 > `optional` **conversationWork?**: `VercelConversationWorkCallbackOptions`
 
-Defined in: [app.ts:66](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L66)
+Defined in: [junior/src/app.ts:65](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L65)
 
 Queue consumer wiring for the durable conversation worker.
 
@@ -33,7 +33,7 @@ Queue consumer wiring for the durable conversation worker.
 
 > `optional` **plugins?**: [`JuniorPluginSet`](/reference/api/interfaces/juniorpluginset/)
 
-Defined in: [app.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L68)
+Defined in: [junior/src/app.ts:67](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L67)
 
 Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module.
 
@@ -43,7 +43,7 @@ Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin m
 
 > `optional` **slack?**: `object`
 
-Defined in: [app.ts:57](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L57)
+Defined in: [junior/src/app.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L56)
 
 Slack-specific overrides applied after env parsing.
 
@@ -65,4 +65,4 @@ Slack emoji shown while Junior is processing. Defaults to `eyes`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [app.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L69)
+Defined in: [junior/src/app.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L68)

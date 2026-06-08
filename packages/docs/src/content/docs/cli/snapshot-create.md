@@ -9,6 +9,7 @@ related:
   - /reference/config-and-env/
   - /start-here/quickstart/
   - /cli/check/
+  - /cli/upgrade/
   - /operate/sandbox-snapshots/
   - /operate/observability/
 ---

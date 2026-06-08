@@ -12,6 +12,14 @@
     "isolatedModules": true,
     "allowJs": false,
     "noEmit": true,
+    "paths": {
+      "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
+      "@sentry/junior/reporting": ["../junior/src/reporting.ts"],
+      "@sentry/junior-dashboard": ["./src/index.ts"],
+      "@sentry/junior-dashboard/handler": ["./src/handler.ts"],
+      "@sentry/junior-dashboard/nitro": ["./src/nitro.ts"],
+      "@/*": ["../junior/src/*"]
+    },
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]

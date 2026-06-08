@@ -17,6 +17,7 @@ Handled `GET` routes:
 
 - `/`
 - `/health`
+- `/api/internal/heartbeat`
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
@@ -24,13 +25,14 @@ When `@sentry/junior-dashboard` is mounted, the dashboard package owns `/`, `/ap
 
 Handled `POST` routes:
 
-- `/api/internal/turn-resume`
+- `/api/internal/agent-dispatch`
+- `/api/internal/agent/continue`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
 ## Expected behavior
 
 - Unknown routes return `404`.
-- Queue callback validates queue topic and processes thread work.
+- Queue callback validates queue topic and processes conversation work.
 - Webhook handler logs and surfaces non-success behavior for operators.
 
 ## Next step

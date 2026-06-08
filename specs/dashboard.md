@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-29
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -44,7 +44,9 @@ packages/junior-dashboard/
   src/url.ts
 ```
 
-`@sentry/junior` exports a read-only reporting surface:
+`@sentry/junior` exports a read-only, dashboard-neutral reporting surface. The
+dashboard package consumes this surface and may alias the returned report types
+into UI-specific names locally.
 
 ```ts
 export interface JuniorReporting {
@@ -52,10 +54,10 @@ export interface JuniorReporting {
   getRuntimeInfo(): Promise<RuntimeInfoReport>;
   getPlugins(): Promise<PluginReport[]>;
   getSkills(): Promise<SkillReport[]>;
-  getSessions(): Promise<DashboardSessionFeed>;
-  getConversationStats?(): Promise<DashboardConversationStatsReport>;
+  getSessions(): Promise<ConversationFeed>;
+  getConversationStats?(): Promise<ConversationStatsReport>;
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
-  getConversation(conversationId: string): Promise<DashboardConversationReport>;
+  getConversation(conversationId: string): Promise<ConversationReport>;
 }
 
 export function createJuniorReporting(): JuniorReporting;
@@ -110,7 +112,7 @@ The plugin factory is the normal dashboard integration path. When registered
 through a `defineJuniorPlugins([juniorDashboardPlugin(...)])` plugin set, it
 mounts the dashboard/auth HTTP routes and supplies dashboard conversation URLs
 for finalized Slack reply footers. It must not expose dashboard data or tools to
-agent turns.
+agent runs.
 
 `authRequired` defaults to `true`. Setting `authRequired: false` is only for explicit local/demo deployments and must bypass dashboard auth only for dashboard routes. Production configuration must not silently disable dashboard auth.
 
@@ -146,7 +148,7 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/runtime`                     | Sanitized runtime paths, packages, and providers.                  |
 | `GET /api/dashboard/plugins`                     | Loaded plugin inventory.                                           |
 | `GET /api/dashboard/skills`                      | Discovered skill inventory.                                        |
-| `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records.                |
+| `GET /api/dashboard/sessions`                    | Compatibility conversation feed from `conversation:by-activity`.   |
 | `GET /api/dashboard/conversation-stats`          | Aggregate conversation stats, leaderboards, and sampling metadata. |
 | `GET /api/dashboard/plugin-reports`              | Sanitized plugin operational summaries.                            |
 | `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs.                |
@@ -154,7 +156,7 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/me`                          | Signed-in dashboard identity.                                      |
 
 Conversation transcript responses may synthesize the static system prompt only
-when the exposed transcript begins at a model run boundary. Follow-up turn
+when the exposed transcript begins at a model run boundary. Follow-up run
 transcripts that are scoped to the current user message must not repeat the
 system prompt.
 
@@ -221,11 +223,16 @@ If auth is enabled and no domains and no emails are configured, dashboard route 
 
 The dashboard reads Junior data through in-process reporting interfaces. It must not import legacy diagnostics handlers or other private route handlers.
 
+Core reporting code belongs under `packages/junior/src/reporting/**` and must
+use neutral reporting names such as `ConversationReport`,
+`ConversationStatsReport`, and `RequesterIdentity`. Dashboard-specific names
+belong in `packages/junior-dashboard/**`.
+
 Reporting interfaces are read-only and must not:
 
 - mutate runtime state
 - issue provider credentials
-- trigger agent turns
+- trigger agent runs
 - call Slack APIs
 - read or return secret values
 - expose raw authorization URLs
@@ -237,17 +244,19 @@ Reporting data may include:
 - service/version metadata
 - configured plugin names
 - skill names and owning plugin provider
-- conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
+- conversation and agent-run summaries when provided by an in-process,
+  read-only Junior reporting interface
 - aggregate conversation stats from a dedicated reporting endpoint
 - plugin operational summaries made of bounded string metrics and record sets
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links for conversation summaries when Sentry DSN and org slug configuration are present
-- trace IDs for turns when the runtime captured an active Sentry trace
+- trace IDs for agent runs when the runtime captured an active Sentry trace
 - packaged content summary
 - sanitized runtime paths only when explicitly needed by an authenticated dashboard view
 
-Session reporting must not include conversation text, Pi messages, tool results, raw session-log payloads, or turn-session error messages.
+Session/run reporting must not include conversation text, Pi messages, tool
+results, raw session-log payloads, or agent-run error messages.
 
 Dashboard transcript and title redaction must follow `./data-redaction-policy.md`.
 
@@ -255,14 +264,30 @@ Public health responses must not include runtime discovery data such as cwd, hom
 
 ### Conversation Stats Reports
 
+Conversation list and stats APIs should read the conversation index defined in
+`./task-execution.md`:
+
+```text
+junior:conversation:by-activity
+  member: conversationId
+  score:  lastActivityAtMs
+```
+
+The dashboard must treat this index as the conversation feed. It should not
+reconstruct the primary conversation list by grouping recent agent-run rows in
+the React client. Agent-run rows may still be joined on detail views or
+secondary per-conversation views, but conversation identity, title, source,
+location, requester, and latest activity come from the conversation record.
+
 Conversation stats must be exposed through `GET /api/dashboard/conversation-stats`,
 not reconstructed from the recent session feed in the React client. The report
 must include `windowStart`, `windowEnd`, `sampleLimit`, `sampleSize`, and
 `truncated` so consumers can distinguish complete seven-day aggregates from a
-bounded sample. `truncated` means the report reached the sample cap and should
-be treated as bounded, even when the backing index cannot prove an additional
-record exists. A stats-reporting failure must not make the core dashboard health,
-conversation feed, or plugin inventory unavailable.
+bounded sample. Run-count fields must be named `runs`, not `turns`, in
+conversation-detail and stats reports. `truncated` means the report reached the
+sample cap and should be treated as bounded, even when the backing index cannot
+prove an additional record exists. A stats-reporting failure must not make the
+core dashboard health, conversation feed, or plugin inventory unavailable.
 
 ### Plugin Operational Reports
 
@@ -328,7 +353,7 @@ serving.
 3. Dashboard sessions do not grant provider credentials or Slack permissions.
 4. Dashboard APIs never return secret-bearing runtime values.
 5. Browser session cookies are never model-visible and never passed into sandbox execution.
-6. The dashboard package is not exposed to agent turns; the plugin may only provide dashboard/auth route handlers and the Slack footer conversation link hook.
+6. The dashboard package is not exposed to agent runs; the plugin may only provide dashboard/auth route handlers and the Slack footer conversation link hook.
 
 ## Observability
 

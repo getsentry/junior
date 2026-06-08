@@ -25,8 +25,9 @@ Question: are messages enqueued and processed successfully?
 
 Check:
 
-- `event.name:queue_callback_failed OR event.name:queue_message_failed`
-- `event.name:queue_ingress_dedup_hit`
+- `event.name:conversation_work_failed OR event.name:conversation_work_recovery_failed`
+- `event.name:conversation_work_pending_requeued OR event.name:conversation_work_lease_expired_requeued`
+- `event.name:agent_continue_schedule_failed OR event.name:agent_continue_lock_busy`
 - `span.op:queue.process_message`
 
 ## Turn execution failures

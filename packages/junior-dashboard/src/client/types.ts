@@ -1,15 +1,15 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
-  DashboardConversationStatsItem,
-  DashboardConversationStatsReport,
-  DashboardConversationReport,
+  ConversationStatsItem as ReportingConversationStatsItem,
+  ConversationStatsReport as ReportingConversationStatsReport,
+  ConversationReport as ReportingConversationReport,
   PluginOperationalReportFeed,
   PluginOperationalReport,
-  DashboardRequesterIdentity,
-  DashboardSessionFeed,
-  DashboardSessionReport,
-  DashboardTurnReport,
-  DashboardTurnUsage,
+  RequesterIdentity as ReportingRequesterIdentity,
+  ConversationFeed as ReportingConversationFeed,
+  ConversationSummaryReport,
+  ConversationRunReport,
+  ConversationUsage,
   HealthReport,
   PluginReport as RuntimePluginReport,
   RuntimeInfoReport,
@@ -28,24 +28,24 @@ export type PluginReport = PluginOperationalReport;
 
 export type PluginReportFeed = PluginOperationalReportFeed;
 
-export type ConversationStatsReport = DashboardConversationStatsReport;
+export type ConversationStatsReport = ReportingConversationStatsReport;
 
-export type ConversationStatsItem = DashboardConversationStatsItem;
+export type ConversationStatsItem = ReportingConversationStatsItem;
 
-export type RequesterIdentity = DashboardRequesterIdentity;
+export type RequesterIdentity = ReportingRequesterIdentity;
 
-export type TurnUsage = DashboardTurnUsage;
+export type TurnUsage = ConversationUsage;
 
-export type Session = DashboardSessionReport;
+export type Session = ConversationSummaryReport;
 
 export type TranscriptPart =
-  DashboardTurnReport["transcript"][number]["parts"][number];
+  ConversationRunReport["transcript"][number]["parts"][number];
 
-export type TranscriptMessage = DashboardTurnReport["transcript"][number];
+export type TranscriptMessage = ConversationRunReport["transcript"][number];
 
-export type ConversationTurn = DashboardTurnReport;
+export type ConversationTurn = ConversationRunReport;
 
-export type ConversationDetailFeed = DashboardConversationReport;
+export type ConversationDetailFeed = ReportingConversationReport;
 
 export type Conversation = {
   channel?: string;
@@ -61,10 +61,10 @@ export type Conversation = {
   status: Session["status"];
   surface: Session["surface"];
   traceId?: string;
-  turns: Session[];
+  runs: Session[];
 };
 
-export type SessionFeed = DashboardSessionFeed;
+export type SessionFeed = ReportingConversationFeed;
 
 export type Identity = { user: { email?: string; hostedDomain?: string } };
 

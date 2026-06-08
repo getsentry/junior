@@ -14,9 +14,9 @@ related:
 
 1. Slack sends an event to `/api/webhooks/slack`.
 2. Junior validates and routes the event.
-3. Thread work is enqueued to `junior-thread-message`.
-4. `/api/queue/callback` processes queued work.
-5. Agent turn runs with configured tools, loaded skills, and capability gates.
+3. Conversation work is enqueued to the durable conversation-work queue.
+4. `/api/internal/agent/continue` processes queued conversation work.
+5. The agent run continues with configured tools, loaded skills, and capability gates.
 6. If sandbox traffic reaches a declared provider domain, the sandbox egress proxy lazily fetches requester-bound credentials and injects them at the host boundary.
 7. If OAuth is required, Junior sends the link privately to the requesting user and resumes the blocked request after the callback.
 8. Reply is posted back to the original Slack thread.
@@ -30,7 +30,7 @@ related:
 ## Core invariants
 
 - Webhook ingress and queue callback are both required for production.
-- Tool usage is turn-scoped; sandbox credential leases are requester-bound and minted lazily only after forwarded provider traffic needs them.
+- Tool usage is agent-run scoped; sandbox credential leases are requester-bound and minted lazily only after forwarded provider traffic needs them.
 - Registered plugin providers determine which provider credentials can be injected for matching provider domains.
 - Failure states are logged and surfaced for operator recovery.
 

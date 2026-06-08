@@ -64,7 +64,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/context-bound-systems.md` (explicit actor/destination/context propagation across runtime boundaries)
 - `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
 - `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
-- `policies/interface-design.md` (naming, module paths, and minimal interface boundaries)
+- `policies/interface-design.md` (domain naming, module paths, and minimal interface boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)
 - `policies/runtime-boundary-schemas.md` (strict runtime schemas and inferred types for boundary contracts)
 - `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
@@ -87,7 +87,7 @@ Co-Authored-By: (agent model name) <email>
 - Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
 - Service modules must depend on small injected ports for Slack behavior, not import Slack infrastructure directly.
 - Slack modules must not import runtime modules.
-- `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only parses, classifies, and routes source events.
+- `runtime/` orchestrates agent runs and response-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only parses, classifies, and routes source events.
 - **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
 - Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
 - Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/app/production`.
@@ -114,7 +114,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/data-redaction-policy.md` (conversation privacy classification and raw payload redaction policy)
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
 - `specs/task-execution.md` (durable conversation mailbox, queue wake-up, lease, and heartbeat execution contract)
-- `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed turns, and completion)
+- `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed runs, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/identity.md` (current actor, system actor, requester, author, creator, credential subject, service principal, and display identity contract)
@@ -127,7 +127,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/plugin-heartbeat.md` (plugin heartbeat and tool hook contract)
 - `specs/plugin-dispatch.md` (durable plugin agent dispatch contract)
 - `specs/harness-agent.md` (agent loop and output contract)
-- `specs/agent-session-resumability.md` (multi-slice turn resumability and timeout recovery contract)
+- `specs/agent-session-resumability.md` (multi-slice agent-run resumability and timeout recovery contract)
 - `specs/agent-execution.md` (agent execution rubric and completion gates)
 - `specs/instrumentation.md` (logging/tracing spec index)
 - `specs/plugin.md` (plugin architecture for self-contained provider integrations)

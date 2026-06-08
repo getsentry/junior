@@ -227,7 +227,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { generateAssistantReply } from "@/chat/respond";
 import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
-import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
+import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 
@@ -358,7 +358,7 @@ describe("generateAssistantReply provider retry", () => {
       "user",
     ]);
     await expect(
-      getAwaitingTurnContinuationRequest({
+      getAwaitingAgentContinueRequest({
         conversationId: "conversation-yield",
         sessionId: "turn-yield",
       }),

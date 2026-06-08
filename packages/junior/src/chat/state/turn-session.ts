@@ -14,6 +14,8 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
+import { recordConversationActivity } from "@/chat/task-execution/store";
+import { logException } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -320,6 +322,32 @@ async function appendAgentTurnSessionSummary(
       { ttlMs },
     ),
   ]);
+}
+
+/** Mirror run summaries into the conversation feed without owning reply success. */
+async function recordConversationActivityBestEffort(args: {
+  nowMs: number;
+  summary: AgentTurnSessionSummary;
+}): Promise<void> {
+  try {
+    await recordConversationActivity({
+      activityAtMs: args.summary.updatedAtMs,
+      channelName: args.summary.channelName,
+      conversationId: args.summary.conversationId,
+      destination: args.summary.destination,
+      nowMs: args.nowMs,
+      requester: args.summary.requester,
+      source: args.summary.surface,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "conversation_activity_record_failed",
+      { conversationId: args.summary.conversationId },
+      {},
+      "Failed to mirror turn session summary into conversation activity",
+    );
+  }
 }
 
 /**
@@ -679,51 +707,53 @@ export async function recordAgentTurnSessionSummary(args: {
   );
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  await appendAgentTurnSessionSummary(
-    {
-      version: existing?.version ?? 0,
-      ...((args.channelName ?? existing?.channelName)
-        ? { channelName: args.channelName ?? existing?.channelName }
+  const summary: AgentTurnSessionSummary = {
+    version: existing?.version ?? 0,
+    ...((args.channelName ?? existing?.channelName)
+      ? { channelName: args.channelName ?? existing?.channelName }
+      : {}),
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
+    lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
+    state: args.state,
+    updatedAtMs: nowMs,
+    cumulativeDurationMs:
+      toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
+      existing?.cumulativeDurationMs ??
+      0,
+    ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
+      ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
+      : {}),
+    ...((args.destination ?? existing?.destination)
+      ? { destination: args.destination ?? existing?.destination }
+      : {}),
+    ...((args.requester ?? existing?.requester)
+      ? { requester: args.requester ?? existing?.requester }
+      : {}),
+    ...(Array.isArray(args.loadedSkillNames)
+      ? {
+          loadedSkillNames: args.loadedSkillNames.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        }
+      : existing?.loadedSkillNames
+        ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),
-      conversationId: args.conversationId,
-      sessionId: args.sessionId,
-      sliceId: args.sliceId,
-      startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
-      lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
-      state: args.state,
-      updatedAtMs: nowMs,
-      cumulativeDurationMs:
-        toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
-        existing?.cumulativeDurationMs ??
-        0,
-      ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
-        ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
-        : {}),
-      ...((args.destination ?? existing?.destination)
-        ? { destination: args.destination ?? existing?.destination }
-        : {}),
-      ...((args.requester ?? existing?.requester)
-        ? { requester: args.requester ?? existing?.requester }
-        : {}),
-      ...(Array.isArray(args.loadedSkillNames)
-        ? {
-            loadedSkillNames: args.loadedSkillNames.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : existing?.loadedSkillNames
-          ? { loadedSkillNames: existing.loadedSkillNames }
-          : {}),
-      ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
-      ...((args.surface ?? existing?.surface)
-        ? { surface: args.surface ?? existing?.surface }
-        : {}),
-      ...((args.traceId ?? existing?.traceId)
-        ? { traceId: args.traceId ?? existing?.traceId }
-        : {}),
-    },
-    ttlMs,
-  );
+    ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
+    ...((args.surface ?? existing?.surface)
+      ? { surface: args.surface ?? existing?.surface }
+      : {}),
+    ...((args.traceId ?? existing?.traceId)
+      ? { traceId: args.traceId ?? existing?.traceId }
+      : {}),
+  };
+  await appendAgentTurnSessionSummary(summary, ttlMs);
+  await recordConversationActivityBestEffort({
+    nowMs,
+    summary,
+  });
 }
 
 async function readAgentTurnSessionSummariesFromIndex(

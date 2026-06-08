@@ -81,6 +81,7 @@ function reporting(): JuniorReporting {
         skills: [{ name: "triage", pluginProvider: "github" }],
         packagedContent: {
           packageNames: ["@sentry/junior-github"],
+          packages: [],
           manifestRoots: [],
           skillRoots: [],
           tracingIncludes: [],
@@ -95,7 +96,7 @@ function reporting(): JuniorReporting {
     },
     async getSessions() {
       return {
-        source: "turn_session_records",
+        source: "conversation_index",
         generatedAt: "2026-05-29T00:00:00.000Z",
         sessions: [
           {
@@ -131,7 +132,7 @@ function reporting(): JuniorReporting {
             failed: 0,
             hung: 0,
             label: "Public Channel",
-            turns: 1,
+            runs: 1,
           },
         ],
         requesters: [
@@ -142,14 +143,14 @@ function reporting(): JuniorReporting {
             failed: 0,
             hung: 0,
             label: "Unknown",
-            turns: 1,
+            runs: 1,
           },
         ],
         sampleLimit: 1,
         sampleSize: 1,
-        source: "turn_session_records",
+        source: "conversation_index",
         truncated: false,
-        turns: 1,
+        runs: 1,
         windowEnd: "2026-05-29T00:00:00.000Z",
         windowStart: "2026-05-22T00:00:00.000Z",
       };
@@ -171,7 +172,7 @@ function reporting(): JuniorReporting {
         conversationId,
         displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
-        turns: [
+        runs: [
           {
             conversationId,
             cumulativeDurationMs: 0,
@@ -562,7 +563,7 @@ describe("dashboard routes", () => {
       requesters: [{ label: "Unknown", conversations: 1 }],
       sampleLimit: 1,
       sampleSize: 1,
-      source: "turn_session_records",
+      source: "conversation_index",
       truncated: false,
     });
 
@@ -606,7 +607,7 @@ describe("dashboard routes", () => {
       requesters: [],
       sampleLimit: 0,
       sampleSize: 0,
-      source: "turn_session_records",
+      source: "conversation_index",
       truncated: false,
     });
   });
@@ -735,7 +736,7 @@ describe("dashboard routes", () => {
           status: "active",
         },
       ],
-      source: "turn_session_records",
+      source: "conversation_index",
     });
   });
 
@@ -757,7 +758,7 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       conversationId: "slack:C1:123",
-      turns: [
+      runs: [
         {
           id: "turn-1",
           transcriptAvailable: true,
@@ -781,7 +782,7 @@ describe("dashboard routes", () => {
       conversationId,
       displayTitle: "Conversation",
       generatedAt: "2026-05-29T00:00:00.000Z",
-      turns: [
+      runs: [
         {
           conversationId,
           cumulativeDurationMs: 1_000,
@@ -821,7 +822,7 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       conversationId: "slack:D1:123",
-      turns: [
+      runs: [
         {
           id: "turn-1",
           transcriptAvailable: false,
@@ -1080,12 +1081,12 @@ describe("dashboard routes", () => {
       {
         id: "active",
         status: "active",
-        turns: [{ status: "active" }],
+        runs: [{ status: "active" }],
       },
       {
         id: "completed",
         status: "completed",
-        turns: [{ status: "completed" }],
+        runs: [{ status: "completed" }],
       },
     ] as Conversation[];
 

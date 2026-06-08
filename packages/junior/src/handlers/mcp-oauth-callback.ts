@@ -49,7 +49,7 @@ import {
 } from "@/chat/state/turn-session";
 import { recordAuthorizationCompleted } from "@/chat/state/session-log";
 import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
-import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
+import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { lookupSlackActorIdentity } from "@/chat/slack/user";
@@ -400,16 +400,16 @@ async function resumeAuthorizedMcpTurn(args: {
           );
         },
         onTimeoutPause: async (error: unknown) => {
-          if (!isRetryableTurnError(error, "turn_timeout_resume")) {
+          if (!isRetryableTurnError(error, "agent_continue")) {
             throw error;
           }
           const version = error.metadata?.version;
           if (typeof version !== "number") {
             throw new Error(
-              "Timed-out MCP resume did not include a turn-session version",
+              "MCP OAuth agent continuation did not include a session record version",
             );
           }
-          await scheduleTurnTimeoutResume({
+          await scheduleAgentContinue({
             conversationId: authSession.conversationId,
             destination,
             sessionId: lockedSessionId,

@@ -669,6 +669,7 @@ export function createSlackTurnRuntime<
               context: threadContext,
               text: combinedText,
             });
+            await hooks.onInputCommitted?.();
             return;
           }
 
@@ -716,6 +717,7 @@ export function createSlackTurnRuntime<
               preparedState,
               text: combinedText,
             });
+            await hooks.onInputCommitted?.();
             return;
           }
 
@@ -728,6 +730,7 @@ export function createSlackTurnRuntime<
               preparedState,
               text: combinedText,
             });
+            await hooks.onInputCommitted?.();
             return;
           }
 

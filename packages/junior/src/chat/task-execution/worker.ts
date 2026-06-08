@@ -15,7 +15,7 @@ import {
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
-  type InboundMessageRecord,
+  type InboundMessage,
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
@@ -26,8 +26,8 @@ export interface ConversationWorkerContext {
   conversationId: string;
   destination: Destination;
   drainMailbox(
-    inject: (messages: InboundMessageRecord[]) => Promise<void>,
-  ): Promise<InboundMessageRecord[]>;
+    inject: (messages: InboundMessage[]) => Promise<void>,
+  ): Promise<InboundMessage[]>;
   leaseToken: string;
   shouldYield(): boolean;
 }
@@ -184,12 +184,15 @@ export async function processConversationWork(
   if (
     !initial ||
     (countPendingConversationMessages(initial) === 0 &&
-      !initial.needsRun &&
-      !initial.lease)
+      initial.execution.status === "idle" &&
+      !initial.execution.lease)
   ) {
     return { status: "no_work" };
   }
-  if (!sameDestination(initial.destination, message.destination)) {
+  if (
+    !initial.destination ||
+    !sameDestination(initial.destination, message.destination)
+  ) {
     throw new Error(
       `Conversation work queue destination changed for ${conversationId}`,
     );

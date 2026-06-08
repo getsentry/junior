@@ -17,8 +17,8 @@ const EMPTY_STATS: Pick<
   | "hung"
   | "locations"
   | "requesters"
+  | "runs"
   | "tokens"
-  | "turns"
 > = {
   active: 0,
   conversations: 0,
@@ -27,7 +27,7 @@ const EMPTY_STATS: Pick<
   hung: 0,
   locations: [],
   requesters: [],
-  turns: 0,
+  runs: 0,
 };
 
 /** Render aggregate conversation stats returned by the reporting API. */
@@ -63,7 +63,7 @@ export function ConversationStats(props: {
           label="conversations"
           value={formatCompactNumber(stats.conversations)}
         />
-        <SummaryMetric label="turns" value={formatCompactNumber(stats.turns)} />
+        <SummaryMetric label="runs" value={formatCompactNumber(stats.runs)} />
         <SummaryMetric label="runtime" value={formatMs(stats.durationMs)} />
         <SummaryMetric
           label="tokens"

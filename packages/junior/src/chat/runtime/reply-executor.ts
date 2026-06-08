@@ -84,7 +84,7 @@ import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { ActorIdentityInput } from "@/chat/services/requester-identity";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
+import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   isCooperativeTurnYieldError,
   isRetryableTurnError,
@@ -229,14 +229,12 @@ export interface ReplyExecutorServices {
   contextCompactor: ContextCompactor;
   generateAssistantReply: typeof generateAssistantReplyImpl;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
-  getAwaitingTurnContinuationRequest: (args: {
+  getAwaitingAgentContinueRequest: (args: {
     conversationId: string;
     sessionId: string;
-  }) => Promise<TurnContinuationRequest | undefined>;
+  }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
-  scheduleTurnTimeoutResume: (
-    request: TurnContinuationRequest,
-  ) => Promise<void>;
+  scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
 }
 
 interface ReplyExecutorDeps {
@@ -418,17 +416,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         }
         if (conversationId && activeTurnId) {
           const resumeRequest =
-            await deps.services.getAwaitingTurnContinuationRequest({
+            await deps.services.getAwaitingAgentContinueRequest({
               conversationId,
               sessionId: activeTurnId,
             });
           if (resumeRequest) {
             try {
-              await deps.services.scheduleTurnTimeoutResume(resumeRequest);
+              await deps.services.scheduleAgentContinue(resumeRequest);
             } catch (error) {
               logException(
                 error,
-                "agent_turn_continuation_retry_schedule_failed",
+                "agent_continue_schedule_failed",
                 turnTraceContext,
                 {
                   "app.ai.resume_session_version":
@@ -436,7 +434,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   "app.ai.resume_session_id": resumeRequest.sessionId,
                   ...(messageTs ? { "messaging.message.id": messageTs } : {}),
                 },
-                "Failed to reschedule active turn continuation",
+                "Failed to reschedule active agent continuation",
               );
               throw error;
             }
@@ -468,7 +466,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               expectedVersion: sessionRecord.version,
               sessionId: activeTurnId,
               errorMessage:
-                "Awaiting turn continuation metadata could not be materialized",
+                "Awaiting agent continuation metadata could not be materialized",
             });
             markTurnFailed({
               conversation: preparedState.conversation,
@@ -1081,7 +1079,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
 
-          if (isRetryableTurnError(error, "turn_timeout_resume")) {
+          if (isRetryableTurnError(error, "agent_continue")) {
             const conversationIdForResume = error.metadata?.conversationId;
             const sessionIdForResume = error.metadata?.sessionId;
             const version = error.metadata?.version;
@@ -1092,7 +1090,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               destination
             ) {
               try {
-                await deps.services.scheduleTurnTimeoutResume({
+                await deps.services.scheduleAgentContinue({
                   conversationId: conversationIdForResume,
                   destination,
                   sessionId: sessionIdForResume,
@@ -1102,13 +1100,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               } catch (scheduleError) {
                 logException(
                   scheduleError,
-                  "agent_turn_timeout_resume_schedule_failed",
+                  "agent_continue_schedule_failed",
                   turnTraceContext,
                   {
                     ...(messageTs ? { "messaging.message.id": messageTs } : {}),
                     "app.ai.resume_session_version": version,
                   },
-                  "Failed to schedule timeout resume callback",
+                  "Failed to schedule agent continuation",
                 );
                 shouldPersistFailureState = true;
                 throw scheduleError;
@@ -1116,10 +1114,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               return;
             } else {
               logWarn(
-                "agent_turn_timeout_resume_metadata_missing",
+                "agent_continue_metadata_missing",
                 turnTraceContext,
                 messageTs ? { "messaging.message.id": messageTs } : {},
-                "Timed-out turn could not be scheduled for resume because retry metadata was incomplete",
+                "Agent continuation could not be scheduled because retry metadata was incomplete",
               );
             }
           }

@@ -62,6 +62,15 @@ async function runCheck(dir) {
   await runCheckFn(dir);
 }
 
+async function runUpgrade() {
+  const runUpgradeFn = await loadCliFunction(
+    "upgrade",
+    "runUpgrade",
+    "Upgrade module is unavailable; reinstall @sentry/junior and retry.",
+  );
+  await runUpgradeFn();
+}
+
 async function main() {
   await loadCliEnvFiles();
   const runCli = await loadCliFunction(
@@ -73,6 +82,7 @@ async function main() {
     runInit,
     runSnapshotCreate,
     runCheck,
+    runUpgrade,
   });
   if (exitCode !== 0) {
     process.exit(exitCode);

@@ -12,7 +12,9 @@ related:
 ## Key event signals
 
 - `webhook_handler_failed`
-- `queue_callback_failed`
+- `conversation_work_failed`
+- `conversation_work_recovery_failed`
+- `agent_continue_schedule_failed`
 - `agent_turn_failed`
 - `agent_turn_timeout`
 - `agent_tool_call_failed`
@@ -42,7 +44,15 @@ event.name:webhook_handler_failed
 ```
 
 ```text
-event.name:queue_callback_failed OR event.name:queue_message_failed
+event.name:conversation_work_failed OR event.name:conversation_work_recovery_failed
+```
+
+```text
+event.name:conversation_work_pending_requeued OR event.name:conversation_work_lease_expired_requeued
+```
+
+```text
+event.name:agent_continue_schedule_failed OR event.name:agent_continue_lock_busy
 ```
 
 ```text

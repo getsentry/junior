@@ -5,18 +5,21 @@ import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
   checkInConversationWork,
+  CONVERSATION_ACTIVE_INDEX_KEY,
+  CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   completeConversationWork,
   CONVERSATION_WORK_LEASE_TTL_MS,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
-  listConversationWorkIds,
+  listActiveConversationIds,
+  listConversationsByActivity,
   markConversationMessagesInjected,
   requestConversationContinuation,
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
-  type InboundMessageRecord,
+  type InboundMessage,
 } from "@/chat/task-execution/store";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
@@ -46,7 +49,7 @@ const OTHER_SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C456",
 } as const;
-const CONVERSATION_WORK_STATE_KEY = `junior:conversation-work:state:${CONVERSATION_ID}`;
+const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
@@ -103,8 +106,12 @@ describe("conversation work execution", () => {
     const legacyWork = {
       schemaVersion: 1,
       conversationId: CONVERSATION_ID,
-      messages: [legacyMessage],
-      needsRun: true,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        pendingMessages: [legacyMessage],
+      },
+      lastActivityAtMs: 1_000,
       updatedAtMs: 1_000,
     };
     await state.set(CONVERSATION_WORK_STATE_KEY, legacyWork);
@@ -115,7 +122,7 @@ describe("conversation work execution", () => {
         nowMs: 2_000,
         state,
       }),
-    ).rejects.toThrow("Conversation work state is invalid");
+    ).rejects.toThrow("Conversation record is invalid");
 
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
       legacyWork,
@@ -219,38 +226,74 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("keeps runnable conversation ids when the recovery index overflows", async () => {
+  it("keeps stale active conversation ids when the active index exceeds the activity feed cap", async () => {
     const state = getStateAdapter();
     await state.connect();
-    const activeConversationId = "conversation-active";
-    const newConversationId = "conversation-new";
-    await requestConversationWork({
-      conversationId: activeConversationId,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state,
-    });
+    const staleConversationId = "conversation-stale";
     await state.set(
-      "junior:conversation-work:index",
-      [
-        activeConversationId,
-        ...Array.from({ length: 9_999 }, (_, index) => `stale-${index}`),
-      ],
+      CONVERSATION_ACTIVE_INDEX_KEY,
+      Array.from({ length: 10_000 }, (_, index) => ({
+        conversationId: `newer-${index}`,
+        score: 10_000 + index,
+      })),
       60_000,
     );
 
     await requestConversationWork({
-      conversationId: newConversationId,
+      conversationId: staleConversationId,
       destination: SLACK_DESTINATION,
-      nowMs: 2_000,
+      nowMs: 1_000,
       state,
     });
 
-    const ids = await listConversationWorkIds({ state });
-    expect(ids).toContain(activeConversationId);
-    expect(ids).toContain(newConversationId);
-    expect(ids).not.toContain("stale-0");
-    expect(ids).toHaveLength(10_000);
+    const ids = await listActiveConversationIds({ state });
+    expect(ids).toContain(staleConversationId);
+    expect(ids).toHaveLength(10_001);
+
+    await expect(
+      listActiveConversationIds({ staleBeforeMs: 1_000, state }),
+    ).resolves.toEqual([staleConversationId]);
+  });
+
+  it("normalizes malformed emulated conversation indexes", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_ACTIVE_INDEX_KEY, "not-an-index", 60_000);
+    await state.set(CONVERSATION_BY_ACTIVITY_INDEX_KEY, "not-an-index", 60_000);
+
+    await expect(listActiveConversationIds({ state })).resolves.toEqual([]);
+    await expect(
+      listConversationsByActivity({ state, limit: 10 }),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects pending messages with a different conversation destination", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 1,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1"],
+        pendingCount: 1,
+        pendingMessages: [
+          {
+            ...inboundMessage("m1"),
+            destination: OTHER_SLACK_DESTINATION,
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -309,12 +352,11 @@ describe("conversation work execution", () => {
     ).rejects.toThrow("Conversation work queue destination changed");
 
     expect(run).not.toHaveBeenCalled();
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      destination: SLACK_DESTINATION,
-      lease: undefined,
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
     });
+    expect(work).toMatchObject({ destination: SLACK_DESTINATION });
+    expect(work?.lease).toBeUndefined();
   });
 
   it("rejects continuation requests that change a conversation destination", async () => {
@@ -339,7 +381,7 @@ describe("conversation work execution", () => {
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
       }),
-    ).rejects.toThrow("Conversation work destination changed");
+    ).rejects.toThrow("Conversation destination changed");
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
@@ -488,7 +530,7 @@ describe("conversation work execution", () => {
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
-    const injected: InboundMessageRecord[][] = [];
+    const injected: InboundMessage[][] = [];
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
@@ -561,11 +603,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
-      "m1",
       "m2",
     ]);
     expect(state?.messages.map((message) => message.injectedAtMs)).toEqual([
-      expect.any(Number),
       undefined,
     ]);
   });

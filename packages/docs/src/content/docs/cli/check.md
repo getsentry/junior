@@ -9,6 +9,7 @@ related:
   - /extend/
   - /cli/init/
   - /cli/snapshot-create/
+  - /cli/upgrade/
 ---
 
 `junior check` validates local app content, installed plugin package content, and Junior deployment config before build or deploy. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.

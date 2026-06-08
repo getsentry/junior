@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-06
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -220,10 +220,10 @@ Slack post and state commit are not atomic. If Slack accepts the post but persis
 
 ## Continuation
 
-Dispatched requests must not use the interactive Slack turn-resume route. Timeout continuation uses the dispatch callback path:
+Dispatched requests must not use the Slack conversation queue used for interactive conversations. Timeout continuation uses the dispatch callback path:
 
 1. `generateAssistantReply` persists a resumable session record for the dispatch conversation and turn id.
-2. Runner catches `turn_timeout_resume`.
+2. Runner catches `agent_continue`.
 3. Runner marks dispatch `awaiting_resume` with the next record version.
 4. Runner signs another callback for the same dispatch id.
 5. Next callback verifies expected state/version.

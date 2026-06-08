@@ -21,6 +21,7 @@ function reporting(): JuniorReporting {
         skills: [{ name: "triage", pluginProvider: "github" }],
         packagedContent: {
           packageNames: ["@sentry/junior-github"],
+          packages: [],
           manifestRoots: [],
           skillRoots: [],
           tracingIncludes: [],
@@ -35,7 +36,7 @@ function reporting(): JuniorReporting {
     },
     async getSessions() {
       return {
-        source: "turn_session_records",
+        source: "conversation_index",
         generatedAt: "2026-05-29T00:00:00.000Z",
         sessions: [
           {
@@ -65,9 +66,9 @@ function reporting(): JuniorReporting {
         requesters: [],
         sampleLimit: 1,
         sampleSize: 1,
-        source: "turn_session_records",
+        source: "conversation_index",
         truncated: false,
-        turns: 1,
+        runs: 1,
         windowEnd: "2026-05-29T00:00:00.000Z",
         windowStart: "2026-05-22T00:00:00.000Z",
       };
@@ -84,7 +85,7 @@ function reporting(): JuniorReporting {
         conversationId,
         displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
-        turns: [
+        runs: [
           {
             conversationId,
             cumulativeDurationMs: 0,
@@ -167,14 +168,14 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(activeConversation.status).toBe(200);
     const activeConversationBody = (await activeConversation.json()) as {
-      turns: Array<{
+      runs: Array<{
         transcript: Array<{
           parts: Array<{ name?: string }>;
         }>;
       }>;
     };
     expect(
-      activeConversationBody.turns[0]?.transcript
+      activeConversationBody.runs[0]?.transcript
         .flatMap((message) => message.parts)
         .map((part) => part.name)
         .filter(Boolean),
@@ -187,7 +188,7 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(longConversation.status).toBe(200);
     const longConversationBody = (await longConversation.json()) as {
-      turns: Array<{
+      runs: Array<{
         transcript: Array<{
           role: string;
           parts: Array<{ id?: string; name?: string; type: string }>;
@@ -196,14 +197,14 @@ describe("dashboard mock conversation routes", () => {
         transcriptMessageCount?: number;
       }>;
     };
-    const longConversationParts = longConversationBody.turns.flatMap((turn) =>
+    const longConversationParts = longConversationBody.runs.flatMap((turn) =>
       turn.transcript.flatMap((message) => message.parts),
     );
-    const systemMessages = longConversationBody.turns.flatMap((turn) =>
+    const systemMessages = longConversationBody.runs.flatMap((turn) =>
       turn.transcript.filter((message) => message.role === "system"),
     );
     const bashCallTimes = new Map<string, number>();
-    const bashDurations = longConversationBody.turns.flatMap((turn) =>
+    const bashDurations = longConversationBody.runs.flatMap((turn) =>
       turn.transcript.flatMap((message) =>
         message.parts.flatMap((part) => {
           if (part.name !== "bash" || !part.id || !message.timestamp) {
@@ -218,10 +219,10 @@ describe("dashboard mock conversation routes", () => {
         }),
       ),
     );
-    expect(longConversationBody.turns).toHaveLength(2);
+    expect(longConversationBody.runs).toHaveLength(2);
     expect(systemMessages).toHaveLength(1);
-    expect(longConversationBody.turns[1]?.transcript[0]?.role).toBe("user");
-    for (const turn of longConversationBody.turns) {
+    expect(longConversationBody.runs[1]?.transcript[0]?.role).toBe("user");
+    for (const turn of longConversationBody.runs) {
       expect(turn.transcriptMessageCount).toBe(turn.transcript.length);
     }
     expect(
@@ -240,7 +241,7 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(conversation.status).toBe(200);
     const conversationBody = (await conversation.json()) as {
-      turns: Array<{
+      runs: Array<{
         transcriptAvailable: boolean;
         transcriptMetadata?: Array<{ role: string }>;
         transcriptRedacted?: boolean;
@@ -248,7 +249,7 @@ describe("dashboard mock conversation routes", () => {
     };
     expect(conversationBody).toMatchObject({
       conversationId: "slack:DQA123:1770007200.000300",
-      turns: [
+      runs: [
         {
           transcriptAvailable: false,
           transcriptRedacted: true,
@@ -256,7 +257,7 @@ describe("dashboard mock conversation routes", () => {
         },
       ],
     });
-    expect(conversationBody.turns[0]?.transcriptMetadata?.[0]?.role).toBe(
+    expect(conversationBody.runs[0]?.transcriptMetadata?.[0]?.role).toBe(
       "user",
     );
   });
@@ -282,7 +283,7 @@ describe("dashboard mock conversation routes", () => {
       sessions: Array<{ conversationId: string; status: string }>;
       source: string;
     };
-    expect(body.source).toBe("turn_session_records");
+    expect(body.source).toBe("conversation_index");
     expect(body.sessions[0]).toMatchObject({
       conversationId: "slack:CQA123:1770003600.000200",
       status: "active",
@@ -302,7 +303,7 @@ describe("dashboard mock conversation routes", () => {
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const mockReporting = reporting();
     mockReporting.getSessions = async () => ({
-      source: "turn_session_records",
+      source: "conversation_index",
       generatedAt: "2026-06-04T12:00:00.000Z",
       sessions: [
         {

@@ -138,6 +138,7 @@ export default defineConfig({
               label: "junior snapshot create",
               link: "/cli/snapshot-create/",
             },
+            { label: "junior upgrade", link: "/cli/upgrade/" },
           ],
         },
         {

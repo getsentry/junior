@@ -224,7 +224,7 @@ describe("plugin heartbeat", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("reschedules stale timeout resume records", async () => {
+  it("reschedules stale agent continuation records", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn-timeout";
@@ -264,7 +264,7 @@ describe("plugin heartbeat", () => {
         conversationId,
         destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
+          `agent-continue:${conversationId}:${sessionId}:`,
         ),
       },
     ]);
@@ -276,7 +276,7 @@ describe("plugin heartbeat", () => {
     });
   });
 
-  it("reschedules stale cooperative yield resume records", async () => {
+  it("reschedules stale cooperative yield continuation records", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn-yield";
@@ -316,7 +316,7 @@ describe("plugin heartbeat", () => {
         conversationId,
         destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
+          `agent-continue:${conversationId}:${sessionId}:`,
         ),
       },
     ]);
@@ -328,7 +328,7 @@ describe("plugin heartbeat", () => {
     });
   });
 
-  it("skips stale timeout resume records for inactive turns", async () => {
+  it("skips stale agent continuation records for inactive runs", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn-timeout-inactive";

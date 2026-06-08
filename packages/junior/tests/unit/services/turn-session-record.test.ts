@@ -206,10 +206,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("fails timeout sessions instead of scheduling beyond the slice cap", async () => {
-    const {
-      AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
-      persistTimeoutSessionRecord,
-    } = await import("@/chat/services/turn-session-record");
+    const { AGENT_CONTINUE_MAX_SLICES, persistTimeoutSessionRecord } =
+      await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -224,7 +222,7 @@ describe("persistAuthPauseSessionRecord", () => {
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      sliceId: AGENT_CONTINUE_MAX_SLICES,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -235,7 +233,7 @@ describe("persistAuthPauseSessionRecord", () => {
       persistTimeoutSessionRecord({
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
-        currentSliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+        currentSliceId: AGENT_CONTINUE_MAX_SLICES,
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
@@ -245,7 +243,7 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      sliceId: AGENT_CONTINUE_MAX_SLICES,
       cumulativeDurationMs: 15_000,
       errorMessage: expect.stringContaining("slice limit"),
       piMessages,
@@ -255,7 +253,7 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      sliceId: AGENT_CONTINUE_MAX_SLICES,
       cumulativeDurationMs: 15_000,
       errorMessage: expect.stringContaining("slice limit"),
       piMessages,

@@ -7,6 +7,7 @@ export default defineConfig({
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
     "cli/check": "src/cli/check.ts",
+    "cli/upgrade": "src/cli/upgrade.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",

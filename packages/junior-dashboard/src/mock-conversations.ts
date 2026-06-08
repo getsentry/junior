@@ -1,13 +1,13 @@
 import type {
-  DashboardConversationReport,
-  DashboardConversationStatsItem,
-  DashboardConversationStatsReport,
-  DashboardRequesterIdentity,
-  DashboardSessionFeed,
-  DashboardSessionReport,
-  DashboardTurnUsage,
-  DashboardTranscriptMessage,
-  DashboardTurnReport,
+  ConversationReport as DashboardConversationReport,
+  ConversationStatsItem as DashboardConversationStatsItem,
+  ConversationStatsReport as DashboardConversationStatsReport,
+  RequesterIdentity as DashboardRequesterIdentity,
+  ConversationFeed as DashboardSessionFeed,
+  ConversationSummaryReport as DashboardSessionReport,
+  ConversationUsage as DashboardRunUsage,
+  TranscriptMessage as DashboardTranscriptMessage,
+  ConversationRunReport as DashboardRunReport,
   JuniorReporting,
 } from "@sentry/junior/reporting";
 
@@ -33,7 +33,7 @@ function sentryTraceUrl(traceId: string): string {
   return `https://sentry.example.com/performance/trace/${traceId}/`;
 }
 
-function sessionFromTurn(turn: DashboardTurnReport): DashboardSessionReport {
+function sessionFromRun(run: DashboardRunReport): DashboardSessionReport {
   const {
     transcript,
     transcriptAvailable,
@@ -42,7 +42,7 @@ function sessionFromTurn(turn: DashboardTurnReport): DashboardSessionReport {
     transcriptRedacted,
     transcriptRedactionReason,
     ...session
-  } = turn;
+  } = run;
   return session;
 }
 
@@ -57,7 +57,7 @@ function publicIncidentConversation(
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: INCIDENT_CONVERSATION_ID,
         displayTitle: "Checkout latency triage",
@@ -252,7 +252,7 @@ function activeConversation(nowMs: number): DashboardConversationReport {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Deploy rollout watch",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: ACTIVE_CONVERSATION_ID,
         displayTitle: "Deploy rollout watch",
@@ -322,7 +322,7 @@ function privateConversation(nowMs: number): DashboardConversationReport {
     conversationId: PRIVATE_CONVERSATION_ID,
     displayTitle: "Direct Message",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: PRIVATE_CONVERSATION_ID,
         displayTitle: "Direct Message",
@@ -428,7 +428,7 @@ function hungConversation(nowMs: number): DashboardConversationReport {
     conversationId: HUNG_CONVERSATION_ID,
     displayTitle: "Sandbox QA run",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: HUNG_CONVERSATION_ID,
         displayTitle: "Sandbox QA run",
@@ -505,7 +505,7 @@ function failedConversation(nowMs: number): DashboardConversationReport {
     conversationId: FAILED_CONVERSATION_ID,
     displayTitle: "OAuth callback investigation",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: FAILED_CONVERSATION_ID,
         displayTitle: "OAuth callback investigation",
@@ -588,7 +588,7 @@ function schedulerConversation(nowMs: number): DashboardConversationReport {
     conversationId: SCHEDULER_CONVERSATION_ID,
     displayTitle: "Daily operations digest",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: SCHEDULER_CONVERSATION_ID,
         displayTitle: "Daily operations digest",
@@ -659,10 +659,10 @@ function mockConversationMap(
 
 function mockSessionFeed(nowMs: number): DashboardSessionFeed {
   return {
-    source: "turn_session_records",
+    source: "conversation_index",
     generatedAt: iso(nowMs),
     sessions: mockConversations(nowMs).flatMap((conversation) =>
-      conversation.turns.map(sessionFromTurn),
+      conversation.runs.map(sessionFromRun),
     ),
   };
 }
@@ -703,9 +703,9 @@ function conversationStatsReportFromSessions(
   let failed = 0;
   let hung = 0;
 
-  for (const turns of conversations) {
-    const contributions = turnContributions(turns);
-    const signals = statusSignals(turns);
+  for (const runs of conversations) {
+    const contributions = runContributions(runs);
+    const signals = statusSignals(runs);
     const conversationTokens = contributionTokenTotal(contributions);
     durationMs += contributionDurationTotal(contributions);
     tokens = addTokenTotal(tokens, conversationTokens);
@@ -713,23 +713,23 @@ function conversationStatsReportFromSessions(
     failed += signals.failed ? 1 : 0;
     hung += signals.hung ? 1 : 0;
 
-    const requesterTurns = new Map<string, TurnContribution[]>();
+    const requesterRuns = new Map<string, RunContribution[]>();
     for (const contribution of contributions) {
       const requester =
-        requesterLabel(contribution.turn.requesterIdentity) ?? "Unknown";
-      requesterTurns.set(requester, [
-        ...(requesterTurns.get(requester) ?? []),
+        requesterLabel(contribution.run.requesterIdentity) ?? "Unknown";
+      requesterRuns.set(requester, [
+        ...(requesterRuns.get(requester) ?? []),
         contribution,
       ]);
     }
 
-    for (const [requester, requesterContributions] of requesterTurns) {
+    for (const [requester, requesterContributions] of requesterRuns) {
       const item = requesters.get(requester) ?? emptyStatsItem(requester);
       const requesterSignals = statusSignals(
-        requesterContributions.map((contribution) => contribution.turn),
+        requesterContributions.map((contribution) => contribution.run),
       );
       item.conversations += 1;
-      item.turns += requesterContributions.length;
+      item.runs += requesterContributions.length;
       item.durationMs += contributionDurationTotal(requesterContributions);
       item.active += requesterSignals.active ? 1 : 0;
       item.failed += requesterSignals.failed ? 1 : 0;
@@ -738,10 +738,10 @@ function conversationStatsReportFromSessions(
       requesters.set(requester, item);
     }
 
-    const location = locationLabel(newestTurn(turns));
+    const location = locationLabel(newestRun(runs));
     const locationItem = locations.get(location) ?? emptyStatsItem(location);
     locationItem.conversations += 1;
-    locationItem.turns += turns.length;
+    locationItem.runs += runs.length;
     locationItem.durationMs += contributionDurationTotal(contributions);
     locationItem.active += signals.active ? 1 : 0;
     locationItem.failed += signals.failed ? 1 : 0;
@@ -761,19 +761,19 @@ function conversationStatsReportFromSessions(
     requesters: statsItems(requesters),
     sampleLimit: sessions.length,
     sampleSize: sessions.length,
-    source: "turn_session_records",
+    source: "conversation_index",
     ...(tokens !== undefined ? { tokens } : {}),
     truncated: false,
-    turns: conversations.reduce((sum, turns) => sum + turns.length, 0),
+    runs: conversations.reduce((sum, runs) => sum + runs.length, 0),
     windowEnd: iso(nowMs),
     windowStart: iso(nowMs, -7 * 24 * 60 * 60 * 1000),
   };
 }
 
-type TurnContribution = {
+type RunContribution = {
   durationMs: number;
   tokens?: number;
-  turn: DashboardSessionReport;
+  run: DashboardSessionReport;
 };
 
 function reportTime(value: string): number | undefined {
@@ -781,8 +781,8 @@ function reportTime(value: string): number | undefined {
   return Number.isFinite(time) ? time : undefined;
 }
 
-function newestTurn(turns: DashboardSessionReport[]): DashboardSessionReport {
-  return [...turns].sort(
+function newestRun(runs: DashboardSessionReport[]): DashboardSessionReport {
+  return [...runs].sort(
     (left, right) =>
       (reportTime(right.lastSeenAt) ?? 0) -
         (reportTime(left.lastSeenAt) ?? 0) || right.id.localeCompare(left.id),
@@ -803,23 +803,23 @@ function recentConversationGroups(
   }
 
   return [...groups.values()]
-    .map((turns) =>
-      [...turns].sort(
+    .map((runs) =>
+      [...runs].sort(
         (left, right) =>
           (reportTime(left.startedAt) ?? 0) -
             (reportTime(right.startedAt) ?? 0) ||
           left.id.localeCompare(right.id),
       ),
     )
-    .filter((turns) => {
-      const activityAt = reportTime(newestTurn(turns).lastSeenAt);
+    .filter((runs) => {
+      const activityAt = reportTime(newestRun(runs).lastSeenAt);
       return (
         activityAt !== undefined && activityAt >= startMs && activityAt <= nowMs
       );
     });
 }
 
-function usageTokenTotal(usage: DashboardTurnUsage | undefined) {
+function usageTokenTotal(usage: DashboardRunUsage | undefined) {
   if (!usage) return undefined;
   const components = [
     usage.inputTokens,
@@ -842,17 +842,15 @@ function usageTokenTotal(usage: DashboardTurnUsage | undefined) {
     : undefined;
 }
 
-function turnContributions(
-  turns: DashboardSessionReport[],
-): TurnContribution[] {
+function runContributions(runs: DashboardSessionReport[]): RunContribution[] {
   let previousDuration = 0;
   let previousTokens = 0;
-  return turns.map((turn) => {
-    const duration = Math.max(0, Math.floor(turn.cumulativeDurationMs));
-    const tokens = usageTokenTotal(turn.cumulativeUsage);
-    const contribution: TurnContribution = {
+  return runs.map((run) => {
+    const duration = Math.max(0, Math.floor(run.cumulativeDurationMs));
+    const tokens = usageTokenTotal(run.cumulativeUsage);
+    const contribution: RunContribution = {
       durationMs: Math.max(0, duration - previousDuration),
-      turn,
+      run,
     };
     if (tokens !== undefined) {
       contribution.tokens = Math.max(0, tokens - previousTokens);
@@ -865,7 +863,7 @@ function turnContributions(
   });
 }
 
-function contributionDurationTotal(contributions: TurnContribution[]): number {
+function contributionDurationTotal(contributions: RunContribution[]): number {
   return contributions.reduce(
     (sum, contribution) => sum + contribution.durationMs,
     0,
@@ -880,7 +878,7 @@ function addTokenTotal(
 }
 
 function contributionTokenTotal(
-  contributions: TurnContribution[],
+  contributions: RunContribution[],
 ): number | undefined {
   return contributions.reduce(
     (sum, contribution) => addTokenTotal(sum, contribution.tokens),
@@ -927,7 +925,7 @@ function emptyStatsItem(label: string): DashboardConversationStatsItem {
     failed: 0,
     hung: 0,
     label,
-    turns: 0,
+    runs: 0,
   };
 }
 
@@ -940,11 +938,11 @@ function addItemTokens(
   }
 }
 
-function statusSignals(turns: DashboardSessionReport[]) {
+function statusSignals(runs: DashboardSessionReport[]) {
   return {
-    active: turns.some((turn) => turn.status === "active"),
-    failed: turns.some((turn) => turn.status === "failed"),
-    hung: turns.some((turn) => turn.status === "hung"),
+    active: runs.some((turn) => turn.status === "active"),
+    failed: runs.some((turn) => turn.status === "failed"),
+    hung: runs.some((turn) => turn.status === "hung"),
   };
 }
 
@@ -952,7 +950,7 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
-      right.turns - left.turns ||
+      right.runs - left.runs ||
       right.durationMs - left.durationMs ||
       left.label.localeCompare(right.label),
   );

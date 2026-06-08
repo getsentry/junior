@@ -64,7 +64,7 @@ fields=timestamp,level,event.name,span_id,gen_ai.conversation.id,error.type,exce
 sort=timestamp
 ```
 
-Recent failed or timed-out turns.
+Recent failed or timed-out agent runs.
 
 ```text
 dataset=logs query='event.name:agent_turn_timeout OR event.name:agent_turn_failed OR event.name:agent_turn_provider_error'
@@ -163,15 +163,15 @@ A turn parked for auth, resumed late, or failed after callback.
 
 Events: `credential_issue_failed`, `credential_issue_request`,
 `credential_issue_success`, `mention_handler_auth_pause`,
-`subscribed_message_handler_auth_pause`, `timeout_resume_handler_failed`,
-`timeout_resume_lock_busy`, `oauth_callback_resume_complete`,
+`subscribed_message_handler_auth_pause`, `agent_continue_schedule_failed`,
+`agent_continue_lock_busy`, `oauth_callback_resume_complete`,
 `mcp_oauth_callback_failed`
 
 Spans: resumed `chat.turn`, `chat.reply`
 
 Attributes: `app.credential.provider`, `app.credential.delivery`,
 `app.ai.retryable_reason`, `app.ai.session_id`,
-`app.ai.resume_checkpoint_version`
+`app.ai.resume_session_version`
 
 ### Skills And Plugins
 

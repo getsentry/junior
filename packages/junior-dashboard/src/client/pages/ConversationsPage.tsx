@@ -13,7 +13,7 @@ import {
 } from "../format";
 import type { DashboardData, SessionFilter } from "../types";
 
-/** Render the searchable conversation index from recent turn summaries. */
+/** Render the searchable conversation index from reporting data. */
 export function ConversationsPage(props: { data?: DashboardData }) {
   const [params, setParams] = useSearchParams();
   const filter = getFilter(params.get("filter"));
@@ -21,10 +21,9 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   const conversations = buildConversations(sessions);
   const visibleConversations = filterConversations(conversations, filter);
   const search = params.toString();
-  const feedMeta =
-    props.data?.sessions.source === "turn_session_records"
-      ? `${conversations.length} conversations / ${formatTime(props.data.sessions.generatedAt)}`
-      : "waiting for run history feed";
+  const feedMeta = props.data?.sessions
+    ? `${conversations.length} conversations / ${formatTime(props.data.sessions.generatedAt)}`
+    : "waiting for conversation feed";
 
   function updateFilter(nextFilter: SessionFilter) {
     const next = new URLSearchParams(params);

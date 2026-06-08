@@ -733,17 +733,17 @@ describe("bot handlers (integration)", () => {
   });
 
   it("schedules durable continuation without posting a notice", async () => {
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMEOUT:1700000000.000";
     const destination = slackDestination("C9TIMEOUT");
     const sessionId = "turn_msg-timeout";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleTurnTimeoutResume,
+          scheduleAgentContinue,
           generateAssistantReply: async () => {
             throw new RetryableTurnError(
-              "turn_timeout_resume",
+              "agent_continue",
               "simulated timeout continuation",
               {
                 conversationId,
@@ -772,7 +772,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId,
@@ -791,18 +791,18 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBe(sessionId);
   });
 
-  it("schedules timeout continuations with the provided destination", async () => {
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+  it("schedules agent continuations with the provided destination", async () => {
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMECTX:1700000000.000";
     const destination = slackDestination("C9TIMECTX");
     const sessionId = "turn_msg-timeout-context";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleTurnTimeoutResume,
+          scheduleAgentContinue,
           generateAssistantReply: async () => {
             throw new RetryableTurnError(
-              "turn_timeout_resume",
+              "agent_continue",
               "simulated timeout continuation",
               {
                 conversationId,
@@ -834,7 +834,7 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId,
@@ -844,17 +844,17 @@ describe("bot handlers (integration)", () => {
 
   it("does not post a Slack continuation notice when a live turn times out", async () => {
     resetSlackApiMockState();
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMEAPI:1700000000.000";
     const destination = slackDestination("C9TIMEAPI");
     const sessionId = "turn_msg-timeout-api";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleTurnTimeoutResume,
+          scheduleAgentContinue,
           generateAssistantReply: async () => {
             throw new RetryableTurnError(
-              "turn_timeout_resume",
+              "agent_continue",
               "simulated timeout continuation",
               {
                 conversationId,
@@ -885,7 +885,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId,
@@ -895,12 +895,12 @@ describe("bot handlers (integration)", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
-  it("reschedules an awaiting turn continuation without replying to the follow-up", async () => {
+  it("reschedules an awaiting agent continuation without replying to the follow-up", async () => {
     const conversationId = "slack:C9TIMERTY:1700000000.000";
     const destination = slackDestination("C9TIMERTY");
     const activeSessionId = "turn_msg-original";
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -913,8 +913,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply,
-          getAwaitingTurnContinuationRequest,
-          scheduleTurnTimeoutResume,
+          getAwaitingAgentContinueRequest,
+          scheduleAgentContinue,
         },
       },
     });
@@ -941,11 +941,11 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(getAwaitingTurnContinuationRequest).toHaveBeenCalledWith({
+    expect(getAwaitingAgentContinueRequest).toHaveBeenCalledWith({
       conversationId,
       sessionId: activeSessionId,
     });
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1096,7 +1096,7 @@ describe("bot handlers (integration)", () => {
     );
     expect(failedRecord?.state).toBe("failed");
     expect(failedRecord?.errorMessage).toBe(
-      "Awaiting turn continuation metadata could not be materialized",
+      "Awaiting agent continuation metadata could not be materialized",
     );
     const state = thread.getState();
     const conversation = (
@@ -1111,8 +1111,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1123,8 +1123,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply,
-          getAwaitingTurnContinuationRequest,
-          scheduleTurnTimeoutResume,
+          getAwaitingAgentContinueRequest,
+          scheduleAgentContinue,
         },
       },
     });
@@ -1148,7 +1148,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1161,8 +1161,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEREPD:1700000000.000";
     const destination = slackDestination("C9TIMEREPD");
     const activeSessionId = "turn_msg-replied-duplicate";
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1174,8 +1174,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply,
-          getAwaitingTurnContinuationRequest,
-          scheduleTurnTimeoutResume,
+          getAwaitingAgentContinueRequest,
+          scheduleAgentContinue,
         },
       },
     });
@@ -1203,8 +1203,8 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(getAwaitingTurnContinuationRequest).not.toHaveBeenCalled();
-    expect(scheduleTurnTimeoutResume).not.toHaveBeenCalled();
+    expect(getAwaitingAgentContinueRequest).not.toHaveBeenCalled();
+    expect(scheduleAgentContinue).not.toHaveBeenCalled();
     expect(generateAssistantReply).not.toHaveBeenCalled();
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
@@ -1214,8 +1214,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMENOTI:1700000000.000";
     const destination = slackDestination("C9TIMENOTI");
     const activeSessionId = "turn_msg-original";
-    const scheduleTurnTimeoutResume = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1226,8 +1226,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply,
-          getAwaitingTurnContinuationRequest,
-          scheduleTurnTimeoutResume,
+          getAwaitingAgentContinueRequest,
+          scheduleAgentContinue,
         },
       },
     });
@@ -1248,7 +1248,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(scheduleTurnTimeoutResume).toHaveBeenCalledWith({
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1272,10 +1272,10 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
-    const scheduleTurnTimeoutResume = vi
+    const scheduleAgentContinue = vi
       .fn()
       .mockRejectedValue(new Error("resume callback unavailable"));
-    const getAwaitingTurnContinuationRequest = vi.fn().mockResolvedValue({
+    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       sessionId: activeSessionId,
@@ -1286,8 +1286,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply,
-          getAwaitingTurnContinuationRequest,
-          scheduleTurnTimeoutResume,
+          getAwaitingAgentContinueRequest,
+          scheduleAgentContinue,
         },
       },
     });

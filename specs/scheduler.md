@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-06-06
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -22,7 +22,7 @@ Define the first scheduler contract for Junior: users can create durable tasks t
 - A generic event-rule engine for GitHub, Slack, Sentry, or webhook events.
 - SQL-backed storage as a V1 requirement.
 - A full durable workflow runtime such as Temporal or Vercel Workflow.
-- Reusing timeout-resume callbacks as the product scheduler.
+- Reusing agent continuation callbacks as the product scheduler.
 - Slack `chat.scheduleMessage` as the execution mechanism.
 
 ## Contracts

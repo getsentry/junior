@@ -5,7 +5,7 @@ prev: false
 title: "JuniorVercelConfigOptions"
 ---
 
-Defined in: [vercel.ts:1](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L1)
+Defined in: [junior/src/vercel.ts:1](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L1)
 
 ## Properties
 
@@ -13,4 +13,4 @@ Defined in: [vercel.ts:1](https://github.com/getsentry/junior/blob/main/packages
 
 > `optional` **buildCommand?**: `string` \| `null`
 
-Defined in: [vercel.ts:2](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L2)
+Defined in: [junior/src/vercel.ts:2](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L2)

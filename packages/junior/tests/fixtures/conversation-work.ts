@@ -5,7 +5,10 @@ import type {
   ConversationQueueSendOptions,
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
-import type { InboundMessageRecord } from "@/chat/task-execution/store";
+import {
+  CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
@@ -140,7 +143,7 @@ export function observeConversationMutationLock(args: {
   conversationId: string;
   state: StateAdapter;
 }): { isHeld: () => boolean; state: StateAdapter } {
-  const mutationLockKey = `junior:conversation-work:mutation:${args.conversationId}`;
+  const mutationLockKey = `junior:conversation:mutation:${args.conversationId}`;
   const locks = new WeakSet<Lock>();
   let held = false;
   return {
@@ -178,8 +181,8 @@ export function observeConversationMutationLock(args: {
 /** Build a durable mailbox record for component-level conversation work tests. */
 export function inboundMessage(
   inboundMessageId: string,
-  overrides: Partial<InboundMessageRecord> = {},
-): InboundMessageRecord {
+  overrides: Partial<InboundMessage> = {},
+): InboundMessage {
   return {
     conversationId: CONVERSATION_ID,
     inboundMessageId,
@@ -209,11 +212,12 @@ export function conversationQueueMessage(
 /** Delay the global work index lock once so retry behavior is observable. */
 export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
   let blocked = false;
+  const indexLockKey = `${CONVERSATION_BY_ACTIVITY_INDEX_KEY}:lock`;
   return new Proxy(state, {
     get(target, prop, receiver) {
       if (prop === "acquireLock") {
         return async (key: string, ttlMs: number) => {
-          if (!blocked && key === "junior:conversation-work:index:lock") {
+          if (!blocked && key === indexLockKey) {
             blocked = true;
             return null;
           }
@@ -232,7 +236,7 @@ export function delayMutationLockUntil(args: {
   readyAtMs: number;
   state: StateAdapter;
 }): StateAdapter {
-  const mutationLockKey = `junior:conversation-work:mutation:${args.conversationId}`;
+  const mutationLockKey = `junior:conversation:mutation:${args.conversationId}`;
   return new Proxy(args.state, {
     get(target, prop, receiver) {
       if (prop === "acquireLock") {

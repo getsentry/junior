@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type {
-  DashboardConversationStatsReport,
+  ConversationStatsReport,
   PluginOperationalReportFeed,
   JuniorReporting,
 } from "@sentry/junior/reporting";
@@ -133,7 +133,7 @@ function emptyPluginReportFeed(): PluginOperationalReportFeed {
   };
 }
 
-function emptyConversationStatsReport(): DashboardConversationStatsReport {
+function emptyConversationStatsReport(): ConversationStatsReport {
   const nowMs = Date.now();
   return {
     active: 0,
@@ -146,9 +146,9 @@ function emptyConversationStatsReport(): DashboardConversationStatsReport {
     requesters: [],
     sampleLimit: 0,
     sampleSize: 0,
-    source: "turn_session_records",
+    source: "conversation_index",
     truncated: false,
-    turns: 0,
+    runs: 0,
     windowEnd: new Date(nowMs).toISOString(),
     windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
   };
@@ -156,7 +156,7 @@ function emptyConversationStatsReport(): DashboardConversationStatsReport {
 
 async function readConversationStats(
   reporting: JuniorReporting,
-): Promise<DashboardConversationStatsReport> {
+): Promise<ConversationStatsReport> {
   if (!reporting.getConversationStats) {
     return emptyConversationStatsReport();
   }

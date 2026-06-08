@@ -121,7 +121,7 @@ Run these checks after deployment:
 4. The Vercel deployment has a Queue trigger for `/api/internal/agent/continue`.
 5. A Slack mention produces a thread reply in the expected workspace.
 6. App Home opens without an error.
-7. Queue callback and turn logs show successful processing.
+7. Queue callback and agent-run logs show successful processing.
 8. One enabled plugin workflow succeeds end to end.
 
 ## Next step

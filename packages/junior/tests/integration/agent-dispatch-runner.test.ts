@@ -240,7 +240,7 @@ describe("agent dispatch runner", () => {
     });
   });
 
-  it("persists timeout resume state before scheduling the next slice", async () => {
+  it("persists agent continuation state before scheduling the next slice", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
@@ -256,7 +256,7 @@ describe("agent dispatch runner", () => {
     });
     const scheduleCallback = vi.fn(async () => undefined);
     const generateAssistantReply = vi.fn(async () => {
-      throw new RetryableTurnError("turn_timeout_resume", "slice timed out", {
+      throw new RetryableTurnError("agent_continue", "slice timed out", {
         version: 7,
         sliceId: 2,
       });

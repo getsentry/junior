@@ -76,6 +76,7 @@ function reactionTargetsByName(name: string) {
 
 function createTurnHarness(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+  services?: Parameters<typeof createSlackRuntime>[0]["services"];
   state: StateAdapter;
 }) {
   const queue = createConversationWorkQueueTestAdapter();
@@ -87,7 +88,9 @@ function createTurnHarness(args: {
   const runtime = createSlackRuntime({
     getSlackAdapter: () => adapter,
     services: {
+      ...(args.services ?? {}),
       replyExecutor: {
+        ...(args.services?.replyExecutor ?? {}),
         generateAssistantReply: args.generateAssistantReply,
       },
     },
@@ -108,6 +111,7 @@ function createTurnHarness(args: {
       queue,
       run: createSlackConversationWorker({
         getSlackAdapter: () => adapter,
+        resumeAwaitingContinuation: async () => false,
         runtime,
         state: args.state,
       }),
@@ -302,10 +306,9 @@ describe("Slack behavior: durable turn steering", () => {
       conversationId,
       state,
     });
-    expect(work?.messages).toHaveLength(4);
-    expect(
-      work?.messages.every((message) => message.injectedAtMs !== undefined),
-    ).toBe(true);
+    expect(work?.messages).toEqual([]);
+    expect(work?.execution.inboundMessageIds).toHaveLength(4);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
     expect(work?.needsRun).toBe(false);
 
     const expectedReactionTargets = (name: string) =>
@@ -327,6 +330,79 @@ describe("Slack behavior: durable turn steering", () => {
     expect(reactionTargetsByName("white_check_mark")).toEqual(
       expectedCompletedReactions,
     );
+  });
+
+  it("consumes subscribed messages skipped by reply policy", async () => {
+    const state = getStateAdapter();
+    const replyCalls: string[] = [];
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply: async (prompt, context) => {
+          replyCalls.push(prompt);
+          await context?.onInputCommitted?.();
+          return {
+            text: "Started.",
+            diagnostics: makeDiagnostics(),
+          };
+        },
+        services: {
+          subscribedReplyPolicy: {
+            completeObject: async () =>
+              ({
+                object: {
+                  should_reply: false,
+                  confidence: 0,
+                  reason: "side conversation",
+                },
+                text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
+              }) as never,
+          },
+        },
+        state,
+      });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    queue.clearSentRecords();
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "thanks, sounds good",
+            ts: "1712345.000200",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work?.messages).toEqual([]);
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(work?.needsRun).toBe(false);
+    expect(queue.sentRecords()).toHaveLength(1);
+    expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {

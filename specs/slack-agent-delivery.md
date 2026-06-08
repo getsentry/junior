@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -205,15 +205,15 @@ Current rules:
 4. Later explicit mentions in the same thread may rely on previously skipped screenshots or image uploads still being recoverable from persisted conversation state.
 5. If Slack delivered an image attachment but the current Junior runtime cannot analyze images, replies must say that the image was received but cannot be analyzed; they must not claim that no image was attached.
 
-### 11. Resume Delivery Contract
+### 11. Agent Continuation Delivery Contract
 
-Paused turns resumed by timeout or OAuth must follow the same final Slack delivery contract as live turns.
+Paused agent runs continued after timeout, cooperative yield, or OAuth must follow the same final Slack delivery contract as live runs.
 
 Current rules:
 
-1. Resume handlers generate the final reply under the normal thread lock.
-2. Resume handlers use the shared Slack reply planner for text chunking, continuation markers, interruption markers, and file delivery.
-3. Resume success is defined by final visible Slack delivery, not only by successful assistant generation.
+1. Queue-driven agent continuation generates the final reply under the normal thread lock.
+2. Continued runs use the shared Slack reply planner for text chunking, continuation markers, interruption markers, and file delivery.
+3. Continuation success is defined by final visible Slack delivery, not only by successful assistant generation.
 4. Persisted thread state is updated only after the final reply has been delivered to Slack.
 5. Because live turns do not publish provisional assistant text, timeout continuation remains eligible until final reply delivery starts.
 6. When a turn blocks on OAuth/MCP auth, Junior must privately deliver the auth link, post a brief visible thread acknowledgement that authorization is needed, clear `activeTurnId`, and persist thread-local pending-auth state. The visible acknowledgement must not include the auth URL or other secret-bearing state.
@@ -256,7 +256,8 @@ Representative event names already in use include:
 - `slack_thread_post_failed`
 - `assistant_status_update_failed`
 - `subscribed_message_reply_skipped`
-- `timeout_resume_failed`
+- `slack_resume_turn_failed`
+- `agent_continue_schedule_failed`
 
 Required attribute families remain governed by the logging specs, especially messaging/thread identifiers and AI turn/session context.
 

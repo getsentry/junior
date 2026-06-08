@@ -200,7 +200,7 @@ describe("dashboard reporting", () => {
     expect(report).toMatchObject({
       conversationId: "slack:C1:details-only",
       displayTitle: "Details Only Title",
-      turns: [],
+      runs: [],
     });
   });
 
@@ -239,9 +239,9 @@ describe("dashboard reporting", () => {
       ],
       sampleLimit: 5_000,
       sampleSize: 55,
-      source: "turn_session_records",
+      source: "conversation_index",
       truncated: false,
-      turns: 55,
+      runs: 55,
     });
   });
 
@@ -251,6 +251,18 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
+    vi.setSystemTime(new Date("2026-05-20T10:02:00.000Z"));
+    await recordAgentTurnSessionSummary({
+      channelName: "old-project",
+      conversationId: "slack:C2:300",
+      cumulativeDurationMs: 8_000,
+      cumulativeUsage: { totalTokens: 500 },
+      requester: { fullName: "Casey" },
+      sessionId: "old-turn",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
+      state: "completed",
+    });
     vi.setSystemTime(new Date("2026-06-01T10:02:00.000Z"));
     await recordAgentTurnSessionSummary({
       channelName: "proj-alpha",
@@ -285,37 +297,25 @@ describe("dashboard reporting", () => {
       startedAtMs: Date.parse("2026-06-04T11:00:00.000Z"),
       state: "awaiting_resume",
     });
-    vi.setSystemTime(new Date("2026-05-20T10:02:00.000Z"));
-    await recordAgentTurnSessionSummary({
-      channelName: "old-project",
-      conversationId: "slack:C2:300",
-      cumulativeDurationMs: 8_000,
-      cumulativeUsage: { totalTokens: 500 },
-      requester: { fullName: "Casey" },
-      sessionId: "old-turn",
-      sliceId: 1,
-      startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
-      state: "completed",
-    });
 
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const stats = await createJuniorReporting().getConversationStats();
 
     expect(stats).toMatchObject({
-      active: 1,
+      active: 0,
       conversations: 2,
       durationMs: 5_000,
       failed: 1,
       requesters: [
         {
-          active: 1,
+          active: 0,
           conversations: 2,
           durationMs: 4_000,
           failed: 0,
           hung: 0,
           label: "Avery",
           tokens: 15,
-          turns: 2,
+          runs: 2,
         },
         {
           active: 0,
@@ -325,11 +325,11 @@ describe("dashboard reporting", () => {
           hung: 0,
           label: "Blake",
           tokens: 5,
-          turns: 1,
+          runs: 1,
         },
       ],
       tokens: 20,
-      turns: 3,
+      runs: 3,
     });
     expect(
       stats.locations.map((item) => ({
@@ -374,14 +374,14 @@ describe("dashboard reporting", () => {
       expect.objectContaining({
         conversations: 1,
         label: "Origin Requester",
-        turns: 1,
+        runs: 1,
       }),
     ]);
     expect(stats.locations).toEqual([
       expect.objectContaining({
         conversations: 1,
         label: "#proj-alpha",
-        turns: 1,
+        runs: 1,
       }),
     ]);
   });
@@ -437,7 +437,7 @@ describe("dashboard reporting", () => {
       startedAtMs,
       state: "completed",
     });
-    for (let index = 0; index < 4_999; index += 1) {
+    for (let index = 0; index < 5_000; index += 1) {
       vi.setSystemTime(new Date(startedAtMs + (index + 1) * 1000));
       await recordAgentTurnSessionSummary({
         conversationId: `slack:C_FILL:${index}`,
@@ -448,7 +448,7 @@ describe("dashboard reporting", () => {
         state: "completed",
       });
     }
-    vi.setSystemTime(new Date(startedAtMs + 5_000 * 1000));
+    vi.setSystemTime(new Date(startedAtMs + 5_001 * 1000));
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:baseline",
       cumulativeDurationMs: 1_500,
@@ -464,8 +464,8 @@ describe("dashboard reporting", () => {
 
     expect(stats.truncated).toBe(true);
     expect(stats.sampleSize).toBe(5_000);
-    expect(avery).toMatchObject({ durationMs: 1_000, turns: 1 });
-    expect(blake).toMatchObject({ durationMs: 500, turns: 1 });
+    expect(avery).toMatchObject({ durationMs: 1_000, runs: 1 });
+    expect(blake).toMatchObject({ durationMs: 500, runs: 1 });
   });
 
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
@@ -549,11 +549,11 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:C1:222");
 
-    expect(report.turns).toHaveLength(1);
-    expect(report.turns[0]).toMatchObject({
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({
       transcriptMessageCount: 2,
     });
-    expect(report.turns[0]!.transcript).toEqual([
+    expect(report.runs[0]!.transcript).toEqual([
       {
         role: "user",
         timestamp: 3,
@@ -622,12 +622,12 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:C1:999");
 
-    expect(report.turns).toHaveLength(1);
-    expect(report.turns[0]).toMatchObject({
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({
       id: "target-turn",
       transcriptAvailable: true,
     });
-    expect(report.turns[0]!.transcript).toEqual([
+    expect(report.runs[0]!.transcript).toEqual([
       SYSTEM_MESSAGE,
       {
         role: "user",
@@ -692,9 +692,9 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:C1:333");
 
-    expect(report.turns).toHaveLength(2);
-    expect(report.turns[0]).toMatchObject({ id: "turn-one" });
-    expect(report.turns[0]!.transcript).toEqual([
+    expect(report.runs).toHaveLength(2);
+    expect(report.runs[0]).toMatchObject({ id: "turn-one" });
+    expect(report.runs[0]!.transcript).toEqual([
       SYSTEM_MESSAGE,
       {
         role: "user",
@@ -707,8 +707,8 @@ describe("dashboard reporting", () => {
         parts: [{ type: "text", text: "first answer" }],
       },
     ]);
-    expect(report.turns[1]).toMatchObject({ id: "turn-two" });
-    expect(report.turns[1]!.transcript).toEqual([
+    expect(report.runs[1]).toMatchObject({ id: "turn-two" });
+    expect(report.runs[1]!.transcript).toEqual([
       {
         role: "user",
         timestamp: 3,
@@ -775,7 +775,7 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:D1:222");
 
-    expect(report.turns[0]).toMatchObject({
+    expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       id: "turn-private",
@@ -790,7 +790,7 @@ describe("dashboard reporting", () => {
       transcriptRedactionReason: "non_public_conversation",
       transcript: [],
     });
-    expect(report.turns[0]).not.toHaveProperty("requester");
+    expect(report.runs[0]).not.toHaveProperty("requester");
     expect(JSON.stringify(report)).not.toContain("private question");
     expect(JSON.stringify(report)).not.toContain("private answer");
     expect(JSON.stringify(report)).not.toContain("private value");
@@ -798,7 +798,7 @@ describe("dashboard reporting", () => {
       "sensitive generated thread title",
     );
     expect(JSON.stringify(report)).not.toContain("secret-dm-name");
-    const toolCall = report.turns[0]!.transcriptMetadata?.[1]?.parts.find(
+    const toolCall = report.runs[0]!.transcriptMetadata?.[1]?.parts.find(
       (part) => part.type === "tool_call",
     );
     expect(toolCall?.inputKeys).toHaveLength(20);
@@ -821,7 +821,7 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:D1:333");
 
-    expect(report.turns[0]).toMatchObject({
+    expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       id: "turn-private-expired",

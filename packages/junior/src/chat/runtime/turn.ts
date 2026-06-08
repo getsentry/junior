@@ -15,7 +15,7 @@ export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 export type RetryableTurnReason =
   | "mcp_auth_resume"
   | "plugin_auth_resume"
-  | "turn_timeout_resume";
+  | "agent_continue";
 
 export interface RetryableTurnMetadata {
   authDisposition?: AuthorizationPauseDisposition;
@@ -30,7 +30,7 @@ export interface RetryableTurnMetadata {
   sliceId?: number;
 }
 
-/** Error indicating the turn can be retried (timeout or auth pause). */
+/** Error indicating an agent run can continue later after timeout or auth pause. */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
   readonly metadata?: RetryableTurnMetadata;

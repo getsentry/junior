@@ -92,7 +92,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
-            turns={detail.data?.turns ?? []}
+            turns={detail.data?.runs ?? []}
           />
         )}
       </section>
@@ -104,7 +104,7 @@ function conversationIsLive(
   visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
   detail: ConversationDetailFeed | undefined,
 ): boolean {
-  if (detail) return detail.turns.some((turn) => turn.status === "active");
+  if (detail) return detail.runs.some((turn) => turn.status === "active");
   return visualStatus === "active";
 }
 
@@ -182,13 +182,13 @@ function ConversationStats(props: {
 }) {
   if (!props.conversation) return null;
   const messageSummary = props.detail
-    ? summarizeMessages(props.detail.turns)
+    ? summarizeMessages(props.detail.runs)
     : undefined;
   const toolSummary = props.detail
-    ? summarizeToolCalls(props.detail.turns)
+    ? summarizeToolCalls(props.detail.runs)
     : undefined;
   const tokenSummary = summarizeUsage(
-    (props.detail?.turns ?? props.conversation.turns).map(
+    (props.detail?.runs ?? props.conversation.runs).map(
       (turn) => turn.cumulativeUsage,
     ),
   );

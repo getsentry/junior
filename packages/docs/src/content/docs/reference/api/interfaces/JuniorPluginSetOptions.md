@@ -5,7 +5,7 @@ prev: false
 title: "JuniorPluginSetOptions"
 ---
 
-Defined in: [plugins.ts:10](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L10)
+Defined in: [junior/src/plugins.ts:10](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L10)
 
 ## Properties
 
@@ -13,6 +13,6 @@ Defined in: [plugins.ts:10](https://github.com/getsentry/junior/blob/main/packag
 
 > `optional` **manifests?**: `Record`\<`string`, `PluginManifestConfig`\>
 
-Defined in: [plugins.ts:12](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L12)
+Defined in: [junior/src/plugins.ts:12](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L12)
 
 Install-level manifest overrides applied before validation.

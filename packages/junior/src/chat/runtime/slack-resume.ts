@@ -381,7 +381,7 @@ export async function resumeSlackTurn(
         await onAuthPause(error);
       };
     } else if (
-      isRetryableTurnError(error, "turn_timeout_resume") &&
+      isRetryableTurnError(error, "agent_continue") &&
       onTimeoutPause
     ) {
       deferredPauseKind = "timeout";

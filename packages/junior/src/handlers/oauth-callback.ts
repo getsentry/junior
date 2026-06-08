@@ -60,7 +60,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
+import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AssistantReply } from "@/chat/respond";
 
 /**
@@ -415,16 +415,16 @@ async function resumeOAuthSessionRecordTurn(
           });
         },
         onTimeoutPause: async (error: unknown) => {
-          if (!isRetryableTurnError(error, "turn_timeout_resume")) {
+          if (!isRetryableTurnError(error, "agent_continue")) {
             throw error;
           }
           const version = error.metadata?.version;
           if (typeof version !== "number") {
             throw new Error(
-              "Timed-out OAuth resume did not include a turn-session version",
+              "OAuth agent continuation did not include a session record version",
             );
           }
-          await scheduleTurnTimeoutResume({
+          await scheduleAgentContinue({
             conversationId: stored.resumeConversationId!,
             destination,
             sessionId: lockedSessionId,

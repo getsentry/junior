@@ -13,6 +13,7 @@ import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
+import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -69,6 +70,7 @@ export function getProductionConversationWorkOptions(): VercelConversationWorkCa
     queue: getVercelConversationWorkQueue(),
     run: createSlackConversationWorker({
       getSlackAdapter: getProductionSlackAdapter,
+      resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
       runtime,
     }),
   };

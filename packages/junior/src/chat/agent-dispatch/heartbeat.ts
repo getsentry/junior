@@ -1,9 +1,9 @@
 import { getAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import {
-  getAwaitingTurnContinuationRequest,
-  scheduleTurnTimeoutResume,
-} from "@/chat/services/timeout-resume";
+  getAwaitingAgentContinueRequest,
+  scheduleAgentContinue,
+} from "@/chat/services/agent-continue";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -27,8 +27,8 @@ const DEFAULT_RECOVERY_LIMIT = 25;
 const DEFAULT_PLUGIN_LIMIT = 25;
 const DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
-const TIMEOUT_RESUME_STALE_MS = 2 * 60 * 1000;
-const TIMEOUT_RESUME_RECOVERY_SCAN_LIMIT = 500;
+const AGENT_CONTINUE_STALE_MS = 2 * 60 * 1000;
+const AGENT_CONTINUE_RECOVERY_SCAN_LIMIT = 500;
 
 function isStaleDispatch(args: {
   nowMs: number;
@@ -99,14 +99,14 @@ async function runWithTimeout<T>(
   }
 }
 
-/** Re-drive stale turn continuations whose internal callback vanished. */
-export async function recoverStaleTimeoutResumes(args: {
+/** Re-drive stale agent continuations whose queue callback vanished. */
+export async function recoverStaleAgentContinuations(args: {
   conversationWorkQueue?: ConversationWorkQueue;
   limit?: number;
   nowMs: number;
 }): Promise<number> {
   const summaries = await listAgentTurnSessionSummaries(
-    TIMEOUT_RESUME_RECOVERY_SCAN_LIMIT,
+    AGENT_CONTINUE_RECOVERY_SCAN_LIMIT,
   );
   let recovered = 0;
   for (const summary of summaries) {
@@ -117,7 +117,7 @@ export async function recoverStaleTimeoutResumes(args: {
       summary.state !== "awaiting_resume" ||
       (summary.resumeReason !== "timeout" &&
         summary.resumeReason !== "yield") ||
-      summary.updatedAtMs + TIMEOUT_RESUME_STALE_MS > args.nowMs
+      summary.updatedAtMs + AGENT_CONTINUE_STALE_MS > args.nowMs
     ) {
       continue;
     }
@@ -131,19 +131,19 @@ export async function recoverStaleTimeoutResumes(args: {
         continue;
       }
 
-      const request = await getAwaitingTurnContinuationRequest({
+      const request = await getAwaitingAgentContinueRequest({
         conversationId: summary.conversationId,
         sessionId: summary.sessionId,
       });
       if (!request) {
         continue;
       }
-      await scheduleTurnTimeoutResume(request, {
+      await scheduleAgentContinue(request, {
         queue: args.conversationWorkQueue,
       });
       recovered += 1;
       logInfo(
-        "agent_turn_timeout_resume_recovery_scheduled",
+        "agent_continue_recovery_scheduled",
         {},
         {
           "app.ai.conversation_id": summary.conversationId,
@@ -151,18 +151,18 @@ export async function recoverStaleTimeoutResumes(args: {
           "app.ai.resume_session_version": request.expectedVersion,
           "app.ai.resume_slice_id": summary.sliceId,
         },
-        "Heartbeat rescheduled stale timeout resume",
+        "Heartbeat rescheduled stale agent continuation",
       );
     } catch (error) {
       logException(
         error,
-        "agent_turn_timeout_resume_recovery_failed",
+        "agent_continue_recovery_failed",
         {},
         {
           "app.ai.conversation_id": summary.conversationId,
           "app.ai.session_id": summary.sessionId,
         },
-        "Heartbeat timeout resume recovery failed",
+        "Heartbeat agent continuation recovery failed",
       );
     }
   }
@@ -284,7 +284,7 @@ export async function runHeartbeat(args: {
     nowMs: args.nowMs,
     queue: args.conversationWorkQueue ?? getVercelConversationWorkQueue(),
   });
-  await recoverStaleTimeoutResumes({
+  await recoverStaleAgentContinuations({
     conversationWorkQueue: args.conversationWorkQueue,
     nowMs: args.nowMs,
   });
