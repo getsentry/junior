@@ -646,6 +646,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
         let latestArtifacts = preparedState.artifacts;
+        let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
 
         try {
           const loadedPiMessages = await loadPiMessagesForTurn({
@@ -695,6 +696,62 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             runId,
             threadId,
           });
+          void assistantTitleTask
+            .then(async (titleUpdateResult) => {
+              if (!titleUpdateResult) return;
+
+              assistantTitleArtifacts = {
+                assistantTitleSourceMessageId:
+                  titleUpdateResult.sourceMessageId,
+                ...(titleUpdateResult.title
+                  ? { assistantTitle: titleUpdateResult.title }
+                  : {}),
+              };
+              latestArtifacts = {
+                ...latestArtifacts,
+                ...assistantTitleArtifacts,
+              };
+
+              if (conversationId && titleUpdateResult.title) {
+                try {
+                  await setConversationTitle(conversationId, {
+                    displayTitle: titleUpdateResult.title,
+                    titleSourceMessageId: titleUpdateResult.sourceMessageId,
+                  });
+                } catch (error) {
+                  logException(
+                    error,
+                    "conversation_details_title_set_failed",
+                    turnTraceContext,
+                    {},
+                    "Failed to set conversation title in details record",
+                  );
+                }
+              }
+
+              try {
+                await persistThreadState(thread, {
+                  artifacts: latestArtifacts,
+                });
+              } catch (error) {
+                logException(
+                  error,
+                  "assistant_title_artifact_persist_failed",
+                  turnTraceContext,
+                  {},
+                  "Failed to persist async assistant title artifact state",
+                );
+              }
+            })
+            .catch((error) => {
+              logException(
+                error,
+                "assistant_title_task_failed",
+                turnTraceContext,
+                {},
+                "Async assistant title task failed",
+              );
+            });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           const resolveSteeringMessages = async (
@@ -789,8 +846,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 });
               },
               onArtifactStateUpdated: async (artifacts) => {
-                latestArtifacts = artifacts;
-                await persistThreadState(thread, { artifacts });
+                latestArtifacts = {
+                  ...artifacts,
+                  ...assistantTitleArtifacts,
+                };
+                await persistThreadState(thread, {
+                  artifacts: latestArtifacts,
+                });
               },
               onAuthPending: async (pendingAuth) => {
                 await applyPendingAuthUpdate({
@@ -916,39 +978,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
 
-          const titleUpdateResult = await assistantTitleTask;
-          if (titleUpdateResult) {
-            artifactStatePatch.assistantTitleSourceMessageId =
-              titleUpdateResult.sourceMessageId;
-            if (titleUpdateResult.title) {
-              artifactStatePatch.assistantTitle = titleUpdateResult.title;
-              if (conversationId) {
-                // Persist the title to the conversation details record so
-                // reporting can read it without loading full thread state.
-                void setConversationTitle(conversationId, {
-                  displayTitle: titleUpdateResult.title,
-                  titleSourceMessageId: titleUpdateResult.sourceMessageId,
-                }).catch((error) => {
-                  logException(
-                    error,
-                    "conversation_details_title_set_failed",
-                    turnTraceContext,
-                    {},
-                    "Failed to set conversation title in details record",
-                  );
-                });
-              }
-            }
-          }
-
           const completedState = buildDeliveredTurnStatePatch({
-            artifactStatePatch,
+            artifactStatePatch: {
+              ...artifactStatePatch,
+              ...assistantTitleArtifacts,
+            },
             artifacts: preparedState.artifacts,
             conversation: preparedState.conversation,
             reply,
             sessionId: turnId,
             userMessageId: preparedState.userMessageId,
           });
+          if (completedState.artifacts) {
+            latestArtifacts = completedState.artifacts;
+          }
           await persistThreadState(thread, {
             ...completedState,
           });
@@ -962,9 +1005,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sliceId: 1,
               startedAtMs: message.metadata.dateSent.getTime(),
               state: "completed",
-              // conversationTitle is intentionally omitted: the title belongs
-              // to the conversation (thread state), not to individual turn
-              // records. Reporting reads it from thread state directly.
               requester,
               destination,
               traceId: getActiveTraceId(),

@@ -1758,7 +1758,7 @@ describe("bot handlers (integration)", () => {
     expect(generatedTitleCall!.title).toBe("Today's Date");
   });
 
-  it("thread title: runs in parallel with reply delivery when generation is slow", async () => {
+  it("thread title: does not block reply delivery when generation is slow", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let resolveTitle: (() => void) | undefined;
     const { slackRuntime } = createRuntime({
@@ -1811,10 +1811,20 @@ describe("bot handlers (integration)", () => {
     await vi.waitFor(() => {
       expect(postIncludes(thread, "Today is April 16, 2026.")).toBe(true);
     });
-    expect(settled).toBe(false);
+    await vi.waitFor(() => {
+      expect(settled).toBe(true);
+    });
+    expect(
+      fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
+    ).toBe(false);
 
     resolveTitle!();
     await turnPromise;
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
+      ).toBe(true);
+    });
   });
 
   it("thread title: does not generate title on subsequent replies", async () => {
