@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-08
 
 ## Related
 
@@ -59,6 +59,10 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
 - Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, credential context, and provider-domain ownership have been verified.
+- Provider-owned egress response hooks may inspect upstream response metadata after a credentialed request is forwarded. The proxy must not read upstream response bodies by default.
+- Response hooks may inspect a body only through the proxy's bounded lazy reader, which clones the response, enforces a hard byte cap, and leaves the original upstream response body available for pass-through.
+- A response hook that returns normally must preserve the original upstream response. Throwing `EgressAuthRequired` is the only response-hook outcome that rewrites the upstream response to Junior's auth-required sentinel.
+- A response hook may record a provider permission denial as a host-side signal while still preserving the original upstream response.
 
 ### Security goals
 
@@ -95,6 +99,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Provider `401` responses discard the cached sandbox egress lease so the next request re-issues from current provider state.
 - When an upstream `401` is received for a request where Junior injected a provider credential, the proxy replaces the raw provider response body with the command-readable `junior-auth-required provider=<name> grant=<grant> access=<read|write> 401 unauthorized` sentinel and records a host-side auth-required signal for the active sandbox egress session. Plugin auth orchestration must trust only the host-side signal for provider grant requirements; raw command stdout/stderr is attacker-influenceable and must not prove GitHub write access or trigger user-token unlink.
 - Upstream `403` responses are permission denials for an issued lease, not missing authorization. They pass through raw, clear the cached lease, and record a host-side `permission_denied` signal on failed bash results with `source: "upstream"`, a message that states the request was forwarded, provider, grant, upstream target, connected provider account when known, plugin-declared requirements when known, and provider permission headers such as GitHub's `X-Accepted-GitHub-Permissions` when present.
+- The GitHub plugin may also record `permission_denied` for GitHub GraphQL HTTP `200` responses whose JSON `errors[]` carry known access-denial semantics, such as repository `NOT_FOUND` or `Resource not accessible by integration`. These responses must pass through unchanged, and the signal status must preserve the real upstream HTTP status.
 - GitHub `user-read` and `user-write` grants require a stored GitHub user-to-server OAuth token. Missing or stale user authorization returns the auth-required sentinel with the selected grant and access, which starts the private OAuth flow and resumes after authorization.
 - For GitHub App user-to-server tokens, an empty provider `scope` response is treated as unreported scope information. Junior persists the requested scope string so future broker checks can detect local reauthorization-contract changes. Provider authorization is enforced by GitHub permissions and upstream `401`/`403` responses, not Junior scope checks.
 - GitHub `installation-read` grants continue to use GitHub App installation tokens. Read-grant GitHub credential failures are operational app/installation failures and must not trigger user OAuth.
@@ -120,6 +125,8 @@ Emit events without secret material:
 - `sandbox_egress_credential_needed`
 - `sandbox_egress_credential_unavailable`
 - `sandbox_egress_upstream_auth_rejected`
+- `sandbox_egress_upstream_auth_required_classified`
+- `sandbox_egress_upstream_permission_classified`
 
 ## Non-goals
 

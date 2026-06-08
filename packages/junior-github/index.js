@@ -13,6 +13,7 @@ const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 const CONTENTS_WRITE_REQUIREMENTS = [
@@ -744,6 +745,54 @@ function githubGraphqlAccess(method, upstreamUrl, bodyText) {
   return "write";
 }
 
+function githubGraphqlPermissionDeniedMessage(bodyText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.errors)) {
+    return undefined;
+  }
+  for (const error of parsed.errors) {
+    if (!isRecord(error) || typeof error.message !== "string") {
+      continue;
+    }
+    const message = error.message;
+    if (
+      error.type === "NOT_FOUND" &&
+      /\bCould not resolve to a Repository with the name\b/.test(message)
+    ) {
+      return `GitHub GraphQL could not access the repository: ${message}`;
+    }
+    if (/\bResource not accessible by integration\b/.test(message)) {
+      return `GitHub GraphQL denied access: ${message}`;
+    }
+  }
+  return undefined;
+}
+
+function shouldInspectGitHubGraphqlResponse(ctx) {
+  if (
+    ctx.request.method.toUpperCase() !== "POST" ||
+    ctx.response.status !== 200
+  ) {
+    return false;
+  }
+  let upstreamUrl;
+  try {
+    upstreamUrl = new URL(ctx.request.url);
+  } catch {
+    return false;
+  }
+  if (!isGitHubGraphqlUrl(upstreamUrl)) {
+    return false;
+  }
+  const contentType = ctx.response.headers.get("content-type");
+  return contentType ? /\bjson\b/i.test(contentType) : false;
+}
+
 function githubApiWriteReason(method, upstreamUrl) {
   const pathname = upstreamUrl.pathname.toLowerCase();
   if (!isGitHubApiUrl(upstreamUrl)) {
@@ -1001,6 +1050,21 @@ export function githubPlugin(options = {}) {
       },
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx);
+      },
+      async onEgressResponse(ctx) {
+        if (!shouldInspectGitHubGraphqlResponse(ctx)) {
+          return;
+        }
+        const bodyText = await ctx.response.readText(
+          GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
+        );
+        if (!bodyText) {
+          return;
+        }
+        const message = githubGraphqlPermissionDeniedMessage(bodyText);
+        if (message) {
+          ctx.permissionDenied(message);
+        }
       },
       async resolveOAuthAccount(ctx) {
         return await resolveUserAccount(ctx.tokens);

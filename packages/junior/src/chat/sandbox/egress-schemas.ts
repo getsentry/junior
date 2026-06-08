@@ -8,6 +8,7 @@ import {
 } from "@sentry/junior-plugin-api";
 
 const finiteNumberSchema = z.number().refine(Number.isFinite);
+const httpStatusSchema = z.number().int().min(100).max(599);
 const providerNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 
 export const sandboxEgressGrantSchema = agentPluginGrantSchema;
@@ -65,7 +66,7 @@ export const sandboxEgressPermissionDeniedSignalSchema = z
     provider: providerNameSchema,
     source: z.literal("upstream"),
     sso: z.string().optional(),
-    status: z.literal(403),
+    status: httpStatusSchema,
     upstreamHost: z.string().min(1),
     upstreamPath: z.string().min(1),
     createdAtMs: finiteNumberSchema,

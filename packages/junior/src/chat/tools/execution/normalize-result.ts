@@ -46,6 +46,11 @@ function stringField(record: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function numberField(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function stringListField(
   record: Record<string, unknown>,
   key: string,
@@ -73,14 +78,15 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
     return undefined;
   }
   const signal = value.permission_denied;
-  if (signal.source !== "upstream" || signal.status !== 403) {
+  if (signal.source !== "upstream") {
     return undefined;
   }
   const provider = stringField(signal, "provider");
   const message = stringField(signal, "message");
   const upstreamHost = stringField(signal, "upstreamHost");
   const upstreamPath = stringField(signal, "upstreamPath");
-  if (!provider || !message || !upstreamHost || !upstreamPath) {
+  const status = numberField(signal, "status");
+  if (!provider || !message || !upstreamHost || !upstreamPath || !status) {
     return undefined;
   }
   const grant = isRecord(signal.grant) ? signal.grant : {};
@@ -109,7 +115,7 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
         ]
       : []),
     `Upstream: ${upstreamHost}${upstreamPath}`,
-    "Status: 403",
+    `Status: ${status}`,
     ...(acceptedPermissions
       ? [`Accepted provider permissions: ${acceptedPermissions}`]
       : []),

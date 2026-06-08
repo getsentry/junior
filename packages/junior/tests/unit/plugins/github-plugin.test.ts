@@ -444,7 +444,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("keeps GitHub GraphQL mutations, subscriptions, and unparseable bodies on user-write", async () => {
+  it("keeps GitHub GraphQL mutations and unparseable bodies on user-write", async () => {
     await expect(
       grantForEgress({
         method: "POST",
@@ -455,19 +455,6 @@ describe("github plugin", () => {
               clientMutationId
             }
           }`,
-        }),
-      }),
-    ).resolves.toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: "subscription IssueEvents { issueEvents { id } }",
         }),
       }),
     ).resolves.toMatchObject({

@@ -118,6 +118,56 @@ export async function selectPluginGrant(
   return result === undefined ? undefined : parseGrant(result, plugin.name);
 }
 
+export interface EgressResponseInput {
+  grant: AgentPluginGrant;
+  method: string;
+  provider: string;
+  response: {
+    headers: Headers;
+    readText(maxBytes: number): Promise<string | undefined>;
+    status: number;
+  };
+  upstreamUrl: URL;
+}
+
+export interface EgressResponseEffects {
+  permissionDenied?: {
+    message: string;
+  };
+}
+
+/** Let the owning plugin inspect an upstream response without changing pass-through behavior. */
+export async function onPluginEgressResponse(
+  input: EgressResponseInput,
+): Promise<EgressResponseEffects> {
+  const plugin = agentPluginFor(input.provider);
+  const hook = plugin?.hooks?.onEgressResponse;
+  if (!plugin || !hook) {
+    return {};
+  }
+  let permissionDenied: { message: string } | undefined;
+  await hook({
+    plugin: { name: plugin.name },
+    log: createAgentPluginLogger(plugin.name),
+    grant: input.grant,
+    permissionDenied(message) {
+      const trimmed = message.trim();
+      if (!trimmed) {
+        throw new Error(
+          `Plugin "${plugin.name}" onEgressResponse permissionDenied message is empty`,
+        );
+      }
+      permissionDenied = { message: trimmed };
+    },
+    request: {
+      method: input.method,
+      url: input.upstreamUrl.toString(),
+    },
+    response: input.response,
+  });
+  return permissionDenied ? { permissionDenied } : {};
+}
+
 /** Return whether a plugin owns credential issuance for egress. */
 export function hasEgressCredentialHooks(provider: string): boolean {
   const hooks = agentPluginFor(provider)?.hooks;
