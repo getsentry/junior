@@ -5,7 +5,7 @@ import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
 
-/** Render trusted plugin operational reports without plugin-specific UI code. */
+/** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
   reports: PluginReport[];

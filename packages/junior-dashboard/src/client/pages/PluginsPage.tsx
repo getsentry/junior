@@ -9,7 +9,7 @@ type PluginRow = {
   skills: Skill[];
 };
 
-/** Render plugin inventory and trusted-plugin operational summaries. */
+/** Render plugin inventory and operational summaries. */
 export function PluginsPage(props: { data?: DashboardData }) {
   const plugins = props.data?.plugins ?? [];
   const reports = props.data?.pluginReports?.reports ?? [];
@@ -28,7 +28,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
   const reportEmptyText = reportsError
     ? undefined
     : reportsLoading
-      ? "Loading trusted plugin stats."
+      ? "Loading plugin stats."
       : "No plugins have been reported yet.";
 
   return (
@@ -95,7 +95,7 @@ export function PluginsPage(props: { data?: DashboardData }) {
               <SectionTitle>Plugin Reports</SectionTitle>
             </SectionHeader>
             <div className="px-4 pb-4 text-[0.84rem] leading-relaxed text-[#fca5a5]">
-              Trusted plugin stats failed to load.
+              Plugin stats failed to load.
             </div>
           </Section>
         ) : null}

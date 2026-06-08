@@ -129,7 +129,7 @@ function emptyPluginReportFeed(): PluginOperationalReportFeed {
   return {
     generatedAt: new Date().toISOString(),
     reports: [],
-    source: "trusted_plugins",
+    source: "plugins",
   };
 }
 

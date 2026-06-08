@@ -209,7 +209,7 @@ export type { PluginOperationalReport } from "@sentry/junior-plugin-api";
 export interface PluginOperationalReportFeed {
   generatedAt: string;
   reports: PluginOperationalReport[];
-  source: "trusted_plugins";
+  source: "plugins";
 }
 
 export interface JuniorReporting {
@@ -1079,7 +1079,7 @@ async function readConversationStats(): Promise<DashboardConversationStatsReport
 async function readPluginOperationalReports(): Promise<PluginOperationalReportFeed> {
   const nowMs = Date.now();
   return {
-    source: "trusted_plugins",
+    source: "plugins",
     generatedAt: new Date(nowMs).toISOString(),
     reports: await getAgentPluginOperationalReports(nowMs),
   };

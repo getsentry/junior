@@ -895,7 +895,7 @@ describe("plugin heartbeat", () => {
       (report) => report.pluginName === "scheduler",
     );
 
-    expect(feed.source).toBe("trusted_plugins");
+    expect(feed.source).toBe("plugins");
     expect(scheduler).toMatchObject({
       pluginName: "scheduler",
       title: "Scheduler",

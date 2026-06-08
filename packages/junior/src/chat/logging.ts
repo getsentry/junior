@@ -871,7 +871,7 @@ function getPrettyConsoleSummaryTokens(
   );
   pushPrettyConsoleToken(
     tokens,
-    eventName.startsWith("trusted_plugin_heartbeat")
+    eventName.startsWith("plugin_heartbeat")
       ? stringConsoleToken("plugin", attributes["app.plugin.name"])
       : (toOptionalString(attributes["app.plugin.name"]) ?? undefined),
   );

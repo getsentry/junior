@@ -74,7 +74,7 @@ function emptyPluginReportFeed(): PluginReportFeed {
   return {
     generatedAt: new Date().toISOString(),
     reports: [],
-    source: "trusted_plugins",
+    source: "plugins",
   };
 }
 

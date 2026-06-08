@@ -74,7 +74,7 @@ function reporting(): JuniorReporting {
     },
     async getPluginOperationalReports() {
       return {
-        source: "trusted_plugins",
+        source: "plugins",
         generatedAt: "2026-05-29T00:00:00.000Z",
         reports: [],
       };

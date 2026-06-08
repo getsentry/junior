@@ -69,7 +69,7 @@ function dashboardData(sessions: Session[]): DashboardData {
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
-      source: "trusted_plugins",
+      source: "plugins",
     },
     pluginReportsError: false,
     pluginReportsLoading: false,
@@ -473,7 +473,7 @@ describe("dashboard telemetry components", () => {
     expect(plugins).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
   });
 
-  it("renders aggregate stats and trusted plugin reports", () => {
+  it("renders aggregate stats and plugin reports", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
 
@@ -649,7 +649,7 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain("Loading trusted plugin stats.");
+    expect(html).toContain("Loading plugin stats.");
     expect(html).toContain(">...<");
     expect(html).not.toContain(">none<");
     expect(html).not.toContain("No plugins have been reported yet.");
@@ -665,7 +665,7 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain("Trusted plugin stats failed to load.");
+    expect(html).toContain("Plugin stats failed to load.");
     expect(html).not.toContain("No plugins have been reported yet.");
   });
 
@@ -686,7 +686,7 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain("Trusted plugin stats failed to load.");
+    expect(html).toContain("Plugin stats failed to load.");
     expect(html).toContain(">Scheduler<");
   });
 

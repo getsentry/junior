@@ -101,7 +101,7 @@ describe("console log formatting", () => {
     const { log } = await loadLoggingModule();
 
     log.info(
-      "trusted_plugin_heartbeat_dispatched",
+      "plugin_heartbeat_dispatched",
       {
         "app.dispatch.count": 1,
         "app.plugin.name": "scheduler",
