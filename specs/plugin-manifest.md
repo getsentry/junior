@@ -77,7 +77,7 @@ target:
 - `credentials.auth-token-env`: sandbox placeholder env var name. Required for `oauth-bearer` credentials, where it can also name a static host token used outside credential-context-bound turns.
 - `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility.
 - `credentials.api-headers`: optional extra headers for `oauth-bearer` credentials only.
-- `oauth`: required for OAuth bearer providers. Code-based plugins may also declare OAuth without `credentials` so egress credential hooks can request user authorization when a plugin-defined grant is unavailable. Endpoints must be HTTPS.
+- `oauth`: required for OAuth bearer providers. Code-based plugins may also declare OAuth without `credentials` so egress credential hooks can request user authorization when a plugin-defined grant needs it. Endpoints must be HTTPS.
 - `target.config-key`: must appear in `config-keys`.
 - `runtime-dependencies`: optional sandbox dependencies. `type` is `"npm"` or `"system"`.
 - `runtime-postinstall`: optional commands run after dependency install and before snapshot capture.

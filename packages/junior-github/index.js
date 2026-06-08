@@ -52,6 +52,13 @@ class GitHubRequestError extends Error {
   }
 }
 
+class GitHubPluginSetupError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "GitHubPluginSetupError";
+  }
+}
+
 function isRecord(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -68,7 +75,7 @@ function readEnv(name) {
 function requireEnv(name) {
   const value = readEnv(name);
   if (!value) {
-    throw new Error(`Missing ${name}`);
+    throw new GitHubPluginSetupError(`Missing ${name}`);
   }
   return value;
 }
@@ -203,13 +210,13 @@ function getPrivateKey(envName) {
   try {
     key = createPrivateKey({ key: raw, format: "pem" });
   } catch {
-    throw new Error(
+    throw new GitHubPluginSetupError(
       `Invalid ${envName}: expected a PEM-encoded RSA private key`,
     );
   }
 
   if (key.asymmetricKeyType !== "rsa") {
-    throw new Error(
+    throw new GitHubPluginSetupError(
       `Invalid ${envName}: GitHub App signing requires an RSA private key`,
     );
   }
@@ -416,6 +423,13 @@ function credentialNeeded(message, scope, allowAuthorization = true) {
   };
 }
 
+function credentialUnavailable(message) {
+  return {
+    type: "unavailable",
+    message,
+  };
+}
+
 function parseInstallationTokenResponse(data) {
   if (!isRecord(data)) {
     throw new Error("GitHub installation token response is invalid");
@@ -586,7 +600,7 @@ async function issueInstallationCredential(options) {
   const installationIdRaw = requireEnv(options.installationIdEnv);
   const installationId = Number(installationIdRaw);
   if (!Number.isSafeInteger(installationId) || installationId <= 0) {
-    throw new Error(`Invalid ${options.installationIdEnv}`);
+    throw new GitHubPluginSetupError(`Invalid ${options.installationIdEnv}`);
   }
 
   const appJwt = createAppJwt(appId, options.privateKeyEnv);
@@ -959,21 +973,28 @@ export function githubPlugin(options = {}) {
         return await resolveUserAccount(ctx.tokens);
       },
       async issueCredential(ctx) {
-        if (ctx.grant.name === "installation-read") {
-          return await issueInstallationCredential({
-            appIdEnv,
-            privateKeyEnv,
-            installationIdEnv,
-            readPermissions: appReadPermissions,
-            loadReadPermissions,
-          });
-        }
-        if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
-          return await issueUserCredential(ctx, {
-            clientIdEnv,
-            clientSecretEnv,
-            userScope,
-          });
+        try {
+          if (ctx.grant.name === "installation-read") {
+            return await issueInstallationCredential({
+              appIdEnv,
+              privateKeyEnv,
+              installationIdEnv,
+              readPermissions: appReadPermissions,
+              loadReadPermissions,
+            });
+          }
+          if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
+            return await issueUserCredential(ctx, {
+              clientIdEnv,
+              clientSecretEnv,
+              userScope,
+            });
+          }
+        } catch (error) {
+          if (error instanceof GitHubPluginSetupError) {
+            return credentialUnavailable(error.message);
+          }
+          throw error;
         }
         throw new Error(
           `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,

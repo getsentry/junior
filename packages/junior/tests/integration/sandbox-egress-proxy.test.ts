@@ -8,6 +8,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { githubPlugin } from "../../../junior-github/index.js";
 
 const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
@@ -19,6 +20,7 @@ const EGRESS_ID = "sbx_integration_session";
 const REQUESTER_ID = "U123";
 const PROVIDER_HOST = "sandbox-egress.example.test";
 const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
+const GITHUB_API_HOST = "api.github.com";
 
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress-policy");
 type EgressProxyModule = typeof import("@/chat/sandbox/egress-proxy");
@@ -132,6 +134,24 @@ async function registerManagedEgressPlugin(input?: {
             })),
         },
       }),
+    ]),
+    waitUntil(task) {
+      if (typeof task === "function") {
+        void task();
+      }
+    },
+  });
+}
+
+async function registerGitHubPlugin() {
+  const { createApp, defineJuniorPlugins } = await import("@/app");
+  const plugin = githubPlugin();
+  await createApp({
+    plugins: defineJuniorPlugins([
+      {
+        ...plugin,
+        packageName: undefined,
+      },
     ]),
     waitUntil(task) {
       if (typeof task === "function") {
@@ -396,6 +416,51 @@ describe("sandbox egress proxy integration", () => {
         name: "user-write",
         access: "write",
       },
+    });
+  });
+
+  it("returns a controlled egress auth response when GitHub App setup is unavailable", async () => {
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+    delete process.env.GITHUB_INSTALLATION_ID;
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/repos/getsentry/junior/issues",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toContain(
+      "junior-auth-required provider=github grant=installation-read access=read 401 unauthorized\nMissing GITHUB_APP_ID",
+    );
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "github",
+      grant: {
+        name: "installation-read",
+        access: "read",
+      },
+      message: "Missing GITHUB_APP_ID",
     });
   });
 });

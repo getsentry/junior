@@ -426,6 +426,12 @@ export const agentPluginCredentialResultSchema = z.discriminatedUnion("type", [
       type: z.literal("needed"),
     })
     .strict(),
+  z
+    .object({
+      message: nonBlankStringSchema,
+      type: z.literal("unavailable"),
+    })
+    .strict(),
 ]);
 
 export type AgentPluginGrantAccess = z.output<

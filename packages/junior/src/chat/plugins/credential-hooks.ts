@@ -83,6 +83,9 @@ function parseCredentialResult(
     parseAuthorization(result.lease.authorization, pluginName);
     return result;
   }
+  if (result.type === "unavailable") {
+    return result;
+  }
   parseAuthorization(result.authorization, pluginName);
   return result;
 }

@@ -2,6 +2,7 @@ import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type {
   AgentPluginAuthorization,
   AgentPluginGrant,
@@ -188,6 +189,9 @@ export async function sandboxEgressCredentialLease(
         authorization: pluginResult.authorization,
         message: pluginResult.message,
       });
+    }
+    if (pluginResult.type === "unavailable") {
+      throw new CredentialUnavailableError(provider, pluginResult.message);
     }
     lease = pluginResult.lease;
   } else {

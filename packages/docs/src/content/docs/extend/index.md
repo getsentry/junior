@@ -231,7 +231,7 @@ runtime-postinstall:
 - `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin. Code-based plugins with egress credential hooks also declare their sandbox egress hosts in top-level `domains`.
 - `command-env`: optional sandbox env vars for CLI placeholders, deployment defaults, public install metadata, and host env bindings explicitly marked safe for sandbox exposure
 - `credentials`: generic token auth delivered by Junior's credential broker. The supported type is `oauth-bearer`, which requires `auth-token-env`. Plugin-owned egress credentials are not declared here; code-based plugins use top-level `domains` plus `grantForEgress` and `issueCredential` hooks.
-- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`, or in a code-based plugin when egress credential hooks request user authorization
+- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`, or in a code-based plugin when an egress credential grant needs user authorization
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
