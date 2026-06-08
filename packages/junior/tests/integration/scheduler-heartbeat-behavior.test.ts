@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  schedulerPlugin,
-  type ScheduledTask,
-} from "@sentry/junior-scheduler";
+import { schedulerPlugin } from "@sentry/junior-scheduler";
 import {
   getDispatchRecord,
   getDispatchStorageKey,
@@ -312,6 +309,47 @@ describe("scheduler heartbeat behavior", () => {
     await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
       status: "paused",
     });
+  });
+
+  it("blocks scheduled runs with invalid credential routing without stopping the heartbeat", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response("Accepted", { status: 202 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+    setPlugins([schedulerPlugin()]);
+    const store = await schedulerStore();
+    await store.saveTask({
+      ...createTask(),
+      id: "sched_plugin_bad_credential_route",
+      credentialSubject: {
+        type: "user",
+        userId: "U123",
+        allowedWhen: "private-direct-conversation",
+      },
+    });
+
+    const waitUntil = createWaitUntilCollector();
+    const response = await heartbeat(heartbeatRequest(), waitUntil.fn);
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
+
+    await expect(
+      store.getRun(`sched_plugin_bad_credential_route:${TEST_RUN_AT_MS}`),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      errorMessage: expect.stringContaining(
+        "Scheduled task dispatch could not be created",
+      ),
+    });
+    await expect(
+      store.getTask("sched_plugin_bad_credential_route"),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      statusReason: expect.stringContaining(
+        "Scheduled task dispatch could not be created",
+      ),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("skips old recurring occurrences and advances to the next future run", async () => {
