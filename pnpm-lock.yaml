@@ -342,6 +342,8 @@ importers:
 
   packages/junior-linear: {}
 
+  packages/junior-maintenance: {}
+
   packages/junior-notion: {}
 
   packages/junior-plugin-api:

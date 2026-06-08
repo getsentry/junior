@@ -34,6 +34,7 @@ describe("init cli", () => {
     ).toBe(true);
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "plugins.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "WORLD.md"))).toBe(true);
@@ -67,11 +68,24 @@ describe("init cli", () => {
     expect(nitroConfig).toContain(
       'import { juniorNitro } from "@sentry/junior/nitro";',
     );
-    expect(nitroConfig).toContain("modules: [juniorNitro()]");
+    expect(nitroConfig).toContain("juniorNitro({");
+    expect(nitroConfig).toContain('plugins: "./plugins"');
+
+    const pluginsFile = fs.readFileSync(
+      path.join(target, "plugins.ts"),
+      "utf8",
+    );
+    expect(pluginsFile).toContain(
+      'import { defineJuniorPlugins } from "@sentry/junior";',
+    );
+    expect(pluginsFile).toContain("defineJuniorPlugins(");
+    expect(pluginsFile).toContain('"@sentry/junior-maintenance"');
 
     const pkg = JSON.parse(
       fs.readFileSync(path.join(target, "package.json"), "utf8"),
     );
+    expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
+    expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
     expect(pkg.devDependencies.nitro).toBeDefined();
     expect(pkg.devDependencies.vite).toBeDefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();

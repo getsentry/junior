@@ -32,7 +32,7 @@ cd my-bot
 pnpm install
 ```
 
-`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, and `.env.example`.
+`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, `.env.example`, and a `plugins.ts` with `@sentry/junior-maintenance` enabled by default.
 
 The generated `app/` files have separate jobs:
 
@@ -96,9 +96,9 @@ After you complete [Slack App Setup](/start-here/slack-app-setup/), point Slack 
 
 ## Add packaged plugins
 
-Packaged plugins must be installed and explicitly listed in the plugin set
-referenced by `juniorNitro` so Nitro bundles their manifests, skills, hooks,
-and runtime dependencies.
+New apps created with `junior init` already have a `plugins.ts` file with `@sentry/junior-maintenance` enabled. To add more packaged plugins, install the packages and add them to the existing plugin set.
+
+For an existing app created without a `plugins.ts`, create one as shown below.
 
 Install only the plugins you plan to enable:
 
@@ -106,7 +106,7 @@ Install only the plugins you plan to enable:
 pnpm add @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
-Then create one runtime-safe plugin set:
+Add them to the plugin set in `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -114,6 +114,7 @@ import { githubPlugin } from "@sentry/junior-github";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 
 export const plugins = defineJuniorPlugins([
+  "@sentry/junior-maintenance",
   "@sentry/junior-agent-browser",
   "@sentry/junior-datadog",
   githubPlugin({

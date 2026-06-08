@@ -29,6 +29,18 @@ export const POST = (request: Request) => app.fetch(request);
   );
 }
 
+function writePluginsFile(targetDir: string): void {
+  fs.writeFileSync(
+    path.join(targetDir, "plugins.ts"),
+    `import { defineJuniorPlugins } from "@sentry/junior";
+
+export const plugins = defineJuniorPlugins([
+  "@sentry/junior-maintenance",
+]);
+`,
+  );
+}
+
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
@@ -37,7 +49,11 @@ import { juniorNitro } from "@sentry/junior/nitro";
 
 export default defineConfig({
   preset: "vercel",
-  modules: [juniorNitro()],
+  modules: [
+    juniorNitro({
+      plugins: "./plugins",
+    }),
+  ],
   routes: {
     "/**": { handler: "./server.ts" },
   },
@@ -135,6 +151,7 @@ export async function runInit(
     },
     dependencies: {
       "@sentry/junior": "latest",
+      "@sentry/junior-maintenance": "latest",
       hono: "^4.12.0",
     },
     devDependencies: {
@@ -202,6 +219,7 @@ SENTRY_ORG_SLUG=
 
   writeServerEntry(target);
   writeQueueConsumerEntry(target);
+  writePluginsFile(target);
   writeNitroConfig(target);
   writeViteConfig(target);
   writeVercelJson(target);
