@@ -65,22 +65,6 @@ Good scope — quantified and specific:
 > | `processAction`   | scheduling only                                   |
 > | `processMessage`  | scheduling + thread ID normalization + lock retry |
 
-## Distinct reporter/creator example
-
-Bad attribution:
-
-> The bot resolved the review thread even though the warning still applies.
-
-Good attribution — when the reporter is not the person who created the issue:
-
-> Warden can resolve its own review thread even when the underlying warning still appears valid and the PR remains blocked.
->
-> Reported by Bojan Oro.
->
-> - Observed on a PR where Warden left a review comment about a missing backport
-> - The review thread was later marked resolved by the bot
-> - The PR still showed a blocking warning
-
 ## Feature example
 
 Bad framing:
@@ -122,4 +106,3 @@ Good framing — current state, gap, options:
 - Speculative detail mixed into verified facts
 - Dumping a list of URLs without inline context
 - Session-specific content (slash commands, channel references, raw transcript framing, or unrelated user chatter)
-- Conflating reporter and issue creator when they differ
