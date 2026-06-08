@@ -45,8 +45,6 @@ Good structure — problem-specific sections:
 > ## Workaround
 >
 > Retry wrapper that catches LockError and clears the dedup key (PR #32).
->
-> Action taken on behalf of Jane Doe.
 
 ## Task example
 
@@ -66,18 +64,14 @@ Good scope — quantified and specific:
 > | `processReaction` | scheduling only                                   |
 > | `processAction`   | scheduling only                                   |
 > | `processMessage`  | scheduling + thread ID normalization + lock retry |
->
-> Action taken on behalf of Jane Doe.
 
-## Distinct reporter/requester example
+## Distinct reporter/creator example
 
 Bad attribution:
 
 > The bot resolved the review thread even though the warning still applies.
->
-> Action taken on behalf of Bojan Oro.
 
-Good attribution:
+Good attribution — when the reporter is not the person who created the issue:
 
 > Warden can resolve its own review thread even when the underlying warning still appears valid and the PR remains blocked.
 >
@@ -86,8 +80,6 @@ Good attribution:
 > - Observed on a PR where Warden left a review comment about a missing backport
 > - The review thread was later marked resolved by the bot
 > - The PR still showed a blocking warning
->
-> Action taken on behalf of David Cramer.
 
 ## Feature example
 
@@ -111,8 +103,6 @@ Good framing — current state, gap, options:
 > | --------------------------- | ---------------------------------- |
 > | File watch + hot reload     | Simple, but no atomicity guarantee |
 > | Config service with polling | Consistent, but adds a dependency  |
->
-> Action taken on behalf of Jane Doe.
 
 ## Principles
 
@@ -132,5 +122,4 @@ Good framing — current state, gap, options:
 - Speculative detail mixed into verified facts
 - Dumping a list of URLs without inline context
 - Session-specific content (slash commands, channel references, raw transcript framing, or unrelated user chatter)
-- Conflating reporter and action requester when they differ
-- Missing delegated attribution footer on user-requested issue creation
+- Conflating reporter and issue creator when they differ
