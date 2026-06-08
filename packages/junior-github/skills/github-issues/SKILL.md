@@ -60,9 +60,10 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
 - Preserve material source references inline.
 
-**Attribution:**
+**Source attribution:**
 
-- Mention who raised the issue when clear from the thread. If the reporter differs from the issue creator, keep them separate with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
+- GitHub records the issue creator natively; do not add body or footer text to identify who asked Junior to create the issue.
+- If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
 - Attach screenshots from the thread as image links when present.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 

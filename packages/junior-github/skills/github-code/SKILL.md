@@ -130,15 +130,14 @@ Defaults:
 **Footers** (in order):
 
 1. Issue references (`Fixes #N`, `Refs SENTRY-N`), if any.
-2. `Action taken on behalf of Full Name.` — when on-behalf-of.
-3. Session link — when `gen_ai.conversation.id` is available:
+2. Session link — when `gen_ai.conversation.id` is available:
 
 ```
 ---
 [View Session in Sentry](https://sentry.sentry.io/traces/?project=4510944073809921&query=gen_ai.conversation.id%3A%22<url-encoded conversation id>%22)
 ```
 
-**Assignment:** resolve GitHub handles from evidence (`gh api search/users`, org membership, repo history) before assigning reviewers or the requester. Skip assignment when the handle cannot be confirmed.
+**Assignment:** resolve GitHub handles from evidence (`gh api search/users`, org membership, repo history) before assigning requested reviewers or assignees. Skip assignment when the handle cannot be confirmed.
 
 ### 7. Report result
 
