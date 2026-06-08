@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createProviderError } from "@/chat/services/provider-retry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -1016,5 +1017,121 @@ describe("Slack behavior: subscribed messages", () => {
     expect(toPostedText(thread.posts[1])).toContain(
       "billing, auth, and the API gateway",
     );
+  });
+
+  // Regression: skipped subscribed messages must commit inbound input so the
+  // durable mailbox does not re-enqueue them forever.
+  it("calls onInputCommitted when preflight skips a message directed at another user", async () => {
+    const { slackRuntime } = createRuntime();
+    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.001" });
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-preflight-skip",
+        text: "@Alice can you take a look at this?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+      { destination: createTestDestination(thread), onInputCommitted },
+    );
+
+    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("calls onInputCommitted when the classifier decides not to reply", async () => {
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => ({
+            object: {
+              should_reply: false,
+              confidence: 0.9,
+              reason: "side conversation",
+            },
+            text: '{"should_reply":false,"confidence":0.9,"reason":"side conversation"}',
+          } as never),
+        },
+      },
+    });
+    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.002" });
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-classifier-skip",
+        text: "sounds good, let's ship it",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+      { destination: createTestDestination(thread), onInputCommitted },
+    );
+
+    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("calls onInputCommitted on the opt-out skip path", async () => {
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => ({
+            object: {
+              should_reply: false,
+              should_unsubscribe: true,
+              confidence: 1,
+              reason: "explicit stop",
+            },
+            text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"explicit stop"}',
+          } as never),
+        },
+      },
+    });
+    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.003" });
+    // Subscribe first so opt-out has something to unsubscribe from.
+    thread.subscribe();
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-optout-skip",
+        text: "<@U_APP> please stop watching this thread",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+      { destination: createTestDestination(thread), onInputCommitted },
+    );
+
+    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates TurnInputCommitLostError when onInputCommitted fails on skip", async () => {
+    const { slackRuntime } = createRuntime();
+    const commitError = new TurnInputCommitLostError(
+      "lease lost during skip commit",
+    );
+    const onInputCommitted = vi.fn().mockRejectedValue(commitError);
+    const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.004" });
+
+    await expect(
+      slackRuntime.handleSubscribedMessage(
+        thread,
+        createTestMessage({
+          id: "m-commit-lost",
+          text: "@Alice handle this please",
+          isMention: false,
+          threadId: thread.id,
+          author: { userId: "U_TESTER" },
+        }),
+        { destination: createTestDestination(thread), onInputCommitted },
+      ),
+    ).rejects.toThrow(TurnInputCommitLostError);
   });
 });

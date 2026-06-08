@@ -422,6 +422,7 @@ export function createSlackTurnRuntime<
     message: Message;
     decision: SubscribedReplyDecision;
     context: TurnContext;
+    onInputCommitted?: () => Promise<void>;
     preparedState?: TPreparedState;
     text: TurnMessageText;
   }): Promise<void> => {
@@ -456,6 +457,10 @@ export function createSlackTurnRuntime<
         text: args.text,
       });
     }
+    // Mark the inbound mailbox messages as consumed even though we are not
+    // replying. Without this, completeConversationWork sees pendingMessages > 0
+    // and re-enqueues indefinitely — an infinite loop for every skipped message.
+    await args.onInputCommitted?.();
   };
 
   return {
@@ -667,6 +672,7 @@ export function createSlackTurnRuntime<
               message,
               decision: { shouldReply: false, reason },
               context: threadContext,
+              onInputCommitted: hooks.onInputCommitted,
               text: combinedText,
             });
             return;
@@ -713,6 +719,7 @@ export function createSlackTurnRuntime<
               message,
               decision,
               context: threadContext,
+              onInputCommitted: hooks.onInputCommitted,
               preparedState,
               text: combinedText,
             });
@@ -725,6 +732,7 @@ export function createSlackTurnRuntime<
               message,
               decision,
               context: threadContext,
+              onInputCommitted: hooks.onInputCommitted,
               preparedState,
               text: combinedText,
             });
