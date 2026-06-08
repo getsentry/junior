@@ -719,14 +719,23 @@ function parseGitHubGraphqlOperation(bodyText) {
   if (typeof query !== "string") {
     return undefined;
   }
-  const normalized = query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, "").trim();
-  if (/\b(mutation|subscription)\b/.test(normalized)) {
+  const normalized = maskGraphqlStringLiterals(
+    query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, ""),
+  ).trim();
+  const operation = normalized.match(/\b(query|mutation|subscription)\b/)?.[1];
+  if (operation === "mutation" || operation === "subscription") {
     return "write";
   }
-  if (normalized.startsWith("{") || /\bquery\b/.test(normalized)) {
+  if (normalized.startsWith("{") || operation === "query") {
     return "read";
   }
   return undefined;
+}
+
+function maskGraphqlStringLiterals(query) {
+  return query.replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"/g, (match) =>
+    " ".repeat(match.length),
+  );
 }
 
 function githubGraphqlAccess(method, upstreamUrl, bodyText) {

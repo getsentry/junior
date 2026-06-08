@@ -442,6 +442,20 @@ describe("github plugin", () => {
       access: "read",
       reason: "github.graphql-read",
     });
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            'query SearchIssues { search(query: "mutation subscription", type: ISSUE, first: 1) { nodes { ... on Issue { number } } } }',
+        }),
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.graphql-read",
+    });
   });
 
   it("keeps GitHub GraphQL mutations and unparseable bodies on user-write", async () => {
