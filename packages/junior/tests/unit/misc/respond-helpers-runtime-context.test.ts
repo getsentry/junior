@@ -52,12 +52,12 @@ describe("prependMissingRuntimeTurnContext", () => {
   });
 
   it("injects new requester context after stripping stale projected context", () => {
-    // Simulates a thread started by user A (max.topolsky), where the runtime
-    // turn context from the first turn was persisted into the session log
-    // projection. When user B (nelson.osacky) sends a follow-up message,
-    // `loadPiMessagesForTurn` must strip the stale context before returning,
-    // so `hasRuntimeTurnContext` returns false and a fresh context block
-    // carrying the new requester is injected.
+    // Simulates a thread started by user A, where the runtime turn context
+    // from the first turn was persisted into the session log projection.
+    // When user B sends a follow-up message, `loadPiMessagesForTurn` must
+    // strip the stale context before returning, so `hasRuntimeTurnContext`
+    // returns false and a fresh context block carrying user B's identity
+    // is injected instead.
     const projectionWithStaleContext: PiMessage[] = [
       {
         role: "user",
@@ -67,20 +67,20 @@ describe("prependMissingRuntimeTurnContext", () => {
             text: [
               "<runtime-turn-context>",
               "<requester>",
-              "- full_name: Max Topolsky",
-              "- user_name: max.topolsky",
-              "- user_id: U_MAX",
+              "- full_name: User Alpha",
+              "- user_name: user.alpha",
+              "- user_id: U_ALPHA",
               "</requester>",
               "</runtime-turn-context>",
             ].join("\n"),
           },
-          { type: "text", text: "what command is the plugin using?" },
+          { type: "text", text: "original question" },
         ],
         timestamp: 1,
       },
       {
         role: "assistant",
-        content: [{ type: "text", text: "it uses sentry-cli build snapshots" }],
+        content: [{ type: "text", text: "original answer" }],
         timestamp: 2,
       },
     ] as PiMessage[];
@@ -92,19 +92,19 @@ describe("prependMissingRuntimeTurnContext", () => {
     const stripped = stripRuntimeTurnContext(projectionWithStaleContext);
     expect(hasRuntimeTurnContext(stripped)).toBe(false);
 
-    const nelsonContext = [
+    const userBContext = [
       "<runtime-turn-context>",
       "<requester>",
-      "- user_name: nelson.osacky",
-      "- user_id: U_NELSON",
+      "- user_name: user.beta",
+      "- user_id: U_BETA",
       "</requester>",
       "</runtime-turn-context>",
     ].join("\n");
-    const updated = prependMissingRuntimeTurnContext(stripped, nelsonContext);
+    const updated = prependMissingRuntimeTurnContext(stripped, userBContext);
 
-    expect(JSON.stringify(updated)).toContain("nelson.osacky");
-    expect(JSON.stringify(updated)).not.toContain("max.topolsky");
-    expect(JSON.stringify(updated)).not.toContain("Max Topolsky");
+    expect(JSON.stringify(updated)).toContain("user.beta");
+    expect(JSON.stringify(updated)).not.toContain("user.alpha");
+    expect(JSON.stringify(updated)).not.toContain("User Alpha");
   });
 
   it("adds bootstrap context to a pre-prompt user boundary", () => {
