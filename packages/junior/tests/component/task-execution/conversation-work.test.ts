@@ -18,10 +18,7 @@ import {
   startConversationWork,
   type InboundMessageRecord,
 } from "@/chat/task-execution/store";
-import {
-  CONVERSATION_WORK_DEFER_DELAY_MS,
-  processConversationWork,
-} from "@/chat/task-execution/worker";
+import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import {
@@ -253,7 +250,7 @@ describe("conversation work execution", () => {
     expect(ids).toHaveLength(10_000);
   });
 
-  it("defers duplicate queue nudges while a conversation lease is active", async () => {
+  it("acknowledges active-lease queue deliveries without re-enqueueing", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<void>();
@@ -272,22 +269,22 @@ describe("conversation work execution", () => {
     });
     await entered.promise;
 
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue,
-        run: async () => {
-          runs += 1;
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "active" });
+    // Simulate multiple concurrent deliveries while the lease is active.
+    // None of them should enqueue a new wake nudge — doing so would create a
+    // self-perpetuating callback chain for the full duration of the active run.
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        processConversationWork(conversationQueueMessage(), {
+          queue,
+          run: async () => {
+            runs += 1;
+            return { status: "completed" };
+          },
+        }),
+      ).resolves.toEqual({ status: "active" });
+    }
     expect(runs).toBe(1);
-    expect(queue.sentRecords()).toMatchObject([
-      {
-        conversationId: CONVERSATION_ID,
-        delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
-      },
-    ]);
+    expect(queue.sentRecords()).toHaveLength(0);
 
     finish.resolve();
     await expect(first).resolves.toEqual({ status: "completed" });

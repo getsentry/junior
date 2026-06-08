@@ -182,9 +182,14 @@ Queue consumer rules:
 1. Load durable conversation work state before doing agent work.
 2. If there is no pending or resumable work, acknowledge the queue delivery and
    exit.
-3. If another worker holds an unexpired lease, enqueue a delayed nudge for the
-   same `conversationId` and `destination`, acknowledge the current delivery,
-   and exit.
+3. If another worker holds an unexpired lease, acknowledge the current delivery
+   and exit without enqueueing another wake nudge. An active lease means the
+   conversation is already being processed. Liveness for additional work is
+   provided by the completion path, which requeues when `needsRun` is set, and
+   by heartbeat recovery after lease expiry. The consumer MUST NOT create a new
+   delayed wake nudge merely because it observed an active unexpired lease;
+   doing so creates a self-perpetuating callback chain for the full duration of
+   every active run.
 4. If the lease is absent or expired, acquire a new lease and process.
 5. Acknowledge the queue delivery only after durable state is safe: final
    delivery recorded, lease released after cooperative yield, no work found, or
@@ -402,9 +407,13 @@ These guardrails must not complicate the first-pass mailbox/lease design.
    work and enqueues a nudge.
 3. Queue sends duplicate nudges: only one worker can hold the lease; duplicates
    acknowledge after observing no work or an active lease.
-4. Queue delivery observes an active lease: it sends a delayed nudge and
-   acknowledges so the message that arrived during active work is not stranded
-   if the active worker misses the final drain.
+4. Queue delivery observes an active lease: it acknowledges and exits. If new
+   work arrived during the active lease, that work is persisted in conversation
+   state and `completeConversationWork` observes `needsRun` and enqueues the
+   next runnable wake. If the active worker crashes before completion, heartbeat
+   recovery detects the expired lease and enqueues recovery work. This may
+   increase crash recovery latency to the heartbeat recovery bound, but avoids
+   self-perpetuating queue chains while work is non-runnable.
 5. Worker dies while leased: check-ins stop, `leaseExpiresAtMs` passes,
    heartbeat clears/requeues, and the next worker resumes from the latest
    durable session-log state.
@@ -428,7 +437,7 @@ Required event names should distinguish normal progress from repair:
 - `conversation_work_enqueued`
 - `conversation_work_lease_acquired`
 - `conversation_work_check_in_failed`
-- `conversation_work_nudge_deferred_for_active_lease`
+- `conversation_work_delivery_ignored_for_active_lease`
 - `conversation_work_mailbox_drained`
 - `conversation_work_cooperative_yield`
 - `conversation_work_completed`
@@ -462,15 +471,25 @@ Required invariants, using the lowest layer that proves the contract:
 1. Component: mailbox append is idempotent by `inboundMessageId`.
 2. Component: enqueue failure after mailbox append is repaired by heartbeat.
 3. Component: duplicate queue nudges do not run a conversation concurrently.
-4. Component: active-lease queue delivery defers a nudge and acknowledges.
+4. Component: active-lease queue delivery acknowledges and does not enqueue.
+   Active lease observations are non-runnable; they must not create
+   self-perpetuating wake messages.
 5. Component: worker check-in extends the lease while a long model/tool call is
    in progress.
 6. Component: expired leases and stranded pending mailbox messages are
    cleared/requeued by heartbeat.
-7. Component: work requested while a lease is running is requeued immediately
-   when the lease completes, even if no mailbox messages are pending.
-8. Component: repeated worker and heartbeat requeues use fresh queue
-   idempotency keys so provider dedupe cannot suppress later runnable work.
+7. Component: work requested while a lease is running is persisted under the
+   conversation mutex and causes `needsRun` to be visible to
+   `completeConversationWork`; completion enqueues the next runnable wake even
+   if no mailbox messages are pending. This is the primary liveness mechanism
+   for mid-lease work.
+8. Component: worker completion, heartbeat recovery, timeout recovery, and
+   other runnable-work requeues use fresh queue idempotency keys so provider
+   dedupe cannot suppress later runnable work. Non-runnable observations,
+   including queue deliveries that find an active unexpired lease, must not
+   enqueue wake messages. Wall-clock timestamp idempotency keys must not be
+   used for active-lease observations; they prevent deduplication and can
+   create unbounded queue chains.
 9. Component: messages that arrive during active execution are injected at the
    next safe boundary or requeued instead of being lost.
 10. Component: final inbox drain prevents completing a stale answer when new work

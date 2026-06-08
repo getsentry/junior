@@ -18,7 +18,6 @@ import {
   type InboundMessageRecord,
 } from "./store";
 
-export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
 export const CONVERSATION_WORK_SOFT_YIELD_AFTER_MS = 240_000;
 
 export interface ConversationWorkerContext {
@@ -205,22 +204,19 @@ export async function processConversationWork(
     return { status: "no_work" };
   }
   if (lease.status === "active") {
-    const nudgeNowMs = now(options);
-    await sendWakeNudge({
-      conversationId,
-      destination,
-      delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
-      idempotencyKey: nudgeIdempotencyKey("active", conversationId, nudgeNowMs),
-      nowMs: nudgeNowMs,
-      options,
-    });
+    // Another worker holds the lease and is already processing this conversation.
+    // Pending work persisted under the conversation mutex will be visible to
+    // completeConversationWork, which re-enqueues if needsRun is set. Crashed
+    // workers are recovered by the heartbeat when the lease expires.
+    // Do NOT enqueue a deferred nudge here: doing so creates a self-perpetuating
+    // callback chain for the full duration of every active run.
     logInfo(
-      "conversation_work_nudge_deferred_for_active_lease",
+      "conversation_work_delivery_ignored_for_active_lease",
       { conversationId },
       {
         "app.lease.expires_at_ms": lease.leaseExpiresAtMs,
       },
-      "Conversation work nudge deferred for active lease",
+      "Conversation work delivery ignored: another worker holds the active lease",
     );
     return { status: "active" };
   }
