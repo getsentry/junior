@@ -214,7 +214,7 @@ async function loadPiMessagesForTurn(args: {
   if (projection.length > 0) {
     return {
       canCompact: true,
-      piMessages: projection,
+      piMessages: stripRuntimeTurnContext(projection),
     };
   }
 
