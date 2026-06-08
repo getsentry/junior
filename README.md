@@ -6,6 +6,8 @@ Junior is a Slack bot runtime powered by Hono.
 
 Use it to investigate issues, summarize context, and take action from Slack with connected tools.
 
+Example workflow: ask Junior to inspect a repo, open a GitHub issue, or draft a pull request directly from Slack.
+
 ## Documentation
 
 Canonical docs live at **https://junior.sentry.dev/**.
