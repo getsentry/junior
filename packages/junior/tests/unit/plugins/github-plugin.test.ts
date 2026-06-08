@@ -456,6 +456,21 @@ describe("github plugin", () => {
       access: "read",
       reason: "github.graphql-read",
     });
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "ReadIssues",
+          query:
+            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+        }),
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.graphql-read",
+    });
   });
 
   it("keeps GitHub GraphQL mutations and unparseable bodies on user-write", async () => {
@@ -469,6 +484,21 @@ describe("github plugin", () => {
               clientMutationId
             }
           }`,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.graphql-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "CreateIssue",
+          query:
+            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
         }),
       }),
     ).resolves.toMatchObject({

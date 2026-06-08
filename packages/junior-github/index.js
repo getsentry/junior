@@ -719,14 +719,41 @@ function parseGitHubGraphqlOperation(bodyText) {
   if (typeof query !== "string") {
     return undefined;
   }
+  const operationName =
+    typeof parsed.operationName === "string"
+      ? parsed.operationName.trim()
+      : undefined;
   const normalized = maskGraphqlStringLiterals(
     query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, ""),
   ).trim();
+  if (operationName) {
+    const namedOperation = normalized.match(
+      new RegExp(
+        `\\b(query|mutation|subscription)\\s+${escapeRegExp(operationName)}\\b`,
+      ),
+    )?.[1];
+    return namedOperation ? graphqlOperationAccess(namedOperation) : undefined;
+  }
   const operation = normalized.match(/\b(query|mutation|subscription)\b/)?.[1];
+  const operationAccess = graphqlOperationAccess(operation);
+  if (operationAccess) {
+    return operationAccess;
+  }
+  if (normalized.startsWith("{")) {
+    return "read";
+  }
+  return undefined;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function graphqlOperationAccess(operation) {
   if (operation === "mutation" || operation === "subscription") {
     return "write";
   }
-  if (normalized.startsWith("{") || operation === "query") {
+  if (operation === "query") {
     return "read";
   }
   return undefined;
