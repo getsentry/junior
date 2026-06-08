@@ -230,7 +230,7 @@ export interface JuniorReporting {
   getSessions(): Promise<DashboardSessionFeed>;
   /** Read aggregate conversation stats for authenticated dashboard views. */
   getConversationStats?(): Promise<DashboardConversationStatsReport>;
-  /** Read sanitized operational summaries contributed by trusted plugins. */
+  /** Read sanitized operational summaries contributed by plugins. */
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   /**
    * Read one conversation transcript for the dashboard.

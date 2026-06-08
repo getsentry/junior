@@ -39,7 +39,7 @@ The package must include the manifest and skills in `package.json`:
 ```
 
 Use a JavaScript plugin factory instead of `plugin.yaml` when the package needs
-trusted runtime hooks.
+runtime hooks.
 
 ## Minimal manifest
 
@@ -114,15 +114,15 @@ Point `juniorNitro({ plugins: "./plugins" })` at that module and let
 removed `pluginPackages` or `plugins.packages` options; `junior check` rejects
 both.
 
-## Add trusted runtime hooks
+## Add runtime hooks
 
 Most plugins should stay manifest-only. Use a JavaScript plugin definition only
 when the plugin must force deterministic behavior at a Junior-owned boundary,
 such as installing sandbox helper files or mutating tool input/env before
-execution. Trusted hooks are backend code and must be registered explicitly from
+execution. Hooks are backend code and must be registered explicitly from
 app code; Junior never loads them from `plugin.yaml`.
 
-Trusted hook contexts include `ctx.plugin` and `ctx.log`. Use `ctx.log` for
+Hook contexts include `ctx.plugin` and `ctx.log`. Use `ctx.log` for
 plugin-scoped structured logs instead of writing directly to stdout.
 
 Export a factory from the plugin package:
@@ -156,11 +156,11 @@ export function myProviderPlugin() {
 ```
 
 Do not ship `plugin.yaml` for the same plugin. The JavaScript definition owns
-both the manifest surface and the trusted hooks. If the same package also ships
+both the manifest surface and the hooks. If the same package also ships
 `skills/`, add `packageName: "@acme/junior-my-provider"` so Nitro copies those
 skills into the deployment bundle.
 
-Enable the trusted plugin from the app plugin module:
+Enable the plugin from the app plugin module:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -172,7 +172,7 @@ export const plugins = defineJuniorPlugins([myProviderPlugin()]);
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
 rejects non-object replacements before the tool runs.
 
-### Trusted hook surfaces
+### Hook surfaces
 
 Use the smallest hook that matches the deterministic boundary your plugin needs:
 
@@ -214,7 +214,7 @@ export function myProviderPlugin() {
 }
 ```
 
-`heartbeat(ctx)` is for trusted plugins that need server-side background work.
+`heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later.

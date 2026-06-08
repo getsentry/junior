@@ -24,6 +24,7 @@ import {
   getPluginProviders,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
+import { hasEgressCredentialHooks } from "@/chat/plugins/credential-hooks";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-schemas";
 import type { Skill } from "@/chat/skills";
 
@@ -122,7 +123,7 @@ function commandText(details: unknown): string {
   return `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
 }
 
-function trustedAuthRequiredSignal(details: unknown):
+function pluginAuthRequiredSignal(details: unknown):
   | {
       authorization?: {
         provider: string;
@@ -332,7 +333,7 @@ export function createPluginAuthOrchestration(
   return {
     handleCommandFailure: async (input) => {
       const providers = registeredProviderNames();
-      const parsedAuthSignal = trustedAuthRequiredSignal(input.details);
+      const parsedAuthSignal = pluginAuthRequiredSignal(input.details);
       const authSignal =
         parsedAuthSignal && providers.includes(parsedAuthSignal.provider)
           ? parsedAuthSignal
@@ -356,12 +357,10 @@ export function createPluginAuthOrchestration(
         return;
       }
 
-      const credentialType =
-        getPluginDefinition(provider)?.manifest.credentials?.type;
       const providerOAuth = getPluginOAuthConfig(provider);
       const authorization =
         authSignal?.authorization ??
-        (!authSignal && credentialType !== "plugin-managed" && providerOAuth
+        (!authSignal && !hasEgressCredentialHooks(provider) && providerOAuth
           ? {
               type: "oauth" as const,
               provider,

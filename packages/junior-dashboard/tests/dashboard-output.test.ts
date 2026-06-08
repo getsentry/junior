@@ -65,7 +65,7 @@ export default await createApp({
 }
 
 describe.sequential("dashboard Nitro production output", () => {
-  it("serves dashboard routes from the trusted plugin array", async () => {
+  it("serves dashboard routes from the plugin array", async () => {
     const root = fs.mkdtempSync(
       path.join(os.tmpdir(), "junior-dashboard-output-"),
     );

@@ -7,19 +7,19 @@
 
 ## Purpose
 
-Define the plugin model for provider integrations. Plugins package declarative runtime configuration, optional skills, optional MCP tool sources, and optional trusted hooks without letting skill prose own runtime setup or credentials.
+Define the plugin model for provider integrations. Plugins package declarative runtime configuration, optional skills, optional MCP tool sources, and optional runtime hooks without letting skill prose own runtime setup or credentials.
 
 ## Scope
 
 - Plugin package/directory shape.
-- Ownership boundaries between manifests, skills, runtime loading, credentials, and trusted hooks.
-- Links to detailed contracts for manifests, runtime loading, credential injection, and trusted heartbeat/dispatch behavior.
+- Ownership boundaries between manifests, skills, runtime loading, credentials, and runtime hooks.
+- Links to detailed contracts for manifests, runtime loading, credential injection, and plugin heartbeat/dispatch behavior.
 
 ## Non-Goals
 
 - Dynamic plugin loading from untrusted sources.
 - Remote marketplace installation.
-- Plugin sandboxing for host-trusted runtime code.
+- Plugin sandboxing for host-executed runtime code.
 - Using MCP as the plugin discovery protocol. MCP is only an optional tool source.
 
 ## Core Model
@@ -30,8 +30,8 @@ Define the plugin model for provider integrations. Plugins package declarative r
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
 5. Credential delivery is host-owned and credential-context-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
-7. Trusted runtime behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
-8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for trusted plugins. Do not split one plugin definition across both.
+7. Runtime-hook behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
+8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for plugins with runtime hooks. Do not split one plugin definition across both.
 9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
 
 ## File Shape
@@ -51,8 +51,8 @@ plugins/sentry/
 - [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and turn-resume behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
-- [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md): trusted heartbeat and tool hooks.
-- [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
+- [Plugin Heartbeat Spec](./plugin-heartbeat.md): heartbeat and tool hooks.
+- [Plugin Dispatch Spec](./plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
 
 ## What Stays Core
 
@@ -81,6 +81,6 @@ plugins/sentry/
 - `./plugin-manifest.md`
 - `./plugin-runtime.md`
 - `./credential-injection.md`
-- `./trusted-plugin-heartbeat.md`
-- `./trusted-plugin-dispatch.md`
+- `./plugin-heartbeat.md`
+- `./plugin-dispatch.md`
 - `./sandbox-snapshots.md`

@@ -155,9 +155,7 @@ export function createTools(
     getAgentPluginTools(context),
   )) {
     if (tools[name]) {
-      throw new Error(
-        `Trusted plugin tool "${name}" conflicts with a core tool`,
-      );
+      throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }
     tools[name] = pluginTool;
   }

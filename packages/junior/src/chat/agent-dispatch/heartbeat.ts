@@ -221,7 +221,7 @@ export async function recoverStaleDispatches(args: {
   return recovered;
 }
 
-/** Run trusted plugin heartbeat hooks with bounded per-invocation work. */
+/** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runTrustedPluginHeartbeats(args: {
   limit?: number;
   nowMs: number;
@@ -269,7 +269,7 @@ export async function runTrustedPluginHeartbeats(args: {
         "trusted_plugin_heartbeat_failed",
         {},
         { "app.plugin.name": plugin.name },
-        "Trusted plugin heartbeat failed",
+        "Plugin heartbeat failed",
       );
     }
   }

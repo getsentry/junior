@@ -60,10 +60,10 @@ pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sen
 ```
 
 Create one runtime-safe plugin set and point `juniorNitro()` at that module.
-Manifest-only packages use package-name strings. Plugins that need trusted
-runtime hooks use JavaScript factories such as `githubPlugin()` and
-`schedulerPlugin()`. `createApp()` reads the same enabled plugin set from
-Nitro's virtual module at runtime.
+Manifest-only packages use package-name strings. Plugins that need runtime
+hooks use JavaScript factories such as `githubPlugin()` and `schedulerPlugin()`.
+`createApp()` reads the same enabled plugin set from Nitro's virtual module at
+runtime.
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -131,11 +131,10 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"], {
 ```
 
 If you publish a manifest-only package with bundled skills, include
-`plugin.yaml` and `skills` in package `files`. If the package needs trusted
-runtime hooks, export a JavaScript plugin factory instead of shipping
-`plugin.yaml`.
+`plugin.yaml` and `skills` in package `files`. If the package needs runtime
+hooks, export a JavaScript plugin factory instead of shipping `plugin.yaml`.
 
-## Trusted runtime hooks
+## Runtime hooks
 
 Most plugins are manifest-only. Use a JavaScript plugin factory instead when a
 package needs deterministic host behavior that cannot live in skill prose or
@@ -144,7 +143,7 @@ tools and heartbeat behavior, and the GitHub plugin installs a sandbox Git
 hook, configures global Git defaults, and injects commit attribution env before
 bash commands run.
 
-Trusted hooks are explicit app code because the app imports the plugin factory
+Runtime hooks are explicit app code because the app imports the plugin factory
 into `plugins.ts`. A package should use either `plugin.yaml` or
 `defineJuniorPlugin({ manifest, hooks })`, not both. Use
 [Build a Plugin](/extend/build-a-plugin/) for the package authoring contract.
@@ -163,7 +162,7 @@ Use `app/skills` for skills that do not belong to a plugin. Use plugin skills wh
 Most custom plugins should be declarative and use `plugin.yaml`. Add bundled
 skills only when the package should also teach the agent provider-specific
 workflows. Use a JavaScript plugin factory instead when the same package needs
-trusted runtime hooks.
+runtime hooks.
 
 ### Minimal manifest
 
@@ -229,10 +228,10 @@ runtime-postinstall:
 - `description`: short summary of what the plugin integrates
 - `capabilities`: provider actions qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
-- `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin
+- `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin. Code-based plugins with egress credential hooks also declare their sandbox egress hosts in top-level `domains`.
 - `command-env`: optional sandbox env vars for CLI placeholders, deployment defaults, public install metadata, and host env bindings explicitly marked safe for sandbox exposure
-- `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `plugin-managed`. OAuth bearer credentials require `auth-token-env`; plugin-managed credentials only declare it when a CLI needs a placeholder env. Plugin-managed manifests require matching trusted `grantForEgress` and `issueCredential` hooks.
-- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`, or with `plugin-managed` when trusted hooks request user authorization
+- `credentials`: generic token auth delivered by Junior's credential broker. The supported type is `oauth-bearer`, which requires `auth-token-env`. Plugin-owned egress credentials are not declared here; code-based plugins use top-level `domains` plus `grantForEgress` and `issueCredential` hooks.
+- `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`, or in a code-based plugin when egress credential hooks request user authorization
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
@@ -260,7 +259,7 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with `oauth-bearer` credentials. When paired with `oauth-bearer` credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Plugin-managed providers should issue request-specific headers from `issueCredential`; `auth-token-env` is only for sandbox CLI placeholder compatibility. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with `oauth-bearer` credentials. When paired with `oauth-bearer` credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Plugins with egress credential hooks should issue request-specific headers from `issueCredential`; `command-env` can carry non-secret sandbox CLI placeholders. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
 ```yaml
 env-vars:

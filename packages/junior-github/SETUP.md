@@ -95,10 +95,10 @@ Use `additionalUserScopes` only when an integration flow requires specific GitHu
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe API methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, and `git-upload-pack` use the `installation-read` grant. Write-specific REST URLs, non-read GraphQL methods, other non-read API methods, and `git-receive-pack` use the `user-write` grant.
-- `user-write` requires the requester, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
-- Git commits use the requester as the commit author, Junior as committer, and a Junior `Co-authored-by` trailer.
-- Issued credentials are reused only within the current turn, and credential leases are cached separately by plugin grant name.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe app-readable API methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, and `git-upload-pack` use the `installation-read` grant. `GET /user` uses the `user-read` grant so account identity checks use the requester token. Write-specific REST URLs, non-read GraphQL methods, other non-read API methods, and `git-receive-pack` use the `user-write` grant.
+- `user-read` and `user-write` require the requester, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
+- Git commits use the requester as the commit author, Junior as committer, and a Junior `Co-Authored-By` trailer.
+- Issued credentials are reused only within the current turn, credential leases are cached separately by plugin grant name, and upstream 403 permission denials clear the cached lease before the next retry.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage

@@ -22,7 +22,7 @@ Install the package next to `@sentry/junior`:
 pnpm add @sentry/junior-scheduler
 ```
 
-Add the trusted plugin factory to the plugin set exported from `plugins.ts`. The factory registers the scheduler
+Add the scheduler plugin factory to the plugin set exported from `plugins.ts`. The factory registers the scheduler
 manifest, schedule-management tools, and heartbeat behavior together.
 
 ```ts title="plugins.ts"
@@ -46,9 +46,9 @@ export default defineConfig({
 
 If you deploy outside Vercel, call the heartbeat route on a one-minute cadence:
 
-| Route                     | Purpose                         |
-| ------------------------- | ------------------------------- |
-| `/api/internal/heartbeat` | Runs trusted plugin heartbeats. |
+| Route                     | Purpose                 |
+| ------------------------- | ----------------------- |
+| `/api/internal/heartbeat` | Runs plugin heartbeats. |
 
 ## Configure environment variables
 
@@ -85,4 +85,4 @@ For recurring or non-reminder scheduled work, Junior should show the proposed ta
 
 ## Next step
 
-Read [Build a Plugin](/extend/build-a-plugin/) for the trusted `tools(ctx)` and `heartbeat(ctx)` APIs that the scheduler uses.
+Read [Build a Plugin](/extend/build-a-plugin/) for the plugin `tools(ctx)` and `heartbeat(ctx)` APIs that the scheduler uses.

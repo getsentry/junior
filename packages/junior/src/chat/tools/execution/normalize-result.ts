@@ -46,6 +46,28 @@ function stringField(record: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function stringListField(
+  record: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = record[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function accountText(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const label = stringField(value, "label") || stringField(value, "id");
+  const id = stringField(value, "id");
+  if (!label) {
+    return undefined;
+  }
+  return id && id !== label ? `${label} (${id})` : label;
+}
+
 function upstreamPermissionDeniedText(value: unknown): string | undefined {
   if (!isRecord(value) || !isRecord(value.permission_denied)) {
     return undefined;
@@ -65,6 +87,8 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
   const grantName = stringField(grant, "name");
   const grantAccess = stringField(grant, "access");
   const grantReason = stringField(grant, "reason");
+  const grantRequirements = stringListField(grant, "requirements");
+  const account = accountText(signal.account);
   const command = stringField(value, "command");
   const stderr = stringField(value, "stderr").trim();
   const stdout = stringField(value, "stdout").trim();
@@ -76,7 +100,14 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
     message,
     "",
     `Provider: ${provider}`,
+    ...(account ? [`Provider account: ${account}`] : []),
     `Grant: ${grantName || "unknown"}${grantAccess ? ` (${grantAccess}${grantReason ? `, ${grantReason}` : ""})` : ""}`,
+    ...(grantRequirements.length > 0
+      ? [
+          "Provider requirements:",
+          ...grantRequirements.map((item) => `- ${item}`),
+        ]
+      : []),
     `Upstream: ${upstreamHost}${upstreamPath}`,
     "Status: 403",
     ...(acceptedPermissions

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { mswServer } from "../../msw/server";
 
 const {
   BASE_URL,
@@ -6,6 +8,7 @@ const {
   GITHUB_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
   lookupSlackActorIdentityMock,
+  resolvePluginOAuthAccountMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
   BASE_URL: "https://example.com",
@@ -36,6 +39,7 @@ const {
     callbackPath: "/api/oauth/callback/github",
   },
   lookupSlackActorIdentityMock: vi.fn(),
+  resolvePluginOAuthAccountMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
@@ -84,13 +88,16 @@ vi.mock("@/chat/slack/user", () => ({
   lookupSlackActorIdentity: lookupSlackActorIdentityMock,
 }));
 
+vi.mock("@/chat/plugins/credential-hooks", () => ({
+  resolvePluginOAuthAccount: resolvePluginOAuthAccountMock,
+}));
+
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
 
 const ORIGINAL_ENV = { ...process.env };
-const ORIGINAL_FETCH = globalThis.fetch;
 
 const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
@@ -105,12 +112,13 @@ beforeEach(async () => {
     userId: "U777",
     userName: "requester",
   });
+  resolvePluginOAuthAccountMock.mockReset();
+  resolvePluginOAuthAccountMock.mockResolvedValue(undefined);
   waitUntilCallbacks.length = 0;
 });
 
 afterEach(async () => {
   process.env = { ...ORIGINAL_ENV };
-  globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
   await disconnectStateAdapter();
 });
@@ -149,33 +157,71 @@ function configureGitHubOAuthEnv() {
   process.env.JUNIOR_BASE_URL = BASE_URL;
 }
 
-function mockJsonFetch(payload: unknown) {
-  const fetchMock = vi.fn(async () => ({
-    ok: true,
-    json: async () => payload,
-  }));
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
-  return fetchMock;
+type CapturedTokenRequest = {
+  body: string;
+  headers: Record<string, string>;
+  method: string;
+  url: string;
+};
+
+async function captureTokenRequest(
+  request: Request,
+): Promise<CapturedTokenRequest> {
+  return {
+    url: request.url,
+    method: request.method,
+    headers: Object.fromEntries(request.headers.entries()),
+    body: await request.text(),
+  };
 }
 
-function mockFailedFetch(status: number) {
-  const fetchMock = vi.fn(async () => ({
-    ok: false,
-    status,
-  }));
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
-  return fetchMock;
+const TOKEN_ENDPOINTS = [
+  SENTRY_OAUTH_CONFIG.tokenEndpoint,
+  EXAMPLE_OAUTH_CONFIG.tokenEndpoint,
+  GITHUB_OAUTH_CONFIG.tokenEndpoint,
+];
+
+function mockJsonFetch(
+  payload: Record<string, unknown>,
+): CapturedTokenRequest[] {
+  const requests: CapturedTokenRequest[] = [];
+  mswServer.use(
+    ...TOKEN_ENDPOINTS.map((endpoint) =>
+      http.post(endpoint, async ({ request }) => {
+        requests.push(await captureTokenRequest(request));
+        return HttpResponse.json(payload);
+      }),
+    ),
+  );
+  return requests;
 }
 
-function mockInvalidJsonFetch() {
-  const fetchMock = vi.fn(async () => ({
-    ok: true,
-    json: async () => {
-      throw new SyntaxError("Unexpected token");
-    },
-  }));
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
-  return fetchMock;
+function mockFailedFetch(status: number): CapturedTokenRequest[] {
+  const requests: CapturedTokenRequest[] = [];
+  mswServer.use(
+    ...TOKEN_ENDPOINTS.map((endpoint) =>
+      http.post(endpoint, async ({ request }) => {
+        requests.push(await captureTokenRequest(request));
+        return HttpResponse.text("failed", { status });
+      }),
+    ),
+  );
+  return requests;
+}
+
+function mockInvalidJsonFetch(): CapturedTokenRequest[] {
+  const requests: CapturedTokenRequest[] = [];
+  mswServer.use(
+    ...TOKEN_ENDPOINTS.map((endpoint) =>
+      http.post(endpoint, async ({ request }) => {
+        requests.push(await captureTokenRequest(request));
+        return HttpResponse.text("not-json", {
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    ),
+  );
+  return requests;
 }
 
 describe("oauth callback handler", () => {
@@ -342,7 +388,7 @@ describe("oauth callback handler", () => {
     });
 
     configureExampleOAuthEnv();
-    const fetchMock = mockJsonFetch({
+    const requests = mockJsonFetch({
       access_token: "example-access-token",
       refresh_token: "example-refresh-token",
     });
@@ -356,22 +402,21 @@ describe("oauth callback handler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.example.com/v1/oauth/token",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          accept: "application/json",
-          authorization: `Basic ${Buffer.from("example-client-id:example-client-secret").toString("base64")}`,
-          "content-type": "application/json",
-        }),
-        body: JSON.stringify({
-          grant_type: "authorization_code",
-          code: "valid-code",
-          redirect_uri: `${BASE_URL}/api/oauth/callback/example`,
-        }),
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      url: "https://api.example.com/v1/oauth/token",
+      method: "POST",
+      headers: expect.objectContaining({
+        accept: "application/json",
+        authorization: `Basic ${Buffer.from("example-client-id:example-client-secret").toString("base64")}`,
+        "content-type": "application/json",
       }),
-    );
+    });
+    expect(JSON.parse(requests[0]!.body)).toEqual({
+      grant_type: "authorization_code",
+      code: "valid-code",
+      redirect_uri: `${BASE_URL}/api/oauth/callback/example`,
+    });
 
     const stored = (await getStoredTokens("U999", "example")) as {
       accessToken: string;
@@ -393,6 +438,11 @@ describe("oauth callback handler", () => {
     });
 
     configureGitHubOAuthEnv();
+    resolvePluginOAuthAccountMock.mockResolvedValue({
+      id: "12345",
+      label: "requester",
+      url: "https://github.com/requester",
+    });
     mockJsonFetch({
       access_token: "github-user-token",
       refresh_token: "github-refresh-token",
@@ -410,15 +460,28 @@ describe("oauth callback handler", () => {
 
     expect(response.status).toBe(200);
     const stored = (await getStoredTokens("U777", "github")) as {
+      account?: { id: string; label?: string; url?: string };
       accessToken: string;
       refreshToken: string;
       scope?: string;
     };
     expect(stored).toMatchObject({
       accessToken: "github-user-token",
+      account: {
+        id: "12345",
+        label: "requester",
+        url: "https://github.com/requester",
+      },
       refreshToken: "github-refresh-token",
     });
     expect(stored.scope).toBeUndefined();
+    expect(resolvePluginOAuthAccountMock).toHaveBeenCalledWith({
+      provider: "github",
+      tokens: expect.objectContaining({
+        accessToken: "github-user-token",
+        refreshToken: "github-refresh-token",
+      }),
+    });
   });
 
   it("rejects callback grants whose explicit scope is missing required access", async () => {

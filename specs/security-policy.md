@@ -67,10 +67,11 @@ This policy applies to:
   `GITHUB_APP_CLIENT_SECRET` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
-- For GitHub `user-write` grants, require a stored GitHub App user-to-server
-  OAuth token from the current user actor or an explicit delegated user subject
-  allowed by the identity, scheduler, and dispatch specs. GitHub mutations must
-  be attributed to that GitHub user with the app badge.
+- For GitHub `user-read` and `user-write` grants, require a stored GitHub App
+  user-to-server OAuth token from the current user actor or an explicit
+  delegated user subject allowed by the identity, scheduler, and dispatch
+  specs. GitHub mutations must be attributed to that GitHub user with the app
+  badge.
 - Missing GitHub user authorization in an interactive user turn must pause for
   private OAuth. System-actor runs must block when no allowed delegated user
   token is available; they must not fall back to installation writes.

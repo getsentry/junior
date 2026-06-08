@@ -15,19 +15,19 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 - Capability catalog and broker integration.
 - MCP activation.
 - Plugin-backed skill loading.
-- Security invariants for host-trusted plugin content.
+- Security invariants for host-executed plugin content.
 
 ## Non-Goals
 
 - Manifest field syntax; see [Plugin Manifest Spec](./plugin-manifest.md).
 - Provider credential issuance; see [Credential Injection Spec](./credential-injection.md).
-- Trusted heartbeat/dispatch hooks; see [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md).
+- Plugin heartbeat/dispatch hooks; see [Plugin Heartbeat Spec](./plugin-heartbeat.md).
 
 ## Discovery And Loading
 
 1. Scan local plugin roots under `plugins/`.
 2. Scan manifest package roots declared by the shared `defineJuniorPlugins(...)` catalog.
-3. Register inline manifests from trusted JavaScript plugin definitions.
+3. Register inline manifests from JavaScript plugin definitions.
 4. Apply `PluginCatalogConfig` manifest overrides derived from that plugin set.
 5. Parse and validate every effective manifest before registering any plugin.
 6. Register capabilities, config keys, OAuth config, provider domains, and skill roots.
@@ -52,13 +52,13 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 
 ## Broker Creation
 
-`createPluginBroker(provider, deps)` constructs brokers from non-plugin-managed manifest config:
+`createPluginBroker(provider, deps)` constructs brokers from generic manifest credential config:
 
 - `oauth-bearer`: generic OAuth bearer broker for per-user OAuth tokens, refresh, static host-token use when no credential context exists, command env, and header transforms.
 - plugin-level `api-headers`: API header broker for providers that need header injection without OAuth/App credentials.
 - no credentials/no headers: provider-scoped no-credentials error when authenticated work needs that provider.
 
-Plugin-managed credentials do not have a generic broker. Trusted plugin hooks select plugin-defined egress grants and issue short-lived credential leases for those grants. App startup fails if a loaded plugin-managed manifest has no trusted registration with both `grantForEgress` and `issueCredential`.
+Plugins with egress credential hooks do not have a generic broker. They declare top-level manifest `domains`, then `grantForEgress` selects plugin-defined grants and `issueCredential` issues short-lived credential leases for those grants. A plugin OAuth hook may also resolve provider account metadata after OAuth so stored tokens and permission-denied signals can identify the connected account. App startup fails if egress credential hooks are incomplete, if they are mixed with generic `credentials` or `api-headers`, if the plugin declares egress-only domains without hooks, or if a code manifest declares `oauth` without OAuth bearer credentials and without egress credential hooks.
 
 Tests and evals seed credentials through the same stores and plugin env vars used by production paths. Broker selection must not switch to test-only credential behavior.
 
@@ -113,23 +113,23 @@ When runtime loads a plugin-backed skill, it must:
 
 Plugin-backed skills may explain provider commands, MCP tools, command env, config defaults, and provider-specific query syntax. They must not ask the model to install packages, run installers, configure API keys, configure OAuth, configure tokens, configure MCP endpoints, or repair sandbox package installation.
 
-## Trusted App Plugins
+## Runtime Hook Plugins
 
-Trusted agent behavior is initialized from app code, not `plugin.yaml`.
+Plugin runtime hooks are initialized from app code, not `plugin.yaml`.
 
 Apps export one runtime-safe `defineJuniorPlugins(...)` set and point
 `juniorNitro({ plugins: "./plugins" })` at it. `juniorNitro()` extracts package
 names for build-time copying and emits a virtual module that imports the same
-set at runtime. `createApp()` extracts trusted hooks from that virtual module
-and validates that every registration has a matching manifest. Trusted
+set at runtime. `createApp()` extracts plugin hooks from that virtual module
+and validates that every registration has a matching manifest. Hook
 factories carry their manifest inline, so runtime code is not declared from
 `plugin.yaml`.
 
-Hook contexts expose narrow capabilities rather than raw Junior internals. Trusted plugin hook contracts are defined in [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md) and [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
+Hook contexts expose narrow capabilities rather than raw Junior internals. Plugin hook contracts are defined in [Plugin Heartbeat Spec](./plugin-heartbeat.md) and [Plugin Dispatch Spec](./plugin-dispatch.md).
 
-Trusted plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts trusted plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Trusted route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for trusted plugin routes.
+Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
 
-Trusted plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
+Plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
 
 ## Security Properties
 
@@ -137,7 +137,7 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 - Credential delivery uses host-managed headers and credential-context-bound leases.
 - Real secret values never enter sandbox env vars, files, command args, skill text, or model-visible tool args.
 - Plugin manifests are parsed once at startup and are not mutated at runtime.
-- Plugin prompt behavior must be local to the loaded skill or trusted tool guidance.
+- Plugin prompt behavior must be local to the loaded skill or plugin tool guidance.
 
 ## Observability
 
@@ -159,5 +159,5 @@ Trusted plugins may also provide `slackConversationLink` to replace the finalize
 - `./plugin-manifest.md`
 - `./credential-injection.md`
 - `./agent-prompt.md`
-- `./trusted-plugin-heartbeat.md`
-- `./trusted-plugin-dispatch.md`
+- `./plugin-heartbeat.md`
+- `./plugin-dispatch.md`

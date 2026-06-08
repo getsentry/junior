@@ -30,7 +30,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 - **Identity context:** the runtime-owned bundle of current actor, destination, optional credential subject, and correlation ids carried across a behavior boundary.
 - **Actor:** the current authority for behavior. An actor is either a user actor or a system actor.
 - **User actor:** the human currently asking Junior to act.
-- **System actor:** a named Junior-owned execution authority, such as `scheduler` or a trusted plugin dispatch actor.
+- **System actor:** a named Junior-owned execution authority, such as `scheduler` or a plugin dispatch actor.
 - **Requester:** the interactive user actor for a live Slack turn or requester-sensitive side effect.
 - **Author:** the actor metadata persisted with a conversation message for transcript attribution.
 - **Creator:** audit and notification metadata for durable objects such as scheduled tasks. Creator is not automatically the actor for later execution.
@@ -52,7 +52,7 @@ The current actor must be a real user actor or a named system actor. Synthetic i
 Untrusted external data is parsed once at the boundary that receives it:
 
 - Slack ingress and Slack adapter payloads parse Slack user ids before creating internal work.
-- Trusted plugin APIs parse plugin-provided credential subjects before binding or persisting them.
+- Plugin APIs parse plugin-provided credential subjects before binding or persisting them.
 - Signed callback and sandbox egress contexts verify signatures and parse actor payloads before issuing credentials.
 
 Boundary parsing accepts only exact identifiers. It must not trim, rewrite, or otherwise repair a malformed actor id into a usable one.
@@ -91,9 +91,9 @@ If a system actor needs a stored user OAuth token, the run must carry an explici
 
 Scheduled runs execute as a Junior system actor, not as the user who created the task. Creator metadata may be used for audit and private notification, but not as requester identity.
 
-Trusted plugin dispatch also executes as a system actor unless a future spec defines a different actor model. Plugin metadata and idempotency keys are correlation data, not actor sources.
+Plugin dispatch also executes as a system actor unless a future spec defines a different actor model. Plugin metadata and idempotency keys are correlation data, not actor sources.
 
-Scheduled tasks and trusted dispatches may carry an explicit delegated user credential subject only under the Slack private direct conversation exception defined by the scheduler and dispatch specs. That subject is not the actor.
+Scheduled tasks and plugin dispatches may carry an explicit delegated user credential subject only under the Slack private direct conversation exception defined by the scheduler and dispatch specs. That subject is not the actor.
 
 ### Conversation History
 
@@ -135,7 +135,7 @@ Use integration tests for behavior that crosses real runtime boundaries:
 - Slack ingress persists the real requester/author identity and rejects synthetic or malformed actor ids.
 - Slack DM and channel paths preserve the current requester through first delivery, retry, and continuation.
 - Scheduler dispatch runs with a system actor and does not use creator identity as requester.
-- Trusted plugin dispatch carries a system actor through callback, retry, continuation, credential context, and Slack delivery.
+- Plugin dispatch carries a system actor through callback, retry, continuation, credential context, and Slack delivery.
 - Private direct scheduled tasks may carry an explicit credential subject; group, private channel, public channel, and unknown-audience tasks may not.
 - Sandbox egress and credential injection reject signed contexts with malformed actors or subjects.
 - System actors use only explicit service-principal, install-owned, or delegated credential envelopes.
@@ -154,7 +154,7 @@ Use evals only when the contract depends on model interpretation, such as preser
 - `./slack-outbound-contract.md`
 - `./credential-injection.md`
 - `./scheduler.md`
-- `./trusted-plugin-dispatch.md`
+- `./plugin-dispatch.md`
 - `./harness-tool-context.md`
 - `./testing.md`
 - `../policies/context-bound-systems.md`

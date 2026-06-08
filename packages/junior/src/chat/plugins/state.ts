@@ -41,7 +41,7 @@ function legacyStateKey(
   return undefined;
 }
 
-/** Create a durable state namespace scoped to one trusted plugin. */
+/** Create a durable state namespace scoped to one plugin. */
 export function createPluginState(
   plugin: string,
   options?: PluginStateOptions,

@@ -1,19 +1,12 @@
-import type {
-  OAuthBearerCredentials,
-  PluginManagedCredentials,
-} from "../types";
+import type { OAuthBearerCredentials } from "../types";
 
-const DEFAULT_PLACEHOLDERS: Record<
-  OAuthBearerCredentials["type"] | PluginManagedCredentials["type"],
-  string
-> = {
+const DEFAULT_PLACEHOLDERS: Record<OAuthBearerCredentials["type"], string> = {
   "oauth-bearer": "host_managed_credential",
-  "plugin-managed": "host_managed_credential",
 };
 
 /** Resolve the non-secret sandbox token placeholder for token-backed credentials. */
 export function resolveAuthTokenPlaceholder(
-  credentials: OAuthBearerCredentials | PluginManagedCredentials,
+  credentials: OAuthBearerCredentials,
 ): string {
   return (
     credentials.authTokenPlaceholder?.trim() ||

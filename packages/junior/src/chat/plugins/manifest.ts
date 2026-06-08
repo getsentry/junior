@@ -6,7 +6,6 @@ import type {
   PluginOAuthConfig,
   OAuthBearerCredentials,
   PluginCredentials,
-  PluginManagedCredentials,
   PluginCatalogConfig,
   PluginManifest,
   PluginManifestConfig,
@@ -181,11 +180,9 @@ const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
   type: z.literal("oauth-bearer"),
 });
 
-const pluginManagedCredentialsSchema = baseCredentialsSchema.extend({
-  "auth-token-env": envVarString.optional(),
-  "auth-token-placeholder": nonEmptyTrimmedString.optional(),
-  type: z.literal("plugin-managed"),
-});
+interface ManifestParseOptions {
+  allowHookManagedEgress?: boolean;
+}
 
 const runtimeDependencyEntrySchema = z
   .object({
@@ -656,30 +653,15 @@ function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
 ): PluginCredentials {
-  const schema =
-    data.type === "oauth-bearer"
-      ? oauthBearerCredentialsSchema
-      : data.type === "plugin-managed"
-        ? pluginManagedCredentialsSchema
-        : undefined;
-
-  if (!schema) {
+  if (data.type !== "oauth-bearer") {
     throw new Error(
       `Plugin ${name} has unsupported credentials.type: "${String(data.type)}"`,
     );
   }
 
-  const result = schema.safeParse(data);
+  const result = oauthBearerCredentialsSchema.safeParse(data);
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} credentials`));
-  }
-  if (
-    result.data.type === "plugin-managed" &&
-    data["api-headers"] !== undefined
-  ) {
-    throw new Error(
-      `Plugin ${name} credentials.api-headers is only supported for oauth-bearer credentials; plugin-managed hooks must issue any extra headers in their credential lease`,
-    );
   }
 
   if (!result.data.domains) {
@@ -687,42 +669,23 @@ function normalizeCredentials(
   }
   const domains = result.data.domains;
 
-  if (result.data.type === "oauth-bearer") {
-    const apiHeaders = result.data["api-headers"]
-      ? normalizeStringMap(
-          result.data["api-headers"],
-          `Plugin ${name} credentials.api-headers`,
-          { forbiddenKeys: FORBIDDEN_API_HEADER_NAMES },
-        )
-      : undefined;
-
-    return {
-      type: "oauth-bearer",
-      domains,
-      ...(apiHeaders ? { apiHeaders } : {}),
-      authTokenEnv: result.data["auth-token-env"],
-      ...(result.data["auth-token-placeholder"]
-        ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
-        : {}),
-    } satisfies OAuthBearerCredentials;
-  }
-
-  if (result.data["auth-token-placeholder"] && !result.data["auth-token-env"]) {
-    throw new Error(
-      `Plugin ${name} credentials.auth-token-placeholder requires auth-token-env`,
-    );
-  }
+  const apiHeaders = result.data["api-headers"]
+    ? normalizeStringMap(
+        result.data["api-headers"],
+        `Plugin ${name} credentials.api-headers`,
+        { forbiddenKeys: FORBIDDEN_API_HEADER_NAMES },
+      )
+    : undefined;
 
   return {
-    type: "plugin-managed",
+    type: "oauth-bearer",
     domains,
-    ...(result.data["auth-token-env"]
-      ? { authTokenEnv: result.data["auth-token-env"] }
-      : {}),
+    ...(apiHeaders ? { apiHeaders } : {}),
+    authTokenEnv: result.data["auth-token-env"],
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
       : {}),
-  } satisfies PluginManagedCredentials;
+  } satisfies OAuthBearerCredentials;
 }
 
 function normalizeRuntimeDependencies(
@@ -999,6 +962,7 @@ function parseManifestSource(
   parsedSource: ManifestSource,
   dir: string,
   config?: PluginCatalogConfig,
+  options?: ManifestParseOptions,
 ): PluginManifest {
   const source = applyManifestConfig(parsedSource, config);
   const sourceResult = manifestSourceSchema.safeParse(source);
@@ -1105,7 +1069,12 @@ function parseManifestSource(
   if (apiHeaders && !domains) {
     throw new Error(`Plugin ${data.name} api-headers requires domains`);
   }
-  if (domains && !apiHeaders && !data.credentials) {
+  if (
+    domains &&
+    !apiHeaders &&
+    !data.credentials &&
+    options?.allowHookManagedEgress !== true
+  ) {
     throw new Error(
       `Plugin ${data.name} domains requires credentials or api-headers`,
     );
@@ -1145,16 +1114,8 @@ function parseManifestSource(
   };
 
   if (data.oauth) {
-    if (!credentials) {
+    if (!credentials && options?.allowHookManagedEgress !== true) {
       throw new Error(`Plugin ${data.name} oauth requires credentials`);
-    }
-    if (
-      credentials.type !== "oauth-bearer" &&
-      credentials.type !== "plugin-managed"
-    ) {
-      throw new Error(
-        `Plugin ${data.name} oauth requires credentials.type "oauth-bearer" or "plugin-managed"`,
-      );
     }
 
     const result = oauthSourceSchema.safeParse(data.oauth);
@@ -1278,5 +1239,7 @@ export function parseInlinePluginManifest(
   dir: string,
   config?: PluginCatalogConfig,
 ): PluginManifest {
-  return parseManifestSource(inlineManifestSource(manifest), dir, config);
+  return parseManifestSource(inlineManifestSource(manifest), dir, config, {
+    allowHookManagedEgress: true,
+  });
 }

@@ -58,7 +58,7 @@ Current rules:
 7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
 8. Finalized reply footers that show correlation metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
 9. Footer rendering may include the conversation ID/link. Token counts, turn duration, and the selected thinking-level bucket stay in dashboard reporting instead of Slack-visible footer copy.
-10. The conversation ID footer item may link through a trusted plugin `slackConversationLink` hook. The hook result must be an absolute HTTP(S) URL. When no trusted plugin supplies a link, Sentry conversation links remain the fallback when Sentry configuration is available.
+10. The conversation ID footer item may link through a plugin `slackConversationLink` hook. The hook result must be an absolute HTTP(S) URL. When no plugin supplies a link, Sentry conversation links remain the fallback when Sentry configuration is available.
 
 ### 4. Ephemeral Message Contract
 

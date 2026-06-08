@@ -93,8 +93,8 @@ runtime-postinstall:
 - Junior qualifies them automatically:
   - `issues.read` becomes `<name>.issues.read`
   - `org` becomes `<name>.org`
-- `credentials` is optional; when present, `credentials.type` must be `oauth-bearer` or `plugin-managed`
-- `oauth` requires `credentials.type: oauth-bearer` or `plugin-managed`; plugin-managed hooks decide when user authorization is needed
+- `credentials` is optional; when present, `credentials.type` must be `oauth-bearer`
+- `oauth` in `plugin.yaml` requires `credentials.type: oauth-bearer`; code plugins that own egress credentials declare domains and credential hooks in code
 - Plugins can declare capabilities without credentials, but `jr-rpc issue-credential` will fail with a clear no-credentials error.
 - `runtime-dependencies` is optional and supports `npm` and `system` installers
 - `runtime-dependencies[].version` is optional for `npm` (`latest` when omitted) and must be omitted for `system`

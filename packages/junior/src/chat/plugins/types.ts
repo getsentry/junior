@@ -31,16 +31,7 @@ export interface OAuthBearerCredentials {
   authTokenPlaceholder?: string;
 }
 
-export interface PluginManagedCredentials {
-  type: "plugin-managed";
-  domains: string[];
-  authTokenEnv?: string;
-  authTokenPlaceholder?: string;
-}
-
-export type PluginCredentials =
-  | OAuthBearerCredentials
-  | PluginManagedCredentials;
+export type PluginCredentials = OAuthBearerCredentials;
 
 export interface PluginNpmRuntimeDependency {
   type: "npm";
@@ -135,15 +126,10 @@ type PluginCredentialConfigBase = {
   authTokenPlaceholder?: string | null;
 };
 
-type PluginCredentialConfig =
-  | (PluginCredentialConfigBase & {
-      apiHeaders?: never;
-      type?: "oauth-bearer" | "plugin-managed";
-    })
-  | (PluginCredentialConfigBase & {
-      apiHeaders?: Record<string, string | null> | null;
-      type: "oauth-bearer";
-    });
+type PluginCredentialConfig = PluginCredentialConfigBase & {
+  apiHeaders?: Record<string, string | null> | null;
+  type?: "oauth-bearer";
+};
 
 /** Install-level changes applied to one plugin manifest before validation. */
 export interface PluginManifestConfig {

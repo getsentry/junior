@@ -87,7 +87,7 @@ describe("createApp plugin config", () => {
     );
   });
 
-  it("does not read env plugin packages when trusted plugins are explicit", async () => {
+  it("does not read env plugin packages when plugins are explicit", async () => {
     process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
 
     await createApp({
@@ -98,7 +98,7 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
   });
 
-  it("loads package plugins with trusted runtime plugins", async () => {
+  it("loads package plugins with runtime hook plugins", async () => {
     const tempRoot = await makeTempDir();
     await writePluginPackage(tempRoot, "@acme/env-plugin", "env");
     await fs.writeFile(
@@ -218,28 +218,28 @@ describe("createApp plugin config", () => {
     expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
   });
 
-  it("loads trusted plugin instances through createApp", async () => {
+  it("loads plugin instances through createApp", async () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "trusted",
-            description: "Trusted plugin",
+            name: "hooked",
+            description: "Runtime plugin",
             configKeys: ["org"],
           },
           hooks: {},
         }),
       ]),
-      configDefaults: { "trusted.org": "sentry" },
+      configDefaults: { "hooked.org": "sentry" },
     });
 
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "trusted",
+      "hooked",
     ]);
-    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["hooked"]);
   });
 
-  it("rejects plugin-managed manifests without trusted credential hooks", async () => {
+  it("rejects incomplete plugin egress credential hooks", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -249,11 +249,78 @@ describe("createApp plugin config", () => {
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
             manifest: {
-              name: "trusted",
-              description: "Trusted plugin",
-              credentials: {
-                type: "plugin-managed",
-                domains: ["api.example.com"],
+              name: "example",
+              description: "Example plugin",
+              domains: ["api.example.com"],
+            },
+            hooks: {
+              grantForEgress() {
+                return { name: "default", access: "read" };
+              },
+            },
+          }),
+        ]),
+      }),
+    ).rejects.toThrow(
+      'Plugin "example" egress credential hooks must include both grantForEgress and issueCredential.',
+    );
+
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
+
+  it("rejects plugin egress credential hooks without manifest domains", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+
+    await expect(
+      createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "example",
+              description: "Example plugin",
+            },
+            hooks: {
+              grantForEgress() {
+                return { name: "default", access: "read" };
+              },
+              issueCredential() {
+                return {
+                  type: "needed",
+                  message: "Example credentials are unavailable.",
+                };
+              },
+            },
+          }),
+        ]),
+      }),
+    ).rejects.toThrow(
+      'Plugin "example" egress credential hooks require manifest.domains to list sandbox egress hosts.',
+    );
+
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
+    expect(getPluginProviders()).toEqual([]);
+  });
+
+  it("rejects plugin OAuth without credentials or egress credential hooks", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+
+    await expect(
+      createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "example",
+              description: "Example plugin",
+              oauth: {
+                clientIdEnv: "EXAMPLE_CLIENT_ID",
+                clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+                authorizeEndpoint: "https://example.com/oauth/authorize",
+                tokenEndpoint: "https://example.com/oauth/token",
               },
             },
             hooks: {},
@@ -261,24 +328,21 @@ describe("createApp plugin config", () => {
         ]),
       }),
     ).rejects.toThrow(
-      'Plugin "trusted" uses plugin-managed credentials and its trusted registration must include grantForEgress and issueCredential hooks.',
+      'Plugin "example" manifest.oauth without oauth-bearer credentials requires egress credential hooks.',
     );
 
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
     expect(getPluginProviders()).toEqual([]);
   });
 
-  it("loads plugin-managed manifests with trusted credential hooks", async () => {
+  it("loads plugins with egress credential hooks", async () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "trusted",
-            description: "Trusted plugin",
-            credentials: {
-              type: "plugin-managed",
-              domains: ["api.example.com"],
-            },
+            name: "example",
+            description: "Example plugin",
+            domains: ["api.example.com"],
           },
           hooks: {
             grantForEgress() {
@@ -287,7 +351,7 @@ describe("createApp plugin config", () => {
             issueCredential() {
               return {
                 type: "needed",
-                message: "Trusted plugin credentials are unavailable.",
+                message: "Example credentials are unavailable.",
               };
             },
           },
@@ -296,12 +360,12 @@ describe("createApp plugin config", () => {
     });
 
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "trusted",
+      "example",
     ]);
-    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["example"]);
   });
 
-  it("does not assign app skills to trusted inline plugins", async () => {
+  it("does not assign app skills to runtime hook inline plugins", async () => {
     const tempRoot = await makeTempDir();
     await fs.mkdir(path.join(tempRoot, "skills", "notes"), {
       recursive: true,
@@ -312,8 +376,8 @@ describe("createApp plugin config", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "trusted",
-            description: "Trusted plugin",
+            name: "hooked",
+            description: "Runtime plugin",
           },
           hooks: {},
         }),
@@ -323,13 +387,13 @@ describe("createApp plugin config", () => {
     expect(getPluginSkillRoots()).toEqual([]);
   });
 
-  it("assigns package skills to trusted inline plugin packages", async () => {
+  it("assigns package skills to runtime hook inline plugin packages", async () => {
     const tempRoot = await makeTempDir();
     const packageRoot = path.join(
       tempRoot,
       "node_modules",
       "@acme",
-      "trusted-plugin",
+      "hooked-plugin",
     );
     await fs.mkdir(path.join(packageRoot, "skills", "triage"), {
       recursive: true,
@@ -339,10 +403,10 @@ describe("createApp plugin config", () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
-          packageName: "@acme/trusted-plugin",
+          packageName: "@acme/hooked-plugin",
           manifest: {
-            name: "trusted",
-            description: "Trusted plugin",
+            name: "hooked",
+            description: "Runtime plugin",
           },
           hooks: {},
         }),
@@ -355,24 +419,24 @@ describe("createApp plugin config", () => {
         resolvedTempRoot,
         "node_modules",
         "@acme",
-        "trusted-plugin",
+        "hooked-plugin",
         "skills",
       ),
     ]);
   });
 
-  it("applies manifest overrides to trusted plugin inline manifests", async () => {
+  it("applies manifest overrides to plugin inline manifests", async () => {
     await createApp({
       plugins: defineJuniorPlugins(
         [
           defineJuniorPlugin({
             manifest: {
-              name: "trusted",
-              description: "Trusted plugin",
+              name: "hooked",
+              description: "Runtime plugin",
               credentials: {
                 type: "oauth-bearer",
                 domains: ["old.example.com"],
-                authTokenEnv: "TRUSTED_TOKEN",
+                authTokenEnv: "HOOKED_TOKEN",
               },
             },
             hooks: {},
@@ -380,7 +444,7 @@ describe("createApp plugin config", () => {
         ],
         {
           manifests: {
-            trusted: {
+            hooked: {
               credentials: {
                 domains: ["new.example.com"],
               },
@@ -395,10 +459,10 @@ describe("createApp plugin config", () => {
         name: plugin.manifest.name,
         domains: plugin.manifest.credentials?.domains,
       })),
-    ).toEqual([{ name: "trusted", domains: ["new.example.com"] }]);
+    ).toEqual([{ name: "hooked", domains: ["new.example.com"] }]);
   });
 
-  it("rejects invalid trusted plugin inline manifests before mutating app config", async () => {
+  it("rejects invalid plugin inline manifests before mutating app config", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -417,20 +481,20 @@ describe("createApp plugin config", () => {
         ]),
       }),
     ).rejects.toThrow(
-      "Plugin invalid domains requires credentials or api-headers",
+      'Plugin "invalid" manifest.domains requires egress credential hooks when no generic credentials or apiHeaders are configured.',
     );
 
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
     expect(getPluginProviders()).toEqual([]);
   });
 
-  it("loads trusted plugin instances from the Nitro virtual plugin set", async () => {
+  it("loads plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "trusted",
-            description: "Trusted plugin",
+            name: "hooked",
+            description: "Runtime plugin",
             configKeys: ["org"],
           },
           hooks: {},
@@ -440,25 +504,25 @@ describe("createApp plugin config", () => {
         inlineManifests: [
           {
             manifest: {
-              name: "trusted",
-              description: "Trusted plugin",
+              name: "hooked",
+              description: "Runtime plugin",
               capabilities: [],
-              configKeys: ["trusted.org"],
+              configKeys: ["hooked.org"],
             },
           },
         ],
       },
-      trustedPluginRegistrations: ["trusted"],
+      pluginHookRegistrations: ["hooked"],
     }));
 
     await createApp({
-      configDefaults: { "trusted.org": "sentry" },
+      configDefaults: { "hooked.org": "sentry" },
     });
 
     expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "trusted",
+      "hooked",
     ]);
-    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["trusted"]);
+    expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual(["hooked"]);
   });
 
   it("loads manifest-only package plugins by package name", async () => {
@@ -487,7 +551,7 @@ describe("createApp plugin config", () => {
     ]);
   });
 
-  it("rejects duplicate trusted plugin names before mutating app config", async () => {
+  it("rejects duplicate plugin names before mutating app config", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -507,7 +571,7 @@ describe("createApp plugin config", () => {
     expect(getPluginProviders()).toEqual([]);
   });
 
-  it("rejects invalid trusted plugin names before mutating app config", async () => {
+  it("rejects invalid plugin names before mutating app config", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -525,7 +589,7 @@ describe("createApp plugin config", () => {
     expect(getPluginProviders()).toEqual([]);
   });
 
-  it("rejects legacy state prefixes outside the trusted plugin namespace", async () => {
+  it("rejects legacy state prefixes outside the plugin namespace", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
     });
@@ -534,13 +598,13 @@ describe("createApp plugin config", () => {
       createApp({
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
-            manifest: { name: "trusted", description: "Trusted plugin" },
+            manifest: { name: "hooked", description: "Runtime plugin" },
             legacyStatePrefixes: ["junior:scheduler"],
           }),
         ]),
       }),
     ).rejects.toThrow(
-      'Trusted plugin "trusted" legacy state prefix "junior:scheduler" must stay under "junior:trusted"',
+      'Plugin "hooked" legacy state prefix "junior:scheduler" must stay under "junior:hooked"',
     );
 
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);

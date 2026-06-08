@@ -216,7 +216,7 @@ consumer registration hook for this topic, because the callback is mounted by a
 central app route rather than a source file the SDK can discover.
 
 `juniorNitro()` must also emit the `/api/internal/heartbeat` one-minute cron
-into Nitro's Vercel Build Output config so trusted plugin heartbeats and stale
+into Nitro's Vercel Build Output config so plugin heartbeats and stale
 dispatch recovery run in production.
 
 ### Lease And Check-In Contract
@@ -372,7 +372,7 @@ the cron invocation. Remaining work is left for later heartbeats.
 
 ### Scheduler And Plugin Dispatch
 
-Scheduler and trusted plugin work should enter the same execution system by
+Scheduler and plugin work should enter the same execution system by
 creating or selecting a conversation identity, appending a normalized agent input
 message to the mailbox, and enqueueing `{ conversationId, destination }`.
 
@@ -492,5 +492,5 @@ Required invariants, using the lowest layer that proves the contract:
 - [Agent Session Resumability Spec](./agent-session-resumability.md)
 - [Slack Agent Delivery Spec](./slack-agent-delivery.md)
 - [Scheduler Spec](./scheduler.md)
-- [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md)
+- [Plugin Dispatch Spec](./plugin-dispatch.md)
 - [Testing Spec](./testing.md)

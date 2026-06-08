@@ -1,7 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
 import type { SandboxPrepareHookContext } from "@sentry/junior-plugin-api";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../../../../junior-github/index.js";
+import { mswServer } from "../../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -55,6 +57,101 @@ const pluginLog = {
   warn() {},
 };
 
+type CapturedRequest = {
+  body?: unknown;
+  headers: Record<string, string>;
+  method: string;
+  url: string;
+};
+
+async function captureRequest(request: Request): Promise<CapturedRequest> {
+  const text = await request.text();
+  let body: unknown;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  return {
+    url: request.url,
+    method: request.method,
+    headers: Object.fromEntries(request.headers.entries()),
+    ...(text ? { body } : {}),
+  };
+}
+
+function mockGitHubInstallationApi(): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get(
+      "https://api.github.com/app/installations/:installationId",
+      async ({ request }) => {
+        requests.push(await captureRequest(request));
+        return HttpResponse.json({
+          permissions: {
+            contents: "write",
+            issues: "write",
+            metadata: "read",
+            pull_requests: "read",
+            workflows: "write",
+          },
+        });
+      },
+    ),
+    http.post(
+      "https://api.github.com/app/installations/:installationId/access_tokens",
+      async ({ request }) => {
+        requests.push(await captureRequest(request));
+        return HttpResponse.json({
+          token: "installation-token",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        });
+      },
+    ),
+  );
+  return requests;
+}
+
+function mockGitHubUserApi(input?: {
+  payload?: Record<string, unknown>;
+  status?: number;
+}): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get("https://api.github.com/user", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json(
+        input?.payload ?? {
+          id: 12345,
+          login: "requester",
+          html_url: "https://github.com/requester",
+        },
+        { status: input?.status ?? 200 },
+      );
+    }),
+  );
+  return requests;
+}
+
+function mockGitHubRefresh(
+  status: number,
+  payload: Record<string, unknown>,
+): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.post(
+      "https://github.com/login/oauth/access_token",
+      async ({ request }) => {
+        requests.push(await captureRequest(request));
+        return HttpResponse.json(payload, { status });
+      },
+    ),
+  );
+  return requests;
+}
+
 async function grantForEgress(input: { method: string; url: string }) {
   const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
   return await plugin.hooks?.grantForEgress?.({
@@ -70,6 +167,7 @@ async function grantForEgress(input: { method: string; url: string }) {
 function githubIssueCredentialContext(input: {
   actor?: { type: "system"; id: string } | { type: "user"; userId: string };
   credentialSubjectToken?: {
+    account?: { id: string; label?: string; url?: string };
     accessToken: string;
     expiresAt?: number;
     refreshToken: string;
@@ -77,6 +175,7 @@ function githubIssueCredentialContext(input: {
   };
   grant: { access: "read" | "write"; name: string; reason?: string };
   currentUserToken?: {
+    account?: { id: string; label?: string; url?: string };
     accessToken: string;
     expiresAt?: number;
     refreshToken: string;
@@ -111,7 +210,6 @@ function githubIssueCredentialContext(input: {
 describe("github plugin", () => {
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
-    vi.unstubAllGlobals();
   });
 
   it("defaults GitHub App permissions and user OAuth scopes to all available app access", () => {
@@ -249,6 +347,19 @@ describe("github plugin", () => {
     });
   });
 
+  it("selects user-read for GitHub user identity requests", async () => {
+    expect(
+      await grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/user",
+      }),
+    ).toMatchObject({
+      name: "user-read",
+      access: "read",
+      reason: "github.user-read",
+    });
+  });
+
   it("only treats Git smart HTTP service parameters as grant evidence on Git paths", async () => {
     expect(
       await grantForEgress({
@@ -295,7 +406,23 @@ describe("github plugin", () => {
     });
   });
 
-  it("issues read-only GitHub App installation credentials from plugin-managed hooks", async () => {
+  it("adds provider requirements to known GitHub write grants", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/git/blobs",
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.contents-write",
+      requirements: expect.arrayContaining([
+        "GitHub App Contents: write on the target repository",
+      ]),
+    });
+  });
+
+  it("issues read-only GitHub App installation credentials from plugin hooks", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -303,21 +430,7 @@ describe("github plugin", () => {
     process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
 
-    const requests: Array<{ body?: unknown; method: string; url: string }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: URL | string, init?: RequestInit) => {
-        requests.push({
-          url: String(url),
-          method: init?.method ?? "GET",
-          ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
-        });
-        return Response.json({
-          token: "installation-token",
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-        });
-      }),
-    );
+    const requests = mockGitHubInstallationApi();
 
     const plugin = githubPlugin({
       appPermissions: {
@@ -373,32 +486,7 @@ describe("github plugin", () => {
     process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
 
-    const requests: Array<{ body?: unknown; method: string; url: string }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: URL | string, init?: RequestInit) => {
-        requests.push({
-          url: String(url),
-          method: init?.method ?? "GET",
-          ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
-        });
-        if (String(url).endsWith("/app/installations/456")) {
-          return Response.json({
-            permissions: {
-              contents: "write",
-              issues: "write",
-              metadata: "read",
-              pull_requests: "read",
-              workflows: "write",
-            },
-          });
-        }
-        return Response.json({
-          token: "installation-token",
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-        });
-      }),
-    );
+    const requests = mockGitHubInstallationApi();
 
     const plugin = githubPlugin();
     const ctx = {
@@ -478,6 +566,8 @@ describe("github plugin", () => {
   });
 
   it("issues a credential lease for a user-write grant from stored current-user tokens", async () => {
+    mockGitHubUserApi();
+
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
       githubIssueCredentialContext({
@@ -498,6 +588,11 @@ describe("github plugin", () => {
     expect(result).toMatchObject({
       type: "lease",
       lease: {
+        account: {
+          id: "12345",
+          label: "requester",
+          url: "https://github.com/requester",
+        },
         authorization: {
           type: "oauth",
           provider: "github",
@@ -519,6 +614,58 @@ describe("github plugin", () => {
     });
   });
 
+  it("resolves the GitHub account for user OAuth tokens", async () => {
+    const requests = mockGitHubUserApi();
+
+    const plugin = githubPlugin();
+    const account = await plugin.hooks?.resolveOAuthAccount?.({
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {
+        accessToken: "user-token",
+        refreshToken: "refresh-token",
+      },
+    });
+
+    expect(account).toEqual({
+      id: "12345",
+      label: "requester",
+      url: "https://github.com/requester",
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      url: "https://api.github.com/user",
+      method: "GET",
+    });
+    expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
+  });
+
+  it("surfaces operational failures while lazily resolving GitHub account identity", async () => {
+    mockGitHubUserApi({
+      status: 500,
+      payload: { message: "server error" },
+    });
+
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    await expect(
+      plugin.hooks?.issueCredential?.(
+        githubIssueCredentialContext({
+          grant: {
+            name: "user-write",
+            access: "write",
+            reason: "github.issue-create",
+          },
+          currentUserToken: {
+            accessToken: "user-token",
+            expiresAt: Date.now() + 60 * 60_000,
+            refreshToken: "refresh-token",
+            scope: "repo",
+          },
+        }),
+      ),
+    ).rejects.toThrow("server error");
+  });
+
   it("issues a credential lease for a user-write grant from delegated subject tokens", async () => {
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
@@ -530,6 +677,10 @@ describe("github plugin", () => {
           reason: "github.issue-create",
         },
         credentialSubjectToken: {
+          account: {
+            id: "45678",
+            label: "delegated",
+          },
           accessToken: "delegated-token",
           expiresAt: Date.now() + 60 * 60_000,
           refreshToken: "delegated-refresh-token",
@@ -560,12 +711,7 @@ describe("github plugin", () => {
   it("requires reauthorization when GitHub user token refresh is rejected", async () => {
     process.env.GITHUB_APP_CLIENT_ID = "client-id";
     process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({ error: "bad_refresh_token" }, { status: 400 }),
-      ),
-    );
+    mockGitHubRefresh(400, { error: "bad_refresh_token" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
@@ -597,12 +743,7 @@ describe("github plugin", () => {
   it("surfaces operational GitHub user token refresh failures", async () => {
     process.env.GITHUB_APP_CLIENT_ID = "client-id";
     process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({ error: "server_error" }, { status: 500 }),
-      ),
-    );
+    mockGitHubRefresh(500, { error: "server_error" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     await expect(
@@ -663,7 +804,7 @@ describe("github plugin", () => {
       "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
     );
     expect(String(writes[0]?.content)).toContain(
-      "Co-authored-by: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>",
+      "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>",
     );
     expect(String(writes[0]?.content)).toContain(
       "Git author was not set to the resolved requester identity",

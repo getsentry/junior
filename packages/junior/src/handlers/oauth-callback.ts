@@ -34,6 +34,7 @@ import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/auth/oauth-request";
+import { resolvePluginOAuthAccount } from "@/chat/plugins/credential-hooks";
 import {
   getTurnUserMessage,
   getTurnUserSlackMessageTs,
@@ -645,7 +646,23 @@ export async function GET(
   }
 
   const userTokenStore = createUserTokenStore();
-  await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
+  let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
+  try {
+    account = await resolvePluginOAuthAccount({
+      provider,
+      tokens: parsedTokenResponse,
+    });
+  } catch {
+    return htmlErrorResponse(
+      "Connection failed",
+      `Junior could not verify the connected ${providerLabel} account. Please try again.`,
+      500,
+    );
+  }
+  await userTokenStore.set(stored.userId, provider, {
+    ...parsedTokenResponse,
+    ...(account ? { account } : {}),
+  });
 
   waitUntil(async () => {
     try {

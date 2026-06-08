@@ -748,9 +748,15 @@ export async function proxySandboxEgressRequest(
         message: `Provider rejected the injected ${provider} credential.\n`,
       });
     } else {
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant.name,
+        credentialContext,
+      );
       await setSandboxEgressPermissionDeniedSignal(credentialContext, {
         provider,
         grant: lease.grant,
+        ...(lease.account ? { account: lease.account } : {}),
         message: permissionDeniedMessage(provider, lease.grant),
         source: "upstream",
         status: UPSTREAM_PERMISSION_REJECTION_STATUS,

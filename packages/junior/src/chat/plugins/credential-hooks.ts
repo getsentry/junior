@@ -2,11 +2,16 @@ import {
   agentPluginAuthorizationSchema,
   agentPluginCredentialResultSchema,
   agentPluginGrantSchema,
+  agentPluginProviderAccountSchema,
   type AgentPluginAuthorization,
   type AgentPluginCredentialResult,
   type AgentPluginGrant,
+  type AgentPluginProviderAccount,
 } from "@sentry/junior-plugin-api";
-import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import type {
+  StoredTokens,
+  UserTokenStore,
+} from "@/chat/credentials/user-token-store";
 import { getAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { createAgentPluginLogger } from "@/chat/plugins/logging";
 
@@ -43,11 +48,11 @@ function parseAuthorization(
   const authorization = parseSchema(
     agentPluginAuthorizationSchema,
     value,
-    `Trusted plugin "${pluginName}" grant authorization is invalid`,
+    `Plugin "${pluginName}" grant authorization is invalid`,
   );
   if (authorization.provider !== pluginName) {
     throw new Error(
-      `Trusted plugin "${pluginName}" grant authorization provider must match the issuing plugin`,
+      `Plugin "${pluginName}" grant authorization provider must match the issuing plugin`,
     );
   }
   return authorization;
@@ -57,8 +62,12 @@ function parseGrant(value: unknown, pluginName: string): AgentPluginGrant {
   return parseSchema(
     agentPluginGrantSchema,
     value,
-    `Trusted plugin "${pluginName}" grantForEgress returned an invalid grant`,
+    `Plugin "${pluginName}" grantForEgress returned an invalid grant`,
   );
+}
+
+function agentPluginFor(provider: string) {
+  return getAgentPlugins().find((candidate) => candidate.name === provider);
 }
 
 function parseCredentialResult(
@@ -68,7 +77,7 @@ function parseCredentialResult(
   const result = parseSchema(
     agentPluginCredentialResultSchema,
     value,
-    `Trusted plugin "${pluginName}" issueCredential result is invalid`,
+    `Plugin "${pluginName}" issueCredential result is invalid`,
   );
   if (result.type === "lease") {
     parseAuthorization(result.lease.authorization, pluginName);
@@ -84,13 +93,11 @@ export interface EgressGrantInput {
   upstreamUrl: URL;
 }
 
-/** Ask a trusted plugin which plugin-defined grant an outbound request needs. */
+/** Ask a plugin which grant an outbound request needs. */
 export async function selectPluginGrant(
   input: EgressGrantInput,
 ): Promise<AgentPluginGrant | undefined> {
-  const plugin = getAgentPlugins().find(
-    (candidate) => candidate.name === input.provider,
-  );
+  const plugin = agentPluginFor(input.provider);
   const hook = plugin?.hooks?.grantForEgress;
   if (!plugin || !hook) {
     return undefined;
@@ -104,6 +111,12 @@ export async function selectPluginGrant(
     },
   });
   return result === undefined ? undefined : parseGrant(result, plugin.name);
+}
+
+/** Return whether a plugin owns credential issuance for egress. */
+export function hasEgressCredentialHooks(provider: string): boolean {
+  const hooks = agentPluginFor(provider)?.hooks;
+  return Boolean(hooks?.grantForEgress || hooks?.issueCredential);
 }
 
 export interface IssueCredentialInput {
@@ -125,18 +138,38 @@ export interface IssueCredentialInput {
   userTokenStore: UserTokenStore;
 }
 
-/** Ask a trusted plugin to issue headers or describe why the selected grant is unavailable. */
+/** Ask a plugin which provider account belongs to an OAuth token. */
+export async function resolvePluginOAuthAccount(input: {
+  provider: string;
+  tokens: StoredTokens;
+}): Promise<AgentPluginProviderAccount | undefined> {
+  const plugin = agentPluginFor(input.provider);
+  const hook = plugin?.hooks?.resolveOAuthAccount;
+  if (!plugin || !hook) {
+    return undefined;
+  }
+  const account = await hook({
+    plugin: { name: plugin.name },
+    log: createAgentPluginLogger(plugin.name),
+    tokens: input.tokens,
+  });
+  return account === undefined
+    ? undefined
+    : parseSchema(
+        agentPluginProviderAccountSchema,
+        account,
+        `Plugin "${plugin.name}" resolveOAuthAccount returned an invalid account`,
+      );
+}
+
+/** Ask a plugin to issue headers or describe why the selected grant is unavailable. */
 export async function issuePluginCredential(
   input: IssueCredentialInput,
 ): Promise<AgentPluginCredentialResult> {
-  const plugin = getAgentPlugins().find(
-    (candidate) => candidate.name === input.provider,
-  );
+  const plugin = agentPluginFor(input.provider);
   const hook = plugin?.hooks?.issueCredential;
   if (!plugin || !hook) {
-    throw new Error(
-      `Trusted plugin "${input.provider}" has no issueCredential hook`,
-    );
+    throw new Error(`Plugin "${input.provider}" has no issueCredential hook`);
   }
   const currentUserId =
     input.actor.type === "user" ? input.actor.userId : undefined;

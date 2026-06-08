@@ -46,7 +46,7 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `plugins.ts` is the single source of truth for installed plugin registrations and trusted runtime plugins in this app
+- `plugins.ts` is the single source of truth for installed plugin registrations and runtime hook plugins in this app
 - `nitro.config.ts` points `juniorNitro()` at `./plugins` so plugin content is copied into the build output and exposed to runtime through the virtual config module
 - `server.ts` imports the same plugin set and passes it to `createApp({ plugins })` so local dev and built bundles load identical runtime plugins
-- root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for trusted plugin heartbeats and stale dispatch recovery; it also defaults `JUNIOR_BASE_URL` to the local server when unset so signed internal callbacks can recover dispatched runs
+- root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for plugin heartbeats and stale dispatch recovery; it also defaults `JUNIOR_BASE_URL` to the local server when unset so signed internal callbacks can recover dispatched runs

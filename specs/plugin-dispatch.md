@@ -1,4 +1,4 @@
-# Trusted Plugin Dispatch Spec
+# Plugin Dispatch Spec
 
 ## Metadata
 
@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Define the durable `ctx.agent.dispatch` primitive used by trusted plugins to ask Junior core to run an autonomous agent request later or outside the interactive Slack turn.
+Define the durable `ctx.agent.dispatch` primitive used by plugins to ask Junior core to run an autonomous agent request later or outside the interactive Slack turn.
 
 ## Scope
 
@@ -18,13 +18,13 @@ Define the durable `ctx.agent.dispatch` primitive used by trusted plugins to ask
 
 ## Non-Goals
 
-- Trusted plugin heartbeat mechanics; see [Trusted Plugin Heartbeat Spec](./trusted-plugin-heartbeat.md).
+- Plugin heartbeat mechanics; see [Plugin Heartbeat Spec](./plugin-heartbeat.md).
 - Scheduler task semantics; see [Scheduler Spec](./scheduler.md).
 - Interactive Slack turn handling; see [Slack Agent Delivery Spec](./slack-agent-delivery.md).
 
 ## Plugin API
 
-Trusted plugins may dispatch an agent request:
+Plugins may dispatch an agent request:
 
 ```ts
 const result = await ctx.agent.dispatch({
@@ -86,7 +86,7 @@ type Dispatch = {
 };
 ```
 
-`ctx.agent.get(id)` returns only dispatches owned by the calling trusted plugin. It omits prompt text, destination details, actor details, metadata, conversation state, tool calls, model messages, logs, and credentials.
+`ctx.agent.get(id)` returns only dispatches owned by the calling plugin. It omits prompt text, destination details, actor details, metadata, conversation state, tool calls, model messages, logs, and credentials.
 
 ## Dispatch Constraints
 
@@ -294,7 +294,7 @@ Use unit tests for:
 ## Related Specs
 
 - `./identity.md`
-- `./trusted-plugin-heartbeat.md`
+- `./plugin-heartbeat.md`
 - `./task-execution.md`
 - `./scheduler.md`
 - `./agent-session-resumability.md`

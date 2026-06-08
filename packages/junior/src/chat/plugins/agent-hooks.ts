@@ -23,7 +23,7 @@ import type {
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 
-/** Signal that a trusted plugin intentionally denied a tool execution. */
+/** Signal that a plugin intentionally denied a tool execution. */
 export class AgentPluginHookDeniedError extends Error {
   constructor(message: string) {
     super(message);
@@ -81,7 +81,7 @@ function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
   }
   if (!Array.isArray(prefixes)) {
     throw new Error(
-      `Trusted plugin "${plugin.name}" legacyStatePrefixes must be an array`,
+      `Plugin "${plugin.name}" legacyStatePrefixes must be an array`,
     );
   }
 
@@ -90,18 +90,18 @@ function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
     const prefix = typeof rawPrefix === "string" ? rawPrefix.trim() : "";
     if (!prefix) {
       throw new Error(
-        `Trusted plugin "${plugin.name}" legacy state prefixes must be non-empty strings`,
+        `Plugin "${plugin.name}" legacy state prefixes must be non-empty strings`,
       );
     }
     if (prefix !== allowedPrefix && !prefix.startsWith(`${allowedPrefix}:`)) {
       throw new Error(
-        `Trusted plugin "${plugin.name}" legacy state prefix "${prefix}" must stay under "${allowedPrefix}"`,
+        `Plugin "${plugin.name}" legacy state prefix "${prefix}" must stay under "${allowedPrefix}"`,
       );
     }
   }
 }
 
-/** Validate trusted plugin identity before it can affect process-wide hooks. */
+/** Validate plugin identity before it can affect process-wide hooks. */
 export function validateAgentPlugins(
   plugins: JuniorPluginRegistration[],
 ): void {
@@ -109,18 +109,18 @@ export function validateAgentPlugins(
   for (const plugin of plugins) {
     if (!AGENT_PLUGIN_NAME_RE.test(plugin.name)) {
       throw new Error(
-        `Trusted plugin name "${plugin.name}" must be a lowercase plugin identifier`,
+        `Plugin name "${plugin.name}" must be a lowercase plugin identifier`,
       );
     }
     if (seen.has(plugin.name)) {
-      throw new Error(`Duplicate trusted plugin name "${plugin.name}"`);
+      throw new Error(`Duplicate plugin name "${plugin.name}"`);
     }
     seen.add(plugin.name);
     validateLegacyStatePrefixes(plugin);
   }
 }
 
-/** Replace trusted agent plugins and return the previous list for rollback. */
+/** Replace runtime hook plugins and return the previous list for rollback. */
 export function setAgentPlugins(
   plugins: JuniorPluginRegistration[],
 ): JuniorPluginRegistration[] {
@@ -132,12 +132,12 @@ export function setAgentPlugins(
   return previous;
 }
 
-/** Return the current trusted agent plugins without exposing mutable state. */
+/** Return the current runtime hook plugins without exposing mutable state. */
 export function getAgentPlugins(): JuniorPluginRegistration[] {
   return [...agentPlugins];
 }
 
-/** Collect turn-scoped tools exposed by trusted plugins. */
+/** Collect turn-scoped tools exposed by plugins. */
 export function getAgentPluginTools(
   context: ToolRuntimeContext,
 ): Record<string, ToolDefinition<any>> {
@@ -177,12 +177,12 @@ export function getAgentPluginTools(
     for (const [name, tool] of Object.entries(pluginTools)) {
       if (!AGENT_PLUGIN_TOOL_NAME_RE.test(name)) {
         throw new Error(
-          `Trusted plugin tool "${name}" from plugin "${plugin.name}" must be a camelCase identifier`,
+          `Plugin tool "${name}" from plugin "${plugin.name}" must be a camelCase identifier`,
         );
       }
       if (tools[name]) {
         throw new Error(
-          `Duplicate trusted plugin tool "${name}" from plugin "${plugin.name}"`,
+          `Duplicate plugin tool "${name}" from plugin "${plugin.name}"`,
         );
       }
       tools[name] = tool as unknown as ToolDefinition<any>;
@@ -201,26 +201,26 @@ function routeMethods(
     : [route.method ?? "ALL"];
   if (methods.length === 0) {
     throw new Error(
-      `Trusted plugin route "${route.path}" from plugin "${pluginName}" must declare at least one method`,
+      `Plugin route "${route.path}" from plugin "${pluginName}" must declare at least one method`,
     );
   }
 
   for (const method of methods) {
     if (!AGENT_PLUGIN_ROUTE_METHODS.has(method)) {
       throw new Error(
-        `Trusted plugin route "${route.path}" from plugin "${pluginName}" has invalid method "${String(method)}"`,
+        `Plugin route "${route.path}" from plugin "${pluginName}" has invalid method "${String(method)}"`,
       );
     }
   }
   if (methods.includes("ALL") && methods.length > 1) {
     throw new Error(
-      `Trusted plugin route "${route.path}" from plugin "${pluginName}" must not combine ALL with explicit methods`,
+      `Plugin route "${route.path}" from plugin "${pluginName}" must not combine ALL with explicit methods`,
     );
   }
   return methods;
 }
 
-/** Collect route handlers exposed by trusted plugins for app-level mounting. */
+/** Collect route handlers exposed by plugins for app-level mounting. */
 export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
   const routes: AgentPluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -238,23 +238,23 @@ export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
-        `Trusted plugin routes hook from plugin "${plugin.name}" must return an array`,
+        `Plugin routes hook from plugin "${plugin.name}" must return an array`,
       );
     }
     for (const route of pluginRoutes) {
       if (!isRecord(route)) {
         throw new Error(
-          `Trusted plugin route from plugin "${plugin.name}" must be an object`,
+          `Plugin route from plugin "${plugin.name}" must be an object`,
         );
       }
       if (typeof route.path !== "string" || !route.path.startsWith("/")) {
         throw new Error(
-          `Trusted plugin route "${route.path}" from plugin "${plugin.name}" must start with /`,
+          `Plugin route "${route.path}" from plugin "${plugin.name}" must start with /`,
         );
       }
       if (typeof route.handler !== "function") {
         throw new Error(
-          `Trusted plugin route "${route.path}" from plugin "${plugin.name}" must provide a handler`,
+          `Plugin route "${route.path}" from plugin "${plugin.name}" must provide a handler`,
         );
       }
       const methods = routeMethods(route, plugin.name);
@@ -264,15 +264,13 @@ export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
         (methods.includes("ALL") && pathMethods.size > 0)
       ) {
         throw new Error(
-          `Trusted plugin route "${route.path}" conflicts with an ALL route for the same path`,
+          `Plugin route "${route.path}" conflicts with an ALL route for the same path`,
         );
       }
       for (const method of methods) {
         const key = `${method}:${route.path}`;
         if (seen.has(key)) {
-          throw new Error(
-            `Duplicate trusted plugin route "${method} ${route.path}"`,
-          );
+          throw new Error(`Duplicate plugin route "${method} ${route.path}"`);
         }
         seen.add(key);
         pathMethods.add(method);
@@ -303,20 +301,20 @@ function trustedSlackConversationUrl(
     parsed = new URL(url);
   } catch (error) {
     throw new Error(
-      `Trusted plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
+      `Plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
       { cause: error },
     );
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(
-      `Trusted plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
+      `Plugin "${pluginName}" slackConversationLink must return an absolute http(s) URL`,
     );
   }
   return parsed.toString();
 }
 
-/** Resolve the first trusted plugin conversation URL for finalized Slack footers. */
+/** Resolve the first plugin conversation URL for finalized Slack footers. */
 export function getAgentPluginSlackConversationLink(
   conversationId: string,
 ): SlackConversationLink | undefined {
@@ -521,7 +519,7 @@ function failedOperationalReport(args: {
   };
 }
 
-/** Collect read-only operational summaries exposed by trusted plugins. */
+/** Collect read-only operational summaries exposed by plugins. */
 export async function getAgentPluginOperationalReports(
   nowMs = Date.now(),
 ): Promise<PluginOperationalReport[]> {
@@ -552,7 +550,7 @@ export async function getAgentPluginOperationalReports(
         }),
       );
     } catch (error) {
-      log.error("Trusted plugin operational report failed", {
+      log.error("Plugin operational report failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       reports.push(failedOperationalReport({ nowMs, pluginName: plugin.name }));
@@ -605,7 +603,7 @@ function createSandboxCapability(sandbox: SandboxInstance): AgentPluginSandbox {
   };
 }
 
-/** Create one runner over trusted agent plugins registered by the app. */
+/** Create one runner over runtime hook plugins registered by the app. */
 export function createAgentPluginHookRunner(
   input: {
     requester?: AgentPluginRequester;

@@ -15,7 +15,7 @@ Define Junior's authenticated dashboard route, browser-session auth model, and r
 - Better Auth configuration for browser sessions.
 - Google domain and email authorization policy.
 - In-process reporting interfaces exported by `@sentry/junior`.
-- Trusted plugin route integration for mounting dashboard routes into Junior's Hono app.
+- Plugin route integration for mounting dashboard routes into Junior's Hono app.
 
 ## Non-Goals
 
@@ -84,7 +84,7 @@ export function juniorDashboardNitro(options: JuniorDashboardNitroOptions): {
 };
 ```
 
-`@sentry/junior-dashboard` exports the trusted plugin factory used by normal
+`@sentry/junior-dashboard` exports the plugin factory used by normal
 dashboard deployments:
 
 ```ts
@@ -106,7 +106,7 @@ export function juniorDashboardPlugin(
 ): JuniorPluginRegistration;
 ```
 
-The trusted plugin is the normal dashboard integration path. When registered
+The plugin factory is the normal dashboard integration path. When registered
 through a `defineJuniorPlugins([juniorDashboardPlugin(...)])` plugin set, it
 mounts the dashboard/auth HTTP routes and supplies dashboard conversation URLs
 for finalized Slack reply footers. It must not expose dashboard data or tools to
@@ -148,7 +148,7 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/skills`                      | Discovered skill inventory.                                        |
 | `GET /api/dashboard/sessions`                    | Conversation feed from recent turn-session records.                |
 | `GET /api/dashboard/conversation-stats`          | Aggregate conversation stats, leaderboards, and sampling metadata. |
-| `GET /api/dashboard/plugin-reports`              | Sanitized trusted-plugin operational summaries.                    |
+| `GET /api/dashboard/plugin-reports`              | Sanitized plugin operational summaries.                            |
 | `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs.                |
 | `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.                 |
 | `GET /api/dashboard/me`                          | Signed-in dashboard identity.                                      |
@@ -239,7 +239,7 @@ Reporting data may include:
 - skill names and owning plugin provider
 - conversation and turn summaries when provided by an in-process, read-only Junior reporting interface
 - aggregate conversation stats from a dedicated reporting endpoint
-- trusted plugin operational summaries made of bounded string metrics and record sets
+- plugin operational summaries made of bounded string metrics and record sets
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links for conversation summaries when Sentry DSN and org slug configuration are present
@@ -264,9 +264,9 @@ be treated as bounded, even when the backing index cannot prove an additional
 record exists. A stats-reporting failure must not make the core dashboard health,
 conversation feed, or plugin inventory unavailable.
 
-### Trusted Plugin Operational Reports
+### Plugin Operational Reports
 
-Trusted plugins may expose a read-only `operationalReport(ctx)` hook. The context
+Plugins may expose a read-only `operationalReport(ctx)` hook. The context
 contains only the plugin name, plugin logger, current timestamp, and that
 plugin's namespaced durable state.
 
@@ -280,13 +280,13 @@ The dashboard renders plugin reports generically. The dashboard package must
 not import scheduler or other plugin implementation modules to read their
 private state.
 
-## Trusted Plugin Route Integration
+## Plugin Route Integration
 
 `juniorDashboardPlugin()` mounts dashboard routes into the same Hono app returned by `createApp()`.
 
-The dashboard trusted plugin must:
+The dashboard plugin must:
 
-1. Register only route-prefixed dashboard/auth handlers through the trusted plugin `routes` hook.
+1. Register only route-prefixed dashboard/auth handlers through the plugin `routes` hook.
 2. Avoid global middleware that can intercept Junior runtime routes.
 3. Register dashboard/auth routes with higher precedence than Junior's built-in `/` health route and runtime API routes.
 4. Keep Slack webhook, provider OAuth callback, internal, sandbox egress, and `/health` routes owned by Junior core.
@@ -328,7 +328,7 @@ serving.
 3. Dashboard sessions do not grant provider credentials or Slack permissions.
 4. Dashboard APIs never return secret-bearing runtime values.
 5. Browser session cookies are never model-visible and never passed into sandbox execution.
-6. The dashboard package is not exposed to agent turns; the trusted plugin may only provide dashboard/auth route handlers and the Slack footer conversation link hook.
+6. The dashboard package is not exposed to agent turns; the plugin may only provide dashboard/auth route handlers and the Slack footer conversation link hook.
 
 ## Observability
 
@@ -354,7 +354,7 @@ Dashboard implementation requires integration tests for:
 
 1. unauthenticated `GET /` starts the Better Auth login flow when the dashboard package is mounted.
 2. `GET /health` returns public minimal health JSON.
-3. the dashboard trusted plugin does not intercept Junior runtime routes when mounted at `/`.
+3. the dashboard plugin does not intercept Junior runtime routes when mounted at `/`.
 4. unauthenticated `GET /api/dashboard/info` does not return diagnostics.
 5. authenticated allowed-domain users can read `/api/dashboard/info`.
 6. authenticated wrong-domain users receive `403`.
@@ -363,7 +363,7 @@ Dashboard implementation requires integration tests for:
 9. Slack webhook, provider OAuth callback, internal, and sandbox egress routes are not intercepted by dashboard auth.
 10. dashboard reporting cannot return secret-bearing values.
 11. authenticated users can read aggregate conversation stats.
-12. authenticated users can read sanitized trusted-plugin operational reports.
+12. authenticated users can read sanitized plugin operational reports.
 
 Tests must follow `./testing.md`: route wiring and auth behavior belong in integration tests.
 

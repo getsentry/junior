@@ -2,7 +2,7 @@ import type { JuniorPluginRegistration } from "@sentry/junior-plugin-api";
 
 export type GitHubAppPermissionLevel = "read" | "write" | "admin";
 
-/** Configure the built-in GitHub plugin manifest and trusted hooks. */
+/** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
   /**
    * Extra OAuth `scope` values to request during GitHub App user authorization.
@@ -45,7 +45,7 @@ export interface GitHubPluginOptions {
   privateKeyEnv?: string;
 }
 
-/** Register GitHub manifest content and trusted runtime hooks. */
+/** Register GitHub manifest content and runtime hooks. */
 export function githubPlugin(
   options?: GitHubPluginOptions,
 ): JuniorPluginRegistration;

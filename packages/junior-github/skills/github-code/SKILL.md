@@ -1,6 +1,6 @@
 ---
 name: github-code
-description: Clone repositories, inspect source, edit code, and manage pull requests with GitHub CLI. Use for repo implementation questions, cloning/editing, PR inspection/mutation, and PR auth-order questions. For PR auth order, answer that `git push` needs GitHub remote write access before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
+description: Clone repositories, inspect source, edit code, and manage pull requests with GitHub CLI. Use for repo implementation questions, cloning/editing, PR inspection/mutation, and PR creation order questions. For PR creation order, answer that the branch must be pushed before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 allowed-tools: bash
 ---
 
@@ -13,7 +13,7 @@ Use `gh` and `git` for repository checkout, source investigation, code changes, 
 | Need                                | Load                                                                                   |
 | ----------------------------------- | -------------------------------------------------------------------------------------- |
 | Command syntax, permissions, config | [references/api-surface.md](references/api-surface.md)                                 |
-| Failed commands, auth errors        | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Failed commands, permission errors  | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Core rules
 
@@ -24,7 +24,7 @@ Use `gh` and `git` for repository checkout, source investigation, code changes, 
 - Do not overwrite or revert unrelated user changes.
 - Do not guess architecture, upstream intent, or feedback validity without reading the relevant code, comments, or failing output.
 - Do not claim checks ran unless they did. Do not declare a fix complete without running the chosen check or stating why no credible check was available.
-- Stop on: missing repo access, ambiguous target, destructive op without confirmation, or unresolved auth failure.
+- Stop on: missing repo access, ambiguous target, destructive op without confirmation, or unresolved permission failure.
 
 ## Workflow
 
@@ -156,12 +156,11 @@ Before finishing, reconcile any plan or checklist stated earlier — mark items 
 
 **PR inspection** — read-only `gh pr` and `gh api` commands. Query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{n}/comments` and `.../reviews`).
 
-**PR mutation** — push before create. Retry once on auth failure after verifying repo targeting. Treat merge, close-with-delete, and force-push as confirmation-required. No admin mutations.
+**PR mutation** — push before create. Retry once on permission failure after verifying repo targeting. Treat merge, close-with-delete, and force-push as confirmation-required. No admin mutations.
 
 ## Guardrails
 
 - Default shallow clones; deepen only when needed.
 - Confirm before destructive merges or force operations.
 - Answer source questions from repo evidence, not product framing or memory.
-- GitHub App auth is host-managed; do not ask users to reconnect accounts.
 - Stop and return concrete remediation on missing access or permissions.

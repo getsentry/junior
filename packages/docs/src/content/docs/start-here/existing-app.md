@@ -61,7 +61,7 @@ export default defineConfig({
 
 If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/turn-resume`, and `/health`. Do not split those routes across independent runtime instances. When mounted, `@sentry/junior-dashboard` owns `/`, `/api/dashboard/*`, and `/api/auth/*`.
 
-Some packages export trusted runtime hooks instead of `plugin.yaml`. Add those
+Some packages export runtime hooks instead of `plugin.yaml`. Add those
 plugin factories to the same `plugins.ts` set. For example, see
 [Scheduler Plugin](/extend/scheduler-plugin/) for scheduled tasks and
 [GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` setup.

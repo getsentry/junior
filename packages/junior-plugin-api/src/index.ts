@@ -21,7 +21,7 @@ export const destinationSchema = z
   })
   .strict();
 
-/** Stable user credential subject shape accepted from trusted plugins. */
+/** Stable user credential subject shape accepted from plugins. */
 export const agentPluginCredentialSubjectSchema = z
   .object({
     type: z.literal("user"),
@@ -30,7 +30,7 @@ export const agentPluginCredentialSubjectSchema = z
   })
   .strict();
 
-/** Runtime-provided requester identity visible to trusted plugin hooks. */
+/** Runtime-provided requester identity visible to plugin hooks. */
 export const agentPluginRequesterSchema = z
   .object({
     userId: exactActorUserIdSchema.optional(),
@@ -77,7 +77,7 @@ const dispatchMetadataSchema = z
     }
   });
 
-/** Trusted plugin dispatch request accepted by Junior core. */
+/** Plugin dispatch request accepted by Junior core. */
 export const dispatchOptionsSchema = z
   .object({
     idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
@@ -110,7 +110,7 @@ export interface AgentPluginLogger {
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
 
-/** Thrown when a trusted plugin tool rejects invalid model or user input. */
+/** Thrown when a plugin tool rejects invalid model or user input. */
 export class AgentPluginToolInputError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -370,12 +370,22 @@ export const agentPluginAuthorizationSchema = z
   })
   .strict();
 
+/** Runtime schema for a provider account attached to stored OAuth tokens. */
+export const agentPluginProviderAccountSchema = z
+  .object({
+    id: nonBlankStringSchema,
+    label: nonBlankStringSchema.optional(),
+    url: nonBlankStringSchema.optional(),
+  })
+  .strict();
+
 /** Runtime schema for a plugin-defined outbound credential grant. */
 export const agentPluginGrantSchema = z
   .object({
     access: agentPluginGrantAccessSchema,
     name: agentPluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),
+    requirements: z.array(nonBlankStringSchema).min(1).optional(),
   })
   .strict();
 
@@ -392,6 +402,7 @@ export const agentPluginCredentialHeaderTransformSchema = z
 /** Runtime schema for a short-lived plugin-issued credential lease. */
 export const agentPluginCredentialLeaseSchema = z
   .object({
+    account: agentPluginProviderAccountSchema.optional(),
     authorization: agentPluginAuthorizationSchema.optional(),
     expiresAt: z.string().refine((value) => Number.isFinite(Date.parse(value))),
     headerTransforms: z
@@ -424,6 +435,11 @@ export type AgentPluginGrantAccess = z.output<
 /** Provider authorization Junior can start when a plugin-owned grant is missing. */
 export type AgentPluginAuthorization = z.output<
   typeof agentPluginAuthorizationSchema
+>;
+
+/** Provider account identity resolved by a plugin OAuth hook. */
+export type AgentPluginProviderAccount = z.output<
+  typeof agentPluginProviderAccountSchema
 >;
 
 /** Plugin-defined grant required before Junior can forward one outbound request. */
@@ -469,6 +485,7 @@ export interface AgentPluginResolvedCredentialUser {
 }
 
 export interface AgentPluginStoredTokens {
+  account?: AgentPluginProviderAccount;
   accessToken: string;
   expiresAt?: number;
   refreshToken: string;
@@ -484,6 +501,10 @@ export interface AgentPluginUserTokenSlot {
 export interface AgentPluginTokenStore {
   credentialSubject?: AgentPluginUserTokenSlot;
   currentUser?: AgentPluginUserTokenSlot;
+}
+
+export interface ResolveOAuthAccountHookContext extends AgentPluginContext {
+  tokens: AgentPluginStoredTokens;
 }
 
 export interface IssueCredentialHookContext extends AgentPluginContext {
@@ -502,6 +523,12 @@ export interface AgentPluginHooks {
   issueCredential?(
     ctx: IssueCredentialHookContext,
   ): Promise<AgentPluginCredentialResult> | AgentPluginCredentialResult;
+  resolveOAuthAccount?(
+    ctx: ResolveOAuthAccountHookContext,
+  ):
+    | Promise<AgentPluginProviderAccount | undefined>
+    | AgentPluginProviderAccount
+    | undefined;
   routes?(ctx: RouteRegistrationHookContext): AgentPluginRoute[];
   tools?(
     ctx: ToolRegistrationHookContext,
@@ -554,16 +581,7 @@ export interface JuniorPluginOAuthBearerCredentials {
   type: "oauth-bearer";
 }
 
-export interface JuniorPluginManagedCredentials {
-  authTokenEnv?: string;
-  authTokenPlaceholder?: string;
-  domains: string[];
-  type: "plugin-managed";
-}
-
-export type JuniorPluginCredentials =
-  | JuniorPluginOAuthBearerCredentials
-  | JuniorPluginManagedCredentials;
+export type JuniorPluginCredentials = JuniorPluginOAuthBearerCredentials;
 
 export interface JuniorPluginNpmRuntimeDependency {
   package: string;
@@ -646,7 +664,7 @@ export function defineJuniorPlugin(
 ): JuniorPluginRegistration {
   if ("pluginConfig" in plugin) {
     throw new Error(
-      "pluginConfig is no longer supported. Put runtime metadata in manifest and trusted state prefixes on the plugin registration.",
+      "pluginConfig is no longer supported. Put runtime metadata in manifest and state prefixes on the plugin registration.",
     );
   }
   const manifest = plugin.manifest;

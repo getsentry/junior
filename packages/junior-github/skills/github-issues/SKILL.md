@@ -1,13 +1,13 @@
 ---
 name: github-issues
-description: Create, update, comment on, label, and inspect GitHub issues via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for issue operations; do not use for pull requests, branches, pushes, or PR auth-order questions.
+description: Create, update, comment on, label, and inspect GitHub issues via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for issue operations; do not use for pull requests, branches, pushes, or PR creation order questions.
 allowed-tools: bash
 ---
 
 # GitHub Issue Operations
 
 Issue create, update, comment, label, state, and inspection via `gh` CLI.
-Use only for GitHub issues. For pull requests, branches, pushes, or PR auth-order questions, load `github-code` instead.
+Use only for GitHub issues. For pull requests, branches, pushes, or PR creation order questions, load `github-code` instead.
 
 ## Reference loading
 
@@ -95,4 +95,3 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 - Do not overwrite issue fields unless explicitly requested. Prefer partial updates over full body replacement.
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
 - If repository or installation access is missing, stop and return a concrete remediation message.
-- GitHub App auth is host-managed; do not ask the user to reconnect a GitHub account.

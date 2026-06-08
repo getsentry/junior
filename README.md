@@ -23,7 +23,7 @@ Start here:
 | Package                        | Purpose                                                                      |
 | ------------------------------ | ---------------------------------------------------------------------------- |
 | `@sentry/junior`               | Core Slack bot runtime                                                       |
-| `@sentry/junior-plugin-api`    | Lightweight trusted plugin API types and helpers                             |
+| `@sentry/junior-plugin-api`    | Lightweight plugin API types and helpers                                     |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |

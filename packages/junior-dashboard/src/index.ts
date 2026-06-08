@@ -51,7 +51,7 @@ function dashboardRoutes(
   }));
 }
 
-/** Register dashboard routes and Slack footer links through trusted plugin hooks. */
+/** Register dashboard routes and Slack footer links through plugin hooks. */
 export function juniorDashboardPlugin(
   options: JuniorDashboardPluginOptions = {},
 ): JuniorPluginRegistration {

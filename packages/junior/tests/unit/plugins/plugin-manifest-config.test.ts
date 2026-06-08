@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parsePluginManifest } from "@/chat/plugins/manifest";
+import {
+  parseInlinePluginManifest,
+  parsePluginManifest,
+} from "@/chat/plugins/manifest";
 
 describe("plugin manifest config", () => {
   it("applies manifest config before validation", () => {
@@ -47,9 +50,10 @@ describe("plugin manifest config", () => {
         "name: github",
         "description: GitHub",
         "credentials:",
-        "  type: plugin-managed",
+        "  type: oauth-bearer",
         "  domains:",
         "    - api.github.com",
+        "  auth-token-env: GITHUB_TOKEN",
         "oauth:",
         "  client-id-env: GITHUB_APP_CLIENT_ID",
         "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
@@ -77,10 +81,11 @@ describe("plugin manifest config", () => {
         "name: github",
         "description: GitHub",
         "credentials:",
-        "  type: plugin-managed",
+        "  type: oauth-bearer",
         "  domains:",
         "    - api.github.com",
         "    - github.com",
+        "  auth-token-env: GITHUB_TOKEN",
         "oauth:",
         "  client-id-env: GITHUB_APP_CLIENT_ID",
         "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
@@ -94,33 +99,7 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
-  it("allows plugin-managed credentials to declare user OAuth", () => {
-    const manifest = parsePluginManifest(
-      [
-        "name: github",
-        "description: GitHub",
-        "credentials:",
-        "  type: plugin-managed",
-        "  domains:",
-        "    - api.github.com",
-        "    - github.com",
-        "oauth:",
-        "  client-id-env: GITHUB_APP_CLIENT_ID",
-        "  client-secret-env: GITHUB_APP_CLIENT_SECRET",
-        "  authorize-endpoint: https://github.com/login/oauth/authorize",
-        "  token-endpoint: https://github.com/login/oauth/access_token",
-      ].join("\n"),
-      "/plugins/github",
-    );
-
-    expect(manifest.credentials?.type).toBe("plugin-managed");
-    expect(manifest.oauth).toMatchObject({
-      clientIdEnv: "GITHUB_APP_CLIENT_ID",
-      clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
-    });
-  });
-
-  it("rejects plugin-managed placeholders without an auth token env", () => {
+  it("rejects plugin-managed credentials in plugin.yaml", () => {
     expect(() =>
       parsePluginManifest(
         [
@@ -130,13 +109,39 @@ describe("plugin manifest config", () => {
           "  type: plugin-managed",
           "  domains:",
           "    - api.github.com",
-          "  auth-token-placeholder: ghp_host_managed_credential",
+          "    - github.com",
         ].join("\n"),
         "/plugins/github",
       ),
     ).toThrow(
-      "Plugin github credentials.auth-token-placeholder requires auth-token-env",
+      'Plugin github has unsupported credentials.type: "plugin-managed"',
     );
+  });
+
+  it("allows code-based egress domains to declare user OAuth", () => {
+    const manifest = parseInlinePluginManifest(
+      {
+        name: "github",
+        description: "GitHub",
+        capabilities: [],
+        configKeys: [],
+        domains: ["api.github.com", "github.com"],
+        oauth: {
+          clientIdEnv: "GITHUB_APP_CLIENT_ID",
+          clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+          authorizeEndpoint: "https://github.com/login/oauth/authorize",
+          tokenEndpoint: "https://github.com/login/oauth/access_token",
+        },
+      },
+      "/plugins/github",
+    );
+
+    expect(manifest.credentials).toBeUndefined();
+    expect(manifest.domains).toEqual(["api.github.com", "github.com"]);
+    expect(manifest.oauth).toMatchObject({
+      clientIdEnv: "GITHUB_APP_CLIENT_ID",
+      clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+    });
   });
 
   it("removes optional map entries with null config values", () => {

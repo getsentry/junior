@@ -931,7 +931,7 @@ describe("createSandboxExecutor", () => {
     expect(response.result.permission_denied).toBeUndefined();
   });
 
-  it("attaches trusted sandbox egress auth signals to failed bash results", async () => {
+  it("attaches sandbox egress auth signals to failed bash results", async () => {
     const sandbox = makeSandbox("sbx_fresh_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressAuthRequiredSignal(
@@ -989,7 +989,7 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("attaches trusted sandbox egress permission signals to failed bash results", async () => {
+  it("attaches sandbox egress permission signals to failed bash results", async () => {
     const sandbox = makeSandbox("sbx_permission_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressPermissionDeniedSignal(

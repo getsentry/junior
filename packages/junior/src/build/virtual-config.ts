@@ -2,7 +2,7 @@ import type { Nitro } from "nitro/types";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   pluginCatalogConfigFromPluginSet,
-  trustedPluginRegistrationsFromPluginSet,
+  pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
 
@@ -23,7 +23,7 @@ function renderRuntimePluginImport(module: RuntimePluginModule): string {
 export function renderVirtualConfig(options: {
   plugins?: PluginCatalogConfig;
   pluginModule?: RuntimePluginModule;
-  trustedPluginRegistrations?: string[];
+  pluginHookRegistrations?: string[];
 }): string {
   const lines = [
     ...(options.pluginModule
@@ -33,7 +33,7 @@ export function renderVirtualConfig(options: {
         ]
       : ["export const pluginSet = undefined;"]),
     `export const plugins = ${JSON.stringify(options.plugins ?? { packages: [] })};`,
-    `export const trustedPluginRegistrations = ${JSON.stringify(options.trustedPluginRegistrations ?? [])};`,
+    `export const pluginHookRegistrations = ${JSON.stringify(options.pluginHookRegistrations ?? [])};`,
   ];
 
   return lines.join("\n");
@@ -46,7 +46,7 @@ export function injectVirtualConfig(
     loadPluginSet?: () => Promise<JuniorPluginSet | undefined>;
     pluginModule?: RuntimePluginModule;
     plugins?: PluginCatalogConfig;
-    trustedPluginRegistrations?: string[];
+    pluginHookRegistrations?: string[];
   } = {},
 ): void {
   nitro.options.virtual["#junior/config"] = async () => {
@@ -59,7 +59,7 @@ export function injectVirtualConfig(
     return renderVirtualConfig({
       pluginModule: options.pluginModule,
       plugins: pluginCatalogConfigFromPluginSet(pluginSet),
-      trustedPluginRegistrations: trustedPluginRegistrationsFromPluginSet(
+      pluginHookRegistrations: pluginHookRegistrationsFromPluginSet(
         pluginSet,
       ).map((plugin) => plugin.name),
     });

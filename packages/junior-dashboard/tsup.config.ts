@@ -26,7 +26,7 @@ interface EsbuildPlugin {
 const packageRoot = import.meta.dirname;
 const dashboardAssetsPath = path.join(packageRoot, "src", "assets.ts");
 
-/** Read client build output that must be embedded in trusted plugin routes. */
+/** Read client build output that must be embedded in plugin routes. */
 function readBuiltAsset(fileName: string): string {
   const assetPath = path.join(packageRoot, "dist", fileName);
   if (!existsSync(assetPath)) {
@@ -37,7 +37,7 @@ function readBuiltAsset(fileName: string): string {
   return readFileSync(assetPath, "utf8");
 }
 
-/** Inline dashboard browser assets so trusted route plugins need no Nitro copy hook. */
+/** Inline dashboard browser assets so plugin routes need no Nitro copy hook. */
 function dashboardAssetsPlugin(): EsbuildPlugin {
   return {
     name: "junior-dashboard-assets",

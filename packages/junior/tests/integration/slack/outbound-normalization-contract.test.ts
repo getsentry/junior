@@ -81,7 +81,7 @@ describe("Slack contract: outbound normalization", () => {
     ]);
   });
 
-  it("lets trusted plugins replace the footer conversation link", async () => {
+  it("lets plugins replace the footer conversation link", async () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "dashboard",

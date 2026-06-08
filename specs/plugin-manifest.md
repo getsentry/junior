@@ -70,14 +70,14 @@ target:
 
 - `capabilities`: short names qualified to `<plugin>.<capability>` by the registry.
 - `config-keys`: short names qualified to `<plugin>.<key>` by the registry.
-- `domains`: plugin-level domains for API header injection. Required when `api-headers` is set.
+- `domains`: plugin-level domains for API header injection or code-based plugin egress hooks. Required when `api-headers` is set. In `plugin.yaml`, `domains` must pair with `api-headers` or `credentials`.
 - `api-headers`: headers injected for matching `domains`. Secret values must come from `${NAME}` placeholders declared in `env-vars` without defaults.
-- `credentials.type`: `"oauth-bearer"` or `"plugin-managed"`. Plugin-managed manifests require a matching trusted plugin registration with both `grantForEgress` and `issueCredential`.
-- `credentials.domains`: domains that receive runtime-managed credential headers. Include every host that needs credentials, such as both `api.github.com` and `github.com` for GitHub App git HTTPS auth.
-- `credentials.auth-token-env`: sandbox placeholder env var name. Required for `oauth-bearer` credentials, where it can also name a static host token used outside credential-context-bound turns. Optional for `plugin-managed` credentials that need CLI compatibility; trusted hooks still issue request credentials.
-- `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility. For `plugin-managed` credentials, this requires `auth-token-env`.
-- `credentials.api-headers`: optional extra headers for `oauth-bearer` credentials only. Plugin-managed hooks must issue any extra headers in their credential lease.
-- `oauth`: required for OAuth bearer providers. Plugin-managed providers may also declare OAuth so trusted hooks can request user authorization when a plugin-defined grant is unavailable. Endpoints must be HTTPS.
+- `credentials.type`: `"oauth-bearer"` only. Plugin-owned egress credentials are not declared in `credentials`; code-based plugins declare top-level `domains` and register both `grantForEgress` and `issueCredential`.
+- `credentials.domains`: domains that receive generic OAuth bearer credential headers.
+- `credentials.auth-token-env`: sandbox placeholder env var name. Required for `oauth-bearer` credentials, where it can also name a static host token used outside credential-context-bound turns.
+- `credentials.auth-token-placeholder`: optional non-secret sandbox env value for CLI compatibility.
+- `credentials.api-headers`: optional extra headers for `oauth-bearer` credentials only.
+- `oauth`: required for OAuth bearer providers. Code-based plugins may also declare OAuth without `credentials` so egress credential hooks can request user authorization when a plugin-defined grant is unavailable. Endpoints must be HTTPS.
 - `target.config-key`: must appear in `config-keys`.
 - `runtime-dependencies`: optional sandbox dependencies. `type` is `"npm"` or `"system"`.
 - `runtime-postinstall`: optional commands run after dependency install and before snapshot capture.

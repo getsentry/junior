@@ -44,9 +44,7 @@ function inlineCredentialsSource(
   const result: ManifestSource = {};
   setDefined(result, "type", credentials.type);
   setDefined(result, "domains", credentials.domains);
-  if (credentials.type === "oauth-bearer") {
-    setDefined(result, "api-headers", credentials.apiHeaders);
-  }
+  setDefined(result, "api-headers", credentials.apiHeaders);
   setDefined(result, "auth-token-env", credentials.authTokenEnv);
   setDefined(
     result,

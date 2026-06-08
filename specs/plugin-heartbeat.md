@@ -1,4 +1,4 @@
-# Trusted Plugin Heartbeat Spec
+# Plugin Heartbeat Spec
 
 ## Metadata
 
@@ -7,15 +7,15 @@
 
 ## Purpose
 
-Define the trusted-plugin heartbeat and tool-registration surface needed to move scheduler behavior out of Junior core without exposing raw routes, platform internals, Slack clients, or agent execution internals.
+Define the plugin heartbeat and tool-registration surface needed to move scheduler behavior out of Junior core without exposing raw routes, platform internals, Slack clients, or agent execution internals.
 
 ## Scope
 
-- Trusted plugin boundary.
-- Trusted plugin tool registration hook.
+- Plugin hook boundary.
+- Plugin tool registration hook.
 - Core-owned heartbeat endpoint.
 - Heartbeat context and reliability semantics.
-- Capability boundaries exposed to trusted plugins.
+- Capability boundaries exposed to plugins.
 
 ## Non-Goals
 
@@ -24,14 +24,13 @@ Define the trusted-plugin heartbeat and tool-registration surface needed to move
 - Plugin-owned Vercel/deployment adapter behavior.
 - Generic durable queue infrastructure.
 - Raw Slack Web API, raw agent runtime, raw Redis, or unrestricted state adapter access.
-- Durable agent dispatch internals; see [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
+- Durable agent dispatch internals; see [Plugin Dispatch Spec](./plugin-dispatch.md).
 
 ## Trust Boundary
 
-Heartbeat and agent dispatch are trusted plugin capabilities. They are
-available only to Junior-owned built-in trusted plugins and plugins explicitly
-enabled through the app's `defineJuniorPlugins(...)` set as trusted runtime
-plugins.
+Heartbeat and agent dispatch are plugin hook capabilities. They are available
+only to plugins explicitly enabled through the app's
+`defineJuniorPlugins(...)` set.
 
 Declarative `plugin.yaml` manifests must not register heartbeat handlers, internal routes, or agent dispatch behavior.
 
@@ -40,7 +39,7 @@ Core owns:
 - route registration
 - internal route authentication
 - deployment cron configuration
-- trusted plugin lookup
+- plugin lookup
 - plugin state namespaces
 - serverless continuation callbacks
 - agent execution and Slack delivery
@@ -51,10 +50,10 @@ Plugins own only their domain logic: tools, heartbeat work discovery, durable pl
 
 ## Interactive Tool Registration
 
-Trusted plugins may register turn-scoped tools:
+Plugins may register turn-scoped tools:
 
 ```ts
-interface TrustedPluginHooks {
+interface AgentPluginHooks {
   tools?(ctx: ToolRegistrationContext): Record<string, ToolDefinition>;
 }
 ```
@@ -89,7 +88,7 @@ Core responsibilities:
 
 1. Verify the request with the configured internal heartbeat secret.
 2. Re-drive stale core dispatches within a bounded core recovery budget.
-3. Enumerate trusted plugin heartbeat handlers.
+3. Enumerate plugin heartbeat handlers.
 4. Invoke handlers with bounded `HeartbeatContext`.
 5. Enforce per-handler and total plugin heartbeat budgets.
 6. Log core recovery and per-plugin outcomes.
@@ -99,10 +98,10 @@ The endpoint is a pulse, not a job runner.
 
 ## Heartbeat Hook
 
-Trusted plugins may implement:
+Plugins may implement:
 
 ```ts
-interface TrustedPluginHooks {
+interface AgentPluginHooks {
   heartbeat?(ctx: HeartbeatContext): Promise<HeartbeatResult | void>;
 }
 ```
@@ -135,7 +134,7 @@ interface HeartbeatContext {
 }
 ```
 
-Do not expose `waitUntil` to trusted plugins. Core may use platform lifetime extension internally, but plugin handlers should be written as bounded request handlers.
+Do not expose `waitUntil` to plugins. Core may use platform lifetime extension internally, but plugin handlers should be written as bounded request handlers.
 
 ## Core Capability Boundaries
 
@@ -166,14 +165,14 @@ Core may expose narrow capabilities:
 - Heartbeat budget exhausted: unfinished work remains in durable state for a later heartbeat.
 - Plugin throws: core logs safe metadata and isolates the failure from other plugins.
 
-Dispatch-specific failure handling is defined in [Trusted Plugin Dispatch Spec](./trusted-plugin-dispatch.md).
+Dispatch-specific failure handling is defined in [Plugin Dispatch Spec](./plugin-dispatch.md).
 
 ## Observability
 
 Core heartbeat logs should include:
 
 - heartbeat invocation id
-- trusted plugin name
+- plugin name
 - handler kind
 - duration
 - outcome
@@ -187,7 +186,7 @@ Logs and spans must not include OAuth tokens, provider credentials, raw authoriz
 Use integration tests for:
 
 - heartbeat endpoint authentication
-- trusted plugin heartbeat invocation
+- plugin heartbeat invocation
 - heartbeat isolation when one plugin fails
 - namespaced state access
 - scheduler heartbeat claims due runs but does not execute inline
@@ -207,6 +206,6 @@ Use evals for:
 
 - `./plugin.md`
 - `./plugin-runtime.md`
-- `./trusted-plugin-dispatch.md`
+- `./plugin-dispatch.md`
 - `./scheduler.md`
 - `./agent-session-resumability.md`

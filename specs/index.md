@@ -42,8 +42,8 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/context-compaction.md`
 - `specs/advisor-tool.md`
 - `specs/scheduler.md`
-- `specs/trusted-plugin-heartbeat.md`
-- `specs/trusted-plugin-dispatch.md`
+- `specs/plugin-heartbeat.md`
+- `specs/plugin-dispatch.md`
 - `specs/harness-agent.md`
 - `specs/agent-session-resumability.md`
 - `specs/agent-execution.md`

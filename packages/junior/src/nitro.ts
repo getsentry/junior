@@ -20,7 +20,7 @@ import {
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
-  trustedPluginRegistrationsFromPluginSet,
+  pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
 
@@ -41,7 +41,7 @@ export interface JuniorNitroOptions {
   maxDuration?: number;
   /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
   conversationWorkQueueTopic?: string;
-  /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include trusted hooks. */
+  /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime hooks. */
   plugins?: JuniorNitroPluginSource;
   /**
    * Extra file patterns to copy into the server output for files that the
@@ -182,15 +182,15 @@ async function loadPluginSetFromModule(
 }
 
 function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
-  const trustedPluginNames = trustedPluginRegistrationsFromPluginSet(
-    pluginSet,
-  ).map((plugin) => plugin.name);
-  if (trustedPluginNames.length === 0) {
+  const pluginHookNames = pluginHookRegistrationsFromPluginSet(pluginSet).map(
+    (plugin) => plugin.name,
+  );
+  if (pluginHookNames.length === 0) {
     return;
   }
 
   throw new Error(
-    `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with trusted plugin registration(s): ${trustedPluginNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.`,
+    `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime hook registration(s): ${pluginHookNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.`,
   );
 }
 
@@ -309,10 +309,9 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         };
         const pluginCatalogConfig =
           pluginCatalogConfigFromPluginSet(directPluginSet);
-        const trustedPluginRegistrations =
-          trustedPluginRegistrationsFromPluginSet(directPluginSet).map(
-            (plugin) => plugin.name,
-          );
+        const pluginHookRegistrations = pluginHookRegistrationsFromPluginSet(
+          directPluginSet,
+        ).map((plugin) => plugin.name);
         injectVirtualConfig(nitro, {
           ...(pluginModule
             ? {
@@ -321,7 +320,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
               }
             : {}),
           plugins: pluginCatalogConfig,
-          trustedPluginRegistrations,
+          pluginHookRegistrations,
         });
 
         const copyBuildContent = async () => {

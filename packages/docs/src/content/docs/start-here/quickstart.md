@@ -162,7 +162,7 @@ Run the app check after changing plugins or skills:
 pnpm check
 ```
 
-The runtime-safe plugin set is also where trusted runtime hooks are registered.
+The runtime-safe plugin set is also where runtime hooks are registered.
 `schedulerPlugin()` enables scheduled task tools and heartbeat behavior, and
 `githubPlugin()` enforces Git commit attribution. See
 [Scheduler Plugin](/extend/scheduler-plugin/) and

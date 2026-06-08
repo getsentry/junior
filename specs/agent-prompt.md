@@ -111,7 +111,7 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 - After loading a plugin-backed skill, the prompt may describe the generic MCP lookup path, but provider-specific tool strategy belongs in the skill, tool description, tool schema, or tool guidance.
 - Skill selection should be explicit: scan available skills, load one clearly matching skill, choose the most specific skill when several match, and avoid loading any skill when none clearly applies.
 - Tool-call style belongs in its own section: call routine tools directly, narrate only when it helps, and prefer first-class tools over asking the user to perform equivalent manual work.
-- Trusted plugin tools must carry concise descriptions and optional tool guidance that tell the agent when and how to use them. Do not compensate for weak plugin tool descriptions by adding plugin-specific bullets to the core prompt.
+- Plugin tools must carry concise descriptions and optional tool guidance that tell the agent when and how to use them. Do not compensate for weak plugin tool descriptions by adding plugin-specific bullets to the core prompt.
 
 ### Runtime and safety boundaries
 

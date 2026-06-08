@@ -533,7 +533,7 @@ export function createDashboardApp(
       return Response.json(await readPluginReports(reporting));
     } catch {
       return Response.json(
-        { error: "Trusted plugin stats failed to load." },
+        { error: "Plugin stats failed to load." },
         { status: 500 },
       );
     }

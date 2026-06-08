@@ -7,13 +7,11 @@ import type {
   AgentPluginGrant,
 } from "@sentry/junior-plugin-api";
 import {
+  hasEgressCredentialHooks,
   selectPluginGrant,
   issuePluginCredential,
 } from "@/chat/plugins/credential-hooks";
-import {
-  getPluginDefinition,
-  getPluginOAuthConfig,
-} from "@/chat/plugins/registry";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -116,9 +114,7 @@ export async function selectSandboxEgressGrant(input: {
   provider: string;
   upstreamUrl: URL;
 }): Promise<SandboxEgressGrantSelection> {
-  const credentialType = getPluginDefinition(input.provider)?.manifest
-    .credentials?.type;
-  if (credentialType !== "plugin-managed") {
+  if (!hasEgressCredentialHooks(input.provider)) {
     return defaultGrantForProvider(input);
   }
 
@@ -129,7 +125,7 @@ export async function selectSandboxEgressGrant(input: {
   });
   if (!pluginGrant) {
     throw new Error(
-      `Plugin-managed provider "${input.provider}" did not select a grant for sandbox egress`,
+      `Plugin "${input.provider}" grantForEgress must return a grant for sandbox egress`,
     );
   }
   return { source: "plugin", grant: pluginGrant };
@@ -158,7 +154,7 @@ export async function sandboxEgressCredentialLease(
     context,
   );
   if (cached) {
-    if (cached.grant.access !== grant.access) {
+    if (selection.source === "plugin" && cached.grant.access !== grant.access) {
       throw new Error(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
@@ -170,6 +166,7 @@ export async function sandboxEgressCredentialLease(
   }
 
   let lease: {
+    account?: SandboxEgressCredentialLease["account"];
     authorization?: AgentPluginAuthorization;
     expiresAt: string;
     headerTransforms?: SandboxEgressCredentialLease["headerTransforms"];
@@ -219,6 +216,7 @@ export async function sandboxEgressCredentialLease(
   const cachedLease: SandboxEgressCredentialLease = {
     provider,
     grant,
+    ...(lease.account ? { account: lease.account } : {}),
     ...(authorization ? { authorization } : {}),
     expiresAt: lease.expiresAt,
     headerTransforms,

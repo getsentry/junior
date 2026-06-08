@@ -4,6 +4,7 @@ import {
   agentPluginAuthorizationSchema,
   agentPluginCredentialHeaderTransformSchema,
   agentPluginGrantSchema,
+  agentPluginProviderAccountSchema,
 } from "@sentry/junior-plugin-api";
 
 const finiteNumberSchema = z.number().refine(Number.isFinite);
@@ -22,6 +23,7 @@ export const sandboxEgressCredentialContextSchema = z
 
 export const sandboxEgressCredentialLeaseSchema = z
   .object({
+    account: agentPluginProviderAccountSchema.optional(),
     authorization: agentPluginAuthorizationSchema.optional(),
     grant: sandboxEgressGrantSchema,
     provider: providerNameSchema,
@@ -56,6 +58,7 @@ export const sandboxEgressAuthRequiredSignalSchema = z
 
 export const sandboxEgressPermissionDeniedSignalSchema = z
   .object({
+    account: agentPluginProviderAccountSchema.optional(),
     acceptedPermissions: z.string().optional(),
     grant: sandboxEgressGrantSchema,
     message: z.string().min(1),

@@ -47,11 +47,16 @@ describe("normalizeToolResult", () => {
       stdout: "",
       stderr: "remote: Permission denied",
       permission_denied: {
+        account: {
+          id: "12345",
+          label: "requester",
+        },
         acceptedPermissions: "contents=write",
         grant: {
           access: "write",
           name: "user-write",
           reason: "github.git-write",
+          requirements: ["GitHub App Contents: write on the target repository"],
         },
         message:
           "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
@@ -81,6 +86,14 @@ describe("normalizeToolResult", () => {
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
         "Upstream: github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
+      ),
+    });
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining("Provider account: requester (12345)"),
+    });
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining(
+        "GitHub App Contents: write on the target repository",
       ),
     });
   });

@@ -98,10 +98,7 @@ async function registerManagedEgressPlugin(input?: {
           name: "managed-egress",
           description: "Managed egress integration fixture",
           capabilities: ["api"],
-          credentials: {
-            type: "plugin-managed",
-            domains: [MANAGED_PROVIDER_HOST],
-          },
+          domains: [MANAGED_PROVIDER_HOST],
         },
         hooks: {
           grantForEgress(ctx) {
@@ -209,6 +206,53 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("reuses broker-managed credentials across read and write egress", async () => {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) =>
+        new Response(new Headers(init?.headers).get("authorization")),
+    );
+
+    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({ forwardURL }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    expect(readResponse.status).toBe(200);
+    await expect(readResponse.text()).resolves.toBe(
+      "Bearer integration-egress-token",
+    );
+
+    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamPath: "/v1/repos",
+        body: JSON.stringify({ name: "repo" }),
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(writeResponse.status).toBe(200);
+    await expect(writeResponse.text()).resolves.toBe(
+      "Bearer integration-egress-token",
+    );
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("intercepts credential-injected provider traffic before live forwarding", async () => {
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: REQUESTER_ID } },
@@ -245,7 +289,7 @@ describe("sandbox egress proxy integration", () => {
     ).toBe("Bearer integration-egress-token");
   });
 
-  it("uses plugin-managed egress hooks to issue request-scoped credentials", async () => {
+  it("uses plugin egress hooks to issue request-scoped credentials", async () => {
     await registerManagedEgressPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: REQUESTER_ID } },
@@ -294,7 +338,7 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("records plugin-managed write auth needs over earlier read failures", async () => {
+  it("records plugin write auth needs over earlier read failures", async () => {
     await registerManagedEgressPlugin({
       issueCredential(ctx) {
         return {

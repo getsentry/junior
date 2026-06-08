@@ -21,7 +21,7 @@ pnpm add @sentry/junior @sentry/junior-github
 
 ## Runtime setup
 
-Add the trusted plugin factory to the plugin set exported from `plugins.ts`. The factory registers the GitHub manifest,
+Add the GitHub plugin factory to the plugin set exported from `plugins.ts`. The factory registers the GitHub manifest,
 bundled skills, and Git commit attribution hooks together.
 
 ```ts title="plugins.ts"
@@ -43,8 +43,8 @@ Set these values in the host environment:
 | Variable                   | Required | Purpose                                             |
 | -------------------------- | -------- | --------------------------------------------------- |
 | `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-write auth.     |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-write auth. |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.     |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth. |
 | `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                             |
 | `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.     |
 | `GITHUB_APP_BOT_NAME`      | Yes      | Git author name, for example `<app-slug>[bot]`.     |
@@ -107,7 +107,7 @@ For code changes, a local `git commit` does not call GitHub. The GitHub write ha
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- Read requests use GitHub App installation tokens. Write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
+- App-readable requests use GitHub App installation tokens. GitHub account identity checks and write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
 - The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow issued credentials.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.

@@ -150,8 +150,8 @@ export function pluginCatalogConfigFromPluginSet(
   };
 }
 
-/** Return registrations that expose trusted in-process runtime behavior. */
-export function trustedPluginRegistrationsFromPluginSet(
+/** Return registrations that expose in-process runtime hooks. */
+export function pluginHookRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,
 ): JuniorPluginRegistration[] {
   return (

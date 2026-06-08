@@ -80,7 +80,7 @@ describe("capability factory", () => {
     expect(lease.provider).toBe("example");
   });
 
-  it("skips plugin-managed providers in the generic credential router", async () => {
+  it("skips domain-only providers in the generic credential router", async () => {
     const broker = {
       issue: vi.fn(async () => ({
         id: "lease-1",
@@ -97,10 +97,7 @@ describe("capability factory", () => {
           description: "GitHub",
           capabilities: ["github.api"],
           configKeys: [],
-          credentials: {
-            type: "plugin-managed",
-            domains: ["api.github.com"],
-          },
+          domains: ["api.github.com"],
         },
         dir: "/tmp/github",
         skillsDir: "/tmp/github/skills",

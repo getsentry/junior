@@ -11,7 +11,7 @@ describe("renderVirtualConfig", () => {
       plugins: {
         packages: ["@acme/junior-demo"],
       },
-      trustedPluginRegistrations: ["github"],
+      pluginHookRegistrations: ["github"],
     });
 
     expect(code).toContain(
@@ -22,7 +22,7 @@ describe("renderVirtualConfig", () => {
       'export const plugins = {"packages":["@acme/junior-demo"]};',
     );
     expect(code).toContain(
-      'export const trustedPluginRegistrations = ["github"];',
+      'export const pluginHookRegistrations = ["github"];',
     );
   });
 

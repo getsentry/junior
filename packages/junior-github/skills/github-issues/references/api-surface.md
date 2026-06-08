@@ -43,4 +43,4 @@ jr-rpc config set github.repo owner/repo
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
 - For automation, always fully specify `gh issue create` with `--title` and `--body` or `--body-file`; never rely on interactive prompts.
 - Keep `--repo owner/repo` explicit when working across repositories.
-- Return actionable errors for auth, permission, not-found, and validation failures.
+- Return actionable errors for access, permission, not-found, and validation failures.

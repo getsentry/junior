@@ -14,11 +14,41 @@ const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
+const CONTENTS_WRITE_REQUIREMENTS = [
+  "GitHub App Contents: write on the target repository",
+  "requesting GitHub user write access to the repository",
+];
+const WORKFLOWS_WRITE_REQUIREMENTS = [
+  "GitHub App Contents: write and Workflows: write on the target repository",
+  "requesting GitHub user write access to the repository",
+];
+const ISSUES_WRITE_REQUIREMENTS = [
+  "GitHub App Issues: write on the target repository",
+  "requesting GitHub user issue access to the repository",
+];
+const PULL_REQUESTS_WRITE_REQUIREMENTS = [
+  "GitHub App Pull requests: write on the target repository",
+  "requesting GitHub user write access to the repository",
+];
+const FORK_CREATE_REQUIREMENTS = [
+  "GitHub App Administration: write and Contents: read",
+  "app installation access on the source and destination accounts",
+  "requesting GitHub user permission to fork the repository",
+];
 
 class GitHubUserRefreshRejectedError extends Error {
   constructor(message) {
     super(message);
     this.name = "GitHubUserRefreshRejectedError";
+  }
+}
+
+class GitHubRequestError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = "GitHubRequestError";
+    this.status = status;
   }
 }
 
@@ -138,7 +168,7 @@ if [ -z "\${JUNIOR_GIT_COAUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_COAUTHOR_EMAIL
   exit 1
 fi
 
-trailer="Co-authored-by: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
+trailer="Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
 if grep -Fqx "$trailer" "$message_file"; then
   exit 0
 fi
@@ -232,7 +262,7 @@ async function githubRequest(apiBase, path, params) {
       parsed && typeof parsed === "object" && typeof parsed.message === "string"
         ? parsed.message
         : `GitHub API error ${response.status}`;
-    throw new Error(message);
+    throw new GitHubRequestError(message, response.status);
   }
   return parsed;
 }
@@ -355,6 +385,7 @@ function createCredentialLease(input) {
   return {
     type: "lease",
     lease: {
+      ...(input.account ? { account: input.account } : {}),
       ...(input.authorization ? { authorization: input.authorization } : {}),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
       headerTransforms: ["api.github.com", "github.com"].map((domain) => ({
@@ -411,6 +442,58 @@ function readInstallationPermissions(installation) {
   return readGrantPermissions(installation.permissions);
 }
 
+async function resolveUserAccount(tokens) {
+  const account = await githubRequest("https://api.github.com", "/user", {
+    token: tokens.accessToken,
+  });
+  if (!isRecord(account)) {
+    throw new Error("GitHub user response is invalid");
+  }
+  const id = account.id;
+  const login = account.login;
+  if (
+    (typeof id !== "number" && typeof id !== "string") ||
+    typeof login !== "string" ||
+    !login.trim()
+  ) {
+    throw new Error("GitHub user response missing id or login");
+  }
+  const url =
+    typeof account.html_url === "string" ? account.html_url : undefined;
+  return {
+    id: String(id),
+    label: login.trim(),
+    ...(url ? { url } : {}),
+  };
+}
+
+async function tokensWithAccount(tokenSlot, stored, scope) {
+  if (stored.account) {
+    return { ok: true, tokens: stored };
+  }
+  let account;
+  try {
+    account = await resolveUserAccount(stored);
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      return {
+        ok: false,
+        result: credentialNeeded(
+          "Your GitHub authorization needs to be refreshed.",
+          scope,
+        ),
+      };
+    }
+    throw error;
+  }
+  const updated = { ...stored, account };
+  await tokenSlot.set(updated);
+  return { ok: true, tokens: updated };
+}
+
 async function issueUserCredential(ctx, options) {
   const scope = options.userScope;
   const tokenSlot = ctx.tokens.currentUser ?? ctx.tokens.credentialSubject;
@@ -461,18 +544,36 @@ async function issueUserCredential(ctx, options) {
         scope,
       );
     }
-    await tokenSlot.set(refreshed);
+    const refreshedTokens = {
+      ...refreshed,
+      ...(stored.account ? { account: stored.account } : {}),
+    };
+    await tokenSlot.set(refreshedTokens);
+    const withAccount = await tokensWithAccount(
+      tokenSlot,
+      refreshedTokens,
+      scope,
+    );
+    if (!withAccount.ok) {
+      return withAccount.result;
+    }
     return createCredentialLease({
-      token: refreshed.accessToken,
-      expiresAtMs: leaseExpiry(refreshed.expiresAt),
+      account: withAccount.tokens.account,
+      token: withAccount.tokens.accessToken,
+      expiresAtMs: leaseExpiry(withAccount.tokens.expiresAt),
       authorization: githubUserAuthorization(scope),
     });
   }
 
   if (stored.expiresAt === undefined || stored.expiresAt > Date.now()) {
+    const withAccount = await tokensWithAccount(tokenSlot, stored, scope);
+    if (!withAccount.ok) {
+      return withAccount.result;
+    }
     return createCredentialLease({
-      token: stored.accessToken,
-      expiresAtMs: leaseExpiry(stored.expiresAt),
+      account: withAccount.tokens.account,
+      token: withAccount.tokens.accessToken,
+      expiresAtMs: leaseExpiry(withAccount.tokens.expiresAt),
       authorization: githubUserAuthorization(scope),
     });
   }
@@ -573,6 +674,19 @@ function isGitHubGraphqlUrl(upstreamUrl) {
   );
 }
 
+function isGitHubApiUrl(upstreamUrl) {
+  return upstreamUrl.hostname.toLowerCase() === "api.github.com";
+}
+
+function githubUserReadReason(method, upstreamUrl) {
+  if (method !== "GET" || !isGitHubApiUrl(upstreamUrl)) {
+    return undefined;
+  }
+  return upstreamUrl.pathname.toLowerCase() === "/user"
+    ? "github.user-read"
+    : undefined;
+}
+
 function githubGraphqlAccess(method, upstreamUrl) {
   if (!isGitHubGraphqlUrl(upstreamUrl)) {
     return undefined;
@@ -588,34 +702,95 @@ function githubGraphqlAccess(method, upstreamUrl) {
 }
 
 function githubApiWriteReason(method, upstreamUrl) {
-  if (method.toUpperCase() !== "POST") {
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  if (!isGitHubApiUrl(upstreamUrl)) {
     return undefined;
   }
-  const pathname = upstreamUrl.pathname.toLowerCase();
-  if (/^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
+  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
     return "github.issue-create";
   }
-  if (/^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
+  if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/comments$/.test(pathname)
+  ) {
+    return "github.issues-write";
+  }
+  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
     return "github.pull-create";
   }
-  if (/^\/repos\/[^/]+\/[^/]+\/forks$/.test(pathname)) {
+  if (
+    method === "PATCH" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/.test(pathname)
+  ) {
+    return "github.pull-requests-write";
+  }
+  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/forks$/.test(pathname)) {
     return "github.fork-create";
+  }
+  if (
+    /^\/repos\/[^/]+\/[^/]+\/contents(?:\/|$)/.test(pathname) &&
+    (method === "PUT" || method === "DELETE")
+  ) {
+    return pathname.includes("/.github/workflows/")
+      ? "github.workflows-write"
+      : "github.contents-write";
+  }
+  if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/git\/(blobs|trees|commits)$/.test(pathname)
+  ) {
+    return "github.contents-write";
+  }
+  if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/git\/refs$/.test(pathname)
+  ) {
+    return "github.contents-write";
+  }
+  if (
+    (method === "PATCH" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/git\/refs\/.+/.test(pathname)
+  ) {
+    return "github.contents-write";
+  }
+  if (
+    method === "PUT" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/merge$/.test(pathname)
+  ) {
+    return "github.contents-write";
   }
   return undefined;
 }
 
-function grantForAccess(access, reason) {
-  if (access === "write") {
-    return {
-      name: "user-write",
-      access: "write",
-      reason,
-    };
+function grantRequirements(reason) {
+  if (reason === "github.git-write" || reason === "github.contents-write") {
+    return CONTENTS_WRITE_REQUIREMENTS;
   }
+  if (reason === "github.workflows-write") {
+    return WORKFLOWS_WRITE_REQUIREMENTS;
+  }
+  if (reason === "github.issue-create" || reason === "github.issues-write") {
+    return ISSUES_WRITE_REQUIREMENTS;
+  }
+  if (
+    reason === "github.pull-create" ||
+    reason === "github.pull-requests-write"
+  ) {
+    return PULL_REQUESTS_WRITE_REQUIREMENTS;
+  }
+  if (reason === "github.fork-create") {
+    return FORK_CREATE_REQUIREMENTS;
+  }
+  return undefined;
+}
+
+function grantForAccess(access, reason, name) {
+  const requirements = grantRequirements(reason);
   return {
-    name: "installation-read",
-    access: "read",
+    name,
+    access,
     reason,
+    ...(requirements ? { requirements } : {}),
   };
 }
 
@@ -627,12 +802,18 @@ async function githubGrantForEgress(ctx) {
     return grantForAccess(
       smartHttpAccess,
       smartHttpAccess === "write" ? "github.git-write" : "github.git-read",
+      smartHttpAccess === "write" ? "user-write" : "installation-read",
     );
+  }
+
+  const userReadReason = githubUserReadReason(method, upstreamUrl);
+  if (userReadReason) {
+    return grantForAccess("read", userReadReason, "user-read");
   }
 
   const writeReason = githubApiWriteReason(method, upstreamUrl);
   if (writeReason) {
-    return grantForAccess("write", writeReason);
+    return grantForAccess("write", writeReason, "user-write");
   }
 
   const graphqlAccess = githubGraphqlAccess(method, upstreamUrl);
@@ -642,6 +823,7 @@ async function githubGrantForEgress(ctx) {
       graphqlAccess === "write"
         ? "github.graphql-write"
         : "github.graphql-read",
+      graphqlAccess === "write" ? "user-write" : "installation-read",
     );
   }
 
@@ -649,10 +831,11 @@ async function githubGrantForEgress(ctx) {
   return grantForAccess(
     access,
     access === "write" ? "github.api-write" : "github.api-read",
+    access === "write" ? "user-write" : "installation-read",
   );
 }
 
-/** Register trusted GitHub runtime hooks for repository workflows. */
+/** Register GitHub runtime hooks for repository workflows. */
 export function githubPlugin(options = {}) {
   const botNameEnv = options.botNameEnv ?? "GITHUB_APP_BOT_NAME";
   const botEmailEnv = options.botEmailEnv ?? "GITHUB_APP_BOT_EMAIL";
@@ -679,6 +862,7 @@ export function githubPlugin(options = {}) {
         "GitHub issue, pull request, and repository workflows via GitHub App",
       ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
+      domains: ["api.github.com", "github.com"],
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},
@@ -687,12 +871,6 @@ export function githubPlugin(options = {}) {
         [clientSecretEnv]: {},
         [botNameEnv]: { exposeToCommandEnv: true },
         [botEmailEnv]: { exposeToCommandEnv: true },
-      },
-      credentials: {
-        type: "plugin-managed",
-        domains: ["api.github.com", "github.com"],
-        authTokenEnv: GITHUB_AUTH_TOKEN_ENV,
-        authTokenPlaceholder: GITHUB_AUTH_TOKEN_PLACEHOLDER,
       },
       oauth: {
         clientIdEnv,
@@ -705,6 +883,7 @@ export function githubPlugin(options = {}) {
         ...(userScope ? { scope: userScope } : {}),
       },
       commandEnv: {
+        [GITHUB_AUTH_TOKEN_ENV]: GITHUB_AUTH_TOKEN_PLACEHOLDER,
         GIT_COMMITTER_NAME: `\${${botNameEnv}}`,
         GIT_COMMITTER_EMAIL: `\${${botEmailEnv}}`,
       },
@@ -776,6 +955,9 @@ export function githubPlugin(options = {}) {
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx);
       },
+      async resolveOAuthAccount(ctx) {
+        return await resolveUserAccount(ctx.tokens);
+      },
       async issueCredential(ctx) {
         if (ctx.grant.name === "installation-read") {
           return await issueInstallationCredential({
@@ -786,7 +968,7 @@ export function githubPlugin(options = {}) {
             loadReadPermissions,
           });
         }
-        if (ctx.grant.name === "user-write") {
+        if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
           return await issueUserCredential(ctx, {
             clientIdEnv,
             clientSecretEnv,

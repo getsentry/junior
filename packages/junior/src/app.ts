@@ -23,7 +23,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import {
   pluginCatalogConfigFromPluginSet,
-  trustedPluginRegistrationsFromPluginSet,
+  pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
 import { GET as healthGET } from "@/handlers/health";
@@ -72,7 +72,7 @@ export interface JuniorAppOptions {
 interface JuniorVirtualConfig {
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
-  trustedPluginRegistrations: string[];
+  pluginHookRegistrations: string[];
 }
 
 /** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
@@ -100,12 +100,12 @@ async function resolveVirtualConfig(): Promise<
     const mod: {
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
-      trustedPluginRegistrations?: string[];
+      pluginHookRegistrations?: string[];
     } = await import("#junior/config");
     return {
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
-      trustedPluginRegistrations: mod.trustedPluginRegistrations ?? [],
+      pluginHookRegistrations: mod.pluginHookRegistrations ?? [],
     };
   } catch (error) {
     if (!isMissingVirtualConfig(error)) {
@@ -201,18 +201,17 @@ function validateBuildIncludesPluginPackages(
   );
 }
 
-function validateBuildIncludesTrustedRegistrations(
-  trustedRegistrations: JuniorPluginRegistration[],
+function validateBuildIncludesPluginHookRegistrations(
+  hookRegistrations: JuniorPluginRegistration[],
   virtualConfig: JuniorVirtualConfig | undefined,
 ): void {
-  const bundledTrustedRegistrations =
-    virtualConfig?.trustedPluginRegistrations ?? [];
-  if (bundledTrustedRegistrations.length === 0) {
+  const bundledHookRegistrations = virtualConfig?.pluginHookRegistrations ?? [];
+  if (bundledHookRegistrations.length === 0) {
     return;
   }
 
-  const registered = new Set(trustedRegistrations.map((plugin) => plugin.name));
-  const missing = bundledTrustedRegistrations.filter(
+  const registered = new Set(hookRegistrations.map((plugin) => plugin.name));
+  const missing = bundledHookRegistrations.filter(
     (pluginName) => !registered.has(pluginName),
   );
   if (missing.length === 0) {
@@ -220,7 +219,7 @@ function validateBuildIncludesTrustedRegistrations(
   }
 
   throw new Error(
-    `createApp() is missing trusted plugin registration(s) bundled by juniorNitro(): ${missing.join(", ")}. Pass a runtime-safe plugin module to juniorNitro({ plugins: "./plugins" }) or pass the same defineJuniorPlugins(...) set to createApp({ plugins }).`,
+    `createApp() is missing plugin registration(s) with runtime hooks bundled by juniorNitro(): ${missing.join(", ")}. Pass a runtime-safe plugin module to juniorNitro({ plugins: "./plugins" }) or pass the same defineJuniorPlugins(...) set to createApp({ plugins }).`,
   );
 }
 
@@ -241,27 +240,57 @@ function validatePluginRegistrations(
   }
 }
 
-function validatePluginManagedCredentialHooks(
+function validatePluginEgressCredentialHooks(
   registrations: JuniorPluginRegistration[],
 ): void {
-  const trustedPlugins = new Map(
+  const plugins = new Map(
     registrations.map((registration) => [registration.name, registration]),
   );
 
   for (const provider of getPluginProviders()) {
-    if (provider.manifest.credentials?.type !== "plugin-managed") {
+    const hooks = plugins.get(provider.manifest.name)?.hooks;
+    const hasGrantHook = Boolean(hooks?.grantForEgress);
+    const hasIssueHook = Boolean(hooks?.issueCredential);
+    const hasGenericCredentials = Boolean(
+      provider.manifest.credentials || provider.manifest.apiHeaders,
+    );
+    const hasDomains = Boolean(provider.manifest.domains?.length);
+    const hasHookManagedOAuth = Boolean(
+      provider.manifest.oauth && !provider.manifest.credentials,
+    );
+    if (!hasGrantHook && !hasIssueHook) {
+      if (hasDomains && !hasGenericCredentials) {
+        throw new Error(
+          `Plugin "${provider.manifest.name}" manifest.domains requires egress credential hooks when no generic credentials or apiHeaders are configured.`,
+        );
+      }
+      if (hasHookManagedOAuth) {
+        throw new Error(
+          `Plugin "${provider.manifest.name}" manifest.oauth without oauth-bearer credentials requires egress credential hooks.`,
+        );
+      }
       continue;
     }
-    const hooks = trustedPlugins.get(provider.manifest.name)?.hooks;
-    if (!hooks?.grantForEgress || !hooks?.issueCredential) {
+
+    if (!hasGrantHook || !hasIssueHook) {
       throw new Error(
-        `Plugin "${provider.manifest.name}" uses plugin-managed credentials and its trusted registration must include grantForEgress and issueCredential hooks.`,
+        `Plugin "${provider.manifest.name}" egress credential hooks must include both grantForEgress and issueCredential.`,
+      );
+    }
+    if (hasGenericCredentials) {
+      throw new Error(
+        `Plugin "${provider.manifest.name}" egress credential hooks must use manifest.domains instead of generic credentials or apiHeaders.`,
+      );
+    }
+    if (!hasDomains) {
+      throw new Error(
+        `Plugin "${provider.manifest.name}" egress credential hooks require manifest.domains to list sandbox egress hosts.`,
       );
     }
   }
 }
 
-/** Mount trusted plugin HTTP handlers before core routes claim those paths. */
+/** Mount plugin HTTP handlers before core routes claim those paths. */
 function mountAgentPluginRoutes(
   app: Hono,
   routes: AgentPluginRouteRegistration[],
@@ -288,15 +317,14 @@ function mountAgentPluginRoutes(
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
-  const agentPlugins =
-    trustedPluginRegistrationsFromPluginSet(configuredPlugins);
+  const agentPlugins = pluginHookRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
     : (virtualConfig?.plugins ?? resolveEnvPluginCatalogConfig());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }
-  validateBuildIncludesTrustedRegistrations(agentPlugins, virtualConfig);
+  validateBuildIncludesPluginHookRegistrations(agentPlugins, virtualConfig);
   validateAgentPlugins(agentPlugins);
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
@@ -315,7 +343,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     if (shouldValidatePluginCatalog) {
       getPluginCatalogSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
-      validatePluginManagedCredentialHooks(
+      validatePluginEgressCredentialHooks(
         configuredPlugins?.registrations ?? [],
       );
     }

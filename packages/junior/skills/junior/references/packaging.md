@@ -64,7 +64,7 @@ export default defineConfig({
 const app = await createApp();
 ```
 
-Packages that export trusted runtime hooks must be registered from app code with
+Packages that export runtime hooks must be registered from app code with
 their plugin factory in the same plugin set:
 
 ```ts
@@ -84,7 +84,7 @@ When adding a new package under this repository's `packages/` directory:
 
 - Match naming such as `@sentry/junior-<provider>`.
 - For manifest-only packages, include `plugin.yaml` and optional `skills` in `package.json` `files`.
-- For trusted JS packages, include the factory entrypoint and optional `skills` in `package.json` `files`.
+- For JS plugin packages, include the factory entrypoint and optional `skills` in `package.json` `files`.
 - Add a package README if users need setup or verification steps.
 - Keep package version aligned with the monorepo release process.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs.

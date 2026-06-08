@@ -98,13 +98,9 @@ function githubPlugin() {
       envVars: {},
       commandEnv: {
         GITHUB_READ_ONLY: "1",
+        GITHUB_TOKEN: "ghp_host_managed_credential",
       },
-      credentials: {
-        type: "plugin-managed" as const,
-        domains: ["api.github.com", "github.com"],
-        authTokenEnv: "GITHUB_TOKEN",
-        authTokenPlaceholder: "ghp_host_managed_credential",
-      },
+      domains: ["api.github.com", "github.com"],
     },
   };
 }
@@ -120,10 +116,7 @@ function headerOnlyPlugin() {
       commandEnv: {
         HEADER_ONLY_READ_ONLY: "1",
       },
-      credentials: {
-        type: "plugin-managed" as const,
-        domains: ["api.example.com"],
-      },
+      domains: ["api.example.com"],
     },
   };
 }
@@ -326,7 +319,7 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("does not invent token env placeholders for plugin-managed providers", async () => {
+  it("does not invent token env placeholders for domain-only providers", async () => {
     getPluginProvidersMock.mockReturnValue([headerOnlyPlugin()]);
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
@@ -730,7 +723,7 @@ describe("sandbox egress proxy", () => {
       fetchMock as typeof fetch,
     );
     expect(secondResponse.status).toBe(403);
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
   it("records current GitHub grant reason and smart HTTP target on cached-lease 403", async () => {
@@ -745,6 +738,11 @@ describe("sandbox egress proxy", () => {
       return {
         type: "lease" as const,
         lease: {
+          account: {
+            id: "12345",
+            label: "requester",
+            url: "https://github.com/requester",
+          },
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           headerTransforms: [
             {
@@ -828,6 +826,11 @@ describe("sandbox egress proxy", () => {
         consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
       ).resolves.toMatchObject({
         provider: "github",
+        account: {
+          id: "12345",
+          label: "requester",
+          url: "https://github.com/requester",
+        },
         grant: {
           name: "user-write",
           access: "write",

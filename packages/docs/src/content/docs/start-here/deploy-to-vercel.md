@@ -43,7 +43,7 @@ Keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares
 
 ## Enable Junior's Nitro deployment module
 
-Junior uses a one-minute internal heartbeat to run trusted plugin heartbeats and recover stale agent dispatches. Durable agent work is also resumed by a Vercel Queue consumer. Both pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
+Junior uses a one-minute internal heartbeat to run plugin heartbeats and recover stale agent dispatches. Durable agent work is also resumed by a Vercel Queue consumer. Both pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
 
 Keep `juniorNitro()` installed in `nitro.config.ts`:
 

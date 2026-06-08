@@ -179,7 +179,15 @@ export function createOAuthBearerBroker(
                   `Your ${provider} connection needs to be reauthorized.`,
                 );
               }
-              await deps.userTokenStore.set(userSubjectId, provider, refreshed);
+              const refreshedTokens = {
+                ...refreshed,
+                ...(stored.account ? { account: stored.account } : {}),
+              };
+              await deps.userTokenStore.set(
+                userSubjectId,
+                provider,
+                refreshedTokens,
+              );
               return buildLease(
                 refreshed.accessToken,
                 getLeaseExpiry(refreshed.expiresAt),

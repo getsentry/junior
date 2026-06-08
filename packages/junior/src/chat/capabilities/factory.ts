@@ -36,9 +36,6 @@ function createProviderCredentialRouter(
     if (!plugin.manifest.credentials && !plugin.manifest.apiHeaders) {
       continue;
     }
-    if (plugin.manifest.credentials?.type === "plugin-managed") {
-      continue;
-    }
     brokersByProvider[name] = createPluginBroker(name, { userTokenStore });
   }
 

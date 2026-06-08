@@ -691,7 +691,7 @@ describe("dashboard routes", () => {
 
     expect(pluginReports.status).toBe(500);
     expect(await pluginReports.json()).toEqual({
-      error: "Trusted plugin stats failed to load.",
+      error: "Plugin stats failed to load.",
     });
   });
 
@@ -958,7 +958,7 @@ describe("dashboard routes", () => {
     expect(oldInfo.status).toBe(404);
   });
 
-  it("mounts dashboard routes through the trusted plugin array", async () => {
+  it("mounts dashboard routes through the plugin array", async () => {
     const app = await createApp({
       plugins: defineJuniorPlugins([
         juniorDashboardPlugin({

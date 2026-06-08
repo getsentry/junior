@@ -157,7 +157,7 @@ Rules:
 
 ### Plugin Heartbeat Flow
 
-The scheduler plugin uses two trusted hooks:
+The scheduler plugin uses two runtime hooks:
 
 1. `tools(ctx)` for interactive schedule management.
 2. `heartbeat(ctx)` for due-run discovery and dispatch.
@@ -316,7 +316,7 @@ Use unit tests only for small deterministic helpers when integration or eval cov
 - `./task-execution.md`
 - `./agent-prompt.md`
 - `./agent-session-resumability.md`
-- `./trusted-plugin-heartbeat.md`
-- `./trusted-plugin-dispatch.md`
+- `./plugin-heartbeat.md`
+- `./plugin-dispatch.md`
 - `./slack-agent-delivery.md`
 - `./testing.md`

@@ -13,6 +13,7 @@ const {
   getPluginDefinition,
   getPluginProviders,
   getPluginOAuthConfig,
+  hasEgressCredentialHooks,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   getPluginDefinition: vi.fn(),
   getPluginProviders: vi.fn(),
   getPluginOAuthConfig: vi.fn(),
+  hasEgressCredentialHooks: vi.fn((provider: string) => provider === "github"),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
 }));
@@ -33,6 +35,10 @@ vi.mock("@/chat/plugins/registry", () => ({
   getPluginDefinition,
   getPluginProviders,
   getPluginOAuthConfig,
+}));
+
+vi.mock("@/chat/plugins/credential-hooks", () => ({
+  hasEgressCredentialHooks,
 }));
 
 vi.mock("@/chat/credentials/unlink-provider", () => ({
@@ -74,11 +80,7 @@ describe("createPluginAuthOrchestration", () => {
         return {
           manifest: {
             name: "github",
-            credentials: {
-              type: "plugin-managed",
-              domains: ["api.github.com"],
-              authTokenEnv: "GITHUB_TOKEN",
-            },
+            domains: ["api.github.com"],
           },
         };
       }
@@ -108,6 +110,7 @@ describe("createPluginAuthOrchestration", () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "sentry" ? { provider } : undefined,
     );
+    hasEgressCredentialHooks.mockClear();
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
   });
@@ -302,7 +305,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("ignores GitHub smart-http failures without a trusted egress signal", async () => {
+  it("ignores GitHub smart-http failures without an egress auth signal", async () => {
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
@@ -327,7 +330,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("starts oauth recovery for trusted GitHub write grant signals", async () => {
+  it("starts oauth recovery for GitHub write grant signals", async () => {
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" ? { provider } : undefined,
     );
@@ -539,7 +542,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("starts oauth recovery from a trusted provider signal without an active skill", async () => {
+  it("starts oauth recovery from a provider signal without an active skill", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,
       delivery: { channelId: "D123" },

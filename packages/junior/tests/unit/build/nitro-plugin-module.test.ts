@@ -329,7 +329,7 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("rejects direct trusted plugin sets because hooks need a runtime import", () => {
+  it("rejects direct plugin sets with hooks because hooks need a runtime import", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -349,17 +349,17 @@ describe("juniorNitro plugin modules", () => {
       juniorNitro({
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
-            name: "trusted",
+            name: "hooked",
             manifest: {
-              name: "trusted",
-              description: "Trusted plugin",
+              name: "hooked",
+              description: "Runtime plugin",
             },
             hooks: {},
           }),
         ]),
       }).nitro.setup(nitro),
     ).toThrow(
-      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with trusted plugin registration(s): trusted. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.',
+      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime hook registration(s): hooked. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.',
     );
   });
 

@@ -7,7 +7,11 @@ import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
-import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import type {
+  StoredProviderAccount,
+  StoredTokens,
+  UserTokenStore,
+} from "@/chat/credentials/user-token-store";
 import { getRuntimeMetadata } from "@/chat/config";
 
 interface HomeView {
@@ -59,22 +63,40 @@ async function buildSkillsSummaryText(): Promise<string> {
   return lines.join("\n");
 }
 
-async function hasConnectedAccount(
+function accountLabel(account: StoredProviderAccount): string {
+  const label = account.label ?? account.id;
+  return account.url ? `<${account.url}|${label}>` : label;
+}
+
+function connectedAccountText(
+  plugin: PluginDefinition,
+  account?: StoredProviderAccount,
+): string {
+  return account
+    ? `*${plugin.manifest.name}*\nConnected as ${accountLabel(account)}`
+    : `*${plugin.manifest.name}*\n${plugin.manifest.description}`;
+}
+
+async function connectedOAuthTokens(
   userId: string,
   plugin: PluginDefinition,
   userTokenStore: UserTokenStore,
-): Promise<boolean> {
-  if (
-    plugin.manifest.oauth ||
-    plugin.manifest.credentials?.type === "oauth-bearer"
-  ) {
+): Promise<StoredTokens | undefined> {
+  if (plugin.manifest.oauth || plugin.manifest.credentials) {
     const stored = await userTokenStore.get(userId, plugin.manifest.name);
-    return Boolean(
-      stored &&
-      hasRequiredOAuthScope(stored.scope, plugin.manifest.oauth?.scope),
-    );
+    return stored &&
+      hasRequiredOAuthScope(stored.scope, plugin.manifest.oauth?.scope)
+      ? stored
+      : undefined;
   }
 
+  return undefined;
+}
+
+async function hasConnectedMcpAccount(
+  userId: string,
+  plugin: PluginDefinition,
+): Promise<boolean> {
   if (plugin.manifest.mcp) {
     return Boolean(
       (await getMcpStoredOAuthCredentials(userId, plugin.manifest.name))
@@ -97,13 +119,14 @@ export async function buildHomeView(
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {
-    if (!(await hasConnectedAccount(userId, plugin, userTokenStore))) continue;
+    const tokens = await connectedOAuthTokens(userId, plugin, userTokenStore);
+    if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
 
     connectedSections.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${plugin.manifest.name}*\n${plugin.manifest.description}`,
+        text: connectedAccountText(plugin, tokens?.account),
       },
       accessory: {
         type: "button",

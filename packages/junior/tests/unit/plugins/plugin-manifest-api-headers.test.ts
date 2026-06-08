@@ -148,6 +148,8 @@ describe("plugin manifest API headers", () => {
     )) as typeof import("../../../../junior-github/index.js");
     const manifest = githubPlugin().manifest!;
 
+    expect(manifest.domains).toEqual(["api.github.com", "github.com"]);
+    expect(manifest.credentials).toBeUndefined();
     expect(manifest.envVars).toMatchObject({
       GITHUB_APP_CLIENT_ID: {},
       GITHUB_APP_CLIENT_SECRET: {},
@@ -166,6 +168,7 @@ describe("plugin manifest API headers", () => {
     expect(manifest.commandEnv).toMatchObject({
       GIT_COMMITTER_NAME: "${GITHUB_APP_BOT_NAME}",
       GIT_COMMITTER_EMAIL: "${GITHUB_APP_BOT_EMAIL}",
+      GITHUB_TOKEN: "ghp_host_managed_credential",
     });
   });
 
@@ -369,7 +372,7 @@ describe("plugin manifest API headers", () => {
     });
   });
 
-  it("rejects plugin-managed credential API headers", () => {
+  it("rejects plugin-managed credentials in plugin.yaml", () => {
     expect(() =>
       parsePluginManifest(
         [
@@ -386,7 +389,7 @@ describe("plugin manifest API headers", () => {
         "/tmp/example",
       ),
     ).toThrow(
-      "Plugin example credentials.api-headers is only supported for oauth-bearer credentials",
+      'Plugin example has unsupported credentials.type: "plugin-managed"',
     );
   });
 

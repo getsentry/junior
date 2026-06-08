@@ -129,7 +129,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
 
   it("merges plugin-level API headers with token-backed credential headers", async () => {
     process.env.SENTRY_AUTH_TOKEN = "static-env-token";
-    process.env.SENTRY_EXTRA_AUTH = "PluginManaged value";
+    process.env.SENTRY_EXTRA_AUTH = "ExtraHeader value";
     const manifest: PluginManifest = {
       ...SENTRY_MANIFEST,
       domains: ["uploads.sentry.io", "us.sentry.io"],
@@ -153,7 +153,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       {
         domain: "uploads.sentry.io",
         headers: {
-          Authorization: "PluginManaged value",
+          Authorization: "ExtraHeader value",
           "X-Sentry-Mode": "sandbox",
         },
       },

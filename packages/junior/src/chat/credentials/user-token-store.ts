@@ -1,4 +1,11 @@
+export interface StoredProviderAccount {
+  id: string;
+  label?: string;
+  url?: string;
+}
+
 export interface StoredTokens {
+  account?: StoredProviderAccount;
   accessToken: string;
   refreshToken: string;
   expiresAt?: number;

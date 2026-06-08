@@ -160,7 +160,7 @@ describe("agent plugin hooks", () => {
             sandbox: {} as any,
           },
         ),
-      ).toThrow('Trusted plugin tool "loadSkill" conflicts with a core tool');
+      ).toThrow('Plugin tool "loadSkill" conflicts with a core tool');
     } finally {
       setAgentPlugins(previous);
     }
@@ -224,7 +224,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() => getAgentPluginRoutes()).toThrow(
-        'Trusted plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
+        'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
       );
     } finally {
       setAgentPlugins(previous);
@@ -254,7 +254,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() => getAgentPluginRoutes()).toThrow(
-        'Trusted plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
+        'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
       );
     } finally {
       setAgentPlugins(previous);
@@ -289,7 +289,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() => getAgentPluginRoutes()).toThrow(
-        'Trusted plugin route "/demo" conflicts with an ALL route for the same path',
+        'Plugin route "/demo" conflicts with an ALL route for the same path',
       );
     } finally {
       setAgentPlugins(previous);
@@ -313,7 +313,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() => getAgentPluginSlackConversationLink("slack:C1:123")).toThrow(
-        'Trusted plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
+        'Plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
       );
     } finally {
       setAgentPlugins(previous);

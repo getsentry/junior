@@ -34,9 +34,7 @@ vi.mock("@/chat/plugins/registry", () => ({
       manifest: {
         name: "github",
         description: "GitHub provider",
-        credentials: {
-          type: "plugin-managed",
-        },
+        domains: ["api.github.com", "github.com"],
         oauth: {
           clientIdEnv: "GITHUB_APP_CLIENT_ID",
           clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
@@ -217,7 +215,16 @@ describe("buildHomeView", () => {
   });
 
   it("shows GitHub App providers with user OAuth tokens", async () => {
-    const store = createMockTokenStore({ github: validToken });
+    const store = createMockTokenStore({
+      github: {
+        ...validToken,
+        account: {
+          id: "12345",
+          label: "requester",
+          url: "https://github.com/requester",
+        },
+      },
+    });
     const view = await buildHomeView("U123", store);
 
     const section = findSection(
@@ -225,6 +232,9 @@ describe("buildHomeView", () => {
       (candidate) => candidate.text?.text.includes("github") ?? false,
     );
     expect(section).toBeDefined();
+    expect(section?.text?.text).toContain(
+      "Connected as <https://github.com/requester|requester>",
+    );
     expect(store.get).toHaveBeenCalledWith("U123", "github");
     expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");
     expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
