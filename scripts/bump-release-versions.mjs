@@ -19,6 +19,7 @@ const files = [
   "packages/junior-linear/package.json",
   "packages/junior-notion/package.json",
   "packages/junior-scheduler/package.json",
+  "packages/junior-maintenance/package.json",
   "packages/junior-sentry/package.json",
   "packages/junior-vercel/package.json",
 ];
