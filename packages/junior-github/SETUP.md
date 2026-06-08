@@ -66,19 +66,22 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ### Optional permission overrides
 
-By default, `installation-read` grants read the app installation's current permission envelope once per process and scopes read-capable permissions down to `read` when requesting a token. To declare the app permission envelope in the plugin and avoid that installation lookup, pass `appPermissions` when registering the plugin:
+By default, `installation-read` grants read the app installation's current permission envelope once per process and scopes read-capable permissions down to `read` when requesting a token. To declare the GitHub App permission envelope in the plugin and avoid that installation lookup, pass `appPermissions` when registering the plugin:
 
 ```ts
 githubPlugin({
   appPermissions: {
-    contents: "read",
+    actions: "write",
+    contents: "write",
     issues: "write",
+    metadata: "read",
     pull_requests: "write",
+    workflows: "write",
   },
 });
 ```
 
-Junior records these permissions as plugin capabilities. Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. GitHub remains the source of truth for whether a permission name or level exists.
+Junior records these permissions as plugin capabilities. The configured values are the maximum GitHub App envelope Junior may need for writes. Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. GitHub remains the source of truth for whether a permission name or level exists.
 
 GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. GitHub returns an empty `scope` value for these tokens, so Junior cannot verify granted scopes from the token response.
 

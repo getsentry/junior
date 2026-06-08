@@ -2,14 +2,16 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for GitHub issue and pull request workflows.
 type: tutorial
+summary: Set up GitHub App installation reads and requester-attributed GitHub writes.
 prerequisites:
   - /extend/
 related:
+  - /concepts/credentials-and-oauth/
   - /reference/config-and-env/
   - /reference/runtime-commands/
 ---
 
-The GitHub plugin uses a GitHub App so Junior can read repositories with installation tokens and create or update GitHub issues and pull requests with user-to-server tokens attributed to the requesting GitHub user with the app badge.
+The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior reads through downscoped installation tokens and performs writes through GitHub App user-to-server tokens attributed to the requesting GitHub user with the app badge.
 
 ## Install
 
@@ -30,11 +32,21 @@ import { githubPlugin } from "@sentry/junior-github";
 
 export const plugins = defineJuniorPlugins([
   githubPlugin({
+    appPermissions: {
+      actions: "write",
+      contents: "write",
+      issues: "write",
+      metadata: "read",
+      pull_requests: "write",
+      workflows: "write",
+    },
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
 ]);
 ```
+
+`appPermissions` should match the permissions configured on the GitHub App. These values do not make installation-token reads write-capable: Junior requests read-level installation tokens for `installation-read` traffic and omits permissions that GitHub does not expose at `read`. Writes still require the requester, or an explicitly delegated user subject, to complete the private GitHub App OAuth flow.
 
 ## Configure environment variables
 
@@ -83,6 +95,8 @@ Create and install a GitHub App before you verify GitHub workflows:
 4. Install the app on the repository or organization Junior should access.
 5. Copy the App ID, OAuth client ID/secret, installation ID, bot name, and bot noreply email into your deployment environment.
 
+Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. GitHub App user-to-server tokens are still constrained by the app's installed permissions, the installation's repository access, and the requesting user's own GitHub access. Junior's read-only default applies to installation-token leases, not to the App permission envelope.
+
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
 
@@ -107,7 +121,8 @@ For code changes, a local `git commit` does not call GitHub. The GitHub write ha
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use GitHub App installation tokens. GitHub account identity checks and write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
+- App-readable requests use GitHub App installation tokens that Junior downscopes to read. GitHub account identity checks and write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
+- GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Effective write access comes from the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
 - The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow issued credentials.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.
@@ -118,6 +133,7 @@ For code changes, a local `git commit` does not call GitHub. The GitHub write ha
 - `Access denied` from GitHub: the app is not installed on the target repository or organization. Install the app on that target, then retry.
 - `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
+- Private OAuth prompt for GitHub writes: the requester has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
 - Fork creation failures: GitHub requires `Administration: write` and `Contents: read`, plus app installation on both source and destination accounts. Routine PR creation should push a branch explicitly and use `gh pr create --head` instead of creating a fork.
 
