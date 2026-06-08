@@ -91,6 +91,7 @@ function parseCredentialResult(
 }
 
 export interface EgressGrantInput {
+  bodyText?: string;
   method: string;
   provider: string;
   upstreamUrl: URL;
@@ -109,6 +110,7 @@ export async function selectPluginGrant(
     plugin: { name: plugin.name },
     log: createAgentPluginLogger(plugin.name),
     request: {
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
       method: input.method,
       url: input.upstreamUrl.toString(),
     },

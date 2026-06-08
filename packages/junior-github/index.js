@@ -701,17 +701,46 @@ function githubUserReadReason(method, upstreamUrl) {
     : undefined;
 }
 
-function githubGraphqlAccess(method, upstreamUrl) {
+function parseGitHubGraphqlOperation(bodyText) {
+  if (typeof bodyText !== "string" || bodyText.trim().length === 0) {
+    return undefined;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const query = parsed.query;
+  if (typeof query !== "string") {
+    return undefined;
+  }
+  const normalized = query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, "").trim();
+  if (/\b(mutation|subscription)\b/.test(normalized)) {
+    return "write";
+  }
+  if (normalized.startsWith("{") || /\bquery\b/.test(normalized)) {
+    return "read";
+  }
+  return undefined;
+}
+
+function githubGraphqlAccess(method, upstreamUrl, bodyText) {
   if (!isGitHubGraphqlUrl(upstreamUrl)) {
     return undefined;
   }
   if (HTTP_READ_METHODS.has(method)) {
     return "read";
   }
-  // GitHub GraphQL POST bodies can be read queries or write mutations. The
-  // egress hook intentionally does not read sandbox request bodies, so non-read
-  // methods require user-write attribution rather than risking an unattributed
-  // mutation through an installation-read token.
+  const operation = parseGitHubGraphqlOperation(bodyText);
+  if (operation) {
+    return operation;
+  }
+  // Unknown GraphQL POST bodies still require user-write attribution rather
+  // than risking an unattributed mutation through an installation-read token.
   return "write";
 }
 
@@ -830,7 +859,11 @@ async function githubGrantForEgress(ctx) {
     return grantForAccess("write", writeReason, "user-write");
   }
 
-  const graphqlAccess = githubGraphqlAccess(method, upstreamUrl);
+  const graphqlAccess = githubGraphqlAccess(
+    method,
+    upstreamUrl,
+    ctx.request.bodyText,
+  );
   if (graphqlAccess) {
     return grantForAccess(
       graphqlAccess,

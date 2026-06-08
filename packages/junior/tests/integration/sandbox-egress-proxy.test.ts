@@ -1,14 +1,17 @@
+import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import {
   defineJuniorPlugin,
   type AgentPluginHooks,
 } from "@sentry/junior-plugin-api";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { githubPlugin } from "../../../junior-github/index.js";
+import { mswServer } from "../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
@@ -143,9 +146,11 @@ async function registerManagedEgressPlugin(input?: {
   });
 }
 
-async function registerGitHubPlugin() {
+async function registerGitHubPlugin(
+  options?: Parameters<typeof githubPlugin>[0],
+) {
   const { createApp, defineJuniorPlugins } = await import("@/app");
-  const plugin = githubPlugin();
+  const plugin = githubPlugin(options);
   await createApp({
     plugins: defineJuniorPlugins([
       {
@@ -159,6 +164,33 @@ async function registerGitHubPlugin() {
       }
     },
   });
+}
+
+function configureGitHubAppEnv() {
+  process.env.GITHUB_APP_ID = "123";
+  process.env.GITHUB_INSTALLATION_ID = "456";
+  process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  })
+    .privateKey.export({ type: "pkcs8", format: "pem" })
+    .toString();
+}
+
+function mockGitHubInstallationToken() {
+  const requests: unknown[] = [];
+  mswServer.use(
+    http.post(
+      "https://api.github.com/app/installations/:installationId/access_tokens",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          token: "installation-token",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        });
+      },
+    ),
+  );
+  return requests;
 }
 
 describe("sandbox egress proxy integration", () => {
@@ -356,6 +388,99 @@ describe("sandbox egress proxy integration", () => {
     expect(writeResponse.status).toBe(200);
     await expect(writeResponse.text()).resolves.toBe("Bearer user-write");
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses GitHub App credentials for GraphQL issue list queries", async () => {
+    configureGitHubAppEnv();
+    const tokenRequests = mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        contents: "read",
+        issues: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) =>
+        new Response(new Headers(init?.headers).get("authorization")),
+    );
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          query:
+            "fragment issue on Issue { number title state url } query IssueList($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { issues(first: 1) { nodes { ...issue } } } }",
+          variables: { owner: "getsentry", name: "junior-prod" },
+        }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/graphql",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("Bearer installation-token");
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(tokenRequests).toEqual([
+      {
+        permissions: {
+          contents: "read",
+          issues: "read",
+          metadata: "read",
+        },
+      },
+    ]);
+  });
+
+  it("keeps GraphQL mutations on GitHub user-write credentials", async () => {
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          query:
+            "mutation CreateIssue($input: CreateIssueInput!) { createIssue(input: $input) { issue { number } } }",
+          variables: { input: { repositoryId: "repo", title: "test" } },
+        }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/graphql",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toContain(
+      "junior-auth-required provider=github grant=user-write access=write",
+    );
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   it("records plugin write auth needs over earlier read failures", async () => {

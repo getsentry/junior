@@ -111,6 +111,7 @@ function assertLeaseTransformsOwnedByProvider(
 
 /** Select the plugin-defined or default grant needed for one outbound request. */
 export async function selectSandboxEgressGrant(input: {
+  bodyText?: string;
   method: string;
   provider: string;
   upstreamUrl: URL;
@@ -120,6 +121,7 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,

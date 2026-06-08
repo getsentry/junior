@@ -152,12 +152,17 @@ function mockGitHubRefresh(
   return requests;
 }
 
-async function grantForEgress(input: { method: string; url: string }) {
+async function grantForEgress(input: {
+  bodyText?: string;
+  method: string;
+  url: string;
+}) {
   const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
   return await plugin.hooks?.grantForEgress?.({
     log: pluginLog,
     plugin: { name: "github" },
     request: {
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
       method: input.method,
       url: input.url,
     },
@@ -383,7 +388,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("treats GitHub GraphQL GET as read and POST as write", async () => {
+  it("treats GitHub GraphQL GET as read and ambiguous POST as write", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -400,6 +405,97 @@ describe("github plugin", () => {
         url: "https://api.github.com/graphql",
       }),
     ).toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.graphql-write",
+    });
+  });
+
+  it("selects installation-read for GitHub GraphQL read operations", async () => {
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query: `query IssueList {
+            repository(owner: "getsentry", name: "junior-prod") {
+              issues(first: 20) { nodes { number title } }
+            }
+          }`,
+        }),
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.graphql-read",
+    });
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query: "{ viewer { login } }",
+        }),
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      access: "read",
+      reason: "github.graphql-read",
+    });
+  });
+
+  it("keeps GitHub GraphQL mutations, subscriptions, and unparseable bodies on user-write", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query: `mutation AddIssueComment {
+            addComment(input: {subjectId: "I_kwDO", body: "test"}) {
+              clientMutationId
+            }
+          }`,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.graphql-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query: "subscription IssueEvents { issueEvents { id } }",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.graphql-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            'fragment issueFields on Issue { number } mutation Search($query: String!) { createIssue(input: {repositoryId: "repo", title: $query}) { issue { ...issueFields } } }',
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.graphql-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: "{",
+      }),
+    ).resolves.toMatchObject({
       name: "user-write",
       access: "write",
       reason: "github.graphql-write",

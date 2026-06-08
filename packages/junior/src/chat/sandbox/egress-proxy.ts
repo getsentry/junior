@@ -51,6 +51,7 @@ const DECODED_RESPONSE_HEADERS = new Set([
 ]);
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
+const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
 
 /** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
 export type SandboxEgressHttpInterceptor = (input: {
@@ -365,6 +366,27 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
+function isGrantSelectionBodyVisible(input: {
+  provider: string;
+  upstreamUrl: URL;
+}): boolean {
+  return (
+    input.provider === "github" &&
+    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
+    input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
+  );
+}
+
+function requestBodyText(body: ArrayBuffer | undefined): string | undefined {
+  if (
+    body === undefined ||
+    body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES
+  ) {
+    return undefined;
+  }
+  return new TextDecoder().decode(body);
+}
+
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
@@ -530,7 +552,14 @@ export async function proxySandboxEgressRequest(
     );
   }
 
+  let body: ArrayBuffer | undefined;
+  let bodyRead = false;
+  if (isGrantSelectionBodyVisible({ provider, upstreamUrl })) {
+    body = await requestBodyBytes(request);
+    bodyRead = true;
+  }
   const grantSelection = await selectSandboxEgressGrant({
+    bodyText: requestBodyText(body),
     provider,
     method: request.method,
     upstreamUrl,
@@ -644,7 +673,9 @@ export async function proxySandboxEgressRequest(
 
   const fetchImpl = deps.fetch ?? fetch;
   const headers = requestHeaders(request, lease, upstreamUrl.hostname);
-  const body = await requestBodyBytes(request);
+  if (!bodyRead) {
+    body = await requestBodyBytes(request);
+  }
   const intercepted = await deps.interceptHttp?.({
     provider,
     request: new Request(upstreamUrl, {

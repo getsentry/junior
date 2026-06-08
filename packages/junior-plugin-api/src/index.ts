@@ -453,6 +453,8 @@ export type AgentPluginGrant = z.output<typeof agentPluginGrantSchema>;
 
 /** Request details available while selecting the grant for sandbox egress. */
 export interface AgentPluginEgressRequest {
+  /** Capped request body text when the host exposes it for provider-specific grant classification. */
+  bodyText?: string;
   method: string;
   url: string;
 }
