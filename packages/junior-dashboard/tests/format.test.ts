@@ -300,6 +300,39 @@ describe("dashboard token formatting", () => {
     expect(conversationDisplayTitle(conversation)).toBe("Newer title");
   });
 
+  it("keeps the newest visible channel name when the newest turn omits it", () => {
+    const [conversation] = buildConversations([
+      {
+        channel: "C1",
+        channelName: "proj-alpha",
+        conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
+        displayTitle: "#proj-alpha",
+        id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
+        lastSeenAt: "2026-06-01T10:05:00.000Z",
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+      {
+        channel: "C1",
+        conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
+        displayTitle: "Public Channel",
+        id: "turn-2",
+        lastProgressAt: "2026-06-01T11:05:00.000Z",
+        lastSeenAt: "2026-06-01T11:05:00.000Z",
+        startedAt: "2026-06-01T11:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+    ]);
+
+    expect(conversation?.channelName).toBe("proj-alpha");
+    expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
+  });
+
   it("keeps requester labels even when the title matches", () => {
     const sessions: Session[] = [
       {

@@ -911,7 +911,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
       const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
       return {
         channel: newest.channel,
-        channelName: newest.channelName,
+        channelName: recentTurns.find((turn) => turn.channelName)?.channelName,
         displayTitle: newest.displayTitle,
         id,
         lastProgressAt: newest.lastProgressAt,

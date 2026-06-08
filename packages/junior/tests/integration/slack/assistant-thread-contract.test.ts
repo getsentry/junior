@@ -1,5 +1,5 @@
 import { createTestDestination } from "../../fixtures/slack-harness";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
@@ -296,19 +296,18 @@ describe("Slack contract: assistant-thread delivery", () => {
     ]);
   });
 
-  it("keeps title generation inside the awaited webhook turn task", async () => {
+  it("lets the awaited webhook turn task finish before slow title generation", async () => {
+    let resolveTitle: (() => void) | undefined;
     const bot = await createDirectMessageBot({
       completeText: async () =>
-        await new Promise((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                text: "Debugging Node.js Memory Leaks",
-                message: { role: "assistant", content: "" },
-              } as any),
-            10,
-          ),
-        ),
+        await new Promise((resolve) => {
+          resolveTitle = () => {
+            resolve({
+              text: "Debugging Node.js Memory Leaks",
+              message: { role: "assistant", content: "" },
+            } as any);
+          };
+        }),
       generateAssistantReply: async () => ({
         text: "Here is how to debug memory leaks.",
         diagnostics: makeDiagnostics(),
@@ -327,16 +326,20 @@ describe("Slack contract: assistant-thread delivery", () => {
 
     expect(response.status).toBe(200);
     await waitUntil.flush();
+    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([]);
 
-    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel_id: DM_CHANNEL_ID,
-          thread_ts: DM_THREAD_TS,
-          title: "Debugging Node.js Memory Leaks",
+    resolveTitle!();
+    await vi.waitFor(() => {
+      expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel_id: DM_CHANNEL_ID,
+            thread_ts: DM_THREAD_TS,
+            title: "Debugging Node.js Memory Leaks",
+          }),
         }),
-      }),
-    ]);
+      ]);
+    });
   });
 
   it("does not post assistant titles when the DM message omits thread_ts", async () => {

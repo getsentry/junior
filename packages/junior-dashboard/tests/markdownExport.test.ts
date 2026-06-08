@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildConversationMarkdown } from "../src/client/markdownExport";
 import type {
+  Conversation,
   ConversationDetailFeed,
   ConversationTurn,
 } from "../src/client/types";
@@ -100,6 +101,33 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
   });
 
+  it("prefers the freshly loaded detail title over a stale list row title", () => {
+    const generatedAt = "2026-01-01T00:00:08.000Z";
+    const detail = {
+      conversationId: "slack:C1:222",
+      displayTitle: "Fresh async title",
+      generatedAt,
+      turns: [],
+    } satisfies ConversationDetailFeed;
+    const conversation = {
+      channel: "C1",
+      channelName: "eng",
+      displayTitle: "Public Channel",
+      id: "slack:C1:222",
+      lastProgressAt: generatedAt,
+      lastSeenAt: generatedAt,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      turns: [],
+    } satisfies Conversation;
+
+    const markdown = buildConversationMarkdown(detail, conversation);
+
+    expect(markdown).toContain("# Fresh async title");
+    expect(markdown).not.toContain("# Public Channel");
+  });
+
   it("exports only safe redaction metadata for private transcripts", () => {
     const detail = {
       conversationId: "slack:D1:222",
@@ -119,7 +147,6 @@ describe("dashboard markdown export", () => {
           startedAt: "2026-01-01T00:00:00.000Z",
           status: "completed",
           surface: "slack",
-          title: "Direct Message",
           transcriptAvailable: false,
           transcriptRedacted: true,
           transcriptRedactionReason: "non_public_conversation",

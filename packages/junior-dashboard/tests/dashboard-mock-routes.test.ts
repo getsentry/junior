@@ -59,7 +59,6 @@ function reporting(): JuniorReporting {
         conversations: 1,
         durationMs: 0,
         failed: 0,
-        displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
         hung: 0,
         locations: [],
@@ -304,7 +303,6 @@ describe("dashboard mock conversation routes", () => {
     const mockReporting = reporting();
     mockReporting.getSessions = async () => ({
       source: "turn_session_records",
-      displayTitle: "Old real turn",
       generatedAt: "2026-06-04T12:00:00.000Z",
       sessions: [
         {

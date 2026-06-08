@@ -90,6 +90,120 @@ describe("dashboard reporting", () => {
     });
   });
 
+  it("reads conversation title details when context is absent", async () => {
+    const { getConversationDetails, setConversationTitle } =
+      await import("@/chat/state/conversation-details");
+
+    await setConversationTitle("slack:C1:111", {
+      displayTitle: "Incident Triage",
+      titleSourceMessageId: "msg-1",
+    });
+
+    await expect(getConversationDetails("slack:C1:111")).resolves.toMatchObject(
+      {
+        conversationId: "slack:C1:111",
+        displayTitle: "Incident Triage",
+        titleSourceMessageId: "msg-1",
+      },
+    );
+  });
+
+  it("refreshes conversation context ttl without replacing origin context", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T00:00:00.000Z"));
+    const { THREAD_STATE_TTL_MS } = await import("chat");
+    const { getConversationDetails, initConversationContext } =
+      await import("@/chat/state/conversation-details");
+    const startedAtMs = Date.now();
+
+    await initConversationContext("slack:C1:111", {
+      channelName: "first-channel",
+      originRequester: { fullName: "First Requester" },
+      originSurface: "slack",
+      startedAtMs,
+    });
+
+    vi.setSystemTime(Date.now() + THREAD_STATE_TTL_MS - 1_000);
+    await initConversationContext("slack:C1:111", {
+      channelName: "later-channel",
+      originRequester: { fullName: "Later Requester" },
+      originSurface: "slack",
+      startedAtMs: Date.now(),
+    });
+
+    vi.setSystemTime(Date.now() + 2_000);
+    await expect(getConversationDetails("slack:C1:111")).resolves.toMatchObject(
+      {
+        channelName: "first-channel",
+        originRequester: { fullName: "First Requester" },
+        startedAtMs,
+      },
+    );
+  });
+
+  it("does not replace malformed conversation context with later turn metadata", async () => {
+    const {
+      getConversationDetails,
+      initConversationContext,
+      setConversationTitle,
+    } = await import("@/chat/state/conversation-details");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { THREAD_STATE_TTL_MS } = await import("chat");
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+
+    await stateAdapter.set(
+      "junior:conversation:slack:C1:malformed:context",
+      { channelName: "first-channel" },
+      THREAD_STATE_TTL_MS,
+    );
+    await setConversationTitle("slack:C1:malformed", {
+      displayTitle: "Existing Title",
+    });
+
+    await initConversationContext("slack:C1:malformed", {
+      channelName: "later-channel",
+      originRequester: { fullName: "Later Requester" },
+      originSurface: "slack",
+      startedAtMs: Date.now(),
+    });
+
+    const details = await getConversationDetails("slack:C1:malformed");
+
+    expect(details).toMatchObject({
+      conversationId: "slack:C1:malformed",
+      displayTitle: "Existing Title",
+    });
+    expect(details).not.toHaveProperty("channelName");
+    expect(details).not.toHaveProperty("originRequester");
+    expect(details).not.toHaveProperty("startedAtMs");
+  });
+
+  it("uses conversation details title when conversation turns are absent", async () => {
+    const { initConversationContext, setConversationTitle } =
+      await import("@/chat/state/conversation-details");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await initConversationContext("slack:C1:details-only", {
+      channelName: "proj-alpha",
+      originSurface: "slack",
+      startedAtMs: Date.now(),
+    });
+    await setConversationTitle("slack:C1:details-only", {
+      displayTitle: "Details Only Title",
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:details-only",
+    );
+
+    expect(report).toMatchObject({
+      conversationId: "slack:C1:details-only",
+      displayTitle: "Details Only Title",
+      turns: [],
+    });
+  });
+
   it("reports aggregate conversation stats beyond the session feed cap", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
@@ -226,6 +340,49 @@ describe("dashboard reporting", () => {
     ).toEqual([
       { conversations: 1, durationMs: 2_000, label: "#proj-alpha" },
       { conversations: 1, durationMs: 3_000, label: "Direct Message" },
+    ]);
+  });
+
+  it("reports aggregate conversation stats from origin details when summaries omit metadata", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { initConversationContext } =
+      await import("@/chat/state/conversation-details");
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await initConversationContext("slack:C1:100", {
+      channelName: "proj-alpha",
+      originRequester: { fullName: "Origin Requester" },
+      originSurface: "slack",
+      startedAtMs: Date.parse("2026-06-04T10:00:00.000Z"),
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:100",
+      cumulativeDurationMs: 1_000,
+      requester: { fullName: "Later Requester" },
+      sessionId: "turn-1",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-04T10:05:00.000Z"),
+      state: "completed",
+    });
+
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats.requesters).toEqual([
+      expect.objectContaining({
+        conversations: 1,
+        label: "Origin Requester",
+        turns: 1,
+      }),
+    ]);
+    expect(stats.locations).toEqual([
+      expect.objectContaining({
+        conversations: 1,
+        label: "#proj-alpha",
+        turns: 1,
+      }),
     ]);
   });
 
@@ -568,9 +725,8 @@ describe("dashboard reporting", () => {
   it("redacts dashboard transcripts for non-public conversations", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { persistThreadStateById } = await import(
-      "@/chat/runtime/thread-state"
-    );
+    const { persistThreadStateById } =
+      await import("@/chat/runtime/thread-state");
     const { createJuniorReporting } = await import("@/reporting");
     const privateToolArgs = Object.fromEntries(
       Array.from({ length: 25 }, (_, index) => [

@@ -389,7 +389,10 @@ function sessionReportFromSummary(
   const displayTitle =
     privateLabel ??
     details?.displayTitle ??
-    slackStatsLocationLabel({ channel: slackThread?.channelId, channelName: effectiveChannelName }) ??
+    slackStatsLocationLabel({
+      channel: slackThread?.channelId,
+      channelName: effectiveChannelName,
+    }) ??
     surfaceFallbackLabel(effectiveSurface);
   // Requester: prefer origin requester from details (stable first-turn identity).
   const effectiveRequester = details?.originRequester ?? summary.requester;
@@ -552,6 +555,34 @@ function surfaceFallbackLabel(surface: DashboardSurface): string {
   if (surface === "api") return "API";
   if (surface === "internal") return "Internal";
   return "Conversation";
+}
+
+function displayTitleFromDetails(
+  conversationId: string,
+  details: ConversationDetailsRecord | undefined,
+): string | undefined {
+  if (!details) return undefined;
+  const slackThread = parseSlackThreadId(conversationId);
+  const slackConversation = resolveSlackConversationContextFromThreadId({
+    threadId: conversationId,
+    channelName: details.channelName,
+  });
+  const privateLabel =
+    resolveConversationPrivacy({ conversationId }) !== "public"
+      ? (formatSlackConversationRedactedLabel(slackConversation) ??
+        PRIVATE_CONVERSATION_LABEL)
+      : undefined;
+  return (
+    privateLabel ??
+    details.displayTitle ??
+    slackStatsLocationLabel({
+      channel: slackThread?.channelId,
+      channelName: details.channelName,
+    }) ??
+    (details.originSurface
+      ? surfaceFallbackLabel(details.originSurface)
+      : undefined)
+  );
 }
 
 function locationLabel(turn: DashboardSessionReport): string {
@@ -1086,13 +1117,20 @@ async function readConversationStats(): Promise<DashboardConversationStatsReport
     summaries: sampledSummaries,
     truncated,
   });
+  const detailsByConversationId = await getConversationDetailsForIds(
+    reportSummaries.map((summary) => summary.conversationId),
+  );
   return buildConversationStatsReport({
     generatedAt,
     nowMs,
     sampleLimit: DASHBOARD_CONVERSATION_STATS_LIMIT,
     sampleSize: sampledSummaries.length,
     sessions: reportSummaries.map((summary) =>
-      sessionReportFromSummary(summary, nowMs),
+      sessionReportFromSummary(
+        summary,
+        nowMs,
+        detailsByConversationId.get(summary.conversationId),
+      ),
     ),
     truncated,
   });
@@ -1177,7 +1215,9 @@ async function readConversation(
   // details.displayTitle is the canonical source; falls back to location label.
   const firstTurn = turns[0];
   const displayTitle =
-    firstTurn?.displayTitle ?? surfaceFallbackLabel(firstTurn?.surface ?? "slack");
+    firstTurn?.displayTitle ??
+    displayTitleFromDetails(conversationId, details) ??
+    surfaceFallbackLabel(firstTurn?.surface ?? "slack");
 
   return {
     conversationId,

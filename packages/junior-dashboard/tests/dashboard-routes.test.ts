@@ -121,7 +121,6 @@ function reporting(): JuniorReporting {
         conversations: 1,
         durationMs: 0,
         failed: 0,
-        displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
         hung: 0,
         locations: [

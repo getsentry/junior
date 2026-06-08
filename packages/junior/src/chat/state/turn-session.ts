@@ -90,7 +90,6 @@ function agentTurnSessionConversationIndexKey(conversationId: string): string {
   return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
 }
 
-
 function toFiniteNonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))

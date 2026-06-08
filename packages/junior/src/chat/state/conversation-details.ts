@@ -9,21 +9,23 @@
  *
  *   junior:conversation:{id}:context   — written once at turn start via
  *     setIfNotExists; owns channelName, originSurface, originRequester,
- *     startedAtMs. Subsequent turns are no-ops.
+ *     startedAtMs. Subsequent turns refresh the TTL without changing the
+ *     original context.
  *
- *   junior:conversation:{id}:title     — written by title generation via
- *     set; owns displayTitle and titleSourceMessageId.
+ *   junior:conversation:{id}:title     — written when title generation
+ *     completes and refreshed from existing title artifacts; owns displayTitle
+ *     and titleSourceMessageId.
  *
- * Because each key has exactly one writer and writes are single atomic ops,
- * no lock or read-modify-write is needed.
+ * Because each key has exactly one writer and writes are atomic ops, no lock
+ * is needed.
  */
+import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord, toOptionalNumber } from "@/chat/coerce";
 import { getStateAdapter } from "./adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "./ttl";
 import type { AgentTurnRequester, AgentTurnSurface } from "./turn-session";
 
 const CONVERSATION_PREFIX = "junior:conversation";
-const CONVERSATION_DETAILS_TTL_MS = JUNIOR_THREAD_STATE_TTL_MS;
+const CONVERSATION_DETAILS_TTL_MS = THREAD_STATE_TTL_MS;
 
 function conversationContextKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:${conversationId}:context`;
@@ -50,7 +52,7 @@ export interface ConversationDetailsRecord {
   /** Requester who initiated the conversation (first turn). */
   originRequester?: AgentTurnRequester;
   /** Timestamp of the first turn in the conversation. */
-  startedAtMs: number;
+  startedAtMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +93,22 @@ interface StoredContext {
   originSurface?: AgentTurnSurface;
   originRequester?: AgentTurnRequester;
   startedAtMs: number;
+}
+
+function storedContextFromInput(context: {
+  channelName?: string;
+  originSurface?: AgentTurnSurface;
+  originRequester?: AgentTurnRequester;
+  startedAtMs: number;
+}): StoredContext {
+  return {
+    ...(context.channelName ? { channelName: context.channelName } : {}),
+    ...(context.originSurface ? { originSurface: context.originSurface } : {}),
+    ...(context.originRequester
+      ? { originRequester: context.originRequester }
+      : {}),
+    startedAtMs: context.startedAtMs,
+  };
 }
 
 function parseContext(value: unknown): StoredContext | undefined {
@@ -136,9 +154,8 @@ function parseTitle(value: unknown): StoredTitle | undefined {
 // ---------------------------------------------------------------------------
 
 /**
- * Record the origin context for a conversation the first time it is seen.
- *
- * Uses setIfNotExists — subsequent turns are no-ops. No read, no lock.
+ * Record the origin context for a conversation the first time it is seen and
+ * refresh the context TTL on later turns without changing the stored origin.
  */
 export async function initConversationContext(
   conversationId: string,
@@ -151,26 +168,27 @@ export async function initConversationContext(
 ): Promise<void> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  await stateAdapter.setIfNotExists(
-    conversationContextKey(conversationId),
-    {
-      ...(context.channelName ? { channelName: context.channelName } : {}),
-      ...(context.originSurface
-        ? { originSurface: context.originSurface }
-        : {}),
-      ...(context.originRequester
-        ? { originRequester: context.originRequester }
-        : {}),
-      startedAtMs: context.startedAtMs,
-    },
+  const key = conversationContextKey(conversationId);
+  const inserted = await stateAdapter.setIfNotExists(
+    key,
+    storedContextFromInput(context),
     CONVERSATION_DETAILS_TTL_MS,
   );
+  if (inserted) return;
+
+  const existing = parseContext(await stateAdapter.get<unknown>(key));
+  if (!existing) {
+    // Do not invent origin context from a later turn if the original record is
+    // malformed. Let the bad record expire with the transcript TTL.
+    return;
+  }
+  await stateAdapter.set(key, existing, CONVERSATION_DETAILS_TTL_MS);
 }
 
 /**
- * Persist the LLM-generated title for a conversation.
+ * Persist or refresh the LLM-generated title for a conversation.
  *
- * Plain set — title generation fires once per conversation. No read, no lock.
+ * Plain set — no read, no lock.
  */
 export async function setConversationTitle(
   conversationId: string,
@@ -197,7 +215,7 @@ export async function setConversationTitle(
 /**
  * Read conversation details for a single conversation.
  * Assembles the context and title records in parallel.
- * Returns undefined when no context record exists yet (conversation unseen).
+ * Returns undefined only when neither context nor title details exist yet.
  */
 export async function getConversationDetails(
   conversationId: string,
@@ -209,26 +227,28 @@ export async function getConversationDetails(
     stateAdapter.get<unknown>(conversationTitleKey(conversationId)),
   ]);
   const context = parseContext(rawContext);
-  if (!context) return undefined;
   const title = parseTitle(rawTitle);
+  if (!context && !title) return undefined;
   return {
     conversationId,
     ...(title?.displayTitle ? { displayTitle: title.displayTitle } : {}),
     ...(title?.titleSourceMessageId
       ? { titleSourceMessageId: title.titleSourceMessageId }
       : {}),
-    ...(context.channelName ? { channelName: context.channelName } : {}),
-    ...(context.originSurface ? { originSurface: context.originSurface } : {}),
-    ...(context.originRequester
+    ...(context?.channelName ? { channelName: context.channelName } : {}),
+    ...(context?.originSurface ? { originSurface: context.originSurface } : {}),
+    ...(context?.originRequester
       ? { originRequester: context.originRequester }
       : {}),
-    startedAtMs: context.startedAtMs,
+    ...(context?.startedAtMs !== undefined
+      ? { startedAtMs: context.startedAtMs }
+      : {}),
   };
 }
 
 /**
  * Bulk-fetch conversation details for a set of conversation ids in parallel.
- * Returns a map from conversationId → record (omits ids with no context record).
+ * Returns a map from conversationId → record (omits ids with no details).
  */
 export async function getConversationDetailsForIds(
   conversationIds: Iterable<string>,

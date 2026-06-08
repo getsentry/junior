@@ -20,7 +20,7 @@ function activeTurn(
     startedAt: "2026-01-01T00:00:00.000Z",
     status: "active",
     surface: "slack",
-    title: "Turn turn-1",
+    displayTitle: "Conversation",
     transcript: [
       {
         role: "assistant",

@@ -218,8 +218,9 @@ function conversationTitle(
   detail: ConversationDetailFeed,
   conversation: Conversation | undefined,
 ): string {
-  if (conversation) return conversationDisplayTitle(conversation);
-  return detail.displayTitle;
+  const title = detail.displayTitle.trim();
+  if (title) return title;
+  return conversation ? conversationDisplayTitle(conversation) : "Conversation";
 }
 
 function conversationRequester(
@@ -317,7 +318,6 @@ function addMetaLine(
 function headingText(value: string): string {
   return value.replace(/\s+/g, " ").trim() || "Untitled";
 }
-
 
 function inlineCode(value: string): string {
   const fence = value.includes("`") ? "``" : "`";

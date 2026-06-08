@@ -560,6 +560,27 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Failed to init conversation context at turn start",
             );
           });
+          const existingAssistantTitle =
+            preparedState.artifacts.assistantTitle?.trim();
+          if (existingAssistantTitle) {
+            void setConversationTitle(conversationId, {
+              displayTitle: existingAssistantTitle,
+              ...(preparedState.artifacts.assistantTitleSourceMessageId
+                ? {
+                    titleSourceMessageId:
+                      preparedState.artifacts.assistantTitleSourceMessageId,
+                  }
+                : {}),
+            }).catch((error) => {
+              logException(
+                error,
+                "conversation_details_title_refresh_failed",
+                turnTraceContext,
+                { "app.agent.turn.state": "running" },
+                "Failed to refresh conversation title from artifacts",
+              );
+            });
+          }
         }
         setTags({
           conversationId,
@@ -983,7 +1004,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               ...artifactStatePatch,
               ...assistantTitleArtifacts,
             },
-            artifacts: preparedState.artifacts,
+            artifacts: latestArtifacts,
             conversation: preparedState.conversation,
             reply,
             sessionId: turnId,
@@ -995,6 +1016,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           await persistThreadState(thread, {
             ...completedState,
           });
+          if (
+            completedState.artifacts &&
+            (assistantTitleArtifacts.assistantTitle !== undefined ||
+              assistantTitleArtifacts.assistantTitleSourceMessageId !==
+                undefined) &&
+            (completedState.artifacts.assistantTitle !==
+              assistantTitleArtifacts.assistantTitle ||
+              completedState.artifacts.assistantTitleSourceMessageId !==
+                assistantTitleArtifacts.assistantTitleSourceMessageId)
+          ) {
+            await persistThreadState(thread, { artifacts: latestArtifacts });
+          }
           if (conversationId) {
             await recordAgentTurnSessionSummary({
               channelName,
