@@ -95,11 +95,6 @@ function fakeSandbox(
 function createHeadlessToolContext() {
   return createTestToolRuntimeContext({
     channelId: undefined,
-    channelCapabilities: {
-      canAddReactions: false,
-      canCreateCanvas: false,
-      canPostToChannel: false,
-    },
   });
 }
 
@@ -198,13 +193,9 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() =>
-        createTools(
-          [],
-          {},
-          createHeadlessToolContext(),
-        ),
-      ).toThrow('Plugin tool "loadSkill" conflicts with a core tool');
+      expect(() => createTools([], {}, createHeadlessToolContext())).toThrow(
+        'Plugin tool "loadSkill" conflicts with a core tool',
+      );
     } finally {
       setPlugins(previous);
     }

@@ -4,7 +4,7 @@ import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
 import { SlackActionError } from "@/chat/slack/client";
 import {
-  createTestToolRuntimeContext,
+  createTestSlackToolContext,
   createTestToolState,
   executeTestTool,
 } from "../fixtures/tool-runtime";
@@ -50,12 +50,10 @@ describe("tool idempotency", () => {
       }),
     });
     const state = createTestToolState();
-    const tool = createSlackCanvasCreateTool(
-      createTestToolRuntimeContext({
-        channelId: "C123",
-      }),
-      state,
-    );
+    const context = createTestSlackToolContext({
+      channelId: "C123",
+    });
+    const tool = createSlackCanvasCreateTool(context, state);
 
     const first = await executeTestTool(tool, {
       title: "Weekly plan",
@@ -101,12 +99,10 @@ describe("tool idempotency", () => {
     });
 
     const state = createTestToolState();
-    const tool = createSlackCanvasCreateTool(
-      createTestToolRuntimeContext({
-        channelId: "D123",
-      }),
-      state,
-    );
+    const context = createTestSlackToolContext({
+      channelId: "D123",
+    });
+    const tool = createSlackCanvasCreateTool(context, state);
 
     const result = await executeTestTool(tool, {
       title: "DM brief",
@@ -145,13 +141,11 @@ describe("tool idempotency", () => {
       }),
     });
 
-    const tool = createSlackCanvasCreateTool(
-      createTestToolRuntimeContext({
-        channelId: "D123",
-        deliveryChannelId: "C_SHARED",
-      }),
-      createTestToolState(),
-    );
+    const context = createTestSlackToolContext({
+      channelId: "D123",
+      deliveryChannelId: "C_SHARED",
+    });
+    const tool = createSlackCanvasCreateTool(context, createTestToolState());
 
     const result = await executeTestTool(tool, {
       title: "Shared brief",
@@ -173,15 +167,11 @@ describe("tool idempotency", () => {
 
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createTestToolState();
+    const context = createTestSlackToolContext({
+      channelId: "C123",
+    });
     const tool = createSlackCanvasCreateTool(
-      createTestToolRuntimeContext({
-        channelId: undefined,
-        channelCapabilities: {
-          canCreateCanvas: false,
-          canPostToChannel: false,
-          canAddReactions: false,
-        },
-      }),
+      { ...context, destination: undefined, destinationChannelId: undefined },
       state,
     );
 
@@ -249,12 +239,10 @@ describe("tool idempotency", () => {
       error: "internal_error",
     });
     const state = createTestToolState();
-    const tool = createSlackCanvasCreateTool(
-      createTestToolRuntimeContext({
-        channelId: "C123",
-      }),
-      state,
-    );
+    const context = createTestSlackToolContext({
+      channelId: "C123",
+    });
+    const tool = createSlackCanvasCreateTool(context, state);
 
     await expect(
       executeTestTool(tool, {

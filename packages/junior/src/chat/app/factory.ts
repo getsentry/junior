@@ -62,6 +62,40 @@ async function persistAssistantContextChannelId(args: {
   });
 }
 
+function clearSkippedTurnIfActive(
+  conversation: PreparedTurnState["conversation"],
+  messageId: string,
+): void {
+  if (
+    conversation.processing.activeTurnId === buildDeterministicTurnId(messageId)
+  ) {
+    conversation.processing.activeTurnId = undefined;
+  }
+}
+
+function upsertSkippedConversationMessage(
+  conversation: PreparedTurnState["conversation"],
+  args: {
+    decision: SubscribedReplyDecision;
+    message: Message;
+    text: TurnMessageText;
+  },
+): void {
+  const conversationMessage = toConversationMessage({
+    entry: args.message,
+    explicitMention: Boolean(args.message.isMention),
+    text: args.text.userText,
+  });
+  upsertConversationMessage(conversation, {
+    ...conversationMessage,
+    meta: {
+      ...conversationMessage.meta,
+      replied: false,
+      skippedReason: args.decision.reason,
+    },
+  });
+}
+
 /** Build a Slack runtime with production wiring plus optional scenario adapters. */
 export function createSlackRuntime(
   options: CreateSlackRuntimeOptions,

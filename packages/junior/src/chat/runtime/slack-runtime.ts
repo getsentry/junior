@@ -507,7 +507,7 @@ export function createSlackTurnRuntime<
     preparedState?: TPreparedState;
     text: TurnMessageText;
   }): Promise<void> => {
-    const completedAtMs = deps.now();
+    const completedAtMs = Date.now();
     logSkippedSubscribedDecision(args);
     if (args.preparedState) {
       await deps.onSubscribedMessageSkipped({

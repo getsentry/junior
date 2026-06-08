@@ -2,7 +2,10 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import {
+  getSlackToolContext,
+  type SlackToolContext,
+} from "@/chat/tools/slack/context";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
 interface TestToolStateOptions {
@@ -77,10 +80,7 @@ export function createTestToolRuntimeContext(
       } as const);
   return {
     channelId,
-    channelCapabilities:
-      overrides.channelCapabilities ?? resolveChannelCapabilities(channelId),
     destination: overrides.destination ?? defaultDestination,
-    ...(destinationChannelId ? { destinationChannelId } : {}),
     sandbox: createUnavailableSandbox(),
     source: overrides.source ?? defaultSource,
     ...(slackOverrides.messageTs ? { messageTs: slackOverrides.messageTs } : {}),
@@ -89,6 +89,19 @@ export function createTestToolRuntimeContext(
     ...(slackOverrides.threadTs ? { threadTs: slackOverrides.threadTs } : {}),
     ...overrides,
   } as ToolRuntimeContext;
+}
+
+/**
+ * Create Slack-specific context for direct Slack tool contract tests.
+ */
+export function createTestSlackToolContext(
+  overrides: Partial<ToolRuntimeContext> = {},
+): SlackToolContext {
+  const context = getSlackToolContext(createTestToolRuntimeContext(overrides));
+  if (!context) {
+    throw new Error("Expected Slack test tool context");
+  }
+  return context;
 }
 
 /**

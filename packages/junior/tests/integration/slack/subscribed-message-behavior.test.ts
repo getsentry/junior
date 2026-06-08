@@ -57,16 +57,12 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     const { slackRuntime } = createSlackBehaviorRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            throw providerError;
-          },
+      adapters: {
+        classifySubscribedReply: async () => {
+          throw providerError;
         },
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("generateAssistantReply should not run");
-          },
+        generateAssistantReply: async () => {
+          throw new Error("generateAssistantReply should not run");
         },
       },
     });
