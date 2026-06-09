@@ -37,8 +37,6 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
-export type AgentTurnRequester = StoredSlackRequester;
-
 export interface AgentTurnSessionRecord {
   channelName?: string;
   version: number;
@@ -50,7 +48,7 @@ export interface AgentTurnSessionRecord {
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
   piMessages: PiMessage[];
-  requester?: AgentTurnRequester;
+  requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
@@ -449,7 +447,7 @@ function buildStoredRecord(args: {
   loadedSkillNames?: string[];
   logSessionId?: string;
   previousVersion?: number;
-  requester?: AgentTurnRequester;
+  requester?: StoredSlackRequester;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -590,7 +588,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
-  requester?: AgentTurnRequester;
+  requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -668,7 +666,7 @@ export async function recordAgentTurnSessionSummary(args: {
   destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  requester?: AgentTurnRequester;
+  requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   sessionId: string;
   sliceId: number;

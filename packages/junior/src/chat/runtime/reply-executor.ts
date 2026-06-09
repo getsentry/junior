@@ -82,7 +82,11 @@ import {
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { toStoredSlackRequester, type Requester } from "@/chat/requester";
+import {
+  toStoredSlackRequester,
+  type Requester,
+  type StoredSlackRequester,
+} from "@/chat/requester";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
@@ -105,7 +109,6 @@ import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
-  type AgentTurnRequester,
 } from "@/chat/state/turn-session";
 import {
   initConversationContext,
@@ -126,7 +129,7 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   );
 }
 
-function turnRequester(requester: Requester): AgentTurnRequester {
+function turnRequester(requester: Requester): StoredSlackRequester {
   return toStoredSlackRequester(requester);
 }
 

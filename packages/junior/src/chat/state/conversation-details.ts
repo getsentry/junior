@@ -21,9 +21,12 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord, toOptionalNumber } from "@/chat/coerce";
-import { parseStoredSlackRequester } from "@/chat/requester";
+import {
+  parseStoredSlackRequester,
+  type StoredSlackRequester,
+} from "@/chat/requester";
 import { getStateAdapter } from "./adapter";
-import type { AgentTurnRequester, AgentTurnSurface } from "./turn-session";
+import type { AgentTurnSurface } from "./turn-session";
 
 const CONVERSATION_PREFIX = "junior:conversation";
 const CONVERSATION_DETAILS_TTL_MS = THREAD_STATE_TTL_MS;
@@ -51,7 +54,7 @@ export interface ConversationDetailsRecord {
   /** Surface on which the conversation was started. */
   originSurface?: AgentTurnSurface;
   /** Requester who initiated the conversation (first turn). */
-  originRequester?: AgentTurnRequester;
+  originRequester?: StoredSlackRequester;
   /** Timestamp of the first turn in the conversation. */
   startedAtMs?: number;
 }
@@ -60,9 +63,9 @@ export interface ConversationDetailsRecord {
 // Parsing helpers
 // ---------------------------------------------------------------------------
 
-function parseAgentTurnRequester(
+function parseOriginRequester(
   value: unknown,
-): AgentTurnRequester | undefined {
+): StoredSlackRequester | undefined {
   return parseStoredSlackRequester(value);
 }
 
@@ -81,14 +84,14 @@ function parseOriginSurface(value: unknown): AgentTurnSurface | undefined {
 interface StoredContext {
   channelName?: string;
   originSurface?: AgentTurnSurface;
-  originRequester?: AgentTurnRequester;
+  originRequester?: StoredSlackRequester;
   startedAtMs: number;
 }
 
 function storedContextFromInput(context: {
   channelName?: string;
   originSurface?: AgentTurnSurface;
-  originRequester?: AgentTurnRequester;
+  originRequester?: StoredSlackRequester;
   startedAtMs: number;
 }): StoredContext {
   return {
@@ -112,8 +115,8 @@ function parseContext(value: unknown): StoredContext | undefined {
     ...(parseOriginSurface(value.originSurface)
       ? { originSurface: parseOriginSurface(value.originSurface) }
       : {}),
-    ...(parseAgentTurnRequester(value.originRequester)
-      ? { originRequester: parseAgentTurnRequester(value.originRequester) }
+    ...(parseOriginRequester(value.originRequester)
+      ? { originRequester: parseOriginRequester(value.originRequester) }
       : {}),
     startedAtMs,
   };
@@ -152,7 +155,7 @@ export async function initConversationContext(
   context: {
     channelName?: string;
     originSurface?: AgentTurnSurface;
-    originRequester?: AgentTurnRequester;
+    originRequester?: StoredSlackRequester;
     startedAtMs: number;
   },
 ): Promise<void> {

@@ -32,8 +32,6 @@ const piMessageSchema = z
   .passthrough()
   .transform((value) => value as unknown as PiMessage);
 
-export type SessionRequester = StoredSlackRequester;
-
 const piMessageEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
   type: z.literal("pi_message"),
@@ -231,7 +229,7 @@ function findLastIndex<T>(
 function piEntry(
   message: PiMessage,
   sessionId: string,
-  requester?: SessionRequester,
+  requester?: StoredSlackRequester,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
@@ -245,7 +243,7 @@ function piEntry(
 function resetEntry(
   messages: PiMessage[],
   sessionId: string,
-  requester?: SessionRequester,
+  requester?: StoredSlackRequester,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
@@ -257,7 +255,7 @@ function resetEntry(
 }
 
 function requesterRecordedEntry(
-  requester: SessionRequester,
+  requester: StoredSlackRequester,
   sessionId: string,
 ): SessionLogEntry {
   return {
@@ -355,7 +353,7 @@ function decode(value: unknown): SessionLogEntry {
 
 export interface SessionProjection {
   messages: PiMessage[];
-  requester?: SessionRequester;
+  requester?: StoredSlackRequester;
 }
 
 /**
@@ -369,7 +367,7 @@ function project(
   sessionId?: string,
 ): SessionProjection {
   let messages: PiMessage[] = [];
-  let requester: SessionRequester | undefined;
+  let requester: StoredSlackRequester | undefined;
   for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "pi_message") {
       messages.push(entry.message);
@@ -429,8 +427,8 @@ function commitEntries(
   nextMessages: PiMessage[],
   sessionId: string,
   entries: SessionLogEntry[],
-  existingRequester?: SessionRequester,
-  requester?: SessionRequester,
+  existingRequester?: StoredSlackRequester,
+  requester?: StoredSlackRequester,
 ): SessionLogEntry[] {
   const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
   if (matchingPrefix === existingMessages.length) {
@@ -690,7 +688,7 @@ export async function commitMessages(
     store?: SessionLogStore;
     messages: PiMessage[];
     ttlMs: number;
-    requester?: SessionRequester;
+    requester?: StoredSlackRequester;
   },
 ): Promise<{ sessionId: string }> {
   const store = args.store ?? (await defaultStore());

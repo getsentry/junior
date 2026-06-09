@@ -29,9 +29,9 @@ import {
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
-  type AgentTurnRequester,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
+import type { StoredSlackRequester } from "@/chat/requester";
 import {
   getConversation,
   listConversationsByActivity,
@@ -233,7 +233,7 @@ function surfaceFromSource(
 }
 
 function requesterIdentityReport(
-  requester: AgentTurnRequester | StoredConversation["requester"] | undefined,
+  requester: StoredSlackRequester | undefined,
 ): RequesterIdentity | undefined {
   if (!requester) return undefined;
   const identity: RequesterIdentity = {

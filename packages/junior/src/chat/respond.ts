@@ -127,10 +127,7 @@ import {
   persistTimeoutSessionRecord,
   persistYieldSessionRecord,
 } from "@/chat/services/turn-session-record";
-import type {
-  AgentTurnRequester,
-  AgentTurnSurface,
-} from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
@@ -139,6 +136,7 @@ import {
   createRequester,
   toStoredSlackRequester,
   type Requester,
+  type StoredSlackRequester,
 } from "@/chat/requester";
 import {
   AuthorizationFlowDisabledError,
@@ -316,7 +314,7 @@ function extractSliceUsage(
 
 function requesterFromContext(
   context: ReplyRequestContext,
-): AgentTurnRequester | undefined {
+): StoredSlackRequester | undefined {
   const identity = actorRequesterFromContext(context);
   return identity ? toStoredSlackRequester(identity) : undefined;
 }

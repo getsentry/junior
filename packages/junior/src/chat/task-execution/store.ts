@@ -54,8 +54,6 @@ export type ExecutionStatus =
   | "pending"
   | "running";
 
-export type Requester = StoredSlackRequester;
-
 export interface AgentInput {
   attachments?: unknown[];
   authorId?: string;
@@ -100,7 +98,7 @@ export interface Conversation {
   destination?: Destination;
   execution: ConversationExecution;
   lastActivityAtMs: number;
-  requester?: Requester;
+  requester?: StoredSlackRequester;
   schemaVersion: 1;
   source?: Source;
   title?: string;
@@ -329,7 +327,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   };
 }
 
-function normalizeRequester(value: unknown): Requester | undefined {
+function normalizeRequester(value: unknown): StoredSlackRequester | undefined {
   return parseStoredSlackRequester(value);
 }
 
@@ -1189,7 +1187,7 @@ export async function recordConversationActivity(args: {
   conversationId: string;
   destination?: Destination;
   nowMs?: number;
-  requester?: Requester;
+  requester?: StoredSlackRequester;
   source?: Source;
   state?: StateAdapter;
   title?: string;

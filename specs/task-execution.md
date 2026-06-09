@@ -158,8 +158,6 @@ type Source = "slack" | "api" | "scheduler" | "plugin" | "internal";
 // Canonical stored Slack requester from `packages/junior/src/chat/requester.ts`.
 // New records include Slack platform, team, user, and optional display/contact
 // fields. Legacy records may omit team metadata.
-type Requester = StoredSlackRequester;
-
 interface AgentInput {
   text: string;
   authorId?: string;
@@ -196,7 +194,7 @@ interface Conversation {
   destination?: Destination;
   title?: string;
   channelName?: string;
-  requester?: Requester;
+  requester?: StoredSlackRequester;
   source?: Source;
 
   execution: ConversationExecution;
