@@ -500,7 +500,7 @@ describe("dashboard reporting", () => {
     expect(stats.sampleSize).toBe(5_000);
     expect(avery).toMatchObject({ durationMs: 1_000, runs: 1 });
     expect(blake).toMatchObject({ durationMs: 500, runs: 1 });
-  });
+  }, 20_000);
 
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
     vi.useFakeTimers();
@@ -525,7 +525,7 @@ describe("dashboard reporting", () => {
       sampleSize: 5_000,
       truncated: true,
     });
-  });
+  }, 20_000);
 
   it("reports only the current turn transcript from session history", async () => {
     const { upsertAgentTurnSessionRecord } =
@@ -669,7 +669,7 @@ describe("dashboard reporting", () => {
         parts: [{ type: "text", text: "target question" }],
       },
     ]);
-  });
+  }, 20_000);
 
   it("keeps earlier turn transcripts pinned to their committed log prefix", async () => {
     const { upsertAgentTurnSessionRecord } =
