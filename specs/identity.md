@@ -105,7 +105,8 @@ lookup.
 At the start of a Slack turn the requester identity resolved at the Slack
 boundary is persisted in `AgentTurnSessionRecord.requester`. That stored
 requester is owned state for the lifetime of the turn. Continuation endpoints
-MUST reconstruct `ActorIdentityInput` from this stored requester when resuming.
+MUST reconstruct runtime `Requester` state from this stored requester when
+resuming.
 
 Continuation endpoints MUST NOT call live Slack identity helpers such as
 `lookupSlackActorIdentity` to re-derive requester display or contact fields.

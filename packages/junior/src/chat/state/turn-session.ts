@@ -11,6 +11,10 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
+import {
+  parseStoredSlackRequester,
+  type StoredSlackRequester,
+} from "@/chat/requester";
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
@@ -33,12 +37,7 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
-export interface AgentTurnRequester {
-  email?: string;
-  fullName?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-}
+export type AgentTurnRequester = StoredSlackRequester;
 
 export interface AgentTurnSessionRecord {
   channelName?: string;
@@ -120,43 +119,6 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
-function parseRequesterUserId(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length === 0) {
-    return undefined;
-  }
-  if (value !== value.trim() || value.toLowerCase() === "unknown") {
-    return undefined;
-  }
-  return value;
-}
-
-function parseAgentTurnRequester(
-  value: unknown,
-): AgentTurnRequester | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const requester: AgentTurnRequester = {};
-  if (value.slackUserId !== undefined) {
-    const slackUserId =
-      typeof value.slackUserId === "string"
-        ? parseRequesterUserId(value.slackUserId)
-        : undefined;
-    if (!slackUserId) {
-      return undefined;
-    }
-    requester.slackUserId = slackUserId;
-  }
-  for (const field of ["email", "fullName", "slackUserName"] as const) {
-    if (typeof value[field] === "string" && value[field].trim()) {
-      requester[field] = value[field].trim();
-    }
-  }
-
-  return Object.keys(requester).length > 0 ? requester : undefined;
-}
-
 function parseStoredRecord(
   value: unknown,
 ): Record<string, unknown> | undefined {
@@ -223,7 +185,7 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
-  const requester = parseAgentTurnRequester(parsed.requester);
+  const requester = parseStoredSlackRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
   const destination =

@@ -21,6 +21,7 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord, toOptionalNumber } from "@/chat/coerce";
+import { parseStoredSlackRequester } from "@/chat/requester";
 import { getStateAdapter } from "./adapter";
 import type { AgentTurnRequester, AgentTurnSurface } from "./turn-session";
 
@@ -62,18 +63,7 @@ export interface ConversationDetailsRecord {
 function parseAgentTurnRequester(
   value: unknown,
 ): AgentTurnRequester | undefined {
-  if (!isRecord(value)) return undefined;
-  const requester: AgentTurnRequester = {
-    ...(typeof value.email === "string" ? { email: value.email } : {}),
-    ...(typeof value.fullName === "string" ? { fullName: value.fullName } : {}),
-    ...(typeof value.slackUserId === "string"
-      ? { slackUserId: value.slackUserId }
-      : {}),
-    ...(typeof value.slackUserName === "string"
-      ? { slackUserName: value.slackUserName }
-      : {}),
-  };
-  return Object.keys(requester).length > 0 ? requester : undefined;
+  return parseStoredSlackRequester(value);
 }
 
 function parseOriginSurface(value: unknown): AgentTurnSurface | undefined {

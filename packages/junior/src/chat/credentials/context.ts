@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseActorUserId } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/requester";
 
 const exactActorIdSchema = z
   .string()

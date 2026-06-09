@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildActorIdentity,
+  createRequester,
+  createRequesterFromStoredSlackRequester,
+  createSlackRequester,
   isActorUserId,
   parseActorUserId,
-  slackActorIdentity,
-  slackActorIdentityFromStoredRequester,
-} from "@/chat/services/requester-identity";
+  parseStoredSlackRequester,
+  toStoredSlackRequester,
+} from "@/chat/requester";
 
-describe("requester identity", () => {
+describe("requester", () => {
   it("parses exact actor user ids without accepting synthetic values", () => {
     expect(parseActorUserId("U039RR91S")).toBe("U039RR91S");
     expect(parseActorUserId(" U039RR91S ")).toBeUndefined();
@@ -19,7 +21,7 @@ describe("requester identity", () => {
 
   it("does not promote Slack ids into actor display names", () => {
     expect(
-      buildActorIdentity(
+      createRequester(
         {
           fullName: "U039RR91S",
           userId: "U039RR91S",
@@ -32,7 +34,7 @@ describe("requester identity", () => {
 
   it("does not promote synthetic unknown display names", () => {
     expect(
-      buildActorIdentity(
+      createRequester(
         {
           fullName: "unknown",
           userId: "U039RR91S",
@@ -45,7 +47,7 @@ describe("requester identity", () => {
 
   it("does not preserve synthetic unknown actor ids", () => {
     expect(
-      buildActorIdentity(
+      createRequester(
         {
           fullName: "David Cramer",
           userId: "unknown",
@@ -56,9 +58,9 @@ describe("requester identity", () => {
     ).toBeUndefined();
   });
 
-  it("builds Slack actor identity from the resolved Slack profile", () => {
+  it("builds Slack requester from the resolved Slack profile", () => {
     expect(
-      slackActorIdentity("U039RR91S", {
+      createSlackRequester("U039RR91S", {
         email: "david@example.com",
         fullName: "David Cramer",
         userName: "dcramer",
@@ -73,7 +75,7 @@ describe("requester identity", () => {
 
   it("drops profile fields when caller context points at a different user", () => {
     expect(
-      buildActorIdentity(
+      createRequester(
         {
           email: "david@example.com",
           fullName: "David Cramer",
@@ -86,25 +88,25 @@ describe("requester identity", () => {
   });
 
   it("omits unresolved Slack profile fields instead of inventing identity", () => {
-    expect(slackActorIdentity("U039RR91S", null)).toEqual({
+    expect(createSlackRequester("U039RR91S", null)).toEqual({
       userId: "U039RR91S",
     });
     expect(
-      slackActorIdentity("U039RR91S", {
+      createSlackRequester("U039RR91S", {
         email: "noreply",
       }),
     ).toEqual({ userId: "U039RR91S" });
   });
 
-  it("requires a Slack user id when building Slack actor identity", () => {
-    expect(() => slackActorIdentity("", null)).toThrow(
-      "Slack actor identity requires a user id",
+  it("requires a Slack user id when building Slack requester", () => {
+    expect(() => createSlackRequester("", null)).toThrow(
+      "Slack requester requires a user id",
     );
   });
 
   it("uses stored Slack requester fields only for the same actor id", () => {
     expect(
-      slackActorIdentityFromStoredRequester({
+      createRequesterFromStoredSlackRequester({
         userId: "U039RR91S",
         requester: {
           email: "david@example.com",
@@ -121,16 +123,53 @@ describe("requester identity", () => {
     });
 
     expect(() =>
-      slackActorIdentityFromStoredRequester({
+      createRequesterFromStoredSlackRequester({
         userId: "U039RR91S",
         requester: { slackUserId: "U_OTHER" },
       }),
-    ).toThrow("Stored Slack requester identity must match actor user id");
+    ).toThrow("Stored Slack requester must match actor user id");
     expect(() =>
-      slackActorIdentityFromStoredRequester({
+      createRequesterFromStoredSlackRequester({
         userId: "U039RR91S",
         requester: { slackUserId: " U039RR91S " },
       }),
-    ).toThrow("Stored Slack requester identity requires a user id");
+    ).toThrow("Stored Slack requester requires a user id");
+  });
+
+  it("parses canonical serialized Slack requesters without repair", () => {
+    expect(
+      parseStoredSlackRequester({
+        email: "david@example.com",
+        fullName: "David Cramer",
+        slackUserId: "U039RR91S",
+        slackUserName: "dcramer",
+      }),
+    ).toEqual({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      slackUserId: "U039RR91S",
+      slackUserName: "dcramer",
+    });
+    expect(
+      parseStoredSlackRequester({
+        slackUserId: " U039RR91S ",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("converts runtime requesters to durable Slack requester state", () => {
+    expect(
+      toStoredSlackRequester({
+        email: "david@example.com",
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      }),
+    ).toEqual({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      slackUserId: "U039RR91S",
+      slackUserName: "dcramer",
+    });
   });
 });

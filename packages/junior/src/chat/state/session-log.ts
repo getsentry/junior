@@ -12,6 +12,10 @@ import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  storedSlackRequesterSchema,
+  type StoredSlackRequester,
+} from "@/chat/requester";
+import {
   getConnectedStateContext,
   getStateAdapter,
 } from "@/chat/state/adapter";
@@ -28,21 +32,14 @@ const piMessageSchema = z
   .passthrough()
   .transform((value) => value as unknown as PiMessage);
 
-const sessionRequesterSchema = z.object({
-  slackUserId: z.string().min(1).optional(),
-  slackUserName: z.string().min(1).optional(),
-  fullName: z.string().min(1).optional(),
-  email: z.string().min(1).optional(),
-});
-
-export type SessionRequester = z.infer<typeof sessionRequesterSchema>;
+export type SessionRequester = StoredSlackRequester;
 
 const piMessageEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
   type: z.literal("pi_message"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   message: piMessageSchema,
-  requester: sessionRequesterSchema.optional(),
+  requester: storedSlackRequesterSchema.optional(),
 });
 
 const projectionResetEntrySchema = z.object({
@@ -50,14 +47,14 @@ const projectionResetEntrySchema = z.object({
   type: z.literal("projection_reset"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   messages: z.array(piMessageSchema),
-  requester: sessionRequesterSchema.optional(),
+  requester: storedSlackRequesterSchema.optional(),
 });
 
 const requesterRecordedEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
   type: z.literal("requester_recorded"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
-  requester: sessionRequesterSchema,
+  requester: storedSlackRequesterSchema,
 });
 
 const mcpProviderConnectedEntrySchema = z.object({

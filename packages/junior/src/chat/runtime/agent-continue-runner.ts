@@ -43,7 +43,7 @@ import {
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { slackActorIdentityFromStoredRequester } from "@/chat/services/requester-identity";
+import { createRequesterFromStoredSlackRequester } from "@/chat/requester";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -256,7 +256,7 @@ export async function continueSlackAgentRun(
           excludeMessageId: userMessage.id,
         });
         const sandbox = getPersistedSandboxState(currentState);
-        const requester = slackActorIdentityFromStoredRequester({
+        const requester = createRequesterFromStoredSlackRequester({
           requester: activeSessionRecord.requester,
           userId: userMessage.author.userId,
         });

@@ -155,12 +155,8 @@ Conceptual type:
 type ExecutionStatus = "idle" | "pending" | "running" | "awaiting_resume";
 type Source = "slack" | "api" | "scheduler" | "plugin" | "internal";
 
-interface Requester {
-  email?: string;
-  fullName?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-}
+// Canonical stored Slack requester from `packages/junior/src/chat/requester.ts`.
+type Requester = StoredSlackRequester;
 
 interface AgentInput {
   text: string;

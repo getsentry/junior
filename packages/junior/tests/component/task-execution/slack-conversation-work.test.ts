@@ -325,7 +325,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("binds resolved Slack actor identity before runtime handling", async () => {
+  it("binds resolved Slack requester before runtime handling", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();

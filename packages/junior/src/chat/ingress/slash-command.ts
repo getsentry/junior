@@ -5,7 +5,7 @@ import { isPluginProvider } from "@/chat/plugins/registry";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
-import { parseActorUserId } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/requester";
 
 async function postEphemeral(
   event: SlashCommandEvent,

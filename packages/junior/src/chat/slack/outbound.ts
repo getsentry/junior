@@ -6,7 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import { parseActorUserId } from "@/chat/services/requester-identity";
+import { parseActorUserId } from "@/chat/requester";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 

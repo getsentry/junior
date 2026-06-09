@@ -31,10 +31,7 @@ import {
 } from "@/chat/slack/adapter-context";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
-import {
-  parseActorUserId,
-  type SlackActorProfile,
-} from "@/chat/services/requester-identity";
+import { parseActorUserId, type SlackRequesterProfile } from "@/chat/requester";
 import { createSlackDestination } from "@/chat/destination";
 
 export type SlackConversationRoute = "mention" | "subscribed";
@@ -52,7 +49,7 @@ export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
     userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
+  ) => Promise<SlackRequesterProfile | null | undefined>;
   resumeAwaitingContinuation: (conversationId: string) => Promise<boolean>;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
@@ -124,7 +121,7 @@ function restoreMessage(args: {
 async function bindSlackActorIdentities(args: {
   lookupSlackUser: (
     userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
+  ) => Promise<SlackRequesterProfile | null | undefined>;
   messages: Message[];
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();

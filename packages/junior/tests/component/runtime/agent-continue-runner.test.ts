@@ -210,9 +210,7 @@ describe("agent continuation runner callbacks", () => {
           },
         },
       ),
-    ).rejects.toThrow(
-      "Stored Slack requester identity must match actor user id",
-    );
+    ).rejects.toThrow("Stored Slack requester must match actor user id");
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({

@@ -52,7 +52,10 @@ import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
-import { slackActorIdentityFromStoredRequester } from "@/chat/services/requester-identity";
+import {
+  createRequesterFromStoredSlackRequester,
+  type Requester,
+} from "@/chat/requester";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -294,9 +297,9 @@ async function resumeAuthorizedMcpTurn(args: {
       const lockedChannelConfiguration = getChannelConfigurationServiceById(
         authSession.channelId!,
       );
-      let requester: ReturnType<typeof slackActorIdentityFromStoredRequester>;
+      let requester: Requester;
       try {
-        requester = slackActorIdentityFromStoredRequester({
+        requester = createRequesterFromStoredSlackRequester({
           requester: lockedSessionRecord.requester,
           userId: authSession.userId,
         });

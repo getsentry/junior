@@ -135,7 +135,11 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { buildActorIdentity } from "@/chat/services/requester-identity";
+import {
+  createRequester,
+  toStoredSlackRequester,
+  type Requester,
+} from "@/chat/requester";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -193,12 +197,7 @@ function waitForAbortSettlement(
 export interface ReplyRequestContext {
   skillDirs?: string[];
   credentialContext?: CredentialContext;
-  requester?: {
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-    email?: string;
-  };
+  requester?: Requester;
   slackConversation?: SlackConversationContext;
   destination?: Destination;
   surface?: AgentTurnSurface;
@@ -320,20 +319,14 @@ function requesterFromContext(
   requesterId: string | undefined,
 ): AgentTurnRequester | undefined {
   const identity = actorRequesterFromContext(requester, requesterId);
-  const agentRequester: AgentTurnRequester = {
-    ...(identity?.email ? { email: identity.email } : {}),
-    ...(identity?.fullName ? { fullName: identity.fullName } : {}),
-    ...(identity?.userId ? { slackUserId: identity.userId } : {}),
-    ...(identity?.userName ? { slackUserName: identity.userName } : {}),
-  };
-  return Object.keys(agentRequester).length > 0 ? agentRequester : undefined;
+  return identity ? toStoredSlackRequester(identity) : undefined;
 }
 
 function actorRequesterFromContext(
   requester: ReplyRequestContext["requester"],
   requesterId: string | undefined,
-): ReplyRequestContext["requester"] | undefined {
-  return buildActorIdentity(requester, requesterId);
+): Requester | undefined {
+  return createRequester(requester, requesterId);
 }
 
 function surfaceFromContext(

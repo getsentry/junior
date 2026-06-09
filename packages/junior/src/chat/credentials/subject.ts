@@ -2,10 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
-import {
-  isActorUserId,
-  parseActorUserId,
-} from "@/chat/services/requester-identity";
+import { isActorUserId, parseActorUserId } from "@/chat/requester";
 
 const CREDENTIAL_SUBJECT_HMAC_CONTEXT = "junior.credential_subject.v1";
 const CREDENTIAL_SUBJECT_SIGNATURE_VERSION = "v1";

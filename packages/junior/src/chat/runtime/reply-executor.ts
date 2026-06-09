@@ -82,7 +82,7 @@ import {
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import type { ActorIdentityInput } from "@/chat/services/requester-identity";
+import { toStoredSlackRequester, type Requester } from "@/chat/requester";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
@@ -126,14 +126,8 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   );
 }
 
-function turnRequester(identity: ActorIdentityInput): AgentTurnRequester {
-  const requester: AgentTurnRequester = {
-    ...(identity.email ? { email: identity.email } : {}),
-    ...(identity.fullName ? { fullName: identity.fullName } : {}),
-    ...(identity.userId ? { slackUserId: identity.userId } : {}),
-    ...(identity.userName ? { slackUserName: identity.userName } : {}),
-  };
-  return requester;
+function turnRequester(requester: Requester): AgentTurnRequester {
+  return toStoredSlackRequester(requester);
 }
 
 async function resolveChannelName(thread: Thread): Promise<string | undefined> {

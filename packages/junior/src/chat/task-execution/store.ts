@@ -13,6 +13,10 @@ import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import {
+  parseStoredSlackRequester,
+  type StoredSlackRequester,
+} from "@/chat/requester";
+import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
 } from "@/chat/state/adapter";
@@ -50,12 +54,7 @@ export type ExecutionStatus =
   | "pending"
   | "running";
 
-export interface Requester {
-  email?: string;
-  fullName?: string;
-  slackUserId?: string;
-  slackUserName?: string;
-}
+export type Requester = StoredSlackRequester;
 
 export interface AgentInput {
   attachments?: unknown[];
@@ -331,22 +330,7 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
 }
 
 function normalizeRequester(value: unknown): Requester | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const requester: Requester = {};
-  for (const field of [
-    "email",
-    "fullName",
-    "slackUserId",
-    "slackUserName",
-  ] as const) {
-    const fieldValue = toOptionalString(value[field]);
-    if (fieldValue) {
-      requester[field] = fieldValue;
-    }
-  }
-  return Object.keys(requester).length > 0 ? requester : undefined;
+  return parseStoredSlackRequester(value);
 }
 
 function normalizeLease(value: unknown): Lease | undefined {
