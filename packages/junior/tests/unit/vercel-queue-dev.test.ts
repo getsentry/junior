@@ -119,7 +119,13 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     }
 
     await expect(
-      handler({ conversationId: "slack:C123:1712345.0001" }, metadata),
+      handler(
+        {
+          conversationId: "slack:C123:1712345.0001",
+          destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+        },
+        metadata,
+      ),
     ).resolves.toBeUndefined();
 
     const [{ appendInboundMessage }, { signConversationQueueMessage }] =

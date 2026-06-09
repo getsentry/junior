@@ -9,8 +9,7 @@ export type ConversationQueueMessageRejectReason =
   | "destination_mismatch"
   | "expired"
   | "malformed"
-  | "signature_mismatch"
-  | "unauthorized";
+  | "signature_mismatch";
 
 export class ConversationQueueMessageRejectedError extends Error {
   conversationId?: string;
