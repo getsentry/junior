@@ -1,26 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EmittedLogRecord } from "@/chat/logging";
 
+const ORIGINAL_SENTRY_DSN = process.env.SENTRY_DSN;
 const ORIGINAL_SENTRY_RELEASE = process.env.SENTRY_RELEASE;
 const ORIGINAL_VERCEL_DEPLOYMENT_ID = process.env.VERCEL_DEPLOYMENT_ID;
 const ORIGINAL_VERCEL_GIT_COMMIT_SHA = process.env.VERCEL_GIT_COMMIT_SHA;
 
-async function loadLoggingModule() {
-  vi.resetModules();
-  vi.doMock("@/chat/sentry", () => ({
-    captureException: undefined,
-    captureMessage: undefined,
-    getActiveSpan: () => undefined,
-    logger: {},
-    setTag: undefined,
-    setUser: undefined,
-    spanToJSON: () => ({}),
-    withScope: undefined,
-  }));
-  return await import("@/chat/logging");
-}
-
 function resetEnv(): void {
+  if (ORIGINAL_SENTRY_DSN === undefined) {
+    delete process.env.SENTRY_DSN;
+  } else {
+    process.env.SENTRY_DSN = ORIGINAL_SENTRY_DSN;
+  }
   if (ORIGINAL_SENTRY_RELEASE === undefined) {
     delete process.env.SENTRY_RELEASE;
   } else {
@@ -38,6 +28,18 @@ function resetEnv(): void {
   }
 }
 
+async function loadInstrumentationModule() {
+  vi.resetModules();
+  const init = vi.fn();
+  vi.doMock("@/chat/sentry", () => ({
+    getClient: () => undefined,
+    init,
+    vercelAIIntegration: () => ({ name: "vercel-ai" }),
+  }));
+  const instrumentation = await import("@/instrumentation");
+  return { init, instrumentation };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.resetModules();
@@ -45,33 +47,29 @@ afterEach(() => {
   resetEnv();
 });
 
-describe("deployment log attributes", () => {
-  it("adds deployment metadata to emitted log records", async () => {
+describe("initSentry", () => {
+  it("adds deployment metadata to outgoing spans", async () => {
+    process.env.SENTRY_DSN = "https://public@example.com/1";
     process.env.SENTRY_RELEASE = " ";
     process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
     process.env.VERCEL_GIT_COMMIT_SHA = "git-sha";
 
-    const { log, registerLogRecordSink } = await loadLoggingModule();
-    const records: EmittedLogRecord[] = [];
-    const unregister = registerLogRecordSink((record) => {
-      records.push(record);
-    });
+    const { init, instrumentation } = await loadInstrumentationModule();
+    instrumentation.initSentry();
 
-    try {
-      log.warn(
-        "deployment_context_test",
-        {
-          "deployment.id": "caller-deployment",
-          "service.version": "caller-version",
-        },
-        "Deployment context test",
-      );
-    } finally {
-      unregister();
-    }
+    expect(init).toHaveBeenCalledTimes(1);
+    const options = init.mock.calls[0]?.[0];
+    expect(options?.beforeSendSpan).toBeTypeOf("function");
 
-    expect(records).toHaveLength(1);
-    expect(records[0]?.attributes).toMatchObject({
+    const span = {
+      data: {
+        "deployment.id": "span-deployment",
+        "service.version": "span-version",
+      },
+    };
+
+    expect(options.beforeSendSpan(span)).toBe(span);
+    expect(span.data).toMatchObject({
       "deployment.id": "dpl_123",
       "service.version": "git-sha",
     });

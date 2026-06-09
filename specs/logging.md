@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-05-28
+- Last Edited: 2026-06-09
 
 ## Purpose
 
@@ -151,6 +151,7 @@ Rules:
 
 - `service.name`
 - `service.version`
+- `deployment.id`
 - `deployment.environment.name`
 - `event.name`
 

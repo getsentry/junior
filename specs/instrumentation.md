@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-06
+- Last Edited: 2026-06-09
 
 ## Purpose
 
@@ -22,6 +22,19 @@ Define the canonical logging/tracing instrumentation contracts and shared policy
   - event frequency is too high for practical log/span retention or query costs,
   - required aggregation cannot be recovered from existing span/log attributes, or
   - a critical SLO/SLA alert needs a dedicated low-latency metric path.
+
+## Attribute Scope Policy
+
+Telemetry attributes that describe the emitting process or deployment may be
+attached to every span and log record so each record is independently
+queryable. Examples include `service.version`, `deployment.id`, and
+`deployment.environment.name`.
+
+Operation-local attributes must stay on the span or log record that directly
+observes them. For example, `http.response.status_code` belongs on the
+corresponding `http.server`/`http.client` span and must not be copied to sibling
+spans only to make cross-span queries easier. Treat spans like logs/events for
+attribute scope: global context can be repeated, but local facts stay local.
 
 ## Specs
 

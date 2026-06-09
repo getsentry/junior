@@ -1,5 +1,5 @@
 import * as Sentry from "@/chat/sentry";
-import { getDeploymentTelemetryAttributes } from "@/chat/deployment-attributes";
+import { getDeploymentTelemetryAttributes } from "@/deployment-telemetry";
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -38,6 +38,7 @@ export function initSentry(): void {
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
+    // Keep deployment identity centralized so every emitted Sentry span carries it.
     beforeSendSpan(span) {
       if (Object.keys(deploymentSpanAttributes).length === 0) {
         return span;

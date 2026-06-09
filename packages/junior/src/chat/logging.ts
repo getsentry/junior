@@ -15,9 +15,9 @@ import type {
   LogLevel as ChatSdkLogLevel,
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import { getDeploymentTelemetryAttributes } from "@/chat/deployment-attributes";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnUsage } from "@/chat/usage";
+import { getDeploymentTelemetryAttributes } from "@/deployment-telemetry";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
@@ -1122,12 +1122,17 @@ function emitRecord(
   const contextAttributes = ownsLogTapeBackend
     ? undefined
     : contextStorage.getStore();
-  const attributes = mergeAttributes(contextAttributes, traceAttributes, {
-    ...deploymentLogAttributes,
-    "event.name": normalizedEventName,
-    ...(source ? { "app.log.source": source } : {}),
-    ...attrs,
-  });
+  const attributes = mergeAttributes(
+    contextAttributes,
+    traceAttributes,
+    {
+      "event.name": normalizedEventName,
+      ...(source ? { "app.log.source": source } : {}),
+      ...attrs,
+    },
+    // Deployment identity is process-owned and must win over event-local attrs.
+    deploymentLogAttributes,
+  );
 
   if (usesDirectEmissionFallback) {
     emitDirect(level, normalizedEventName, message, attributes);
