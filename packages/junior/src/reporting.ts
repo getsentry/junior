@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "@/chat/coerce";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { homeDir } from "@/chat/discovery";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -1042,7 +1043,38 @@ interface ScopedTurnMessages {
   startsAtRunBoundary: boolean;
 }
 
+const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
+
+function messageHasRuntimeTurnContext(
+  record: Record<string, unknown>,
+): boolean {
+  if (record.role !== "user" || !Array.isArray(record.content)) return false;
+  return record.content.some(
+    (part) =>
+      part !== null &&
+      typeof part === "object" &&
+      (part as { type?: unknown }).type === "text" &&
+      typeof (part as { text?: unknown }).text === "string" &&
+      (part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START),
+  );
+}
+
 function turnScopedMessages(messages: PiMessage[]): ScopedTurnMessages {
+  // Prefer the last user message that carries the runtime turn context marker,
+  // since that is the primary user input for the turn. Steering messages are
+  // also user-role Pi messages but never carry this marker, so they must not
+  // be mistaken for the turn boundary.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const record = messages[index] as unknown as Record<string, unknown>;
+    if (record.role === "user" && messageHasRuntimeTurnContext(record)) {
+      return {
+        messages: messages.slice(index),
+        startsAtRunBoundary: index === 0,
+      };
+    }
+  }
+  // Fall back to the last user message when no runtime context marker is found
+  // (e.g. very old session records that predate the marker).
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index] as unknown as Record<string, unknown>;
     if (record.role === "user") {
