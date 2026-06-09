@@ -483,6 +483,9 @@ async function writeWorkState(
 }
 
 function hasRunnableWork(state: ConversationWorkState): boolean {
+  if (state.terminallyFailedAtMs !== undefined) {
+    return false;
+  }
   return state.needsRun || pendingMessages(state).length > 0;
 }
 

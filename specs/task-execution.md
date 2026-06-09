@@ -399,12 +399,23 @@ durable `consecutiveFailureCount` on the conversation work record:
      next inbound message starts a fresh attempt).
    - `needsRun` is cleared and the conversation drops out of the recovery
      index so heartbeat will not requeue it.
+5. Terminal failure is sticky against non-user-initiated resurrection. A
+   conversation with `terminallyFailedAtMs` is treated as having no runnable
+   work even if a downstream caller (e.g. a turn-timeout resume request) sets
+   `needsRun` on the record; only a fresh non-duplicate inbound message clears
+   the terminal flag.
+6. If the worker cannot durably record a failure (e.g. mutation lock
+   contention), it must not send its own wake nudge, since doing so without
+   advancing the budget would let poison runs loop indefinitely. The worker
+   rethrows the original runner error in that case so the queue platform's
+   bounded redelivery handles recovery.
 
 A worker that catches a runner error and successfully sends its own wake nudge
 must not also throw. Throwing causes the queue platform to redeliver the same
 payload, doubling execution attempts and amplifying overload conditions. The
-worker rethrows only when its own recovery enqueue failed, so the queue
-provider's redelivery and heartbeat repair remain the safety net.
+worker rethrows only when its own recovery enqueue failed or when the failure
+budget could not be advanced, so the queue provider's redelivery and heartbeat
+repair remain the safety net.
 
 Pre-lease failures (lease acquisition or active-lease deferred nudges) must be
 absorbed rather than rethrown. Heartbeat already requeues pending mailbox work
@@ -523,6 +534,12 @@ Required invariants, using the lowest layer that proves the contract:
 17. Component: a conversation that fails N consecutive times is marked
     terminally failed and stops requeueing until a new inbound message
     arrives.
+18. Component: terminally failed conversations are not resurrected by
+    non-user-initiated `needsRun` writes (e.g. turn-timeout resume), and
+    `processConversationWork` reports `no_work` instead of acquiring a lease.
+19. Component: when the worker cannot durably record a failure, it rethrows
+    the original error without sending its own wake nudge so the failure
+    budget cannot be bypassed.
 
 ## Related Specs
 

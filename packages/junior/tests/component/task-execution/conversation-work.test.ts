@@ -656,6 +656,101 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "no_work" });
   });
 
+  it("rethrows when failure recording fails so platform redelivery bounds the retry", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state: baseState,
+    });
+
+    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
+    let mutationLockCalls = 0;
+    const failRecordMutationLock = new Proxy(baseState, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (key === mutationLockKey) {
+              mutationLockCalls += 1;
+              if (mutationLockCalls >= 2) {
+                throw new Error(
+                  "Could not acquire conversation work mutation lock for test",
+                );
+              }
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as typeof baseState;
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => 2_000,
+        queue,
+        run: async () => {
+          throw new Error("runner failed");
+        },
+        state: failRecordMutationLock,
+      }),
+    ).rejects.toThrow("runner failed");
+    expect(queue.sentRecords()).toHaveLength(0);
+  });
+
+  it("does not resurrect terminally failed conversations via requestConversationWork", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: currentNowMs,
+    });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      currentNowMs += 1_000;
+      await processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => {
+          throw new Error("deterministic poison failure");
+        },
+      });
+    }
+    const terminal = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(terminal?.terminallyFailedAtMs).toBeDefined();
+
+    currentNowMs += 1_000;
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: currentNowMs,
+    });
+
+    const sentBefore = queue.sentRecords().length;
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs + 1_000,
+        queue,
+        run: async () => {
+          throw new Error("should not run after terminal failure");
+        },
+      }),
+    ).resolves.toEqual({ status: "no_work" });
+    expect(queue.sentRecords()).toHaveLength(sentBefore);
+    const stillTerminal = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(stillTerminal?.terminallyFailedAtMs).toBeDefined();
+    expect(stillTerminal?.lease).toBeUndefined();
+  });
+
   it("releases and requeues runnable work when the runner reports lost lease", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;

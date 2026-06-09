@@ -404,11 +404,9 @@ export async function processConversationWork(
     return { status: "completed" };
   } catch (error) {
     const errorNowMs = now(options);
-    let failure: Awaited<ReturnType<typeof recordConversationWorkFailure>> = {
-      abandoned: false,
-      consecutiveFailureCount: 0,
-      releasedLease: false,
-    };
+    let failure:
+      | Awaited<ReturnType<typeof recordConversationWorkFailure>>
+      | undefined;
     try {
       failure = await recordConversationWorkFailure({
         conversationId,
@@ -432,14 +430,14 @@ export async function processConversationWork(
         { conversationId },
         {
           "app.worker.consecutive_failure_count":
-            failure.consecutiveFailureCount,
+            failure?.consecutiveFailureCount ?? null,
           "app.worker.elapsed_ms": now(options) - startedAtMs,
         },
         "Conversation work failed",
       );
     }
 
-    if (failure.abandoned) {
+    if (failure?.abandoned) {
       logWarn(
         "conversation_work_abandoned",
         { conversationId },
@@ -473,36 +471,38 @@ export async function processConversationWork(
     }
 
     let requeueSucceeded = false;
-    try {
-      const continuationMarked = await requestConversationContinuation({
-        conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        nowMs: errorNowMs,
-        state: options.state,
-      });
-      if (continuationMarked) {
-        await sendWakeNudge({
+    if (failure) {
+      try {
+        const continuationMarked = await requestConversationContinuation({
           conversationId,
           destination,
-          idempotencyKey: nudgeIdempotencyKey(
-            "error",
-            conversationId,
-            errorNowMs,
-          ),
+          leaseToken: lease.leaseToken,
           nowMs: errorNowMs,
-          options,
+          state: options.state,
         });
-        requeueSucceeded = true;
+        if (continuationMarked) {
+          await sendWakeNudge({
+            conversationId,
+            destination,
+            idempotencyKey: nudgeIdempotencyKey(
+              "error",
+              conversationId,
+              errorNowMs,
+            ),
+            nowMs: errorNowMs,
+            options,
+          });
+          requeueSucceeded = true;
+        }
+      } catch (requeueError) {
+        logException(
+          requeueError,
+          "conversation_work_requeue_failed",
+          { conversationId },
+          {},
+          "Conversation work requeue failed after runner error",
+        );
       }
-    } catch (requeueError) {
-      logException(
-        requeueError,
-        "conversation_work_requeue_failed",
-        { conversationId },
-        {},
-        "Conversation work requeue failed after runner error",
-      );
     }
     try {
       await releaseConversationWork({
