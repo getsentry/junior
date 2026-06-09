@@ -1,11 +1,14 @@
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { StateAdapter } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import {
   getConversation,
+  requestConversationWork,
   type Conversation,
   type ExecutionStatus,
   type InboundMessage,
@@ -26,10 +29,22 @@ const CONVERSATION_ACTIVE_INDEX_KEY = `${CONVERSATION_PREFIX}:active`;
 const LEGACY_CONVERSATION_WORK_PREFIX = "junior:conversation-work";
 const LEGACY_CONVERSATION_WORK_SCHEMA_VERSION = 1;
 const LEGACY_CONVERSATION_WORK_INDEX_KEY = `${LEGACY_CONVERSATION_WORK_PREFIX}:index`;
+const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
+const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
+const THREAD_STATE_PREFIX = "thread-state";
 
 interface ConversationIndexEntry {
   conversationId: string;
   score: number;
+}
+
+interface AwaitingContinuationSummary {
+  conversationId: string;
+  destination: Destination;
+  resumeReason: "timeout" | "yield";
+  sessionId: string;
+  state: "awaiting_resume";
+  updatedAtMs: number;
 }
 
 type RedisCommandClient = {
@@ -42,6 +57,10 @@ function conversationKey(conversationId: string): string {
 
 function legacyConversationWorkKey(conversationId: string): string {
   return `${LEGACY_CONVERSATION_WORK_PREFIX}:state:${conversationId}`;
+}
+
+function threadStateKey(conversationId: string): string {
+  return `${THREAD_STATE_PREFIX}:${conversationId}`;
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -382,6 +401,55 @@ function uniqueIndexEntries(value: unknown): ConversationIndexEntry[] {
   return [...entries.values()];
 }
 
+function normalizeAwaitingContinuationSummary(
+  value: unknown,
+): AwaitingContinuationSummary | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const conversationId = toOptionalString(value.conversationId);
+  const sessionId = toOptionalString(value.sessionId);
+  const state = value.state;
+  const resumeReason = value.resumeReason;
+  const destination = parseDestination(value.destination);
+  const updatedAtMs = toOptionalNumber(value.updatedAtMs);
+  if (
+    !conversationId ||
+    !sessionId ||
+    state !== "awaiting_resume" ||
+    (resumeReason !== "timeout" && resumeReason !== "yield") ||
+    !destination ||
+    typeof updatedAtMs !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    conversationId,
+    destination,
+    resumeReason,
+    sessionId,
+    state,
+    updatedAtMs,
+  };
+}
+
+function uniqueAwaitingContinuationSummaries(
+  values: unknown[],
+): AwaitingContinuationSummary[] {
+  const summaries = new Map<string, AwaitingContinuationSummary>();
+  for (const value of [...values].reverse()) {
+    const summary = normalizeAwaitingContinuationSummary(value);
+    if (!summary) {
+      continue;
+    }
+    const key = `${summary.conversationId}:${summary.sessionId}`;
+    if (!summaries.has(key)) {
+      summaries.set(key, summary);
+    }
+  }
+  return [...summaries.values()];
+}
+
 function redisIndexKey(indexKey: string): string {
   const prefix = getChatConfig().state.keyPrefix;
   return [...(prefix ? [prefix] : []), indexKey].join(":");
@@ -643,9 +711,77 @@ async function migrateLegacyConversationWorkRedisState(
   return result;
 }
 
+async function isActiveContinuationSummary(
+  context: MigrationContext,
+  summary: AwaitingContinuationSummary,
+): Promise<boolean> {
+  const rawState =
+    (await context.stateAdapter.get<Record<string, unknown>>(
+      threadStateKey(summary.conversationId),
+    )) ?? {};
+  const conversation = coerceThreadConversationState(rawState);
+  return conversation.processing.activeTurnId === summary.sessionId;
+}
+
+async function seedAwaitingContinuationConversationWork(
+  context: MigrationContext,
+  result: MigrationResult,
+): Promise<void> {
+  const summaries = uniqueAwaitingContinuationSummaries(
+    await context.stateAdapter.getList(AGENT_TURN_SESSION_INDEX_KEY),
+  );
+  result.scanned += summaries.length;
+
+  for (const summary of summaries) {
+    if (!(await isActiveContinuationSummary(context, summary))) {
+      continue;
+    }
+    const existingConversation = await getConversation({
+      conversationId: summary.conversationId,
+      state: context.stateAdapter,
+    });
+    if (
+      existingConversation?.destination &&
+      !sameDestination(existingConversation.destination, summary.destination)
+    ) {
+      throw new Error(
+        `Awaiting continuation destination does not match conversation ${summary.conversationId}`,
+      );
+    }
+    if (
+      existingConversation &&
+      existingConversation.execution.status !== "idle"
+    ) {
+      continue;
+    }
+    await requestConversationWork({
+      conversationId: summary.conversationId,
+      destination: summary.destination,
+      nowMs: Math.max(
+        summary.updatedAtMs,
+        existingConversation?.updatedAtMs ?? 0,
+      ),
+      state: context.stateAdapter,
+    });
+    if (existingConversation) {
+      result.existing += 1;
+    } else {
+      result.migrated += 1;
+    }
+  }
+}
+
+async function migrateRedisConversationState(
+  context: MigrationContext,
+): Promise<MigrationResult> {
+  const result = await migrateLegacyConversationWorkRedisState(context);
+  await seedAwaitingContinuationConversationWork(context, result);
+  return result;
+}
+
 export const redisConversationStateMigration: UpgradeMigration = {
   // TODO(after 2026-07-01): remove after deployed installs have had a release
   // window to move legacy conversation-work Redis state forward.
-  name: "migrate-legacy-conversation-work-redis-state",
-  run: migrateLegacyConversationWorkRedisState,
+  name: "migrate-redis-conversation-state",
+  run: migrateRedisConversationState,
 };

@@ -5,6 +5,9 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   requestConversationWork,
 } from "@/chat/task-execution/store";
+import type { PiMessage } from "@/chat/pi/messages";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { runUpgradeMigrations } from "@/cli/upgrade";
 import {
   CONVERSATION_ID,
@@ -30,6 +33,33 @@ function restoreEnv(name: string, value: string | undefined): void {
     return;
   }
   process.env[name] = value;
+}
+
+async function persistActiveTurn(
+  conversationId: string,
+  activeTurnId?: string,
+): Promise<void> {
+  await persistThreadStateById(conversationId, {
+    conversation: {
+      schemaVersion: 1,
+      backfill: {},
+      compactions: [],
+      messages: [],
+      piMessages: [],
+      processing: {
+        activeTurnId,
+      },
+      stats: {
+        compactedMessageCount: 0,
+        estimatedContextTokens: 0,
+        totalMessageCount: 0,
+        updatedAtMs: 2_000,
+      },
+      vision: {
+        byFileId: {},
+      },
+    },
+  });
 }
 
 describe("upgrade CLI migrations", () => {
@@ -122,8 +152,62 @@ describe("upgrade CLI migrations", () => {
       },
     ]);
     expect(logs).toEqual([
-      "Running migration migrate-legacy-conversation-work-redis-state...",
-      "Finished migration migrate-legacy-conversation-work-redis-state: scanned=2 migrated=1 existing=0 missing=1",
+      "Running migration migrate-redis-conversation-state...",
+      "Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1",
+    ]);
+  });
+
+  it("seeds active awaiting continuations into conversation work", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await upsertAgentTurnSessionRecord({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "finish this" }],
+          timestamp: 1_000,
+        } as PiMessage,
+      ],
+      resumeReason: "timeout",
+      sessionId: "turn-timeout",
+      sliceId: 2,
+      state: "awaiting_resume",
+    });
+    await persistActiveTurn(CONVERSATION_ID, "turn-timeout");
+
+    const results = await runUpgradeMigrations({
+      io: { info: () => {} },
+      stateAdapter,
+    });
+
+    expect(results).toEqual([
+      {
+        existing: 0,
+        migrated: 1,
+        missing: 0,
+        scanned: 1,
+      },
+    ]);
+    await expect(
+      stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
+    ).resolves.toMatchObject({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      execution: {
+        pendingCount: 0,
+        pendingMessages: [],
+        status: "pending",
+      },
+    });
+    await expect(
+      stateAdapter.get(CONVERSATION_ACTIVE_INDEX_KEY),
+    ).resolves.toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        score: expect.any(Number),
+      },
     ]);
   });
 
