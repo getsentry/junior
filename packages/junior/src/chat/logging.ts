@@ -15,6 +15,7 @@ import type {
   LogLevel as ChatSdkLogLevel,
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { getDeploymentTelemetryAttributes } from "@/chat/deployment-attributes";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnUsage } from "@/chat/usage";
 
@@ -125,6 +126,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
+const deploymentLogAttributes = getDeploymentTelemetryAttributes();
 type ConsoleTextStyle = Parameters<typeof styleText>[0];
 const LOGTAPE_BODY_KEY = "__logtape_body";
 const ROOT_LOGGER_CATEGORY = ["junior"] as const;
@@ -1121,6 +1123,7 @@ function emitRecord(
     ? undefined
     : contextStorage.getStore();
   const attributes = mergeAttributes(contextAttributes, traceAttributes, {
+    ...deploymentLogAttributes,
     "event.name": normalizedEventName,
     ...(source ? { "app.log.source": source } : {}),
     ...attrs,

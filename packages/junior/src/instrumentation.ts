@@ -1,4 +1,5 @@
 import * as Sentry from "@/chat/sentry";
+import { getDeploymentTelemetryAttributes } from "@/chat/deployment-attributes";
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -14,19 +15,6 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-function getDeploymentSpanAttributes(): Record<string, string> {
-  const attributes: Record<string, string> = {};
-  const serviceVersion =
-    process.env.SENTRY_RELEASE ?? process.env.VERCEL_GIT_COMMIT_SHA;
-  if (serviceVersion) {
-    attributes["service.version"] = serviceVersion;
-  }
-  if (process.env.VERCEL_DEPLOYMENT_ID) {
-    attributes["deployment.id"] = process.env.VERCEL_DEPLOYMENT_ID;
-  }
-  return attributes;
-}
-
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -35,7 +23,7 @@ export function initSentry(): void {
 
   const dsn = process.env.SENTRY_DSN;
   const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
-  const deploymentSpanAttributes = getDeploymentSpanAttributes();
+  const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
 
   Sentry.init({
     dsn,
