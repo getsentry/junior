@@ -5,13 +5,27 @@ import type { ConversationQueueMessage } from "./queue";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_CONTEXT =
   "junior.conversation_work_queue.v1";
 const CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION = "v1";
-const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 60 * 60 * 1000;
+export const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS = 60 * 60 * 1000;
 
 interface SignedConversationQueueMessage extends ConversationQueueMessage {
   signature: string;
   signatureVersion: typeof CONVERSATION_WORK_QUEUE_SIGNATURE_VERSION;
   signedAtMs: number;
 }
+
+export type ConversationQueueMessageVerificationResult =
+  | {
+      message: ConversationQueueMessage;
+      status: "verified";
+    }
+  | {
+      reason: "expired" | "malformed" | "signature_mismatch";
+      status: "rejected";
+    }
+  | {
+      reason: "invalid_clock" | "missing_secret";
+      status: "unavailable";
+    };
 
 function getConversationWorkQueueSecret(): string | undefined {
   return process.env.JUNIOR_SECRET?.trim() || undefined;
@@ -97,30 +111,48 @@ export function signConversationQueueMessage(
   };
 }
 
+/** Explain whether a queue payload is verified, rejected, or temporarily unverifiable. */
+export function verifyConversationQueueMessage(
+  value: unknown,
+  nowMs = Date.now(),
+): ConversationQueueMessageVerificationResult {
+  const message = parseSignedConversationQueueMessage(value);
+  if (!message) {
+    return { status: "rejected", reason: "malformed" };
+  }
+  const secret = getConversationWorkQueueSecret();
+  if (!secret) {
+    return { status: "unavailable", reason: "missing_secret" };
+  }
+  if (!Number.isFinite(nowMs)) {
+    return { status: "unavailable", reason: "invalid_clock" };
+  }
+  if (
+    Math.abs(nowMs - message.signedAtMs) >
+    CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS
+  ) {
+    return { status: "rejected", reason: "expired" };
+  }
+
+  const expected = signPayload(message, message.signedAtMs, secret);
+  if (!timingSafeMatch(expected, message.signature)) {
+    return { status: "rejected", reason: "signature_mismatch" };
+  }
+
+  return {
+    status: "verified",
+    message: {
+      conversationId: message.conversationId,
+      destination: message.destination,
+    },
+  };
+}
+
 /** Verify a signed conversation queue payload from the Vercel Queue callback. */
 export function verifySignedConversationQueueMessage(
   value: unknown,
   nowMs = Date.now(),
 ): ConversationQueueMessage | undefined {
-  const message = parseSignedConversationQueueMessage(value);
-  const secret = getConversationWorkQueueSecret();
-  if (
-    !message ||
-    !secret ||
-    !Number.isFinite(nowMs) ||
-    Math.abs(nowMs - message.signedAtMs) >
-      CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS
-  ) {
-    return undefined;
-  }
-
-  const expected = signPayload(message, message.signedAtMs, secret);
-  if (!timingSafeMatch(expected, message.signature)) {
-    return undefined;
-  }
-
-  return {
-    conversationId: message.conversationId,
-    destination: message.destination,
-  };
+  const result = verifyConversationQueueMessage(value, nowMs);
+  return result.status === "verified" ? result.message : undefined;
 }

@@ -3,7 +3,11 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { sameDestination } from "@/chat/destination";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
-import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
+import {
+  ConversationQueueMessageRejectedError,
+  type ConversationQueueMessage,
+  type ConversationWorkQueue,
+} from "./queue";
 import {
   checkInConversationWork,
   completeConversationWork,
@@ -193,8 +197,10 @@ export async function processConversationWork(
     return { status: "no_work" };
   }
   if (!sameDestination(initial.destination, message.destination)) {
-    throw new Error(
+    throw new ConversationQueueMessageRejectedError(
+      "destination_mismatch",
       `Conversation work queue destination changed for ${conversationId}`,
+      { conversationId },
     );
   }
   const destination = initial.destination;

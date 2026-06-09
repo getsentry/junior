@@ -6,9 +6,14 @@ import type {
   ConversationQueueSendResult,
   ConversationWorkQueue,
 } from "./queue";
-import { signConversationQueueMessage } from "./queue-signing";
+import {
+  CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS,
+  signConversationQueueMessage,
+} from "./queue-signing";
 
 export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
+export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
+  CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
 
 interface QueueSender {
   send<T = unknown>(
@@ -65,7 +70,9 @@ export function createVercelConversationWorkQueue(
         {
           idempotencyKey: sendOptions?.idempotencyKey,
           delaySeconds: toDelaySeconds(sendOptions),
-          retentionSeconds: options.retentionSeconds,
+          retentionSeconds:
+            options.retentionSeconds ??
+            CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
         },
       );
       return result.messageId ? { messageId: result.messageId } : {};

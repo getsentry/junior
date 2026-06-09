@@ -2,12 +2,20 @@ import {
   handleCallback,
   QueueClient,
   registerDevConsumer,
+  type MessageMetadata,
+  type RetryDirective,
 } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination } from "@/chat/destination";
+import { logWarn } from "@/chat/logging";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import type { ConversationQueueMessage, ConversationWorkQueue } from "./queue";
+import {
+  ConversationQueueMessageRejectedError,
+  isConversationQueueMessageRejectedError,
+  type ConversationQueueMessage,
+  type ConversationWorkQueue,
+} from "./queue";
 import {
   getVercelConversationWorkQueue,
   resolveConversationWorkQueueTopic,
@@ -18,7 +26,7 @@ import {
   type ConversationWorkerResult,
   type ConversationWorkerContext,
 } from "./worker";
-import { verifySignedConversationQueueMessage } from "./queue-signing";
+import { verifyConversationQueueMessage } from "./queue-signing";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
 export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
@@ -92,13 +100,44 @@ async function handleConversationQueueMessage(
   message: unknown,
   options: VercelConversationWorkCallbackOptions,
 ): Promise<void> {
-  const verified = verifySignedConversationQueueMessage(message);
-  if (!verified) {
-    throw new Error("Unauthorized conversation queue message");
+  const verification = verifyConversationQueueMessage(message);
+  if (verification.status === "rejected") {
+    throw new ConversationQueueMessageRejectedError(
+      verification.reason,
+      "Unauthorized conversation queue message",
+    );
+  }
+  if (verification.status === "unavailable") {
+    throw new Error(
+      `Conversation queue message verification unavailable: ${verification.reason}`,
+    );
   }
   await runWithTurnRequestDeadline(() =>
-    processConversationQueueMessage(verified, options),
+    processConversationQueueMessage(verification.message, options),
   );
+}
+
+/** Acknowledge permanently rejected queue messages while preserving normal retries. */
+function handleConversationQueueRetry(
+  error: unknown,
+  metadata: MessageMetadata,
+): RetryDirective | undefined {
+  if (!isConversationQueueMessageRejectedError(error)) {
+    return undefined;
+  }
+  logWarn(
+    "conversation_queue_message_rejected",
+    error.conversationId ? { conversationId: error.conversationId } : {},
+    {
+      "app.queue.consumer_group": metadata.consumerGroup,
+      "app.queue.delivery_count": metadata.deliveryCount,
+      "app.queue.message_id": metadata.messageId,
+      "app.queue.reject_reason": error.reason,
+      "app.queue.topic_name": metadata.topicName,
+    },
+    "Conversation queue message rejected without retry",
+  );
+  return { acknowledge: true };
 }
 
 /** Create the Vercel Queue push callback for conversation work nudges. */
@@ -108,6 +147,7 @@ export function createVercelConversationWorkCallback(
   return handleCallback(
     (message: unknown) => handleConversationQueueMessage(message, options),
     {
+      retry: handleConversationQueueRetry,
       visibilityTimeoutSeconds:
         options.visibilityTimeoutSeconds ??
         resolveConversationWorkVisibilityTimeoutSeconds(),
@@ -128,6 +168,7 @@ export function registerVercelConversationWorkDevConsumer(
     consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
     handler: (message: unknown) =>
       handleConversationQueueMessage(message, options),
+    retry: handleConversationQueueRetry,
     topic: resolveConversationWorkQueueTopic(options),
     visibilityTimeoutSeconds:
       options.visibilityTimeoutSeconds ??

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { ConversationQueueMessageRejectedError } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
@@ -23,7 +24,10 @@ import {
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import {
+  CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+  createVercelConversationWorkQueue,
+} from "@/chat/task-execution/vercel-queue";
 import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
@@ -298,15 +302,21 @@ describe("conversation work execution", () => {
     const run = vi.fn(async () => ({ status: "completed" as const }));
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
-    await expect(
-      processConversationWork(
-        conversationQueueMessage({ destination: OTHER_SLACK_DESTINATION }),
-        {
-          queue,
-          run,
-        },
-      ),
-    ).rejects.toThrow("Conversation work queue destination changed");
+    let error: unknown;
+    await processConversationWork(
+      conversationQueueMessage({ destination: OTHER_SLACK_DESTINATION }),
+      {
+        queue,
+        run,
+      },
+    ).catch((caught: unknown) => {
+      error = caught;
+    });
+    expect(error).toBeInstanceOf(ConversationQueueMessageRejectedError);
+    expect(error).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      reason: "destination_mismatch",
+    });
 
     expect(run).not.toHaveBeenCalled();
     await expect(
@@ -1285,7 +1295,7 @@ describe("conversation work execution", () => {
         options: {
           delaySeconds: 16,
           idempotencyKey: "idem-1",
-          retentionSeconds: undefined,
+          retentionSeconds: CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
         },
       },
     ]);

@@ -5,6 +5,36 @@ export interface ConversationQueueMessage {
   destination: Destination;
 }
 
+export type ConversationQueueMessageRejectReason =
+  | "destination_mismatch"
+  | "expired"
+  | "malformed"
+  | "signature_mismatch"
+  | "unauthorized";
+
+export class ConversationQueueMessageRejectedError extends Error {
+  conversationId?: string;
+  reason: ConversationQueueMessageRejectReason;
+
+  constructor(
+    reason: ConversationQueueMessageRejectReason,
+    message: string,
+    options: { conversationId?: string } = {},
+  ) {
+    super(message);
+    this.name = "ConversationQueueMessageRejectedError";
+    this.reason = reason;
+    this.conversationId = options.conversationId;
+  }
+}
+
+/** Return whether a queue payload was permanently rejected at the message boundary. */
+export function isConversationQueueMessageRejectedError(
+  error: unknown,
+): error is ConversationQueueMessageRejectedError {
+  return error instanceof ConversationQueueMessageRejectedError;
+}
+
 export interface ConversationQueueSendOptions {
   delayMs?: number;
   idempotencyKey?: string;
