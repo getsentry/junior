@@ -17,7 +17,7 @@ import type {
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getDeploymentTelemetryAttributes } from "@/deployment-telemetry";
+import { getDeploymentTelemetryAttributes } from "@/deployment";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];

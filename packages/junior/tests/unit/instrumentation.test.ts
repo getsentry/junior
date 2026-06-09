@@ -59,6 +59,7 @@ describe("initSentry", () => {
 
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
+    expect(options?.release).toBe("git-sha");
     expect(options?.beforeSendSpan).toBeTypeOf("function");
 
     const span = {
