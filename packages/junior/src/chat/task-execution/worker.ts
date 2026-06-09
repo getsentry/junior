@@ -148,6 +148,7 @@ async function requestLostLeaseRecovery(args: {
   });
 }
 
+/** Mark uncertain periodic check-ins as lost-lease so runners stop at safe boundaries. */
 function startLeaseCheckIn(args: {
   conversationId: string;
   leaseToken: string;
@@ -174,6 +175,7 @@ function startLeaseCheckIn(args: {
         }
       },
       (error) => {
+        args.onLostLease();
         logException(
           error,
           "conversation_work_check_in_failed",
@@ -333,17 +335,17 @@ export async function processConversationWork(
       });
       return { status: "lost_lease" };
     }
-    if (leaseLost) {
-      await requestLostLeaseRecovery({
-        conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        nowMs: now(options),
-        options,
-      });
-      return { status: "lost_lease" };
-    }
     if (result.status === "yielded") {
+      if (leaseLost) {
+        await requestLostLeaseRecovery({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          options,
+        });
+        return { status: "lost_lease" };
+      }
       const yieldNowMs = now(options);
       const continuationMarked = await requestConversationContinuation({
         conversationId,

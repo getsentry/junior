@@ -7,7 +7,7 @@ import {
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   getConversationWorkState,
   hasRunnableConversationWork,
-  listConversationWorkIds,
+  claimConversationWorkRecoveryIds,
   markConversationWorkEnqueued,
 } from "./store";
 
@@ -59,7 +59,7 @@ export async function recoverConversationWork(args: {
     expiredLeaseCount: 0,
     pendingCount: 0,
   };
-  const ids = await listConversationWorkIds({
+  const ids = await claimConversationWorkRecoveryIds({
     limit: args.limit ?? DEFAULT_RECOVERY_LIMIT,
     state: args.state,
   });

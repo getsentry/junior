@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { ConversationQueueMessageRejectedError } from "@/chat/task-execution/queue";
+import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
@@ -11,7 +12,6 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
-  listConversationWorkIds,
   markConversationMessagesInjected,
   requestConversationContinuation,
   requestConversationWork,
@@ -19,6 +19,8 @@ import {
   startConversationWork,
   type InboundMessageRecord,
 } from "@/chat/task-execution/store";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
@@ -43,6 +45,7 @@ import {
   delayMutationLockUntil,
   inboundMessage,
   observeConversationMutationLock,
+  readConversationWorkIndex,
 } from "../../fixtures/conversation-work";
 
 const OTHER_SLACK_DESTINATION = {
@@ -250,11 +253,53 @@ describe("conversation work execution", () => {
       state,
     });
 
-    const ids = await listConversationWorkIds({ state });
+    const ids = await readConversationWorkIndex(state);
     expect(ids).toContain(activeConversationId);
     expect(ids).toContain(newConversationId);
     expect(ids).not.toContain("stale-0");
     expect(ids).toHaveLength(10_000);
+  });
+
+  it("rotates bounded heartbeat scans so stale prefixes cannot starve pending work", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    await state.set(
+      "junior:conversation-work:index",
+      ["missing-conversation", CONVERSATION_ID],
+      60_000,
+    );
+
+    await expect(
+      recoverConversationWork({
+        limit: 1,
+        nowMs: 62_000,
+        queue,
+        state,
+      }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 0 });
+    expect(queue.sentRecords()).toEqual([]);
+
+    await expect(
+      recoverConversationWork({
+        limit: 1,
+        nowMs: 63_000,
+        queue,
+        state,
+      }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:63000`,
+      },
+    ]);
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -1014,6 +1059,127 @@ describe("conversation work execution", () => {
     await expect(running).resolves.toEqual({ status: "lost_lease" });
   });
 
+  it("treats periodic check-in errors as lost lease at the next yield boundary", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state: baseState,
+    });
+    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
+    let failCheckIns = false;
+    const state = new Proxy(baseState, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (key === mutationLockKey && failCheckIns) {
+              throw new Error("state unavailable during check-in");
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as typeof baseState;
+    const entered = deferred<{ shouldYield: () => boolean }>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      checkInIntervalMs: 15_000,
+      queue,
+      run: async (context) => {
+        await context.drainMailbox(async () => {});
+        entered.resolve({ shouldYield: context.shouldYield });
+        await finish.promise;
+        return { status: context.shouldYield() ? "yielded" : "completed" };
+      },
+      state,
+    });
+    const runningContext = await entered.promise;
+
+    failCheckIns = true;
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(runningContext.shouldYield()).toBe(true);
+
+    failCheckIns = false;
+    finish.resolve();
+    await expect(running).resolves.toEqual({ status: "lost_lease" });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `lost_lease:${CONVERSATION_ID}:16000`,
+      }),
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(true);
+  });
+
+  it("does not reopen completed work after a transient check-in error", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state: baseState,
+    });
+    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
+    let failCheckIns = false;
+    const state = new Proxy(baseState, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (key === mutationLockKey && failCheckIns) {
+              throw new Error("state unavailable during check-in");
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as typeof baseState;
+    const entered = deferred<{ shouldYield: () => boolean }>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      checkInIntervalMs: 15_000,
+      queue,
+      run: async (context) => {
+        await context.drainMailbox(async () => {});
+        entered.resolve({ shouldYield: context.shouldYield });
+        await finish.promise;
+        return { status: "completed" };
+      },
+      state,
+    });
+    const runningContext = await entered.promise;
+
+    failCheckIns = true;
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(runningContext.shouldYield()).toBe(true);
+
+    failCheckIns = false;
+    finish.resolve();
+    await expect(running).resolves.toEqual({ status: "completed" });
+    expect(queue.sentRecords()).toEqual([]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work?.needsRun).toBe(false);
+  });
+
   it("requeues an expired conversation lease from heartbeat", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -1286,6 +1452,77 @@ describe("conversation work execution", () => {
         nowMs: 3_000,
       }),
     ).resolves.toBe(false);
+  });
+
+  it("keeps repeated mailbox injection idempotent when marking injected fails", async () => {
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    const toPiMessages = (messages: InboundMessageRecord[]): PiMessage[] =>
+      messages.map(
+        (message) =>
+          ({
+            role: "user",
+            content: [{ type: "text", text: message.input.text }],
+            timestamp: message.createdAtMs,
+          }) as PiMessage,
+      );
+
+    await expect(
+      drainConversationMailbox({
+        conversationId: CONVERSATION_ID,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        inject: async (messages) => {
+          await commitMessages({
+            conversationId: CONVERSATION_ID,
+            messages: toPiMessages(messages),
+            ttlMs: JUNIOR_THREAD_STATE_TTL_MS,
+          });
+          throw new Error("process died before marking injected");
+        },
+      }),
+    ).rejects.toThrow("process died before marking injected");
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      messages: [expect.objectContaining({ injectedAtMs: undefined })],
+    });
+
+    await expect(
+      drainConversationMailbox({
+        conversationId: CONVERSATION_ID,
+        leaseToken: lease.leaseToken,
+        nowMs: 4_000,
+        inject: async (messages) => {
+          await commitMessages({
+            conversationId: CONVERSATION_ID,
+            messages: toPiMessages(messages),
+            ttlMs: JUNIOR_THREAD_STATE_TTL_MS,
+          });
+        },
+      }),
+    ).resolves.toHaveLength(1);
+
+    await expect(
+      loadProjection({ conversationId: CONVERSATION_ID }),
+    ).resolves.toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "message m1" }],
+        timestamp: 1_000,
+      },
+    ]);
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
   });
 
   it("deduplicates accepted fake queue payloads by idempotency key", async () => {

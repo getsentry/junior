@@ -1004,14 +1004,25 @@ export async function recordConversationWorkFailure(args: {
   });
 }
 
-/** List bounded conversation ids that may need heartbeat recovery. */
-export async function listConversationWorkIds(
+/** Claim bounded recovery candidates and rotate them behind unscanned ids. */
+export async function claimConversationWorkRecoveryIds(
   args: {
     limit?: number;
     state?: StateAdapter;
   } = {},
 ): Promise<string[]> {
   const state = await getConnectedState(args.state);
-  const ids = uniqueStrings((await state.get<unknown[]>(indexKey())) ?? []);
-  return ids.slice(0, args.limit ?? ids.length);
+  return await withIndexLock(state, async () => {
+    const ids = uniqueStrings((await state.get<unknown[]>(indexKey())) ?? []);
+    const limit = Math.max(0, args.limit ?? ids.length);
+    const selected = ids.slice(0, limit);
+    if (selected.length > 0 && selected.length < ids.length) {
+      await state.set(
+        indexKey(),
+        [...ids.slice(selected.length), ...selected],
+        JUNIOR_THREAD_STATE_TTL_MS,
+      );
+    }
+    return selected;
+  });
 }

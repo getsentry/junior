@@ -135,6 +135,24 @@ export function createConversationWorkQueueTestAdapter(): ConversationWorkQueueT
   return new ConversationWorkQueueTestAdapter();
 }
 
+/** Read the private conversation work recovery index for store component tests. */
+export async function readConversationWorkIndex(
+  state: StateAdapter,
+): Promise<string[]> {
+  await state.connect();
+  const value = await state.get<unknown[]>("junior:conversation-work:index");
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value.filter((item): item is string => {
+        return typeof item === "string" && item.trim().length > 0;
+      }),
+    ),
+  ];
+}
+
 /** Observe whether one conversation's mutation lock is currently held. */
 export function observeConversationMutationLock(args: {
   conversationId: string;
