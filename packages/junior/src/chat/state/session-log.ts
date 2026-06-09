@@ -432,6 +432,7 @@ function commitEntries(
   nextMessages: PiMessage[],
   sessionId: string,
   entries: SessionLogEntry[],
+  existingRequester?: SessionRequester,
   requester?: SessionRequester,
 ): SessionLogEntry[] {
   const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
@@ -440,7 +441,7 @@ function commitEntries(
     if (
       newMessages.length === 0 &&
       requester &&
-      !isDeepStrictEqual(project(entries).requester, requester)
+      !isDeepStrictEqual(existingRequester, requester)
     ) {
       return [requesterRecordedEntry(requester, sessionId)];
     }
@@ -458,7 +459,13 @@ function commitEntries(
       ),
     );
   }
-  return [resetEntry(nextMessages, nextSessionId(entries), requester)];
+  return [
+    resetEntry(
+      nextMessages,
+      nextSessionId(entries),
+      requester ?? existingRequester,
+    ),
+  ];
 }
 
 function redisStore(redisStateAdapter: RedisStateAdapter): SessionLogStore {
@@ -691,13 +698,14 @@ export async function commitMessages(
 ): Promise<{ sessionId: string }> {
   const store = args.store ?? (await defaultStore());
   const entries = await store.read(args);
-  const existingMessages = projectMessages(entries);
+  const existingProjection = project(entries);
   const currentId = currentSessionId(entries);
   const nextEntries = commitEntries(
-    existingMessages,
+    existingProjection.messages,
     args.messages,
     currentId,
     entries,
+    existingProjection.requester,
     args.requester,
   );
   await store.append({

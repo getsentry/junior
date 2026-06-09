@@ -137,7 +137,7 @@ describe("context compaction projection reset", () => {
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadProjection, loadProjectionWithRequester } =
       await import("@/chat/state/session-log");
 
     const priorMessages = [
@@ -148,6 +148,12 @@ describe("context compaction projection reset", () => {
       conversationId: "conversation-1",
       messages: priorMessages,
       ttlMs: 60_000,
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+        fullName: "Alice Example",
+        email: "alice@sentry.io",
+      },
     });
     const conversation = coerceThreadConversationState({});
 
@@ -167,15 +173,27 @@ describe("context compaction projection reset", () => {
 
     expect(result.compacted).toBe(true);
     expect(result).not.toHaveProperty("sessionId");
-    expect(result.piMessages?.map(textOf).join("\n")).toContain(
+    const compactedMessages = result.piMessages ?? [];
+    expect(compactedMessages.map(textOf).join("\n")).toContain(
       "Context handoff summary",
     );
-    expect(result.piMessages?.map(textOf).join("\n")).toContain(
+    expect(compactedMessages.map(textOf).join("\n")).toContain(
       "migration approval",
     );
     await expect(
       loadProjection({ conversationId: "conversation-1" }),
-    ).resolves.toEqual(result.piMessages);
+    ).resolves.toEqual(compactedMessages);
+    await expect(
+      loadProjectionWithRequester({ conversationId: "conversation-1" }),
+    ).resolves.toMatchObject({
+      messages: compactedMessages,
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+        fullName: "Alice Example",
+        email: "alice@sentry.io",
+      },
+    });
   });
 
   it("summarizes recent history when compaction input is oversized", async () => {

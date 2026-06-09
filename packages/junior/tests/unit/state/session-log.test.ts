@@ -580,7 +580,7 @@ describe("session log requester identity", () => {
     ).resolves.toEqual(["github"]);
   });
 
-  it("preserves requester through a projection reset", async () => {
+  it("preserves requester through a projection reset without a new requester", async () => {
     const store = memoryStore();
     const msg1: PiMessage = {
       role: "user",
@@ -608,7 +608,6 @@ describe("session log requester identity", () => {
       conversationId: "conv-req-4",
       messages: [msg2],
       ttlMs: 60_000,
-      requester: { slackUserId: "U789", email: "carol@sentry.io" },
     });
 
     const { loadProjectionWithRequester } =
