@@ -5,6 +5,7 @@
     "incremental": false,
     "noEmit": false,
     "outDir": "dist",
+    "paths": {},
     "rootDir": "src"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]

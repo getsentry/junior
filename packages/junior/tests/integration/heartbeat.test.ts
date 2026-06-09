@@ -24,6 +24,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
@@ -224,7 +225,7 @@ describe("plugin heartbeat", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("reschedules stale timeout resume records", async () => {
+  it("reschedules stale agent continuation records", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn-timeout";
@@ -246,6 +247,16 @@ describe("plugin heartbeat", () => {
       ],
     });
     await persistActiveTurn(conversationId, sessionId);
+    await scheduleAgentContinue(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        sessionId,
+        expectedVersion: 1,
+      },
+      { queue, nowMs: staleNowMs },
+    );
+    queue.clearSentRecords();
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
@@ -263,9 +274,7 @@ describe("plugin heartbeat", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
-        ),
+        idempotencyKey: `heartbeat:pending:${conversationId}:${TEST_NOW_MS}`,
       },
     ]);
     await expect(
@@ -276,7 +285,7 @@ describe("plugin heartbeat", () => {
     });
   });
 
-  it("reschedules stale cooperative yield resume records", async () => {
+  it("reschedules stale cooperative yield continuation records", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn-yield";
@@ -298,6 +307,16 @@ describe("plugin heartbeat", () => {
       ],
     });
     await persistActiveTurn(conversationId, sessionId);
+    await scheduleAgentContinue(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        sessionId,
+        expectedVersion: 1,
+      },
+      { queue, nowMs: staleNowMs },
+    );
+    queue.clearSentRecords();
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();
@@ -315,9 +334,7 @@ describe("plugin heartbeat", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
-        ),
+        idempotencyKey: `heartbeat:pending:${conversationId}:${TEST_NOW_MS}`,
       },
     ]);
     await expect(
@@ -328,7 +345,7 @@ describe("plugin heartbeat", () => {
     });
   });
 
-  it("skips stale timeout resume records for inactive turns", async () => {
+  it("skips stale agent continuation records for inactive runs", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn-timeout-inactive";
@@ -350,6 +367,47 @@ describe("plugin heartbeat", () => {
       ],
     });
     await persistActiveTurn(conversationId, "turn-newer");
+    vi.setSystemTime(TEST_NOW_MS);
+
+    const waitUntil = createWaitUntilCollector();
+    const response = await heartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      waitUntil.fn,
+      { conversationWorkQueue: queue },
+    );
+
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(getConversationWorkState({ conversationId })).resolves.toBe(
+      undefined,
+    );
+  });
+
+  it("does not scan stale agent continuation records outside active conversation work", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const conversationId = "slack:C123:1712345.0009";
+    const sessionId = "turn-timeout-no-active-work";
+    const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
+    vi.setSystemTime(staleNowMs);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      destination: SLACK_DESTINATION,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "finish this" }],
+          timestamp: staleNowMs,
+        } as PiMessage,
+      ],
+    });
+    await persistActiveTurn(conversationId, sessionId);
     vi.setSystemTime(TEST_NOW_MS);
 
     const waitUntil = createWaitUntilCollector();

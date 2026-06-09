@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -49,7 +49,7 @@ plugins/sentry/
 - [Plugin Manifest Spec](./plugin-manifest.md): `plugin.yaml` fields, env-var expansion, runtime dependency declarations, and validation.
 - [Plugin Runtime Spec](./plugin-runtime.md): discovery/loading, capability catalog integration, MCP activation, plugin skills, and security invariants.
 - [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
-- [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and turn-resume behavior.
+- [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and agent continuation behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
 - [Plugin Heartbeat Spec](./plugin-heartbeat.md): heartbeat and tool hooks.
 - [Plugin Dispatch Spec](./plugin-dispatch.md): durable `ctx.agent.dispatch` contract.

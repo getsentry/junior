@@ -30,7 +30,7 @@
     "src"
   ],
   "scripts": {
-    "build": "pnpm run build:client && pnpm run build:css && pnpm run build:server && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "pnpm --filter @sentry/junior build && pnpm run build:client && pnpm run build:css && pnpm run build:server && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "build:client": "tsup --config tsup.client.config.ts",
     "build:css": "tailwindcss -i src/tailwind.css -o dist/tailwind.css --minify",
     "build:server": "tsup --config tsup.config.ts",

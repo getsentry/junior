@@ -203,14 +203,14 @@ import {
   isRetryableTurnError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import { AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES } from "@/chat/services/turn-session-record";
+import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 
-describe("generateAssistantReply timeout resume", () => {
+describe("generateAssistantReply agent continuation", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     promptMode.value = "settlesAfterAbort";
@@ -251,7 +251,7 @@ describe("generateAssistantReply timeout resume", () => {
     const error = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
     expect(error.metadata).toMatchObject({
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -288,7 +288,7 @@ describe("generateAssistantReply timeout resume", () => {
     await upsertAgentTurnSessionRecord({
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      sliceId: AGENT_CONTINUE_MAX_SLICES,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -309,7 +309,7 @@ describe("generateAssistantReply timeout resume", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toHaveProperty("text");
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(false);
+    expect(isRetryableTurnError(error, "agent_continue")).toBe(false);
     expect(error.message).toContain("slice limit");
 
     const sessionRecord = await getAgentTurnSessionRecord(
@@ -319,7 +319,7 @@ describe("generateAssistantReply timeout resume", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES,
+      sliceId: AGENT_CONTINUE_MAX_SLICES,
       errorMessage: expect.stringContaining("slice limit"),
     });
   });
@@ -341,7 +341,7 @@ describe("generateAssistantReply timeout resume", () => {
     const error = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-short-deadline",
       "turn-short-deadline",
@@ -388,7 +388,7 @@ describe("generateAssistantReply timeout resume", () => {
     );
   });
 
-  it("persists timeout resume state when abort does not settle the agent run", async () => {
+  it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = generateAssistantReply("help me", {
       requester: { userId: "U123" },
@@ -404,7 +404,7 @@ describe("generateAssistantReply timeout resume", () => {
     const error = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
     expect(error.metadata).toMatchObject({
       conversationId: "conversation-hung",
       sessionId: "turn-hung",
@@ -445,7 +445,7 @@ describe("generateAssistantReply timeout resume", () => {
     const error = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "turn_timeout_resume")).toBe(true);
+    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-retry",
       "turn-retry",

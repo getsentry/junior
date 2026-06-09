@@ -14,7 +14,7 @@ describe("dashboard markdown export", () => {
       conversationId: "slack:C1:222",
       displayTitle: "Copy button discussion",
       generatedAt: "2026-01-01T00:00:08.000Z",
-      turns: [
+      runs: [
         {
           channel: "C1",
           channelName: "eng",
@@ -107,7 +107,7 @@ describe("dashboard markdown export", () => {
       conversationId: "slack:C1:222",
       displayTitle: "Fresh async title",
       generatedAt,
-      turns: [],
+      runs: [],
     } satisfies ConversationDetailFeed;
     const conversation = {
       channel: "C1",
@@ -119,7 +119,7 @@ describe("dashboard markdown export", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      turns: [],
+      runs: [],
     } satisfies Conversation;
 
     const markdown = buildConversationMarkdown(detail, conversation);
@@ -133,7 +133,7 @@ describe("dashboard markdown export", () => {
       conversationId: "slack:D1:222",
       displayTitle: "Direct Message",
       generatedAt: "2026-01-01T00:00:08.000Z",
-      turns: [
+      runs: [
         {
           channel: "D1",
           channelName: "Direct Message",

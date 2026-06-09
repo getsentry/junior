@@ -7,8 +7,9 @@ import {
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   getConversationWorkState,
   hasRunnableConversationWork,
-  claimConversationWorkRecoveryIds,
+  listActiveConversationIds,
   markConversationWorkEnqueued,
+  removeActiveConversation,
 } from "./store";
 
 const DEFAULT_RECOVERY_LIMIT = 25;
@@ -59,8 +60,10 @@ export async function recoverConversationWork(args: {
     expiredLeaseCount: 0,
     pendingCount: 0,
   };
-  const ids = await claimConversationWorkRecoveryIds({
+  const staleBeforeMs = args.nowMs - CONVERSATION_WORK_STALE_ENQUEUE_MS;
+  const ids = await listActiveConversationIds({
     limit: args.limit ?? DEFAULT_RECOVERY_LIMIT,
+    staleBeforeMs,
     state: args.state,
   });
 
@@ -71,10 +74,30 @@ export async function recoverConversationWork(args: {
         state: args.state,
       });
       if (!work) {
+        await removeActiveConversation({
+          conversationId,
+          state: args.state,
+        });
         continue;
       }
 
-      if (work.lease && work.lease.leaseExpiresAtMs <= args.nowMs) {
+      if (work.execution.status === "idle") {
+        await removeActiveConversation({
+          conversationId,
+          state: args.state,
+        });
+        continue;
+      }
+
+      const destination = work.destination;
+      if (!destination) {
+        continue;
+      }
+
+      if (
+        work.execution.lease &&
+        work.execution.lease.expiresAtMs <= args.nowMs
+      ) {
         const cleared = await clearExpiredConversationLease({
           conversationId,
           nowMs: args.nowMs,
@@ -85,7 +108,7 @@ export async function recoverConversationWork(args: {
         }
         await sendRecoveryNudge({
           conversationId,
-          destination: work.destination,
+          destination,
           idempotencyKey: heartbeatIdempotencyKey(
             "lease",
             conversationId,
@@ -105,19 +128,20 @@ export async function recoverConversationWork(args: {
         continue;
       }
 
-      if (work.lease || !hasRunnableConversationWork(work)) {
+      if (work.execution.lease || !hasRunnableConversationWork(work)) {
         continue;
       }
       if (
-        typeof work.lastEnqueuedAtMs === "number" &&
-        work.lastEnqueuedAtMs + CONVERSATION_WORK_STALE_ENQUEUE_MS > args.nowMs
+        typeof work.execution.lastEnqueuedAtMs === "number" &&
+        work.execution.lastEnqueuedAtMs + CONVERSATION_WORK_STALE_ENQUEUE_MS >
+          args.nowMs
       ) {
         continue;
       }
 
       await sendRecoveryNudge({
         conversationId,
-        destination: work.destination,
+        destination,
         idempotencyKey: heartbeatIdempotencyKey(
           "pending",
           conversationId,

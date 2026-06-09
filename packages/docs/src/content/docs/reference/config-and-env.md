@@ -17,10 +17,10 @@ related:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                    |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                            |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                      |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal timeout-resume and agent-dispatch callbacks, plus sandbox egress requester context.                                                    |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress requester context.                                                                          |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                     |
-| `AI_MODEL`                                  | No          | Primary model selection override for main assistant turns. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per turn automatically.  |
+| `AI_MODEL`                                  | No          | Primary model selection override for main agent runs. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per run automatically.        |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-5.4-mini`.                  |
 | `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                  |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                           |
@@ -36,7 +36,7 @@ Generate `JUNIOR_SECRET` with Node, then store the generated value in every envi
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Use one stable value per deployment. Rotating it invalidates pending internal resume callbacks and sandbox requester context signed with the previous value.
+Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox requester context signed with the previous value.
 
 ## Dashboard auth
 

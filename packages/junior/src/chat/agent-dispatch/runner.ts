@@ -425,7 +425,7 @@ export async function runAgentDispatchSlice(
       });
       return;
     }
-    if (isRetryableTurnError(error, "turn_timeout_resume")) {
+    if (isRetryableTurnError(error, "agent_continue")) {
       const version = error.metadata?.version;
       if (typeof version === "number") {
         const awaiting = await markDispatch({

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-30
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -197,7 +197,7 @@ Representative current coverage includes:
 - `packages/junior/tests/integration/slack/new-mention-behavior.test.ts`
 - `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`
 - `packages/junior/tests/integration/slack/bot-handlers.test.ts`
-- `packages/junior/tests/integration/turn-resume-slack.test.ts`
+- `packages/junior/tests/integration/agent-continue-slack.test.ts`
 - `packages/junior-evals/evals/core/passive-behavior.eval.ts`
 - `packages/junior-evals/evals/core/routing-and-continuity.eval.ts`
 

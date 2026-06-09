@@ -105,7 +105,10 @@ export default defineConfig({
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },
             { label: "Linear Plugin", link: "/extend/linear-plugin/" },
-            { label: "Maintenance Plugin", link: "/extend/maintenance-plugin/" },
+            {
+              label: "Maintenance Plugin",
+              link: "/extend/maintenance-plugin/",
+            },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             { label: "Scheduler Plugin", link: "/extend/scheduler-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
@@ -140,6 +143,7 @@ export default defineConfig({
               label: "junior snapshot create",
               link: "/cli/snapshot-create/",
             },
+            { label: "junior upgrade", link: "/cli/upgrade/" },
           ],
         },
         {

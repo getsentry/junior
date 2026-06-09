@@ -16,12 +16,18 @@ async function runCheck(dir?: string): Promise<void> {
   await mod.runCheck(dir);
 }
 
+async function runUpgrade(): Promise<void> {
+  const mod = await import("./upgrade");
+  await mod.runUpgrade();
+}
+
 async function main(argv: string[]): Promise<void> {
   loadCliEnvFiles();
   const exitCode = await runCli(argv, {
     runInit,
     runSnapshotCreate,
     runCheck,
+    runUpgrade,
   });
   if (exitCode !== 0) {
     process.exit(exitCode);

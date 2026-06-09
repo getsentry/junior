@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-09
+- Last Edited: 2026-06-08
 
 ## Purpose
 
@@ -40,6 +40,37 @@ invocations without turning every tool call into a queue round trip.
 - Using Slack thread messages as progress filler for routine continuation.
 
 ## Contracts
+
+### Terminology
+
+The durable execution model uses these terms precisely:
+
+- **Conversation**: the thread-level container identified by `conversationId`.
+  For Slack, this is a normalized thread identity such as
+  `slack:<channel_id>:<thread_ts>`.
+- **Inbound message**: one normalized external source event that should be made
+  available to the agent. Slack messages, scheduler prompts, and plugin dispatch
+  prompts all become inbound messages.
+- **Agent run**: one response-producing execution for a conversation. A run may
+  consume multiple inbound messages at safe boundaries, call many tools, and
+  span multiple serverless invocations before final delivery.
+- **Execution slice**: one serverless invocation segment of an agent run.
+- **Agent step**: a model/tool/action event represented inside the durable
+  transcript/session log. The execution layer does not index steps.
+- **Conversation execution**: the mutable operational state for one
+  conversation: pending inbound mailbox, worker lease, nudge/checkpoint
+  timestamps, and whether the conversation is idle or active.
+
+Avoid using **turn** for agent runs in new specs and storage names. If a test,
+module, or existing key still says "turn session", read it as the historical
+name for an agent-run read model, not as a single model/tool action.
+
+This spec follows the domain naming policy in
+[`policies/interface-design.md`](../policies/interface-design.md). Its core
+nouns are `Conversation`, `Source`, `Destination`, `InboundMessage`,
+`AgentInput`, `AgentRun`, `ExecutionSlice`, `AgentStep`, `Lease`, and
+`Requester`. Use `Source` for where input came from and `Destination` for where
+Junior should send output.
 
 ### Architecture Summary
 
@@ -91,10 +122,162 @@ thread identity such as `slack:<channel_id>:<thread_ts>`.
 For Slack, it should be derived from the Slack team, channel, message timestamp,
 event subtype/edit identity when relevant, and source event id when available.
 
-`leaseToken` is a random value proving that the current worker owns the
-conversation lease.
+`runId` identifies one response-producing agent run when a read model or
+callback needs a stable run id. It is not the conversation history key and must
+not appear in queue payloads as the resume position.
+
+`lease.token` is a random value proving that the current worker owns the
+conversation execution lease.
 
 There is no durable task id in the first-pass design.
+
+### Conversation Storage Model
+
+Junior has one conversation record and two conversation indexes. There is no
+separate "recovery index" concept.
+
+The transcript/history keys are separate authorities and must not be renamed as
+part of execution-index cleanup:
+
+- `thread-state:<conversationId>` stores visible thread/runtime state.
+- `junior:agent-session-log:<conversationId>` stores the append-only Pi/model
+  execution transcript.
+
+The conversation record owns API-facing metadata and execution coordination:
+
+```text
+junior:conversation:<conversationId>
+```
+
+Conceptual type:
+
+```ts
+type ExecutionStatus = "idle" | "pending" | "running" | "awaiting_resume";
+type Source = "slack" | "api" | "scheduler" | "plugin" | "internal";
+
+interface Requester {
+  email?: string;
+  fullName?: string;
+  slackUserId?: string;
+  slackUserName?: string;
+}
+
+interface AgentInput {
+  text: string;
+  authorId?: string;
+  attachments?: unknown[];
+  metadata?: Record<string, unknown>;
+}
+
+interface InboundMessage {
+  inboundMessageId: string;
+  conversationId: string;
+  destination: Destination;
+  source: Source;
+  createdAtMs: number;
+  receivedAtMs: number;
+  input: AgentInput;
+  injectedAtMs?: number;
+}
+
+interface Lease {
+  token: string;
+  acquiredAtMs: number;
+  lastCheckInAtMs: number;
+  expiresAtMs: number;
+}
+
+interface Conversation {
+  schemaVersion: 1;
+  conversationId: string;
+
+  createdAtMs: number;
+  lastActivityAtMs: number;
+  updatedAtMs: number;
+
+  destination?: Destination;
+  title?: string;
+  channelName?: string;
+  requester?: Requester;
+  source?: Source;
+
+  execution: ConversationExecution;
+}
+
+interface ConversationExecution {
+  status: ExecutionStatus;
+  inboundMessageIds: string[];
+  pendingCount: number;
+  pendingMessages: InboundMessage[];
+
+  runId?: string;
+  lease?: Lease;
+
+  lastCheckpointAtMs?: number;
+  lastEnqueuedAtMs?: number;
+  updatedAtMs?: number;
+}
+```
+
+`lastActivityAtMs` is conversation-visible activity: inbound source input
+accepted for the conversation or finalized assistant delivery. Profile-only
+updates such as async title generation must not advance it.
+
+`execution.updatedAtMs` is operational progress: mailbox mutation, queue
+enqueue, lease acquire/check-in/release, session-log checkpoint, cooperative
+yield, or resume parking. Display/profile updates must not advance it.
+
+`pendingMessages` may be stored inline in the conversation record. If a future
+implementation splits mailbox payloads into separate keys for size, the
+conversation record must remain authoritative for `execution.status`,
+`pendingCount`, lease, and execution timestamps.
+
+`inboundMessageIds` is the durable dedupe set for all retained inbound messages
+seen by the conversation, including messages already drained from
+`pendingMessages` into the session log. Do not keep injected messages in
+`pendingMessages` only to dedupe future retries.
+
+### Conversation Indexes
+
+In Redis-backed deployments, the conversation store maintains two native Redis
+sorted-set indexes:
+
+```text
+junior:conversation:by-activity
+  member: conversationId
+  score:  lastActivityAtMs
+
+junior:conversation:active
+  member: conversationId
+  score:  execution.updatedAtMs
+```
+
+Tests may use an in-memory adapter that emulates the same score/member behavior,
+but the production Redis path must use sorted-set commands directly instead of
+storing serialized index arrays.
+
+`junior:conversation:by-activity` contains all retained conversations and powers
+conversation list APIs, dashboard recent-conversation views, and aggregate
+conversation stats. Writes that create or update visible conversation activity
+must upsert this index. Inbound mailbox appends and committed agent-run summary
+updates both count as visible conversation activity. Retention cleanup may trim
+old scores, and individual conversation records must use the same retention
+window so dangling index members can be skipped safely.
+
+`junior:conversation:active` contains only conversations whose
+`execution.status !== "idle"`. Heartbeat scans this index for stale active
+conversations. Execution/profile cleanup must remove a conversation from this
+index when it becomes idle.
+
+The active index is intentionally sorted by `execution.updatedAtMs`, not by a
+computed recovery due time. Heartbeat may read and skip records whose exact
+state is not yet recoverable. The authoritative recovery decision is always
+made from the conversation record, not from the index score alone.
+
+Activity-feed retention must not trim the active index. `by-activity` may keep
+only the newest retained conversations for list/reporting APIs, but `active` is
+membership for in-flight work and must keep every non-idle conversation until
+that conversation becomes idle or is explicitly removed after cleanup.
 
 ### Ingress Contract
 
@@ -102,14 +285,20 @@ Inbound source handlers are source-specific. Slack parsing, signature
 verification, event subtype handling, assistant lifecycle event handling, and
 attachment normalization may be Slack-specific.
 
-Ingress must not decide whether an inbound message is a new turn, steering for
-an active turn, or a stale follow-up. It always performs the same durable handoff:
+Ingress must not decide whether an inbound message starts a new agent run,
+steers an active run, or is a stale follow-up. It always performs the same
+durable handoff:
 
 1. Verify the source request.
 2. Normalize a stable `conversationId` and `inboundMessageId`.
 3. Persist the inbound message into the conversation mailbox idempotently.
-4. Enqueue `{ conversationId, destination }`.
-5. Return the source HTTP acknowledgement quickly.
+4. Set `execution.status = "pending"`, update `lastActivityAtMs`,
+   `execution.updatedAtMs`, `pendingCount`, and upsert both conversation
+   indexes.
+5. Enqueue `{ conversationId, destination }`.
+6. If enqueue succeeds, record `lastEnqueuedAtMs` and refresh
+   `execution.updatedAtMs`.
+7. Return the source HTTP acknowledgement quickly.
 
 The source HTTP acknowledgement is not the late acknowledgement. Late
 acknowledgement applies to the queue delivery consumed by the worker.
@@ -117,43 +306,26 @@ acknowledgement applies to the queue delivery consumed by the worker.
 If enqueue fails after mailbox append, the heartbeat repair path must later
 find the stranded pending mailbox work and enqueue another nudge.
 
-### Mailbox Contract
+### Conversation Execution And Mailbox Contract
 
 The mailbox is conversation-owned durable state. Implementations may store it as
-one record, indexed inbound message records, or both. The contract is:
+one record, indexed inbound message records, or both, but the conversation
+record remains the public execution summary. The contract is:
 
 - inbound messages are deduped by `inboundMessageId`
 - pending messages are ordered by source creation time and stable tie-breakers
 - a pending message is not removed or marked injected until the corresponding
-  session-log append succeeds, or until subscribed Slack skip/no-reply metadata
-  has been durably persisted
+  session-log append succeeds, or until a subscribed-message no-reply/opt-out
+  skip decision has been persisted
+- after the session-log append or persisted skip decision succeeds, the message
+  is removed from `pendingMessages` while its id remains in `inboundMessageIds`
 - reinjecting the same `inboundMessageId` into the session log must be
   idempotent
 - messages that arrive while a worker is active remain pending until the worker
   drains them at a safe boundary or a later worker resumes the conversation
 
-Conceptual shape:
-
-```ts
-interface InboundMessageRecord {
-  inboundMessageId: string;
-  conversationId: string;
-  destination: Destination;
-  source: "slack" | "scheduler" | "plugin";
-  createdAtMs: number;
-  receivedAtMs: number;
-  input: AgentInputMessage;
-  injectedAtMs?: number;
-}
-
-interface ConversationWorkState {
-  conversationId: string;
-  destination: Destination;
-  lease?: ConversationLease;
-  lastEnqueuedAtMs?: number;
-  updatedAtMs: number;
-}
-```
+The `InboundMessage` and `ConversationExecution` shapes are defined in the
+conversation record above.
 
 The exact storage shape should stay simple. Do not add a separate task record
 only to represent data already present in the mailbox or session log.
@@ -180,7 +352,7 @@ interface ConversationQueueMessage {
 
 Queue consumer rules:
 
-1. Load durable conversation work state before doing agent work.
+1. Load the durable conversation record before doing agent work.
 2. If there is no pending or resumable work, acknowledge the queue delivery and
    exit.
 3. If another worker holds an unexpired lease, enqueue a delayed nudge for the
@@ -190,10 +362,6 @@ Queue consumer rules:
 5. Acknowledge the queue delivery only after durable state is safe: final
    delivery recorded, lease released after cooperative yield, no work found, or
    unrecoverable failure recorded.
-6. Permanently invalid queue messages (malformed, expired,
-   signature-mismatched, or destination-mismatched) are acknowledged at the
-   consumer boundary after logging the reject reason. They must not rely on
-   queue retention expiry for cleanup.
 
 The queue is not the state authority. A successful queue acknowledgement only
 means that one wake-up delivery has been handled.
@@ -231,10 +399,10 @@ The conversation lease serializes execution for one `conversationId`.
 Lease acquisition requires:
 
 - no current lease, or
-- current `leaseExpiresAtMs <= now`
+- current `lease.expiresAtMs <= now`
 
-Lease writes must include a fresh `leaseToken`. Any leased mutation must verify
-that the stored token still matches the worker token.
+Lease writes must include a fresh `lease.token`. Any leased mutation must
+verify that the stored token still matches the worker token.
 
 Initial timing defaults:
 
@@ -242,13 +410,13 @@ Initial timing defaults:
 worker check-in interval: 15s
 lease ttl: 90s
 heartbeat scan interval: 30s
-recovery trigger: leaseExpiresAtMs <= now
+recovery trigger: lease.expiresAtMs <= now
 ```
 
 Check-ins are owned by the generic worker, not by agent progress events. While a
-worker is leased, it periodically extends `leaseExpiresAtMs` and updates
-`lastCheckInAtMs`. Agent progress events may update status or diagnostics, but
-they are not required for lease liveness.
+worker is leased, it periodically extends `lease.expiresAtMs` and updates
+`lease.lastCheckInAtMs`. Agent progress events may update status or diagnostics,
+but they are not required for lease liveness.
 
 There is one liveness rule: expired lease. `lastCheckInAtMs` is diagnostic
 metadata.
@@ -273,7 +441,7 @@ A worker that owns the lease advances the conversation:
 
 Inbound messages that arrive during an active run are part of the active
 conversation. They are injected at the next safe boundary, not treated as a
-separate concurrent turn.
+separate concurrent agent run.
 
 ### Cooperative Yield Contract
 
@@ -362,18 +530,27 @@ Heartbeat is a repair loop, not a worker.
 
 On each bounded scan, heartbeat must:
 
-1. Find conversations with expired leases.
-2. Clear or replace the expired lease state.
-3. Enqueue `{ conversationId, destination }`.
-4. Find conversations with pending mailbox messages, no unexpired lease, and no
-   recent enqueue marker.
-5. Enqueue `{ conversationId, destination }` for those stranded conversations.
+1. Query `junior:conversation:active` for conversations whose
+   `execution.updatedAtMs` score is older than the configured stale threshold.
+2. Load each candidate conversation record.
+3. Remove missing or idle conversations from `junior:conversation:active`.
+4. For `running` conversations, use the lease in the record as the liveness
+   authority. If `lease.expiresAtMs <= now`, clear or replace the lease and
+   enqueue `{ conversationId, destination }`.
+5. For `pending` or `awaiting_resume` conversations, enqueue
+   `{ conversationId, destination }` when there is no recent `lastEnqueuedAtMs`.
+6. Update `lastEnqueuedAtMs`, `execution.updatedAtMs`, and the active index score
+   after a repair nudge is accepted.
 
 Heartbeat must not run the agent inline. It only repairs durable state and sends
 queue wake-up nudges.
 
 Heartbeat scans must be bounded by limits so one large backlog does not exhaust
 the cron invocation. Remaining work is left for later heartbeats.
+
+Heartbeat must not scan transcript/session-log keys. A recovery worker uses the
+conversation record only to acquire ownership and drain pending input; model
+continuation always comes from the durable transcript/session log.
 
 ### Scheduler And Plugin Dispatch
 
@@ -386,53 +563,13 @@ selection remain owned by their domain specs. Once claimed, execution should use
 the same mailbox, lease, session-log, and delivery contracts as interactive
 work.
 
-### Failure Budget Contract
-
-Worker errors must not produce unbounded queue retries. The worker maintains a
-durable `consecutiveFailureCount` on the conversation work record:
-
-1. Any caught error in the worker's execution path increments the counter.
-2. A successful session-log boundary (mailbox drain, message inject, clean
-   completion) resets the counter to zero.
-3. A fresh non-duplicate inbound message resets the counter to zero so a new
-   user attempt is never blocked by a poisoned prior turn.
-4. When the counter reaches `CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES`, the
-   conversation is marked terminally failed:
-   - `terminallyFailedAtMs` is set.
-   - The active lease is cleared.
-   - Pending mailbox messages are dropped (they could not be processed; the
-     next inbound message starts a fresh attempt).
-   - `needsRun` is cleared and the conversation drops out of the recovery
-     index so heartbeat will not requeue it.
-5. Terminal failure is sticky against non-user-initiated resurrection. A
-   conversation with `terminallyFailedAtMs` is treated as having no runnable
-   work even if a downstream caller (e.g. a turn-timeout resume request) sets
-   `needsRun` on the record; only a fresh non-duplicate inbound message clears
-   the terminal flag.
-6. If the worker cannot durably record a failure (e.g. mutation lock
-   contention), it must not send its own wake nudge, since doing so without
-   advancing the budget would let poison runs loop indefinitely. The worker
-   rethrows the original runner error in that case so the queue platform's
-   bounded redelivery handles recovery.
-
-A worker that catches a runner error and successfully sends its own wake nudge
-must not also throw. Throwing causes the queue platform to redeliver the same
-payload, doubling execution attempts and amplifying overload conditions. The
-worker rethrows only when its own recovery enqueue failed or when the failure
-budget could not be advanced, so the queue provider's redelivery and heartbeat
-repair remain the safety net.
-
-Pre-lease failures (lease acquisition or active-lease deferred nudges) must be
-absorbed rather than rethrown. Heartbeat already requeues pending mailbox work
-and expired leases, so propagating these errors only multiplies queue load
-during state-store overload.
-
 ### TODO Guardrails
 
 The first pass intentionally avoids extra looping controls. After the mailbox
 worker is proven in production, add policy for:
 
 - maximum wall-clock age for one active conversation run
+- maximum consecutive recoveries without a new session-log boundary
 - explicit cancel/stop semantics for user messages that should abandon active
   work
 - duplicate final-delivery suppression if duplicate replies are observed
@@ -450,7 +587,7 @@ These guardrails must not complicate the first-pass mailbox/lease design.
 4. Queue delivery observes an active lease: it sends a delayed nudge and
    acknowledges so the message that arrived during active work is not stranded
    if the active worker misses the final drain.
-5. Worker dies while leased: check-ins stop, `leaseExpiresAtMs` passes,
+5. Worker dies while leased: check-ins stop, `lease.expiresAtMs` passes,
    heartbeat clears/requeues, and the next worker resumes from the latest
    durable session-log state.
 6. Worker dies after appending inbound messages to the session log but before
@@ -470,19 +607,15 @@ These guardrails must not complicate the first-pass mailbox/lease design.
 
 Required event names should distinguish normal progress from repair:
 
-- `conversation_work_enqueued`
 - `conversation_work_lease_acquired`
 - `conversation_work_check_in_failed`
 - `conversation_work_nudge_deferred_for_active_lease`
-- `conversation_work_mailbox_drained`
 - `conversation_work_cooperative_yield`
 - `conversation_work_completed`
 - `conversation_work_lease_expired_requeued`
 - `conversation_work_pending_requeued`
+- `conversation_work_recovery_failed`
 - `conversation_work_failed`
-- `conversation_work_abandoned`
-- `conversation_work_lease_acquire_failed`
-- `conversation_work_active_nudge_failed`
 
 Required attributes when available:
 
@@ -514,7 +647,7 @@ Required invariants, using the lowest layer that proves the contract:
 5. Component: worker check-in extends the lease while a long model/tool call is
    in progress.
 6. Component: expired leases and stranded pending mailbox messages are
-   cleared/requeued by heartbeat.
+   discovered through `junior:conversation:active` and requeued by heartbeat.
 7. Component: work requested while a lease is running is requeued immediately
    when the lease completes, even if no mailbox messages are pending.
 8. Component: repeated worker and heartbeat requeues use fresh queue
@@ -531,20 +664,11 @@ Required invariants, using the lowest layer that proves the contract:
     and finalized delivery with deterministic fake-agent output.
 14. Component/integration: recovery after death during model/tool work resumes
     from the latest durable session-log boundary.
-15. Evals: realistic multi-message Slack follow-ups during long work are folded
+15. Component: the all-conversation index is sorted by `lastActivityAtMs`; the
+    active-conversation index contains only non-idle conversations and is sorted
+    by `execution.updatedAtMs`.
+16. Evals: realistic multi-message Slack follow-ups during long work are folded
     into the active answer without losing user intent.
-16. Component: a worker error that successfully requeues itself does not
-    rethrow, so the queue provider's redelivery cannot double-execute the
-    failure.
-17. Component: a conversation that fails N consecutive times is marked
-    terminally failed and stops requeueing until a new inbound message
-    arrives.
-18. Component: terminally failed conversations are not resurrected by
-    non-user-initiated `needsRun` writes (e.g. turn-timeout resume), and
-    `processConversationWork` reports `no_work` instead of acquiring a lease.
-19. Component: when the worker cannot durably record a failure, it rethrows
-    the original error without sending its own wake nudge so the failure
-    budget cannot be bypassed.
 
 ## Related Specs
 

@@ -6,66 +6,56 @@ import {
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import {
-  createTurnResumeTestClient,
-  type TurnResumeTestClient,
-} from "../fixtures/turn-resume";
-import type { WaitUntilCollector } from "../fixtures/wait-until";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+const generateAssistantReplyMock = vi.fn();
 
 const ORIGINAL_ENV = { ...process.env };
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
-type TurnResumeHandlerModule = typeof import("@/handlers/turn-resume");
+type AgentContinueRunnerModule =
+  typeof import("@/chat/runtime/agent-continue-runner");
+type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
-type TimeoutResumeServiceModule =
-  typeof import("@/chat/services/timeout-resume");
+type AgentContinueServiceModule =
+  typeof import("@/chat/services/agent-continue");
 
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
-let turnResumeHandlerModule: TurnResumeHandlerModule;
+let agentContinueRunnerModule: AgentContinueRunnerModule;
+let requestDeadlineModule: RequestDeadlineModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
-let timeoutResumeServiceModule: TimeoutResumeServiceModule;
+let agentContinueServiceModule: AgentContinueServiceModule;
 let queue: ConversationWorkQueueTestAdapter;
-let turnResumeClient: TurnResumeTestClient;
-let waitUntil: WaitUntilCollector;
 
-function postResumeRequest(args: {
+function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
-}): Promise<Response> {
-  return turnResumeHandlerModule.POST(
-    turnResumeClient.request({
-      ...args,
-      destination: SLACK_DESTINATION,
-    }),
-    waitUntil.fn,
-    {
-      scheduleTurnTimeoutResume: (request) =>
-        timeoutResumeServiceModule.scheduleTurnTimeoutResume(request, {
-          queue,
-        }),
-    },
+}): Promise<boolean> {
+  return requestDeadlineModule.runWithTurnRequestDeadline(() =>
+    agentContinueRunnerModule.continueSlackAgentRunWithLockRetry(
+      {
+        conversationId: args.conversationId,
+        destination: SLACK_DESTINATION,
+        expectedVersion: args.expectedVersion,
+        sessionId: args.sessionId,
+      },
+      {
+        generateReply: generateAssistantReplyMock,
+        scheduleAgentContinue: (request) =>
+          agentContinueServiceModule.scheduleAgentContinue(request, {
+            queue,
+          }),
+      },
+    ),
   );
 }
 
-describe("turn resume slack integration", () => {
+describe("agent continuation Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
-    turnResumeClient = createTurnResumeTestClient({
-      juniorSecret: "resume-secret",
-    });
-    waitUntil = turnResumeClient.waitUntil();
     generateAssistantReplyMock.mockReset();
     generateAssistantReplyMock.mockResolvedValue({
       text: "Final resumed answer",
@@ -86,9 +76,11 @@ describe("turn resume slack integration", () => {
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
-    turnResumeHandlerModule = await import("@/handlers/turn-resume");
+    agentContinueRunnerModule =
+      await import("@/chat/runtime/agent-continue-runner");
+    requestDeadlineModule = await import("@/chat/runtime/request-deadline");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
-    timeoutResumeServiceModule = await import("@/chat/services/timeout-resume");
+    agentContinueServiceModule = await import("@/chat/services/agent-continue");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -120,7 +112,12 @@ describe("turn resume slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
+        requester: {
+          slackUserId: "U123",
+          slackUserName: "testuser",
+          fullName: "Test User",
+          email: "testuser@example.com",
+        },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -170,16 +167,13 @@ describe("turn resume slack integration", () => {
       source: "test",
     });
 
-    const response = await postResumeRequest({
+    const continued = await continueAgentRun({
       conversationId,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
 
-    expect(response.status).toBe(202);
-    expect(waitUntil.pendingCount()).toBe(1);
-
-    await waitUntil.flush();
+    expect(continued).toBe(true);
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "resume this request",
@@ -254,7 +248,7 @@ describe("turn resume slack integration", () => {
     });
   });
 
-  it("schedules another continuation for high timeout resume slice ids", async () => {
+  it("schedules another continuation for high slice ids", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
     const sessionRecord =
@@ -274,7 +268,12 @@ describe("turn resume slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 4,
         errorMessage: "Agent turn timed out",
-        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
+        requester: {
+          slackUserId: "U123",
+          slackUserName: "testuser",
+          fullName: "Test User",
+          email: "testuser@example.com",
+        },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -314,7 +313,7 @@ describe("turn resume slack integration", () => {
 
     const { RetryableTurnError } = await import("@/chat/runtime/turn");
     generateAssistantReplyMock.mockRejectedValueOnce(
-      new RetryableTurnError("turn_timeout_resume", "timed out again", {
+      new RetryableTurnError("agent_continue", "timed out again", {
         conversationId,
         sessionId,
         version: sessionRecord.version + 1,
@@ -322,16 +321,13 @@ describe("turn resume slack integration", () => {
       }),
     );
 
-    const response = await postResumeRequest({
+    const continued = await continueAgentRun({
       conversationId,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
 
-    expect(response.status).toBe(202);
-    expect(waitUntil.pendingCount()).toBe(1);
-
-    await waitUntil.flush();
+    expect(continued).toBe(true);
 
     expect(slackApiOutbox.messages()).toEqual([]);
     expect(queue.sentRecords()).toEqual([
@@ -339,7 +335,7 @@ describe("turn resume slack integration", () => {
         conversationId,
         destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
+          `agent-continue:${conversationId}:${sessionId}:`,
         ),
       },
     ]);
@@ -350,6 +346,80 @@ describe("turn resume slack integration", () => {
       processing?: { activeTurnId?: string };
     };
     expect(conversation.processing?.activeTurnId).toBe(sessionId);
+  });
+
+  it("terminalizes startup failures before the visible failure path runs", async () => {
+    const conversationId = "slack:C123:1712345.0007";
+    const sessionId = "turn_msg_7";
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.7",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {},
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(true);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: "Paused agent run failed while continuing",
+    });
   });
 
   it("schedules a durable continuation without posting a notice when a resumed slice times out again", async () => {
@@ -372,7 +442,12 @@ describe("turn resume slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
+        requester: {
+          slackUserId: "U123",
+          slackUserName: "testuser",
+          fullName: "Test User",
+          email: "testuser@example.com",
+        },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -412,7 +487,7 @@ describe("turn resume slack integration", () => {
 
     const { RetryableTurnError } = await import("@/chat/runtime/turn");
     generateAssistantReplyMock.mockRejectedValueOnce(
-      new RetryableTurnError("turn_timeout_resume", "timed out again", {
+      new RetryableTurnError("agent_continue", "timed out again", {
         conversationId,
         sessionId,
         version: sessionRecord.version + 1,
@@ -420,16 +495,13 @@ describe("turn resume slack integration", () => {
       }),
     );
 
-    const response = await postResumeRequest({
+    const continued = await continueAgentRun({
       conversationId,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
 
-    expect(response.status).toBe(202);
-    expect(waitUntil.pendingCount()).toBe(1);
-
-    await waitUntil.flush();
+    expect(continued).toBe(true);
 
     const postCalls = slackApiOutbox.messages();
     expect(postCalls).toEqual([]);
@@ -438,7 +510,7 @@ describe("turn resume slack integration", () => {
         conversationId,
         destination: SLACK_DESTINATION,
         idempotencyKey: expect.stringContaining(
-          `timeout:${conversationId}:${sessionId}:`,
+          `agent-continue:${conversationId}:${sessionId}:`,
         ),
       },
     ]);
@@ -464,7 +536,12 @@ describe("turn resume slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: { slackUserId: "U123", slackUserName: "testuser", fullName: "Test User", email: "testuser@example.com" },
+        requester: {
+          slackUserId: "U123",
+          slackUserName: "testuser",
+          fullName: "Test User",
+          email: "testuser@example.com",
+        },
       });
 
     generateAssistantReplyMock.mockResolvedValueOnce({
@@ -518,16 +595,13 @@ describe("turn resume slack integration", () => {
       },
     });
 
-    const response = await postResumeRequest({
+    const continued = await continueAgentRun({
       conversationId,
       sessionId,
       expectedVersion: sessionRecord.version,
     });
 
-    expect(response.status).toBe(202);
-    expect(waitUntil.pendingCount()).toBe(1);
-
-    await waitUntil.flush();
+    expect(continued).toBe(true);
 
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({

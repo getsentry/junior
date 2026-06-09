@@ -1,9 +1,11 @@
-export const CLI_USAGE = "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]";
+export const CLI_USAGE =
+  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade";
 
 interface CliHandlers {
   runInit: (dir: string) => Promise<void>;
   runSnapshotCreate: () => Promise<void>;
   runCheck: (dir?: string) => Promise<void>;
+  runUpgrade: () => Promise<void>;
 }
 
 interface CliIo {
@@ -11,10 +13,15 @@ interface CliIo {
 }
 
 const DEFAULT_IO: CliIo = {
-  error: console.error
+  error: console.error,
 };
 
-export async function runCli(argv: string[], handlers: CliHandlers, io: CliIo = DEFAULT_IO): Promise<number> {
+/** Dispatch CLI arguments to command handlers and return a process exit code. */
+export async function runCli(
+  argv: string[],
+  handlers: CliHandlers,
+  io: CliIo = DEFAULT_IO,
+): Promise<number> {
   const [command, subcommand, ...rest] = argv;
 
   if (command === "init") {
@@ -41,6 +48,15 @@ export async function runCli(argv: string[], handlers: CliHandlers, io: CliIo = 
       return 1;
     }
     await handlers.runCheck(subcommand);
+    return 0;
+  }
+
+  if (command === "upgrade") {
+    if (subcommand || rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runUpgrade();
     return 0;
   }
 

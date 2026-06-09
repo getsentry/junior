@@ -1634,7 +1634,7 @@ export async function generateAssistantReply(
       }
       if (sessionRecord.state === "awaiting_resume") {
         throw new RetryableTurnError(
-          "turn_timeout_resume",
+          "agent_continue",
           `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId} version=${sessionRecord.version}`,
           {
             conversationId: timeoutResumeConversationId,

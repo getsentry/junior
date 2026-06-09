@@ -11,15 +11,14 @@ export function ConversationRowStats(props: {
   timeLabel: string;
 }) {
   const tokens = formatUsageTotal(
-    props.conversation.turns.map((turn) => turn.cumulativeUsage),
+    props.conversation.runs.map((turn) => turn.cumulativeUsage),
   );
   const runtime = formatDurationTotal(
-    props.conversation.turns.map((turn) => turn.cumulativeDurationMs),
+    props.conversation.runs.map((turn) => turn.cumulativeDurationMs),
   );
-  const primaryStats = [
-    tokens,
-    runtime ? `${runtime} runtime` : "",
-  ].filter(Boolean);
+  const primaryStats = [tokens, runtime ? `${runtime} runtime` : ""].filter(
+    Boolean,
+  );
   const secondaryStats = [
     props.timeLabel,
     slackLocationLabel(props.conversation, { includeId: false }),

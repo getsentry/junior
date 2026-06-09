@@ -1,9 +1,9 @@
 import { completeObject, completeText } from "@/chat/pi/client";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import {
-  getAwaitingTurnContinuationRequest,
-  scheduleTurnTimeoutResume,
-} from "@/chat/services/timeout-resume";
+  getAwaitingAgentContinueRequest,
+  scheduleAgentContinue,
+} from "@/chat/services/agent-continue";
 import {
   createConversationMemoryService,
   type ConversationMemoryDeps,
@@ -73,14 +73,13 @@ export function createJuniorRuntimeServices(
       generateAssistantReply:
         overrides.replyExecutor?.generateAssistantReply ??
         generateAssistantReplyImpl,
-      getAwaitingTurnContinuationRequest:
-        overrides.replyExecutor?.getAwaitingTurnContinuationRequest ??
-        getAwaitingTurnContinuationRequest,
+      getAwaitingAgentContinueRequest:
+        overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
+        getAwaitingAgentContinueRequest,
       lookupSlackUser:
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
-      scheduleTurnTimeoutResume:
-        overrides.replyExecutor?.scheduleTurnTimeoutResume ??
-        scheduleTurnTimeoutResume,
+      scheduleAgentContinue:
+        overrides.replyExecutor?.scheduleAgentContinue ?? scheduleAgentContinue,
       generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({

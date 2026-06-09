@@ -1,35 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import { ConversationQueueMessageRejectedError } from "@/chat/task-execution/queue";
-import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
   checkInConversationWork,
+  CONVERSATION_ACTIVE_INDEX_KEY,
+  CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   completeConversationWork,
   CONVERSATION_WORK_LEASE_TTL_MS,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  listActiveConversationIds,
+  listConversationsByActivity,
   markConversationMessagesInjected,
+  recordConversationActivity,
   requestConversationContinuation,
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
-  type InboundMessageRecord,
+  type InboundMessage,
 } from "@/chat/task-execution/store";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import type { PiMessage } from "@/chat/pi/messages";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
-  createVercelConversationWorkQueue,
-} from "@/chat/task-execution/vercel-queue";
+import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
@@ -45,7 +43,6 @@ import {
   delayMutationLockUntil,
   inboundMessage,
   observeConversationMutationLock,
-  readConversationWorkIndex,
 } from "../../fixtures/conversation-work";
 
 const OTHER_SLACK_DESTINATION = {
@@ -53,7 +50,7 @@ const OTHER_SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C456",
 } as const;
-const CONVERSATION_WORK_STATE_KEY = `junior:conversation-work:state:${CONVERSATION_ID}`;
+const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
@@ -110,8 +107,12 @@ describe("conversation work execution", () => {
     const legacyWork = {
       schemaVersion: 1,
       conversationId: CONVERSATION_ID,
-      messages: [legacyMessage],
-      needsRun: true,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        pendingMessages: [legacyMessage],
+      },
+      lastActivityAtMs: 1_000,
       updatedAtMs: 1_000,
     };
     await state.set(CONVERSATION_WORK_STATE_KEY, legacyWork);
@@ -122,7 +123,7 @@ describe("conversation work execution", () => {
         nowMs: 2_000,
         state,
       }),
-    ).rejects.toThrow("Conversation work state is invalid");
+    ).rejects.toThrow("Conversation record is invalid");
 
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
       legacyWork,
@@ -226,80 +227,114 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("keeps runnable conversation ids when the recovery index overflows", async () => {
+  it("keeps stale active conversation ids when the active index exceeds the activity feed cap", async () => {
     const state = getStateAdapter();
     await state.connect();
-    const activeConversationId = "conversation-active";
-    const newConversationId = "conversation-new";
-    await requestConversationWork({
-      conversationId: activeConversationId,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state,
-    });
+    const staleConversationId = "conversation-stale";
     await state.set(
-      "junior:conversation-work:index",
-      [
-        activeConversationId,
-        ...Array.from({ length: 9_999 }, (_, index) => `stale-${index}`),
-      ],
+      CONVERSATION_ACTIVE_INDEX_KEY,
+      Array.from({ length: 10_000 }, (_, index) => ({
+        conversationId: `newer-${index}`,
+        score: 10_000 + index,
+      })),
       60_000,
     );
 
     await requestConversationWork({
-      conversationId: newConversationId,
+      conversationId: staleConversationId,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+
+    const ids = await listActiveConversationIds({ state });
+    expect(ids).toContain(staleConversationId);
+    expect(ids).toHaveLength(10_001);
+
+    await expect(
+      listActiveConversationIds({ staleBeforeMs: 1_000, state }),
+    ).resolves.toEqual([staleConversationId]);
+  });
+
+  it("normalizes malformed emulated conversation indexes", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_ACTIVE_INDEX_KEY, "not-an-index", 60_000);
+    await state.set(CONVERSATION_BY_ACTIVITY_INDEX_KEY, "not-an-index", 60_000);
+
+    await expect(listActiveConversationIds({ state })).resolves.toEqual([]);
+    await expect(
+      listConversationsByActivity({ state, limit: 10 }),
+    ).resolves.toEqual([]);
+  });
+
+  it("keeps pending mailbox records in the active index after activity refresh", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const pendingMessage = inboundMessage("m1");
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 1,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: [pendingMessage.inboundMessageId],
+        pendingCount: 1,
+        pendingMessages: [pendingMessage],
+        status: "idle",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await recordConversationActivity({
+      conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       nowMs: 2_000,
       state,
     });
 
-    const ids = await readConversationWorkIndex(state);
-    expect(ids).toContain(activeConversationId);
-    expect(ids).toContain(newConversationId);
-    expect(ids).not.toContain("stale-0");
-    expect(ids).toHaveLength(10_000);
+    await expect(listActiveConversationIds({ state })).resolves.toContain(
+      CONVERSATION_ID,
+    );
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      needsRun: true,
+      execution: {
+        status: "pending",
+      },
+    });
   });
 
-  it("rotates bounded heartbeat scans so stale prefixes cannot starve pending work", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
+  it("rejects pending messages with a different conversation destination", async () => {
     const state = getStateAdapter();
     await state.connect();
-    await appendInboundMessage({
-      message: inboundMessage("m1"),
-      nowMs: 1_000,
-      state,
-    });
-    await state.set(
-      "junior:conversation-work:index",
-      ["missing-conversation", CONVERSATION_ID],
-      60_000,
-    );
-
-    await expect(
-      recoverConversationWork({
-        limit: 1,
-        nowMs: 62_000,
-        queue,
-        state,
-      }),
-    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 0 });
-    expect(queue.sentRecords()).toEqual([]);
-
-    await expect(
-      recoverConversationWork({
-        limit: 1,
-        nowMs: 63_000,
-        queue,
-        state,
-      }),
-    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        idempotencyKey: `heartbeat:pending:${CONVERSATION_ID}:63000`,
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 1,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1"],
+        pendingCount: 1,
+        pendingMessages: [
+          {
+            ...inboundMessage("m1"),
+            destination: OTHER_SLACK_DESTINATION,
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
       },
-    ]);
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -347,29 +382,22 @@ describe("conversation work execution", () => {
     const run = vi.fn(async () => ({ status: "completed" as const }));
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
-    let error: unknown;
-    await processConversationWork(
-      conversationQueueMessage({ destination: OTHER_SLACK_DESTINATION }),
-      {
-        queue,
-        run,
-      },
-    ).catch((caught: unknown) => {
-      error = caught;
-    });
-    expect(error).toBeInstanceOf(ConversationQueueMessageRejectedError);
-    expect(error).toMatchObject({
-      conversationId: CONVERSATION_ID,
-      reason: "destination_mismatch",
-    });
+    await expect(
+      processConversationWork(
+        conversationQueueMessage({ destination: OTHER_SLACK_DESTINATION }),
+        {
+          queue,
+          run,
+        },
+      ),
+    ).rejects.toThrow("Conversation work queue destination changed");
 
     expect(run).not.toHaveBeenCalled();
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      destination: SLACK_DESTINATION,
-      lease: undefined,
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
     });
+    expect(work).toMatchObject({ destination: SLACK_DESTINATION });
+    expect(work?.lease).toBeUndefined();
   });
 
   it("rejects continuation requests that change a conversation destination", async () => {
@@ -394,7 +422,7 @@ describe("conversation work execution", () => {
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
       }),
-    ).rejects.toThrow("Conversation work destination changed");
+    ).rejects.toThrow("Conversation destination changed");
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
@@ -474,7 +502,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("nudges failed worker runs before releasing runnable work without rethrowing", async () => {
+  it("nudges failed worker runs before releasing runnable work", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await requestConversationWork({
@@ -492,15 +520,13 @@ describe("conversation work execution", () => {
           throw new Error("runner failed");
         },
       }),
-    ).resolves.toEqual({ status: "pending_requeued" });
+    ).rejects.toThrow("runner failed");
 
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
-    expect(state?.consecutiveFailureCount).toBe(1);
-    expect(state?.lastFailureAtMs).toBe(2_000);
     expect(state?.lastEnqueuedAtMs).toBe(2_000);
     expect(queue.sentRecords()).toMatchObject([
       {
@@ -508,363 +534,6 @@ describe("conversation work execution", () => {
         idempotencyKey: `error:${CONVERSATION_ID}:2000`,
       },
     ]);
-  });
-
-  it("rethrows failed worker runs when own requeue nudge also fails", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-
-    let runs = 0;
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => 2_000,
-        queue,
-        run: async () => {
-          runs += 1;
-          queue.rejectSends();
-          throw new Error("runner failed");
-        },
-      }),
-    ).rejects.toThrow("runner failed");
-    expect(runs).toBe(1);
-    expect(queue.sentRecords()).toHaveLength(0);
-  });
-
-  it("does not rethrow after accepted recovery nudges when enqueue marker persistence fails", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const baseState = getStateAdapter();
-    await baseState.connect();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state: baseState,
-    });
-
-    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
-    let mutationLockCalls = 0;
-    const failEnqueueMarkerState = new Proxy(baseState, {
-      get(target, prop, receiver) {
-        if (prop === "acquireLock") {
-          return async (key: string, ttlMs: number) => {
-            if (key === mutationLockKey) {
-              mutationLockCalls += 1;
-              if (mutationLockCalls === 4) {
-                throw new Error(
-                  "Could not acquire conversation work mutation lock for test",
-                );
-              }
-            }
-            return target.acquireLock(key, ttlMs);
-          };
-        }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as typeof baseState;
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => 2_000,
-        queue,
-        run: async () => {
-          throw new Error("runner failed");
-        },
-        state: failEnqueueMarkerState,
-      }),
-    ).resolves.toEqual({ status: "pending_requeued" });
-
-    const state = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state: baseState,
-    });
-    expect(state?.lease).toBeUndefined();
-    expect(state?.needsRun).toBe(true);
-    expect(state?.consecutiveFailureCount).toBe(1);
-    expect(state?.lastEnqueuedAtMs).toBeUndefined();
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        idempotencyKey: `error:${CONVERSATION_ID}:2000`,
-      },
-    ]);
-  });
-
-  it("abandons poison conversations after repeated failures and stops requeueing", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    let currentNowMs = 1_000;
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: currentNowMs,
-    });
-
-    for (let attempt = 1; attempt < 5; attempt += 1) {
-      currentNowMs += 1_000;
-      await expect(
-        processConversationWork(conversationQueueMessage(), {
-          nowMs: () => currentNowMs,
-          queue,
-          run: async () => {
-            throw new Error("deterministic poison failure");
-          },
-        }),
-      ).resolves.toEqual({ status: "pending_requeued" });
-    }
-
-    currentNowMs += 1_000;
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs,
-        queue,
-        run: async () => {
-          throw new Error("deterministic poison failure");
-        },
-      }),
-    ).resolves.toEqual({ status: "abandoned" });
-
-    expect(queue.sentRecords()).toHaveLength(4);
-    const state = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(state?.lease).toBeUndefined();
-    expect(state?.needsRun).toBe(false);
-    expect(state?.consecutiveFailureCount).toBe(5);
-    expect(state?.terminallyFailedAtMs).toBe(currentNowMs);
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs + 1_000,
-        queue,
-        run: async () => {
-          throw new Error("should not run");
-        },
-      }),
-    ).resolves.toEqual({ status: "no_work" });
-    expect(queue.sentRecords()).toHaveLength(4);
-  });
-
-  it("clears terminal failure state when a new inbound message arrives", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    let currentNowMs = 1_000;
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: currentNowMs,
-    });
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      currentNowMs += 1_000;
-      await processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs,
-        queue,
-        run: async () => {
-          throw new Error("deterministic poison failure");
-        },
-      });
-    }
-    const failed = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(failed?.terminallyFailedAtMs).toBeDefined();
-    expect(failed?.consecutiveFailureCount).toBe(5);
-
-    await appendInboundMessage({
-      message: inboundMessage("m-after-failure", {
-        createdAtMs: currentNowMs + 100,
-        receivedAtMs: currentNowMs + 100,
-      }),
-      nowMs: currentNowMs + 100,
-    });
-    const fresh = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(fresh?.terminallyFailedAtMs).toBeUndefined();
-    expect(fresh?.consecutiveFailureCount).toBe(0);
-    expect(fresh?.needsRun).toBe(true);
-  });
-
-  it("resets the failure counter after a successful drain or completion", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-    await processConversationWork(conversationQueueMessage(), {
-      nowMs: () => 2_000,
-      queue,
-      run: async () => {
-        throw new Error("transient");
-      },
-    });
-    const afterFailure = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(afterFailure?.consecutiveFailureCount).toBe(1);
-
-    await appendInboundMessage({
-      message: inboundMessage("m-success", {
-        createdAtMs: 3_000,
-        receivedAtMs: 3_000,
-      }),
-      nowMs: 3_000,
-    });
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => 4_000,
-        queue,
-        run: async (context) => {
-          await context.drainMailbox(async () => {});
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    const afterSuccess = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(afterSuccess?.consecutiveFailureCount).toBe(0);
-    expect(afterSuccess?.lastFailureAtMs).toBeUndefined();
-  });
-
-  it("absorbs pre-lease mutation lock failures so vercel will not redeliver", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const baseState = getStateAdapter();
-    await baseState.connect();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state: baseState,
-    });
-
-    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
-    const throwOnMutationLock = new Proxy(baseState, {
-      get(target, prop, receiver) {
-        if (prop === "acquireLock") {
-          return async (key: string, ttlMs: number) => {
-            if (key === mutationLockKey) {
-              throw new Error(
-                "Could not acquire conversation work mutation lock for test",
-              );
-            }
-            return target.acquireLock(key, ttlMs);
-          };
-        }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as typeof baseState;
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => 2_000,
-        queue,
-        run: async () => ({ status: "completed" }),
-        state: throwOnMutationLock,
-      }),
-    ).resolves.toEqual({ status: "no_work" });
-  });
-
-  it("rethrows when failure recording fails so platform redelivery bounds the retry", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const baseState = getStateAdapter();
-    await baseState.connect();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state: baseState,
-    });
-
-    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
-    let mutationLockCalls = 0;
-    const failRecordMutationLock = new Proxy(baseState, {
-      get(target, prop, receiver) {
-        if (prop === "acquireLock") {
-          return async (key: string, ttlMs: number) => {
-            if (key === mutationLockKey) {
-              mutationLockCalls += 1;
-              if (mutationLockCalls >= 2) {
-                throw new Error(
-                  "Could not acquire conversation work mutation lock for test",
-                );
-              }
-            }
-            return target.acquireLock(key, ttlMs);
-          };
-        }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as typeof baseState;
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => 2_000,
-        queue,
-        run: async () => {
-          throw new Error("runner failed");
-        },
-        state: failRecordMutationLock,
-      }),
-    ).rejects.toThrow("runner failed");
-    expect(queue.sentRecords()).toHaveLength(0);
-  });
-
-  it("does not resurrect terminally failed conversations via requestConversationWork", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    let currentNowMs = 1_000;
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: currentNowMs,
-    });
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      currentNowMs += 1_000;
-      await processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs,
-        queue,
-        run: async () => {
-          throw new Error("deterministic poison failure");
-        },
-      });
-    }
-    const terminal = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(terminal?.terminallyFailedAtMs).toBeDefined();
-
-    currentNowMs += 1_000;
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: currentNowMs,
-    });
-
-    const sentBefore = queue.sentRecords().length;
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        nowMs: () => currentNowMs + 1_000,
-        queue,
-        run: async () => {
-          throw new Error("should not run after terminal failure");
-        },
-      }),
-    ).resolves.toEqual({ status: "no_work" });
-    expect(queue.sentRecords()).toHaveLength(sentBefore);
-    const stillTerminal = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(stillTerminal?.terminallyFailedAtMs).toBeDefined();
-    expect(stillTerminal?.lease).toBeUndefined();
   });
 
   it("releases and requeues runnable work when the runner reports lost lease", async () => {
@@ -902,7 +571,7 @@ describe("conversation work execution", () => {
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
-    const injected: InboundMessageRecord[][] = [];
+    const injected: InboundMessage[][] = [];
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
@@ -975,11 +644,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
-      "m1",
       "m2",
     ]);
     expect(state?.messages.map((message) => message.injectedAtMs)).toEqual([
-      expect.any(Number),
       undefined,
     ]);
   });
@@ -1057,127 +724,6 @@ describe("conversation work execution", () => {
     expect(runningContext.shouldYield()).toBe(true);
     finish.resolve();
     await expect(running).resolves.toEqual({ status: "lost_lease" });
-  });
-
-  it("treats periodic check-in errors as lost lease at the next yield boundary", async () => {
-    vi.useFakeTimers({ now: 1_000 });
-    const queue = createConversationWorkQueueTestAdapter();
-    const baseState = getStateAdapter();
-    await baseState.connect();
-    await appendInboundMessage({
-      message: inboundMessage("m1"),
-      nowMs: 1_000,
-      state: baseState,
-    });
-    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
-    let failCheckIns = false;
-    const state = new Proxy(baseState, {
-      get(target, prop, receiver) {
-        if (prop === "acquireLock") {
-          return async (key: string, ttlMs: number) => {
-            if (key === mutationLockKey && failCheckIns) {
-              throw new Error("state unavailable during check-in");
-            }
-            return target.acquireLock(key, ttlMs);
-          };
-        }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as typeof baseState;
-    const entered = deferred<{ shouldYield: () => boolean }>();
-    const finish = deferred<void>();
-
-    const running = processConversationWork(conversationQueueMessage(), {
-      checkInIntervalMs: 15_000,
-      queue,
-      run: async (context) => {
-        await context.drainMailbox(async () => {});
-        entered.resolve({ shouldYield: context.shouldYield });
-        await finish.promise;
-        return { status: context.shouldYield() ? "yielded" : "completed" };
-      },
-      state,
-    });
-    const runningContext = await entered.promise;
-
-    failCheckIns = true;
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(runningContext.shouldYield()).toBe(true);
-
-    failCheckIns = false;
-    finish.resolve();
-    await expect(running).resolves.toEqual({ status: "lost_lease" });
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId: CONVERSATION_ID,
-        idempotencyKey: `lost_lease:${CONVERSATION_ID}:16000`,
-      }),
-    ]);
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state,
-    });
-    expect(work?.lease).toBeUndefined();
-    expect(work?.needsRun).toBe(true);
-  });
-
-  it("does not reopen completed work after a transient check-in error", async () => {
-    vi.useFakeTimers({ now: 1_000 });
-    const queue = createConversationWorkQueueTestAdapter();
-    const baseState = getStateAdapter();
-    await baseState.connect();
-    await appendInboundMessage({
-      message: inboundMessage("m1"),
-      nowMs: 1_000,
-      state: baseState,
-    });
-    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
-    let failCheckIns = false;
-    const state = new Proxy(baseState, {
-      get(target, prop, receiver) {
-        if (prop === "acquireLock") {
-          return async (key: string, ttlMs: number) => {
-            if (key === mutationLockKey && failCheckIns) {
-              throw new Error("state unavailable during check-in");
-            }
-            return target.acquireLock(key, ttlMs);
-          };
-        }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as typeof baseState;
-    const entered = deferred<{ shouldYield: () => boolean }>();
-    const finish = deferred<void>();
-
-    const running = processConversationWork(conversationQueueMessage(), {
-      checkInIntervalMs: 15_000,
-      queue,
-      run: async (context) => {
-        await context.drainMailbox(async () => {});
-        entered.resolve({ shouldYield: context.shouldYield });
-        await finish.promise;
-        return { status: "completed" };
-      },
-      state,
-    });
-    const runningContext = await entered.promise;
-
-    failCheckIns = true;
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(runningContext.shouldYield()).toBe(true);
-
-    failCheckIns = false;
-    finish.resolve();
-    await expect(running).resolves.toEqual({ status: "completed" });
-    expect(queue.sentRecords()).toEqual([]);
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state,
-    });
-    expect(work?.lease).toBeUndefined();
-    expect(work?.needsRun).toBe(false);
   });
 
   it("requeues an expired conversation lease from heartbeat", async () => {
@@ -1454,77 +1000,6 @@ describe("conversation work execution", () => {
     ).resolves.toBe(false);
   });
 
-  it("keeps repeated mailbox injection idempotent when marking injected fails", async () => {
-    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
-    const lease = await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 2_000,
-    });
-    expect(lease.status).toBe("acquired");
-    if (lease.status !== "acquired") {
-      return;
-    }
-    const toPiMessages = (messages: InboundMessageRecord[]): PiMessage[] =>
-      messages.map(
-        (message) =>
-          ({
-            role: "user",
-            content: [{ type: "text", text: message.input.text }],
-            timestamp: message.createdAtMs,
-          }) as PiMessage,
-      );
-
-    await expect(
-      drainConversationMailbox({
-        conversationId: CONVERSATION_ID,
-        leaseToken: lease.leaseToken,
-        nowMs: 3_000,
-        inject: async (messages) => {
-          await commitMessages({
-            conversationId: CONVERSATION_ID,
-            messages: toPiMessages(messages),
-            ttlMs: JUNIOR_THREAD_STATE_TTL_MS,
-          });
-          throw new Error("process died before marking injected");
-        },
-      }),
-    ).rejects.toThrow("process died before marking injected");
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      messages: [expect.objectContaining({ injectedAtMs: undefined })],
-    });
-
-    await expect(
-      drainConversationMailbox({
-        conversationId: CONVERSATION_ID,
-        leaseToken: lease.leaseToken,
-        nowMs: 4_000,
-        inject: async (messages) => {
-          await commitMessages({
-            conversationId: CONVERSATION_ID,
-            messages: toPiMessages(messages),
-            ttlMs: JUNIOR_THREAD_STATE_TTL_MS,
-          });
-        },
-      }),
-    ).resolves.toHaveLength(1);
-
-    await expect(
-      loadProjection({ conversationId: CONVERSATION_ID }),
-    ).resolves.toEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "message m1" }],
-        timestamp: 1_000,
-      },
-    ]);
-    const state = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
-  });
-
   it("deduplicates accepted fake queue payloads by idempotency key", async () => {
     const queue = createConversationWorkQueueTestAdapter();
 
@@ -1593,7 +1068,7 @@ describe("conversation work execution", () => {
         options: {
           delaySeconds: 16,
           idempotencyKey: "idem-1",
-          retentionSeconds: CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+          retentionSeconds: 3_600,
         },
       },
     ]);

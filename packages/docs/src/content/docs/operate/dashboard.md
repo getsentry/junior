@@ -95,15 +95,15 @@ The current dashboard API slices are:
 | `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.                                        |
 | `/api/dashboard/plugins`                     | Loaded plugin list.                                                                    |
 | `/api/dashboard/skills`                      | Discovered skill list.                                                                 |
-| `/api/dashboard/sessions`                    | Recent conversation feed from turn-session checkpoints.                                |
+| `/api/dashboard/sessions`                    | Recent conversation feed from the conversation activity index.                         |
 | `/api/dashboard/conversation-stats`          | Aggregate conversation stats, people/place leaderboards, and sampling metadata.        |
 | `/api/dashboard/plugin-reports`              | Sanitized plugin operational summaries.                                                |
 | `/api/dashboard/conversations/:conversation` | Expiring conversation transcript; private conversations return redacted metadata only. |
 | `/api/dashboard/config`                      | Safe dashboard config signals and feature readiness.                                   |
 | `/api/dashboard/me`                          | Signed-in dashboard identity.                                                          |
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health, aggregate conversation stats, and recent turn durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and turn/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
-The conversation feed is a bounded metadata index with the same expiration policy as turn-session checkpoints. Conversation detail reads transcript data from the expiring checkpoint message store, so old transcripts disappear when checkpoint state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the turn metadata.
+The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health, aggregate conversation stats, and recent run durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and run/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The conversation feed is backed by the bounded conversation activity index. Conversation detail joins run metadata and transcript data from expiring session stores, so old transcripts disappear when session state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 The conversation stats endpoint is separate from the recent feed and includes `sampleLimit`, `sampleSize`, and `truncated` fields so the UI can mark bounded aggregates.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
 

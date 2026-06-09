@@ -267,6 +267,19 @@ export async function getConnectedStateContext(): Promise<{
   };
 }
 
+/** Return the Redis adapter only when the caller is using the default state adapter. */
+export async function getDefaultRedisStateAdapterFor(
+  adapter: StateAdapter,
+): Promise<RedisStateAdapter | undefined> {
+  if (adapter !== stateAdapter) {
+    return undefined;
+  }
+  const context = await getConnectedStateContext();
+  return context.stateAdapter === adapter
+    ? context.redisStateAdapter
+    : undefined;
+}
+
 export function getStateAdapter(): StateAdapter {
   if (!stateAdapter) {
     stateAdapter = createStateAdapter();

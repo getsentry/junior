@@ -11,14 +11,11 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  commitMessages,
-  loadMessages,
-  loadProjectionWithRequester,
-  type SessionRequester,
-} from "./session-log";
+import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
+import { recordConversationActivity } from "@/chat/task-execution/store";
+import { logException } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -36,11 +33,12 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
-/**
- * Requester identity carried through a turn's lifetime.
- * Re-exported from session-log for convenience; SessionRequester is canonical.
- */
-export type AgentTurnRequester = SessionRequester;
+export interface AgentTurnRequester {
+  email?: string;
+  fullName?: string;
+  slackUserId?: string;
+  slackUserName?: string;
+}
 
 export interface AgentTurnSessionRecord {
   channelName?: string;
@@ -72,7 +70,7 @@ export type AgentTurnSessionSummary = Omit<
 
 interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
-  "piMessages" | "requester"
+  "piMessages"
 > {
   committedMessageCount: number;
   logSessionId?: string;
@@ -120,6 +118,43 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
   }
 
   return Object.keys(usage).length > 0 ? usage : undefined;
+}
+
+function parseRequesterUserId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0) {
+    return undefined;
+  }
+  if (value !== value.trim() || value.toLowerCase() === "unknown") {
+    return undefined;
+  }
+  return value;
+}
+
+function parseAgentTurnRequester(
+  value: unknown,
+): AgentTurnRequester | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const requester: AgentTurnRequester = {};
+  if (value.slackUserId !== undefined) {
+    const slackUserId =
+      typeof value.slackUserId === "string"
+        ? parseRequesterUserId(value.slackUserId)
+        : undefined;
+    if (!slackUserId) {
+      return undefined;
+    }
+    requester.slackUserId = slackUserId;
+  }
+  for (const field of ["email", "fullName", "slackUserName"] as const) {
+    if (typeof value[field] === "string" && value[field].trim()) {
+      requester[field] = value[field].trim();
+    }
+  }
+
+  return Object.keys(requester).length > 0 ? requester : undefined;
 }
 
 function parseStoredRecord(
@@ -188,6 +223,7 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
+  const requester = parseAgentTurnRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
   const destination =
@@ -219,6 +255,7 @@ function parseAgentTurnSessionFields(
     ...(logSessionId ? { logSessionId } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     ...(destination ? { destination } : {}),
+    ...(requester ? { requester } : {}),
     ...(Array.isArray(parsed.loadedSkillNames)
       ? {
           loadedSkillNames: parsed.loadedSkillNames.filter(
@@ -302,6 +339,32 @@ async function appendAgentTurnSessionSummary(
   ]);
 }
 
+/** Mirror run summaries into the conversation feed without owning reply success. */
+async function recordConversationActivityBestEffort(args: {
+  nowMs: number;
+  summary: AgentTurnSessionSummary;
+}): Promise<void> {
+  try {
+    await recordConversationActivity({
+      activityAtMs: args.summary.updatedAtMs,
+      channelName: args.summary.channelName,
+      conversationId: args.summary.conversationId,
+      destination: args.summary.destination,
+      nowMs: args.nowMs,
+      requester: args.summary.requester,
+      source: args.summary.surface,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "conversation_activity_record_failed",
+      { conversationId: args.summary.conversationId },
+      {},
+      "Failed to mirror turn session summary into conversation activity",
+    );
+  }
+}
+
 /**
  * Rehydrate the continuable Pi boundary from the session log, tolerating a
  * compacted projection when the exact historical prefix is no longer visible.
@@ -333,7 +396,6 @@ function materializePiMessages(
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
   piMessages: PiMessage[],
-  requester?: AgentTurnRequester,
 ): AgentTurnSessionRecord {
   return {
     version: stored.version,
@@ -356,7 +418,7 @@ function materializeAgentTurnSessionRecord(
     ...(stored.loadedSkillNames
       ? { loadedSkillNames: stored.loadedSkillNames }
       : {}),
-    ...(requester ? { requester } : {}),
+    ...(stored.requester ? { requester: stored.requester } : {}),
     ...(stored.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: stored.resumedFromSliceId }
       : {}),
@@ -396,11 +458,10 @@ export async function getAgentTurnSessionRecord(
     messageCount: parsed.committedMessageCount,
     ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
-  const { messages: sessionProjection, requester: logRequester } =
-    await loadProjectionWithRequester({
-      conversationId,
-      ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
-    });
+  const sessionProjection = await loadProjection({
+    conversationId,
+    ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
+  });
   const piMessages = materializePiMessages(
     parsed.committedMessageCount,
     parsed.state === "running" || parsed.state === "awaiting_resume",
@@ -411,7 +472,7 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  return materializeAgentTurnSessionRecord(parsed, piMessages, logRequester);
+  return materializeAgentTurnSessionRecord(parsed, piMessages);
 }
 
 /** Build the storage record that advances optimistic resume versioning. */
@@ -426,6 +487,7 @@ function buildStoredRecord(args: {
   loadedSkillNames?: string[];
   logSessionId?: string;
   previousVersion?: number;
+  requester?: AgentTurnRequester;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -452,6 +514,7 @@ function buildStoredRecord(args: {
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.destination ? { destination: args.destination } : {}),
+    ...(args.requester ? { requester: args.requester } : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
@@ -472,7 +535,6 @@ function buildStoredRecord(args: {
 async function setStoredRecord(args: {
   piMessages: PiMessage[];
   record: StoredAgentTurnSessionRecord;
-  requester?: AgentTurnRequester;
   ttlMs: number;
 }): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
@@ -490,11 +552,7 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
-  return materializeAgentTurnSessionRecord(
-    args.record,
-    [...args.piMessages],
-    args.requester,
-  );
+  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
 }
 
 /**
@@ -538,7 +596,9 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
-
+      ...(args.existing.requester
+        ? { requester: args.existing.requester }
+        : {}),
       ...(args.existing.resumeReason
         ? { resumeReason: args.existing.resumeReason }
         : {}),
@@ -584,13 +644,11 @@ export async function upsertAgentTurnSessionRecord(args: {
     conversationId: args.conversationId,
     messages: args.piMessages,
     ttlMs,
-    requester: args.requester,
   });
 
   return await setStoredRecord({
     piMessages: args.piMessages,
     ttlMs,
-    requester: args.requester,
     record: buildStoredRecord({
       ...((args.channelName ?? existingRecord?.channelName)
         ? { channelName: args.channelName ?? existingRecord?.channelName }
@@ -621,7 +679,9 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-
+      ...((args.requester ?? existingRecord?.requester)
+        ? { requester: args.requester ?? existingRecord?.requester }
+        : {}),
       ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       ...(args.resumedFromSliceId !== undefined
@@ -662,48 +722,53 @@ export async function recordAgentTurnSessionSummary(args: {
   );
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  await appendAgentTurnSessionSummary(
-    {
-      version: existing?.version ?? 0,
-      ...((args.channelName ?? existing?.channelName)
-        ? { channelName: args.channelName ?? existing?.channelName }
+  const summary: AgentTurnSessionSummary = {
+    version: existing?.version ?? 0,
+    ...((args.channelName ?? existing?.channelName)
+      ? { channelName: args.channelName ?? existing?.channelName }
+      : {}),
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
+    lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
+    state: args.state,
+    updatedAtMs: nowMs,
+    cumulativeDurationMs:
+      toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
+      existing?.cumulativeDurationMs ??
+      0,
+    ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
+      ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
+      : {}),
+    ...((args.destination ?? existing?.destination)
+      ? { destination: args.destination ?? existing?.destination }
+      : {}),
+    ...((args.requester ?? existing?.requester)
+      ? { requester: args.requester ?? existing?.requester }
+      : {}),
+    ...(Array.isArray(args.loadedSkillNames)
+      ? {
+          loadedSkillNames: args.loadedSkillNames.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        }
+      : existing?.loadedSkillNames
+        ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),
-      conversationId: args.conversationId,
-      sessionId: args.sessionId,
-      sliceId: args.sliceId,
-      startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
-      lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
-      state: args.state,
-      updatedAtMs: nowMs,
-      cumulativeDurationMs:
-        toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
-        existing?.cumulativeDurationMs ??
-        0,
-      ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
-        ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
-        : {}),
-      ...((args.destination ?? existing?.destination)
-        ? { destination: args.destination ?? existing?.destination }
-        : {}),
-      ...(Array.isArray(args.loadedSkillNames)
-        ? {
-            loadedSkillNames: args.loadedSkillNames.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : existing?.loadedSkillNames
-          ? { loadedSkillNames: existing.loadedSkillNames }
-          : {}),
-      ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
-      ...((args.surface ?? existing?.surface)
-        ? { surface: args.surface ?? existing?.surface }
-        : {}),
-      ...((args.traceId ?? existing?.traceId)
-        ? { traceId: args.traceId ?? existing?.traceId }
-        : {}),
-    },
-    ttlMs,
-  );
+    ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
+    ...((args.surface ?? existing?.surface)
+      ? { surface: args.surface ?? existing?.surface }
+      : {}),
+    ...((args.traceId ?? existing?.traceId)
+      ? { traceId: args.traceId ?? existing?.traceId }
+      : {}),
+  };
+  await appendAgentTurnSessionSummary(summary, ttlMs);
+  await recordConversationActivityBestEffort({
+    nowMs,
+    summary,
+  });
 }
 
 async function readAgentTurnSessionSummariesFromIndex(

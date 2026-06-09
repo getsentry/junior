@@ -166,7 +166,7 @@ function plural(label: string, count: number): string {
 function conversationStatusSummary(conversations: Conversation[]) {
   return conversations.reduce(
     (summary, conversation) => {
-      const turns = conversation.turns;
+      const turns = conversation.runs;
       return {
         active:
           summary.active +
@@ -363,12 +363,12 @@ function chartTooltipRows(
     ? slackLocationLabel(session, { includeId: false })
     : undefined;
   const tokenSummary = summarizeUsage(
-    (detail?.turns ?? point.conversation?.turns ?? []).map(
+    (detail?.runs ?? point.conversation?.runs ?? []).map(
       (turn) => turn.cumulativeUsage,
     ),
   );
-  const messageSummary = detail ? summarizeMessages(detail.turns) : undefined;
-  const toolSummary = detail ? summarizeToolCalls(detail.turns) : undefined;
+  const messageSummary = detail ? summarizeMessages(detail.runs) : undefined;
+  const toolSummary = detail ? summarizeToolCalls(detail.runs) : undefined;
   const rows: Array<[string, ReactNode] | null> = [
     [
       "duration",

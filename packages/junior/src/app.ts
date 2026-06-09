@@ -25,7 +25,7 @@ import {
   pluginCatalogConfigFromPluginSet,
   pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
-} from "@/plugins";
+} from "./plugins";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
@@ -35,22 +35,21 @@ import {
   ALL as sandboxEgressProxyALL,
   isSandboxEgressRequest,
 } from "@/handlers/sandbox-egress-proxy";
-import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
-} from "@/chat/task-execution/vercel-callback";
+} from "./chat/task-execution/vercel-callback";
 import { getProductionConversationWorkOptions } from "@/chat/app/production";
-import type { WaitUntilFn } from "@/handlers/types";
+import type { WaitUntilFn } from "./handlers/types";
 
-export { defineJuniorPlugins } from "@/plugins";
+export { defineJuniorPlugins } from "./plugins";
 export type {
   JuniorPluginInput,
   JuniorPluginSet,
   JuniorPluginSetOptions,
-} from "@/plugins";
+} from "./plugins";
 
 export interface JuniorAppOptions {
   /** Slack-specific overrides applied after env parsing. */
@@ -387,10 +386,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
-  });
-
-  app.post("/api/internal/turn-resume", (c) => {
-    return turnResumePOST(c.req.raw, waitUntil);
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {

@@ -41,17 +41,17 @@ function isHungSession(session: Session): boolean {
 }
 
 function isActiveConversation(conversation: Conversation): boolean {
-  return conversation.turns.some(
+  return conversation.runs.some(
     (turn) => visualStatusForSession(turn) === "active",
   );
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
-  return conversation.turns.some(isFailedSession);
+  return conversation.runs.some(isFailedSession);
 }
 
 function isHungConversation(conversation: Conversation): boolean {
-  return conversation.turns.some(isHungSession);
+  return conversation.runs.some(isHungSession);
 }
 
 function parseTime(value: string | undefined): number | null {
@@ -536,14 +536,12 @@ export function formatConversationDuration(conversation: Conversation): string {
 
 /** Return cumulative conversation runtime without double-counting prior turns. */
 export function conversationRuntimeMs(
-  conversation: Pick<Conversation, "turns">,
+  conversation: Pick<Conversation, "runs">,
 ): number | undefined {
-  if (
-    !conversation.turns.some((turn) => durationSnapshot(turn) !== undefined)
-  ) {
+  if (!conversation.runs.some((turn) => durationSnapshot(turn) !== undefined)) {
     return undefined;
   }
-  return contributionDurationTotal(turnContributions(conversation.turns));
+  return contributionDurationTotal(turnContributions(conversation.runs));
 }
 
 /** Resolve the owning conversation id for a turn/session summary. */
@@ -923,7 +921,7 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         status,
         surface: newest.surface,
         traceId: newest.traceId,
-        turns: sortedTurns,
+        runs: sortedTurns,
       };
     })
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));

@@ -7,7 +7,7 @@ title: "juniorVercelConfig"
 
 > **juniorVercelConfig**(`options?`): `Record`\<`string`, `unknown`\>
 
-Defined in: [vercel.ts:6](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L6)
+Defined in: [junior/src/vercel.ts:6](https://github.com/getsentry/junior/blob/main/packages/junior/src/vercel.ts#L6)
 
 Return the root Vercel project config for scaffolded Junior apps.
 

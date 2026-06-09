@@ -229,7 +229,7 @@ describe("resumeAuthorizedRequest", () => {
         requester: { userId: "U-test" },
       },
       generateReply: async () => {
-        throw new RetryableTurnError("turn_timeout_resume", "timed out again", {
+        throw new RetryableTurnError("agent_continue", "timed out again", {
           conversationId: "conversation-1",
           sessionId: "turn-1",
           version: 3,
@@ -257,7 +257,7 @@ describe("resumeAuthorizedRequest", () => {
         requester: { userId: "U-test" },
       },
       generateReply: async () => {
-        throw new RetryableTurnError("turn_timeout_resume", "timed out again", {
+        throw new RetryableTurnError("agent_continue", "timed out again", {
           conversationId: "conversation-1",
           sessionId: "turn-1",
           version: 3,

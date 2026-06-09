@@ -15,18 +15,8 @@ import {
 } from "@/chat/runtime/turn";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
-import { getAwaitingTurnContinuationRequest } from "@/chat/services/timeout-resume";
-import { resumeTimedOutTurnWithLockRetry } from "@/chat/runtime/timeout-resume-runner";
-import {
-  failAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  type AgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
 import { getStateAdapter } from "@/chat/state/adapter";
-import type {
-  AgentInputMessage,
-  InboundMessageRecord,
-} from "@/chat/task-execution/store";
+import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import {
   getConversationWorkState,
   markConversationMessagesInjected,
@@ -63,7 +53,7 @@ export interface CreateSlackConversationWorkerOptions {
   lookupSlackUser?: (
     userId: string,
   ) => Promise<SlackActorProfile | null | undefined>;
-  resumeAwaitingContinuation?: (conversationId: string) => Promise<boolean>;
+  resumeAwaitingContinuation: (conversationId: string) => Promise<boolean>;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     "handleNewMention" | "handleSubscribedMessage"
@@ -83,8 +73,9 @@ function getConnectedState(stateAdapter?: StateAdapter): StateAdapter {
   return stateAdapter ?? getStateAdapter();
 }
 
+/** Validate the serialized Slack message/thread envelope stored in the mailbox. */
 function isSlackMetadata(
-  value: AgentInputMessage["metadata"],
+  value: AgentInput["metadata"],
 ): value is SlackConversationMessageMetadata {
   return (
     Boolean(value) &&
@@ -96,8 +87,8 @@ function isSlackMetadata(
 }
 
 function compareInboundMessages(
-  left: InboundMessageRecord,
-  right: InboundMessageRecord,
+  left: InboundMessage,
+  right: InboundMessage,
 ): number {
   return (
     left.createdAtMs - right.createdAtMs ||
@@ -106,17 +97,16 @@ function compareInboundMessages(
   );
 }
 
-function routeForRecords(
-  records: InboundMessageRecord[],
-): SlackConversationRoute {
+function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
   return records.some((record) => record.input.metadata?.route === "mention")
     ? "mention"
     : "subscribed";
 }
 
+/** Rehydrate the Slack message payload before handing it back to runtime code. */
 function restoreMessage(args: {
   adapter: SlackAdapter;
-  record: InboundMessageRecord;
+  record: InboundMessage;
 }): Message {
   const metadata = args.record.input.metadata;
   if (!isSlackMetadata(metadata)) {
@@ -182,70 +172,7 @@ function restoreThread(args: {
   });
 }
 
-function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
-  return (
-    summary.state === "awaiting_resume" &&
-    (summary.resumeReason === "timeout" || summary.resumeReason === "yield")
-  );
-}
-
-async function failUnresumableContinuation(args: {
-  conversationId: string;
-  errorMessage: string;
-  expectedVersion?: number;
-  summary: AgentTurnSessionSummary;
-}): Promise<void> {
-  await failAgentTurnSessionRecord({
-    conversationId: args.conversationId,
-    expectedVersion: args.expectedVersion ?? args.summary.version,
-    sessionId: args.summary.sessionId,
-    errorMessage: args.errorMessage,
-  });
-}
-
-async function resumeAwaitingContinuation(
-  conversationId: string,
-): Promise<boolean> {
-  const summaries =
-    await listAgentTurnSessionSummariesForConversation(conversationId);
-
-  for (const summary of summaries) {
-    if (!isContinuationResume(summary)) {
-      continue;
-    }
-
-    const request = await getAwaitingTurnContinuationRequest({
-      conversationId,
-      sessionId: summary.sessionId,
-    });
-    if (!request) {
-      await failUnresumableContinuation({
-        conversationId,
-        summary,
-        errorMessage:
-          "Awaiting turn continuation metadata could not be materialized",
-      });
-      continue;
-    }
-
-    if (await resumeTimedOutTurnWithLockRetry(request)) {
-      return true;
-    }
-
-    await failUnresumableContinuation({
-      conversationId,
-      expectedVersion: request.expectedVersion,
-      summary,
-      errorMessage: "Awaiting turn continuation was stale before resuming",
-    });
-  }
-
-  return false;
-}
-
-function getInstallation(
-  records: InboundMessageRecord[],
-): SlackInstallationContext {
+function getInstallation(records: InboundMessage[]): SlackInstallationContext {
   for (let index = records.length - 1; index >= 0; index -= 1) {
     const metadata = records[index]?.input.metadata;
     if (isSlackMetadata(metadata) && metadata.installation) {
@@ -256,14 +183,12 @@ function getInstallation(
 }
 
 function getPendingRecords(
-  work: { messages: InboundMessageRecord[] } | undefined,
-): InboundMessageRecord[] {
+  work: { execution: { pendingMessages: InboundMessage[] } } | undefined,
+): InboundMessage[] {
   if (!work) {
     return [];
   }
-  return work.messages
-    .filter((message) => message.injectedAtMs === undefined)
-    .sort(compareInboundMessages);
+  return work.execution.pendingMessages.sort(compareInboundMessages);
 }
 
 /** Build the worker run function for queued Slack conversation work. */
@@ -276,8 +201,6 @@ export function createSlackConversationWorker(
     const state = getConnectedState(options.state);
     await state.connect();
 
-    const resumeContinuation =
-      options.resumeAwaitingContinuation ?? resumeAwaitingContinuation;
     const records = getPendingRecords(
       await getConversationWorkState({
         conversationId: context.conversationId,
@@ -285,7 +208,7 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      await resumeContinuation(context.conversationId);
+      await options.resumeAwaitingContinuation(context.conversationId);
       return { status: "completed" };
     }
 
@@ -424,7 +347,7 @@ export function buildSlackInboundMessage(args: {
   receivedAtMs: number;
   route: SlackConversationRoute;
   thread: ThreadImpl;
-}): InboundMessageRecord {
+}): InboundMessage {
   const authorId = requireSlackAuthorId(args.message);
   const destination = createSlackDestination({
     channelId: args.thread.channelId,

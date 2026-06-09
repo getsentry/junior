@@ -91,6 +91,12 @@ async function createPendingAuthSession(args: {
 
 async function createAwaitingMcpTurnRecord(args: {
   conversationId: string;
+  requester?: {
+    email?: string;
+    fullName?: string;
+    slackUserId?: string;
+    slackUserName?: string;
+  };
   sessionId: string;
   text: string;
 }) {
@@ -107,6 +113,7 @@ async function createAwaitingMcpTurnRecord(args: {
         timestamp: 1,
       },
     ],
+    ...(args.requester ? { requester: args.requester } : {}),
     resumeReason: "auth",
     resumedFromSliceId: 1,
   });
@@ -222,6 +229,12 @@ describe("mcp oauth callback slack integration", () => {
     });
     await createAwaitingMcpTurnRecord({
       conversationId: "conversation-1",
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "stored-user",
+        fullName: "Stored User",
+        email: "stored@example.com",
+      },
       sessionId,
       text: "what did i say about the budget?",
     });
@@ -311,7 +324,12 @@ describe("mcp oauth callback slack integration", () => {
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "what did i say about the budget?",
       expect.objectContaining({
-        requester: expect.objectContaining({ userId: "U123" }),
+        requester: expect.objectContaining({
+          email: "stored@example.com",
+          fullName: "Stored User",
+          userId: "U123",
+          userName: "stored-user",
+        }),
         destination: SLACK_DESTINATION,
         toolChannelId: "C999",
         inboundAttachmentCount: 1,
@@ -687,6 +705,76 @@ describe("mcp oauth callback slack integration", () => {
     expect(response.status).toBe(200);
     expect(generateAssistantReplyMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+  });
+
+  it("does not resume MCP OAuth with a mismatched stored requester", async () => {
+    const sessionId = "turn_user-7";
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("thread-state:slack:C123:1700000000.007", {
+        conversation: {
+          messages: [
+            {
+              id: "user-7",
+              role: "user",
+              text: "list mcp data",
+              createdAtMs: 1,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+          ],
+          processing: {
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              requesterId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+    await createAwaitingMcpTurnRecord({
+      conversationId: "conversation-mismatched-requester",
+      requester: {
+        slackUserId: "U999",
+        slackUserName: "wrong-user",
+      },
+      sessionId,
+      text: "list mcp data",
+    });
+
+    const authProvider = await createPendingAuthSession({
+      conversationId: "conversation-mismatched-requester",
+      sessionId,
+      userMessage: "list mcp data",
+      channelId: "C123",
+      threadTs: "1700000000.007",
+    });
+
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+      });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        "conversation-mismatched-requester",
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage:
+        "Stored Slack requester identity did not match OAuth requester",
+    });
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {

@@ -14,6 +14,13 @@ export interface SlackActorProfile {
   userName?: string;
 }
 
+export interface StoredSlackRequesterProfile {
+  email?: string;
+  fullName?: string;
+  slackUserId?: string;
+  slackUserName?: string;
+}
+
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
@@ -103,7 +110,7 @@ export function buildActorIdentity(
 export function slackActorIdentity(
   userId: string,
   profile: SlackActorProfile | null | undefined,
-): ActorIdentityInput {
+): ActorIdentityInput & { userId: string } {
   const actorUserId = parseActorUserId(userId);
   if (!actorUserId) {
     throw new Error("Slack actor identity requires a user id");
@@ -120,5 +127,36 @@ export function slackActorIdentity(
   if (!identity?.userId) {
     throw new Error("Slack actor identity requires a user id");
   }
-  return identity;
+  return { ...identity, userId: identity.userId };
+}
+
+/** Attach stored Slack requester presentation only when its authority id matches. */
+export function slackActorIdentityFromStoredRequester(args: {
+  requester?: StoredSlackRequesterProfile;
+  userId: string;
+}): ActorIdentityInput & { userId: string } {
+  const actorUserId = parseActorUserId(args.userId);
+  if (!actorUserId) {
+    throw new Error("Slack actor identity requires a user id");
+  }
+  const storedUserId =
+    args.requester?.slackUserId === undefined
+      ? undefined
+      : parseActorUserId(args.requester.slackUserId);
+  if (args.requester?.slackUserId !== undefined && !storedUserId) {
+    throw new Error("Stored Slack requester identity requires a user id");
+  }
+  if (storedUserId && storedUserId !== actorUserId) {
+    throw new Error("Stored Slack requester identity must match actor user id");
+  }
+  return slackActorIdentity(
+    actorUserId,
+    storedUserId
+      ? {
+          email: args.requester?.email,
+          fullName: args.requester?.fullName,
+          userName: args.requester?.slackUserName,
+        }
+      : undefined,
+  );
 }

@@ -6,6 +6,7 @@ summary: Find the generated API entrypoints for app creation, Nitro wiring, Verc
 prerequisites:
   - /reference/handler-surface/
 related:
+  - /operate/dashboard/
   - /reference/config-and-env/
   - /start-here/quickstart/
 ---
@@ -19,6 +20,7 @@ The API reference is generated from public package entry points.
 - [Nitro wiring](/reference/api/functions/juniornitro/)
 - [Vercel config helper](/reference/api/functions/juniorvercelconfig/)
 - [Instrumentation](/reference/api/functions/initsentry/)
+- [Reporting](/reference/api/functions/createjuniorreporting/)
 
 ## Suggested reading order
 
@@ -27,7 +29,8 @@ The API reference is generated from public package entry points.
 3. Read `juniorNitro` options before changing plugin package bundling.
 4. For plugin hooks, use `@sentry/junior-plugin-api` from a plugin
    package and register the returned `JuniorPlugin` with `createApp()`.
-5. Read instrumentation exports for telemetry setup.
+5. Read reporting exports when building dashboard or operational views.
+6. Read instrumentation exports for telemetry setup.
 
 ## Next step
 

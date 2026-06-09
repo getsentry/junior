@@ -1,15 +1,8 @@
 import { getAgentPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
-import {
-  getAwaitingTurnContinuationRequest,
-  scheduleTurnTimeoutResume,
-} from "@/chat/services/timeout-resume";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { listAgentTurnSessionSummaries } from "@/chat/state/turn-session";
 import { createHeartbeatContext } from "./context";
 import { scheduleDispatchCallback } from "./signing";
 import {
@@ -27,8 +20,6 @@ const DEFAULT_RECOVERY_LIMIT = 25;
 const DEFAULT_PLUGIN_LIMIT = 25;
 const DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
-const TIMEOUT_RESUME_STALE_MS = 2 * 60 * 1000;
-const TIMEOUT_RESUME_RECOVERY_SCAN_LIMIT = 500;
 
 function isStaleDispatch(args: {
   nowMs: number;
@@ -97,77 +88,6 @@ async function runWithTimeout<T>(
       clearTimeout(timeout);
     }
   }
-}
-
-/** Re-drive stale turn continuations whose internal callback vanished. */
-export async function recoverStaleTimeoutResumes(args: {
-  conversationWorkQueue?: ConversationWorkQueue;
-  limit?: number;
-  nowMs: number;
-}): Promise<number> {
-  const summaries = await listAgentTurnSessionSummaries(
-    TIMEOUT_RESUME_RECOVERY_SCAN_LIMIT,
-  );
-  let recovered = 0;
-  for (const summary of summaries) {
-    if (recovered >= (args.limit ?? DEFAULT_RECOVERY_LIMIT)) {
-      break;
-    }
-    if (
-      summary.state !== "awaiting_resume" ||
-      (summary.resumeReason !== "timeout" &&
-        summary.resumeReason !== "yield") ||
-      summary.updatedAtMs + TIMEOUT_RESUME_STALE_MS > args.nowMs
-    ) {
-      continue;
-    }
-
-    try {
-      const persistedState = await getPersistedThreadState(
-        summary.conversationId,
-      );
-      const conversation = coerceThreadConversationState(persistedState);
-      if (conversation.processing.activeTurnId !== summary.sessionId) {
-        continue;
-      }
-
-      const request = await getAwaitingTurnContinuationRequest({
-        conversationId: summary.conversationId,
-        sessionId: summary.sessionId,
-      });
-      if (!request) {
-        continue;
-      }
-      await scheduleTurnTimeoutResume(request, {
-        queue: args.conversationWorkQueue,
-      });
-      recovered += 1;
-      logInfo(
-        "agent_turn_timeout_resume_recovery_scheduled",
-        {},
-        {
-          "app.ai.conversation_id": summary.conversationId,
-          "app.ai.session_id": summary.sessionId,
-          "app.ai.resume_session_version": request.expectedVersion,
-          "app.ai.resume_slice_id": summary.sliceId,
-        },
-        "Heartbeat rescheduled stale timeout resume",
-      );
-    } catch (error) {
-      logException(
-        error,
-        "agent_turn_timeout_resume_recovery_failed",
-        {},
-        {
-          "app.ai.conversation_id": summary.conversationId,
-          "app.ai.session_id": summary.sessionId,
-        },
-        "Heartbeat timeout resume recovery failed",
-      );
-    }
-  }
-
-  return recovered;
 }
 
 /** Re-drive stale core dispatches before invoking plugin heartbeat hooks. */
@@ -283,10 +203,6 @@ export async function runHeartbeat(args: {
   await recoverConversationWork({
     nowMs: args.nowMs,
     queue: args.conversationWorkQueue ?? getVercelConversationWorkQueue(),
-  });
-  await recoverStaleTimeoutResumes({
-    conversationWorkQueue: args.conversationWorkQueue,
-    nowMs: args.nowMs,
   });
   await recoverStaleDispatches({ nowMs: args.nowMs });
   await runPluginHeartbeats({ nowMs: args.nowMs });

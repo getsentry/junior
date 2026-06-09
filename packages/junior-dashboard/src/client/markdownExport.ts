@@ -26,7 +26,7 @@ export function buildConversationMarkdown(
   conversation?: Conversation,
 ): string {
   const lines: string[] = [];
-  const firstTurn = detail.turns[0];
+  const firstTurn = detail.runs[0];
 
   lines.push(`# ${headingText(conversationTitle(detail, conversation))}`, "");
   addMetaLine(lines, "Conversation ID", inlineCode(detail.conversationId));
@@ -40,7 +40,7 @@ export function buildConversationMarkdown(
   addMetaLine(
     lines,
     "Usage",
-    formatUsageTotal(detail.turns.map((turn) => turn.cumulativeUsage)),
+    formatUsageTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
   );
   addMetaLine(
     lines,
@@ -48,13 +48,13 @@ export function buildConversationMarkdown(
     conversation?.sentryConversationUrl ?? firstTurn?.sentryConversationUrl,
   );
 
-  if (detail.turns.length === 0) {
+  if (detail.runs.length === 0) {
     lines.push("", "## Transcript", "", "No transcript is available.");
     return finishMarkdown(lines);
   }
 
   lines.push("", "## Transcript");
-  detail.turns.forEach((turn) => {
+  detail.runs.forEach((turn) => {
     appendTurnTranscript(lines, turn);
   });
 

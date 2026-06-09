@@ -22,7 +22,7 @@ import {
   pluginCatalogConfigFromPluginSet,
   pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
-} from "@/plugins";
+} from "./plugins";
 
 export interface JuniorPluginModuleReference {
   /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */

@@ -91,9 +91,9 @@ function emptyConversationStatsReport(): ConversationStatsReport {
     requesters: [],
     sampleLimit: 0,
     sampleSize: 0,
-    source: "turn_session_records",
+    source: "conversation_index",
     truncated: false,
-    turns: 0,
+    runs: 0,
     windowEnd: new Date(nowMs).toISOString(),
     windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
   };

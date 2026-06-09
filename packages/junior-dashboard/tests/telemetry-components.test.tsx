@@ -57,9 +57,9 @@ function dashboardData(sessions: Session[]): DashboardData {
       requesters: [],
       sampleLimit: 0,
       sampleSize: 0,
-      source: "turn_session_records",
+      source: "conversation_index",
       truncated: false,
-      turns: 0,
+      runs: 0,
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-12-25T00:00:00.000Z",
     },
@@ -77,14 +77,20 @@ function dashboardData(sessions: Session[]): DashboardData {
     runtime: {
       cwd: "/repo",
       homeDir: "/home",
-      packagedContent: {},
+      packagedContent: {
+        packageNames: [],
+        packages: [],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      },
       providers: [],
       skills: [],
     },
     sessions: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       sessions,
-      source: "turn_session_records",
+      source: "conversation_index",
     },
     skills: [],
   } as DashboardData;
@@ -421,7 +427,7 @@ describe("dashboard telemetry components", () => {
       conversationId: "conversation-1",
       displayTitle: session.displayTitle,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      turns: [
+      runs: [
         {
           ...session,
           transcript: [],
@@ -537,7 +543,7 @@ describe("dashboard telemetry components", () => {
           failed: 0,
           hung: 0,
           label: "#proj-alpha",
-          turns: 1,
+          runs: 1,
         },
       ],
       requesters: [
@@ -548,14 +554,14 @@ describe("dashboard telemetry components", () => {
           failed: 1,
           hung: 0,
           label: "Avery",
-          turns: 2,
+          runs: 2,
         },
       ],
       sampleLimit: 2,
       sampleSize: 2,
-      source: "turn_session_records",
+      source: "conversation_index",
       truncated: false,
-      turns: 2,
+      runs: 2,
       windowEnd: "2026-01-05T00:00:00.000Z",
       windowStart: "2025-12-29T00:00:00.000Z",
     };
@@ -735,7 +741,7 @@ describe("dashboard telemetry components", () => {
       conversationId: "conversation-1",
       displayTitle: session.displayTitle,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      turns: [
+      runs: [
         {
           ...session,
           transcript: [

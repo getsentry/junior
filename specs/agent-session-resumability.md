@@ -3,15 +3,17 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-06-03
+- Last Edited: 2026-06-08
 
 ## Purpose
 
-Define the durable agent session log and how a single assistant turn is split into resumable execution slices so serverless time limits do not cause message loss, duplicate side effects, or unrecoverable partial state.
+Define the durable agent session log and how one response-producing agent run is
+split into resumable execution slices so serverless time limits do not cause
+message loss, duplicate side effects, or unrecoverable partial state.
 
 ## Scope
 
-- Session/slice lifecycle for one assistant turn.
+- Session/slice lifecycle for one agent run.
 - Durable agent session history and its projection into Pi/runtime state.
 - Minimal session-log event schema at safe resume boundaries.
 - Pi replay/continue contract (`agent.state.messages = ...` + `continue`) across slices.
@@ -24,7 +26,7 @@ Define the durable agent session log and how a single assistant turn is split in
 - Mid-tool-call persistence or resume.
 - Backward compatibility with legacy `inflight_partial` state.
 - Replacing existing tool implementations or Slack transport UX.
-- Multi-turn planning policies (this spec covers one assistant turn/session at a time).
+- Multi-run planning policies (this spec covers one agent run/session at a time).
 - Conversation mailbox, queue wake-up, lease, and heartbeat mechanics owned by
   `./task-execution.md`.
 - Reconciling or rewriting partially visible Slack assistant output after timeout.
@@ -41,19 +43,19 @@ This spec owns how agent session state is persisted and resumed across execution
 - `session_id`: Conversation-local session marker for the reduced session-log
   projection. It starts at `session_0`, advances when `projection_reset`
   creates a replacement projection, and is not the durable history key.
-- `turn_id`: Optional internal identity for one resumable execution attempt
-  inside the conversation. Queue-driven continuation does not need this value to
-  decide where to resume; the reduced conversation session log is the resume
-  source.
+- `agent_run_id`: Optional internal identity for one response-producing agent
+  run inside the conversation. Queue-driven continuation does not need this
+  value to decide where to resume; the reduced conversation session log is the
+  resume source.
 - `slice_id`: Diagnostic integer for one execution chunk in the same
   conversation. The mailbox worker must not enforce a slice cap; timeout
-  poison-work guards live in turn-session persistence.
+  poison-work guards live in the agent-run read model.
 - `event_id`: Stable identity for one durable session-log event.
 - `pause_event_id`: Event id carried by timeout/auth resume callbacks so stale callbacks can be dropped.
 
 A conversation has one ordered session log keyed by `conversation_id`. The
-first turn creates that log. Later turns with the same conversation id load and
-reduce the same log, restore Pi from the projected messages, and append new
+first agent run creates that log. Later runs with the same conversation id load
+and reduce the same log, restore Pi from the projected messages, and append new
 events. Each pause event identifies one safe resume boundary inside that log.
 
 ### Runtime State Partition
@@ -80,23 +82,24 @@ events. Each pause event identifies one safe resume boundary inside that log.
   provider connections used so far, is recovered from the session log. Do not
   persist a parallel list of loaded skills, active providers, or tool/session
   state in side metadata.
-- Durable thread state is the canonical home for mutable turn-local runtime state that can change mid-slice:
+- Durable thread state is the canonical home for mutable run-local runtime state that can change mid-slice:
   - artifact state (for example active canvas/list context)
   - sandbox identity and dependency-profile hash
   - conversation/thread state and user/assistant message history
 - Durable thread state may point at an active paused session for callback
-  routing. It must not point fresh turns at a separate "last session" history;
+  routing. It must not point fresh runs at a separate "last session" history;
   the predictable `conversation_id` already identifies the model history.
 - Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the session log.
-- Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful turn completion.
-- Thread state, channel state, turn-session checkpoints, and Pi session messages share Junior's one-week Redis retention window.
+- Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful run completion.
+- Thread state, channel state, agent-run read models, and Pi session messages
+  share Junior's one-week Redis retention window.
 
 ### Ingress Queue Contract
 
 Production ingress appends normalized inbound messages to the durable
 conversation mailbox and sends a queue wake-up nudge containing only the
-`conversation_id`. Ingress does not decide whether a message starts a new turn
-or steers an active one.
+`conversation_id`. Ingress does not decide whether a message starts a new agent
+run or steers an active one.
 
 The queue worker owns the conversation lease. Before each Pi `continue()`, and
 again at each safe boundary before another model call, the worker drains pending
@@ -141,11 +144,12 @@ Each event has this envelope:
 - `sessionId`: the current conversation-local session marker for events that
   participate in the reduced Pi/runtime projection. This bounds replay after
   compaction and must not be used as the conversation key.
-- `turnId`: the active resumable execution id when the event belongs to a
-  specific paused/resumed run; omit only for events that are intentionally
-  conversation-scoped.
 - `createdAtMs`: wall-clock creation time.
 - `type`: discriminant.
+
+Future run-scoped read models may expose a stable `runId`, but the current
+session-log storage boundary still uses `sessionId` as the resumability marker
+and stores run status in the turn-session read model.
 
 ### Session Log Events
 
@@ -156,8 +160,8 @@ message.
 Canonical event families use past-tense names for facts that actually
 happened:
 
-- `user_input_received`: records the user input that starts one assistant turn
-  session when the first Pi user message does not already carry enough identity.
+- `user_input_received`: records the user input that starts one agent run when
+  the first Pi user message does not already carry enough identity.
 - `slice_started`: records that a serverless execution chunk started when that
   fact is needed for timeout accounting or diagnostics.
 - `pi_message`: records user, assistant, tool-call, tool-result, and
@@ -216,7 +220,7 @@ or provider secrets. The projected Pi message timestamp must come from the
 durable event timestamp, not projection time, so replaying the same log produces
 byte-stable Pi history. This event replaces prompt-side resume markers such as
 `turn-state=resumed` or `authorization_completed_provider`; authorization
-completion is session history, not turn prompt context.
+completion is session history, not run prompt context.
 
 Avoid filler events that duplicate facts already present in Pi messages or
 external stores:
@@ -310,7 +314,7 @@ Junior follows the same rule:
 - Compaction must not persist parallel `loadedSkillNames`, active-provider
   lists, prompt caches, or summary logs. If a compacted projection omits old
   tool results or provider connection events, those capabilities must be
-  rediscovered normally on a future turn.
+  rediscovered normally on a future run.
 
 ### Derived Session State
 
@@ -384,7 +388,7 @@ Each reduced session projection must include:
 
 Optional projection fields:
 
-- `turn_id` when the projection is tied to a resumable turn.
+- `agent_run_id` when the projection is tied to a resumable run.
 - `resume_reason`: `timeout|auth` (when `awaiting_resume`).
 - `resumed_from_slice_id`
 - `error_message`
@@ -446,7 +450,7 @@ If the previous slice timed out after producing uncommitted partial assistant te
   previously persisted safe boundary. It does not need an emergency abort to
   create a new boundary.
 - Once visible assistant output has started posting, the runtime must not
-  auto-resume that turn or attempt to rewrite/reconcile the partial output.
+  auto-resume that run or attempt to rewrite/reconcile the partial output.
 - In the current Slack delivery contract, assistant text is not posted until the
   reply is finalized, so ordinary generation and tool-loop continuation remains
   eligible until final delivery starts.
@@ -487,8 +491,7 @@ The worker must:
 
 1. User message resolves a predictable `conversation_id`.
 2. If the reduced conversation projection has no session bootstrap context,
-   runtime adds first-turn-only prompt/context material before the user Pi
-   message.
+   runtime adds bootstrap prompt/context material before the user Pi message.
 3. If the reduced conversation projection already contains session bootstrap
    context, runtime loads and reduces it, restores Pi from the projected
    messages, and appends the new user input without duplicating bootstrap
@@ -508,7 +511,7 @@ The worker must:
 3. Duplicate queue nudges for the same conversation are serialized by the conversation lease.
 4. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
 5. Repeated cooperative yields before visible output may produce further execution chunks, but timeout continuation must stop at the configured high-water slice cap and mark the session failed instead of scheduling another queue nudge.
-6. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-turn history view.
+6. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-run history view.
 
 ## Observability
 
@@ -517,7 +520,7 @@ Required log events/diagnostics:
 - `conversation_work_cooperative_yield`
 - `conversation_work_lease_expired_requeued`
 - `agent_turn_session_log_append_failed`
-- `agent_turn_resume_skipped_after_visible_output`
+- `agent_continue_schedule_failed`
 - `agent_turn_provider_retry`
 
 Required attributes when available:
@@ -539,7 +542,7 @@ Required attributes when available:
 4. Integration: a user follow-up during active execution is appended to the mailbox and injected into the same conversation at the next safe boundary.
 5. Component/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
 6. Component/integration: eager sandbox/artifact persistence preserves resumed tool context across execution chunks.
-7. Component/integration: fresh follow-up turns can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
+7. Component/integration: fresh follow-up runs can recover Pi history from the active/last agent session log without depending on conversation-state Pi transcript mirroring.
 8. Manual/eval: once assistant text is already visible, recovery does not auto-reconcile partial thread output.
 9. Component/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
 10. Component/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.

@@ -4,6 +4,7 @@ import {
   isActorUserId,
   parseActorUserId,
   slackActorIdentity,
+  slackActorIdentityFromStoredRequester,
 } from "@/chat/services/requester-identity";
 
 describe("requester identity", () => {
@@ -99,5 +100,37 @@ describe("requester identity", () => {
     expect(() => slackActorIdentity("", null)).toThrow(
       "Slack actor identity requires a user id",
     );
+  });
+
+  it("uses stored Slack requester fields only for the same actor id", () => {
+    expect(
+      slackActorIdentityFromStoredRequester({
+        userId: "U039RR91S",
+        requester: {
+          email: "david@example.com",
+          fullName: "David Cramer",
+          slackUserId: "U039RR91S",
+          slackUserName: "dcramer",
+        },
+      }),
+    ).toEqual({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+
+    expect(() =>
+      slackActorIdentityFromStoredRequester({
+        userId: "U039RR91S",
+        requester: { slackUserId: "U_OTHER" },
+      }),
+    ).toThrow("Stored Slack requester identity must match actor user id");
+    expect(() =>
+      slackActorIdentityFromStoredRequester({
+        userId: "U039RR91S",
+        requester: { slackUserId: " U039RR91S " },
+      }),
+    ).toThrow("Stored Slack requester identity requires a user id");
   });
 });

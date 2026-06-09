@@ -1,6 +1,6 @@
 import type {
-  DashboardConversationReport,
-  DashboardTranscriptMessage,
+  ConversationReport as DashboardConversationReport,
+  TranscriptMessage as DashboardTranscriptMessage,
 } from "@sentry/junior/reporting";
 
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
@@ -536,7 +536,7 @@ export function longReleaseConversation(
     conversationId: LONG_CONVERSATION_ID,
     displayTitle: "Package release and self-update",
     generatedAt: iso(nowMs),
-    turns: [
+    runs: [
       {
         conversationId: LONG_CONVERSATION_ID,
         displayTitle: "Package release and self-update",
