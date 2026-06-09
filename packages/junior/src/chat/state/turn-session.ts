@@ -14,7 +14,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   commitMessages,
   loadMessages,
-  loadProjection,
   loadProjectionWithRequester,
   type SessionRequester,
 } from "./session-log";
@@ -122,7 +121,6 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
 
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
-
 
 function parseStoredRecord(
   value: unknown,
@@ -492,7 +490,11 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
-  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages], args.requester);
+  return materializeAgentTurnSessionRecord(
+    args.record,
+    [...args.piMessages],
+    args.requester,
+  );
 }
 
 /**
