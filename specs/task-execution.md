@@ -189,6 +189,10 @@ Queue consumer rules:
 5. Acknowledge the queue delivery only after durable state is safe: final
    delivery recorded, lease released after cooperative yield, no work found, or
    unrecoverable failure recorded.
+6. Permanently invalid queue messages (malformed, expired,
+   signature-mismatched, or destination-mismatched) are acknowledged at the
+   consumer boundary after logging the reject reason. They must not rely on
+   queue retention expiry for cleanup.
 
 The queue is not the state authority. A successful queue acknowledgement only
 means that one wake-up delivery has been handled.

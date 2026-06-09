@@ -4,7 +4,9 @@ const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
-afterEach(() => {
+afterEach(async () => {
+  const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+  await disconnectStateAdapter();
   process.env.NODE_ENV = originalNodeEnv;
   if (originalQueueTopic === undefined) {
     delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -60,7 +62,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
   });
 
-  it("acknowledges rejected conversation queue messages only", async () => {
+  it("absorbs rejected conversation queue messages before retry", async () => {
     const routeHandler = vi.fn();
     const handleCallback = vi.fn(() => routeHandler);
 
@@ -73,9 +75,10 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
 
+    const run = vi.fn(async () => ({ status: "completed" as const }));
     expect(
       createVercelConversationWorkCallback({
-        run: vi.fn(),
+        run,
         visibilityTimeoutSeconds: 45,
       }),
     ).toBe(routeHandler);
@@ -100,7 +103,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     };
     const call = handleCallback.mock.calls[0] as unknown as
       | [
-          (message: unknown) => Promise<void>,
+          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
           {
             retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
             visibilityTimeoutSeconds?: number;
@@ -115,30 +118,69 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       throw new Error("Expected conversation queue handler and retry hook");
     }
 
-    let rejectedError: unknown;
-    await handler({ conversationId: "slack:C123:1712345.0001" }).catch(
-      (error: unknown) => {
-        rejectedError = error;
+    await expect(
+      handler({ conversationId: "slack:C123:1712345.0001" }, metadata),
+    ).resolves.toBeUndefined();
+
+    const [{ appendInboundMessage }, { signConversationQueueMessage }] =
+      await Promise.all([
+        import("@/chat/task-execution/store"),
+        import("@/chat/task-execution/queue-signing"),
+      ]);
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    await appendInboundMessage({
+      message: {
+        conversationId: "slack:C123:1712345.0001",
+        inboundMessageId: "m1",
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        },
+        source: "slack",
+        createdAtMs: 1_000,
+        receivedAtMs: 1_100,
+        input: {
+          authorId: "U123",
+          text: "message m1",
+        },
       },
-    );
-    expect(rejectedError).toBeInstanceOf(Error);
-    expect(retry(rejectedError, metadata)).toEqual({ acknowledge: true });
+      nowMs: 1_200,
+    });
+    await expect(
+      handler(
+        signConversationQueueMessage({
+          conversationId: "slack:C123:1712345.0001",
+          destination: {
+            channelId: "C456",
+            platform: "slack",
+            teamId: "T123",
+          },
+        }),
+        metadata,
+      ),
+    ).resolves.toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
 
     delete process.env.JUNIOR_SECRET;
-    let unavailableError: unknown;
-    await handler({
-      conversationId: "slack:C123:1712345.0001",
-      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
-      signature: "signature",
-      signatureVersion: "v1",
-      signedAtMs: 1_000,
-    }).catch((error: unknown) => {
-      unavailableError = error;
+    let missingSecretError: unknown;
+    await handler(
+      {
+        conversationId: "slack:C123:1712345.0001",
+        destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+        signature: "signature",
+        signatureVersion: "v1",
+        signedAtMs: 1_000,
+      },
+      metadata,
+    ).catch((error: unknown) => {
+      missingSecretError = error;
     });
-    if (!unavailableError) {
-      throw new Error("Expected unavailable verification error");
-    }
-    expect(retry(unavailableError, metadata)).toBeUndefined();
+    expect(missingSecretError).toMatchObject({
+      message:
+        "Conversation queue message verification unavailable: missing_secret",
+    });
+    expect(retry(missingSecretError, metadata)).toBeUndefined();
     expect(retry(new Error("runner failed"), metadata)).toBeUndefined();
   });
 

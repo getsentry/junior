@@ -96,24 +96,53 @@ export async function processConversationQueueMessage(
   });
 }
 
+/** Consume queue messages, acking permanent rejects while preserving transient retries. */
 async function handleConversationQueueMessage(
   message: unknown,
+  metadata: MessageMetadata,
   options: VercelConversationWorkCallbackOptions,
 ): Promise<void> {
   const verification = verifyConversationQueueMessage(message);
   if (verification.status === "rejected") {
-    throw new ConversationQueueMessageRejectedError(
-      verification.reason,
-      "Unauthorized conversation queue message",
-    );
+    logConversationQueueMessageRejected(verification.reason, metadata);
+    return;
   }
   if (verification.status === "unavailable") {
     throw new Error(
       `Conversation queue message verification unavailable: ${verification.reason}`,
     );
   }
-  await runWithTurnRequestDeadline(() =>
-    processConversationQueueMessage(verification.message, options),
+  try {
+    await runWithTurnRequestDeadline(() =>
+      processConversationQueueMessage(verification.message, options),
+    );
+  } catch (error) {
+    if (isConversationQueueMessageRejectedError(error)) {
+      logConversationQueueMessageRejected(error.reason, metadata, {
+        conversationId: error.conversationId,
+      });
+      return;
+    }
+    throw error;
+  }
+}
+
+function logConversationQueueMessageRejected(
+  reason: ConversationQueueMessageRejectedError["reason"],
+  metadata: MessageMetadata,
+  context: { conversationId?: string } = {},
+): void {
+  logWarn(
+    "conversation_queue_message_rejected",
+    context.conversationId ? { conversationId: context.conversationId } : {},
+    {
+      "app.queue.consumer_group": metadata.consumerGroup,
+      "app.queue.delivery_count": metadata.deliveryCount,
+      "app.queue.message_id": metadata.messageId,
+      "app.queue.reject_reason": reason,
+      "app.queue.topic_name": metadata.topicName,
+    },
+    "Conversation queue message rejected without retry",
   );
 }
 
@@ -125,18 +154,9 @@ function handleConversationQueueRetry(
   if (!isConversationQueueMessageRejectedError(error)) {
     return undefined;
   }
-  logWarn(
-    "conversation_queue_message_rejected",
-    error.conversationId ? { conversationId: error.conversationId } : {},
-    {
-      "app.queue.consumer_group": metadata.consumerGroup,
-      "app.queue.delivery_count": metadata.deliveryCount,
-      "app.queue.message_id": metadata.messageId,
-      "app.queue.reject_reason": error.reason,
-      "app.queue.topic_name": metadata.topicName,
-    },
-    "Conversation queue message rejected without retry",
-  );
+  logConversationQueueMessageRejected(error.reason, metadata, {
+    conversationId: error.conversationId,
+  });
   return { acknowledge: true };
 }
 
@@ -145,7 +165,8 @@ export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
   return handleCallback(
-    (message: unknown) => handleConversationQueueMessage(message, options),
+    (message: unknown, metadata: MessageMetadata) =>
+      handleConversationQueueMessage(message, metadata, options),
     {
       retry: handleConversationQueueRetry,
       visibilityTimeoutSeconds:
@@ -166,8 +187,8 @@ export function registerVercelConversationWorkDevConsumer(
   return registerDevConsumer({
     client: new QueueClient(),
     consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-    handler: (message: unknown) =>
-      handleConversationQueueMessage(message, options),
+    handler: (message: unknown, metadata: MessageMetadata) =>
+      handleConversationQueueMessage(message, metadata, options),
     retry: handleConversationQueueRetry,
     topic: resolveConversationWorkQueueTopic(options),
     visibilityTimeoutSeconds:
