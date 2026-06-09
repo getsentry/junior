@@ -5,6 +5,7 @@ import {
   loadConnectedMcpProviders,
   loadMessages,
   loadProjection,
+  loadProjectionWithRequester,
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
@@ -512,9 +513,8 @@ describe("session log requester identity", () => {
       requester: { slackUserId: "U456", email: "bob@sentry.io" },
     });
 
-    const { loadProjectionWithRequester } = await import(
-      "@/chat/state/session-log"
-    );
+    const { loadProjectionWithRequester } =
+      await import("@/chat/state/session-log");
     const projection = await loadProjectionWithRequester({
       store,
       conversationId: "conv-req-2",
@@ -525,6 +525,59 @@ describe("session log requester identity", () => {
       email: "bob@sentry.io",
     });
     expect(projection.messages).toHaveLength(1);
+  });
+
+  it("records requester metadata without resetting session-scoped facts", async () => {
+    const store = memoryStore();
+    const turnMsg: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "question" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await commitMessages({
+      store,
+      conversationId: "conv-req-3",
+      messages: [turnMsg],
+      ttlMs: 60_000,
+    });
+    await recordMcpProviderConnected({
+      store,
+      conversationId: "conv-req-3",
+      provider: "github",
+      ttlMs: 60_000,
+    });
+    await commitMessages({
+      store,
+      conversationId: "conv-req-3",
+      messages: [turnMsg],
+      ttlMs: 60_000,
+      requester: { slackUserId: "U999", email: "drew@sentry.io" },
+    });
+
+    expect(store.entries.map((entry) => entry.type)).toEqual([
+      "pi_message",
+      "mcp_provider_connected",
+      "requester_recorded",
+    ]);
+    await expect(
+      loadProjectionWithRequester({
+        store,
+        conversationId: "conv-req-3",
+      }),
+    ).resolves.toMatchObject({
+      messages: [turnMsg],
+      requester: {
+        slackUserId: "U999",
+        email: "drew@sentry.io",
+      },
+    });
+    await expect(
+      loadConnectedMcpProviders({
+        store,
+        conversationId: "conv-req-3",
+      }),
+    ).resolves.toEqual(["github"]);
   });
 
   it("preserves requester through a projection reset", async () => {
@@ -543,7 +596,7 @@ describe("session log requester identity", () => {
     // First commit with requester
     await commitMessages({
       store,
-      conversationId: "conv-req-3",
+      conversationId: "conv-req-4",
       messages: [msg1],
       ttlMs: 60_000,
       requester: { slackUserId: "U789", email: "carol@sentry.io" },
@@ -552,18 +605,17 @@ describe("session log requester identity", () => {
     // Trigger a reset by replacing history
     await commitMessages({
       store,
-      conversationId: "conv-req-3",
+      conversationId: "conv-req-4",
       messages: [msg2],
       ttlMs: 60_000,
       requester: { slackUserId: "U789", email: "carol@sentry.io" },
     });
 
-    const { loadProjectionWithRequester } = await import(
-      "@/chat/state/session-log"
-    );
+    const { loadProjectionWithRequester } =
+      await import("@/chat/state/session-log");
     const projection = await loadProjectionWithRequester({
       store,
-      conversationId: "conv-req-3",
+      conversationId: "conv-req-4",
     });
 
     expect(projection.requester?.slackUserId).toBe("U789");

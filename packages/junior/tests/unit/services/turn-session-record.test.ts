@@ -149,6 +149,55 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("persists requester identity when updating an unchanged projection", async () => {
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    const userMessage: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "keep going" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-requester-empty-commit",
+      sessionId: "turn-requester-empty-commit",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: [userMessage],
+      resumeReason: "timeout",
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-requester-empty-commit",
+      sessionId: "turn-requester-empty-commit",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [userMessage],
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+        fullName: "Alice Example",
+        email: "alice@sentry.io",
+      },
+      resumeReason: "timeout",
+    });
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "conversation-requester-empty-commit",
+        "turn-requester-empty-commit",
+      ),
+    ).resolves.toMatchObject({
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+        fullName: "Alice Example",
+        email: "alice@sentry.io",
+      },
+      piMessages: [userMessage],
+    });
+  });
+
   it("carries cumulative diagnostics across pause records", async () => {
     const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");

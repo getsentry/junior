@@ -53,6 +53,13 @@ const projectionResetEntrySchema = z.object({
   requester: sessionRequesterSchema.optional(),
 });
 
+const requesterRecordedEntrySchema = z.object({
+  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  type: z.literal("requester_recorded"),
+  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
+  requester: sessionRequesterSchema,
+});
+
 const mcpProviderConnectedEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
   type: z.literal("mcp_provider_connected"),
@@ -94,6 +101,7 @@ const authorizationCompletedEntrySchema = z.object({
 const sessionLogEntrySchema = z.discriminatedUnion("type", [
   piMessageEntrySchema,
   projectionResetEntrySchema,
+  requesterRecordedEntrySchema,
   mcpProviderConnectedEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
@@ -213,7 +221,10 @@ function projectionEntries(
     .filter((entry) => entrySessionId(entry) === currentId);
 }
 
-function findLastIndex<T>(values: T[], predicate: (value: T) => boolean): number {
+function findLastIndex<T>(
+  values: T[],
+  predicate: (value: T) => boolean,
+): number {
   for (let index = values.length - 1; index >= 0; index -= 1) {
     if (predicate(values[index]!)) return index;
   }
@@ -245,6 +256,18 @@ function resetEntry(
     sessionId,
     messages,
     ...(requester ? { requester } : {}),
+  };
+}
+
+function requesterRecordedEntry(
+  requester: SessionRequester,
+  sessionId: string,
+): SessionLogEntry {
+  return {
+    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
+    type: "requester_recorded",
+    sessionId,
+    requester,
   };
 }
 
@@ -341,8 +364,8 @@ export interface SessionProjection {
 /**
  * Materialize Pi messages and requester identity from log entries.
  *
- * Requester is taken from the first user pi_message that carries it, or from
- * a projection_reset event. Reset entries update the requester when present.
+ * Requester is taken from the latest requester-bearing user pi_message,
+ * requester_recorded event, or projection_reset event.
  */
 function project(
   entries: SessionLogEntry[],
@@ -353,9 +376,13 @@ function project(
   for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "pi_message") {
       messages.push(entry.message);
-      if (!requester && entry.message.role === "user" && entry.requester) {
+      if (entry.message.role === "user" && entry.requester) {
         requester = entry.requester;
       }
+      continue;
+    }
+    if (entry.type === "requester_recorded") {
+      requester = entry.requester;
       continue;
     }
     if (entry.type === "authorization_completed") {
@@ -410,6 +437,13 @@ function commitEntries(
   const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
   if (matchingPrefix === existingMessages.length) {
     const newMessages = nextMessages.slice(matchingPrefix);
+    if (
+      newMessages.length === 0 &&
+      requester &&
+      !isDeepStrictEqual(project(entries).requester, requester)
+    ) {
+      return [requesterRecordedEntry(requester, sessionId)];
+    }
     // Attach requester to the last new user message — the current turn's
     // input. Using last rather than first avoids tagging older context
     // messages that may be included at the head of a fresh commit.
@@ -417,7 +451,11 @@ function commitEntries(
       ? findLastIndex(newMessages, (m) => m.role === "user")
       : -1;
     return newMessages.map((message, index) =>
-      piEntry(message, sessionId, index === requesterIndex ? requester : undefined),
+      piEntry(
+        message,
+        sessionId,
+        index === requesterIndex ? requester : undefined,
+      ),
     );
   }
   return [resetEntry(nextMessages, nextSessionId(entries), requester)];
