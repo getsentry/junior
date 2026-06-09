@@ -14,6 +14,7 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import type { ReplySteeringMessage } from "@/chat/respond";
+import type { SubscribedReplyPolicyDeps } from "@/chat/services/subscribed-reply-policy";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
@@ -76,6 +77,7 @@ function reactionTargetsByName(name: string) {
 
 function createTurnHarness(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+  subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   state: StateAdapter;
 }) {
   const queue = createConversationWorkQueueTestAdapter();
@@ -87,6 +89,9 @@ function createTurnHarness(args: {
   const runtime = createSlackRuntime({
     getSlackAdapter: () => adapter,
     services: {
+      ...(args.subscribedReplyPolicy
+        ? { subscribedReplyPolicy: args.subscribedReplyPolicy }
+        : {}),
       replyExecutor: {
         generateAssistantReply: args.generateAssistantReply,
       },
@@ -121,6 +126,22 @@ function createTurnHarness(args: {
     runNextQueuedWork,
     services,
   };
+}
+
+function noReplyPolicyResult(args: {
+  reason: string;
+  shouldUnsubscribe?: boolean;
+}): never {
+  const object = {
+    should_reply: false,
+    ...(args.shouldUnsubscribe ? { should_unsubscribe: true } : {}),
+    confidence: 1,
+    reason: args.reason,
+  };
+  return {
+    object,
+    text: JSON.stringify(object),
+  } as never;
 }
 
 describe("Slack behavior: durable turn steering", () => {
@@ -327,6 +348,202 @@ describe("Slack behavior: durable turn steering", () => {
     expect(reactionTargetsByName("white_check_mark")).toEqual(
       expectedCompletedReactions,
     );
+  });
+
+  it("consumes subscribed messages skipped by reply policy", async () => {
+    const state = getStateAdapter();
+    const replyCalls: string[] = [];
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply: async (prompt, context) => {
+          replyCalls.push(prompt);
+          await context?.onInputCommitted?.();
+          return {
+            text: "Started.",
+            diagnostics: makeDiagnostics(),
+          };
+        },
+        subscribedReplyPolicy: {
+          completeObject: async () =>
+            noReplyPolicyResult({ reason: "side conversation" }),
+        },
+        state,
+      });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    queue.clearSentRecords();
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "thanks, sounds good",
+            ts: "1712345.000200",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(work?.needsRun).toBe(false);
+    expect(queue.sentRecords()).toHaveLength(1);
+    expect(replyCalls).toEqual(["start the incident summary"]);
+  });
+
+  it("consumes subscribed messages skipped by preflight", async () => {
+    const state = getStateAdapter();
+    let classifierCalled = false;
+    const replyCalls: string[] = [];
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply: async (prompt, context) => {
+          replyCalls.push(prompt);
+          await context?.onInputCommitted?.();
+          return {
+            text: "Started.",
+            diagnostics: makeDiagnostics(),
+          };
+        },
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            throw new Error("preflight skip should bypass reply policy");
+          },
+        },
+        state,
+      });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    queue.clearSentRecords();
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "@Cursor can you help address issue 87?",
+            ts: "1712345.000200",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(work?.needsRun).toBe(false);
+    expect(queue.sentRecords()).toHaveLength(1);
+    expect(classifierCalled).toBe(false);
+    expect(replyCalls).toEqual(["start the incident summary"]);
+  });
+
+  it("consumes subscribed messages skipped by opt-out", async () => {
+    const state = getStateAdapter();
+    const replyCalls: string[] = [];
+    const { conversationId, queue, runNextQueuedWork, services } =
+      createTurnHarness({
+        generateAssistantReply: async (prompt, context) => {
+          replyCalls.push(prompt);
+          await context?.onInputCommitted?.();
+          return {
+            text: "Started.",
+            diagnostics: makeDiagnostics(),
+          };
+        },
+        subscribedReplyPolicy: {
+          completeObject: async () =>
+            noReplyPolicyResult({
+              shouldUnsubscribe: true,
+              reason: "user explicitly asked junior to stop participating",
+            }),
+        },
+        state,
+      });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    queue.clearSentRecords();
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "junior please stop watching this thread",
+            ts: "1712345.000200",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    const work = await getConversationWorkState({
+      conversationId,
+      state,
+    });
+    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(work?.needsRun).toBe(false);
+    expect(queue.sentRecords()).toHaveLength(1);
+    expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {

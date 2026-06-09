@@ -125,7 +125,8 @@ one record, indexed inbound message records, or both. The contract is:
 - inbound messages are deduped by `inboundMessageId`
 - pending messages are ordered by source creation time and stable tie-breakers
 - a pending message is not removed or marked injected until the corresponding
-  session-log append succeeds
+  session-log append succeeds, or until subscribed Slack skip/no-reply metadata
+  has been durably persisted
 - reinjecting the same `inboundMessageId` into the session log must be
   idempotent
 - messages that arrive while a worker is active remain pending until the worker

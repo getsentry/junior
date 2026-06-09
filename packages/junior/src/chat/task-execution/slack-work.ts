@@ -278,10 +278,6 @@ export function createSlackConversationWorker(
 
     const resumeContinuation =
       options.resumeAwaitingContinuation ?? resumeAwaitingContinuation;
-    if (await resumeContinuation(context.conversationId)) {
-      return { status: "completed" };
-    }
-
     const records = getPendingRecords(
       await getConversationWorkState({
         conversationId: context.conversationId,
