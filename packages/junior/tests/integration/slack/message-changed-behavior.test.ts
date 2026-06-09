@@ -1,4 +1,7 @@
-import { createTestDestination } from "../../fixtures/slack-harness";
+import {
+  createTestDestination,
+  TEST_SLACK_TEAM_ID,
+} from "../../fixtures/slack-harness";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -263,6 +266,8 @@ describe("Slack behavior: message_changed webhook ingress", () => {
             expect(context?.requester).toEqual({
               email: "david@example.com",
               fullName: "David Cramer",
+              platform: "slack",
+              teamId: TEST_SLACK_TEAM_ID,
               userId: "U123",
               userName: "dcramer",
             });
