@@ -489,6 +489,67 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toHaveLength(0);
   });
 
+  it("does not rethrow after accepted recovery nudges when enqueue marker persistence fails", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state: baseState,
+    });
+
+    const mutationLockKey = `junior:conversation-work:mutation:${CONVERSATION_ID}`;
+    let mutationLockCalls = 0;
+    const failEnqueueMarkerState = new Proxy(baseState, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (key === mutationLockKey) {
+              mutationLockCalls += 1;
+              if (mutationLockCalls === 4) {
+                throw new Error(
+                  "Could not acquire conversation work mutation lock for test",
+                );
+              }
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as typeof baseState;
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => 2_000,
+        queue,
+        run: async () => {
+          throw new Error("runner failed");
+        },
+        state: failEnqueueMarkerState,
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: baseState,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state?.consecutiveFailureCount).toBe(1);
+    expect(state?.lastEnqueuedAtMs).toBeUndefined();
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: `error:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
   it("abandons poison conversations after repeated failures and stops requeueing", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;

@@ -92,11 +92,21 @@ async function sendWakeNudge(args: {
       idempotencyKey: args.idempotencyKey,
     },
   );
-  await markConversationWorkEnqueued({
-    conversationId: args.conversationId,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
+  try {
+    await markConversationWorkEnqueued({
+      conversationId: args.conversationId,
+      nowMs: args.nowMs,
+      state: args.options.state,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "conversation_work_enqueue_marker_failed",
+      { conversationId: args.conversationId },
+      {},
+      "Conversation work enqueue marker failed after queue acceptance",
+    );
+  }
 }
 
 async function requestLostLeaseRecovery(args: {
