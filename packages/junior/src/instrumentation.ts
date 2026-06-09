@@ -14,6 +14,19 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function getDeploymentSpanAttributes(): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  const serviceVersion =
+    process.env.SENTRY_RELEASE ?? process.env.VERCEL_GIT_COMMIT_SHA;
+  if (serviceVersion) {
+    attributes["service.version"] = serviceVersion;
+  }
+  if (process.env.VERCEL_DEPLOYMENT_ID) {
+    attributes["deployment.id"] = process.env.VERCEL_DEPLOYMENT_ID;
+  }
+  return attributes;
+}
+
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -22,6 +35,7 @@ export function initSentry(): void {
 
   const dsn = process.env.SENTRY_DSN;
   const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
+  const deploymentSpanAttributes = getDeploymentSpanAttributes();
 
   Sentry.init({
     dsn,
@@ -36,6 +50,18 @@ export function initSentry(): void {
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
+    beforeSendSpan(span) {
+      if (Object.keys(deploymentSpanAttributes).length === 0) {
+        return span;
+      }
+
+      span.data = {
+        ...span.data,
+        ...deploymentSpanAttributes,
+      };
+
+      return span;
+    },
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,

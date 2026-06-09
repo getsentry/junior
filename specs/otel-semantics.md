@@ -33,6 +33,7 @@ This file is the canonical attribute and naming map for instrumentation in this 
 
 - `service.name`
 - `service.version`
+- `deployment.id`
 - `deployment.environment.name`
 - `trace_id`
 - `span_id`

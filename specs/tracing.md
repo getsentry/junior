@@ -49,6 +49,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 
 - `service.name` (when available)
 - `service.version` (when available)
+- `deployment.id` (when available)
 - `deployment.environment.name` (when available)
 
 ### Correlation Context
