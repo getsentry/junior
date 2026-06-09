@@ -47,7 +47,7 @@ import {
   createRequesterFromStoredSlackRequester,
   type Requester,
 } from "@/chat/requester";
-import { lookupSlackActorIdentity } from "@/chat/slack/user";
+import { lookupSlackRequester } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -326,6 +326,7 @@ async function resumeOAuthSessionRecordTurn(
       try {
         requester = createRequesterFromStoredSlackRequester({
           requester: lockedSessionRecord.requester,
+          teamId: destination.teamId,
           userId: lockedUserMessage.author.userId,
         });
       } catch {
@@ -477,7 +478,10 @@ async function resumePendingOAuthMessage(
   const conversationContext = buildConversationContext(conversation, {
     excludeMessageId: latestUserMessage?.id,
   });
-  const requester = await lookupSlackActorIdentity(stored.userId);
+  const requester = await lookupSlackRequester(
+    stored.destination.teamId,
+    stored.userId,
+  );
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     channelId: stored.channelId,

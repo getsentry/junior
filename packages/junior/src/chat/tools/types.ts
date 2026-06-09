@@ -6,6 +6,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
+import type { Requester } from "@/chat/requester";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -69,11 +70,7 @@ export interface ToolRuntimeContext {
   /** Runtime-owned destination for provider-neutral side effects. */
   destination?: Destination;
 
-  requester?: {
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-  };
+  requester?: Requester;
   teamId?: string;
   messageTs?: string;
   threadTs?: string;

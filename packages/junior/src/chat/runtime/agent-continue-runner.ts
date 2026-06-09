@@ -258,6 +258,7 @@ export async function continueSlackAgentRun(
         const sandbox = getPersistedSandboxState(currentState);
         const requester = createRequesterFromStoredSlackRequester({
           requester: activeSessionRecord.requester,
+          teamId: payload.destination.teamId,
           userId: userMessage.author.userId,
         });
 

@@ -331,12 +331,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           (options.queuedMessages ?? []).map((queued) =>
             ensureSlackMessageActorIdentity(
               queued.message,
+              teamId,
               deps.services.lookupSlackUser,
             ),
           ),
         );
         const requesterIdentity = await ensureSlackMessageActorIdentity(
           message,
+          teamId,
           deps.services.lookupSlackUser,
         );
         const requester = turnRequester(requesterIdentity);

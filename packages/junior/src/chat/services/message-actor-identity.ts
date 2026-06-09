@@ -9,6 +9,14 @@ import {
 } from "@/chat/requester";
 
 const messageActors = new WeakMap<Message, Requester>();
+interface MessageAuthorIdentity {
+  email?: string;
+  fullName?: string;
+  userId: string;
+  userName?: string;
+}
+
+type MessageActorIdentity = Requester | MessageAuthorIdentity;
 
 function canonicalUserId(author: Author, requester: Requester): string {
   const authorUserId = parseActorUserId(author.userId);
@@ -22,7 +30,7 @@ function canonicalUserId(author: Author, requester: Requester): string {
   return userId;
 }
 
-function requesterFromAuthor(author: Author): Requester | undefined {
+function requesterFromAuthor(author: Author): MessageActorIdentity | undefined {
   const userId = parseActorUserId(author.userId);
   return userId ? { userId } : undefined;
 }
@@ -42,7 +50,10 @@ export function bindMessageActorIdentity(
   requester: Requester,
 ): Requester {
   const userId = canonicalUserId(message.author, requester);
-  const actorRequester = createRequester(requester, userId);
+  const actorRequester = createRequester(requester, {
+    teamId: requester.teamId,
+    userId,
+  });
   if (!actorRequester) {
     throw new Error("Message requester requires a user id");
   }
@@ -54,14 +65,16 @@ export function bindMessageActorIdentity(
 /** Read message identity without promoting adapter display fallbacks. */
 export function getMessageActorIdentity(
   message: Message,
-): Requester | undefined {
+): MessageActorIdentity | undefined {
   return messageActors.get(message) ?? requesterFromAuthor(message.author);
 }
 
 /** Attach Slack display fields only after the author id is exact. */
 export async function ensureSlackMessageActorIdentity(
   message: Message,
+  teamId: string,
   lookupSlackUser: (
+    teamId: string,
     userId: string,
   ) => Promise<SlackRequesterProfile | null | undefined>,
 ): Promise<Requester> {
@@ -75,6 +88,6 @@ export async function ensureSlackMessageActorIdentity(
   }
   return bindMessageActorIdentity(
     message,
-    createSlackRequester(userId, await lookupSlackUser(userId)),
+    createSlackRequester(teamId, userId, await lookupSlackUser(teamId, userId)),
   );
 }

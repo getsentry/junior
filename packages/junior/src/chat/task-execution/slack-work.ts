@@ -48,6 +48,7 @@ export interface SlackConversationMessageMetadata {
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
+    teamId: string,
     userId: string,
   ) => Promise<SlackRequesterProfile | null | undefined>;
   resumeAwaitingContinuation: (conversationId: string) => Promise<boolean>;
@@ -120,9 +121,11 @@ function restoreMessage(args: {
 
 async function bindSlackActorIdentities(args: {
   lookupSlackUser: (
+    teamId: string,
     userId: string,
   ) => Promise<SlackRequesterProfile | null | undefined>;
   messages: Message[];
+  teamId: string;
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();
   for (const message of args.messages) {
@@ -132,10 +135,14 @@ async function bindSlackActorIdentities(args: {
 
   await Promise.all(
     [...byAuthorId].map(async ([authorId, messages]) => {
-      const profile = await args.lookupSlackUser(authorId);
+      const profile = await args.lookupSlackUser(args.teamId, authorId);
       await Promise.all(
         messages.map((message) =>
-          ensureSlackMessageActorIdentity(message, async () => profile),
+          ensureSlackMessageActorIdentity(
+            message,
+            args.teamId,
+            async () => profile,
+          ),
         ),
       );
     }),
@@ -236,6 +243,7 @@ export function createSlackConversationWorker(
         await bindSlackActorIdentities({
           lookupSlackUser: actorLookup,
           messages,
+          teamId: context.destination.teamId,
         });
         const latestMessage = messages[messages.length - 1];
         if (!latestMessage) {

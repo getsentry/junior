@@ -193,7 +193,14 @@ describe("oauth callback slack integration", () => {
       ],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
+      requester: {
+        platform: "slack",
+        teamId: "T123",
+        slackUserId: "U123",
+        slackUserName: "stored-user",
+        fullName: "Stored User",
+        email: "stored@example.com",
+      },
     });
 
     await stateAdapterModule
@@ -284,7 +291,14 @@ describe("oauth callback slack integration", () => {
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "list my sentry issues",
       expect.objectContaining({
-        requester: expect.objectContaining({ userId: "U123" }),
+        requester: expect.objectContaining({
+          email: "stored@example.com",
+          fullName: "Stored User",
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+          userName: "stored-user",
+        }),
         destination: SLACK_DESTINATION,
         correlation: expect.objectContaining({
           channelId: "C123",
@@ -354,6 +368,86 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     ]);
+  });
+
+  it("fails a session-recorded OAuth resume with mismatched requester team", async () => {
+    const conversationId = "slack:C123:1700000000.012";
+    const sessionId = "turn_msg_12";
+
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+      requester: {
+        platform: "slack",
+        teamId: "T999",
+        slackUserId: "U123",
+      },
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-mismatched-requester-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        destination: SLACK_DESTINATION,
+        threadTs: "1700000000.012",
+        pendingMessage: "list my sentry issues",
+        resumeConversationId: conversationId,
+        resumeSessionId: sessionId,
+        scope: "read",
+      });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [
+            {
+              id: "msg.12",
+              role: "user",
+              text: "list my sentry issues",
+              createdAtMs: 2,
+              author: { userId: "U123" },
+              meta: { slackTs: "1700000000.0121" },
+            },
+          ],
+          processing: {
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              requesterId: "U123",
+              scope: "read",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-mismatched-requester-state",
+      code: "eval-oauth-code",
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage:
+        "Stored Slack requester identity did not match OAuth requester",
+    });
   });
 
   it("rebuilds session-recorded OAuth resume context from state loaded under the thread lock", async () => {

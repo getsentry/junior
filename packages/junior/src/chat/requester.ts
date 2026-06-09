@@ -1,5 +1,12 @@
-import type { AgentPluginRequester } from "@sentry/junior-plugin-api";
+/**
+ * Canonical Slack requester identity.
+ *
+ * Runtime requesters are always workspace-scoped Slack actors. Stored requester
+ * parsing remains explicit so legacy durable records can resume without
+ * repairing malformed team or user ids.
+ */
 import { z } from "zod";
+import { isSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
@@ -13,12 +20,21 @@ export const storedSlackRequesterSchema = z
   .object({
     email: exactStoredStringSchema.optional(),
     fullName: exactStoredStringSchema.optional(),
+    platform: z.literal("slack").optional(),
     slackUserId: exactStoredStringSchema.optional(),
     slackUserName: exactStoredStringSchema.optional(),
+    teamId: exactStoredStringSchema.optional(),
   })
   .strict();
 
-export type Requester = AgentPluginRequester & { userId: string };
+export interface Requester {
+  email?: string;
+  fullName?: string;
+  platform: "slack";
+  teamId: string;
+  userId: string;
+  userName?: string;
+}
 
 export interface SlackRequesterProfile {
   email?: string;
@@ -27,6 +43,15 @@ export interface SlackRequesterProfile {
 }
 
 export type StoredSlackRequester = z.output<typeof storedSlackRequesterSchema>;
+
+interface RequesterInput {
+  email?: string;
+  fullName?: string;
+  platform?: "slack";
+  teamId?: string;
+  userId?: string;
+  userName?: string;
+}
 
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -39,6 +64,10 @@ function isSyntheticActorUserId(value: string): boolean {
 
 function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_PATTERN.test(value);
+}
+
+function parseSlackTeamId(value: unknown): string | undefined {
+  return typeof value === "string" && isSlackTeamId(value) ? value : undefined;
 }
 
 function cleanRequesterDisplayName(
@@ -79,27 +108,40 @@ export function isActorUserId(value: string | undefined): value is string {
   return parseActorUserId(value) === value;
 }
 
-/** Build Junior's canonical requester from an exact actor id and profile data. */
+/** Build Junior's canonical requester from exact Slack team/user ids and profile data. */
 export function createRequester(
-  input: AgentPluginRequester | undefined,
-  userId?: string,
+  input: RequesterInput | undefined,
+  context: {
+    teamId?: string;
+    userId?: string;
+  },
 ): Requester | undefined {
-  const contextUserId = parseActorUserId(userId);
-  if (userId !== undefined && !contextUserId) {
+  const contextUserId = parseActorUserId(context.userId);
+  if (context.userId !== undefined && !contextUserId) {
     return undefined;
   }
   const inputUserId = parseActorUserId(input?.userId);
   if (input?.userId !== undefined && !inputUserId) {
     return undefined;
   }
+  const contextTeamId = parseSlackTeamId(context.teamId);
+  if (context.teamId !== undefined && !contextTeamId) {
+    return undefined;
+  }
+  const inputTeamId = parseSlackTeamId(input?.teamId);
+  if (input?.teamId !== undefined && !inputTeamId) {
+    return undefined;
+  }
 
   const requesterUserId = contextUserId ?? inputUserId;
-  if (!requesterUserId) {
+  const requesterTeamId = contextTeamId ?? inputTeamId;
+  if (!requesterUserId || !requesterTeamId) {
     return undefined;
   }
 
   const canUseInputProfile =
-    !contextUserId || !inputUserId || contextUserId === inputUserId;
+    (!contextUserId || !inputUserId || contextUserId === inputUserId) &&
+    (!contextTeamId || !inputTeamId || contextTeamId === inputTeamId);
   return {
     ...(canUseInputProfile && cleanRequesterEmail(input?.email)
       ? { email: cleanRequesterEmail(input?.email) }
@@ -110,6 +152,8 @@ export function createRequester(
           fullName: cleanRequesterDisplayName(input?.fullName, requesterUserId),
         }
       : {}),
+    platform: "slack",
+    teamId: requesterTeamId,
     userId: requesterUserId,
     ...(canUseInputProfile &&
     cleanRequesterDisplayName(input?.userName, requesterUserId)
@@ -122,24 +166,28 @@ export function createRequester(
 
 /** Build Junior's canonical requester from Slack profile data. */
 export function createSlackRequester(
+  teamId: string,
   userId: string,
   profile: SlackRequesterProfile | null | undefined,
 ): Requester {
   const actorUserId = parseActorUserId(userId);
-  if (!actorUserId) {
-    throw new Error("Slack requester requires a user id");
+  const actorTeamId = parseSlackTeamId(teamId);
+  if (!actorTeamId || !actorUserId) {
+    throw new Error("Slack requester requires team and user ids");
   }
   const requester = createRequester(
     {
       email: profile?.email,
       fullName: profile?.fullName,
+      platform: "slack",
+      teamId: actorTeamId,
       userId: actorUserId,
       userName: profile?.userName,
     },
-    actorUserId,
+    { teamId: actorTeamId, userId: actorUserId },
   );
   if (!requester) {
-    throw new Error("Slack requester requires a user id");
+    throw new Error("Slack requester requires team and user ids");
   }
   return requester;
 }
@@ -158,6 +206,18 @@ export function parseStoredSlackRequester(
   ) {
     return undefined;
   }
+  if (
+    parsed.data.teamId !== undefined &&
+    !parseSlackTeamId(parsed.data.teamId)
+  ) {
+    return undefined;
+  }
+  if (
+    (parsed.data.platform !== undefined || parsed.data.teamId !== undefined) &&
+    (!parsed.data.platform || !parsed.data.teamId)
+  ) {
+    return undefined;
+  }
   return parsed.data;
 }
 
@@ -168,33 +228,49 @@ export function toStoredSlackRequester(
   return {
     ...(requester.email ? { email: requester.email } : {}),
     ...(requester.fullName ? { fullName: requester.fullName } : {}),
+    platform: requester.platform,
     slackUserId: requester.userId,
     ...(requester.userName ? { slackUserName: requester.userName } : {}),
+    teamId: requester.teamId,
   };
 }
 
 /** Rebuild a runtime requester from durable Slack requester state. */
 export function createRequesterFromStoredSlackRequester(args: {
   requester?: StoredSlackRequester;
+  teamId: string;
   userId: string;
 }): Requester {
   const actorUserId = parseActorUserId(args.userId);
-  if (!actorUserId) {
-    throw new Error("Slack requester requires a user id");
+  const actorTeamId = parseSlackTeamId(args.teamId);
+  if (!actorTeamId || !actorUserId) {
+    throw new Error("Slack requester requires team and user ids");
   }
   const storedUserId =
     args.requester?.slackUserId === undefined
       ? undefined
       : parseActorUserId(args.requester.slackUserId);
+  const storedTeamId =
+    args.requester?.teamId === undefined
+      ? undefined
+      : parseSlackTeamId(args.requester.teamId);
   if (args.requester?.slackUserId !== undefined && !storedUserId) {
     throw new Error("Stored Slack requester requires a user id");
+  }
+  if (args.requester?.teamId !== undefined && !storedTeamId) {
+    throw new Error("Stored Slack requester requires a team id");
   }
   if (storedUserId && storedUserId !== actorUserId) {
     throw new Error("Stored Slack requester must match actor user id");
   }
+  if (storedTeamId && storedTeamId !== actorTeamId) {
+    throw new Error("Stored Slack requester must match actor team id");
+  }
+  const canUseStoredProfile = Boolean(storedUserId);
   return createSlackRequester(
+    actorTeamId,
     actorUserId,
-    storedUserId
+    canUseStoredProfile
       ? {
           email: args.requester?.email,
           fullName: args.requester?.fullName,

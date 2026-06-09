@@ -31,9 +31,11 @@ export const agentPluginCredentialSubjectSchema = z
   .strict();
 
 /** Runtime-provided requester identity visible to plugin hooks. */
-export const agentPluginRequesterSchema = z
+export const requesterSchema = z
   .object({
-    userId: exactActorUserIdSchema.optional(),
+    platform: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    userId: exactActorUserIdSchema,
     userName: nonBlankStringSchema.optional(),
     fullName: nonBlankStringSchema.optional(),
     email: nonBlankStringSchema.optional(),
@@ -88,7 +90,7 @@ export const dispatchOptionsSchema = z
   })
   .strict();
 
-export type AgentPluginRequester = z.output<typeof agentPluginRequesterSchema>;
+export type Requester = z.output<typeof requesterSchema>;
 
 export interface AgentPluginMetadata {
   name: string;
@@ -146,14 +148,14 @@ export interface AgentPluginSandbox {
 }
 
 export interface SandboxPrepareHookContext extends AgentPluginContext {
-  requester?: AgentPluginRequester;
+  requester?: Requester;
   sandbox: AgentPluginSandbox;
 }
 
 export interface BeforeToolExecuteHookContext extends AgentPluginContext {
   decision: AgentPluginDecision;
   env: AgentPluginEnv;
-  requester?: AgentPluginRequester;
+  requester?: Requester;
   tool: {
     input: Record<string, unknown>;
     name: string;
@@ -220,7 +222,7 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
    */
   destination?: Destination;
   messageTs?: string;
-  requester?: AgentPluginRequester;
+  requester?: Requester;
   state: AgentPluginState;
   teamId?: string;
   threadTs?: string;

@@ -68,6 +68,8 @@ describe("Slack tool registration", () => {
         },
         teamId: "T123",
         requester: {
+          platform: "slack",
+          teamId: "T123",
           userId: "U123",
         },
       },

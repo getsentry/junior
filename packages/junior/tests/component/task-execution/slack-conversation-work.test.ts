@@ -379,6 +379,8 @@ describe("Slack conversation work execution", () => {
     expect(getMessageActorIdentity(capturedMessage!)).toEqual({
       email: "david@example.com",
       fullName: "David Cramer",
+      platform: "slack",
+      teamId: "T123",
       userId: "U123",
       userName: "dcramer",
     });

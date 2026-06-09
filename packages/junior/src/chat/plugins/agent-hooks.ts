@@ -1,5 +1,4 @@
 import type {
-  AgentPluginRequester,
   AgentPluginReadState,
   AgentPluginRoute,
   AgentPluginRouteMethod,
@@ -22,6 +21,7 @@ import type {
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import type { Requester } from "@/chat/requester";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class AgentPluginHookDeniedError extends Error {
@@ -606,7 +606,7 @@ function createSandboxCapability(sandbox: SandboxInstance): AgentPluginSandbox {
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createAgentPluginHookRunner(
   input: {
-    requester?: AgentPluginRequester;
+    requester?: Requester;
   } = {},
 ): AgentPluginHookRunner {
   const loaded = getAgentPlugins();

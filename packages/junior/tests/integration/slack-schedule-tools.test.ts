@@ -46,6 +46,8 @@ function createContext(
       channelId,
     },
     requester: {
+      platform: "slack",
+      teamId,
       userId: "U123",
       userName: "dcramer",
       fullName: "David Cramer",
@@ -191,6 +193,8 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(
       createContext({
         requester: {
+          platform: "slack",
+          teamId: TEST_TEAM_ID,
           userId: "U039RR91S",
           userName: "unknown",
           fullName: "W039RR91S",
@@ -211,6 +215,8 @@ describe("Slack schedule tools", () => {
     const rejected = createTask(
       createContext({
         requester: {
+          platform: "slack",
+          teamId: TEST_TEAM_ID,
           userId: "unknown",
           userName: "unknown",
           fullName: "unknown",
@@ -691,6 +697,8 @@ describe("Slack schedule tools", () => {
     };
     const otherRequester = createContext({
       requester: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
         userId: "U999",
         userName: "alice",
         fullName: "Alice Reviewer",
@@ -1109,7 +1117,13 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
           channelId: "DDM",
         },
         teamId: TEAM_ID,
-        requester: { userId: "U123", userName: "alice", fullName: "Alice" },
+        requester: {
+          platform: "slack",
+          teamId: TEAM_ID,
+          userId: "U123",
+          userName: "alice",
+          fullName: "Alice",
+        },
         sandbox: {} as Parameters<typeof getAgentPluginTools>[0]["sandbox"],
       });
 

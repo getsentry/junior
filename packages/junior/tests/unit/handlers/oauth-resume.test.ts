@@ -87,7 +87,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
-        requester: { userId: "U-test" },
+        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: () => new Promise<never>(() => {}),
       replyTimeoutMs: 10,
@@ -123,7 +123,7 @@ describe("resumeAuthorizedRequest", () => {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
-          requester: { userId: "U-test" },
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => {
           throw new Error("resume failed");
@@ -164,7 +164,7 @@ describe("resumeAuthorizedRequest", () => {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
-          requester: { userId: "U-test" },
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => ({
           text: "Final resumed answer",
@@ -226,7 +226,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
-        requester: { userId: "U-test" },
+        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
         throw new RetryableTurnError("agent_continue", "timed out again", {
@@ -254,7 +254,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
-        requester: { userId: "U-test" },
+        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
         throw new RetryableTurnError("agent_continue", "timed out again", {

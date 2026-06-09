@@ -301,6 +301,7 @@ async function resumeAuthorizedMcpTurn(args: {
       try {
         requester = createRequesterFromStoredSlackRequester({
           requester: lockedSessionRecord.requester,
+          teamId: destination.teamId,
           userId: authSession.userId,
         });
       } catch {

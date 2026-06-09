@@ -156,6 +156,8 @@ type ExecutionStatus = "idle" | "pending" | "running" | "awaiting_resume";
 type Source = "slack" | "api" | "scheduler" | "plugin" | "internal";
 
 // Canonical stored Slack requester from `packages/junior/src/chat/requester.ts`.
+// New records include Slack platform, team, user, and optional display/contact
+// fields. Legacy records may omit team metadata.
 type Requester = StoredSlackRequester;
 
 interface AgentInput {

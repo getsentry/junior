@@ -16,6 +16,12 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
 
+const TEST_REQUESTER = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const;
+
 function fakeSandbox(
   writes: Array<{ content: string | Uint8Array; path: string }>,
 ): SandboxInstance {
@@ -76,7 +82,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.requester?.userId).toBe("U123");
+            expect(ctx.requester).toEqual(TEST_REQUESTER);
             return {
               demoTool: tool({
                 description: "Demo tool",
@@ -90,7 +96,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getAgentPluginTools({
-        requester: { userId: "U123" },
+        requester: TEST_REQUESTER,
         sandbox: {} as any,
       });
 
@@ -421,12 +427,14 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           async sandboxPrepare(ctx) {
+            expect(ctx.requester).toEqual(TEST_REQUESTER);
             await ctx.sandbox.writeFile({
               path: `${ctx.sandbox.juniorRoot}/prepared.txt`,
               content: ctx.requester?.userId ?? "",
             });
           },
           beforeToolExecute(ctx) {
+            expect(ctx.requester).toEqual(TEST_REQUESTER);
             ctx.env.set("AGENT_PLUGIN", ctx.requester?.userId ?? "");
             if (
               typeof ctx.tool.input === "object" &&
@@ -453,7 +461,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const runner = createAgentPluginHookRunner({
-        requester: { userId: "U123" },
+        requester: TEST_REQUESTER,
       });
 
       await runner.prepareSandbox(fakeSandbox(writes));
@@ -503,7 +511,7 @@ describe("getAgentPluginTools channel resolution", () => {
       }),
     ]);
     getAgentPluginTools({
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
       sandbox: {} as any,
       ...overrides,
     });
@@ -544,7 +552,7 @@ describe("getAgentPluginTools channel resolution", () => {
     const ctx = capturePluginContext({
       channelId: "DDM",
       teamId: "T123",
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
     });
 
     expect(ctx.credentialSubject).toMatchObject({
@@ -558,7 +566,7 @@ describe("getAgentPluginTools channel resolution", () => {
     const ctx = capturePluginContext({
       channelId: "CSOURCE",
       teamId: "T123",
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
     });
 
     expect(ctx.credentialSubject).toBeUndefined();

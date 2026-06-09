@@ -31,7 +31,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 - **Actor:** the current authority for behavior. An actor is either a user actor or a system actor.
 - **User actor:** the human currently asking Junior to act.
 - **System actor:** a named Junior-owned execution authority, such as `scheduler` or a plugin dispatch actor.
-- **Requester:** the interactive user actor for a live Slack turn or requester-sensitive side effect.
+- **Requester:** the interactive Slack user actor for a live turn or requester-sensitive side effect. Runtime requester state carries Slack platform, workspace/team id, user id, and optional display/contact fields.
 - **Author:** the actor metadata persisted with a conversation message for transcript attribution.
 - **Creator:** audit and notification metadata for durable objects such as scheduled tasks. Creator is not automatically the actor for later execution.
 - **Credential subject:** an explicit subject used only to choose a stored user OAuth token. It is not the current actor and does not grant requester semantics.
@@ -108,8 +108,16 @@ requester is owned state for the lifetime of the turn. Continuation endpoints
 MUST reconstruct runtime `Requester` state from this stored requester when
 resuming.
 
-Continuation endpoints MUST NOT call live Slack identity helpers such as
-`lookupSlackActorIdentity` to re-derive requester display or contact fields.
+Canonical stored Slack requesters include `platform: "slack"`, `teamId`,
+`slackUserId`, and optional display/contact fields. Continuation endpoints MUST
+assert stored `teamId` and `slackUserId` against the active destination and
+turn author when those fields are present. Legacy stored requesters without
+`teamId` may reuse display/contact fields only after the stored `slackUserId`
+matches the turn author; the runtime requester still uses the active destination
+team id.
+
+Continuation endpoints MUST NOT call live Slack requester helpers such as
+`lookupSlackRequester` to re-derive requester display or contact fields.
 Those helpers are fresh-turn boundary resolution paths. Re-querying Slack during
 continuation creates a dependency on external profile availability that can cause
 requester display and contact fields to disappear across serverless invocations.
@@ -164,6 +172,7 @@ Use integration tests for behavior that crosses real runtime boundaries:
 - Slack ingress persists the real requester/author identity and rejects synthetic or malformed actor ids.
 - Slack DM and channel paths preserve the current requester through first delivery, retry, and continuation.
 - Turn continuation identity: seed a session record with `AgentTurnSessionRecord.requester` containing Slack user id, username, full name, and email; resume through a continuation endpoint while making live Slack profile lookup unavailable; verify the resumed turn receives requester identity from the stored session record and that no live Slack lookup is performed.
+- Workspace-scoped requester identity: seed a session record with canonical Slack requester state containing `platform`, `teamId`, and `slackUserId`; resume through a continuation endpoint; verify mismatched stored team or user ids fail closed.
 - Absent continuation identity: when a continuation session record has no stored requester display or contact fields, verify the resumed turn proceeds with actor id only and does not attempt a live Slack lookup.
 - Scheduler dispatch runs with a system actor and does not use creator identity as requester.
 - Plugin dispatch carries a system actor through callback, retry, continuation, credential context, and Slack delivery.

@@ -117,6 +117,8 @@ describe("agent continuation runner callbacks", () => {
             expect(prepared.replyContext.requester).toEqual({
               email: "stored@example.com",
               fullName: "Stored User",
+              platform: "slack",
+              teamId: "T123",
               userId: "U123",
               userName: "stored-user",
             });

@@ -6,7 +6,7 @@ import {
   destinationSchema,
   type AgentPluginCredentialSubject,
   type Destination,
-  type AgentPluginRequester,
+  type Requester,
   type AgentPluginState,
   type AgentPluginToolDefinition,
 } from "@sentry/junior-plugin-api";
@@ -26,7 +26,7 @@ import type {
 export interface SchedulerToolContext {
   credentialSubject?: AgentPluginCredentialSubject;
   destination?: Destination;
-  requester?: AgentPluginRequester;
+  requester?: Requester;
   state: AgentPluginState;
   userText?: string;
 }

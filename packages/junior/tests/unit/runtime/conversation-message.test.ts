@@ -31,6 +31,8 @@ describe("conversation message actor identity", () => {
     bindMessageActorIdentity(message, {
       email: "david@example.com",
       fullName: "David Cramer",
+      platform: "slack",
+      teamId: "T123",
       userId: "U039RR91S",
       userName: "dcramer",
     });
@@ -83,6 +85,8 @@ describe("conversation message actor identity", () => {
     const message = createMessage("unknown");
     bindMessageActorIdentity(message, {
       fullName: "David Cramer",
+      platform: "slack",
+      teamId: "T123",
       userId: "U039RR91S",
       userName: "dcramer",
     });
@@ -105,6 +109,8 @@ describe("conversation message actor identity", () => {
     expect(() =>
       bindMessageActorIdentity(createMessage(), {
         fullName: "Other Person",
+        platform: "slack",
+        teamId: "T123",
         userId: "U_OTHER",
         userName: "other",
       }),

@@ -7,7 +7,7 @@ const {
   EXAMPLE_OAUTH_CONFIG,
   GITHUB_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
-  lookupSlackActorIdentityMock,
+  lookupSlackRequesterMock,
   resolvePluginOAuthAccountMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
@@ -38,7 +38,7 @@ const {
     treatEmptyScopeAsUnreported: true,
     callbackPath: "/api/oauth/callback/github",
   },
-  lookupSlackActorIdentityMock: vi.fn(),
+  lookupSlackRequesterMock: vi.fn(),
   resolvePluginOAuthAccountMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
@@ -85,7 +85,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
 });
 
 vi.mock("@/chat/slack/user", () => ({
-  lookupSlackActorIdentity: lookupSlackActorIdentityMock,
+  lookupSlackRequester: lookupSlackRequesterMock,
 }));
 
 vi.mock("@/chat/plugins/credential-hooks", () => ({
@@ -107,8 +107,10 @@ beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   await disconnectStateAdapter();
   await getStateAdapter().connect();
-  lookupSlackActorIdentityMock.mockReset();
-  lookupSlackActorIdentityMock.mockResolvedValue({
+  lookupSlackRequesterMock.mockReset();
+  lookupSlackRequesterMock.mockResolvedValue({
+    platform: "slack",
+    teamId: "T777",
     userId: "U777",
     userName: "requester",
   });

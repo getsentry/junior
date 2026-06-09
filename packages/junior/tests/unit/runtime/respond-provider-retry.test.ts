@@ -255,7 +255,7 @@ describe("generateAssistantReply provider retry", () => {
 
   it("continues from the last safe boundary after a transient provider stream error", async () => {
     const replyPromise = generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
         turnId: "turn-1",
@@ -294,7 +294,7 @@ describe("generateAssistantReply provider retry", () => {
     const injectedTexts: string[] = [];
 
     const reply = await generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-steering",
         turnId: "turn-steering",
@@ -327,7 +327,7 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "cooperativeYield";
 
     const error = await generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield",
         turnId: "turn-yield",
@@ -374,7 +374,7 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "cooperativeYield";
 
     const error = await generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-steering",
         turnId: "turn-yield-steering",
@@ -424,7 +424,7 @@ describe("generateAssistantReply provider retry", () => {
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-persist-failure",
         turnId: "turn-yield-persist-failure",
@@ -457,7 +457,7 @@ describe("generateAssistantReply provider retry", () => {
     let injectCompleted = false;
 
     await generateAssistantReply("help me", {
-      requester: { userId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-steering-failure",
         turnId: "turn-steering-failure",

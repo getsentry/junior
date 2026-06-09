@@ -315,18 +315,22 @@ function extractSliceUsage(
 }
 
 function requesterFromContext(
-  requester: ReplyRequestContext["requester"],
-  requesterId: string | undefined,
+  context: ReplyRequestContext,
 ): AgentTurnRequester | undefined {
-  const identity = actorRequesterFromContext(requester, requesterId);
+  const identity = actorRequesterFromContext(context);
   return identity ? toStoredSlackRequester(identity) : undefined;
 }
 
 function actorRequesterFromContext(
-  requester: ReplyRequestContext["requester"],
-  requesterId: string | undefined,
+  context: ReplyRequestContext,
 ): Requester | undefined {
-  return createRequester(requester, requesterId);
+  return createRequester(context.requester, {
+    teamId:
+      context.destination?.teamId ??
+      context.correlation?.teamId ??
+      context.requester?.teamId,
+    userId: context.correlation?.requesterId,
+  });
 }
 
 function surfaceFromContext(
@@ -506,14 +510,8 @@ export async function generateAssistantReply(
   let inputCommitted = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
-  const requester = requesterFromContext(
-    context.requester,
-    context.correlation?.requesterId,
-  );
-  const actorRequester = actorRequesterFromContext(
-    context.requester,
-    context.correlation?.requesterId,
-  );
+  const requester = requesterFromContext(context);
+  const actorRequester = actorRequesterFromContext(context);
   const surface = surfaceFromContext(context);
   const credentialActor = context.credentialContext?.actor;
   const credentialActorLogContext = credentialActor

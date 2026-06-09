@@ -440,13 +440,16 @@ async function handleSlashCommandForm(args: {
     args.params.get("user_id"),
     "Slack slash command payload",
   );
+  const teamId = args.params.get("team_id") ?? undefined;
   const userIdentity = createRequester(
     {
+      platform: "slack",
+      teamId,
       userId,
       userName: args.params.get("user_name") ?? undefined,
       fullName: args.params.get("user_name") ?? undefined,
     },
-    userId,
+    { teamId, userId },
   );
   if (!userIdentity?.userId) {
     throw new Error("Slack slash command payload actor identity is invalid");

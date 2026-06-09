@@ -87,6 +87,12 @@ function makeDemoMcpTools() {
   return [makeDemoMcpTool("ping"), makeDemoMcpTool("mutate")];
 }
 
+const TEST_REQUESTER = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const;
+
 function makeReplyContext(args: {
   conversationId: string;
   threadTs: string;
@@ -96,7 +102,7 @@ function makeReplyContext(args: {
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
-    requester: { userId: "U123" },
+    requester: TEST_REQUESTER,
     correlation: {
       channelId: "C123",
       conversationId: args.conversationId,
@@ -1083,7 +1089,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       credentialContext: {
         actor: { type: "user" as const, userId: "U123" },
       },
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-3",
         turnId: "turn-3",
@@ -1168,7 +1174,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       credentialContext: {
         actor: { type: "user", userId: "U123" },
       },
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-5",
         turnId: "turn-5",
@@ -1199,7 +1205,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       credentialContext: {
         actor: { type: "user", userId: "U123" },
       },
-      requester: { userId: "U123" },
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-6",
         turnId: "turn-6",
