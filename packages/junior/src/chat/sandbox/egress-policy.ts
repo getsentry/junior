@@ -1,5 +1,6 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import type { TracePropagationHeaders } from "@/chat/logging";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
@@ -57,6 +58,7 @@ function sandboxProxyUrl(credentialToken?: string): string {
 /** Build the policy that forwards provider requests back to Junior for credentials. */
 export function buildSandboxEgressNetworkPolicy(input?: {
   credentialToken?: string;
+  traceHeaders?: TracePropagationHeaders;
 }): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
@@ -67,9 +69,21 @@ export function buildSandboxEgressNetworkPolicy(input?: {
   }
 
   const forwardURL = sandboxProxyUrl(input?.credentialToken);
+  const traceHeaders = Object.fromEntries(
+    Object.entries(input?.traceHeaders ?? {}).filter(
+      ([, value]) => typeof value === "string" && value.trim(),
+    ),
+  );
   for (const entry of entries) {
     for (const domain of entry.domains) {
-      allow[domain] = [{ forwardURL }];
+      allow[domain] = [
+        {
+          ...(Object.keys(traceHeaders).length > 0
+            ? { transform: [{ headers: traceHeaders }] }
+            : {}),
+          forwardURL,
+        },
+      ];
     }
   }
 

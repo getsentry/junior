@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import {
+  getTracePropagationHeaders,
   logInfo,
   setSpanAttributes,
   setSpanStatus,
@@ -184,9 +185,10 @@ export function createSandboxExecutor(options?: {
       ? async () => await resolveSandboxCommandEnvironment()
       : undefined,
     createNetworkPolicy: credentialEgress
-      ? (egressId) =>
+      ? (egressId, traceHeaders) =>
           buildSandboxEgressNetworkPolicy({
             credentialToken: sandboxEgressCredentialTokenFor(egressId),
+            traceHeaders,
           })
       : undefined,
     onSandboxPrepare: async (sandbox) => {
@@ -244,6 +246,9 @@ export function createSandboxExecutor(options?: {
       },
       async () => {
         try {
+          await sessionManager.refreshNetworkPolicy(
+            getTracePropagationHeaders(),
+          );
           const response = await executeBash({
             command,
             ...(env ? { env } : {}),

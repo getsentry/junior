@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { activeSpan, startSpan } = vi.hoisted(() => ({
+const { activeSpan, getTraceData, startSpan } = vi.hoisted(() => ({
   activeSpan: {
     setAttribute: vi.fn(),
   },
+  getTraceData: vi.fn(),
   startSpan: vi.fn(
     async (_options: unknown, callback: () => Promise<unknown>) => callback(),
   ),
@@ -11,12 +12,14 @@ const { activeSpan, startSpan } = vi.hoisted(() => ({
 
 vi.mock("@/chat/sentry", () => ({
   getActiveSpan: () => activeSpan,
+  getTraceData,
   startSpan,
 }));
 
 describe("withSpan", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    getTraceData.mockReset();
     vi.resetModules();
   });
 
@@ -81,5 +84,22 @@ describe("withSpan", () => {
       "gen_ai.response.finish_reasons",
       ["tool_use"],
     );
+  });
+
+  it("extracts Sentry trace propagation headers", async () => {
+    getTraceData.mockReturnValue({
+      "sentry-trace": "trace-span-1",
+      baggage: "sentry-release=abc",
+      traceparent: "00-trace-span-01",
+      other: "ignored",
+    });
+    const { getTracePropagationHeaders } = await import("@/chat/logging");
+
+    expect(getTracePropagationHeaders()).toEqual({
+      "sentry-trace": "trace-span-1",
+      baggage: "sentry-release=abc",
+      traceparent: "00-trace-span-01",
+    });
+    expect(getTraceData).toHaveBeenCalledWith({ propagateTraceparent: true });
   });
 });

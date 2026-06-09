@@ -1,5 +1,5 @@
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import {
   matchesSandboxEgressDomain,
@@ -23,6 +23,7 @@ import {
 } from "@/chat/sandbox/egress-session";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 import type { JWTPayload } from "jose";
+import * as Sentry from "@/chat/sentry";
 
 const OIDC_TOKEN_HEADER = "vercel-sandbox-oidc-token";
 const FORWARDED_HOST_HEADER = "vercel-forwarded-host";
@@ -46,6 +47,11 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
   FORWARDED_PATH_HEADER,
+]);
+const TRACE_PROPAGATION_HEADERS = new Set([
+  "baggage",
+  "sentry-trace",
+  "traceparent",
 ]);
 const DECODED_RESPONSE_HEADERS = new Set([
   "content-encoding",
@@ -468,6 +474,7 @@ async function responseTextWithinLimit(
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
+  provider: string,
   upstreamHost: string,
 ): Headers {
   const headers = new Headers();
@@ -477,6 +484,9 @@ function requestHeaders(
       HOP_BY_HOP_HEADERS.has(normalized) ||
       PROXY_ONLY_HEADERS.has(normalized)
     ) {
+      return;
+    }
+    if (TRACE_PROPAGATION_HEADERS.has(normalized) && provider !== "sentry") {
       return;
     }
     headers.append(key, value);
@@ -507,6 +517,23 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
+function continueSandboxEgressTrace<T>(
+  request: Request,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const sentryTrace = request.headers.get("sentry-trace") ?? undefined;
+  const baggage = request.headers.get("baggage") ?? undefined;
+  const run = () =>
+    withSpan("sandbox.egress", "http.server", {}, callback, {
+      "http.request.method": request.method,
+      "url.path": redactedProxyPath(new URL(request.url).pathname),
+    });
+  if (!sentryTrace && !baggage) {
+    return run();
+  }
+  return Sentry.continueTrace({ sentryTrace, baggage }, run);
+}
+
 /** Return whether a request appears to be from the Vercel Sandbox egress proxy. */
 export function isSandboxEgressForwardedRequest(request: Request): boolean {
   return Boolean(
@@ -520,6 +547,16 @@ export function isSandboxEgressForwardedRequest(request: Request): boolean {
 export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},
+): Promise<Response> {
+  return await continueSandboxEgressTrace(
+    request,
+    async () => await proxySandboxEgressRequestImpl(request, deps),
+  );
+}
+
+async function proxySandboxEgressRequestImpl(
+  request: Request,
+  deps: ProxyDeps,
 ): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
   if (!oidcToken) {
@@ -750,7 +787,12 @@ export async function proxySandboxEgressRequest(
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const headers = requestHeaders(request, lease, upstreamUrl.hostname);
+  const headers = requestHeaders(
+    request,
+    lease,
+    provider,
+    upstreamUrl.hostname,
+  );
   if (!bodyRead) {
     body = await requestBodyBytes(request);
   }

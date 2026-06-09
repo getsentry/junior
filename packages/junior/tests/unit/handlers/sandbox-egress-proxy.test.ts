@@ -265,11 +265,27 @@ describe("sandbox egress proxy", () => {
       ttlMs: 60_000,
     });
     expect(
-      buildSandboxEgressNetworkPolicy({ credentialToken: token }),
+      buildSandboxEgressNetworkPolicy({
+        credentialToken: token,
+        traceHeaders: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+          traceparent: "00-trace-span-01",
+        },
+      }),
     ).toMatchObject({
       allow: {
         "sentry.io": [
           {
+            transform: [
+              {
+                headers: {
+                  "sentry-trace": "trace-span-1",
+                  baggage: "sentry-release=abc",
+                  traceparent: "00-trace-span-01",
+                },
+              },
+            ],
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
           },
         ],
@@ -363,6 +379,15 @@ describe("sandbox egress proxy", () => {
       expect(new Headers(init?.headers).get("x-forwarded-for")).toBe(
         "127.0.0.1",
       );
+      expect(new Headers(init?.headers).get("sentry-trace")).toBe(
+        "trace-span-1",
+      );
+      expect(new Headers(init?.headers).get("baggage")).toBe(
+        "sentry-release=abc",
+      );
+      expect(new Headers(init?.headers).get("traceparent")).toBe(
+        "00-trace-span-01",
+      );
       expect(new Headers(init?.headers).get("host")).toBeNull();
       expect(
         new Headers(init?.headers).get("vercel-sandbox-oidc-token"),
@@ -377,6 +402,9 @@ describe("sandbox egress proxy", () => {
         authorization: "Bearer sandbox-token",
         cookie: "session=sandbox",
         host: "junior.example.com",
+        "sentry-trace": "trace-span-1",
+        baggage: "sentry-release=abc",
+        traceparent: "00-trace-span-01",
         "x-api-key": "sandbox-key",
         "x-forwarded-for": "127.0.0.1",
       },
@@ -404,6 +432,48 @@ describe("sandbox egress proxy", () => {
     await expect(repeated.text()).resolves.toBe("ok");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips Sentry trace propagation before forwarding non-Sentry requests", async () => {
+    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    setSandboxEgressUserActor();
+    issueProviderCredentialLeaseMock.mockResolvedValue({
+      id: "lease-1",
+      provider: "github",
+      env: {},
+      headerTransforms: [
+        {
+          domain: "api.github.com",
+          headers: { Authorization: "Bearer github-token" },
+        },
+      ],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer github-token");
+      expect(headers.get("sentry-trace")).toBeNull();
+      expect(headers.get("baggage")).toBeNull();
+      expect(headers.get("traceparent")).toBeNull();
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await proxy(
+      egressRequest({
+        host: "api.github.com",
+        path: "/repos/getsentry/junior",
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+          traceparent: "00-trace-span-01",
+        },
+      }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {

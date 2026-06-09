@@ -7,6 +7,7 @@ import {
   setSpanAttributes,
   withSpan,
   type LogContext,
+  type TracePropagationHeaders,
 } from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
@@ -113,6 +114,7 @@ interface SandboxSessionManager {
   getDependencyProfileHash(): string | undefined;
   createSandbox(): Promise<SandboxInstance>;
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
+  refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -186,7 +188,10 @@ export function createSandboxSessionManager(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
+  createNetworkPolicy?: (
+    egressId: string,
+    traceHeaders?: TracePropagationHeaders,
+  ) => NetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
@@ -280,9 +285,11 @@ export function createSandboxSessionManager(options?: {
 
   const refreshNetworkPolicy = async (
     targetSandbox: SandboxInstance,
+    traceHeaders?: TracePropagationHeaders,
   ): Promise<void> => {
     const networkPolicy = options?.createNetworkPolicy?.(
       targetSandbox.sandboxEgressId,
+      traceHeaders,
     );
     if (!networkPolicy) {
       return;
@@ -880,6 +887,13 @@ export function createSandboxSessionManager(options?: {
     },
     async ensureToolExecutors() {
       return await loadToolExecutors(await ensureReadySandbox());
+    },
+    async refreshNetworkPolicy(traceHeaders) {
+      const activeSandbox = sandbox;
+      if (!activeSandbox) {
+        return;
+      }
+      await refreshNetworkPolicy(activeSandbox, traceHeaders);
     },
     async dispose() {
       const activeSandbox = sandbox;

@@ -1912,6 +1912,7 @@ describe("createSandboxExecutor", () => {
     expect(createNetworkPolicy).toHaveBeenNthCalledWith(
       3,
       "sbx_snapshot_policy_ready_session",
+      undefined,
     );
     expect(secondCreate.networkPolicy).toEqual({
       allow: {

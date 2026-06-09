@@ -50,6 +50,10 @@ export interface LogContext {
   userAgent?: string;
 }
 
+export type TracePropagationHeaders = Partial<
+  Record<"baggage" | "sentry-trace" | "traceparent", string>
+>;
+
 interface SentryLoggerApi {
   debug?: (message: string, attributes?: Record<string, unknown>) => void;
   info?: (message: string, attributes?: Record<string, unknown>) => void;
@@ -1642,6 +1646,28 @@ export async function withSpan<T>(
       callback,
     );
   });
+}
+
+/** Return Sentry-standard trace propagation headers for the active span. */
+export function getTracePropagationHeaders(): TracePropagationHeaders {
+  const sentry = Sentry as unknown as {
+    getTraceData?: (options?: {
+      propagateTraceparent?: boolean;
+    }) => Record<string, unknown>;
+  };
+  const traceData = sentry.getTraceData?.({ propagateTraceparent: true });
+  if (!traceData) {
+    return {};
+  }
+
+  const headers: TracePropagationHeaders = {};
+  for (const key of ["sentry-trace", "baggage", "traceparent"] as const) {
+    const value = traceData[key];
+    if (typeof value === "string" && value.trim()) {
+      headers[key] = value;
+    }
+  }
+  return headers;
 }
 
 /** Set attributes on the currently active Sentry span. */
