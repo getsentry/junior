@@ -913,7 +913,7 @@ describe("Slack conversation work execution", () => {
         },
         state,
       }),
-    ).rejects.toThrow("runtime failed before input commit");
+    ).resolves.toEqual({ status: "pending_requeued" });
 
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -922,6 +922,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.lease).toBeUndefined();
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
+    expect(work?.consecutiveFailureCount).toBe(1);
   });
 
   it("requeues Slack mailbox records when the runtime returns without input commit", async () => {

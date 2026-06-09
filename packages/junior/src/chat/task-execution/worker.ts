@@ -8,10 +8,12 @@ import {
   checkInConversationWork,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
+  CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
   markConversationWorkEnqueued,
+  recordConversationWorkFailure,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
@@ -38,6 +40,7 @@ export interface ConversationWorkerResult {
 
 export interface ConversationWorkProcessResult {
   status:
+    | "abandoned"
     | "active"
     | "completed"
     | "lost_lease"
@@ -196,24 +199,50 @@ export async function processConversationWork(
   }
   const destination = initial.destination;
 
-  const lease = await startConversationWork({
-    conversationId,
-    nowMs: now(options),
-    state: options.state,
-  });
+  let lease: Awaited<ReturnType<typeof startConversationWork>>;
+  try {
+    lease = await startConversationWork({
+      conversationId,
+      nowMs: now(options),
+      state: options.state,
+    });
+  } catch (error) {
+    logException(
+      error,
+      "conversation_work_lease_acquire_failed",
+      { conversationId },
+      {},
+      "Conversation work lease acquisition failed; heartbeat will recover",
+    );
+    return { status: "no_work" };
+  }
   if (lease.status === "no_work") {
     return { status: "no_work" };
   }
   if (lease.status === "active") {
     const nudgeNowMs = now(options);
-    await sendWakeNudge({
-      conversationId,
-      destination,
-      delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
-      idempotencyKey: nudgeIdempotencyKey("active", conversationId, nudgeNowMs),
-      nowMs: nudgeNowMs,
-      options,
-    });
+    try {
+      await sendWakeNudge({
+        conversationId,
+        destination,
+        delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
+        idempotencyKey: nudgeIdempotencyKey(
+          "active",
+          conversationId,
+          nudgeNowMs,
+        ),
+        nowMs: nudgeNowMs,
+        options,
+      });
+    } catch (error) {
+      logException(
+        error,
+        "conversation_work_active_nudge_failed",
+        { conversationId },
+        {},
+        "Conversation work active-lease nudge failed; heartbeat will recover",
+      );
+    }
     logInfo(
       "conversation_work_nudge_deferred_for_active_lease",
       { conversationId },
@@ -375,6 +404,75 @@ export async function processConversationWork(
     return { status: "completed" };
   } catch (error) {
     const errorNowMs = now(options);
+    let failure: Awaited<ReturnType<typeof recordConversationWorkFailure>> = {
+      abandoned: false,
+      consecutiveFailureCount: 0,
+      releasedLease: false,
+    };
+    try {
+      failure = await recordConversationWorkFailure({
+        conversationId,
+        nowMs: errorNowMs,
+        state: options.state,
+      });
+    } catch (recordError) {
+      logException(
+        recordError,
+        "conversation_work_failure_record_failed",
+        { conversationId },
+        {},
+        "Conversation work failure counter update failed",
+      );
+    }
+
+    if (!isProviderRetryError(error)) {
+      logException(
+        error,
+        "conversation_work_failed",
+        { conversationId },
+        {
+          "app.worker.consecutive_failure_count":
+            failure.consecutiveFailureCount,
+          "app.worker.elapsed_ms": now(options) - startedAtMs,
+        },
+        "Conversation work failed",
+      );
+    }
+
+    if (failure.abandoned) {
+      logWarn(
+        "conversation_work_abandoned",
+        { conversationId },
+        {
+          "app.worker.consecutive_failure_count":
+            failure.consecutiveFailureCount,
+          "app.worker.max_consecutive_failures":
+            CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES,
+        },
+        "Conversation work abandoned after repeated failures; stopping retries",
+      );
+      if (!failure.releasedLease) {
+        try {
+          await releaseConversationWork({
+            conversationId,
+            leaseToken: lease.leaseToken,
+            nowMs: errorNowMs,
+            state: options.state,
+          });
+        } catch (releaseError) {
+          logException(
+            releaseError,
+            "conversation_work_release_failed",
+            { conversationId },
+            {},
+            "Conversation work release failed after abandoning",
+          );
+        }
+      }
+      return { status: "abandoned" };
+    }
+
+    let requeueSucceeded = false;
     try {
       const continuationMarked = await requestConversationContinuation({
         conversationId,
@@ -395,6 +493,7 @@ export async function processConversationWork(
           nowMs: errorNowMs,
           options,
         });
+        requeueSucceeded = true;
       }
     } catch (requeueError) {
       logException(
@@ -421,16 +520,9 @@ export async function processConversationWork(
         "Conversation work release failed after runner error",
       );
     }
-    if (!isProviderRetryError(error)) {
-      logException(
-        error,
-        "conversation_work_failed",
-        { conversationId },
-        {
-          "app.worker.elapsed_ms": now(options) - startedAtMs,
-        },
-        "Conversation work failed",
-      );
+
+    if (requeueSucceeded) {
+      return { status: "pending_requeued" };
     }
     throw error;
   } finally {

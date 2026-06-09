@@ -20,6 +20,7 @@ const CONVERSATION_WORK_MUTATION_RETRY_MS = 25;
 export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
+export const CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES = 5;
 
 export type InboundMessageSource = "plugin" | "scheduler" | "slack";
 
@@ -49,13 +50,16 @@ export interface ConversationLease {
 }
 
 export interface ConversationWorkState {
+  consecutiveFailureCount: number;
   conversationId: string;
   destination: Destination;
   lastEnqueuedAtMs?: number;
+  lastFailureAtMs?: number;
   lease?: ConversationLease;
   messages: InboundMessageRecord[];
   needsRun: boolean;
   schemaVersion: 1;
+  terminallyFailedAtMs?: number;
   updatedAtMs: number;
 }
 
@@ -275,8 +279,12 @@ function normalizeWorkState(
     messages,
     needsRun: value.needsRun === true,
     updatedAtMs,
+    consecutiveFailureCount:
+      toOptionalNumber(value.consecutiveFailureCount) ?? 0,
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
+    lastFailureAtMs: toOptionalNumber(value.lastFailureAtMs),
     lease: normalizeLease(value.lease),
+    terminallyFailedAtMs: toOptionalNumber(value.terminallyFailedAtMs),
   };
 }
 
@@ -288,6 +296,7 @@ function emptyWorkState(args: {
   return {
     schemaVersion: CONVERSATION_WORK_SCHEMA_VERSION,
     conversationId: args.conversationId,
+    consecutiveFailureCount: 0,
     destination: args.destination,
     messages: [],
     needsRun: false,
@@ -309,6 +318,9 @@ function pendingMessages(state: ConversationWorkState): InboundMessageRecord[] {
 }
 
 function shouldKeepIndexed(state: ConversationWorkState): boolean {
+  if (state.terminallyFailedAtMs !== undefined) {
+    return false;
+  }
   return (
     state.needsRun || Boolean(state.lease) || pendingMessages(state).length > 0
   );
@@ -547,8 +559,11 @@ export async function appendInboundMessage(args: {
 
       const next: ConversationWorkState = {
         ...current,
+        consecutiveFailureCount: 0,
+        lastFailureAtMs: undefined,
         messages: [...current.messages, args.message].sort(compareMessages),
         needsRun: true,
+        terminallyFailedAtMs: undefined,
         updatedAtMs: nowMs,
       };
       await writeWorkState(state, next);
@@ -764,6 +779,8 @@ export async function drainConversationMailbox(args: {
     );
     await writeWorkState(state, {
       ...current,
+      consecutiveFailureCount: 0,
+      lastFailureAtMs: undefined,
       messages,
       needsRun: hasPending,
       updatedAtMs: nowMs,
@@ -808,6 +825,8 @@ export async function markConversationMessagesInjected(args: {
 
     await writeWorkState(state, {
       ...current,
+      consecutiveFailureCount: 0,
+      lastFailureAtMs: undefined,
       messages,
       updatedAtMs: nowMs,
     });
@@ -882,6 +901,8 @@ export async function completeConversationWork(args: {
     const hasRunnableWork = current.needsRun || hasPending;
     await writeWorkState(state, {
       ...current,
+      consecutiveFailureCount: 0,
+      lastFailureAtMs: undefined,
       lease: undefined,
       needsRun: hasRunnableWork,
       updatedAtMs: nowMs,
@@ -909,6 +930,74 @@ export async function clearExpiredConversationLease(args: {
       updatedAtMs: nowMs,
     });
     return true;
+  });
+}
+
+export interface RecordConversationWorkFailureResult {
+  abandoned: boolean;
+  consecutiveFailureCount: number;
+  releasedLease: boolean;
+}
+
+/**
+ * Increment the durable failure counter after a caught worker error so
+ * deterministic poison work cannot churn the queue forever. When the counter
+ * crosses {@link CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES}, the conversation
+ * is marked terminally failed: the lease is cleared, pending mailbox messages
+ * are dropped, and the conversation drops out of the recovery index so neither
+ * the worker nor heartbeat will requeue it again. A later inbound message
+ * resets the counter and gives the conversation a fresh attempt.
+ */
+export async function recordConversationWorkFailure(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<RecordConversationWorkFailureResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readWorkState(state, args.conversationId);
+    if (!current) {
+      return {
+        abandoned: false,
+        consecutiveFailureCount: 0,
+        releasedLease: false,
+      };
+    }
+    const consecutiveFailureCount = current.consecutiveFailureCount + 1;
+    const abandoned =
+      consecutiveFailureCount >= CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES;
+    if (!abandoned) {
+      await writeWorkState(state, {
+        ...current,
+        consecutiveFailureCount,
+        lastFailureAtMs: nowMs,
+        updatedAtMs: nowMs,
+      });
+      return {
+        abandoned: false,
+        consecutiveFailureCount,
+        releasedLease: false,
+      };
+    }
+    const releasedLease = Boolean(current.lease);
+    const drainedMessages = current.messages.filter(
+      (message) => message.injectedAtMs !== undefined,
+    );
+    await writeWorkState(state, {
+      ...current,
+      consecutiveFailureCount,
+      lastFailureAtMs: nowMs,
+      lease: undefined,
+      messages: drainedMessages,
+      needsRun: false,
+      terminallyFailedAtMs: nowMs,
+      updatedAtMs: nowMs,
+    });
+    return {
+      abandoned: true,
+      consecutiveFailureCount,
+      releasedLease,
+    };
   });
 }
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-06
+- Last Edited: 2026-06-09
 
 ## Purpose
 
@@ -381,13 +381,42 @@ selection remain owned by their domain specs. Once claimed, execution should use
 the same mailbox, lease, session-log, and delivery contracts as interactive
 work.
 
+### Failure Budget Contract
+
+Worker errors must not produce unbounded queue retries. The worker maintains a
+durable `consecutiveFailureCount` on the conversation work record:
+
+1. Any caught error in the worker's execution path increments the counter.
+2. A successful session-log boundary (mailbox drain, message inject, clean
+   completion) resets the counter to zero.
+3. A fresh non-duplicate inbound message resets the counter to zero so a new
+   user attempt is never blocked by a poisoned prior turn.
+4. When the counter reaches `CONVERSATION_WORK_MAX_CONSECUTIVE_FAILURES`, the
+   conversation is marked terminally failed:
+   - `terminallyFailedAtMs` is set.
+   - The active lease is cleared.
+   - Pending mailbox messages are dropped (they could not be processed; the
+     next inbound message starts a fresh attempt).
+   - `needsRun` is cleared and the conversation drops out of the recovery
+     index so heartbeat will not requeue it.
+
+A worker that catches a runner error and successfully sends its own wake nudge
+must not also throw. Throwing causes the queue platform to redeliver the same
+payload, doubling execution attempts and amplifying overload conditions. The
+worker rethrows only when its own recovery enqueue failed, so the queue
+provider's redelivery and heartbeat repair remain the safety net.
+
+Pre-lease failures (lease acquisition or active-lease deferred nudges) must be
+absorbed rather than rethrown. Heartbeat already requeues pending mailbox work
+and expired leases, so propagating these errors only multiplies queue load
+during state-store overload.
+
 ### TODO Guardrails
 
 The first pass intentionally avoids extra looping controls. After the mailbox
 worker is proven in production, add policy for:
 
 - maximum wall-clock age for one active conversation run
-- maximum consecutive recoveries without a new session-log boundary
 - explicit cancel/stop semantics for user messages that should abandon active
   work
 - duplicate final-delivery suppression if duplicate replies are observed
@@ -435,6 +464,9 @@ Required event names should distinguish normal progress from repair:
 - `conversation_work_lease_expired_requeued`
 - `conversation_work_pending_requeued`
 - `conversation_work_failed`
+- `conversation_work_abandoned`
+- `conversation_work_lease_acquire_failed`
+- `conversation_work_active_nudge_failed`
 
 Required attributes when available:
 
@@ -485,6 +517,12 @@ Required invariants, using the lowest layer that proves the contract:
     from the latest durable session-log boundary.
 15. Evals: realistic multi-message Slack follow-ups during long work are folded
     into the active answer without losing user intent.
+16. Component: a worker error that successfully requeues itself does not
+    rethrow, so the queue provider's redelivery cannot double-execute the
+    failure.
+17. Component: a conversation that fails N consecutive times is marked
+    terminally failed and stops requeueing until a new inbound message
+    arrives.
 
 ## Related Specs
 
