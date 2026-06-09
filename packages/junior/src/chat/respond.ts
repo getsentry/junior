@@ -495,6 +495,7 @@ export async function generateAssistantReply(
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: PiMessage[] = [];
   let beforeMessageCount = 0;
+  let turnStartMessageIndex: number | undefined;
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
@@ -1171,6 +1172,9 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
         ...(surface ? { surface } : {}),
+        ...(turnStartMessageIndex !== undefined
+          ? { turnStartMessageIndex }
+          : {}),
       });
       if (!persisted) {
         return false;
@@ -1327,10 +1331,14 @@ export async function generateAssistantReply(
               turnContextPrompt,
             )
           : existingSessionRecord!.piMessages;
+        turnStartMessageIndex = existingSessionRecord!.turnStartMessageIndex;
       } else if (context.piMessages && context.piMessages.length > 0) {
         agent.state.messages = [...context.piMessages];
       }
       beforeMessageCount = agent.state.messages.length;
+      if (!resumedFromSessionRecord) {
+        turnStartMessageIndex = beforeMessageCount;
+      }
 
       await withSpan(
         `invoke_agent ${botConfig.modelId}`,
@@ -1540,6 +1548,9 @@ export async function generateAssistantReply(
         logContext: sessionRecordLogContext,
         requester,
         ...(surface ? { surface } : {}),
+        ...(turnStartMessageIndex !== undefined
+          ? { turnStartMessageIndex }
+          : {}),
       });
     }
 

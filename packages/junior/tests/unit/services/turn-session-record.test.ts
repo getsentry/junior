@@ -198,6 +198,73 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("persists turn transcript scope and requester in the session log", async () => {
+    const {
+      getAgentTurnSessionRecord,
+      listAgentTurnSessionSummariesForConversation,
+      upsertAgentTurnSessionRecord,
+    } = await import("@/chat/state/turn-session");
+    const { loadProjectionWithRequester } =
+      await import("@/chat/state/session-log");
+
+    const previousQuestion: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "previous question" }],
+      timestamp: 1,
+    } as PiMessage;
+    const currentQuestion: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "current question" }],
+      timestamp: 2,
+    } as PiMessage;
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-turn-scope",
+      sessionId: "turn-scope",
+      sliceId: 1,
+      state: "running",
+      piMessages: [previousQuestion, currentQuestion],
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+      },
+      turnStartMessageIndex: 1,
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-turn-scope",
+      sessionId: "turn-scope",
+      sliceId: 2,
+      state: "completed",
+      piMessages: [previousQuestion, currentQuestion],
+    });
+
+    await expect(
+      getAgentTurnSessionRecord("conversation-turn-scope", "turn-scope"),
+    ).resolves.toMatchObject({
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+      },
+      turnStartMessageIndex: 1,
+      piMessages: [previousQuestion, currentQuestion],
+    });
+    await expect(
+      loadProjectionWithRequester({
+        conversationId: "conversation-turn-scope",
+      }),
+    ).resolves.toMatchObject({
+      requester: {
+        slackUserId: "U123",
+        slackUserName: "alice",
+      },
+      messages: [previousQuestion, currentQuestion],
+    });
+    const summaries = await listAgentTurnSessionSummariesForConversation(
+      "conversation-turn-scope",
+    );
+    expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
+  });
+
   it("carries cumulative diagnostics across pause records", async () => {
     const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");

@@ -625,6 +625,83 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("keeps the initial prompt when steering adds another user message", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:C1:steering-transcript",
+      sessionId: "turn-steering",
+      sliceId: 1,
+      state: "completed",
+      turnStartMessageIndex: 2,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "previous question" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "previous answer" }],
+          timestamp: 2,
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 3,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "working" }],
+          timestamp: 4,
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "steering message" }],
+          timestamp: 5,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          timestamp: 6,
+        },
+      ] as PiMessage[],
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:steering-transcript",
+    );
+
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({
+      transcriptMessageCount: 4,
+    });
+    expect(report.runs[0]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 3,
+        parts: [{ type: "text", text: "hello" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 4,
+        parts: [{ type: "text", text: "working" }],
+      },
+      {
+        role: "user",
+        timestamp: 5,
+        parts: [{ type: "text", text: "steering message" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 6,
+        parts: [{ type: "text", text: "done" }],
+      },
+    ]);
+  });
+
   it("reports a conversation after newer turns evict it from the global index", async () => {
     const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

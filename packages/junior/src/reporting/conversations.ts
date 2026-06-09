@@ -1061,7 +1061,21 @@ interface ScopedTurnMessages {
   startsAtRunBoundary: boolean;
 }
 
-function turnScopedMessages(messages: PiMessage[]): ScopedTurnMessages {
+function turnScopedMessages(
+  messages: PiMessage[],
+  turnStartMessageIndex?: number,
+): ScopedTurnMessages {
+  if (
+    turnStartMessageIndex !== undefined &&
+    turnStartMessageIndex >= 0 &&
+    turnStartMessageIndex < messages.length
+  ) {
+    return {
+      messages: messages.slice(turnStartMessageIndex),
+      startsAtRunBoundary: turnStartMessageIndex === 0,
+    };
+  }
+
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index] as unknown as Record<string, unknown>;
     if (record.role === "user") {
@@ -1235,7 +1249,10 @@ export async function readConversationReport(
         summary.sessionId,
       );
       const scopedMessages = sessionRecord?.piMessages
-        ? turnScopedMessages(sessionRecord.piMessages)
+        ? turnScopedMessages(
+            sessionRecord.piMessages,
+            sessionRecord.turnStartMessageIndex,
+          )
         : { messages: [], startsAtRunBoundary: false };
       const canExposeTranscript = canExposeConversationTranscript(summary);
       const normalizedTranscript = scopedMessages.messages.map(

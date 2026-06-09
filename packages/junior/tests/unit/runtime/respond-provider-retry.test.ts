@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
+import type { PiMessage } from "@/chat/pi/messages";
 
 const { agentMode, counters } = vi.hoisted(() => ({
   agentMode: {
@@ -230,6 +231,7 @@ import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
+import { createJuniorReporting } from "@/reporting";
 
 const TEST_DESTINATION = {
   platform: "slack",
@@ -292,11 +294,42 @@ describe("generateAssistantReply provider retry", () => {
   it("persists and queues steering messages at the next Pi boundary", async () => {
     agentMode.value = "steering";
     const injectedTexts: string[] = [];
+    const priorMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "previous question" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "previous answer" }],
+        api: "responses",
+        provider: "openai",
+        model: "gpt-5.3",
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      },
+    ] satisfies PiMessage[];
 
     const reply = await generateAssistantReply("help me", {
+      piMessages: priorMessages,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
-        conversationId: "conversation-steering",
+        conversationId: "slack:C123:1712345.0001",
         turnId: "turn-steering",
         channelId: "C123",
         threadTs: "1712345.0001",
@@ -315,12 +348,35 @@ describe("generateAssistantReply provider retry", () => {
     expect(injectedTexts).toEqual(["actually do the other thing"]);
 
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
-      "conversation-steering",
+      "slack:C123:1712345.0001",
       "turn-steering",
     );
+    expect(sessionRecord?.turnStartMessageIndex).toBe(2);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
+    expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C123:1712345.0001",
+    );
+    const transcript = report.runs[0]?.transcript ?? [];
+    expect(JSON.stringify(transcript)).not.toContain("previous question");
+    expect(transcript).toHaveLength(3);
+    expect(transcript[0]).toMatchObject({
+      role: "user",
+      timestamp: expect.any(Number),
+      parts: expect.arrayContaining([{ type: "text", text: "help me" }]),
+    });
+    expect(transcript[1]).toEqual({
+      role: "user",
+      timestamp: 2_000,
+      parts: [{ type: "text", text: "actually do the other thing" }],
+    });
+    expect(transcript[2]).toEqual({
+      role: "assistant",
+      parts: [{ type: "text", text: "Steered." }],
+    });
   });
 
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {

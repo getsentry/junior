@@ -57,12 +57,13 @@ export interface AgentTurnSessionRecord {
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   traceId?: string;
+  turnStartMessageIndex?: number;
   updatedAtMs: number;
 }
 
 export type AgentTurnSessionSummary = Omit<
   AgentTurnSessionRecord,
-  "errorMessage" | "piMessages"
+  "errorMessage" | "piMessages" | "turnStartMessageIndex"
 >;
 
 interface StoredAgentTurnSessionRecord extends Omit<
@@ -92,6 +93,12 @@ function agentTurnSessionConversationIndexKey(conversationId: string): string {
 function toFiniteNonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
+    : undefined;
+}
+
+function toNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
     : undefined;
 }
 
@@ -186,6 +193,9 @@ function parseAgentTurnSessionFields(
   const requester = parseStoredSlackRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
+  const turnStartMessageIndex = toNonNegativeInteger(
+    parsed.turnStartMessageIndex,
+  );
   const destination =
     parsed.destination === undefined
       ? undefined
@@ -235,6 +245,7 @@ function parseAgentTurnSessionFields(
       ? { resumedFromSliceId: parsed.resumedFromSliceId }
       : {}),
     ...(surface ? { surface } : {}),
+    ...(turnStartMessageIndex !== undefined ? { turnStartMessageIndex } : {}),
     ...(typeof parsed.traceId === "string" ? { traceId: parsed.traceId } : {}),
   };
 }
@@ -276,6 +287,7 @@ function parseAgentTurnSessionSummary(
   const {
     errorMessage: _errorMessage,
     logSessionId: _logSessionId,
+    turnStartMessageIndex: _turnStartMessageIndex,
     ...summary
   } = parsed;
   return summary;
@@ -384,6 +396,9 @@ function materializeAgentTurnSessionRecord(
       : {}),
     ...(stored.surface ? { surface: stored.surface } : {}),
     ...(stored.traceId ? { traceId: stored.traceId } : {}),
+    ...(stored.turnStartMessageIndex !== undefined
+      ? { turnStartMessageIndex: stored.turnStartMessageIndex }
+      : {}),
   };
 }
 
@@ -457,6 +472,7 @@ function buildStoredRecord(args: {
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
+  turnStartMessageIndex?: number;
 }): StoredAgentTurnSessionRecord {
   const nowMs = Date.now();
   return {
@@ -489,6 +505,9 @@ function buildStoredRecord(args: {
       : {}),
     ...(args.surface ? { surface: args.surface } : {}),
     ...(args.traceId ? { traceId: args.traceId } : {}),
+    ...(args.turnStartMessageIndex !== undefined
+      ? { turnStartMessageIndex: args.turnStartMessageIndex }
+      : {}),
   };
 }
 
@@ -509,6 +528,7 @@ async function setStoredRecord(args: {
     committedMessageCount: _committedMessageCount,
     errorMessage: _errorMessage,
     logSessionId: _logSessionId,
+    turnStartMessageIndex: _turnStartMessageIndex,
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
@@ -567,6 +587,9 @@ async function updateAgentTurnSessionState(args: {
         : {}),
       ...(args.existing.surface ? { surface: args.existing.surface } : {}),
       ...(args.existing.traceId ? { traceId: args.existing.traceId } : {}),
+      ...(args.existing.turnStartMessageIndex !== undefined
+        ? { turnStartMessageIndex: args.existing.turnStartMessageIndex }
+        : {}),
       ...((args.errorMessage ?? args.existing.errorMessage)
         ? { errorMessage: args.errorMessage ?? args.existing.errorMessage }
         : {}),
@@ -593,6 +616,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
+  turnStartMessageIndex?: number;
   ttlMs?: number;
 }): Promise<AgentTurnSessionRecord> {
   const existingRecord = await getStoredAgentTurnSessionRecord(
@@ -603,6 +627,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
+    requester: args.requester ?? existingRecord?.requester,
     ttlMs,
   });
 
@@ -652,6 +677,14 @@ export async function upsertAgentTurnSessionRecord(args: {
         : {}),
       ...((args.traceId ?? existingRecord?.traceId)
         ? { traceId: args.traceId ?? existingRecord?.traceId }
+        : {}),
+      ...((args.turnStartMessageIndex ??
+        existingRecord?.turnStartMessageIndex) !== undefined
+        ? {
+            turnStartMessageIndex:
+              args.turnStartMessageIndex ??
+              existingRecord?.turnStartMessageIndex,
+          }
         : {}),
     }),
   });

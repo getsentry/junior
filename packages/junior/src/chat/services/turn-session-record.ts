@@ -138,6 +138,7 @@ export async function persistRunningSessionRecord(args: {
   logContext: SessionRecordLogContext;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
 }): Promise<boolean> {
   if (args.messages.length === 0 || !isContinuableBoundary(args.messages)) {
     return false;
@@ -174,6 +175,14 @@ export async function persistRunningSessionRecord(args: {
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
         : {}),
+      ...((args.turnStartMessageIndex ??
+        latestSessionRecord?.turnStartMessageIndex) !== undefined
+        ? {
+            turnStartMessageIndex:
+              args.turnStartMessageIndex ??
+              latestSessionRecord?.turnStartMessageIndex,
+          }
+        : {}),
     });
     return true;
   } catch (recordError) {
@@ -204,6 +213,7 @@ export async function persistCompletedSessionRecord(args: {
   logContext: SessionRecordLogContext;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
 }): Promise<void> {
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
@@ -241,6 +251,14 @@ export async function persistCompletedSessionRecord(args: {
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+        : {}),
+      ...((args.turnStartMessageIndex ??
+        latestSessionRecord?.turnStartMessageIndex) !== undefined
+        ? {
+            turnStartMessageIndex:
+              args.turnStartMessageIndex ??
+              latestSessionRecord?.turnStartMessageIndex,
+          }
         : {}),
     });
   } catch (recordError) {
