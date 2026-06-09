@@ -30,6 +30,7 @@ import {
   createPrepareTurnState,
   type PreparedTurnState,
 } from "@/chat/runtime/turn-preparation";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   markConversationMessage,
@@ -57,6 +58,17 @@ async function persistAssistantContextChannelId(args: {
   await persistThreadStateById(args.threadId, {
     artifacts: nextArtifacts,
   });
+}
+
+function clearSkippedTurnIfActive(
+  conversation: PreparedTurnState["conversation"],
+  messageId: string,
+): void {
+  if (
+    conversation.processing.activeTurnId === buildDeterministicTurnId(messageId)
+  ) {
+    conversation.processing.activeTurnId = undefined;
+  }
 }
 
 export function createSlackRuntime(
@@ -121,7 +133,7 @@ export function createSlackRuntime(
           skippedReason: decision.reason,
         },
       });
-      conversation.processing.activeTurnId = undefined;
+      clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;
       updateConversationStats(conversation);
       await persistThreadState(thread, {
@@ -130,6 +142,7 @@ export function createSlackRuntime(
     },
     onSubscribedMessageSkipped: async ({
       thread,
+      message,
       preparedState,
       decision,
       completedAtMs,
@@ -145,7 +158,7 @@ export function createSlackRuntime(
           skippedReason: decision.reason,
         },
       );
-      preparedState.conversation.processing.activeTurnId = undefined;
+      clearSkippedTurnIfActive(preparedState.conversation, message.id);
       preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
       updateConversationStats(preparedState.conversation);
       await persistThreadState(thread, {

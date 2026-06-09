@@ -1042,18 +1042,55 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
+  it("preserves an unrelated active continuation when preflight skips a message", async () => {
+    const { slackRuntime } = createRuntime();
+    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const activeTurnId = "turn_existing_resume";
+    const thread = createTestThread({
+      id: "slack:C_REGRESS:1700010000.005",
+      state: {
+        conversation: {
+          processing: {
+            activeTurnId,
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-preflight-skip-while-resuming",
+        text: "@Alice can you take this one?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+      { destination: createTestDestination(thread), onInputCommitted },
+    );
+
+    const state = (await thread.state) ?? {};
+    const conversation = state.conversation as {
+      processing?: { activeTurnId?: string };
+    };
+    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(conversation.processing?.activeTurnId).toBe(activeTurnId);
+    expect(thread.posts).toHaveLength(0);
+  });
+
   it("calls onInputCommitted when the classifier decides not to reply", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => ({
-            object: {
-              should_reply: false,
-              confidence: 0.9,
-              reason: "side conversation",
-            },
-            text: '{"should_reply":false,"confidence":0.9,"reason":"side conversation"}',
-          } as never),
+          completeObject: async () =>
+            ({
+              object: {
+                should_reply: false,
+                confidence: 0.9,
+                reason: "side conversation",
+              },
+              text: '{"should_reply":false,"confidence":0.9,"reason":"side conversation"}',
+            }) as never,
         },
       },
     });
@@ -1080,15 +1117,16 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => ({
-            object: {
-              should_reply: false,
-              should_unsubscribe: true,
-              confidence: 1,
-              reason: "explicit stop",
-            },
-            text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"explicit stop"}',
-          } as never),
+          completeObject: async () =>
+            ({
+              object: {
+                should_reply: false,
+                should_unsubscribe: true,
+                confidence: 1,
+                reason: "explicit stop",
+              },
+              text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"explicit stop"}',
+            }) as never,
         },
       },
     });
