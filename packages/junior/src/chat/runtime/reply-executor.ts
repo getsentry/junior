@@ -387,7 +387,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           try {
             await beforeFirstResponsePost();
             await thread.post(
-              buildSlackOutputMessage(buildAuthPauseResponse()),
+              buildSlackOutputMessage(buildAuthPauseResponse(message.author.userId)),
             );
           } catch (error) {
             logException(

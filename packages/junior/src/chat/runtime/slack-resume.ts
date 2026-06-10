@@ -426,7 +426,7 @@ export async function resumeSlackTurn(
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(),
+          buildAuthPauseResponse(runArgs.replyContext.requester.userId),
         );
       }
       return true;
