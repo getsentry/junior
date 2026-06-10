@@ -5,6 +5,7 @@ import {
 } from "@/chat/configuration/defaults";
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
+import { generateAssistantReply } from "@/chat/respond";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
 import {
   getPluginCatalogSignature,
@@ -46,6 +47,7 @@ import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
+import { withSandboxTracePropagation } from "@/chat/app/services";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export { defineJuniorPlugins } from "./plugins";
@@ -382,6 +384,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
+  const generateReplyWithTracePropagation = withSandboxTracePropagation(
+    generateAssistantReply,
+    runtimeServiceOverrides.sandbox.tracePropagation,
+  );
 
   const app = new Hono();
 
@@ -409,11 +415,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
-    return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
+    return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
+      generateReply: generateReplyWithTracePropagation,
+    });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
-    return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
+    return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
+      generateReply: generateReplyWithTracePropagation,
+    });
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {

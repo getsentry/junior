@@ -149,6 +149,9 @@ export function createSandboxExecutor(options?: {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
+  const tracePropagation = options?.tracePropagation;
+  const hasTracePropagationDomains =
+    (tracePropagation?.domains?.length ?? 0) > 0;
   const credentialEgress = options?.credentialEgress;
   const sandboxEgressTokenTtlMs = Math.max(
     1,
@@ -186,14 +189,17 @@ export function createSandboxExecutor(options?: {
     commandEnv: credentialEgress
       ? async () => await resolveSandboxCommandEnvironment()
       : undefined,
-    createNetworkPolicy: credentialEgress
-      ? (egressId, traceHeaders) =>
-          buildSandboxEgressNetworkPolicy({
-            credentialToken: sandboxEgressCredentialTokenFor(egressId),
-            traceConfig: options?.tracePropagation,
-            traceHeaders,
-          })
-      : undefined,
+    createNetworkPolicy:
+      credentialEgress || hasTracePropagationDomains
+        ? (egressId, traceHeaders) =>
+            buildSandboxEgressNetworkPolicy({
+              ...(credentialEgress
+                ? { credentialToken: sandboxEgressCredentialTokenFor(egressId) }
+                : {}),
+              traceConfig: tracePropagation,
+              traceHeaders,
+            })
+        : undefined,
     onSandboxPrepare: async (sandbox) => {
       await options?.agentHooks?.prepareSandbox(sandbox);
     },
@@ -209,6 +215,7 @@ export function createSandboxExecutor(options?: {
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
+  // Network-policy header transforms need the current tool span's trace headers.
   const withSandboxToolSpan = <T>(
     name: string,
     op: string,

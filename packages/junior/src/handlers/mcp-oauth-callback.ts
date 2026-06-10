@@ -14,7 +14,7 @@ import {
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
 import { logException, logWarn } from "@/chat/logging";
-import type { AssistantReply } from "@/chat/respond";
+import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import {
   getChannelConfigurationServiceById,
   getPersistedSandboxState,
@@ -86,6 +86,10 @@ const CALLBACK_PAGES = {
     status: 500,
   },
 } as const;
+
+interface McpOAuthCallbackOptions {
+  generateReply?: typeof generateAssistantReply;
+}
 
 function mcpAuthorizationId(args: {
   provider: string;
@@ -183,9 +187,10 @@ async function persistFailedReplyState(
 
 async function resumeAuthorizedMcpTurn(args: {
   authSession: McpAuthSessionState;
+  generateReply?: typeof generateAssistantReply;
   provider: string;
 }): Promise<void> {
-  const { authSession, provider } = args;
+  const { authSession, generateReply, provider } = args;
   if (
     !authSession.channelId ||
     !authSession.destination ||
@@ -232,6 +237,7 @@ async function resumeAuthorizedMcpTurn(args: {
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
     connectedText: "",
+    generateReply,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
@@ -444,6 +450,7 @@ export async function GET(
   request: Request,
   provider: string,
   waitUntil: WaitUntilFn,
+  options: McpOAuthCallbackOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
   const state = url.searchParams.get("state")?.trim();
@@ -477,6 +484,7 @@ export async function GET(
     waitUntil(() =>
       resumeAuthorizedMcpTurn({
         authSession,
+        generateReply: options.generateReply,
         provider,
       }),
     );

@@ -187,6 +187,7 @@ semantic conventions:
 - Sandbox execution spans should be nested under the active tool-call/request span context.
 - Sandbox egress proxy spans must be created only after Vercel OIDC, signed credential context, and provider-domain ownership have been verified.
 - Sandbox egress may continue incoming Sentry trace context only for egress domains configured through `createApp({ sandbox: { egressTracePropagationDomains } })`. Config entries may be exact domains or leading wildcard domains such as `*.sentry.io`; unconfigured domains must start a local `sandbox.egress` span without joining the incoming trace.
+- Each sandbox-backed tool refreshes egress trace headers from its current active tool span before execution. Resumed continuation slices use fresh traces and correlate across slices with `gen_ai.conversation.id`; they do not require carrying the original trace forward.
 
 ### GenAI Span Hierarchy
 

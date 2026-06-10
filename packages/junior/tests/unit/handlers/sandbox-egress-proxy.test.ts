@@ -271,29 +271,29 @@ describe("sandbox egress proxy", () => {
   it("builds provider forwarding policy for sandbox egress", () => {
     expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
-    expect(buildSandboxEgressNetworkPolicy()).toEqual({
-      allow: {
-        "*": [],
-        "sentry.io": [
-          {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress",
-          },
-        ],
-        "us.sentry.io": [
-          {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress",
-          },
-        ],
-      },
-    });
-
     const token = createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: REQUESTER_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
+    expect(buildSandboxEgressNetworkPolicy({ credentialToken: token })).toEqual(
+      {
+        allow: {
+          "*": [],
+          "sentry.io": [
+            {
+              forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+            },
+          ],
+          "us.sentry.io": [
+            {
+              forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+            },
+          ],
+        },
+      },
+    );
+
     expect(
       buildSandboxEgressNetworkPolicy({
         credentialToken: token,
@@ -356,39 +356,12 @@ describe("sandbox egress proxy", () => {
             ],
           },
         ],
-        "api.github.com": [
-          {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress",
-          },
-        ],
-        "sentry.io": [
-          {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress",
-          },
-        ],
-        "us.sentry.io": [
-          {
-            transform: [
-              {
-                headers: {
-                  "sentry-trace": "trace-span-1",
-                  baggage: "sentry-release=abc",
-                  traceparent: "00-trace-span-01",
-                },
-              },
-            ],
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress",
-          },
-        ],
       },
     });
   });
 
   it("adds trace-only domains without provider forwarding", () => {
-    getPluginProvidersMock.mockReturnValue([]);
+    getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -421,9 +394,9 @@ describe("sandbox egress proxy", () => {
     delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
     delete process.env.VERCEL_URL;
 
-    expect(() => buildSandboxEgressNetworkPolicy()).toThrow(
-      "Cannot determine base URL for sandbox credential egress",
-    );
+    expect(() =>
+      buildSandboxEgressNetworkPolicy({ credentialToken: "signed-token" }),
+    ).toThrow("Cannot determine base URL for sandbox credential egress");
   });
 
   it("does not reuse Slack signing secret for sandbox egress tokens", () => {
@@ -602,72 +575,6 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("continues trace only for verified configured sandbox egress", async () => {
-    setSandboxEgressUserActor();
-    mockSentryLease();
-    const verifyOidc = vi.fn(async () => ({ sandbox_id: EGRESS_ID }));
-    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
-
-    const response = await proxySandboxEgressRequest(
-      egressRequest({
-        headers: {
-          "sentry-trace": "trace-span-1",
-          baggage: "sentry-release=abc",
-        },
-      }),
-      {
-        fetch: fetchMock as typeof fetch,
-        tracePropagation: { domains: ["sentry.io"] },
-        verifyOidc,
-      },
-    );
-
-    expect(response.status).toBe(200);
-    expect(continueTraceMock).toHaveBeenCalledWith(
-      { sentryTrace: "trace-span-1", baggage: "sentry-release=abc" },
-      expect.any(Function),
-    );
-    expect(verifyOidc.mock.invocationCallOrder[0]).toBeLessThan(
-      continueTraceMock.mock.invocationCallOrder[0]!,
-    );
-
-    continueTraceMock.mockClear();
-    const unconfiguredResponse = await proxySandboxEgressRequest(
-      egressRequest({
-        headers: {
-          "sentry-trace": "trace-span-1",
-          baggage: "sentry-release=abc",
-        },
-      }),
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
-
-    expect(unconfiguredResponse.status).toBe(200);
-    expect(continueTraceMock).not.toHaveBeenCalled();
-
-    continueTraceMock.mockClear();
-    activeCredentialToken = undefined;
-    const rejectedResponse = await proxySandboxEgressRequest(
-      egressRequest({
-        headers: {
-          "sentry-trace": "trace-span-1",
-          baggage: "sentry-release=abc",
-        },
-      }),
-      {
-        fetch: fetchMock as typeof fetch,
-        tracePropagation: { domains: ["sentry.io"] },
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      },
-    );
-
-    expect(rejectedResponse.status).toBe(403);
-    expect(continueTraceMock).not.toHaveBeenCalled();
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {

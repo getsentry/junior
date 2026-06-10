@@ -59,7 +59,7 @@ function sandboxProxyUrl(credentialToken?: string): string {
   return new URL(path, baseUrl).toString();
 }
 
-/** Build the policy that forwards provider requests and configured trace headers. */
+/** Build the policy that forwards credentials and configured trace headers. */
 export function buildSandboxEgressNetworkPolicy(input?: {
   credentialToken?: string;
   traceConfig?: SandboxEgressTracePropagationConfig;
@@ -82,14 +82,17 @@ export function buildSandboxEgressNetworkPolicy(input?: {
     return { allow };
   }
 
-  const forwardURL =
-    entries.length > 0 ? sandboxProxyUrl(input?.credentialToken) : undefined;
+  const forwardURL = input?.credentialToken
+    ? sandboxProxyUrl(input.credentialToken)
+    : undefined;
   const domains = new Map<string, { forward: boolean }>();
   // Provider domains are proxied for credentials; configured trace-only domains
   // get transform-only rules so wildcard trace configs are not limited to plugins.
-  for (const entry of entries) {
-    for (const domain of entry.domains) {
-      domains.set(domain, { forward: true });
+  if (forwardURL) {
+    for (const entry of entries) {
+      for (const domain of entry.domains) {
+        domains.set(domain, { forward: true });
+      }
     }
   }
   if (hasTraceHeaders) {

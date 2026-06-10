@@ -65,7 +65,11 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import type { AssistantReply } from "@/chat/respond";
+import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
+
+interface OAuthCallbackOptions {
+  generateReply?: typeof generateAssistantReply;
+}
 
 /**
  * OAuth callback contract for `@sentry/junior`.
@@ -169,6 +173,7 @@ async function persistFailedOAuthReplyState(args: {
 
 async function resumeOAuthSessionRecordTurn(
   stored: OAuthStatePayload,
+  options: OAuthCallbackOptions,
 ): Promise<boolean> {
   if (
     !stored.resumeConversationId ||
@@ -254,6 +259,7 @@ async function resumeOAuthSessionRecordTurn(
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
     initialText: "",
+    generateReply: options.generateReply,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
         stored.resumeConversationId!,
@@ -458,6 +464,7 @@ async function resumeOAuthSessionRecordTurn(
 
 async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
+  options: OAuthCallbackOptions,
 ): Promise<void> {
   if (
     !stored.pendingMessage ||
@@ -488,6 +495,7 @@ async function resumePendingOAuthMessage(
     threadTs: stored.threadTs,
     messageTs: getTurnUserSlackMessageTs(latestUserMessage),
     connectedText: "",
+    generateReply: options.generateReply,
     replyContext: {
       credentialContext: {
         actor: { type: "user", userId: stored.userId },
@@ -523,6 +531,7 @@ export async function GET(
   request: Request,
   provider: string,
   waitUntil: WaitUntilFn,
+  options: OAuthCallbackOptions = {},
 ): Promise<Response> {
   const providerConfig = getPluginOAuthConfig(provider);
   if (!providerConfig) {
@@ -696,9 +705,9 @@ export async function GET(
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
     waitUntil(async () => {
       try {
-        const resumed = await resumeOAuthSessionRecordTurn(stored);
+        const resumed = await resumeOAuthSessionRecordTurn(stored, options);
         if (!resumed) {
-          await resumePendingOAuthMessage(stored);
+          await resumePendingOAuthMessage(stored, options);
         }
       } catch (error) {
         if (error instanceof ResumeTurnBusyError) {
