@@ -265,6 +265,7 @@ export async function resumeSlackTurn(
   });
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
+  let deferredPauseProvider: string | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let finalReplyDelivered = false;
@@ -377,6 +378,7 @@ export async function resumeSlackTurn(
       onAuthPause
     ) {
       deferredPauseKind = "auth";
+      deferredPauseProvider = error.metadata?.authProvider;
       deferredPauseHandler = async () => {
         await onAuthPause(error);
       };
@@ -426,7 +428,10 @@ export async function resumeSlackTurn(
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(runArgs.replyContext.requester.userId),
+          buildAuthPauseResponse(
+            runArgs.replyContext.requester.userId,
+            deferredPauseProvider,
+          ),
         );
       }
       return true;

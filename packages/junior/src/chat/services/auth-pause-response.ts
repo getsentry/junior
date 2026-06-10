@@ -1,12 +1,13 @@
-const AUTH_PAUSE_RESPONSE_BODY =
-  "need you to connect an account before I can continue — check your private link.";
-
 /**
  * Build the visible Slack thread note for an auth-paused turn.
- * When a Slack user ID is supplied the message is prefixed with a mention
- * so the requester is notified directly in the thread.
+ * Mentions the requester when a Slack user ID is supplied, and names
+ * the provider when known.
  */
-export function buildAuthPauseResponse(slackUserId?: string): string {
+export function buildAuthPauseResponse(
+  slackUserId?: string,
+  provider?: string,
+): string {
   const mention = slackUserId ? `<@${slackUserId}> ` : "";
-  return `${mention}${AUTH_PAUSE_RESPONSE_BODY}`;
+  const subject = provider ? `authorize ${provider}` : "connect an account";
+  return `${mention}I'll need you to ${subject}. I sent you a link.`;
 }

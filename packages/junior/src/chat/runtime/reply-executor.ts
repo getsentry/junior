@@ -383,11 +383,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           beforeFirstResponsePostCalled = true;
           await options.beforeFirstResponsePost?.();
         };
-        const postAuthPauseNotice = async (): Promise<void> => {
+        const postAuthPauseNotice = async (provider?: string): Promise<void> => {
           try {
             await beforeFirstResponsePost();
             await thread.post(
-              buildSlackOutputMessage(buildAuthPauseResponse(message.author.userId)),
+              buildSlackOutputMessage(
+                buildAuthPauseResponse(message.author.userId, provider),
+              ),
             );
           } catch (error) {
             logException(
@@ -1065,7 +1067,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")
           ) {
-            await postAuthPauseNotice();
+            await postAuthPauseNotice(error.metadata?.authProvider);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,
