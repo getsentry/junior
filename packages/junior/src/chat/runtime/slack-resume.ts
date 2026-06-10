@@ -266,6 +266,7 @@ export async function resumeSlackTurn(
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredPauseProvider: string | undefined;
+  let deferredPauseRequesterId: string | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let finalReplyDelivered = false;
@@ -379,6 +380,9 @@ export async function resumeSlackTurn(
     ) {
       deferredPauseKind = "auth";
       deferredPauseProvider = error.metadata?.authProvider;
+      // replyContext.requester.userId is guaranteed by the guard earlier in the try
+      // body; optional-chain here because the catch doesn't inherit that narrowing
+      deferredPauseRequesterId = runArgs.replyContext?.requester?.userId;
       deferredPauseHandler = async () => {
         await onAuthPause(error);
       };
@@ -428,10 +432,10 @@ export async function resumeSlackTurn(
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(
-            runArgs.replyContext.requester.userId,
-            deferredPauseProvider,
-          ),
+          // deferredPauseProvider is always set alongside deferredPauseKind === "auth"
+          // (sourced from AuthorizationPauseError.provider, a required constructor arg)
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          buildAuthPauseResponse(deferredPauseRequesterId, deferredPauseProvider!),
         );
       }
       return true;

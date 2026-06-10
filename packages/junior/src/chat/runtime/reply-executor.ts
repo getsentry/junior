@@ -383,7 +383,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           beforeFirstResponsePostCalled = true;
           await options.beforeFirstResponsePost?.();
         };
-        const postAuthPauseNotice = async (provider?: string): Promise<void> => {
+        const postAuthPauseNotice = async (provider: string): Promise<void> => {
           try {
             await beforeFirstResponsePost();
             await thread.post(
@@ -1067,7 +1067,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")
           ) {
-            await postAuthPauseNotice(error.metadata?.authProvider);
+            // authProvider is always present for mcp_auth_resume / plugin_auth_resume
+            // (sourced from AuthorizationPauseError.provider, a required constructor arg)
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            await postAuthPauseNotice(error.metadata!.authProvider!);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,
