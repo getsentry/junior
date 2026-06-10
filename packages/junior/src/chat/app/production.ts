@@ -105,16 +105,3 @@ export function createProductionConversationWorkOptions(options?: {
     }),
   };
 }
-
-/** Return the production queue callback options for conversation work. */
-export function getProductionConversationWorkOptions(): VercelConversationWorkCallbackOptions {
-  const runtime = getProductionSlackRuntime();
-  return {
-    queue: getVercelConversationWorkQueue(),
-    run: createSlackConversationWorker({
-      getSlackAdapter: getProductionSlackAdapter,
-      resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
-      runtime,
-    }),
-  };
-}
