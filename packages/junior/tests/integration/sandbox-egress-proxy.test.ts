@@ -318,10 +318,10 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns auth-required via canonical SandboxEgressCredentialNeededError when broker has no user token", async () => {
+  it("returns auth-required via canonical egress credential error when broker has no user token", async () => {
     // Broker-backed provider (sandbox-egress-test fixture) with no stored user OAuth token.
     // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
-    // for the missing-env-token case. This should be normalized to SandboxEgressCredentialNeededError
+    // for the missing-env-token case. This should be normalized to an egress credential error
     // before reaching the proxy, and the proxy should return the canonical auth-required 401.
     delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
 

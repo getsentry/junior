@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
-  SandboxEgressCredentialNeededError,
+  SandboxEgressCredentialError,
   sandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress-credentials";
 
@@ -50,8 +50,8 @@ function credentialContext() {
   };
 }
 
-describe("sandboxEgressCredentialLease — broker path normalization", () => {
-  it("converts broker CredentialUnavailableError to SandboxEgressCredentialNeededError with OAuth authorization", async () => {
+describe("sandboxEgressCredentialLease — credential error normalization", () => {
+  it("converts broker CredentialUnavailableError to auth_required with OAuth authorization", async () => {
     hasEgressCredentialHooks.mockReturnValue(false);
     getPluginOAuthConfig.mockReturnValue({
       clientIdEnv: "SENTRY_CLIENT_ID",
@@ -62,9 +62,17 @@ describe("sandboxEgressCredentialLease — broker path normalization", () => {
       callbackPath: "/api/oauth/callback/sentry",
     });
     issueProviderCredentialLease.mockRejectedValue(
-      new CredentialUnavailableError(PROVIDER, "No sentry credentials available."),
+      new CredentialUnavailableError(
+        PROVIDER,
+        "No sentry credentials available.",
+      ),
     );
-    const stateStub = { connect: vi.fn(), get: vi.fn(() => null), set: vi.fn(), delete: vi.fn() };
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn(() => null),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
     getStateAdapter.mockReturnValue(stateStub);
 
     const selection = brokerGrant();
@@ -72,7 +80,8 @@ describe("sandboxEgressCredentialLease — broker path normalization", () => {
       sandboxEgressCredentialLease(PROVIDER, selection, credentialContext()),
     ).rejects.toSatisfy(
       (e: unknown) =>
-        e instanceof SandboxEgressCredentialNeededError &&
+        e instanceof SandboxEgressCredentialError &&
+        e.kind === "auth_required" &&
         e.provider === PROVIDER &&
         e.grant.name === "default" &&
         e.authorization?.type === "oauth" &&
@@ -81,20 +90,33 @@ describe("sandboxEgressCredentialLease — broker path normalization", () => {
     );
   });
 
-  it("converts broker CredentialUnavailableError to SandboxEgressCredentialNeededError without authorization when provider has no OAuth config", async () => {
+  it("converts broker CredentialUnavailableError to auth_required without authorization when provider has no OAuth config", async () => {
     hasEgressCredentialHooks.mockReturnValue(false);
     getPluginOAuthConfig.mockReturnValue(undefined); // no OAuth configured
     issueProviderCredentialLease.mockRejectedValue(
-      new CredentialUnavailableError(PROVIDER, "No sentry credentials available."),
+      new CredentialUnavailableError(
+        PROVIDER,
+        "No sentry credentials available.",
+      ),
     );
-    const stateStub = { connect: vi.fn(), get: vi.fn(() => null), set: vi.fn(), delete: vi.fn() };
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn(() => null),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
     getStateAdapter.mockReturnValue(stateStub);
 
     await expect(
-      sandboxEgressCredentialLease(PROVIDER, brokerGrant(), credentialContext()),
+      sandboxEgressCredentialLease(
+        PROVIDER,
+        brokerGrant(),
+        credentialContext(),
+      ),
     ).rejects.toSatisfy(
       (e: unknown) =>
-        e instanceof SandboxEgressCredentialNeededError &&
+        e instanceof SandboxEgressCredentialError &&
+        e.kind === "auth_required" &&
         e.provider === PROVIDER &&
         e.authorization === undefined, // no OAuth → no authorization on the error
     );
@@ -105,24 +127,36 @@ describe("sandboxEgressCredentialLease — broker path normalization", () => {
     getPluginOAuthConfig.mockReturnValue(undefined);
     const tokenStoreError = new Error("token store unavailable");
     issueProviderCredentialLease.mockRejectedValue(tokenStoreError);
-    const stateStub = { connect: vi.fn(), get: vi.fn(() => null), set: vi.fn(), delete: vi.fn() };
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn(() => null),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
     getStateAdapter.mockReturnValue(stateStub);
 
     await expect(
-      sandboxEgressCredentialLease(PROVIDER, brokerGrant(), credentialContext()),
+      sandboxEgressCredentialLease(
+        PROVIDER,
+        brokerGrant(),
+        credentialContext(),
+      ),
     ).rejects.toThrow("token store unavailable");
   });
 
-  it("does not convert plugin CredentialUnavailableError (unavailable type stays as-is)", async () => {
-    // Plugin "unavailable" results still become CredentialUnavailableError
-    // in the plugin branch — they should NOT be converted to SandboxEgressCredentialNeededError.
+  it("converts plugin unavailable results to unavailable credential errors", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     getPluginOAuthConfig.mockReturnValue({ scope: "read" });
     issuePluginCredential.mockResolvedValue({
       type: "unavailable",
       message: "plugin cannot issue credential for this actor",
     });
-    const stateStub = { connect: vi.fn(), get: vi.fn(() => null), set: vi.fn(), delete: vi.fn() };
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn(() => null),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
     getStateAdapter.mockReturnValue(stateStub);
 
     const pluginSelection = {
@@ -130,11 +164,17 @@ describe("sandboxEgressCredentialLease — broker path normalization", () => {
       source: "plugin" as const,
     };
     await expect(
-      sandboxEgressCredentialLease(PROVIDER, pluginSelection, credentialContext()),
+      sandboxEgressCredentialLease(
+        PROVIDER,
+        pluginSelection,
+        credentialContext(),
+      ),
     ).rejects.toSatisfy(
       (e: unknown) =>
-        e instanceof CredentialUnavailableError &&
-        !(e instanceof SandboxEgressCredentialNeededError),
+        e instanceof SandboxEgressCredentialError &&
+        e.kind === "unavailable" &&
+        e.provider === PROVIDER &&
+        e.grant.name === "user-write",
     );
   });
 });
