@@ -133,6 +133,35 @@ describe("agent continuation scheduling", () => {
     });
   });
 
+  it("passes runner options into awaiting continuations", async () => {
+    const { resumeAwaitingSlackContinuation } =
+      await import("@/chat/runtime/agent-continue-runner");
+    const conversationId = "slack:C123:1712345.0005";
+    const generateReply = vi.fn();
+    const resumeTurn = vi.fn(async () => true);
+
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: "turn_msg_5",
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      resumeReason: "timeout",
+      piMessages: [],
+    });
+
+    await expect(
+      resumeAwaitingSlackContinuation(conversationId, {
+        generateReply,
+        resumeTurn,
+      }),
+    ).resolves.toBe(true);
+
+    expect(resumeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ generateReply }),
+    );
+  });
+
   it("fails stale continuations skipped during resume startup", async () => {
     const { resumeAwaitingSlackContinuation } =
       await import("@/chat/runtime/agent-continue-runner");

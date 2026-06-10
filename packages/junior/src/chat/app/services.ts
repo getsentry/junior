@@ -52,6 +52,22 @@ export interface JuniorRuntimeServiceOverrides {
   visionContext?: Partial<VisionContextDeps>;
 }
 
+/** Apply app-owned sandbox egress trace config unless a turn overrides it. */
+export function withSandboxTracePropagation(
+  generateReply: typeof generateAssistantReplyImpl,
+  tracePropagation?: SandboxEgressTracePropagationConfig,
+): typeof generateAssistantReplyImpl {
+  return async (messageText: string, context?: ReplyRequestContext) =>
+    await generateReply(messageText, {
+      ...context,
+      sandbox: {
+        ...context?.sandbox,
+        tracePropagation:
+          context?.sandbox?.tracePropagation ?? tracePropagation,
+      },
+    });
+}
+
 export function createJuniorRuntimeServices(
   overrides: JuniorRuntimeServiceOverrides = {},
 ): JuniorRuntimeServices {
@@ -79,16 +95,10 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
       generateAssistantReply:
         overrides.replyExecutor?.generateAssistantReply ??
-        (async (messageText: string, context?: ReplyRequestContext) =>
-          await generateAssistantReplyImpl(messageText, {
-            ...context,
-            sandbox: {
-              ...context?.sandbox,
-              tracePropagation:
-                context?.sandbox?.tracePropagation ??
-                overrides.sandbox?.tracePropagation,
-            },
-          })),
+        withSandboxTracePropagation(
+          generateAssistantReplyImpl,
+          overrides.sandbox?.tracePropagation,
+        ),
       getAwaitingAgentContinueRequest:
         overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
         getAwaitingAgentContinueRequest,

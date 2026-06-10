@@ -368,6 +368,7 @@ export async function continueSlackAgentRun(
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function resumeAwaitingSlackContinuation(
   conversationId: string,
+  options: AgentContinueRunnerOptions = {},
 ): Promise<boolean> {
   const summaries =
     await listAgentTurnSessionSummariesForConversation(conversationId);
@@ -391,7 +392,7 @@ export async function resumeAwaitingSlackContinuation(
       continue;
     }
 
-    if (await continueSlackAgentRunWithLockRetry(request)) {
+    if (await continueSlackAgentRunWithLockRetry(request, options)) {
       return true;
     }
 

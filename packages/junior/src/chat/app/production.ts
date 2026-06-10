@@ -1,5 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { withSandboxTracePropagation } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
   getSlackBotToken,
@@ -15,6 +16,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { generateAssistantReply } from "@/chat/respond";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -92,7 +94,13 @@ export function createProductionConversationWorkOptions(options?: {
     queue: getVercelConversationWorkQueue(),
     run: createSlackConversationWorker({
       getSlackAdapter: getProductionSlackAdapter,
-      resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
+      resumeAwaitingContinuation: async (conversationId) =>
+        await resumeAwaitingSlackContinuation(conversationId, {
+          generateReply: withSandboxTracePropagation(
+            generateAssistantReply,
+            options?.services?.sandbox?.tracePropagation,
+          ),
+        }),
       runtime,
     }),
   };
