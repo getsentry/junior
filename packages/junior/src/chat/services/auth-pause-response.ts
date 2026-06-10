@@ -1,5 +1,5 @@
 const AUTH_PAUSE_RESPONSE_BODY =
-  "I need authorization to continue. Check your private link to connect.";
+  "need you to connect an account before I can continue — check your private link.";
 
 /**
  * Build the visible Slack thread note for an auth-paused turn.
