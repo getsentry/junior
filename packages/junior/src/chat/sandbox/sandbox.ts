@@ -209,6 +209,17 @@ export function createSandboxExecutor(options?: {
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
+  const withSandboxToolSpan = <T>(
+    name: string,
+    op: string,
+    attributes: Record<string, unknown>,
+    callback: () => Promise<T>,
+  ): Promise<T> =>
+    withSandboxSpan(name, op, attributes, async () => {
+      await sessionManager.refreshNetworkPolicy(getTracePropagationHeaders());
+      return await callback();
+    });
+
   const logSandboxBootRequest = (
     trigger: string,
     details: Record<string, string | number> = {},
@@ -241,7 +252,7 @@ export function createSandboxExecutor(options?: {
     const executeBash = (await sessionManager.ensureToolExecutors()).bash;
     const activeEgressId = sessionManager.getSandboxEgressId();
     await clearSandboxEgressSignals(activeEgressId);
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "bash",
       "process.exec",
       {
@@ -249,9 +260,6 @@ export function createSandboxExecutor(options?: {
       },
       async () => {
         try {
-          await sessionManager.refreshNetworkPolicy(
-            getTracePropagationHeaders(),
-          );
           const response = await executeBash({
             command,
             ...(env ? { env } : {}),
@@ -356,7 +364,7 @@ export function createSandboxExecutor(options?: {
     });
     const executeReadFile = (await sessionManager.ensureToolExecutors())
       .readFile;
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "sandbox.readFile",
       "sandbox.fs.read",
       {
@@ -407,7 +415,7 @@ export function createSandboxExecutor(options?: {
     });
     const executeWriteFile = (await sessionManager.ensureToolExecutors())
       .writeFile;
-    await withSandboxSpan(
+    await withSandboxToolSpan(
       "sandbox.writeFile",
       "sandbox.fs.write",
       {
@@ -448,7 +456,7 @@ export function createSandboxExecutor(options?: {
       "file.path": filePath,
     });
     const executors = await sessionManager.ensureToolExecutors();
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "sandbox.editFile",
       "sandbox.fs.edit",
       {
@@ -481,7 +489,7 @@ export function createSandboxExecutor(options?: {
     const contextLines = positiveInteger(rawInput.context);
     const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "sandbox.grep",
       "sandbox.fs.search",
       {
@@ -521,7 +529,7 @@ export function createSandboxExecutor(options?: {
     logSandboxBootRequest("tool.findFiles");
     const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "sandbox.findFiles",
       "sandbox.fs.find",
       {
@@ -548,7 +556,7 @@ export function createSandboxExecutor(options?: {
     logSandboxBootRequest("tool.listDir");
     const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
-    const result = await withSandboxSpan(
+    const result = await withSandboxToolSpan(
       "sandbox.listDir",
       "sandbox.fs.list",
       {},

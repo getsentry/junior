@@ -283,7 +283,7 @@ export function createSandboxSessionManager(options?: {
     preparedSandboxId = targetSandbox.sandboxId;
   };
 
-  const refreshNetworkPolicy = async (
+  const applyNetworkPolicy = async (
     targetSandbox: SandboxInstance,
     traceHeaders?: TracePropagationHeaders,
   ): Promise<void> => {
@@ -501,7 +501,7 @@ export function createSandboxSessionManager(options?: {
     }
 
     try {
-      await refreshNetworkPolicy(createdSandbox);
+      await applyNetworkPolicy(createdSandbox);
       await prepareSandbox(createdSandbox);
     } catch (error) {
       return failSetup(error);
@@ -559,7 +559,7 @@ export function createSandboxSessionManager(options?: {
 
     try {
       await ensureSandboxReachable(cachedSandbox, "memory");
-      await refreshNetworkPolicy(cachedSandbox);
+      await applyNetworkPolicy(cachedSandbox);
       await prepareSandbox(cachedSandbox);
       return cachedSandbox;
     } catch (error) {
@@ -609,7 +609,7 @@ export function createSandboxSessionManager(options?: {
     }
 
     try {
-      await refreshNetworkPolicy(hintedSandbox);
+      await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
       return await rememberSandbox(hintedSandbox);
     } catch (error) {
@@ -893,7 +893,7 @@ export function createSandboxSessionManager(options?: {
       if (!activeSandbox) {
         return;
       }
-      await refreshNetworkPolicy(activeSandbox, traceHeaders);
+      await applyNetworkPolicy(activeSandbox, traceHeaders);
     },
     async dispose() {
       const activeSandbox = sandbox;
