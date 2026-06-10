@@ -22,6 +22,8 @@ export function createBashTool() {
       },
       { additionalProperties: false },
     ),
+    // Bash is sequential so sandbox egress auth signals stay command-scoped.
+    executionMode: "sequential",
     execute: async () => {
       throw new Error("bash can only run when sandbox execution is enabled.");
     },

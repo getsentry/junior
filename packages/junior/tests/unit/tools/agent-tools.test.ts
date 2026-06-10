@@ -3,6 +3,7 @@ import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orche
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
+import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 
 const { handleToolExecutionError } = vi.hoisted(() => ({
@@ -255,6 +256,19 @@ describe("createAgentTools", () => {
 
     expect(editTool?.prepareArguments).toBe(prepareArguments);
     expect(editTool?.executionMode).toBe("sequential");
+  });
+
+  it("marks sandbox bash as sequential", () => {
+    const sandbox = new SkillSandbox([], []);
+    const [bashTool] = createAgentTools(
+      {
+        bash: createBashTool(),
+      },
+      sandbox,
+      {},
+    );
+
+    expect(bashTool?.executionMode).toBe("sequential");
   });
 
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {

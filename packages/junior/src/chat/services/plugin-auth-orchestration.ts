@@ -74,6 +74,7 @@ export interface PluginAuthOrchestration {
   getPendingPause: () => PluginAuthorizationPauseError | undefined;
 }
 
+/** Normalize a sandbox egress auth signal and preserve host failure messages. */
 function pluginAuthRequiredSignal(details: unknown):
   | {
       authorization?: {
@@ -86,6 +87,7 @@ function pluginAuthRequiredSignal(details: unknown):
         name: string;
         reason?: string;
       };
+      message?: string;
       provider: string;
     }
   | undefined {
@@ -100,6 +102,7 @@ function pluginAuthRequiredSignal(details: unknown):
   return {
     provider: parsedSignal.provider,
     grant: parsedSignal.grant,
+    ...(parsedSignal.message ? { message: parsedSignal.message } : {}),
     ...(parsedSignal.authorization
       ? { authorization: parsedSignal.authorization }
       : {}),
@@ -226,27 +229,30 @@ export function createPluginAuthOrchestration(
 
       const { provider, authorization } = signal;
 
+      if (!authorization) {
+        throw new PluginCredentialFailureError(
+          provider,
+          signal.message ??
+            `${formatProviderLabel(provider)} credentials are required but no OAuth flow is available for this provider.`,
+        );
+      }
+
       if (!deps.requesterId || !deps.userTokenStore) {
         if (deps.authorizationFlowMode === "disabled") {
           throw new AuthorizationFlowDisabledError("plugin", provider);
         }
         throw new PluginCredentialFailureError(
           provider,
-          `${formatProviderLabel(provider)} credentials are required. Please connect your ${formatProviderLabel(provider)} account and try again.`,
-        );
-      }
-
-      if (authorization?.type !== "oauth") {
-        throw new PluginCredentialFailureError(
-          provider,
-          `${formatProviderLabel(provider)} credentials are required but no OAuth flow is available for this provider.`,
+          signal.message ??
+            `${formatProviderLabel(provider)} credentials are required. Please connect your ${formatProviderLabel(provider)} account and try again.`,
         );
       }
 
       if (!getPluginOAuthConfig(authorization.provider)) {
         throw new PluginCredentialFailureError(
           provider,
-          `${formatProviderLabel(provider)} credentials are required but the provider is not configured for OAuth.`,
+          signal.message ??
+            `${formatProviderLabel(provider)} credentials are required but the provider is not configured for OAuth.`,
         );
       }
 

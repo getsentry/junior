@@ -65,6 +65,20 @@ describe("createPluginAuthOrchestration", () => {
     unlinkProvider.mockReset();
   });
 
+  async function expectPluginCredentialFailure(
+    promise: Promise<unknown>,
+    expected: { message: string; provider: string },
+  ): Promise<void> {
+    let caught: unknown;
+    try {
+      await promise;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PluginCredentialFailureError);
+    expect(caught).toMatchObject(expected);
+  }
+
   it("starts oauth for sentry when auth_required signal is present", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,
@@ -260,7 +274,7 @@ describe("createPluginAuthOrchestration", () => {
       vi.fn(),
     );
 
-    await expect(
+    await expectPluginCredentialFailure(
       orchestration.maybeHandleAuthSignal({
         auth_required: {
           provider: "github",
@@ -269,7 +283,61 @@ describe("createPluginAuthOrchestration", () => {
           // no authorization field
         },
       }),
-    ).rejects.toBeInstanceOf(PluginCredentialFailureError);
+      {
+        provider: "github",
+        message:
+          "github credentials are required but no OAuth flow is available for this provider.",
+      },
+    );
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+  });
+
+  it("preserves auth signal messages when no oauth authorization is available", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "inspect a repo",
+        userTokenStore: tokenStore(),
+      },
+      vi.fn(),
+    );
+
+    await expectPluginCredentialFailure(
+      orchestration.maybeHandleAuthSignal({
+        auth_required: {
+          provider: "github",
+          grant: { name: "installation-read", access: "read" as const },
+          createdAtMs: Date.now(),
+          message: "Missing GITHUB_APP_ID",
+        },
+      }),
+      { provider: "github", message: "Missing GITHUB_APP_ID" },
+    );
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+  });
+
+  it("preserves no-oauth auth signal messages when authorization flow is disabled", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        userMessage: "<scheduled-task-run />",
+        authorizationFlowMode: "disabled",
+      },
+      vi.fn(),
+    );
+
+    await expectPluginCredentialFailure(
+      orchestration.maybeHandleAuthSignal({
+        auth_required: {
+          provider: "github",
+          grant: { name: "installation-read", access: "read" as const },
+          createdAtMs: Date.now(),
+          message: "Missing GITHUB_APP_ID",
+        },
+      }),
+      { provider: "github", message: "Missing GITHUB_APP_ID" },
+    );
 
     expect(startOAuthFlow).not.toHaveBeenCalled();
   });
