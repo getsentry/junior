@@ -69,31 +69,50 @@ export function buildSandboxEgressNetworkPolicy(input?: {
     "*": [],
   };
   const entries = providerEntries();
-  if (entries.length === 0) {
-    return { allow };
-  }
-
-  const forwardURL = sandboxProxyUrl(input?.credentialToken);
   const traceHeaders = Object.fromEntries(
     Object.entries(input?.traceHeaders ?? {}).filter(
       ([, value]) => typeof value === "string" && value.trim(),
     ),
   );
+  const hasTraceHeaders = Object.keys(traceHeaders).length > 0;
+  if (
+    entries.length === 0 &&
+    (!hasTraceHeaders || (input?.traceConfig?.domains ?? []).length === 0)
+  ) {
+    return { allow };
+  }
+
+  const forwardURL =
+    entries.length > 0 ? sandboxProxyUrl(input?.credentialToken) : undefined;
+  const domains = new Map<string, { forward: boolean }>();
+  // Provider domains are proxied for credentials; configured trace-only domains
+  // get transform-only rules so wildcard trace configs are not limited to plugins.
   for (const entry of entries) {
     for (const domain of entry.domains) {
-      const shouldPropagateTrace = shouldPropagateSandboxEgressTrace(
-        domain,
-        input?.traceConfig,
-      );
-      allow[domain] = [
-        {
-          ...(shouldPropagateTrace && Object.keys(traceHeaders).length > 0
-            ? { transform: [{ headers: traceHeaders }] }
-            : {}),
-          forwardURL,
-        },
-      ];
+      domains.set(domain, { forward: true });
     }
+  }
+  if (hasTraceHeaders) {
+    for (const domain of input?.traceConfig?.domains ?? []) {
+      domains.set(domain, { forward: domains.get(domain)?.forward ?? false });
+    }
+  }
+
+  for (const [domain, policy] of [...domains.entries()].sort(
+    ([left], [right]) => left.localeCompare(right),
+  )) {
+    const shouldPropagateTrace = shouldPropagateSandboxEgressTrace(
+      domain,
+      input?.traceConfig,
+    );
+    allow[domain] = [
+      {
+        ...(shouldPropagateTrace && hasTraceHeaders
+          ? { transform: [{ headers: traceHeaders }] }
+          : {}),
+        ...(policy.forward && forwardURL ? { forwardURL } : {}),
+      },
+    ];
   }
 
   return { allow };

@@ -343,6 +343,19 @@ describe("sandbox egress proxy", () => {
       }),
     ).toMatchObject({
       allow: {
+        "*.sentry.io": [
+          {
+            transform: [
+              {
+                headers: {
+                  "sentry-trace": "trace-span-1",
+                  baggage: "sentry-release=abc",
+                  traceparent: "00-trace-span-01",
+                },
+              },
+            ],
+          },
+        ],
         "api.github.com": [
           {
             forwardURL:
@@ -368,6 +381,34 @@ describe("sandbox egress proxy", () => {
             ],
             forwardURL:
               "https://junior.example.com/api/internal/sandbox-egress",
+          },
+        ],
+      },
+    });
+  });
+
+  it("adds trace-only domains without provider forwarding", () => {
+    getPluginProvidersMock.mockReturnValue([]);
+
+    expect(
+      buildSandboxEgressNetworkPolicy({
+        traceConfig: { domains: ["*.sentry.io"] },
+        traceHeaders: {
+          "sentry-trace": "trace-span-1",
+        },
+      }),
+    ).toEqual({
+      allow: {
+        "*": [],
+        "*.sentry.io": [
+          {
+            transform: [
+              {
+                headers: {
+                  "sentry-trace": "trace-span-1",
+                },
+              },
+            ],
           },
         ],
       },

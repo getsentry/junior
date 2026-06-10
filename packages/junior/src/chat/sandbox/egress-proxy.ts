@@ -703,6 +703,7 @@ async function proxySandboxEgressRequestImpl(
   );
 }
 
+/** Proxy egress only after sandbox identity and signed credential context pass. */
 async function proxySandboxEgressVerifiedRequest(input: {
   activeEgressId: string;
   credentialContext: SandboxEgressCredentialContext;
