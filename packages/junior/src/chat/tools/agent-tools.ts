@@ -104,11 +104,6 @@ export function createAgentTools(
               : { input: parsed, env: {} };
             const toolInput = beforeTool.input;
             onToolCall?.(toolName, toolInput);
-            const bashCommand =
-              toolName === "bash" && typeof toolInput.command === "string"
-                ? toolInput.command.trim()
-                : "";
-
             const sandboxInput = buildSandboxInput(toolName, toolInput);
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const result = isSandbox
@@ -127,12 +122,8 @@ export function createAgentTools(
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);
-            if (bashCommand && pluginAuthOrchestration) {
-              await pluginAuthOrchestration.handleCommandFailure({
-                activeSkill: sandbox.getActiveSkill(),
-                command: bashCommand,
-                details: normalized.details,
-              });
+            if (isSandbox && pluginAuthOrchestration) {
+              await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
             }
             const resultAttributeValue =
               normalized.details &&
