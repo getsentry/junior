@@ -10,6 +10,7 @@ const {
   getPluginOAuthConfigMock,
   getPluginProvidersMock,
   issueProviderCredentialLeaseMock,
+  loggerMock,
   startSpanMock,
 } = vi.hoisted(() => ({
   continueTraceMock: vi.fn(
@@ -20,6 +21,14 @@ const {
   getPluginOAuthConfigMock: vi.fn(),
   getPluginProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
+  loggerMock: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+  },
   startSpanMock: vi.fn(
     async (_options: unknown, callback: () => Promise<unknown>) =>
       await callback(),
@@ -53,6 +62,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 vi.mock("@/chat/sentry", () => ({
   continueTrace: continueTraceMock,
   getActiveSpan: () => undefined,
+  logger: loggerMock,
   spanToJSON: () => ({}),
   startSpan: startSpanMock,
 }));
