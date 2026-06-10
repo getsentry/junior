@@ -70,6 +70,7 @@ function buildPlugin(
     skillsDir: `/tmp/plugins/${name}/skills`,
     manifest: {
       name,
+      displayName: "Demo",
       description: "Demo MCP plugin",
       capabilities: [],
       configKeys: [],

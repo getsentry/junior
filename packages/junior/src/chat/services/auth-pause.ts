@@ -10,10 +10,12 @@ export class AuthorizationPauseError extends Error {
   readonly disposition: AuthorizationPauseDisposition;
   readonly kind: AuthorizationPauseKind;
   readonly provider: string;
+  readonly providerDisplayName: string;
 
   constructor(
     kind: AuthorizationPauseKind,
     provider: string,
+    providerDisplayName: string,
     disposition: AuthorizationPauseDisposition,
   ) {
     super(
@@ -28,6 +30,7 @@ export class AuthorizationPauseError extends Error {
     this.disposition = disposition;
     this.kind = kind;
     this.provider = provider;
+    this.providerDisplayName = providerDisplayName;
   }
 }
 

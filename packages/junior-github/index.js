@@ -990,6 +990,7 @@ export function githubPlugin(options = {}) {
     packageName: "@sentry/junior-github",
     manifest: {
       name: "github",
+      displayName: "GitHub",
       description:
         "GitHub issue, pull request, and repository workflows via GitHub App",
       ...(appCapabilities ? { capabilities: appCapabilities } : {}),

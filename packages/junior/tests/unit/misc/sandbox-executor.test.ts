@@ -39,6 +39,7 @@ vi.mock("@/chat/plugins/registry", () => ({
     {
       manifest: {
         name: "sentry",
+        displayName: "Sentry",
         description: "Sentry",
         capabilities: ["sentry.api"],
         configKeys: [],

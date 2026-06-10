@@ -39,6 +39,7 @@ describe("check cli", () => {
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
       [
         "name: demo",
+        "display-name: Demo",
         "description: Demo plugin",
         "capabilities:",
         "  - issues.read",
@@ -63,6 +64,7 @@ describe("check cli", () => {
       [
         "---",
         "name: demo-helper",
+        "display-name: Demo Helper",
         "description: Help with demo tasks.",
         "---",
         "",
@@ -75,6 +77,7 @@ describe("check cli", () => {
       [
         "---",
         "name: repo-local",
+        "display-name: Repo Local",
         "description: Help with repo-local tasks.",
         "---",
         "",
@@ -149,6 +152,7 @@ describe("check cli", () => {
       path.join(packageRoot, "plugin.yaml"),
       [
         "name: demo",
+        "display-name: Demo",
         "description: Demo packaged plugin",
         "capabilities:",
         "  - issues.read",
@@ -160,6 +164,7 @@ describe("check cli", () => {
       [
         "---",
         "name: demo-helper",
+        "display-name: Demo Helper",
         "description: Help with packaged demo tasks.",
         "---",
         "",
@@ -436,6 +441,7 @@ describe("check cli", () => {
       path.join(packageRoot, "plugin.yaml"),
       [
         "name: demo",
+        "display-name: Demo",
         "description: Demo packaged plugin",
         "config-keys:",
         "  - org",
@@ -514,6 +520,7 @@ describe("check cli", () => {
         '    name: "github",',
         "    manifest: {",
         '      name: "github",',
+        '      displayName: "GitHub",',
         '      description: "GitHub plugin",',
         '      configKeys: ["org", "repo"],',
         "    },",
@@ -538,6 +545,7 @@ describe("check cli", () => {
       path.join(sentryPackageRoot, "plugin.yaml"),
       [
         "name: sentry",
+        "display-name: Sentry",
         "description: Sentry plugin",
         "config-keys:",
         "  - org",
@@ -664,6 +672,7 @@ describe("check cli", () => {
       [
         "---",
         "name: shared-skill",
+        "display-name: Shared Skill",
         "description: Shared skill.",
         "---",
         "",
@@ -673,7 +682,9 @@ describe("check cli", () => {
     );
     writeFile(
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
-      ["name: demo", "description: Demo plugin", ""].join("\n"),
+      ["name: demo", "display-name: Demo", "description: Demo plugin", ""].join(
+        "\n",
+      ),
     );
     writeFile(
       path.join(
@@ -688,6 +699,7 @@ describe("check cli", () => {
       [
         "---",
         "name: shared-skill",
+        "display-name: Shared Skill",
         "description: Shared skill again.",
         "---",
         "",
@@ -717,13 +729,16 @@ describe("check cli", () => {
     writeAppFiles(repoRoot);
     writeFile(
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
-      ["name: demo", "description: Demo plugin", ""].join("\n"),
+      ["name: demo", "display-name: Demo", "description: Demo plugin", ""].join(
+        "\n",
+      ),
     );
     writeFile(
       path.join(repoRoot, "app", "skills", "repo-local", "SKILL.md"),
       [
         "---",
         "name: repo-local",
+        "display-name: Repo Local",
         "description: Help with repo-local tasks.",
         "uses-config: demo.repo",
         "---",
@@ -751,6 +766,7 @@ describe("check cli", () => {
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
       [
         "name: demo",
+        "display-name: Demo",
         "description: Demo plugin",
         "mcp:",
         "  url: https://mcp.example.test/mcp",
@@ -772,6 +788,7 @@ describe("check cli", () => {
       [
         "---",
         "name: demo-helper",
+        "display-name: Demo Helper",
         "description: Help with demo tasks.",
         "---",
         "",
@@ -808,6 +825,7 @@ describe("check cli", () => {
         path.join(repoRoot, "app", "plugins", pluginName, "plugin.yaml"),
         [
           `name: ${pluginName}`,
+          `display-name: ${pluginName === "alpha" ? "Alpha" : "Beta"}`,
           `${pluginName === "alpha" ? "description: Alpha" : "description: Beta"} plugin`,
           "credentials:",
           "  type: oauth-bearer",

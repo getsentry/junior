@@ -14,6 +14,7 @@ vi.mock("@/chat/plugins/registry", () => ({
     {
       manifest: {
         name: "sentry",
+        displayName: "Sentry",
         description: "Sentry provider",
         credentials: {
           type: "oauth-bearer",
@@ -23,6 +24,7 @@ vi.mock("@/chat/plugins/registry", () => ({
     {
       manifest: {
         name: "notion",
+        displayName: "Notion",
         description: "Notion provider",
         mcp: {
           transport: "http",
@@ -33,6 +35,7 @@ vi.mock("@/chat/plugins/registry", () => ({
     {
       manifest: {
         name: "github",
+        displayName: "GitHub",
         description: "GitHub provider",
         domains: ["api.github.com", "github.com"],
         oauth: {
@@ -46,6 +49,7 @@ vi.mock("@/chat/plugins/registry", () => ({
     {
       manifest: {
         name: "example-bundle",
+        displayName: "Example Bundle",
         description: "Bundle-only plugin",
       },
     },

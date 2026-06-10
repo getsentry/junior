@@ -40,6 +40,7 @@ describe("inline plugin manifests", () => {
       expect(() =>
         parse({
           name: `bad-${name}`,
+          displayName: `Bad ${name}`,
           description: "Bad inline manifest",
           ...patch,
         }),
@@ -51,6 +52,7 @@ describe("inline plugin manifests", () => {
     expect(() =>
       parse({
         name: "bad-capability-token",
+        displayName: "Bad Capability Token",
         description: "Bad inline manifest",
         capabilities: [123],
       }),
@@ -59,6 +61,7 @@ describe("inline plugin manifests", () => {
     expect(() =>
       parse({
         name: "bad-target-token",
+        displayName: "Bad Target Token",
         description: "Bad inline manifest",
         configKeys: ["repo"],
         target: {
@@ -66,12 +69,13 @@ describe("inline plugin manifests", () => {
           configKey: 123,
         },
       }),
-      ).toThrow("Plugin bad-target-token target.config-key Invalid input");
+    ).toThrow("Plugin bad-target-token target.config-key Invalid input");
   });
 
   it("accepts camelCase command env exposure declarations", () => {
     const manifest = parse({
       name: "safe-env",
+      displayName: "Safe Env",
       description: "Safe sandbox env",
       envVars: {
         EXAMPLE_SAFE_TOKEN: { exposeToCommandEnv: true },

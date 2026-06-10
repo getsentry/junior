@@ -83,7 +83,9 @@ describe("plugin registry", () => {
     await fs.mkdir(skillsRoot, { recursive: true });
     await fs.writeFile(
       path.join(pluginRoot, "plugin.yaml"),
-      ["name: demo", "description: Demo plugin"].join("\n"),
+      ["name: demo", "display-name: Demo", "description: Demo plugin"].join(
+        "\n",
+      ),
       "utf8",
     );
 

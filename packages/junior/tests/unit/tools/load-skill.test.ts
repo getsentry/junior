@@ -43,6 +43,7 @@ describe("loadSkill tool", () => {
       path.join(pluginDir, "plugin.yaml"),
       [
         "name: sentry",
+        "display-name: Sentry",
         "description: Sentry issue tracking",
         "capabilities:",
         "  - api",
@@ -102,6 +103,7 @@ describe("loadSkill tool", () => {
       path.join(pluginDir, "plugin.yaml"),
       [
         "name: linear",
+        "display-name: Linear",
         "description: Linear issues",
         "mcp:",
         "  url: https://mcp.linear.example.test/mcp",

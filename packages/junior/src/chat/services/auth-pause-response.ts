@@ -1,7 +1,8 @@
-const AUTH_PAUSE_RESPONSE =
-  "I need authorization to continue. Check your private link to connect.";
-
 /** Build the visible Slack thread note for an auth-paused turn. */
-export function buildAuthPauseResponse(): string {
-  return AUTH_PAUSE_RESPONSE;
+export function buildAuthPauseResponse(
+  slackUserId: string | undefined,
+  providerDisplayName: string,
+): string {
+  const mention = slackUserId ? `<@${slackUserId}> ` : "";
+  return `${mention}I'll need you to authorize ${providerDisplayName}. I sent you a link.`;
 }

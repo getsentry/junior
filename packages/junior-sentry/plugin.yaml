@@ -1,4 +1,5 @@
 name: sentry
+display-name: Sentry
 description: Sentry issue tracking
 
 capabilities:

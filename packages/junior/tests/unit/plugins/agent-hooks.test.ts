@@ -78,6 +78,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -111,6 +112,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -142,6 +144,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -178,6 +181,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -213,6 +217,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -243,6 +248,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -273,6 +279,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -308,6 +315,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -332,6 +340,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -368,6 +377,7 @@ describe("agent plugin hooks", () => {
         name: "agent-demo",
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -383,6 +393,7 @@ describe("agent plugin hooks", () => {
         name: "broken-demo",
         manifest: {
           name: "broken-demo",
+          displayName: "Broken Demo",
           description: "Broken demo",
         },
         hooks: {
@@ -423,6 +434,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
+          displayName: "Agent Demo",
           description: "Agent demo",
         },
         hooks: {
@@ -501,7 +513,11 @@ describe("getAgentPluginTools channel resolution", () => {
     let captured: ToolRegistrationHookContext | undefined;
     const previous = setAgentPlugins([
       defineJuniorPlugin({
-        manifest: { name: "capture", description: "Capture plugin context" },
+        manifest: {
+          name: "capture",
+          displayName: "Capture",
+          description: "Capture plugin context",
+        },
         hooks: {
           tools(ctx) {
             captured = ctx;

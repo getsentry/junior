@@ -47,6 +47,7 @@ describe("skills", () => {
     await writeSkillFile(tempRoot, "brief", [
       "---",
       "name: brief",
+      "display-name: Brief",
       "description: Candidate brief",
       "---",
       "",
@@ -55,6 +56,7 @@ describe("skills", () => {
     await writeSkillFile(tempRoot, "sum", [
       "---",
       "name: sum",
+      "display-name: Sum",
       "description: Summarize",
       "---",
       "",
@@ -148,6 +150,7 @@ describe("skills", () => {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
         "---",
         "name: tmp-valid-metadata",
+        "display-name: Tmp Valid Metadata",
         "description: Valid metadata skill.",
         "---",
         "",
@@ -156,6 +159,7 @@ describe("skills", () => {
       await writeSkillFile(tempRoot, "tmp-invalid-capability", [
         "---",
         "name: tmp-invalid-capability",
+        "display-name: Tmp Invalid Capability",
         "description: Invalid capability metadata skill.",
         "requires-capabilities: github.unknown.read",
         "---",
@@ -195,6 +199,7 @@ describe("skills", () => {
         path.join(pluginRoot, "plugin.yaml"),
         [
           "name: demo",
+          "display-name: Demo",
           "description: Demo plugin",
           "capabilities:",
           "  - read",
@@ -211,6 +216,7 @@ describe("skills", () => {
         [
           "---",
           "name: demo-connect",
+          "display-name: Demo Connect",
           "description: Demo plugin skill",
           "allowed-tools: bash",
           "---",
@@ -257,6 +263,7 @@ describe("skills", () => {
         path.join(pluginRoot, "plugin.yaml"),
         [
           "name: demo",
+          "display-name: Demo",
           "description: Demo plugin",
           "config-keys:",
           "  - team",
@@ -269,6 +276,7 @@ describe("skills", () => {
         [
           "---",
           "name: demo-defaults",
+          "display-name: Demo Defaults",
           "description: Demo defaults skill",
           "---",
           "",
@@ -310,6 +318,7 @@ describe("skills", () => {
         path.join(pluginRoot, "plugin.yaml"),
         [
           "name: demo",
+          "display-name: Demo",
           "description: Demo plugin",
           "config-keys:",
           "  - repo",
@@ -333,6 +342,7 @@ describe("skills", () => {
         [
           "---",
           "name: demo-tool",
+          "display-name: Demo Tool",
           "description: Demo tool skill",
           "allowed-tools: bash",
           "---",
@@ -386,6 +396,7 @@ describe("skills", () => {
         path.join(pluginRoot, "plugin.yaml"),
         [
           "name: demo",
+          "display-name: Demo",
           "description: Demo plugin",
           "config-keys:",
           "  - repo",
@@ -397,6 +408,7 @@ describe("skills", () => {
         [
           "---",
           "name: demo-tool",
+          "display-name: Demo Tool",
           "description: Demo tool skill",
           "uses-config: demo.repo",
           "---",
@@ -435,6 +447,7 @@ describe("skills", () => {
         path.join(pluginRoot, "plugin.yaml"),
         [
           "name: demo",
+          "display-name: Demo",
           "description: Demo plugin",
           "config-keys:",
           "  - repo",
@@ -446,6 +459,7 @@ describe("skills", () => {
         [
           "---",
           "name: demo-tool",
+          "display-name: Demo Tool",
           "description: Demo tool skill",
           "---",
           "",
@@ -468,6 +482,7 @@ describe("skills", () => {
           [
             "---",
             "name: demo-tool",
+            "display-name: Demo Tool",
             "description: Demo tool skill",
             "uses-config: demo.repo",
             "---",
@@ -499,6 +514,7 @@ describe("skills", () => {
       await writeSkillFile(tempRoot, "demo-tool", [
         "---",
         "name: demo-tool",
+        "display-name: Demo Tool",
         "description: Demo tool skill",
         "---",
         "",

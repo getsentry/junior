@@ -96,6 +96,7 @@ function sentryPlugin() {
   return {
     manifest: {
       name: "sentry",
+      displayName: "Sentry",
       description: "Sentry",
       capabilities: ["sentry.api"],
       configKeys: [],
@@ -120,6 +121,7 @@ function githubPlugin() {
   return {
     manifest: {
       name: "github",
+      displayName: "GitHub",
       description: "GitHub",
       capabilities: ["github.api"],
       configKeys: [],
@@ -137,6 +139,7 @@ function headerOnlyPlugin() {
   return {
     manifest: {
       name: "header-only",
+      displayName: "Header Only",
       description: "Header-only",
       capabilities: ["header-only.api"],
       configKeys: [],

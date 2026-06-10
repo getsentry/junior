@@ -1,4 +1,5 @@
 name: eval-auth
+display-name: Eval Auth
 description: Eval-only MCP OAuth auth-resume fixture
 
 mcp:

@@ -1,4 +1,5 @@
 name: vercel
+display-name: Vercel
 description: Query Vercel deployments and logs with the Vercel CLI
 
 config-keys:

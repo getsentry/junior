@@ -30,9 +30,10 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
     provider: string,
+    providerDisplayName: string,
     disposition: "link_already_sent" | "link_sent",
   ) {
-    super("mcp", provider, disposition);
+    super("mcp", provider, providerDisplayName, disposition);
   }
 }
 
@@ -142,13 +143,14 @@ export function createMcpAuthOrchestration(
       provider,
       requesterId: deps.requesterId,
     });
+    const providerLabel = formatProviderLabel(provider);
 
     if (!reusingPendingLink) {
       const delivery = await deliverPrivateMessage({
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         userId: authSession.userId,
-        text: `<${authSession.authorizationUrl}|Click here to link your ${formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
+        text: `<${authSession.authorizationUrl}|Click here to link your ${providerLabel} MCP access>. Once you've authorized, this thread will continue automatically.`,
       });
       if (!delivery) {
         throw new Error(
@@ -192,6 +194,7 @@ export function createMcpAuthOrchestration(
     }
     pendingPause = new McpAuthorizationPauseError(
       provider,
+      providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
     );
     abortAgent();

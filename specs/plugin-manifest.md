@@ -26,15 +26,17 @@ Define the `plugin.yaml` contract agents need when adding or reviewing provider 
 
 ```yaml
 name: sentry
+display-name: Sentry
 description: Sentry helper workflows
 ```
 
-`name` must match `^[a-z][a-z0-9-]*$` and be globally unique. `description` must be non-empty.
+`name` must match `^[a-z][a-z0-9-]*$` and be globally unique. `display-name` is the human-facing provider label used in Slack and OAuth copy. `description` must be non-empty.
 
 ## Provider Manifest
 
 ```yaml
 name: sentry
+display-name: Sentry
 description: Sentry issue tracking
 
 capabilities:
@@ -69,6 +71,7 @@ target:
 ## Field Rules
 
 - `capabilities`: short names qualified to `<plugin>.<capability>` by the registry.
+- `display-name`: required provider label for human-facing auth and Slack text, for example `GitHub`, `Notion`, or `Sentry`.
 - `config-keys`: short names qualified to `<plugin>.<key>` by the registry.
 - `domains`: plugin-level domains for API header injection or code-based plugin egress hooks. Required when `api-headers` is set. In `plugin.yaml`, `domains` must pair with `api-headers` or `credentials`.
 - `api-headers`: headers injected for matching `domains`. Secret values must come from `${NAME}` placeholders declared in `env-vars` without defaults.

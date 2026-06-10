@@ -87,6 +87,7 @@ describe("Slack contract: outbound normalization", () => {
         name: "dashboard",
         manifest: {
           name: "dashboard",
+          displayName: "Dashboard",
           description: "Dashboard",
         },
         hooks: {

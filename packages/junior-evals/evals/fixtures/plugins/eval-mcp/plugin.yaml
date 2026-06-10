@@ -1,4 +1,5 @@
 name: eval-mcp
+display-name: Eval MCP
 description: Eval-only MCP lookup fixture
 
 mcp:

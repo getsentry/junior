@@ -43,6 +43,10 @@ async function writePluginPackage(
     path.join(packageRoot, "plugin.yaml"),
     [
       `name: ${pluginName}`,
+      `display-name: ${pluginName
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")}`,
       `description: ${pluginName} plugin`,
       ...extraLines,
       "config-keys:",
@@ -104,6 +108,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "base",
+            displayName: "Base",
             description: "Base plugin",
           },
           hooks: {},
@@ -117,6 +122,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "next",
+              displayName: "Next",
               description: "Next plugin",
             },
             hooks: {},
@@ -157,6 +163,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "dashboard",
+            displayName: "Dashboard",
             description: "Dashboard plugin",
           },
           hooks: {},
@@ -261,6 +268,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "hooked",
+            displayName: "Hooked",
             description: "Runtime plugin",
             configKeys: ["org"],
           },
@@ -287,6 +295,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "example",
+              displayName: "Example",
               description: "Example plugin",
               domains: ["api.example.com"],
             },
@@ -317,6 +326,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "example",
+              displayName: "Example",
               description: "Example plugin",
             },
             hooks: {
@@ -352,6 +362,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "example",
+              displayName: "Example",
               description: "Example plugin",
               oauth: {
                 clientIdEnv: "EXAMPLE_CLIENT_ID",
@@ -378,6 +389,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "example",
+            displayName: "Example",
             description: "Example plugin",
             domains: ["api.example.com"],
           },
@@ -414,6 +426,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "hooked",
+            displayName: "Hooked",
             description: "Runtime plugin",
           },
           hooks: {},
@@ -443,6 +456,7 @@ describe("createApp plugin config", () => {
           packageName: "@acme/hooked-plugin",
           manifest: {
             name: "hooked",
+            displayName: "Hooked",
             description: "Runtime plugin",
           },
           hooks: {},
@@ -469,6 +483,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "hooked",
+              displayName: "Hooked",
               description: "Runtime plugin",
               credentials: {
                 type: "oauth-bearer",
@@ -510,6 +525,7 @@ describe("createApp plugin config", () => {
           defineJuniorPlugin({
             manifest: {
               name: "invalid",
+              displayName: "Invalid",
               description: "Invalid plugin",
               domains: ["api.example.com"],
             },
@@ -531,6 +547,7 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "hooked",
+            displayName: "Hooked",
             description: "Runtime plugin",
             configKeys: ["org"],
           },
@@ -542,6 +559,7 @@ describe("createApp plugin config", () => {
           {
             manifest: {
               name: "hooked",
+              displayName: "Hooked",
               description: "Runtime plugin",
               capabilities: [],
               configKeys: ["hooked.org"],
@@ -596,10 +614,18 @@ describe("createApp plugin config", () => {
     expect(() =>
       defineJuniorPlugins([
         defineJuniorPlugin({
-          manifest: { name: "dupe", description: "Duplicate plugin" },
+          manifest: {
+            name: "dupe",
+            displayName: "Dupe",
+            description: "Duplicate plugin",
+          },
         }),
         defineJuniorPlugin({
-          manifest: { name: "dupe", description: "Duplicate plugin" },
+          manifest: {
+            name: "dupe",
+            displayName: "Dupe",
+            description: "Duplicate plugin",
+          },
         }),
       ]),
     ).toThrow('Duplicate plugin registration name "dupe"');
@@ -615,7 +641,11 @@ describe("createApp plugin config", () => {
 
     expect(() =>
       defineJuniorPlugin({
-        manifest: { name: "GitHub", description: "Invalid plugin" },
+        manifest: {
+          name: "GitHub",
+          displayName: "GitHub",
+          description: "Invalid plugin",
+        },
         hooks: {},
       }),
     ).toThrow(
@@ -635,7 +665,11 @@ describe("createApp plugin config", () => {
       createApp({
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
-            manifest: { name: "hooked", description: "Runtime plugin" },
+            manifest: {
+              name: "hooked",
+              displayName: "Hooked",
+              description: "Runtime plugin",
+            },
             legacyStatePrefixes: ["junior:scheduler"],
           }),
         ]),

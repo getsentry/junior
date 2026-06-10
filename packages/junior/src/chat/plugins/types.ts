@@ -77,6 +77,7 @@ export interface PluginEnvVarDeclaration {
 
 export interface PluginManifest {
   name: string;
+  displayName: string;
   description: string;
   capabilities: string[];
   configKeys: string[];
@@ -133,6 +134,7 @@ type PluginCredentialConfig = PluginCredentialConfigBase & {
 
 /** Install-level changes applied to one plugin manifest before validation. */
 export interface PluginManifestConfig {
+  displayName?: string;
   description?: string;
   capabilities?: string[];
   configKeys?: string[];

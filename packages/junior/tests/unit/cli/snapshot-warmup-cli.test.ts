@@ -70,6 +70,7 @@ describe("snapshot create cli", () => {
       {
         manifest: {
           name: "agent-browser",
+          displayName: "Agent Browser",
           runtimeDependencies: [
             { type: "npm", package: "agent-browser", version: "latest" },
             { type: "system", package: "gtk3" },
@@ -80,6 +81,7 @@ describe("snapshot create cli", () => {
       {
         manifest: {
           name: "notion",
+          displayName: "Notion",
         },
       },
     ]);

@@ -358,6 +358,7 @@ export function createSchedulerPlugin() {
   return defineJuniorPlugin({
     manifest: {
       name: "scheduler",
+      displayName: "Scheduler",
       description: "Scheduled Junior task management and heartbeat dispatch",
     },
     legacyStatePrefixes: ["junior:scheduler"],

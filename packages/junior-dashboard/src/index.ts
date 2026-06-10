@@ -59,6 +59,7 @@ export function juniorDashboardPlugin(
     name: "dashboard",
     manifest: {
       name: "dashboard",
+      displayName: "Dashboard",
       description: "Junior dashboard routes and Slack footer links",
     },
     hooks: {

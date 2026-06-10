@@ -121,6 +121,7 @@ async function registerManagedEgressPlugin(input?: {
       defineJuniorPlugin({
         manifest: {
           name: "managed-egress",
+          displayName: "Managed Egress",
           description: "Managed egress integration fixture",
           capabilities: ["api"],
           domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
@@ -180,6 +181,7 @@ async function registerOAuthBrokerPlugin() {
       defineJuniorPlugin({
         manifest: {
           name: "oauth-broker",
+          displayName: "Oauth Broker",
           description: "OAuth broker integration fixture",
           capabilities: ["api"],
           credentials: {

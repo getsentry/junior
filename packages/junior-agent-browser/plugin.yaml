@@ -1,4 +1,5 @@
 name: agent-browser
+display-name: Agent Browser
 description: Browser automation workflows powered by agent-browser CLI
 
 runtime-dependencies:

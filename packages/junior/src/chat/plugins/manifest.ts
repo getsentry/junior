@@ -256,6 +256,7 @@ const manifestSourceSchema = z
     name: z.string().refine((value) => PLUGIN_NAME_RE.test(value), {
       error: "invalid",
     }),
+    "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
     capabilities: z
       .array(z.string(), {
@@ -324,6 +325,7 @@ function manifestConfigPatch(
   config: PluginManifestConfig,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
   setDefined(result, "capabilities", config.capabilities);
   setDefined(result, "config-keys", config.configKeys);
@@ -1100,6 +1102,7 @@ function parseManifestSource(
 
   const manifest: PluginManifest = {
     name: data.name,
+    displayName: data["display-name"],
     description: data.description,
     capabilities,
     configKeys,

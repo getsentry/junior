@@ -16,6 +16,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_AUTH_HEADER:",
@@ -40,6 +41,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_AUTH_HEADER:",
@@ -66,6 +68,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_BOT_EMAIL:",
@@ -176,6 +179,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_BOT_EMAIL:",
@@ -201,6 +205,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_BOT_EMAIL:",
@@ -223,6 +228,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_AUTH_HEADER:",
@@ -245,6 +251,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_TOKEN:",
@@ -268,6 +275,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_CLIENT_SECRET:",
@@ -296,6 +304,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example CLI access",
         "env-vars:",
         "  EXAMPLE_SAFE_TOKEN:",
@@ -320,6 +329,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example CLI access",
           "env-vars:",
           "  EXAMPLE_SAFE_TOKEN:",
@@ -338,6 +348,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "api-headers:",
           '  Content-Type: "text/plain"',
@@ -351,6 +362,7 @@ describe("plugin manifest API headers", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
+        "display-name: Example",
         "description: Example API access",
         "domains:",
         "  - uploads.example.com",
@@ -377,6 +389,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "credentials:",
           "  type: plugin-managed",
@@ -398,6 +411,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "domains:",
           "  - api.example.com",
@@ -412,6 +426,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "domains:",
           "  - api.example.com",
@@ -427,6 +442,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "domains:",
           "  - api.example.com",
@@ -445,6 +461,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(
         [
           "name: example",
+          "display-name: Example",
           "description: Example API access",
           "env-vars:",
           "  EXAMPLE_AUTH_HEADER:",

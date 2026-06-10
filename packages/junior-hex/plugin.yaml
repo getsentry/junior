@@ -1,4 +1,5 @@
 name: hex
+display-name: Hex
 description: Hex analytics platform — run data warehouse queries for customer usage data
 
 env-vars:

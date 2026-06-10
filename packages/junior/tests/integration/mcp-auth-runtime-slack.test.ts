@@ -396,14 +396,16 @@ describe("mcp auth runtime slack integration", () => {
           user: "U123",
           thread_ts: "1700000000.001",
           text: expect.stringContaining(
-            "Click here to link your Eval-auth MCP access",
+            "Click here to link your Eval Auth MCP access",
           ),
         }),
       }),
     ]);
     expect(thread.posts).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining("private link"),
+        markdown: expect.stringContaining(
+          "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        ),
       }),
     ]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
@@ -639,7 +641,9 @@ describe("mcp auth runtime slack integration", () => {
     expect(agentProbe.continueCallCount).toBe(0);
     expect(thread.posts).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining("private link"),
+        markdown: expect.stringContaining(
+          "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        ),
       }),
     ]);
 

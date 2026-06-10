@@ -1,4 +1,5 @@
 name: linear
+display-name: Linear
 description: Linear issue tracking via hosted MCP server
 
 config-keys:

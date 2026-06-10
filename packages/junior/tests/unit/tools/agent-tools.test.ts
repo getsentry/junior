@@ -275,7 +275,11 @@ describe("createAgentTools", () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const pluginAuthOrchestration = {
       maybeHandleAuthSignal: vi.fn(async () => {
-        throw new PluginAuthorizationPauseError("github", "link_sent");
+        throw new PluginAuthorizationPauseError(
+          "github",
+          "GitHub",
+          "link_sent",
+        );
       }),
     } as any;
     const authRequired = {

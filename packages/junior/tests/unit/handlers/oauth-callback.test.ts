@@ -44,6 +44,18 @@ const {
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
+  getPluginDisplayName: (provider: string) => {
+    if (provider === "sentry") {
+      return "Sentry";
+    }
+    if (provider === "example") {
+      return "Example";
+    }
+    if (provider === "github") {
+      return "GitHub";
+    }
+    return undefined;
+  },
   getPluginOAuthConfig: (provider: string) => {
     if (provider === "sentry") {
       return SENTRY_OAUTH_CONFIG;

@@ -49,7 +49,9 @@ describe("discoverSkills plugin ownership", () => {
     await fs.mkdir(path.join(pluginRoot, "skills"), { recursive: true });
     await fs.writeFile(
       path.join(pluginRoot, "plugin.yaml"),
-      ["name: demo", "description: Demo plugin"].join("\n"),
+      ["name: demo", "display-name: Demo", "description: Demo plugin"].join(
+        "\n",
+      ),
       "utf8",
     );
     await writeSkill(path.join(pluginRoot, "skills"), "triage", "triage");

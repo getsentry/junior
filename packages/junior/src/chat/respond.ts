@@ -1691,6 +1691,7 @@ export async function generateAssistantReply(
             authDurationMs: Date.now() - replyStartedAtMs,
             authKind: error.kind,
             authProvider: error.provider,
+            authProviderDisplayName: error.providerDisplayName,
             authThinkingLevel: thinkingSelection?.thinkingLevel,
             authUsage: turnUsage,
             conversationId: timeoutResumeConversationId,

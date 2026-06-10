@@ -1,4 +1,5 @@
 name: datadog
+display-name: Datadog
 description: Query Datadog telemetry (logs, metrics, traces, monitors, incidents, dashboards) with Datadog's Pup CLI
 
 config-keys:

@@ -352,6 +352,7 @@ describe("juniorNitro plugin modules", () => {
             name: "hooked",
             manifest: {
               name: "hooked",
+              displayName: "Hooked",
               description: "Runtime plugin",
             },
             hooks: {},

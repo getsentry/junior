@@ -113,6 +113,7 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   const result: ManifestSource = {};
 
   setDefined(result, "name", manifest.name);
+  setDefined(result, "display-name", manifest.displayName);
   setDefined(result, "description", manifest.description);
   setDefined(
     result,

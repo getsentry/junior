@@ -3,7 +3,10 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import {
+  getPluginDisplayName,
+  getPluginOAuthConfig,
+} from "@/chat/plugins/registry";
 import { getSlackClient, isDmChannel } from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
@@ -88,9 +91,13 @@ export function parseOAuthStatePayload(
   };
 }
 
-/** Capitalize the first letter of a provider name for display. */
+/** Return the manifest-owned display label for a provider. */
 export function formatProviderLabel(provider: string): string {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+  const displayName = getPluginDisplayName(provider);
+  if (!displayName) {
+    throw new Error(`Unknown plugin provider display name: "${provider}"`);
+  }
+  return displayName;
 }
 
 /** Resolve the public base URL from environment variables (JUNIOR_BASE_URL or Vercel). */

@@ -22,6 +22,7 @@ const SYSTEM_CREDENTIAL_CONTEXT = {
 
 const SENTRY_MANIFEST: PluginManifest = {
   name: "sentry",
+  displayName: "Sentry",
   description: "Sentry issue tracking",
   capabilities: ["sentry.api"],
   configKeys: ["sentry.org", "sentry.project"],

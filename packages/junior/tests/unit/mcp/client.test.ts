@@ -104,6 +104,7 @@ function buildPlugin() {
     skillsDir: "/tmp/plugins/notion/skills",
     manifest: {
       name: "notion",
+      displayName: "Notion",
       description: "Notion MCP",
       capabilities: [],
       configKeys: [],

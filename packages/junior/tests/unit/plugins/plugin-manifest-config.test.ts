@@ -9,6 +9,7 @@ describe("plugin manifest config", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
+        "display-name: GitHub",
         "description: GitHub",
         "credentials:",
         "  type: oauth-bearer",
@@ -48,6 +49,7 @@ describe("plugin manifest config", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
+        "display-name: GitHub",
         "description: GitHub",
         "credentials:",
         "  type: oauth-bearer",
@@ -79,6 +81,7 @@ describe("plugin manifest config", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
+        "display-name: GitHub",
         "description: GitHub",
         "credentials:",
         "  type: oauth-bearer",
@@ -104,6 +107,7 @@ describe("plugin manifest config", () => {
       parsePluginManifest(
         [
           "name: github",
+          "display-name: GitHub",
           "description: GitHub",
           "credentials:",
           "  type: plugin-managed",
@@ -122,6 +126,7 @@ describe("plugin manifest config", () => {
     const manifest = parseInlinePluginManifest(
       {
         name: "github",
+        displayName: "GitHub",
         description: "GitHub",
         capabilities: [],
         configKeys: [],
@@ -148,6 +153,7 @@ describe("plugin manifest config", () => {
     const manifest = parsePluginManifest(
       [
         "name: sentry",
+        "display-name: Sentry",
         "description: Sentry",
         "env-vars:",
         "  SENTRY_AUTH_HEADER:",
@@ -180,6 +186,7 @@ describe("plugin manifest config", () => {
     const manifest = parsePluginManifest(
       [
         "name: github",
+        "display-name: GitHub",
         "description: GitHub",
         "credentials:",
         "  type: oauth-bearer",
@@ -218,7 +225,9 @@ describe("plugin manifest config", () => {
   it("rejects plugin name changes from manifest config", () => {
     expect(() =>
       parsePluginManifest(
-        ["name: sentry", "description: Sentry"].join("\n"),
+        ["name: sentry", "display-name: Sentry", "description: Sentry"].join(
+          "\n",
+        ),
         "/plugins/sentry",
         {
           manifests: {

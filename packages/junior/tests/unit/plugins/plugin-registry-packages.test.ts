@@ -42,6 +42,7 @@ async function writePackagedPlugin(tempRoot: string): Promise<void> {
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -72,6 +73,7 @@ async function writePackagedPluginWithImplicitLatest(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -105,6 +107,7 @@ async function writePackagedPluginWithSystemUrlDependency(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "runtime-dependencies:",
       "  - type: system",
@@ -130,6 +133,7 @@ async function writePackagedPluginWithRuntimePostinstall(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "runtime-dependencies:",
       "  - type: npm",
@@ -157,6 +161,7 @@ async function writePackagedPluginWithInvalidDomain(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -188,6 +193,7 @@ async function writePackagedPluginsWithSharedDomain(
       path.join(packageRoot, "plugin.yaml"),
       [
         `name: ${name}`,
+        `display-name: ${name === "alpha" ? "Alpha" : "Beta"}`,
         `description: ${name} plugin`,
         "credentials:",
         "  type: oauth-bearer",
@@ -216,6 +222,7 @@ async function writePackagedPluginsWithDuplicateName(
       path.join(packageRoot, "plugin.yaml"),
       [
         "name: demo",
+        "display-name: Demo",
         "description: Demo plugin",
         "credentials:",
         "  type: oauth-bearer",
@@ -243,6 +250,7 @@ async function writePackagedPluginWithInvalidAuthTokenEnv(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -273,6 +281,7 @@ async function writePackagedPluginWithInvalidRuntimePostinstallCmd(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "runtime-postinstall:",
       '  - cmd: "example-cli && curl https://evil.test"',
@@ -296,6 +305,7 @@ async function writePackagedPluginWithInvalidOauthEndpoint(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -330,6 +340,7 @@ async function writePackagedPluginWithOauthOverrides(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: example",
+      "display-name: Example",
       "description: Example plugin",
       "capabilities:",
       "  - api.read",
@@ -371,6 +382,7 @@ async function writePackagedPluginWithForbiddenApiHeader(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo plugin",
       "capabilities:",
       "  - api",
@@ -406,6 +418,7 @@ async function writePackagedPluginWithMcp(
 
   const lines: string[] = [
     "name: demo",
+    "display-name: Demo",
     `description: ${options.description ?? "Demo MCP plugin"}`,
   ];
 
@@ -456,6 +469,7 @@ async function writePackagedPluginWithInvalidMcpAllowedTools(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo MCP plugin",
       "mcp:",
       "  transport: http",
@@ -481,6 +495,7 @@ async function writePackagedPluginWithForbiddenMcpHeader(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo MCP plugin",
       "mcp:",
       "  transport: http",
@@ -507,6 +522,7 @@ async function writePackagedPluginWithInvalidMcpTransport(
     path.join(packageRoot, "plugin.yaml"),
     [
       "name: demo",
+      "display-name: Demo",
       "description: Demo MCP plugin",
       "mcp:",
       "  transport: stdio",
@@ -527,7 +543,11 @@ async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
   await fs.mkdir(skillsDir, { recursive: true });
   await fs.writeFile(
     path.join(packageRoot, "plugin.yaml"),
-    ["name: demo", "description: Demo bundle-only plugin"].join("\n"),
+    [
+      "name: demo",
+      "display-name: Demo",
+      "description: Demo bundle-only plugin",
+    ].join("\n"),
     "utf8",
   );
 }

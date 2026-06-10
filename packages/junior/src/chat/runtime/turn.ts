@@ -17,11 +17,18 @@ export type RetryableTurnReason =
   | "plugin_auth_resume"
   | "agent_continue";
 
+/** Auth-pause reasons require a known provider before a resume can be parked. */
+export type AuthResumeRetryableTurnReason = Extract<
+  RetryableTurnReason,
+  "mcp_auth_resume" | "plugin_auth_resume"
+>;
+
 export interface RetryableTurnMetadata {
   authDisposition?: AuthorizationPauseDisposition;
   authDurationMs?: number;
   authKind?: AuthorizationPauseKind;
   authProvider?: string;
+  authProviderDisplayName?: string;
   authThinkingLevel?: TurnThinkingSelection["thinkingLevel"];
   authUsage?: AgentTurnUsage;
   version?: number;
@@ -30,12 +37,32 @@ export interface RetryableTurnMetadata {
   sliceId?: number;
 }
 
+export interface AuthResumeRetryableTurnMetadata extends RetryableTurnMetadata {
+  authProvider: string;
+  authProviderDisplayName: string;
+}
+
+export type AuthResumeRetryableTurnError = RetryableTurnError & {
+  readonly reason: AuthResumeRetryableTurnReason;
+  readonly metadata: AuthResumeRetryableTurnMetadata;
+};
+
 /** Error indicating an agent run can continue later after timeout or auth pause. */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
   readonly metadata?: RetryableTurnMetadata;
   readonly reason: RetryableTurnReason;
 
+  constructor(
+    reason: AuthResumeRetryableTurnReason,
+    message: string,
+    metadata: AuthResumeRetryableTurnMetadata,
+  );
+  constructor(
+    reason: "agent_continue",
+    message: string,
+    metadata?: RetryableTurnMetadata,
+  );
   constructor(
     reason: RetryableTurnReason,
     message: string,
@@ -59,6 +86,19 @@ export function isRetryableTurnError(
     return true;
   }
   return error.reason === reason;
+}
+
+/** Return whether a retryable turn is waiting for provider authorization. */
+export function isAuthResumeRetryableTurnError(
+  error: unknown,
+): error is AuthResumeRetryableTurnError {
+  return (
+    error instanceof RetryableTurnError &&
+    (error.reason === "mcp_auth_resume" ||
+      error.reason === "plugin_auth_resume") &&
+    typeof error.metadata?.authProvider === "string" &&
+    typeof error.metadata.authProviderDisplayName === "string"
+  );
 }
 
 /** Error indicating the turn paused voluntarily at a safe continuation boundary. */

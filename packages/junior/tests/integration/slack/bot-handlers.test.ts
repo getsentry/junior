@@ -596,6 +596,7 @@ describe("bot handlers (integration)", () => {
                 authDisposition: "link_sent",
                 authKind: "mcp",
                 authProvider: "notion",
+                authProviderDisplayName: "Notion",
               },
             );
           },
@@ -619,7 +620,9 @@ describe("bot handlers (integration)", () => {
 
     expect(thread.posts).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining("private link"),
+        markdown: expect.stringContaining(
+          "<@U-test> I'll need you to authorize Notion. I sent you a link.",
+        ),
       }),
     ]);
     const state = thread.getState();
@@ -641,7 +644,7 @@ describe("bot handlers (integration)", () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: "assistant",
-          text: expect.stringContaining("private link"),
+          text: expect.stringContaining("authorize Notion"),
         }),
       ]),
     );
@@ -669,6 +672,7 @@ describe("bot handlers (integration)", () => {
                 authDisposition: "link_sent",
                 authKind: "plugin",
                 authProvider: "github",
+                authProviderDisplayName: "GitHub",
               },
             );
           },
@@ -694,7 +698,9 @@ describe("bot handlers (integration)", () => {
 
     expect(thread.posts).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining("private link"),
+        markdown: expect.stringContaining(
+          "<@U-test> I'll need you to authorize GitHub. I sent you a link.",
+        ),
       }),
     ]);
     const state = thread.getState();
@@ -716,7 +722,7 @@ describe("bot handlers (integration)", () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: "assistant",
-          text: expect.stringContaining("private link"),
+          text: expect.stringContaining("authorize GitHub"),
         }),
       ]),
     );

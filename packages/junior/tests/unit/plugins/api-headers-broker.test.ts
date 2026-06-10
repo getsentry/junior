@@ -9,6 +9,7 @@ const SYSTEM_CREDENTIAL_CONTEXT = {
 
 const MANIFEST: PluginManifest = {
   name: "example",
+  displayName: "Example",
   description: "Example API access",
   capabilities: ["example.query"],
   configKeys: [],

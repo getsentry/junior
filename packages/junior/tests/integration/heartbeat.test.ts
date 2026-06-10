@@ -203,6 +203,7 @@ describe("plugin heartbeat", () => {
       defineJuniorPlugin({
         manifest: {
           name: "scheduler",
+          displayName: "Scheduler",
           description: "Scheduler test plugin",
         },
         hooks: {

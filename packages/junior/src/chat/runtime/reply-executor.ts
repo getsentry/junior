@@ -90,6 +90,7 @@ import {
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
+  isAuthResumeRetryableTurnError,
   isCooperativeTurnYieldError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
@@ -383,11 +384,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           beforeFirstResponsePostCalled = true;
           await options.beforeFirstResponsePost?.();
         };
-        const postAuthPauseNotice = async (): Promise<void> => {
+        const postAuthPauseNotice = async (
+          providerDisplayName: string,
+        ): Promise<void> => {
           try {
             await beforeFirstResponsePost();
             await thread.post(
-              buildSlackOutputMessage(buildAuthPauseResponse()),
+              buildSlackOutputMessage(
+                buildAuthPauseResponse(
+                  message.author.userId,
+                  providerDisplayName,
+                ),
+              ),
             );
           } catch (error) {
             logException(
@@ -1061,11 +1069,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
 
-          if (
-            isRetryableTurnError(error, "mcp_auth_resume") ||
-            isRetryableTurnError(error, "plugin_auth_resume")
-          ) {
-            await postAuthPauseNotice();
+          if (isAuthResumeRetryableTurnError(error)) {
+            await postAuthPauseNotice(error.metadata.authProviderDisplayName);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,

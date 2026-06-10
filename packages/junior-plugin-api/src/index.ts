@@ -672,6 +672,7 @@ export interface JuniorPluginManifest {
   configKeys?: string[];
   credentials?: JuniorPluginCredentials;
   description: string;
+  displayName: string;
   domains?: string[];
   envVars?: Record<string, JuniorPluginEnvVarDeclaration>;
   mcp?: JuniorPluginMcpConfig;
@@ -724,6 +725,14 @@ export function defineJuniorPlugin(
   if (!PLUGIN_NAME_RE.test(name)) {
     throw new Error(
       `Junior plugin registration name "${name}" must be a lowercase plugin identifier.`,
+    );
+  }
+  if (
+    typeof manifest.displayName !== "string" ||
+    !manifest.displayName.trim()
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" manifest.displayName is required.`,
     );
   }
   if (

@@ -13,6 +13,7 @@ function buildPlugin() {
     skillsDir: "/tmp/plugins/demo/skills",
     manifest: {
       name: "demo",
+      displayName: "Demo",
       description: "Demo plugin",
       capabilities: [],
       configKeys: [],

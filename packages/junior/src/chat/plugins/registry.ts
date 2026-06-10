@@ -547,6 +547,12 @@ export function getPluginDefinition(
   return ensurePluginsLoaded().pluginsByName.get(provider);
 }
 
+/** Return the human-facing provider label from the plugin manifest. */
+export function getPluginDisplayName(provider: string): string | undefined {
+  return ensurePluginsLoaded().pluginsByName.get(provider)?.manifest
+    .displayName;
+}
+
 export function isPluginProvider(provider: string): boolean {
   return ensurePluginsLoaded().pluginsByName.has(provider);
 }

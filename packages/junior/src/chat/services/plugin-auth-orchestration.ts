@@ -30,9 +30,10 @@ import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-sche
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
     provider: string,
+    providerDisplayName: string,
     disposition: "link_already_sent" | "link_sent",
   ) {
-    super("plugin", provider, disposition);
+    super("plugin", provider, providerDisplayName, disposition);
   }
 }
 
@@ -216,6 +217,7 @@ export function createPluginAuthOrchestration(
     }
     pendingPause = new PluginAuthorizationPauseError(
       provider,
+      providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
     );
     abortAgent();

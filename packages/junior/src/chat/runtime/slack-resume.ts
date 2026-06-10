@@ -10,7 +10,10 @@ import {
   logException,
   type LogContext,
 } from "@/chat/logging";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  isAuthResumeRetryableTurnError,
+  isRetryableTurnError,
+} from "@/chat/runtime/turn";
 import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
@@ -265,6 +268,9 @@ export async function resumeSlackTurn(
   });
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
+  let deferredAuthInfo:
+    | { providerDisplayName: string; requesterId: string | undefined }
+    | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let finalReplyDelivered = false;
@@ -371,12 +377,13 @@ export async function resumeSlackTurn(
           "Failed to terminalize resumed turn after post-delivery commit failure",
         );
       }
-    } else if (
-      (isRetryableTurnError(error, "mcp_auth_resume") ||
-        isRetryableTurnError(error, "plugin_auth_resume")) &&
-      onAuthPause
-    ) {
+    } else if (isAuthResumeRetryableTurnError(error) && onAuthPause) {
       deferredPauseKind = "auth";
+      deferredAuthInfo = {
+        providerDisplayName: error.metadata.authProviderDisplayName,
+        // The try body validates requester.userId; catch scope does not retain that narrowing.
+        requesterId: runArgs.replyContext?.requester?.userId,
+      };
       deferredPauseHandler = async () => {
         await onAuthPause(error);
       };
@@ -422,11 +429,14 @@ export async function resumeSlackTurn(
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
-      if (deferredPauseKind === "auth") {
+      if (deferredPauseKind === "auth" && deferredAuthInfo) {
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(),
+          buildAuthPauseResponse(
+            deferredAuthInfo.requesterId,
+            deferredAuthInfo.providerDisplayName,
+          ),
         );
       }
       return true;
