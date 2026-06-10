@@ -773,12 +773,35 @@ async function proxySandboxEgressVerifiedRequest(input: {
         message: error.message,
       });
     }
+    // CredentialUnavailableError should only reach here for plugin { type: "unavailable" }
+    // results (non-OAuth infra/service failures). Broker-sourced CredentialUnavailableError
+    // is normalized to SandboxEgressCredentialNeededError in egress-credentials.ts.
     if (error instanceof CredentialUnavailableError) {
       const failedGrant = grantSelection.grant;
       const authorization = authorizationForSandboxEgressGrant(
         error.provider,
         grantSelection,
       );
+      if (grantSelection.source === "broker") {
+        logWarn(
+          "sandbox_egress_broker_credential_unavailable_unnormalized",
+          {},
+          {
+            ...egressAttributes({
+              egressId: activeEgressId,
+              grantAccess: failedGrant.access,
+              grantName: failedGrant.name,
+              host: upstreamUrl.hostname,
+              method: request.method,
+              path: upstreamUrl.pathname,
+              provider,
+              status: 401,
+            }),
+            ...routingAttributes(request, upstreamUrl),
+          },
+          "Broker CredentialUnavailableError reached proxy without normalization — expected SandboxEgressCredentialNeededError",
+        );
+      }
       await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider: error.provider,
         grant: failedGrant,

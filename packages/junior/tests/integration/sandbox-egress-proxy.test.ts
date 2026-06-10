@@ -284,6 +284,41 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("returns auth-required via canonical SandboxEgressCredentialNeededError when broker has no user token", async () => {
+    // Broker-backed provider (sandbox-egress-test fixture) with no stored user OAuth token.
+    // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
+    // for the missing-env-token case. This should be normalized to SandboxEgressCredentialNeededError
+    // before reaching the proxy, and the proxy should return the canonical auth-required 401.
+    delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
+
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({ forwardURL }),
+      { verifyOidc: async () => ({ sandbox_id: EGRESS_ID }) },
+    );
+
+    expect(response.status).toBe(401);
+    const body = await response.text();
+    expect(body).toContain("junior-auth-required");
+    expect(body).toContain("provider=sandbox-egress-test");
+
+    // Auth signal should be recorded in state
+    const signal = await modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID);
+    expect(signal).toMatchObject({
+      provider: "sandbox-egress-test",
+      grant: expect.objectContaining({ access: "read" }),
+    });
+  });
+
   it("propagates configured trace headers through real plugin egress wiring", async () => {
     await registerManagedEgressPlugin({
       egressTracePropagationDomains: ["*.managed-egress.example.test"],

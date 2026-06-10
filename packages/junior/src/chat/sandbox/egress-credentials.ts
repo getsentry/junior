@@ -197,11 +197,27 @@ export async function sandboxEgressCredentialLease(
     }
     lease = pluginResult.lease;
   } else {
-    lease = await issueProviderCredentialLease({
-      context: context.credentials,
-      provider,
-      reason: grant.reason ?? `sandbox-egress:${provider}:default`,
-    });
+    // Normalize broker credential-needed failures into the canonical egress error
+    // so the proxy handles one auth-required type regardless of credential source.
+    // All CredentialUnavailableError throws in oauth-bearer-broker are user-actionable
+    // (missing token, scope gap, expired connection) and should trigger OAuth re-auth.
+    try {
+      lease = await issueProviderCredentialLease({
+        context: context.credentials,
+        provider,
+        reason: grant.reason ?? `sandbox-egress:${provider}:default`,
+      });
+    } catch (error) {
+      if (error instanceof CredentialUnavailableError) {
+        throw new SandboxEgressCredentialNeededError({
+          provider,
+          grant,
+          authorization: authorizationForSandboxEgressGrant(provider, selection),
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   const headerTransforms = lease.headerTransforms ?? [];
