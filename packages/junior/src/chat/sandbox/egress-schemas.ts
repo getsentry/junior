@@ -10,6 +10,7 @@ import {
 const finiteNumberSchema = z.number().refine(Number.isFinite);
 const httpStatusSchema = z.number().int().min(100).max(599);
 const providerNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
+const credentialSignalKindSchema = z.enum(["auth_required", "unavailable"]);
 
 export const sandboxEgressGrantSchema = agentPluginGrantSchema;
 
@@ -39,6 +40,7 @@ export const sandboxEgressAuthRequiredSignalSchema = z
   .object({
     authorization: agentPluginAuthorizationSchema.optional(),
     grant: sandboxEgressGrantSchema,
+    kind: credentialSignalKindSchema.default("auth_required"),
     provider: providerNameSchema,
     message: z.string().optional(),
     createdAtMs: finiteNumberSchema,

@@ -87,6 +87,7 @@ function pluginAuthRequiredSignal(details: unknown):
         name: string;
         reason?: string;
       };
+      kind: "auth_required" | "unavailable";
       message?: string;
       provider: string;
     }
@@ -102,6 +103,7 @@ function pluginAuthRequiredSignal(details: unknown):
   return {
     provider: parsedSignal.provider,
     grant: parsedSignal.grant,
+    kind: parsedSignal.kind,
     ...(parsedSignal.message ? { message: parsedSignal.message } : {}),
     ...(parsedSignal.authorization
       ? { authorization: parsedSignal.authorization }
@@ -228,6 +230,14 @@ export function createPluginAuthOrchestration(
       }
 
       const { provider, authorization } = signal;
+
+      if (signal.kind === "unavailable") {
+        throw new PluginCredentialFailureError(
+          provider,
+          signal.message ??
+            `${formatProviderLabel(provider)} credentials are unavailable.`,
+        );
+      }
 
       if (!authorization) {
         throw new PluginCredentialFailureError(

@@ -318,6 +318,32 @@ describe("createPluginAuthOrchestration", () => {
     expect(startOAuthFlow).not.toHaveBeenCalled();
   });
 
+  it("preserves unavailable auth signal messages without starting oauth", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "inspect a repo",
+        userTokenStore: tokenStore(),
+      },
+      vi.fn(),
+    );
+
+    await expectPluginCredentialFailure(
+      orchestration.maybeHandleAuthSignal({
+        auth_required: {
+          provider: "github",
+          grant: { name: "installation-read", access: "read" as const },
+          kind: "unavailable",
+          createdAtMs: Date.now(),
+          message: "Missing GITHUB_APP_ID",
+        },
+      }),
+      { provider: "github", message: "Missing GITHUB_APP_ID" },
+    );
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+  });
+
   it("preserves no-oauth auth signal messages when authorization flow is disabled", async () => {
     const orchestration = createPluginAuthOrchestration(
       {

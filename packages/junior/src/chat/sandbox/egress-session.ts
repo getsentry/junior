@@ -204,7 +204,9 @@ export async function clearSandboxEgressCredentialLease(
 /** Record that host-side sandbox egress returned an auth-required response. */
 export async function setSandboxEgressAuthRequiredSignal(
   context: SandboxEgressCredentialContext,
-  signal: Omit<SandboxEgressAuthRequiredSignal, "createdAtMs">,
+  signal: Omit<SandboxEgressAuthRequiredSignal, "createdAtMs" | "kind"> & {
+    kind?: SandboxEgressAuthRequiredSignal["kind"];
+  },
 ): Promise<void> {
   const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
   const state = getStateAdapter();

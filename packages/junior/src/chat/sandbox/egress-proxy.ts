@@ -743,6 +743,7 @@ async function proxySandboxEgressVerifiedRequest(input: {
       await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider: error.provider,
         grant: error.grant,
+        kind: error.kind,
         ...(error.authorization ? { authorization: error.authorization } : {}),
         message: error.message,
       });
@@ -892,6 +893,7 @@ async function proxySandboxEgressVerifiedRequest(input: {
     await setSandboxEgressAuthRequiredSignal(credentialContext, {
       provider,
       grant: lease.grant,
+      kind: "auth_required",
       ...((error.authorization ?? lease.authorization)
         ? { authorization: error.authorization ?? lease.authorization }
         : {}),
@@ -998,6 +1000,7 @@ async function proxySandboxEgressVerifiedRequest(input: {
       await setSandboxEgressAuthRequiredSignal(credentialContext, {
         provider,
         grant: lease.grant,
+        kind: "auth_required",
         ...(lease.authorization ? { authorization: lease.authorization } : {}),
         message: `Provider rejected the injected ${provider} credential.`,
       });

@@ -1036,6 +1036,7 @@ describe("sandbox egress proxy integration", () => {
       modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
     ).resolves.toMatchObject({
       provider: "github",
+      kind: "unavailable",
       grant: {
         name: "installation-read",
         access: "read",
