@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [junior/src/app.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L54)
+Defined in: [junior/src/app.ts:58](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L58)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/app.ts:54](https://github.com/getsentry/junior/blob/main
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [junior/src/app.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L63)
+Defined in: [junior/src/app.ts:67](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L67)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
@@ -23,7 +23,7 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 > `optional` **conversationWork?**: `VercelConversationWorkCallbackOptions`
 
-Defined in: [junior/src/app.ts:65](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L65)
+Defined in: [junior/src/app.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L69)
 
 Queue consumer wiring for the durable conversation worker.
 
@@ -33,9 +33,25 @@ Queue consumer wiring for the durable conversation worker.
 
 > `optional` **plugins?**: [`JuniorPluginSet`](/reference/api/interfaces/juniorpluginset/)
 
-Defined in: [junior/src/app.ts:67](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L67)
+Defined in: [junior/src/app.ts:71](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L71)
 
 Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module.
+
+---
+
+### sandbox?
+
+> `optional` **sandbox?**: `object`
+
+Defined in: [junior/src/app.ts:73](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L73)
+
+Sandbox execution options.
+
+#### egressTracePropagationDomains?
+
+> `optional` **egressTracePropagationDomains?**: `string`[]
+
+Egress domains allowed to carry Sentry trace propagation headers.
 
 ---
 
@@ -43,7 +59,7 @@ Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin m
 
 > `optional` **slack?**: `object`
 
-Defined in: [junior/src/app.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L56)
+Defined in: [junior/src/app.ts:60](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L60)
 
 Slack-specific overrides applied after env parsing.
 
@@ -65,4 +81,4 @@ Slack emoji shown while Junior is processing. Defaults to `eyes`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [junior/src/app.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L68)
+Defined in: [junior/src/app.ts:77](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L77)

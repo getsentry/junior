@@ -19,8 +19,10 @@ import {
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
+  type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress-session";
+import { shouldPropagateSandboxEgressTrace } from "@/chat/sandbox/egress-tracing";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 import type { JWTPayload } from "jose";
 import * as Sentry from "@/chat/sentry";
@@ -474,7 +476,6 @@ async function responseTextWithinLimit(
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
-  provider: string,
   upstreamHost: string,
 ): Headers {
   const headers = new Headers();
@@ -486,7 +487,10 @@ function requestHeaders(
     ) {
       return;
     }
-    if (TRACE_PROPAGATION_HEADERS.has(normalized) && provider !== "sentry") {
+    if (
+      TRACE_PROPAGATION_HEADERS.has(normalized) &&
+      !shouldPropagateSandboxEgressTrace(upstreamHost)
+    ) {
       return;
     }
     headers.append(key, value);
@@ -519,6 +523,7 @@ function responseHeaders(upstream: Response): Headers {
 
 function continueSandboxEgressTrace<T>(
   request: Request,
+  upstreamHost: string,
   callback: () => Promise<T>,
 ): Promise<T> {
   const sentryTrace = request.headers.get("sentry-trace") ?? undefined;
@@ -528,7 +533,10 @@ function continueSandboxEgressTrace<T>(
       "http.request.method": request.method,
       "url.path": redactedProxyPath(new URL(request.url).pathname),
     });
-  if (!sentryTrace && !baggage) {
+  if (
+    !shouldPropagateSandboxEgressTrace(upstreamHost) ||
+    (!sentryTrace && !baggage)
+  ) {
     return run();
   }
   return Sentry.continueTrace({ sentryTrace, baggage }, run);
@@ -548,10 +556,7 @@ export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},
 ): Promise<Response> {
-  return await continueSandboxEgressTrace(
-    request,
-    async () => await proxySandboxEgressRequestImpl(request, deps),
-  );
+  return await proxySandboxEgressRequestImpl(request, deps);
 }
 
 async function proxySandboxEgressRequestImpl(
@@ -667,6 +672,37 @@ async function proxySandboxEgressRequestImpl(
     );
   }
 
+  return await continueSandboxEgressTrace(
+    request,
+    upstreamUrl.hostname,
+    async () =>
+      await proxySandboxEgressVerifiedRequest({
+        activeEgressId,
+        credentialContext,
+        deps,
+        provider,
+        request,
+        upstreamUrl,
+      }),
+  );
+}
+
+async function proxySandboxEgressVerifiedRequest(input: {
+  activeEgressId: string;
+  credentialContext: SandboxEgressCredentialContext;
+  deps: ProxyDeps;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<Response> {
+  const {
+    activeEgressId,
+    credentialContext,
+    deps,
+    provider,
+    request,
+    upstreamUrl,
+  } = input;
   let body: ArrayBuffer | undefined;
   let bodyRead = false;
   if (isGrantSelectionBodyVisible({ provider, upstreamUrl })) {
@@ -787,12 +823,7 @@ async function proxySandboxEgressRequestImpl(
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const headers = requestHeaders(
-    request,
-    lease,
-    provider,
-    upstreamUrl.hostname,
-  );
+  const headers = requestHeaders(request, lease, upstreamUrl.hostname);
   if (!bodyRead) {
     body = await requestBodyBytes(request);
   }

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-09
 
 ## Related
 
@@ -59,6 +59,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
 - Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, credential context, and provider-domain ownership have been verified.
+- Trace propagation headers (`sentry-trace`, `baggage`, and `traceparent`) are stricter: the sandbox network policy may attach them only for egress domains configured through `createApp({ sandbox: { egressTracePropagationDomains } })`. Config entries may be exact domains or leading wildcard domains such as `*.sentry.io`; the proxy strips trace headers from all other upstream requests.
 - Provider-owned egress response hooks may inspect upstream response metadata after a credentialed request is forwarded. The proxy must not read upstream response bodies by default.
 - Response hooks may inspect a body only through the proxy's bounded lazy reader, which clones the response, enforces a hard byte cap, and leaves the original upstream response body available for pass-through.
 - A response hook that returns normally must preserve the original upstream response. Throwing `EgressAuthRequired` is the only response-hook outcome that rewrites the upstream response to Junior's auth-required sentinel.

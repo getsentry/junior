@@ -24,6 +24,7 @@ const EGRESS_ID = "sbx_integration_session";
 const REQUESTER_ID = "U123";
 const PROVIDER_HOST = "sandbox-egress.example.test";
 const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
+const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const GITHUB_API_HOST = "api.github.com";
 
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress-policy");
@@ -62,6 +63,21 @@ function forwardUrlFor(policy: unknown, host: string): string {
   return forwardURL;
 }
 
+function traceHeadersFor(
+  policy: unknown,
+  host: string,
+): Record<string, string> | undefined {
+  const allow = (
+    policy as {
+      allow?: Record<
+        string,
+        Array<{ transform?: Array<{ headers?: Record<string, string> }> }>
+      >;
+    }
+  ).allow;
+  return allow?.[host]?.[0]?.transform?.[0]?.headers;
+}
+
 function proxiedRequest(input: {
   body?: BodyInit;
   forwardURL: string;
@@ -94,6 +110,7 @@ function proxiedRequest(input: {
 }
 
 async function registerManagedEgressPlugin(input?: {
+  egressTracePropagationDomains?: string[];
   issueCredential?: NonNullable<AgentPluginHooks["issueCredential"]>;
   onEgressResponse?: NonNullable<AgentPluginHooks["onEgressResponse"]>;
 }) {
@@ -105,7 +122,7 @@ async function registerManagedEgressPlugin(input?: {
           name: "managed-egress",
           description: "Managed egress integration fixture",
           capabilities: ["api"],
-          domains: [MANAGED_PROVIDER_HOST],
+          domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
         },
         hooks: {
           grantForEgress(ctx) {
@@ -128,13 +145,14 @@ async function registerManagedEgressPlugin(input?: {
               lease: {
                 expiresAt: new Date(Date.now() + 60_000).toISOString(),
                 headerTransforms: [
-                  {
-                    domain: MANAGED_PROVIDER_HOST,
-                    headers: {
-                      Authorization: `Bearer ${ctx.grant.name}`,
-                    },
+                  MANAGED_PROVIDER_HOST,
+                  MANAGED_PROVIDER_SUBDOMAIN,
+                ].map((domain) => ({
+                  domain,
+                  headers: {
+                    Authorization: `Bearer ${ctx.grant.name}`,
                   },
-                ],
+                })),
               },
             })),
           ...(input?.onEgressResponse
@@ -143,6 +161,9 @@ async function registerManagedEgressPlugin(input?: {
         },
       }),
     ]),
+    sandbox: {
+      egressTracePropagationDomains: input?.egressTracePropagationDomains,
+    },
     waitUntil(task) {
       if (typeof task === "function") {
         void task();
@@ -218,6 +239,9 @@ describe("sandbox egress proxy integration", () => {
     await modules?.state.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
+    const { setSandboxEgressTracePropagationDomains } =
+      await import("@/chat/sandbox/egress-tracing");
+    setSandboxEgressTracePropagationDomains(undefined);
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -260,6 +284,110 @@ describe("sandbox egress proxy integration", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates configured trace headers through real plugin egress wiring", async () => {
+    await registerManagedEgressPlugin({
+      egressTracePropagationDomains: ["*.managed-egress.example.test"],
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+      traceHeaders: {
+        "sentry-trace": "trace-span-1",
+        baggage: "sentry-release=abc",
+        traceparent: "00-trace-span-01",
+      },
+    });
+    expect(traceHeadersFor(networkPolicy, MANAGED_PROVIDER_SUBDOMAIN)).toEqual({
+      "sentry-trace": "trace-span-1",
+      baggage: "sentry-release=abc",
+      traceparent: "00-trace-span-01",
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_SUBDOMAIN);
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer installation-read");
+        expect(headers.get("sentry-trace")).toBe("trace-span-1");
+        expect(headers.get("baggage")).toBe("sentry-release=abc");
+        expect(headers.get("traceparent")).toBe("00-trace-span-01");
+        return new Response("ok", { status: 200 });
+      },
+    );
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+          traceparent: "00-trace-span-01",
+        },
+        upstreamHost: MANAGED_PROVIDER_SUBDOMAIN,
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips trace headers from unconfigured real plugin egress wiring", async () => {
+    await registerManagedEgressPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+      traceHeaders: {
+        "sentry-trace": "trace-span-1",
+        baggage: "sentry-release=abc",
+        traceparent: "00-trace-span-01",
+      },
+    });
+    expect(
+      traceHeadersFor(networkPolicy, MANAGED_PROVIDER_HOST),
+    ).toBeUndefined();
+    const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer installation-read");
+        expect(headers.get("sentry-trace")).toBeNull();
+        expect(headers.get("baggage")).toBeNull();
+        expect(headers.get("traceparent")).toBeNull();
+        return new Response("ok", { status: 200 });
+      },
+    );
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+          traceparent: "00-trace-span-01",
+        },
+        upstreamHost: MANAGED_PROVIDER_HOST,
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(200);
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 

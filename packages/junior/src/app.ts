@@ -6,6 +6,10 @@ import {
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import {
+  getSandboxEgressTracePropagationDomains,
+  setSandboxEgressTracePropagationDomains,
+} from "@/chat/sandbox/egress-tracing";
+import {
   getPluginCatalogSignature,
   getPluginProviders,
   setPluginCatalogConfig,
@@ -65,6 +69,11 @@ export interface JuniorAppOptions {
   conversationWork?: VercelConversationWorkCallbackOptions;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
+  /** Sandbox execution options. */
+  sandbox?: {
+    /** Egress domains allowed to carry Sentry trace propagation headers. */
+    egressTracePropagationDomains?: string[];
+  };
   waitUntil?: WaitUntilFn;
 }
 
@@ -332,10 +341,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
+  const previousSandboxEgressTracePropagationDomains =
+    getSandboxEgressTracePropagationDomains();
   const previousSlackReactionConfig = getSlackReactionConfig();
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
   try {
     setConfigDefaults(options?.configDefaults);
+    setSandboxEgressTracePropagationDomains(
+      options?.sandbox?.egressTracePropagationDomains,
+    );
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
     }
@@ -351,6 +365,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
+    setSandboxEgressTracePropagationDomains(
+      previousSandboxEgressTracePropagationDomains,
+    );
     setSlackReactionConfig(previousSlackReactionConfig);
     throw error;
   }

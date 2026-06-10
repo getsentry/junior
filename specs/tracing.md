@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-09
 
 ## Purpose
 
@@ -146,6 +146,7 @@ semantic conventions:
 - `sandbox.sync_skills` with `op: sandbox.sync`
 - `sandbox.bash_tool.init` with `op: sandbox.tool.init`
 - `bash` with `op: process.exec` for sandbox command execution
+- `sandbox.egress` with `op: http.server` for verified sandbox egress proxy forwarding
 - `sandbox.keepalive.extend` with `op: sandbox.keepalive` when keepalive is configured
 - `sandbox.stop` with `op: sandbox.stop` during disposal
 
@@ -184,6 +185,8 @@ semantic conventions:
 
 - Sandbox spans should be nested under `ai.generate_assistant_reply` when invoked during reply generation.
 - Sandbox execution spans should be nested under the active tool-call/request span context.
+- Sandbox egress proxy spans must be created only after Vercel OIDC, signed credential context, and provider-domain ownership have been verified.
+- Sandbox egress may continue incoming Sentry trace context only for egress domains configured through `createApp({ sandbox: { egressTracePropagationDomains } })`. Config entries may be exact domains or leading wildcard domains such as `*.sentry.io`; unconfigured domains must start a local `sandbox.egress` span without joining the incoming trace.
 
 ### GenAI Span Hierarchy
 

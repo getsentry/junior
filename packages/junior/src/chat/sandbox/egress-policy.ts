@@ -2,6 +2,7 @@ import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import type { TracePropagationHeaders } from "@/chat/logging";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
+import { shouldPropagateSandboxEgressTrace } from "@/chat/sandbox/egress-tracing";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
@@ -76,9 +77,10 @@ export function buildSandboxEgressNetworkPolicy(input?: {
   );
   for (const entry of entries) {
     for (const domain of entry.domains) {
+      const shouldPropagateTrace = shouldPropagateSandboxEgressTrace(domain);
       allow[domain] = [
         {
-          ...(Object.keys(traceHeaders).length > 0
+          ...(shouldPropagateTrace && Object.keys(traceHeaders).length > 0
             ? { transform: [{ headers: traceHeaders }] }
             : {}),
           forwardURL,

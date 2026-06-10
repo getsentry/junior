@@ -45,6 +45,7 @@ import {
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
+import { setSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
@@ -226,6 +227,7 @@ describe("sandbox egress proxy", () => {
       provider === "sentry" ? { provider, scope: "project:read" } : undefined,
     );
     issueProviderCredentialLeaseMock.mockReset();
+    setSandboxEgressTracePropagationDomains(undefined);
     await disconnectStateAdapter();
   });
 
@@ -235,6 +237,7 @@ describe("sandbox egress proxy", () => {
     delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
     delete process.env.SENTRY_BOT_EMAIL;
+    setSandboxEgressTracePropagationDomains(undefined);
     vi.restoreAllMocks();
   });
 
@@ -264,6 +267,7 @@ describe("sandbox egress proxy", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
+    setSandboxEgressTracePropagationDomains(["sentry.io"]);
     expect(
       buildSandboxEgressNetworkPolicy({
         credentialToken: token,
@@ -287,6 +291,56 @@ describe("sandbox egress proxy", () => {
               },
             ],
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+          },
+        ],
+        "us.sentry.io": [
+          {
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+          },
+        ],
+      },
+    });
+  });
+
+  it("adds trace propagation transforms only for configured domains", () => {
+    getPluginProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
+    setSandboxEgressTracePropagationDomains(["*.sentry.io"]);
+
+    expect(
+      buildSandboxEgressNetworkPolicy({
+        traceHeaders: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+          traceparent: "00-trace-span-01",
+        },
+      }),
+    ).toMatchObject({
+      allow: {
+        "api.github.com": [
+          {
+            forwardURL:
+              "https://junior.example.com/api/internal/sandbox-egress",
+          },
+        ],
+        "sentry.io": [
+          {
+            forwardURL:
+              "https://junior.example.com/api/internal/sandbox-egress",
+          },
+        ],
+        "us.sentry.io": [
+          {
+            transform: [
+              {
+                headers: {
+                  "sentry-trace": "trace-span-1",
+                  baggage: "sentry-release=abc",
+                  traceparent: "00-trace-span-01",
+                },
+              },
+            ],
+            forwardURL:
+              "https://junior.example.com/api/internal/sandbox-egress",
           },
         ],
       },
@@ -365,6 +419,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("forwards repeated authorized sandbox requests with credential headers", async () => {
+    setSandboxEgressTracePropagationDomains(["sentry.io"]);
     setSandboxEgressUserActor();
     mockSentryLease();
 
