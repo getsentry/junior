@@ -931,7 +931,7 @@ describe("createSandboxExecutor", () => {
     expect(response.result.permission_denied).toBeUndefined();
   });
 
-  it("attaches sandbox egress auth signals to failed bash results", async () => {
+  it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
     const sandbox = makeSandbox("sbx_fresh_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressAuthRequiredSignal(
@@ -989,7 +989,73 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("attaches sandbox egress permission signals to failed bash results", async () => {
+  it("attaches sandbox egress auth signals to bash results with exit code 0 (pipe-masked failures)", async () => {
+    // Regression test: piped bash commands (e.g. `cmd | head`) mask the
+    // underlying CLI exit code with 0 from the pipe tail. The auth signal must
+    // still be surfaced so the OAuth flow can be triggered.
+    const sandbox = makeSandbox("sbx_pipe_masked_auth_signal");
+    sandbox.runCommand.mockImplementationOnce(async () => {
+      await setSandboxEgressAuthRequiredSignal(
+        {
+          credentials: { actor: { type: "user" as const, userId: "U123" } },
+          egressId: "sbx_pipe_masked_auth_signal_session",
+          expiresAtMs: Date.now() + 60_000,
+          contextId: "ctx-pipe-masked",
+        },
+        {
+          provider: "sentry",
+          grant: {
+            name: "default",
+            access: "read",
+          },
+          authorization: {
+            type: "oauth",
+            provider: "sentry",
+          },
+        },
+      );
+      return {
+        exitCode: 0, // pipe tail (head/grep) always exits 0
+        stdout: async () =>
+          '"junior-auth-required provider=sentry grant=default access=read 401 unauthorized"',
+        stderr: async () => "",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_pipe_masked_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute<{
+      auth_required?: unknown;
+      exit_code: number;
+    }>({
+      toolName: "bash",
+      input: {
+        command: "sentry org list --json 2>&1 | head -20",
+      },
+    });
+
+    expect(response.result.exit_code).toBe(0);
+    // Auth signal must be attached even though exit_code is 0
+    expect(response.result.auth_required).toMatchObject({
+      provider: "sentry",
+      grant: {
+        name: "default",
+        access: "read",
+      },
+    });
+  });
+
+  it("attaches sandbox egress permission signals to bash results regardless of exit code", async () => {
     const sandbox = makeSandbox("sbx_permission_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressPermissionDeniedSignal(

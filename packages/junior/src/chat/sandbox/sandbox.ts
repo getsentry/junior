@@ -299,14 +299,15 @@ export function createSandboxExecutor(options?: {
         }
       },
     );
-    const authRequired =
-      result.exitCode !== 0
-        ? await consumeSandboxEgressAuthRequiredSignal(activeEgressId)
-        : undefined;
-    const permissionDenied =
-      result.exitCode !== 0
-        ? await consumeSandboxEgressPermissionDeniedSignal(activeEgressId)
-        : undefined;
+    // Always consume egress auth/permission signals regardless of exit code.
+    // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
+    // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
+    // preventing the signal from ever being read. The egress signal is a
+    // side-channel from the network layer — not a property of shell exit status —
+    // and `clearSandboxEgressSignals` runs before each execution to prevent
+    // cross-command leakage.
+    const authRequired = await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
+    const permissionDenied = await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
 
     return {
       result: {
