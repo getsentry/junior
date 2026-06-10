@@ -90,6 +90,7 @@ import {
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
+  isAuthResumeRetryableTurnError,
   isCooperativeTurnYieldError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
@@ -1063,14 +1064,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
 
-          if (
-            isRetryableTurnError(error, "mcp_auth_resume") ||
-            isRetryableTurnError(error, "plugin_auth_resume")
-          ) {
-            // authProvider is always present for mcp_auth_resume / plugin_auth_resume
-            // (sourced from AuthorizationPauseError.provider, a required constructor arg)
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            await postAuthPauseNotice(error.metadata!.authProvider!);
+          if (isAuthResumeRetryableTurnError(error)) {
+            await postAuthPauseNotice(error.metadata.authProvider);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,

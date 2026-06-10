@@ -17,6 +17,12 @@ export type RetryableTurnReason =
   | "plugin_auth_resume"
   | "agent_continue";
 
+/** Auth-pause reasons — a turn cannot request authorization without a known provider. */
+export type AuthResumeRetryableTurnReason = Extract<
+  RetryableTurnReason,
+  "mcp_auth_resume" | "plugin_auth_resume"
+>;
+
 export interface RetryableTurnMetadata {
   authDisposition?: AuthorizationPauseDisposition;
   authDurationMs?: number;
@@ -30,12 +36,34 @@ export interface RetryableTurnMetadata {
   sliceId?: number;
 }
 
+/** Metadata for auth-pause turns; authProvider is required because auth cannot be
+ * requested without knowing which provider needs authorization. */
+export interface AuthResumeRetryableTurnMetadata extends RetryableTurnMetadata {
+  authProvider: string;
+}
+
+/** Narrowed RetryableTurnError for auth-pause reasons with a guaranteed provider. */
+export type AuthResumeRetryableTurnError = RetryableTurnError & {
+  readonly reason: AuthResumeRetryableTurnReason;
+  readonly metadata: AuthResumeRetryableTurnMetadata;
+};
+
 /** Error indicating an agent run can continue later after timeout or auth pause. */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
   readonly metadata?: RetryableTurnMetadata;
   readonly reason: RetryableTurnReason;
 
+  constructor(
+    reason: AuthResumeRetryableTurnReason,
+    message: string,
+    metadata: AuthResumeRetryableTurnMetadata,
+  );
+  constructor(
+    reason: "agent_continue",
+    message: string,
+    metadata?: RetryableTurnMetadata,
+  );
   constructor(
     reason: RetryableTurnReason,
     message: string,
@@ -59,6 +87,22 @@ export function isRetryableTurnError(
     return true;
   }
   return error.reason === reason;
+}
+
+/**
+ * Type guard for auth-pause errors. Validates at runtime that authProvider is
+ * present — the type system enforces this at construction but this guard makes
+ * the narrowing safe even across serialization boundaries.
+ */
+export function isAuthResumeRetryableTurnError(
+  error: unknown,
+): error is AuthResumeRetryableTurnError {
+  return (
+    error instanceof RetryableTurnError &&
+    (error.reason === "mcp_auth_resume" ||
+      error.reason === "plugin_auth_resume") &&
+    typeof error.metadata?.authProvider === "string"
+  );
 }
 
 /** Error indicating the turn paused voluntarily at a safe continuation boundary. */

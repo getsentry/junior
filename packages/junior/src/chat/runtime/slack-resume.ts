@@ -10,7 +10,10 @@ import {
   logException,
   type LogContext,
 } from "@/chat/logging";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+import {
+  isAuthResumeRetryableTurnError,
+  isRetryableTurnError,
+} from "@/chat/runtime/turn";
 import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
@@ -265,8 +268,9 @@ export async function resumeSlackTurn(
   });
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
-  let deferredPauseProvider: string | undefined;
-  let deferredPauseRequesterId: string | undefined;
+  let deferredAuthInfo:
+    | { provider: string; requesterId: string | undefined }
+    | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let finalReplyDelivered = false;
@@ -373,16 +377,14 @@ export async function resumeSlackTurn(
           "Failed to terminalize resumed turn after post-delivery commit failure",
         );
       }
-    } else if (
-      (isRetryableTurnError(error, "mcp_auth_resume") ||
-        isRetryableTurnError(error, "plugin_auth_resume")) &&
-      onAuthPause
-    ) {
+    } else if (isAuthResumeRetryableTurnError(error) && onAuthPause) {
       deferredPauseKind = "auth";
-      deferredPauseProvider = error.metadata?.authProvider;
-      // replyContext.requester.userId is guaranteed by the guard earlier in the try
-      // body; optional-chain here because the catch doesn't inherit that narrowing
-      deferredPauseRequesterId = runArgs.replyContext?.requester?.userId;
+      deferredAuthInfo = {
+        provider: error.metadata.authProvider,
+        // replyContext.requester.userId is guaranteed by the guard earlier in the
+        // try body; optional-chain here because catch doesn't inherit that narrowing
+        requesterId: runArgs.replyContext?.requester?.userId,
+      };
       deferredPauseHandler = async () => {
         await onAuthPause(error);
       };
@@ -428,14 +430,11 @@ export async function resumeSlackTurn(
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
-      if (deferredPauseKind === "auth") {
+      if (deferredPauseKind === "auth" && deferredAuthInfo) {
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          // deferredPauseProvider is always set alongside deferredPauseKind === "auth"
-          // (sourced from AuthorizationPauseError.provider, a required constructor arg)
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          buildAuthPauseResponse(deferredPauseRequesterId, deferredPauseProvider!),
+          buildAuthPauseResponse(deferredAuthInfo.requesterId, deferredAuthInfo.provider),
         );
       }
       return true;
