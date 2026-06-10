@@ -347,11 +347,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
-  const sandboxEgressTracePropagationDomains =
-    normalizeSandboxEgressTracePropagationDomains(
-      options?.sandbox?.egressTracePropagationDomains,
-    );
+  let sandboxEgressTracePropagationDomains: string[] = [];
   try {
+    sandboxEgressTracePropagationDomains =
+      normalizeSandboxEgressTracePropagationDomains(
+        options?.sandbox?.egressTracePropagationDomains,
+      );
     setConfigDefaults(options?.configDefaults);
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
