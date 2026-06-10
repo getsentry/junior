@@ -69,7 +69,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       },
       { additionalProperties: false },
     ),
-    execute: async (input) => {
+    execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
       if (provider) {
@@ -101,6 +101,10 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       }
       return await mcpTool.execute(
         resolveMcpArguments(input as Record<string, unknown>),
+        {
+          conversationPrivacy: options?.conversationPrivacy ?? "private",
+          ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+        },
       );
     },
   });

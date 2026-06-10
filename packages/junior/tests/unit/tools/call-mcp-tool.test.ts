@@ -42,7 +42,51 @@ describe("callMcpTool", () => {
       content: [{ type: "text", text: "pong" }],
       details: { provider: "demo", tool: "ping" },
     });
-    expect(execute).toHaveBeenCalledWith({ query: "hello" });
+    expect(execute).toHaveBeenCalledWith(
+      { query: "hello" },
+      { conversationPrivacy: "private" },
+    );
+  });
+
+  it("passes conversation privacy to the managed MCP tool", async () => {
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "pong" }],
+      details: {
+        provider: "demo",
+        tool: "ping",
+        rawResult: {
+          content: [{ type: "text" as const, text: "pong" }],
+          isError: false,
+        },
+      },
+    }));
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => [
+        {
+          name: "mcp__demo__ping",
+          rawName: "ping",
+          provider: "demo",
+          description: "Ping",
+          parameters: {},
+          execute,
+        },
+      ]),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    await callMcpTool.execute!(
+      {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      },
+      { conversationPrivacy: "public" },
+    );
+
+    expect(execute).toHaveBeenCalledWith(
+      { query: "hello" },
+      { conversationPrivacy: "public" },
+    );
   });
 
   it("rejects top-level MCP arguments instead of silently dropping them", async () => {

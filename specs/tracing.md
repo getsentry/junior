@@ -64,16 +64,18 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `gen_ai.response.finish_reasons` when available from provider responses.
 - `gen_ai.system_instructions` when provided separately from chat history and safely captured.
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
-- `app.conversation.privacy` on GenAI spans.
-- `app.ai.input.*` / `app.ai.output.*` bounded message shape metadata
-  (`message_count`, `content_chars`, `roles`, `part_types`) for transcript
-  reconstruction without raw content.
+- `app.conversation.privacy` on enclosing workflow/agent spans when the runtime can derive it.
+- Custom `app.ai.input.*` / `app.ai.output.*` bounded message shape metadata
+  (`message_count`, `content_chars`, `roles`, `part_types`) only when scalar
+  query pivots are needed beyond the standard `gen_ai.*.messages` attributes.
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
 - `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` when available from provider responses.
 - `gen_ai.tool.description` when available on tool execution spans.
+- `gen_ai.tool.type` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
-- `app.ai.tool.call.arguments.*` / `app.ai.tool.call.result.*` bounded tool
-  payload metadata (`type`, `size_chars`, `keys`) on tool execution spans.
+- Custom `app.ai.tool.call.arguments.*` / `app.ai.tool.call.result.*` bounded
+  payload metadata (`type`, `size_chars`, `keys`) only when scalar query pivots
+  are needed beyond the standard `gen_ai.tool.call.*` attributes.
 - Raw GenAI messages, system instructions, tool arguments, and tool results must
   follow `./data-redaction-policy.md`; private conversations emit metadata-only
   attributes.
@@ -93,6 +95,7 @@ semantic conventions:
 - `mcp.method.name` (`tools/call` for tool calls)
 - `gen_ai.operation.name` (`execute_tool` for tool calls)
 - `gen_ai.tool.name`
+- `gen_ai.tool.type` when available
 - `jsonrpc.request.id` when available
 - `rpc.response.status_code` when a JSON-RPC response contains an error code
 - `mcp.protocol.version` when available

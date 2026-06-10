@@ -8,7 +8,16 @@
  */
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import { logWarn, setSpanAttributes } from "@/chat/logging";
+import {
+  logWarn,
+  serializeGenAiAttribute,
+  setSpanAttributes,
+  withSpan,
+} from "@/chat/logging";
+import {
+  toGenAiPayloadMetadata,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
@@ -18,7 +27,7 @@ import {
   type PluginMcpToolCallResult,
 } from "./client";
 import {
-  getMcpAwareErrorMessage,
+  getMcpAwareTelemetryMessage,
   getMcpAwareErrorType,
   McpToolError,
 } from "./errors";
@@ -179,7 +188,13 @@ export interface ManagedMcpToolDescriptor {
 type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
 
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
-  execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
+  execute: (
+    args: Record<string, unknown>,
+    options?: {
+      conversationPrivacy?: ConversationPrivacy;
+      toolCallId?: string;
+    },
+  ) => Promise<ManagedMcpToolResult>;
 }
 
 export class McpToolManager {
@@ -348,69 +363,115 @@ export class McpToolManager {
       ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
       ...(outputSchema ? { outputSchema } : {}),
       ...(annotations ? { annotations } : {}),
-      execute: async (args) => {
+      execute: async (args, options) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
+        const conversationPrivacy = options?.conversationPrivacy ?? "private";
+        const managedToolName = normalizeMcpToolName(
+          plugin.manifest.name,
+          tool.name,
+        );
         const baseAttributes = {
           "mcp.method.name": "tools/call",
+          "gen_ai.operation.name": "execute_tool",
+          "gen_ai.tool.name": managedToolName,
+          "gen_ai.tool.description": describeMcpTool(
+            plugin.manifest.name,
+            tool,
+          ),
+          "gen_ai.tool.type": "extension",
+          "app.plugin.name": plugin.manifest.name,
+          ...(options?.toolCallId
+            ? { "gen_ai.tool.call.id": options.toolCallId }
+            : {}),
         };
-        setSpanAttributes(baseAttributes);
+        const argumentAttribute = serializeMcpPayload(
+          resolvedArgs,
+          conversationPrivacy,
+        );
 
-        try {
-          const result = await client.callTool(tool.name, resolvedArgs);
-          if ("isError" in result && result.isError) {
-            throw new McpToolError(extractMcpErrorMessage(result));
-          }
+        return await withSpan(
+          `execute_tool ${managedToolName}`,
+          "gen_ai.execute_tool",
+          {},
+          async () => {
+            try {
+              const result = await client.callTool(tool.name, resolvedArgs);
+              if ("isError" in result && result.isError) {
+                throw new McpToolError(extractMcpErrorMessage(result));
+              }
 
-          return {
-            content: toAgentToolContent(result),
-            details: {
-              provider: plugin.manifest.name,
-              tool: tool.name,
-              rawResult: result,
-            },
-          };
-        } catch (error) {
-          if (
-            error instanceof McpAuthorizationRequiredError &&
-            (await this.handleAuthorizationRequired(
-              plugin.manifest.name,
-              error,
-            ))
-          ) {
-            return {
-              // Pi turns thrown tool errors into toolResult isError frames.
-              // Once auth pause has been requested, return a placeholder result
-              // and let the aborted turn park cleanly instead of surfacing a
-              // spurious tool failure to the model.
-              content: [{ type: "text", text: "Authorization pending." }],
-              details: {
-                provider: plugin.manifest.name,
-                tool: tool.name,
-                rawResult: {
+              const resultAttribute = serializeMcpPayload(
+                result,
+                conversationPrivacy,
+              );
+              if (resultAttribute) {
+                setSpanAttributes({
+                  "gen_ai.tool.call.result": resultAttribute,
+                });
+              }
+
+              return {
+                content: toAgentToolContent(result),
+                details: {
+                  provider: plugin.manifest.name,
+                  tool: tool.name,
+                  rawResult: result,
+                },
+              };
+            } catch (error) {
+              if (
+                error instanceof McpAuthorizationRequiredError &&
+                (await this.handleAuthorizationRequired(
+                  plugin.manifest.name,
+                  error,
+                ))
+              ) {
+                const parkedResult = {
                   toolResult: {
                     authorizationPending: true,
                   },
-                },
-              },
-            };
-          }
-          const errorAttributes = {
+                };
+                return {
+                  // Pi turns thrown tool errors into toolResult isError frames.
+                  // Once auth pause has been requested, return a placeholder result
+                  // and let the aborted turn park cleanly instead of surfacing a
+                  // spurious tool failure to the model.
+                  content: [{ type: "text", text: "Authorization pending." }],
+                  details: {
+                    provider: plugin.manifest.name,
+                    tool: tool.name,
+                    rawResult: parkedResult,
+                  },
+                };
+              }
+              const errorAttributes = {
+                ...baseAttributes,
+                "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
+                "exception.message": getMcpAwareTelemetryMessage(
+                  error,
+                  conversationPrivacy,
+                ),
+              };
+              setSpanAttributes(errorAttributes);
+              if (error instanceof McpToolError) {
+                logWarn(
+                  "mcp_tool_call_failed",
+                  {},
+                  errorAttributes,
+                  "MCP tool call failed",
+                );
+              }
+              throw error;
+            }
+          },
+          {
             ...baseAttributes,
-            "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
-            "exception.message": getMcpAwareErrorMessage(error),
-          };
-          setSpanAttributes(errorAttributes);
-          if (error instanceof McpToolError) {
-            logWarn(
-              "mcp_tool_call_failed",
-              {},
-              errorAttributes,
-              "MCP tool call failed",
-            );
-          }
-          throw error;
-        }
+            ...(argumentAttribute
+              ? { "gen_ai.tool.call.arguments": argumentAttribute }
+              : {}),
+          },
+        );
       },
     };
   }
@@ -471,4 +532,13 @@ function toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function serializeMcpPayload(
+  payload: unknown,
+  privacy: ConversationPrivacy,
+): string | undefined {
+  return serializeGenAiAttribute(
+    privacy === "private" ? toGenAiPayloadMetadata(payload) : payload,
+  );
 }

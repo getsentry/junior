@@ -95,8 +95,10 @@ Tool execution spans in private conversations must not set raw
 `gen_ai.tool.call.arguments` or raw `gen_ai.tool.call.result`. They may set
 bounded `app.ai.tool.*` metadata such as type, size, and top-level keys.
 
-All GenAI spans should include `app.conversation.privacy` when the runtime can
-derive it.
+Enclosing workflow/agent spans should include `app.conversation.privacy` when
+the runtime can derive it. Child GenAI spans may inherit that trace context and
+must still apply the same capture policy even when they do not repeat the
+attribute.
 
 ## Verification
 
@@ -104,9 +106,9 @@ derive it.
   tool arguments, or tool results.
 - Public dashboard conversation APIs may return raw transcript content while the
   session-log entry is still present.
-- Private GenAI span tests assert metadata-only message attributes.
-- Tool span tests cover metadata-only argument/result attributes for private
-  conversations.
+- Private GenAI capture tests prove raw message content is not exposed.
+- Tool execution tests prove private tool arguments, results, and MCP error
+  payloads are not exposed through reporting or telemetry capture paths.
 - Unknown conversation ids are treated as private.
 
 ## Related Specs

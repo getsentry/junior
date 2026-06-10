@@ -1,6 +1,7 @@
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   description: string;
@@ -22,7 +23,12 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   executionMode?: ToolExecutionMode;
   execute?: (
     input: Static<TInputSchema>,
-    options: { experimental_context?: unknown; signal?: AbortSignal },
+    options: {
+      experimental_context?: unknown;
+      signal?: AbortSignal;
+      conversationPrivacy?: ConversationPrivacy;
+      toolCallId?: string;
+    },
   ) => Promise<unknown> | unknown;
 }
 

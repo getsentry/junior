@@ -7,7 +7,8 @@ import {
 } from "@/chat/logging";
 import { AgentPluginToolInputError } from "@sentry/junior-plugin-api";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { getMcpAwareErrorMessage, McpToolError } from "@/chat/mcp/errors";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { getMcpAwareTelemetryMessage, McpToolError } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -53,9 +54,10 @@ export function handleToolExecutionError(
   toolCallId: string | undefined,
   shouldTrace: boolean,
   traceContext: LogContext,
+  conversationPrivacy?: ConversationPrivacy,
 ): never {
   const errorType = getToolErrorType(error);
-  const errorMessage = getMcpAwareErrorMessage(error);
+  const errorMessage = getMcpAwareTelemetryMessage(error, conversationPrivacy);
   setSpanAttributes({
     "error.type": errorType,
     ...(error instanceof PluginCredentialFailureError

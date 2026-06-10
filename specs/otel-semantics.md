@@ -74,6 +74,7 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.usage.cache_creation.input_tokens` (when available)
 - `gen_ai.tool.description` (when available)
 - `gen_ai.tool.name` (for `execute_tool`)
+- `gen_ai.tool.type` (when available)
 - `gen_ai.tool.call.id` (when available)
 - `gen_ai.tool.call.arguments` (when captured)
 - `gen_ai.tool.call.result` (when captured)
@@ -116,6 +117,7 @@ Private conversations must use metadata-only attributes.
 - `rpc.response.status_code`
 - `gen_ai.operation.name` (`execute_tool` for tool calls)
 - `gen_ai.tool.name`
+- `gen_ai.tool.type` when available
 - `gen_ai.tool.call.arguments` only under explicit capture policy
 - `gen_ai.tool.call.result` only under explicit capture policy
 - `network.protocol.name`

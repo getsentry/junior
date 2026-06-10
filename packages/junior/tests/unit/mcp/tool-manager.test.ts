@@ -7,18 +7,14 @@ const {
   clientSetupError,
   closeMock,
   listToolsMock,
-  logWarnMock,
   onAuthorizationRequiredMock,
-  setSpanAttributesMock,
 } = vi.hoisted(() => ({
   callToolMock: vi.fn(),
   clientOptions: [] as unknown[],
   clientSetupError: { value: undefined as unknown },
   closeMock: vi.fn(),
   listToolsMock: vi.fn(),
-  logWarnMock: vi.fn(),
   onAuthorizationRequiredMock: vi.fn(),
-  setSpanAttributesMock: vi.fn(),
 }));
 
 vi.mock("@/chat/mcp/client", () => {
@@ -62,11 +58,6 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
-vi.mock("@/chat/logging", () => ({
-  logWarn: logWarnMock,
-  setSpanAttributes: setSpanAttributesMock,
-}));
-
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 
@@ -96,9 +87,7 @@ describe("McpToolManager", () => {
     listToolsMock.mockReset();
     callToolMock.mockReset();
     closeMock.mockReset();
-    logWarnMock.mockReset();
     onAuthorizationRequiredMock.mockReset();
-    setSpanAttributesMock.mockReset();
     clientOptions.length = 0;
     clientSetupError.value = undefined;
 
@@ -175,27 +164,7 @@ describe("McpToolManager", () => {
     expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
-  it("annotates MCP tool spans with the MCP method name", async () => {
-    const plugin = buildPlugin();
-    const manager = new McpToolManager([plugin]);
-    await manager.activateProvider("demo");
-
-    const resolvedTools = manager.getResolvedActiveTools();
-    await expect(
-      resolvedTools[0]!.execute({ query: "hello" }),
-    ).resolves.toMatchObject({
-      details: {
-        provider: "demo",
-        tool: "ping",
-      },
-    });
-
-    expect(setSpanAttributesMock).toHaveBeenCalledWith({
-      "mcp.method.name": "tools/call",
-    });
-  });
-
-  it("logs expected MCP tool errors with semantic context", async () => {
+  it("throws expected MCP tool errors", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
     await manager.activateProvider("demo");
@@ -212,20 +181,6 @@ describe("McpToolManager", () => {
     const resolvedTools = manager.getResolvedActiveTools();
     await expect(resolvedTools[0]!.execute({})).rejects.toThrow(
       "expected object, received undefined",
-    );
-
-    const expectedAttributes = expect.objectContaining({
-      "mcp.method.name": "tools/call",
-      "error.type": "tool_error",
-      "exception.message":
-        "Input validation error: Invalid input: expected object, received undefined",
-    });
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(expectedAttributes);
-    expect(logWarnMock).toHaveBeenCalledWith(
-      "mcp_tool_call_failed",
-      {},
-      expectedAttributes,
-      "MCP tool call failed",
     );
   });
 

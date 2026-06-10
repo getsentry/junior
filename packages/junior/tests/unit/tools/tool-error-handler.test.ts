@@ -31,7 +31,14 @@ describe("handleToolExecutionError", () => {
     const error = new McpToolError("remote tool failed");
 
     expect(() =>
-      handleToolExecutionError(error, "callMcpTool", "tool-call-id", true, {}),
+      handleToolExecutionError(
+        error,
+        "callMcpTool",
+        "tool-call-id",
+        true,
+        {},
+        "private",
+      ),
     ).toThrow(error);
 
     expect(setSpanAttributesMock).toHaveBeenCalledWith({
@@ -45,9 +52,12 @@ describe("handleToolExecutionError", () => {
         "gen_ai.tool.name": "callMcpTool",
         "gen_ai.tool.call.id": "tool-call-id",
         "error.type": "tool_error",
-        "exception.message": "remote tool failed",
+        "exception.message": "MCP tool call failed",
       }),
       "Agent tool call failed",
+    );
+    expect(JSON.stringify(logWarnMock.mock.calls)).not.toContain(
+      "remote tool failed",
     );
     expect(logExceptionMock).not.toHaveBeenCalled();
   });

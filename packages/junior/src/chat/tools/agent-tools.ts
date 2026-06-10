@@ -120,6 +120,10 @@ export function createAgentTools(
               : await toolDef.execute(toolInput as never, {
                   experimental_context: sandbox,
                   ...(signal ? { signal } : {}),
+                  conversationPrivacy: effectiveConversationPrivacy,
+                  ...(normalizedToolCallId
+                    ? { toolCallId: normalizedToolCallId }
+                    : {}),
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);
@@ -163,15 +167,16 @@ export function createAgentTools(
               normalizedToolCallId,
               shouldTrace,
               spanContext,
+              effectiveConversationPrivacy,
             );
           }
         },
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
-          "app.conversation.privacy": effectiveConversationPrivacy,
           "gen_ai.tool.name": toolName,
           "gen_ai.tool.description": toolDef.description,
+          "gen_ai.tool.type": "extension",
           ...toolArgumentsMetadata,
           ...(normalizedToolCallId
             ? { "gen_ai.tool.call.id": normalizedToolCallId }

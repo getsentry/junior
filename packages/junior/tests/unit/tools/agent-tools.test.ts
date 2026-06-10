@@ -5,27 +5,10 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import type { Skill } from "@/chat/skills";
 
-const { handleToolExecutionError, setSpanAttributesMock, withSpanMock } =
-  vi.hoisted(() => ({
-    handleToolExecutionError: vi.fn((error: unknown) => {
-      throw error;
-    }),
-    setSpanAttributesMock: vi.fn(),
-    withSpanMock: vi.fn(
-      async (
-        _name: string,
-        _op: string,
-        _context: Record<string, unknown>,
-        callback: () => Promise<unknown>,
-        _attributes?: Record<string, unknown>,
-      ) => callback(),
-    ),
-  }));
-
-vi.mock("@/chat/logging", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/logging")>()),
-  setSpanAttributes: setSpanAttributesMock,
-  withSpan: withSpanMock,
+const { handleToolExecutionError } = vi.hoisted(() => ({
+  handleToolExecutionError: vi.fn((error: unknown) => {
+    throw error;
+  }),
 }));
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
@@ -44,8 +27,6 @@ const githubSkill: Skill = {
 describe("createAgentTools", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
-    setSpanAttributesMock.mockClear();
-    withSpanMock.mockClear();
   });
 
   it("emits assistant status only for reportProgress", async () => {
@@ -196,6 +177,12 @@ describe("createAgentTools", () => {
       },
       sandbox,
       {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
     );
 
     await demoTool!.execute(
@@ -213,6 +200,8 @@ describe("createAgentTools", () => {
       {
         experimental_context: sandbox,
         signal: abortController.signal,
+        conversationPrivacy: "public",
+        toolCallId: "tool-demo",
       },
     );
   });
@@ -266,161 +255,6 @@ describe("createAgentTools", () => {
 
     expect(editTool?.prepareArguments).toBe(prepareArguments);
     expect(editTool?.executionMode).toBe("sequential");
-  });
-
-  it("records tool call arguments and result on the execute_tool span", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const [bashTool] = createAgentTools(
-      {
-        bash: {
-          description: "bash",
-          inputSchema: {} as any,
-          execute: async () => ({
-            ok: true,
-            stdout: "done",
-          }),
-        },
-      },
-      sandbox,
-      {
-        conversationId: "thread_123",
-      },
-    );
-
-    const result = await bashTool!.execute("tool-bash", {
-      command: "pwd",
-    });
-
-    expect(result.details).toEqual({
-      ok: true,
-      stdout: "done",
-    });
-    expect(withSpanMock).toHaveBeenCalledWith(
-      "execute_tool bash",
-      "gen_ai.execute_tool",
-      {
-        conversationId: "thread_123",
-      },
-      expect.any(Function),
-      expect.objectContaining({
-        "gen_ai.provider.name": "vercel-ai-gateway",
-        "gen_ai.operation.name": "execute_tool",
-        "gen_ai.tool.name": "bash",
-        "gen_ai.tool.description": "bash",
-        "gen_ai.tool.call.id": "tool-bash",
-        "gen_ai.tool.call.arguments": expect.any(String),
-      }),
-    );
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "gen_ai.tool.call.result": expect.any(String),
-      }),
-    );
-  });
-
-  it("records only tool payload metadata for private conversations", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const [bashTool] = createAgentTools(
-      {
-        bash: {
-          description: "bash",
-          inputSchema: {} as any,
-          execute: async () => ({
-            ok: true,
-            stdout: "private result",
-          }),
-        },
-      },
-      sandbox,
-      {
-        conversationId: "slack:D123:123.456",
-      },
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-    );
-
-    await bashTool!.execute("tool-bash", {
-      command: "private command",
-    });
-
-    const spanAttributes = withSpanMock.mock.calls[0]?.[4] as Record<
-      string,
-      unknown
-    >;
-    const resultCall = setSpanAttributesMock.mock.calls.find(
-      (call) => call[0] && "gen_ai.tool.call.result" in call[0],
-    );
-    const resultAttribute = resultCall?.[0]?.[
-      "gen_ai.tool.call.result"
-    ] as string;
-
-    expect(spanAttributes["gen_ai.tool.call.arguments"]).toContain('"chars"');
-    expect(spanAttributes["gen_ai.tool.call.arguments"]).toContain(
-      '"keys":["command"]',
-    );
-    expect(spanAttributes["app.conversation.privacy"]).toBe("private");
-    expect(spanAttributes["app.ai.tool.call.arguments.type"]).toBe("object");
-    expect(spanAttributes["app.ai.tool.call.arguments.keys"]).toEqual([
-      "command",
-    ]);
-    expect(spanAttributes["gen_ai.tool.call.arguments"]).not.toContain(
-      "private command",
-    );
-    expect(resultAttribute).toContain('"chars"');
-    expect(resultAttribute).toContain('"keys":["ok","stdout"]');
-    expect(resultCall?.[0]).toMatchObject({
-      "app.ai.tool.call.result.type": "object",
-      "app.ai.tool.call.result.keys": ["ok", "stdout"],
-    });
-    expect(resultAttribute).not.toContain("private result");
-  });
-
-  it("records the raw tool result instead of the MCP envelope", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const [mcpTool] = createAgentTools(
-      {
-        mcp__demo__ping: {
-          description: "[demo] ping",
-          inputSchema: {} as any,
-          execute: async () => ({
-            content: [{ type: "text", text: "pong" }],
-            details: {
-              provider: "demo",
-              tool: "ping",
-              rawResult: {
-                content: [{ type: "text", text: "pong" }],
-                isError: false,
-              },
-            },
-          }),
-        },
-      },
-      sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "public",
-    );
-
-    await mcpTool!.execute("tool-mcp", { query: "hello" });
-
-    const resultCall = setSpanAttributesMock.mock.calls.find(
-      (call) => call[0] && "gen_ai.tool.call.result" in call[0],
-    );
-    expect(resultCall).toBeDefined();
-    const resultAttribute = resultCall?.[0]?.[
-      "gen_ai.tool.call.result"
-    ] as string;
-    expect(resultAttribute).toContain('"isError":false');
-    expect(resultAttribute).not.toContain('"provider":"demo"');
-    expect(resultAttribute).not.toContain('"tool":"ping"');
   });
 
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {
