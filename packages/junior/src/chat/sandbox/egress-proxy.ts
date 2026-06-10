@@ -22,7 +22,10 @@ import {
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress-session";
-import { shouldPropagateSandboxEgressTrace } from "@/chat/sandbox/egress-tracing";
+import {
+  shouldPropagateSandboxEgressTrace,
+  type SandboxEgressTracePropagationConfig,
+} from "@/chat/sandbox/egress-tracing";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 import type { JWTPayload } from "jose";
 import * as Sentry from "@/chat/sentry";
@@ -74,6 +77,7 @@ export type SandboxEgressHttpInterceptor = (input: {
 interface ProxyDeps {
   fetch?: typeof fetch;
   interceptHttp?: SandboxEgressHttpInterceptor;
+  tracePropagation?: SandboxEgressTracePropagationConfig;
   verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 
@@ -473,12 +477,18 @@ async function responseTextWithinLimit(
   return new TextDecoder().decode(combined);
 }
 
+/** Build sanitized upstream headers and preserve trace headers only for configured hosts. */
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
   upstreamHost: string,
+  tracePropagation: SandboxEgressTracePropagationConfig,
 ): Headers {
   const headers = new Headers();
+  const mayPropagateTrace = shouldPropagateSandboxEgressTrace(
+    upstreamHost,
+    tracePropagation,
+  );
   request.headers.forEach((value, key) => {
     const normalized = key.toLowerCase();
     if (
@@ -487,10 +497,7 @@ function requestHeaders(
     ) {
       return;
     }
-    if (
-      TRACE_PROPAGATION_HEADERS.has(normalized) &&
-      !shouldPropagateSandboxEgressTrace(upstreamHost)
-    ) {
+    if (TRACE_PROPAGATION_HEADERS.has(normalized) && !mayPropagateTrace) {
       return;
     }
     headers.append(key, value);
@@ -501,6 +508,12 @@ function requestHeaders(
       continue;
     }
     for (const [key, value] of Object.entries(transform.headers)) {
+      if (
+        TRACE_PROPAGATION_HEADERS.has(key.toLowerCase()) &&
+        !mayPropagateTrace
+      ) {
+        continue;
+      }
       headers.set(key, value);
     }
   }
@@ -521,9 +534,11 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
+/** Continue inbound trace context only after sandbox egress verification succeeds. */
 function continueSandboxEgressTrace<T>(
   request: Request,
   upstreamHost: string,
+  tracePropagation: SandboxEgressTracePropagationConfig,
   callback: () => Promise<T>,
 ): Promise<T> {
   const sentryTrace = request.headers.get("sentry-trace") ?? undefined;
@@ -534,7 +549,7 @@ function continueSandboxEgressTrace<T>(
       "url.path": redactedProxyPath(new URL(request.url).pathname),
     });
   if (
-    !shouldPropagateSandboxEgressTrace(upstreamHost) ||
+    !shouldPropagateSandboxEgressTrace(upstreamHost, tracePropagation) ||
     (!sentryTrace && !baggage)
   ) {
     return run();
@@ -675,6 +690,7 @@ async function proxySandboxEgressRequestImpl(
   return await continueSandboxEgressTrace(
     request,
     upstreamUrl.hostname,
+    deps.tracePropagation ?? {},
     async () =>
       await proxySandboxEgressVerifiedRequest({
         activeEgressId,
@@ -823,7 +839,12 @@ async function proxySandboxEgressVerifiedRequest(input: {
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const headers = requestHeaders(request, lease, upstreamUrl.hostname);
+  const headers = requestHeaders(
+    request,
+    lease,
+    upstreamUrl.hostname,
+    deps.tracePropagation ?? {},
+  );
   if (!bodyRead) {
     body = await requestBodyBytes(request);
   }

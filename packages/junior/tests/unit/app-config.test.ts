@@ -14,10 +14,6 @@ import {
   getPluginProviders,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
-import {
-  getSandboxEgressTracePropagationDomains,
-  setSandboxEgressTracePropagationDomains,
-} from "@/chat/sandbox/egress-tracing";
 
 const originalCwd = process.cwd();
 const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
@@ -61,7 +57,6 @@ afterEach(async () => {
   setAgentPlugins([]);
   setPluginCatalogConfig(undefined);
   setConfigDefaults(undefined);
-  setSandboxEgressTracePropagationDomains(undefined);
   vi.doUnmock("#junior/config");
   if (originalPluginPackages === undefined) {
     delete process.env.JUNIOR_PLUGIN_PACKAGES;
@@ -103,18 +98,17 @@ describe("createApp plugin config", () => {
     expect(getAgentPlugins().map((plugin) => plugin.name)).toEqual([]);
   });
 
-  it("configures sandbox egress trace propagation domains from app options", async () => {
-    await createApp({
-      plugins: defineJuniorPlugins([]),
-      sandbox: {
-        egressTracePropagationDomains: ["SENTRY.IO", " *.sentry.io "],
-      },
-    });
-
-    expect(getSandboxEgressTracePropagationDomains()).toEqual([
-      "*.sentry.io",
-      "sentry.io",
-    ]);
+  it("validates sandbox egress trace propagation domains from app options", async () => {
+    await expect(
+      createApp({
+        plugins: defineJuniorPlugins([]),
+        sandbox: {
+          egressTracePropagationDomains: ["api.*.sentry.io"],
+        },
+      }),
+    ).rejects.toThrow(
+      "sandbox.egressTracePropagationDomains entries must be exact domains or leading wildcard domains",
+    );
   });
 
   it("loads package plugins with runtime hook plugins", async () => {

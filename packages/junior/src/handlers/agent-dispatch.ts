@@ -1,12 +1,18 @@
 import { logException } from "@/chat/logging";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import type { WaitUntilFn } from "@/handlers/types";
+
+interface AgentDispatchHandlerOptions {
+  tracePropagation?: SandboxEgressTracePropagationConfig;
+}
 
 /** Handle the authenticated internal agent-dispatch callback. */
 export async function POST(
   request: Request,
   waitUntil: WaitUntilFn,
+  options: AgentDispatchHandlerOptions = {},
 ): Promise<Response> {
   const payload = await verifyDispatchCallbackRequest(request);
   if (!payload) {
@@ -14,7 +20,9 @@ export async function POST(
   }
 
   waitUntil(() =>
-    runAgentDispatchSlice(payload).catch((error) => {
+    runAgentDispatchSlice(payload, {
+      tracePropagation: options.tracePropagation,
+    }).catch((error) => {
       logException(
         error,
         "agent_dispatch_handler_failed",

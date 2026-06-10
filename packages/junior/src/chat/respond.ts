@@ -76,6 +76,7 @@ import {
   type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -228,6 +229,8 @@ export interface ReplyRequestContext {
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
+    /** Per-turn override for app-owned sandbox egress trace propagation. */
+    tracePropagation?: SandboxEgressTracePropagationConfig;
   };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   onArtifactStateUpdated?: (
@@ -684,6 +687,7 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
+      tracePropagation: context.sandbox?.tracePropagation,
       credentialEgress: context.credentialContext,
       agentHooks: agentPluginHooks,
       onSandboxAcquired: async (sandbox) => {

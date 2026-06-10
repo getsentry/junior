@@ -52,6 +52,8 @@ Sandbox execution options.
 > `optional` **egressTracePropagationDomains?**: `string`[]
 
 Egress domains allowed to carry Sentry trace propagation headers.
+Entries may be exact domains or leading wildcard domains such as
+`*.sentry.io`; wildcard entries match subdomains, not the apex domain.
 
 ---
 
@@ -81,4 +83,4 @@ Slack emoji shown while Junior is processing. Defaults to `eyes`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [junior/src/app.ts:77](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L77)
+Defined in: [junior/src/app.ts:81](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L81)

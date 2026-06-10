@@ -239,9 +239,6 @@ describe("sandbox egress proxy integration", () => {
     await modules?.state.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
-    const { setSandboxEgressTracePropagationDomains } =
-      await import("@/chat/sandbox/egress-tracing");
-    setSandboxEgressTracePropagationDomains(undefined);
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -298,6 +295,7 @@ describe("sandbox egress proxy integration", () => {
     });
     const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
       credentialToken,
+      traceConfig: { domains: ["*.managed-egress.example.test"] },
       traceHeaders: {
         "sentry-trace": "trace-span-1",
         baggage: "sentry-release=abc",
@@ -333,6 +331,7 @@ describe("sandbox egress proxy integration", () => {
       }),
       {
         fetch: upstreamFetch as typeof fetch,
+        tracePropagation: { domains: ["*.managed-egress.example.test"] },
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );

@@ -19,6 +19,7 @@ import {
   type SandboxEgressAuthRequiredSignal,
   type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress-session";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   isSandboxCommandStreamInterruptedError,
@@ -137,6 +138,7 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
+  tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
   agentHooks?: AgentPluginHookRunner;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -188,6 +190,7 @@ export function createSandboxExecutor(options?: {
       ? (egressId, traceHeaders) =>
           buildSandboxEgressNetworkPolicy({
             credentialToken: sandboxEgressCredentialTokenFor(egressId),
+            traceConfig: options?.tracePropagation,
             traceHeaders,
           })
       : undefined,

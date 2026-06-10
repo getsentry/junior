@@ -115,6 +115,9 @@ describe("agent dispatch runner", () => {
       expect(context.credentialContext).toEqual({
         actor: { type: "system", id: "scheduler" },
       });
+      expect(context.sandbox?.tracePropagation).toEqual({
+        domains: ["*.sentry.io"],
+      });
       return createReply();
     });
 
@@ -123,7 +126,10 @@ describe("agent dispatch runner", () => {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { generateAssistantReply },
+      {
+        generateAssistantReply,
+        tracePropagation: { domains: ["*.sentry.io"] },
+      },
     );
 
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({

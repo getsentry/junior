@@ -11,6 +11,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import { logException } from "@/chat/logging";
 import {
   buildConversationContext,
@@ -61,6 +62,7 @@ const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 export interface AgentDispatchRunnerDeps {
   generateAssistantReply?: typeof generateAssistantReplyImpl;
   scheduleCallback?: typeof scheduleDispatchCallback;
+  tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
 function getUserMessageId(dispatch: DispatchRecord): string {
@@ -304,6 +306,7 @@ export async function runAgentDispatchSlice(
       sandbox: {
         sandboxId,
         sandboxDependencyProfileHash,
+        tracePropagation: deps.tracePropagation,
       },
       onSandboxAcquired: async (sandbox) => {
         sandboxId = sandbox.sandboxId;

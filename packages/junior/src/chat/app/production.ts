@@ -14,6 +14,7 @@ import { createSlackConversationWorker } from "@/chat/task-execution/slack-work"
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -53,6 +54,22 @@ export function getProductionSlackRuntime(): ReturnType<
   return productionSlackRuntime;
 }
 
+/** Create production-backed services for Slack webhook ingress. */
+export function createProductionSlackWebhookServices(options?: {
+  services?: JuniorRuntimeServiceOverrides;
+}): SlackWebhookServices {
+  const runtime = createSlackRuntime({
+    getSlackAdapter: getProductionSlackAdapter,
+    services: options?.services,
+  });
+  return {
+    getSlackAdapter: getProductionSlackAdapter,
+    getUserTokenStore: createUserTokenStore,
+    queue: getVercelConversationWorkQueue(),
+    runtime,
+  };
+}
+
 /** Return production services for Slack webhook ingress. */
 export function getProductionSlackWebhookServices(): SlackWebhookServices {
   return {
@@ -60,6 +77,24 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
     getUserTokenStore: createUserTokenStore,
     queue: getVercelConversationWorkQueue(),
     runtime: getProductionSlackRuntime(),
+  };
+}
+
+/** Return the production queue callback options for conversation work. */
+export function createProductionConversationWorkOptions(options?: {
+  services?: JuniorRuntimeServiceOverrides;
+}): VercelConversationWorkCallbackOptions {
+  const runtime = createSlackRuntime({
+    getSlackAdapter: getProductionSlackAdapter,
+    services: options?.services,
+  });
+  return {
+    queue: getVercelConversationWorkQueue(),
+    run: createSlackConversationWorker({
+      getSlackAdapter: getProductionSlackAdapter,
+      resumeAwaitingContinuation: resumeAwaitingSlackContinuation,
+      runtime,
+    }),
   };
 }
 

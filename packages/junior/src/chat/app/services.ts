@@ -1,5 +1,9 @@
 import { completeObject, completeText } from "@/chat/pi/client";
-import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import {
+  generateAssistantReply as generateAssistantReplyImpl,
+  type ReplyRequestContext,
+} from "@/chat/respond";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue,
@@ -42,6 +46,9 @@ export interface JuniorRuntimeServiceOverrides {
   contextCompactor?: Partial<ContextCompactorDeps>;
   replyExecutor?: Partial<Omit<ReplyExecutorServices, "generateThreadTitle">>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
+  sandbox?: {
+    tracePropagation?: SandboxEgressTracePropagationConfig;
+  };
   visionContext?: Partial<VisionContextDeps>;
 }
 
@@ -72,7 +79,16 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
       generateAssistantReply:
         overrides.replyExecutor?.generateAssistantReply ??
-        generateAssistantReplyImpl,
+        (async (messageText: string, context?: ReplyRequestContext) =>
+          await generateAssistantReplyImpl(messageText, {
+            ...context,
+            sandbox: {
+              ...context?.sandbox,
+              tracePropagation:
+                context?.sandbox?.tracePropagation ??
+                overrides.sandbox?.tracePropagation,
+            },
+          })),
       getAwaitingAgentContinueRequest:
         overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
         getAwaitingAgentContinueRequest,

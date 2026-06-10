@@ -5,10 +5,7 @@ import {
 } from "@/chat/configuration/defaults";
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
-import {
-  getSandboxEgressTracePropagationDomains,
-  setSandboxEgressTracePropagationDomains,
-} from "@/chat/sandbox/egress-tracing";
+import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
 import {
   getPluginCatalogSignature,
   getPluginProviders,
@@ -44,9 +41,12 @@ import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
-} from "./chat/task-execution/vercel-callback";
-import { getProductionConversationWorkOptions } from "@/chat/app/production";
-import type { WaitUntilFn } from "./handlers/types";
+} from "@/chat/task-execution/vercel-callback";
+import {
+  createProductionConversationWorkOptions,
+  createProductionSlackWebhookServices,
+} from "@/chat/app/production";
+import type { WaitUntilFn } from "@/handlers/types";
 
 export { defineJuniorPlugins } from "./plugins";
 export type {
@@ -71,7 +71,11 @@ export interface JuniorAppOptions {
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
   sandbox?: {
-    /** Egress domains allowed to carry Sentry trace propagation headers. */
+    /**
+     * Egress domains allowed to carry Sentry trace propagation headers.
+     * Entries may be exact domains or leading wildcard domains such as
+     * `*.sentry.io`; wildcard entries match subdomains, not the apex domain.
+     */
     egressTracePropagationDomains?: string[];
   };
   waitUntil?: WaitUntilFn;
@@ -341,15 +345,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   const previousAgentPlugins = setAgentPlugins(agentPlugins);
   const previousConfigDefaults = getConfigDefaults();
-  const previousSandboxEgressTracePropagationDomains =
-    getSandboxEgressTracePropagationDomains();
   const previousSlackReactionConfig = getSlackReactionConfig();
   let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
-  try {
-    setConfigDefaults(options?.configDefaults);
-    setSandboxEgressTracePropagationDomains(
+  const sandboxEgressTracePropagationDomains =
+    normalizeSandboxEgressTracePropagationDomains(
       options?.sandbox?.egressTracePropagationDomains,
     );
+  try {
+    setConfigDefaults(options?.configDefaults);
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
     }
@@ -365,14 +368,19 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setAgentPlugins(previousAgentPlugins);
     setConfigDefaults(previousConfigDefaults);
-    setSandboxEgressTracePropagationDomains(
-      previousSandboxEgressTracePropagationDomains,
-    );
     setSlackReactionConfig(previousSlackReactionConfig);
     throw error;
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
+  const runtimeServiceOverrides = {
+    sandbox: {
+      tracePropagation: { domains: sandboxEgressTracePropagationDomains },
+    },
+  };
+  const slackWebhookServices = createProductionSlackWebhookServices({
+    services: runtimeServiceOverrides,
+  });
 
   const app = new Hono();
 
@@ -385,7 +393,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // Vercel Sandbox proxying preserves the original upstream path, so detect
     // authenticated proxy traffic before ordinary application routes claim it.
     if (isSandboxEgressRequest(c.req.raw)) {
-      return await sandboxEgressProxyALL(c.req.raw);
+      return await sandboxEgressProxyALL(c.req.raw, {
+        tracePropagation: { domains: sandboxEgressTracePropagationDomains },
+      });
     }
     await next();
   });
@@ -406,7 +416,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {
-    return agentDispatchPOST(c.req.raw, waitUntil);
+    return agentDispatchPOST(c.req.raw, waitUntil, {
+      tracePropagation: { domains: sandboxEgressTracePropagationDomains },
+    });
   });
 
   let agentContinuePOST:
@@ -417,7 +429,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     | undefined;
   const getConversationWorkOptions = () => {
     conversationWorkOptions ??=
-      options?.conversationWork ?? getProductionConversationWorkOptions();
+      options?.conversationWork ??
+      createProductionConversationWorkOptions({
+        services: runtimeServiceOverrides,
+      });
     return conversationWorkOptions;
   };
   if (process.env.NODE_ENV === "development") {
@@ -435,7 +450,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.post("/api/webhooks/:platform", (c) => {
-    return webhooksPOST(c.req.raw, c.req.param("platform"), waitUntil);
+    return webhooksPOST(
+      c.req.raw,
+      c.req.param("platform"),
+      waitUntil,
+      slackWebhookServices,
+    );
   });
 
   return app;

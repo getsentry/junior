@@ -1,6 +1,9 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { getProductionSlackWebhookServices } from "@/chat/app/production";
-import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import {
+  handleSlackWebhook,
+  type SlackWebhookServices,
+} from "@/chat/ingress/slack-webhook";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import {
   extractMessageChangedMention,
@@ -171,12 +174,14 @@ function parseJson(body: string): unknown {
  * Slack production ingress persists messages into the durable conversation
  * mailbox and wakes the queue worker. The optional `legacyBot` parameter is
  * kept for integration tests that still exercise Chat SDK fixtures directly.
+ * The optional `services` parameter carries app-scoped runtime services.
  */
 export async function handlePlatformWebhook(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
   legacyBot?: LegacyChatSdkBot,
+  services?: SlackWebhookServices,
 ): Promise<Response> {
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
@@ -200,7 +205,7 @@ export async function handlePlatformWebhook(
             } else if (platform === "slack") {
               response = await handleSlackWebhook({
                 request,
-                services: getProductionSlackWebhookServices(),
+                services: services ?? getProductionSlackWebhookServices(),
                 waitUntil,
               });
             } else {
@@ -264,6 +269,13 @@ export async function POST(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
+  services?: SlackWebhookServices,
 ): Promise<Response> {
-  return handlePlatformWebhook(request, platform, waitUntil);
+  return handlePlatformWebhook(
+    request,
+    platform,
+    waitUntil,
+    undefined,
+    services,
+  );
 }

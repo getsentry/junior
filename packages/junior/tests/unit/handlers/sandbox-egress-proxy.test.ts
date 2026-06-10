@@ -5,15 +5,25 @@ import {
 } from "@sentry/junior-plugin-api";
 
 const {
+  continueTraceMock,
   getPluginDefinitionMock,
   getPluginOAuthConfigMock,
   getPluginProvidersMock,
   issueProviderCredentialLeaseMock,
+  startSpanMock,
 } = vi.hoisted(() => ({
+  continueTraceMock: vi.fn(
+    async (_context: unknown, callback: () => Promise<unknown>) =>
+      await callback(),
+  ),
   getPluginDefinitionMock: vi.fn(),
   getPluginOAuthConfigMock: vi.fn(),
   getPluginProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
+  startSpanMock: vi.fn(
+    async (_options: unknown, callback: () => Promise<unknown>) =>
+      await callback(),
+  ),
 }));
 
 vi.mock("@/chat/config", async (importOriginal) => {
@@ -40,12 +50,18 @@ vi.mock("@/chat/capabilities/factory", () => ({
   issueProviderCredentialLease: issueProviderCredentialLeaseMock,
 }));
 
+vi.mock("@/chat/sentry", () => ({
+  continueTrace: continueTraceMock,
+  getActiveSpan: () => undefined,
+  spanToJSON: () => ({}),
+  startSpan: startSpanMock,
+}));
+
 import {
   buildSandboxEgressNetworkPolicy,
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import { setSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
@@ -58,6 +74,7 @@ import {
 } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import { ALL } from "@/handlers/sandbox-egress-proxy";
 
 const EGRESS_ID = "junior-sbx";
@@ -202,9 +219,11 @@ function proxy(
   fetchMock: typeof fetch = vi.fn(
     async () => new Response("ok"),
   ) as typeof fetch,
+  tracePropagation: SandboxEgressTracePropagationConfig = {},
 ): Promise<Response> {
   return proxySandboxEgressRequest(request, {
     fetch: fetchMock,
+    tracePropagation,
     verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
   });
 }
@@ -227,7 +246,16 @@ describe("sandbox egress proxy", () => {
       provider === "sentry" ? { provider, scope: "project:read" } : undefined,
     );
     issueProviderCredentialLeaseMock.mockReset();
-    setSandboxEgressTracePropagationDomains(undefined);
+    continueTraceMock.mockClear();
+    continueTraceMock.mockImplementation(
+      async (_context: unknown, callback: () => Promise<unknown>) =>
+        await callback(),
+    );
+    startSpanMock.mockClear();
+    startSpanMock.mockImplementation(
+      async (_options: unknown, callback: () => Promise<unknown>) =>
+        await callback(),
+    );
     await disconnectStateAdapter();
   });
 
@@ -237,7 +265,6 @@ describe("sandbox egress proxy", () => {
     delete process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_SECRET;
     delete process.env.SENTRY_BOT_EMAIL;
-    setSandboxEgressTracePropagationDomains(undefined);
     vi.restoreAllMocks();
   });
 
@@ -267,10 +294,10 @@ describe("sandbox egress proxy", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    setSandboxEgressTracePropagationDomains(["sentry.io"]);
     expect(
       buildSandboxEgressNetworkPolicy({
         credentialToken: token,
+        traceConfig: { domains: ["sentry.io"] },
         traceHeaders: {
           "sentry-trace": "trace-span-1",
           baggage: "sentry-release=abc",
@@ -304,10 +331,10 @@ describe("sandbox egress proxy", () => {
 
   it("adds trace propagation transforms only for configured domains", () => {
     getPluginProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
-    setSandboxEgressTracePropagationDomains(["*.sentry.io"]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
+        traceConfig: { domains: ["*.sentry.io"] },
         traceHeaders: {
           "sentry-trace": "trace-span-1",
           baggage: "sentry-release=abc",
@@ -419,7 +446,6 @@ describe("sandbox egress proxy", () => {
   });
 
   it("forwards repeated authorized sandbox requests with credential headers", async () => {
-    setSandboxEgressTracePropagationDomains(["sentry.io"]);
     setSandboxEgressUserActor();
     mockSentryLease();
 
@@ -465,7 +491,9 @@ describe("sandbox egress proxy", () => {
       },
     });
 
-    const response = await proxy(request, fetchMock as typeof fetch);
+    const response = await proxy(request, fetchMock as typeof fetch, {
+      domains: ["sentry.io"],
+    });
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
@@ -481,6 +509,7 @@ describe("sandbox egress proxy", () => {
         headers: request.headers,
       }),
       fetchMock as typeof fetch,
+      { domains: ["sentry.io"] },
     );
 
     expect(repeated.status).toBe(200);
@@ -499,7 +528,10 @@ describe("sandbox egress proxy", () => {
       headerTransforms: [
         {
           domain: "api.github.com",
-          headers: { Authorization: "Bearer github-token" },
+          headers: {
+            Authorization: "Bearer github-token",
+            "sentry-trace": "lease-trace-span",
+          },
         },
       ],
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -529,6 +561,72 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues trace only for verified configured sandbox egress", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+    const verifyOidc = vi.fn(async () => ({ sandbox_id: EGRESS_ID }));
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+
+    const response = await proxySandboxEgressRequest(
+      egressRequest({
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+        },
+      }),
+      {
+        fetch: fetchMock as typeof fetch,
+        tracePropagation: { domains: ["sentry.io"] },
+        verifyOidc,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(continueTraceMock).toHaveBeenCalledWith(
+      { sentryTrace: "trace-span-1", baggage: "sentry-release=abc" },
+      expect.any(Function),
+    );
+    expect(verifyOidc.mock.invocationCallOrder[0]).toBeLessThan(
+      continueTraceMock.mock.invocationCallOrder[0]!,
+    );
+
+    continueTraceMock.mockClear();
+    const unconfiguredResponse = await proxySandboxEgressRequest(
+      egressRequest({
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+        },
+      }),
+      {
+        fetch: fetchMock as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(unconfiguredResponse.status).toBe(200);
+    expect(continueTraceMock).not.toHaveBeenCalled();
+
+    continueTraceMock.mockClear();
+    activeCredentialToken = undefined;
+    const rejectedResponse = await proxySandboxEgressRequest(
+      egressRequest({
+        headers: {
+          "sentry-trace": "trace-span-1",
+          baggage: "sentry-release=abc",
+        },
+      }),
+      {
+        fetch: fetchMock as typeof fetch,
+        tracePropagation: { domains: ["sentry.io"] },
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(rejectedResponse.status).toBe(403);
+    expect(continueTraceMock).not.toHaveBeenCalled();
   });
 
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {

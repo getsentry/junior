@@ -1,4 +1,6 @@
-let tracePropagationDomains: string[] = [];
+export interface SandboxEgressTracePropagationConfig {
+  domains?: string[];
+}
 
 function isValidDomainPattern(domain: string): boolean {
   if (domain.includes("*")) {
@@ -7,7 +9,10 @@ function isValidDomainPattern(domain: string): boolean {
   return true;
 }
 
-function normalizeDomains(domains: string[] | undefined): string[] {
+/** Normalize exact and leading-wildcard sandbox egress trace domains. */
+export function normalizeSandboxEgressTracePropagationDomains(
+  domains: string[] | undefined,
+): string[] {
   if (domains === undefined) {
     return [];
   }
@@ -41,24 +46,13 @@ function normalizeDomains(domains: string[] | undefined): string[] {
   ].sort((left, right) => left.localeCompare(right));
 }
 
-/** Store the sandbox egress domains that may carry trace propagation headers. */
-export function setSandboxEgressTracePropagationDomains(
-  domains: string[] | undefined,
-): string[] {
-  const previous = tracePropagationDomains;
-  tracePropagationDomains = normalizeDomains(domains);
-  return previous;
-}
-
-/** Return sandbox egress domains that may carry trace propagation headers. */
-export function getSandboxEgressTracePropagationDomains(): string[] {
-  return [...tracePropagationDomains];
-}
-
-/** Return whether a sandbox egress host may carry trace propagation headers. */
-export function shouldPropagateSandboxEgressTrace(host: string): boolean {
+/** Return whether a host may carry sandbox egress trace propagation headers. */
+export function shouldPropagateSandboxEgressTrace(
+  host: string,
+  config: SandboxEgressTracePropagationConfig = {},
+): boolean {
   const normalizedHost = host.trim().toLowerCase();
-  return tracePropagationDomains.some((domain) => {
+  return (config.domains ?? []).some((domain) => {
     if (domain.startsWith("*.")) {
       const suffix = domain.slice(1);
       return (

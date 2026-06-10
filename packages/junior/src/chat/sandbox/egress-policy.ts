@@ -2,7 +2,10 @@ import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import type { TracePropagationHeaders } from "@/chat/logging";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
-import { shouldPropagateSandboxEgressTrace } from "@/chat/sandbox/egress-tracing";
+import {
+  shouldPropagateSandboxEgressTrace,
+  type SandboxEgressTracePropagationConfig,
+} from "@/chat/sandbox/egress-tracing";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
@@ -56,9 +59,10 @@ function sandboxProxyUrl(credentialToken?: string): string {
   return new URL(path, baseUrl).toString();
 }
 
-/** Build the policy that forwards provider requests back to Junior for credentials. */
+/** Build the policy that forwards provider requests and configured trace headers. */
 export function buildSandboxEgressNetworkPolicy(input?: {
   credentialToken?: string;
+  traceConfig?: SandboxEgressTracePropagationConfig;
   traceHeaders?: TracePropagationHeaders;
 }): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
@@ -77,7 +81,10 @@ export function buildSandboxEgressNetworkPolicy(input?: {
   );
   for (const entry of entries) {
     for (const domain of entry.domains) {
-      const shouldPropagateTrace = shouldPropagateSandboxEgressTrace(domain);
+      const shouldPropagateTrace = shouldPropagateSandboxEgressTrace(
+        domain,
+        input?.traceConfig,
+      );
       allow[domain] = [
         {
           ...(shouldPropagateTrace && Object.keys(traceHeaders).length > 0
