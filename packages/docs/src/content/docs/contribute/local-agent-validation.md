@@ -13,9 +13,9 @@ related:
 ---
 
 Use this runbook for product, runtime, prompt, skill, plugin, tool, sandbox, or
-credential changes that are not specifically about Slack ingress, Slack message
-formatting, Slack retries, or Slack OAuth UI. The local agent should be the
-first manual behavior check for those changes.
+environment-backed credential changes that are not specifically about Slack
+ingress, Slack message formatting, Slack retries, or Slack OAuth UI. The local
+agent should be the first manual behavior check for those changes.
 
 Inside this monorepo, `pnpm cli -- ...` runs Junior from `apps/example`. Treat
 that app as the canonical local validation app: it loads the example SOUL,
@@ -101,6 +101,9 @@ Local validation proves that the shared agent path can run without Slack:
 Keep the usual focused tests for deterministic contracts. Use Slack-specific
 tests only when the change is about Slack event routing, Slack outbound payloads,
 Slack markdown, Slack files, Slack retry behavior, or Slack authorization UI.
+User-bound OAuth and credential issuance flows are not validated by local chat
+because the local agent runs as the `local-cli` system actor with authorization
+prompts disabled.
 
 ## Failure Checks
 
