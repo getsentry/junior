@@ -10,6 +10,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
+import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -30,7 +31,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { loadProjection } from "@/chat/state/session-log";
+import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import type { Destination } from "@sentry/junior-plugin-api";
 
 const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
@@ -164,13 +165,17 @@ export async function runLocalAgentTurn(
   });
   await persistThreadStateById(input.conversationId, { conversation });
 
-  let reply: AssistantReply;
+  let reply: AssistantReply | undefined;
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
+  let piMessagesBeforeRun:
+    | Awaited<ReturnType<typeof loadLocalPiMessages>>
+    | undefined;
   try {
     const piMessages = await loadLocalPiMessages({
       conversationId: input.conversationId,
       fallback: conversation.piMessages,
     });
+    piMessagesBeforeRun = piMessages;
     reply = await generateAssistantReply(text, {
       authorizationFlowMode: "disabled",
       conversationContext: buildConversationContext(conversation, {
@@ -226,6 +231,13 @@ export async function runLocalAgentTurn(
     });
     await deps.deliverReply(reply);
   } catch (error) {
+    if (reply) {
+      await commitMessages({
+        conversationId: input.conversationId,
+        messages: piMessagesBeforeRun ?? [],
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
+    }
     markTurnFailed({
       conversation,
       nowMs: now(),

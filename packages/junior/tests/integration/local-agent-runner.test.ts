@@ -8,7 +8,7 @@ import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import { runLocalAgentTurn } from "@/chat/local/runner";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
-import { commitMessages } from "@/chat/state/session-log";
+import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 function successReply(text: string): AssistantReply {
@@ -229,5 +229,47 @@ describe("local agent runner", () => {
     );
 
     expect(contexts[0]?.piMessages).toEqual([projectedMessage]);
+  });
+
+  it("rolls back generated Pi output when local delivery fails", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "delivery-pi-rollback",
+      cwd: "/tmp/local-agent-runner-five",
+    });
+    expect(conversationId).toBeDefined();
+
+    const assistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "undelivered pi output" }],
+    } as PiMessage;
+    const generateReply = vi.fn<typeof generateAssistantReply>(async () => {
+      await commitMessages({
+        conversationId: conversationId!,
+        messages: [assistantMessage],
+        ttlMs: 60_000,
+      });
+      return successReply("not delivered");
+    });
+
+    await expect(
+      runLocalAgentTurn(
+        {
+          conversationAlias: "delivery-pi-rollback",
+          conversationId: conversationId!,
+          message: "hello",
+          mode: "once",
+        },
+        {
+          deliverReply: async () => {
+            throw new Error("stdout closed");
+          },
+          generateAssistantReply: generateReply,
+        },
+      ),
+    ).rejects.toThrow("stdout closed");
+
+    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
+      [],
+    );
   });
 });
