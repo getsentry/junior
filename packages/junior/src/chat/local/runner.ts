@@ -138,6 +138,9 @@ export async function runLocalAgentTurn(
   let artifacts = coerceThreadArtifactsState(persisted);
   let { sandboxId, sandboxDependencyProfileHash } =
     getPersistedSandboxState(persisted);
+  const initialArtifacts = artifacts;
+  const initialSandboxId = sandboxId;
+  const initialSandboxDependencyProfileHash = sandboxDependencyProfileHash;
 
   const sequence = nextUserMessageSequence(conversation);
   const turnId = localTurnId(sequence);
@@ -246,7 +249,12 @@ export async function runLocalAgentTurn(
       markConversationMessage,
       updateConversationStats,
     });
-    await persistThreadStateById(input.conversationId, { conversation });
+    await persistThreadStateById(input.conversationId, {
+      artifacts: initialArtifacts,
+      conversation,
+      sandboxId: initialSandboxId ?? "",
+      sandboxDependencyProfileHash: initialSandboxDependencyProfileHash ?? "",
+    });
     throw error;
   }
 

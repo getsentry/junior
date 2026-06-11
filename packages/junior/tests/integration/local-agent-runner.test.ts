@@ -7,9 +7,13 @@ import type {
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import { runLocalAgentTurn } from "@/chat/local/runner";
 import type { PiMessage } from "@/chat/pi/messages";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import {
+  getPersistedSandboxState,
+  getPersistedThreadState,
+} from "@/chat/runtime/thread-state";
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 
 function successReply(text: string): AssistantReply {
   return {
@@ -242,14 +246,24 @@ describe("local agent runner", () => {
       role: "assistant",
       content: [{ type: "text", text: "undelivered pi output" }],
     } as PiMessage;
-    const generateReply = vi.fn<typeof generateAssistantReply>(async () => {
-      await commitMessages({
-        conversationId: conversationId!,
-        messages: [assistantMessage],
-        ttlMs: 60_000,
-      });
-      return successReply("not delivered");
-    });
+    const generateReply = vi.fn<typeof generateAssistantReply>(
+      async (_text, context = {}) => {
+        await context.onArtifactStateUpdated?.({
+          lastCanvasId: "canvas-undelivered",
+          lastCanvasUrl: "https://example.invalid/canvas",
+        });
+        await context.onSandboxAcquired?.({
+          sandboxDependencyProfileHash: "profile-undelivered",
+          sandboxId: "sandbox-undelivered",
+        });
+        await commitMessages({
+          conversationId: conversationId!,
+          messages: [assistantMessage],
+          ttlMs: 60_000,
+        });
+        return successReply("not delivered");
+      },
+    );
 
     await expect(
       runLocalAgentTurn(
@@ -271,5 +285,8 @@ describe("local agent runner", () => {
     expect(await loadProjection({ conversationId: conversationId! })).toEqual(
       [],
     );
+    const state = await getPersistedThreadState(conversationId!);
+    expect(coerceThreadArtifactsState(state).lastCanvasId).toBeUndefined();
+    expect(getPersistedSandboxState(state)).toEqual({});
   });
 });
