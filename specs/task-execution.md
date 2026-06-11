@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-10
 
 ## Purpose
 
@@ -22,7 +22,7 @@ invocations without turning every tool call into a queue round trip.
 - Conversation-scoped leases and worker check-ins.
 - Cooperative agent-loop yielding at safe Pi continuation boundaries.
 - Heartbeat repair for expired leases and stranded mailbox work.
-- The boundary between Slack-specific ingress and generic agent execution.
+- The boundary between source-specific adapters and generic agent execution.
 - First-pass migration away from Chat SDK queue, lock, and long-running handler
   ownership.
 
@@ -45,12 +45,13 @@ invocations without turning every tool call into a queue round trip.
 
 The durable execution model uses these terms precisely:
 
-- **Conversation**: the thread-level container identified by `conversationId`.
-  For Slack, this is a normalized thread identity such as
-  `slack:<channel_id>:<thread_ts>`.
-- **Inbound message**: one normalized external source event that should be made
-  available to the agent. Slack messages, scheduler prompts, and plugin dispatch
-  prompts all become inbound messages.
+- **Conversation**: the thread-level or session-level container identified by
+  `conversationId`. For Slack, this is a normalized thread identity such as
+  `slack:<channel_id>:<thread_ts>`. For local CLI, this is a normalized local
+  session identity such as `local:<session_id>`.
+- **Inbound message**: one normalized source event that should be made
+  available to the agent. Slack messages, local CLI prompts, scheduler prompts,
+  and plugin dispatch prompts all become inbound messages.
 - **Agent run**: one response-producing execution for a conversation. A run may
   consume multiple inbound messages at safe boundaries, call many tools, and
   span multiple serverless invocations before final delivery.
@@ -78,7 +79,7 @@ Junior uses a durable conversation mailbox plus a queue wake-up nudge.
 
 ```mermaid
 flowchart TD
-  A[Inbound source event] --> B[Source-specific normalization]
+  A[Inbound source event or local CLI input] --> B[Source-specific normalization]
   B --> C[Append inbound message to conversation mailbox]
   C --> D[Send Vercel Queue nudge: conversationId + Destination]
   D --> E[Queue consumer]
@@ -110,17 +111,21 @@ Normative rules:
    checkpoint or resume position.
 6. Continuation means loading the latest durable conversation/session state and
    calling Pi `continue()`.
-7. Routine continuation must be silent in Slack. The agent-owned
-   `reportProgress` path and assistant status own user-visible progress.
+7. Routine continuation must be silent on platforms where the delivery adapter
+   owns progress UX. The agent-owned `reportProgress` path and destination
+   status/progress port own user-visible progress.
 
 ### Identity Model
 
 `conversationId` is the execution key. For Slack, it must be a stable normalized
-thread identity such as `slack:<channel_id>:<thread_ts>`.
+thread identity such as `slack:<channel_id>:<thread_ts>`. For local CLI, it must
+be a stable normalized session identity such as `local:<session_id>`.
 
 `inboundMessageId` is the idempotency key for one normalized inbound message.
 For Slack, it should be derived from the Slack team, channel, message timestamp,
 event subtype/edit identity when relevant, and source event id when available.
+For local CLI, it should be derived from the local session id and monotonically
+increasing local prompt sequence or another stable per-prompt id.
 
 `runId` identifies one response-producing agent run when a read model or
 callback needs a stable run id. It is not the conversation history key and must
@@ -153,7 +158,18 @@ Conceptual type:
 
 ```ts
 type ExecutionStatus = "idle" | "pending" | "running" | "awaiting_resume";
-type Source = "slack" | "api" | "scheduler" | "plugin" | "internal";
+type Source = "slack" | "local" | "api" | "scheduler" | "plugin" | "internal";
+
+type Destination =
+  | {
+      platform: "slack";
+      teamId: string;
+      channelId: string;
+    }
+  | {
+      platform: "local";
+      conversationId: string;
+    };
 
 // Canonical stored Slack requester from `packages/junior/src/chat/requester.ts`.
 // New records include Slack platform, team, user, and optional display/contact
@@ -275,14 +291,15 @@ only the newest retained conversations for list/reporting APIs, but `active` is
 membership for in-flight work and must keep every non-idle conversation until
 that conversation becomes idle or is explicitly removed after cleanup.
 
-### Ingress Contract
+### Source Adapter Contract
 
 Inbound source handlers are source-specific. Slack parsing, signature
 verification, event subtype handling, assistant lifecycle event handling, and
-attachment normalization may be Slack-specific.
+attachment normalization may be Slack-specific. Local CLI parsing, terminal
+session selection, and stdin/stdout handling may be local-specific.
 
-Ingress must not decide whether an inbound message starts a new agent run,
-steers an active run, or is a stale follow-up. It always performs the same
+Source adapters must not decide whether an inbound message starts a new agent
+run, steers an active run, or is a stale follow-up. They always perform the same
 durable handoff:
 
 1. Verify the source request.
@@ -294,9 +311,11 @@ durable handoff:
 5. Enqueue `{ conversationId, destination }`.
 6. If enqueue succeeds, record `lastEnqueuedAtMs` and refresh
    `execution.updatedAtMs`.
-7. Return the source HTTP acknowledgement quickly.
+7. Return the source acknowledgement quickly. For HTTP sources, this is the
+   HTTP response. For local CLI, this is returning control to the terminal loop
+   after durable handoff or direct local execution setup.
 
-The source HTTP acknowledgement is not the late acknowledgement. Late
+The source acknowledgement is not the late acknowledgement. Late
 acknowledgement applies to the queue delivery consumed by the worker.
 
 If enqueue fails after mailbox append, the heartbeat repair path must later
@@ -467,7 +486,7 @@ Unsafe yield points:
 - after an assistant tool request but before tool execution has produced durable
   results
 - midway through a tool call
-- after final Slack delivery has started but before completion state is
+- after final destination delivery has started but before completion state is
   persisted
 
 If the soft deadline passes during a model or tool call, the worker does not
@@ -480,7 +499,7 @@ When yielding, the worker:
 2. Enqueues `{ conversationId, destination }`.
 3. Releases the lease.
 4. Acknowledges the queue delivery.
-5. Exits without posting a routine continuation message to Slack.
+5. Exits without posting a routine continuation message to the destination.
 
 ### Agent Runtime Boundary
 
@@ -500,6 +519,45 @@ The new implementation must not rely on Chat SDK for queueing, concurrency
 locks, long-running handler lifetime, or conversation work recovery. Any
 transitional compatibility wrapper must be treated as non-canonical and must not
 own execution semantics.
+
+### Destination Delivery Contract
+
+Destination delivery is a small platform-owned port called only after the agent
+has produced a finalized reply and the worker has drained the inbox at the final
+safe boundary.
+
+Rules:
+
+1. The shared worker passes finalized reply text, generated files, delivery
+   plan, and conversation correlation to the destination delivery port.
+2. A destination delivery port may format output for its platform, but it must
+   not re-enter agent execution or mutate source routing decisions.
+3. Completion is persisted only after the destination delivery port accepts the
+   visible final reply or records a terminal delivery failure.
+4. Platform-specific side effects remain platform-specific tools or delivery
+   actions. Non-Slack destinations must not use Slack reply, reaction, or
+   ephemeral-message fallbacks.
+
+### Local Delivery Contract
+
+Local CLI is the first non-Slack destination implementation.
+
+Rules:
+
+1. Local CLI uses `source: "local"` and `destination.platform: "local"`.
+2. Local CLI conversation ids must be stable across prompts in the same selected
+   terminal session.
+3. Local CLI must use the shared conversation runtime and `generateAssistantReply`
+   path. It must not instantiate Slack thread/message wrappers to reach the
+   agent.
+4. Local CLI may stream assistant deltas and status updates to stdout/stderr, but
+   the finalized reply remains the delivery outcome recorded for the
+   conversation.
+5. Local CLI must not fabricate Slack requesters, Slack destinations, Slack
+   thread ids, Slack message timestamps, or Slack assistant lifecycle events.
+6. Local CLI interactive authorization is disabled until a local auth contract
+   exists. Missing provider credentials must surface as an explicit local error
+   instead of creating Slack OAuth or ephemeral-message flows.
 
 ### Slack Delivery Contract
 
@@ -593,9 +651,9 @@ These guardrails must not complicate the first-pass mailbox/lease design.
 8. Worker yields cooperatively and dies after enqueue but before queue
    acknowledgement: redelivery observes released lease or no unsafe work and
    remains harmless.
-9. Worker dies after final delivery starts: Slack post and durable completion
-   are not atomic. First pass accepts best-effort delivery semantics and does
-   not add special reconciliation beyond persisted completion state.
+9. Worker dies after final delivery starts: destination delivery and durable
+   completion are not atomic. First pass accepts best-effort delivery semantics
+   and does not add special reconciliation beyond persisted completion state.
 10. Heartbeat misses one scan: Vercel Queue redelivery or the next heartbeat can
     still recover because leases and mailbox messages are durable.
 
@@ -658,17 +716,20 @@ Required invariants, using the lowest layer that proves the contract:
     not after agent execution.
 13. Integration: a queue-driven Slack worker path reaches the real Slack runtime
     and finalized delivery with deterministic fake-agent output.
-14. Component/integration: recovery after death during model/tool work resumes
+14. Integration: local CLI reaches the shared conversation runtime without
+    constructing Slack message/thread wrappers.
+15. Component/integration: recovery after death during model/tool work resumes
     from the latest durable session-log boundary.
-15. Component: the all-conversation index is sorted by `lastActivityAtMs`; the
+16. Component: the all-conversation index is sorted by `lastActivityAtMs`; the
     active-conversation index contains only non-idle conversations and is sorted
     by `execution.updatedAtMs`.
-16. Evals: realistic multi-message Slack follow-ups during long work are folded
+17. Evals: realistic multi-message Slack follow-ups during long work are folded
     into the active answer without losing user intent.
 
 ## Related Specs
 
 - [Chat Architecture Spec](./chat-architecture.md)
+- [Local Agent Spec](./local-agent.md)
 - [Agent Session Resumability Spec](./agent-session-resumability.md)
 - [Slack Agent Delivery Spec](./slack-agent-delivery.md)
 - [Scheduler Spec](./scheduler.md)

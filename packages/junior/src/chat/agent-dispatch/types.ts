@@ -1,4 +1,7 @@
-import type { Destination, DispatchOptions } from "@sentry/junior-plugin-api";
+import type {
+  DispatchOptions,
+  SlackDestination,
+} from "@sentry/junior-plugin-api";
 import type {
   CredentialSubject,
   CredentialSystemActor,
@@ -12,8 +15,12 @@ export type DispatchStatus =
   | "failed"
   | "blocked";
 
+export type SlackDispatchOptions = Omit<DispatchOptions, "destination"> & {
+  destination: SlackDestination;
+};
+
 export interface BoundDispatchOptions extends Omit<
-  DispatchOptions,
+  SlackDispatchOptions,
   "credentialSubject"
 > {
   credentialSubject?: CredentialSubject;
@@ -24,7 +31,7 @@ export interface DispatchRecord {
   attempt: number;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
-  destination: Destination;
+  destination: SlackDestination;
   errorMessage?: string;
   id: string;
   idempotencyKey: string;

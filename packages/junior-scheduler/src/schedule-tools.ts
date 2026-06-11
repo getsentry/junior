@@ -4,11 +4,12 @@ import {
   AgentPluginToolInputError,
   agentPluginCredentialSubjectSchema,
   destinationSchema,
+  isSlackDestination,
   type AgentPluginCredentialSubject,
-  type Destination,
   type Requester,
   type AgentPluginState,
   type AgentPluginToolDefinition,
+  type SlackDestination,
 } from "@sentry/junior-plugin-api";
 import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
@@ -25,7 +26,7 @@ import type {
 
 export interface SchedulerToolContext {
   credentialSubject?: AgentPluginCredentialSubject;
-  destination?: Destination;
+  destination?: SlackDestination;
   requester?: Requester;
   state: AgentPluginState;
   userText?: string;
@@ -44,10 +45,14 @@ function throwToolInputError(error: string): never {
   throw new AgentPluginToolInputError(error);
 }
 
-function requireActiveDestination(context: SchedulerToolContext): Destination {
+function requireActiveDestination(
+  context: SchedulerToolContext,
+): SlackDestination {
   const parsed = destinationSchema.safeParse(context.destination);
   if (!parsed.success) {
-    const destination = context.destination as Partial<Destination> | undefined;
+    const destination = context.destination as
+      | Partial<SlackDestination>
+      | undefined;
     const issues = parsed.error.issues as readonly SchemaIssue[];
     if (!destination || destination.platform !== "slack") {
       throwToolInputError("No active Slack destination is available.");
@@ -63,6 +68,10 @@ function requireActiveDestination(context: SchedulerToolContext): Destination {
     if (issues.some((issue) => issue.path[0] === "teamId")) {
       throwToolInputError("Active Slack destination workspace is invalid.");
     }
+    throwToolInputError("No active Slack destination is available.");
+  }
+
+  if (!isSlackDestination(parsed.data)) {
     throwToolInputError("No active Slack destination is available.");
   }
 
@@ -99,7 +108,7 @@ function isDmChannel(channelId: string): boolean {
 }
 
 function getConversationAccess(
-  destination: Destination,
+  destination: SlackDestination,
 ): ScheduledTaskConversationAccess {
   if (isDmChannel(destination.channelId)) {
     return { audience: "direct", visibility: "private" };
@@ -139,7 +148,7 @@ function getCredentialSubject(args: {
 
 function sameDestination(
   task: ScheduledTask,
-  destination: Destination,
+  destination: SlackDestination,
 ): boolean {
   const taskDestination = task.destination;
   return (

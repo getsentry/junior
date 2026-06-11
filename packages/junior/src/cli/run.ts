@@ -1,7 +1,8 @@
 export const CLI_USAGE =
-  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade";
+  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat [--conversation <name>]\n       junior chat [--conversation <name>] --once <message>";
 
 interface CliHandlers {
+  runChat: (argv: string[]) => Promise<number>;
   runInit: (dir: string) => Promise<void>;
   runSnapshotCreate: () => Promise<void>;
   runCheck: (dir?: string) => Promise<void>;
@@ -23,6 +24,12 @@ export async function runCli(
   io: CliIo = DEFAULT_IO,
 ): Promise<number> {
   const [command, subcommand, ...rest] = argv;
+
+  if (command === "chat") {
+    return await handlers.runChat(
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+  }
 
   if (command === "init") {
     if (!subcommand || rest.length > 0) {

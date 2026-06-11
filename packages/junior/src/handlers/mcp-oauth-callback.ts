@@ -56,6 +56,7 @@ import {
   createRequesterFromStoredSlackRequester,
   type Requester,
 } from "@/chat/requester";
+import { requireSlackDestination } from "@/chat/destination";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -198,7 +199,10 @@ async function resumeAuthorizedMcpTurn(args: {
   ) {
     return;
   }
-  const destination = authSession.destination;
+  const destination = requireSlackDestination(
+    authSession.destination,
+    "MCP OAuth resume",
+  );
 
   const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
   const currentState = await getPersistedThreadState(threadId);

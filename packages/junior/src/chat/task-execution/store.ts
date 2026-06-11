@@ -46,7 +46,13 @@ export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 
-export type Source = "api" | "internal" | "plugin" | "scheduler" | "slack";
+export type Source =
+  | "api"
+  | "internal"
+  | "local"
+  | "plugin"
+  | "scheduler"
+  | "slack";
 
 export type ExecutionStatus =
   | "awaiting_resume"
@@ -245,6 +251,7 @@ function normalizeSource(value: unknown): Source | undefined {
   if (
     value === "api" ||
     value === "internal" ||
+    value === "local" ||
     value === "plugin" ||
     value === "scheduler" ||
     value === "slack"

@@ -50,6 +50,7 @@ import {
   applyPendingAuthUpdate,
   clearPendingAuth,
 } from "@/chat/services/pending-auth";
+import { requireSlackDestination } from "@/chat/destination";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -256,9 +257,13 @@ export async function continueSlackAgentRun(
           excludeMessageId: userMessage.id,
         });
         const sandbox = getPersistedSandboxState(currentState);
+        const destination = requireSlackDestination(
+          payload.destination,
+          "Slack continuation",
+        );
         const requester = createRequesterFromStoredSlackRequester({
           requester: activeSessionRecord.requester,
-          teamId: payload.destination.teamId,
+          teamId: destination.teamId,
           userId: userMessage.author.userId,
         });
 

@@ -32,7 +32,10 @@ import {
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type SlackRequesterProfile } from "@/chat/requester";
-import { createSlackDestination } from "@/chat/destination";
+import {
+  createSlackDestination,
+  requireSlackDestination,
+} from "@/chat/destination";
 
 export type SlackConversationRoute = "mention" | "subscribed";
 
@@ -240,10 +243,14 @@ export function createSlackConversationWorker(
         const messages = records.map((record) =>
           restoreMessage({ adapter, record }),
         );
+        const destination = requireSlackDestination(
+          context.destination,
+          "Slack conversation work",
+        );
         await bindSlackActorIdentities({
           lookupSlackUser: actorLookup,
           messages,
-          teamId: context.destination.teamId,
+          teamId: destination.teamId,
         });
         const latestMessage = messages[messages.length - 1];
         if (!latestMessage) {

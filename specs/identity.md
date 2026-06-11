@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-05
-- Last Edited: 2026-06-06
+- Last Edited: 2026-06-10
 
 ## Purpose
 
@@ -15,7 +15,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 - Service-principal and install-owned credential identities.
 - Slack message authors, requesters, task creators, and conversation managers.
 - Delegated credential subjects for stored user OAuth lookup.
-- Destination identity for Slack conversations, dispatch records, sandbox sessions, and context-bound tools.
+- Destination identity for platform conversations, dispatch records, sandbox sessions, and context-bound tools.
 - Identity context carried through ingress, queue work, callbacks, dispatch records, scheduler tasks, sandbox egress, and conversation state.
 
 ## Non-Goals
@@ -43,7 +43,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 
 ### Identity Context
 
-Every behavior that can read credentials, perform side effects, send Slack output, run tools, dispatch work, or mutate durable state must have explicit identity context.
+Every behavior that can read credentials, perform side effects, send platform output, run tools, dispatch work, or mutate durable state must have explicit identity context.
 
 The current actor must be a real user actor or a named system actor. Synthetic ids such as `unknown`, empty strings, whitespace-padded ids, previous message authors, task creators, Slack display names, and destination membership are not valid substitutes for actor context.
 
@@ -52,6 +52,7 @@ The current actor must be a real user actor or a named system actor. Synthetic i
 Untrusted external data is parsed once at the boundary that receives it:
 
 - Slack ingress and Slack adapter payloads parse Slack user ids before creating internal work.
+- Local CLI parses local session ids and actor configuration before creating internal work.
 - Plugin APIs parse plugin-provided credential subjects before binding or persisting them.
 - Signed callback and sandbox egress contexts verify signatures and parse actor payloads before issuing credentials.
 
@@ -94,6 +95,24 @@ Scheduled runs execute as a Junior system actor, not as the user who created the
 Plugin dispatch also executes as a system actor unless a future spec defines a different actor model. Plugin metadata and idempotency keys are correlation data, not actor sources.
 
 Scheduled tasks and plugin dispatches may carry an explicit delegated user credential subject only under the Slack private direct conversation exception defined by the scheduler and dispatch specs. That subject is not the actor.
+
+### Local CLI
+
+Local CLI runs must use explicit local identity context and must not fabricate
+Slack identity state.
+
+First implementation rules:
+
+1. Local CLI runs execute as the named Junior system actor `local-cli`.
+2. Local CLI runs do not have a Slack requester unless they are replaying a
+   verified Slack-originated continuation, which ordinary local chat does not do.
+3. Local CLI destination identity uses a local conversation/session id, not a
+   Slack channel id or Slack thread timestamp.
+4. Local CLI must disable interactive OAuth and Slack private auth flows until a
+   separate local user/auth contract exists.
+5. If a future local mode needs user-bound credentials, it must introduce an
+   explicit non-Slack user actor and credential-subject contract instead of
+   reusing Slack requester fields.
 
 ### Turn Continuation Requester Identity
 
@@ -189,6 +208,7 @@ Use evals only when the contract depends on model interpretation, such as preser
 
 - `./chat-architecture.md`
 - `./task-execution.md`
+- `./local-agent.md`
 - `./agent-turn-handling.md`
 - `./slack-agent-delivery.md`
 - `./slack-outbound-contract.md`

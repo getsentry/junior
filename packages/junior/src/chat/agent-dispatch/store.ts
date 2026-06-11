@@ -3,7 +3,8 @@ import type { Lock, StateAdapter } from "chat";
 import {
   agentPluginCredentialSubjectSchema,
   destinationSchema,
-  type Destination,
+  isSlackDestination,
+  type SlackDestination,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { destinationKey } from "@/chat/destination";
@@ -79,6 +80,14 @@ const dispatchRecordSchema = z
   })
   .strict()
   .superRefine((record, ctx) => {
+    if (!isSlackDestination(record.destination)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dispatch destination platform must be slack",
+        path: ["destination"],
+      });
+      return;
+    }
     const subject = record.credentialSubject;
     if (!subject) {
       return;
@@ -153,7 +162,9 @@ export function parseDispatchRecord(
 }
 
 /** Map a dispatch destination to the lock key that serializes Slack delivery. */
-export function getDispatchDestinationLockId(destination: Destination): string {
+export function getDispatchDestinationLockId(
+  destination: SlackDestination,
+): string {
   return destinationKey(destination);
 }
 

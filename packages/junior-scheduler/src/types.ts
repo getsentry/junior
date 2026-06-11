@@ -1,6 +1,6 @@
 import type {
   AgentPluginCredentialSubject,
-  Destination,
+  SlackDestination,
 } from "@sentry/junior-plugin-api";
 
 export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
@@ -72,7 +72,7 @@ export interface ScheduledTask {
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
   credentialSubject?: AgentPluginCredentialSubject;
-  destination: Destination;
+  destination: SlackDestination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;
   nextRunAtMs?: number;

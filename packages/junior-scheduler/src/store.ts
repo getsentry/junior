@@ -1,6 +1,7 @@
 import {
   agentPluginCredentialSubjectSchema,
   destinationSchema,
+  isSlackDestination,
   type AgentPluginReadState,
   type AgentPluginState,
 } from "@sentry/junior-plugin-api";
@@ -363,7 +364,7 @@ function parseStoredTask(value: unknown): ScheduledTask | undefined {
   }
   const record = value as Partial<ScheduledTask>;
   const destination = destinationSchema.safeParse(record.destination);
-  if (!destination.success) {
+  if (!destination.success || !isSlackDestination(destination.data)) {
     return undefined;
   }
   const credentialSubject =

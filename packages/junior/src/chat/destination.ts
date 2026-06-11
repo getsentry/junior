@@ -1,4 +1,8 @@
-import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
+import {
+  destinationSchema,
+  type Destination,
+  type SlackDestination,
+} from "@sentry/junior-plugin-api";
 import { normalizeSlackConversationId } from "@/chat/slack/client";
 import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
 
@@ -24,19 +28,38 @@ export function parseDestination(value: unknown): Destination | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+/** Require a Slack destination at a Slack-only runtime boundary. */
+export function requireSlackDestination(
+  destination: Destination | undefined,
+  action: string,
+): SlackDestination {
+  if (destination?.platform === "slack") {
+    return destination;
+  }
+  throw new Error(`${action} requires a Slack destination`);
+}
+
 /** Compare two destinations without relying on object identity. */
 export function sameDestination(
   left: Destination,
   right: Destination,
 ): boolean {
-  return (
-    left.platform === right.platform &&
-    left.teamId === right.teamId &&
-    left.channelId === right.channelId
-  );
+  if (left.platform !== right.platform) {
+    return false;
+  }
+  if (left.platform === "local" && right.platform === "local") {
+    return left.conversationId === right.conversationId;
+  }
+  if (left.platform === "slack" && right.platform === "slack") {
+    return left.teamId === right.teamId && left.channelId === right.channelId;
+  }
+  return false;
 }
 
 /** Return the lock/index-safe storage key for a destination. */
 export function destinationKey(destination: Destination): string {
+  if (destination.platform === "local") {
+    return destination.conversationId;
+  }
   return `slack:${destination.teamId}:${destination.channelId}`;
 }

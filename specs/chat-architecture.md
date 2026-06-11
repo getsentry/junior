@@ -3,16 +3,17 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-10
 
 ## Purpose
 
-Define the normative architecture contract for `packages/junior/src/chat` so new work converges on explicit composition, small service interfaces, and maintainable test seams.
+Define the normative architecture contract for `packages/junior/src/chat` so new work converges on explicit composition, platform adapters, small service interfaces, and maintainable test seams.
 
 ## Scope
 
 - File-tree structure and responsibility boundaries for `packages/junior/src/chat`.
 - Runtime/service/state composition rules.
+- Platform adapter boundaries for Slack, local CLI, and future message sources.
 - Test and eval seams for chat runtime behavior.
 
 ## Non-Goals
@@ -33,13 +34,13 @@ Define the normative architecture contract for `packages/junior/src/chat` so new
 
 ### Agent Run Data Flow
 
-The core architecture is the flow of one Slack event into a durable agent run.
+The core architecture is the flow of one platform event into a durable agent run.
 Module boundaries exist to keep this flow explicit and recoverable; they are not
 the primary architecture by themselves.
 
 ```mermaid
 flowchart TD
-  A[Slack webhook event] --> B[Slack-specific ingress parsing and classification]
+  A[Platform event or local CLI input] --> B[Platform adapter normalization and classification]
   B --> C[Append to durable conversation mailbox]
   C --> D[Send Vercel Queue nudge: conversationId + Destination]
   D --> E[Queue worker acquires conversation lease]
@@ -61,14 +62,14 @@ flowchart TD
   Z -->|yes| E2
   Z -->|no| O
   L --> O{Run outcome}
-  O -->|success/final diagnostics| P[Plan finalized Slack reply]
+  O -->|success/final diagnostics| P[Plan finalized destination reply]
   O -->|auth pause| Q[Append auth pause event and pending auth pointer]
   O -->|cooperative yield| R[Durable session-log boundary already committed]
   O -->|terminal failure| S[Capture failure and build fallback reply]
   R --> YA
   Q --> V[Private auth link plus visible URL-free auth acknowledgement; live run ends]
   V --> AB[OAuth/MCP callback appends mailbox work and enqueues conversation]
-  P --> W[Deliver finalized Slack reply/files]
+  P --> W[Deliver finalized destination reply/files]
   S --> W
   W --> X[Persist assistant message, mark session delivered, release lease]
   AB --> D
@@ -76,32 +77,32 @@ flowchart TD
 
 Normative rules:
 
-1. Ingress parses and classifies source events, appends them to the durable mailbox, and sends a queue nudge. It must not decide agent behavior.
+1. Platform adapters parse and classify source events, append them to the durable mailbox, and send a queue nudge. They must not decide agent behavior beyond source-specific routing such as Slack mention/subscribed classification.
 2. The task execution layer owns queue wake-ups, conversation leases, worker check-ins, and heartbeat recovery. Chat SDK queue/lock semantics are not canonical.
 3. The mailbox worker is the only point that drains inbound messages into persisted agent session context.
 4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
 5. Tool calls and tool failures are internal agent-loop data until the assistant produces final run diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
-6. User-visible assistant text is posted only after the reply is finalized and planned for Slack delivery.
-7. Final run success is defined by Slack accepting the visible final reply, not by model generation completing.
+6. User-visible assistant text is posted only after the reply is finalized and planned for destination delivery.
+7. Final run success is defined by the destination delivery port accepting the visible final reply, not by model generation completing. Slack acceptance is one destination implementation.
 8. Agent recovery is session continuation: reload durable thread state plus the reduced session log, then continue the same session. It must not create a second active run or re-run from transient process memory.
 9. Cooperative yield at safe agent-loop boundaries is the normal accommodation for Vercel execution limits. Platform death is recovered by queue redelivery and heartbeat repair from the latest durable session boundary.
 10. Assistant status and logs are observability/UX surfaces. They never substitute for persisted session recovery or final reply delivery.
 
 Data authority by stage:
 
-| Data                                    | Authority                                              | Notes                                                                                                                       |
-| --------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Slack event shape                       | `ingress/` and Slack adapter payloads                  | Parse platform IDs and attachments before runtime; do not infer behavior here.                                              |
-| Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                  | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                          |
-| Conversation API/index rows             | Conversation record + `conversation:by-activity` index | Source for dashboard/API conversation lists; do not rebuild the primary list by grouping agent-run rows.                    |
-| Active execution discovery              | `conversation:active` index + conversation record      | Heartbeat discovers stale active conversations here, then uses the record to decide whether to enqueue a nudge.             |
-| Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final Slack delivery.             |
-| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries.                                               |
-| Pi execution transcript                 | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible Slack transcript. |
-| Sandbox/artifact state                  | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                        |
-| Pending auth                            | Auth-owned callback state plus session-log pause event | Auth pauses end the live run after private link delivery and are resumed by callback.                                       |
-| Final Slack reply                       | Slack thread post acceptance                           | Completion is persisted only after Slack accepts the final visible reply.                                                   |
-| Routine continuation progress           | Assistant status and `reportProgress`                  | Cooperative yields do not post filler thread messages.                                                                      |
+| Data                                    | Authority                                              | Notes                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Platform event shape                    | Source adapter ingress modules                         | Parse platform IDs and attachments before runtime; do not infer agent behavior here.                                               |
+| Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                  | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                                 |
+| Conversation API/index rows             | Conversation record + `conversation:by-activity` index | Source for dashboard/API conversation lists; do not rebuild the primary list by grouping agent-run rows.                           |
+| Active execution discovery              | `conversation:active` index + conversation record      | Heartbeat discovers stale active conversations here, then uses the record to decide whether to enqueue a nudge.                    |
+| Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final destination delivery.              |
+| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries.                                                      |
+| Pi execution transcript                 | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible conversation transcript. |
+| Sandbox/artifact state                  | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                               |
+| Pending auth                            | Auth-owned callback state plus session-log pause event | Auth pauses end the live run after private link delivery and are resumed by callback.                                              |
+| Final destination reply                 | Destination delivery port acceptance                   | Completion is persisted only after the destination accepts the final visible reply.                                                |
+| Routine continuation progress           | Assistant status and `reportProgress`                  | Cooperative yields do not post filler thread messages.                                                                             |
 
 Related contract ownership:
 
@@ -122,6 +123,7 @@ Related contract ownership:
 - `services/`: domain services with injected collaborators.
 - `state/`: adapter selection plus store modules split by concern.
 - `slack/`: Slack-specific client, output formatting, and channel/user helpers.
+- Local CLI adapter code may live under `cli/` or a source-specific runtime module, but it must use the same platform adapter boundary as Slack.
 - `ai/`: provider-facing AI clients.
 - `queue/`: queue transport and queue worker orchestration.
 - `turn/`: agent-run lifecycle state and resumability. The directory name is
@@ -132,7 +134,7 @@ Related contract ownership:
 
 - `app/` may import any chat module needed to assemble the runtime.
 - Non-`app/` modules must not import from `app/`.
-- `runtime/` may depend on `services/`, `state/`, `queue/`, `turn/`, `slack/`, and pure helpers.
+- `runtime/` may depend on `services/`, `state/`, `queue/`, `turn/`, source-specific delivery ports, and pure helpers.
 - `services/` must not depend on `runtime/`.
 - `services/` must not import Slack infrastructure; use small injected ports owned by the service when a domain service needs Slack-backed data or files.
 - `slack/` modules must not import runtime orchestration modules.
@@ -155,7 +157,8 @@ The following boundaries are the canonical interfaces for the chat runtime. New 
 
 #### Runtime Composition Root
 
-- One composition root creates the concrete Slack chat app runtime for production.
+- One composition root creates the shared conversation runtime.
+- Source-specific composition roots wire Slack, local CLI, or another platform adapter into that shared runtime.
 - Production singleton assembly belongs under `app/` rather than worker or runtime modules.
 - One thin test fixture may create local runtime instances for tests and evals.
 - Queue workers, ingress routers, and handlers must depend on a runtime instance or runtime factory, not import the production singleton.
@@ -164,29 +167,44 @@ Target role:
 
 ```ts
 interface ChatRuntimeFactory {
-  create(options?: RuntimeOverrides): ChatTurnRuntime;
+  create(options?: RuntimeOverrides): ConversationRuntime;
+}
+```
+
+#### Platform Adapter Boundary
+
+- A platform adapter owns source-specific normalization and destination delivery only.
+- Slack adapters own Slack-only concerns: signature verification, Slack ID parsing, mention stripping, subscribed-thread routing input, assistant lifecycle events, Slack profile lookup, Slack status, Slack files, Slack reactions, and Slack markdown/output formatting.
+- Local CLI adapters own terminal input/output, local conversation selection, and optional local state configuration.
+- Platform adapters must not call the Pi agent directly. They hand normalized input to the shared conversation runtime or append mailbox work for the shared worker.
+- Platform adapters must not fabricate Slack-shaped requesters, destinations, or thread ids for non-Slack sources.
+
+Target role:
+
+```ts
+interface ConversationPlatformAdapter<RawInput> {
+  normalize(input: RawInput): Promise<NormalizedInboundMessage>;
+  deliver(result: ConversationDeliveryResult): Promise<void>;
 }
 ```
 
 #### Runtime Boundary
 
-- The runtime owns message-handling orchestration for mentions, subscribed-thread messages, and assistant lifecycle events.
-- It may depend on services, state stores, and observability, but must not depend on ingress transport or queue clients.
+- The shared runtime owns normalized message execution, conversation state preparation, Pi execution, safe-boundary continuation, and final result planning.
+- It may depend on services, state stores, destination delivery ports, and observability, but must not depend on source HTTP transports or queue clients.
+- Slack-specific runtime code may remain as a transitional adapter while the shared runtime is extracted, but new non-Slack behavior must not extend Slack runtime interfaces.
 
 Target role:
 
 ```ts
-interface ChatTurnRuntime {
-  handleMention(thread, message, hooks?): Promise<void>;
-  handleSubscribedMessage(thread, message, hooks?): Promise<void>;
-  handleAssistantThreadStarted(event): Promise<void>;
-  handleAssistantContextChanged(event): Promise<void>;
+interface ConversationRuntime {
+  handleMessage(input: NormalizedInboundMessage, hooks?): Promise<void>;
 }
 ```
 
 #### Ingress Router
 
-- Ingress owns event parsing, dedupe, thread-kind classification, mailbox append, and queue handoff.
+- Ingress owns source request verification, event parsing, source-specific classification, mailbox append, and queue handoff.
 - Chat SDK must not own canonical ingress queueing, conversation locks, or long-running handler lifetime.
 - Ingress must not become a second authority for agent-run behavior that already belongs in runtime.
 - Canonical ingress code lives under `chat/ingress/*`. Do not reintroduce legacy patch modules for core ingress behavior.
@@ -260,16 +278,16 @@ interface EvalScenarioRunner {
 ### Agent Run Continuation Recovery
 
 Agent run continuation recovery covers any case where Junior has a durable safe
-resume boundary but does not know whether the active run reached final Slack
-delivery: serverless timeout, lost or duplicate queue nudge, worker death,
-transport retry, or user follow-up while the conversation is active.
+resume boundary but does not know whether the active run reached final
+destination delivery: serverless timeout, lost or duplicate queue nudge, worker
+death, transport retry, or user follow-up while the conversation is active.
 
 Rules:
 
 1. Recovery continues the existing conversation from durable thread state plus the reduced agent-session log keyed by the predictable conversation id. It must not start a second active run for the same conversation.
-2. Conversation mailbox state, queue wake-ups, and leases protect inbound delivery. They do not replace session continuation because they do not carry Junior's canonical agent session log, sandbox/artifact state, pending auth, or final Slack delivery state.
+2. Conversation mailbox state, queue wake-ups, and leases protect inbound delivery. They do not replace session continuation because they do not carry Junior's canonical agent session log, sandbox/artifact state, pending auth, or final destination delivery state.
 3. `respond.ts` appends safe session-log boundaries; the mailbox worker enqueues cooperative continuations; heartbeat re-enqueues expired leases and stranded pending mailbox work.
-4. Routine cooperative continuation does not create a Slack acknowledgement message. Assistant status and `reportProgress` own progress UX.
+4. Routine cooperative continuation does not create a platform acknowledgement message. Assistant status and `reportProgress` own progress UX.
 5. Queue duplicate and active-lease cases are harmless because queue messages are conversation wake-up nudges, not canonical work records.
 
 ### Test And Eval Rules
@@ -291,7 +309,8 @@ Rules:
 
 Current names that should be treated as transitional:
 
-- None in the core runtime path. New runtime naming should follow the `slackRuntime` / `createSlackRuntime` / `SubscribedReplyDecision` / `AssistantLifecycleEvent` vocabulary now in the tree.
+- `slackRuntime` / `createSlackRuntime` are Slack adapter names, not names for the shared conversation runtime.
+- New shared runtime naming should use `conversation`, `platform`, `source`, `destination`, `delivery`, and `adapter` vocabulary rather than Slack-specific nouns.
 
 ## Failure Model
 
@@ -316,6 +335,7 @@ Current names that should be treated as transitional:
 ## Related Specs
 
 - `./task-execution.md`
+- `./local-agent.md`
 - `./agent-session-resumability.md`
 - `./oauth-flows.md`
 - `./plugin.md`

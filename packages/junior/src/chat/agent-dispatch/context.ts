@@ -1,7 +1,4 @@
-import type {
-  DispatchOptions,
-  HeartbeatHookContext,
-} from "@sentry/junior-plugin-api";
+import type { HeartbeatHookContext } from "@sentry/junior-plugin-api";
 import { bindSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createAgentPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
@@ -11,7 +8,11 @@ import {
   isTerminalDispatchStatus,
 } from "./store";
 import { scheduleDispatchCallback } from "./signing";
-import type { BoundDispatchOptions, DispatchRecord } from "./types";
+import type {
+  BoundDispatchOptions,
+  DispatchRecord,
+  SlackDispatchOptions,
+} from "./types";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -34,7 +35,7 @@ function shouldScheduleDispatch(
 }
 
 function bindDispatchCredentialSubject(
-  options: DispatchOptions,
+  options: SlackDispatchOptions,
 ): BoundDispatchOptions {
   const { credentialSubject, ...baseOptions } = options;
   if (!credentialSubject) {

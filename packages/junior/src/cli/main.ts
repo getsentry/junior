@@ -21,9 +21,15 @@ async function runUpgrade(): Promise<void> {
   await mod.runUpgrade();
 }
 
+async function runChat(argv: string[]): Promise<number> {
+  const mod = await import("./chat");
+  return await mod.runChat(argv);
+}
+
 async function main(argv: string[]): Promise<void> {
   loadCliEnvFiles();
   const exitCode = await runCli(argv, {
+    runChat,
     runInit,
     runSnapshotCreate,
     runCheck,

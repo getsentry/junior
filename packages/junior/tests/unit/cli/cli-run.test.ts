@@ -4,6 +4,7 @@ import { CLI_USAGE, runCli } from "@/cli/run";
 describe("cli command dispatch", () => {
   function handlers() {
     return {
+      runChat: vi.fn(async () => 0),
       runInit: vi.fn(async () => undefined),
       runSnapshotCreate: vi.fn(async () => undefined),
       runCheck: vi.fn(async () => undefined),
@@ -63,6 +64,28 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
   });
 
+  it("runs chat with its remaining arguments", async () => {
+    const cliHandlers = handlers();
+
+    const exitCode = await runCli(
+      ["chat", "--conversation", "demo", "--once", "hello"],
+      cliHandlers,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(cliHandlers.runChat).toHaveBeenCalledTimes(1);
+    expect(cliHandlers.runChat).toHaveBeenCalledWith([
+      "--conversation",
+      "demo",
+      "--once",
+      "hello",
+    ]);
+    expect(cliHandlers.runInit).not.toHaveBeenCalled();
+    expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
+    expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
+  });
+
   it("returns usage for invalid argv forms", async () => {
     const cliHandlers = handlers();
     const lines: string[] = [];
@@ -111,6 +134,7 @@ describe("cli command dispatch", () => {
       CLI_USAGE,
     ]);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
+    expect(cliHandlers.runChat).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();

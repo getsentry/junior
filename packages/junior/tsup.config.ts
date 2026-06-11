@@ -6,6 +6,7 @@ export default defineConfig({
     "cli/env": "src/cli/env.ts",
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
+    "cli/chat": "src/cli/chat.ts",
     "cli/check": "src/cli/check.ts",
     "cli/upgrade": "src/cli/upgrade.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",

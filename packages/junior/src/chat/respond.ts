@@ -327,7 +327,9 @@ function actorRequesterFromContext(
 ): Requester | undefined {
   return createRequester(context.requester, {
     teamId:
-      context.destination?.teamId ??
+      (context.destination?.platform === "slack"
+        ? context.destination.teamId
+        : undefined) ??
       context.correlation?.teamId ??
       context.requester?.teamId,
     userId: context.correlation?.requesterId,

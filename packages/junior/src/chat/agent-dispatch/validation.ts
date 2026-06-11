@@ -1,8 +1,8 @@
 import {
   dispatchOptionsSchema,
-  type DispatchOptions,
+  isSlackDestination,
 } from "@sentry/junior-plugin-api";
-import type { BoundDispatchOptions } from "./types";
+import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 
@@ -107,13 +107,16 @@ function dispatchOptionsErrorMessage(
 /** Validate plugin-provided dispatch options before core persists them. */
 export function validateDispatchOptions(
   options: unknown,
-): asserts options is DispatchOptions {
+): asserts options is SlackDispatchOptions {
   const parsed = dispatchOptionsSchema.safeParse(options);
   if (!parsed.success) {
     throw new Error(dispatchOptionsErrorMessage(parsed.error.issues));
   }
   const candidate = parsed.data;
   const { credentialSubject, destination } = candidate;
+  if (!isSlackDestination(destination)) {
+    throw new Error("Dispatch destination platform must be slack");
+  }
   if (credentialSubject !== undefined) {
     if (!isDmChannel(destination.channelId)) {
       throw new Error(

@@ -94,7 +94,7 @@ type Dispatch = {
 - Same plugin + idempotency key must not create two dispatch records.
 - Dispatch options must not include unknown top-level fields.
 - `destination.platform` must be `"slack"`.
-- Destination must match the strict shared `Destination` schema exactly and must not include unknown fields.
+- Destination must match the strict shared Slack destination schema exactly and must not include unknown fields.
 - Destination must be a Slack public channel, private channel, or existing DM channel the bot can post to.
 - Destination must not be an existing Slack thread.
 - Destination uses a Slack channel id; it must not accept a user id.

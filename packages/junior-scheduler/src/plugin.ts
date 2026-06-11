@@ -1,9 +1,9 @@
 import {
   defineJuniorPlugin,
-  type Destination,
   type Dispatch,
   type AgentPluginToolDefinition,
   type PluginOperationalReportContent,
+  type SlackDestination,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { buildScheduledTaskRunPrompt } from "./prompt";
@@ -183,7 +183,7 @@ function formatTimestamp(timestampMs: number | undefined): string {
     : "none";
 }
 
-function destinationLabel(destination: Destination): string {
+function destinationLabel(destination: SlackDestination): string {
   if (destination.channelId.startsWith("D")) {
     return "Direct Message";
   }

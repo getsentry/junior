@@ -114,6 +114,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/data-redaction-policy.md` (conversation privacy classification and raw payload redaction policy)
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
 - `specs/task-execution.md` (durable conversation mailbox, queue wake-up, lease, and heartbeat execution contract)
+- `specs/local-agent.md` (local CLI/local adapter user flows, identity, state, and delivery contract)
 - `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed runs, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)

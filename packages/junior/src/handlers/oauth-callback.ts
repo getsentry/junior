@@ -66,6 +66,7 @@ import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
+import { requireSlackDestination } from "@/chat/destination";
 
 interface OAuthCallbackOptions {
   generateReply?: typeof generateAssistantReply;
@@ -184,7 +185,10 @@ async function resumeOAuthSessionRecordTurn(
   ) {
     return false;
   }
-  const destination = stored.destination;
+  const destination = requireSlackDestination(
+    stored.destination,
+    "OAuth resume",
+  );
 
   const currentState = await getPersistedThreadState(
     stored.resumeConversationId,
@@ -485,8 +489,12 @@ async function resumePendingOAuthMessage(
   const conversationContext = buildConversationContext(conversation, {
     excludeMessageId: latestUserMessage?.id,
   });
+  const destination = requireSlackDestination(
+    stored.destination,
+    "OAuth pending message resume",
+  );
   const requester = await lookupSlackRequester(
-    stored.destination.teamId,
+    destination.teamId,
     stored.userId,
   );
   await resumeAuthorizedRequest({

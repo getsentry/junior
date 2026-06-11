@@ -2,6 +2,9 @@ import { z } from "zod";
 
 const slackTeamIdSchema = z.string().regex(/^T[A-Z0-9]+$/);
 const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);
+const localConversationIdSchema = z
+  .string()
+  .regex(/^local:[a-z0-9_-]+:[a-z0-9][a-z0-9_-]*$/);
 const exactActorUserIdSchema = z
   .string()
   .min(1)
@@ -12,14 +15,28 @@ const nonBlankStringSchema = z
   .string()
   .refine((value) => value.trim().length > 0);
 
-/** Runtime-owned provider-neutral address for routing future work or side effects. */
-export const destinationSchema = z
+/** Runtime-owned Slack address for routing future work or side effects. */
+export const slackDestinationSchema = z
   .object({
     platform: z.literal("slack"),
     teamId: slackTeamIdSchema,
     channelId: slackConversationIdSchema,
   })
   .strict();
+
+/** Runtime-owned local CLI conversation address. */
+export const localDestinationSchema = z
+  .object({
+    platform: z.literal("local"),
+    conversationId: localConversationIdSchema,
+  })
+  .strict();
+
+/** Runtime-owned provider-neutral address for routing future work or side effects. */
+export const destinationSchema = z.discriminatedUnion("platform", [
+  slackDestinationSchema,
+  localDestinationSchema,
+]);
 
 /** Stable user credential subject shape accepted from plugins. */
 export const agentPluginCredentialSubjectSchema = z
@@ -84,7 +101,7 @@ export const dispatchOptionsSchema = z
   .object({
     idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
     credentialSubject: agentPluginCredentialSubjectSchema.optional(),
-    destination: destinationSchema,
+    destination: slackDestinationSchema,
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
   })
@@ -234,6 +251,17 @@ export type AgentPluginCredentialSubject = z.output<
 >;
 
 export type Destination = z.output<typeof destinationSchema>;
+
+export type SlackDestination = Extract<Destination, { platform: "slack" }>;
+
+export type LocalDestination = Extract<Destination, { platform: "local" }>;
+
+/** Narrow a runtime destination to the Slack-specific address shape. */
+export function isSlackDestination(
+  destination: Destination | undefined,
+): destination is SlackDestination {
+  return destination?.platform === "slack";
+}
 
 export type DispatchOptions = z.output<typeof dispatchOptionsSchema>;
 

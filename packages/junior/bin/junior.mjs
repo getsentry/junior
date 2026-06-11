@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 
 import path from "node:path";
-import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-const { positionals } = parseArgs({
-  allowPositionals: true,
-  strict: false,
-});
 
 async function loadCliFunction(moduleName, exportName, unavailableMessage) {
   const currentFile = fileURLToPath(import.meta.url);
@@ -71,6 +65,15 @@ async function runUpgrade() {
   await runUpgradeFn();
 }
 
+async function runChat(argv) {
+  const runChatFn = await loadCliFunction(
+    "chat",
+    "runChat",
+    "Chat module is unavailable; reinstall @sentry/junior and retry.",
+  );
+  return await runChatFn(argv);
+}
+
 async function main() {
   await loadCliEnvFiles();
   const runCli = await loadCliFunction(
@@ -78,7 +81,8 @@ async function main() {
     "runCli",
     "CLI dispatcher module is unavailable; reinstall @sentry/junior and retry.",
   );
-  const exitCode = await runCli(positionals, {
+  const exitCode = await runCli(process.argv.slice(2), {
+    runChat,
     runInit,
     runSnapshotCreate,
     runCheck,

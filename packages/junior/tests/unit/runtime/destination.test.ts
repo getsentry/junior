@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createSlackDestination, parseDestination } from "@/chat/destination";
+import {
+  createSlackDestination,
+  destinationKey,
+  parseDestination,
+  sameDestination,
+} from "@/chat/destination";
 
 describe("destination context", () => {
   it("normalizes external Slack ids only when creating a destination", () => {
@@ -52,5 +57,24 @@ describe("destination context", () => {
       teamId: "T123",
       channelId: "C123",
     });
+  });
+
+  it("parses local destinations", () => {
+    const destination = parseDestination({
+      platform: "local",
+      conversationId: "local:abc123:demo",
+    });
+
+    expect(destination).toEqual({
+      platform: "local",
+      conversationId: "local:abc123:demo",
+    });
+    expect(destinationKey(destination!)).toBe("local:abc123:demo");
+    expect(
+      sameDestination(destination!, {
+        platform: "local",
+        conversationId: "local:abc123:demo",
+      }),
+    ).toBe(true);
   });
 });
