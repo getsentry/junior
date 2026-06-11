@@ -29,7 +29,8 @@ function createMockDeps(
     logException: vi.fn(() => "evt_test"),
     logWarn: vi.fn(),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
-    recordSkippedSubscribedMessage: vi.fn().mockResolvedValue(undefined),
+    recordSkippedSteeringMessage: vi.fn().mockResolvedValue(undefined),
+    recordSkippedSubscribedTurn: vi.fn().mockResolvedValue(undefined),
     persistPreparedState: vi.fn().mockResolvedValue(undefined),
     prepareTurnState: vi
       .fn()

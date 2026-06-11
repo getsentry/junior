@@ -277,6 +277,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       queuedMessages?: QueuedTurnMessage[];
       drainSteeringMessages?: (
         inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+        context?: { conversationContext?: string },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
     },
@@ -824,6 +825,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                       await resolveSteeringMessages(queuedMessages);
                     await inject(injectedMessages);
                   },
+                  { conversationContext: preparedState.conversationContext },
                 );
                 return (
                   injectedMessages ?? (await resolveSteeringMessages(drained))

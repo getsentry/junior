@@ -63,6 +63,10 @@ export interface ReplyHooks {
   shouldYield?: () => boolean;
 }
 
+interface SteeringDrainContext {
+  conversationContext?: string;
+}
+
 export interface SlackTurnOptions extends ReplyHooks {
   destination: Destination;
 }
@@ -141,7 +145,13 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => void;
   modelId: string;
   now: () => number;
-  recordSkippedSubscribedMessage: (args: {
+  recordSkippedSteeringMessage: (args: {
+    decision: SubscribedReplyDecision;
+    message: Message;
+    text: TurnMessageText;
+    thread: Thread;
+  }) => Promise<void>;
+  recordSkippedSubscribedTurn: (args: {
     completedAtMs: number;
     decision: SubscribedReplyDecision;
     message: Message;
@@ -152,7 +162,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     completedAtMs: number;
     decision: SubscribedReplyDecision;
     message: Message;
-    preparedState?: TPreparedState;
+    preparedState: TPreparedState;
     thread: Thread;
   }) => Promise<void>;
   persistPreparedState: (args: {
@@ -175,6 +185,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       queuedMessages?: QueuedTurnMessage[];
       drainSteeringMessages?: (
         inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+        context?: SteeringDrainContext,
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
     },
@@ -233,33 +244,52 @@ function getQueuedMessagesFromSlackMessages(
   );
 }
 
-function createSteeringMessageDrain(
+interface SteeringMessageDecision {
+  context: TurnContext;
+  decision: SubscribedReplyDecision;
+  message: Message;
+  text: TurnMessageText;
+}
+
+interface SteeringMessageSelection {
+  accepted: Message[];
+  skipped: SteeringMessageDecision[];
+}
+
+/** Drain mailbox steering messages only after selecting work Junior will process. */
+function createAcceptedSteeringDrain(
   hooks: ReplyHooks,
   options: {
     explicitMention: boolean;
-    onMessagesAccepted?: (messages: Message[]) => Promise<void>;
+    onAcceptedForProcessing?: (messages: Message[]) => Promise<void>;
+    onSkipped?: (messages: SteeringMessageDecision[]) => Promise<void>;
+    selectMessages: (
+      messages: Message[],
+      context?: SteeringDrainContext,
+    ) => Promise<SteeringMessageSelection>;
     stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
   },
 ):
   | ((
       inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+      context?: SteeringDrainContext,
     ) => Promise<QueuedTurnMessage[]>)
   | undefined {
   if (!hooks.drainSteeringMessages) {
     return undefined;
   }
 
-  return async (inject) => {
+  return async (inject, context) => {
     let acceptedMessages: Message[] | undefined;
-    const drained = await hooks.drainSteeringMessages!(async (messages) => {
-      await inject(getQueuedMessagesFromSlackMessages(messages, options));
-      acceptedMessages = messages;
-      await options.onMessagesAccepted?.(messages);
+    await hooks.drainSteeringMessages!(async (messages) => {
+      const selection = await options.selectMessages(messages, context);
+      const accepted = selection.accepted;
+      await options.onSkipped?.(selection.skipped);
+      await inject(getQueuedMessagesFromSlackMessages(accepted, options));
+      acceptedMessages = accepted;
+      await options.onAcceptedForProcessing?.(accepted);
     });
-    if (!acceptedMessages) {
-      await options.onMessagesAccepted?.(drained);
-    }
-    return getQueuedMessagesFromSlackMessages(drained, options);
+    return getQueuedMessagesFromSlackMessages(acceptedMessages ?? [], options);
   };
 }
 
@@ -416,17 +446,48 @@ export function createSlackTurnRuntime<
     }
   };
 
-  /** Persist the skip decision at the same boundary that a reply would update. */
-  const skipSubscribedMessage = async (args: {
-    thread: Thread;
-    message: Message;
-    decision: SubscribedReplyDecision;
+  const decideSteeringMessage = async (
+    thread: Thread,
+    message: Message,
+    conversationContext: string | undefined,
+  ): Promise<{
     context: TurnContext;
-    onInputCommitted?: () => Promise<void>;
-    preparedState?: TPreparedState;
+    decision: SubscribedReplyDecision;
     text: TurnMessageText;
-  }): Promise<void> => {
-    const completedAtMs = deps.now();
+  }> => {
+    const context: TurnContext = {
+      threadId: deps.getThreadId(thread, message),
+      requesterId: message.author.userId,
+      channelId: deps.getChannelId(thread, message),
+      runId: deps.getRunId(thread, message),
+    };
+    const legacyAttachmentText = renderSlackLegacyAttachmentText(message.raw);
+    const strippedUserText = deps.stripLeadingBotMention(message.text, {
+      stripLeadingSlackMentionToken: Boolean(message.isMention),
+    });
+    const text: TurnMessageText = {
+      rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+      userText: appendSlackLegacyAttachmentText(strippedUserText, message.raw),
+    };
+    const isExplicitMention = Boolean(message.isMention);
+
+    const decision = await deps.decideSubscribedReply({
+      rawText: text.rawText,
+      text: text.userText,
+      conversationContext,
+      hasAttachments:
+        message.attachments.length > 0 || legacyAttachmentText !== "",
+      isExplicitMention,
+      context,
+    });
+    return { context, decision, text };
+  };
+
+  const logSkippedSubscribedDecision = (args: {
+    context: TurnContext;
+    decision: SubscribedReplyDecision;
+    message: Message;
+  }): void => {
     deps.logWarn(
       "subscribed_message_reply_skipped",
       logContext({
@@ -441,26 +502,135 @@ export function createSlackTurnRuntime<
       },
       "Skipping subscribed message reply",
     );
-    await deps.onSubscribedMessageSkipped({
-      thread: args.thread,
-      message: args.message,
-      preparedState: args.preparedState,
-      decision: args.decision,
-      completedAtMs,
-    });
-    if (!args.preparedState) {
-      await deps.recordSkippedSubscribedMessage({
+  };
+
+  /** Persist the skip decision at the same boundary that a reply would update. */
+  const skipSubscribedMessage = async (args: {
+    thread: Thread;
+    message: Message;
+    decision: SubscribedReplyDecision;
+    context: TurnContext;
+    onInputCommitted?: () => Promise<void>;
+    preparedState?: TPreparedState;
+    text: TurnMessageText;
+  }): Promise<void> => {
+    const completedAtMs = deps.now();
+    logSkippedSubscribedDecision(args);
+    if (args.preparedState) {
+      await deps.onSubscribedMessageSkipped({
         thread: args.thread,
         message: args.message,
         decision: args.decision,
+        preparedState: args.preparedState,
         completedAtMs,
+      });
+    } else {
+      await deps.recordSkippedSubscribedTurn({
+        thread: args.thread,
+        message: args.message,
+        decision: args.decision,
         text: args.text,
+        completedAtMs,
       });
     }
     // Mark the inbound mailbox messages as consumed even though we are not
     // replying. Without this, completeConversationWork sees pendingMessages > 0
     // and re-enqueues indefinitely — an infinite loop for every skipped message.
     await args.onInputCommitted?.();
+  };
+
+  const selectAcceptedSteeringMessages = async (args: {
+    conversationContext: string | undefined;
+    messages: Message[];
+    thread: Thread;
+  }): Promise<SteeringMessageSelection> => {
+    const selected: SteeringMessageDecision[] = [];
+    for (const message of args.messages) {
+      const decision = await decideSteeringMessage(
+        args.thread,
+        message,
+        args.conversationContext,
+      );
+      selected.push({
+        context: decision.context,
+        decision: decision.decision,
+        message,
+        text: decision.text,
+      });
+    }
+    if (selected.some((message) => message.decision.shouldUnsubscribe)) {
+      return {
+        accepted: [],
+        skipped: selected.map((message) =>
+          message.decision.shouldReply
+            ? {
+                ...message,
+                decision: {
+                  shouldReply: false,
+                  reason: "thread_opt_out:batch opt-out",
+                },
+              }
+            : message,
+        ),
+      };
+    }
+    return {
+      accepted: selected
+        .filter((message) => message.decision.shouldReply)
+        .map((message) => message.message),
+      skipped: selected.filter((message) => !message.decision.shouldReply),
+    };
+  };
+
+  /** Persist skipped steering before mailbox commit, without reactions or injection. */
+  const handleSkippedSteeringMessages = async (args: {
+    beforeFirstResponsePost?: () => Promise<void>;
+    pending: SteeringMessageDecision[];
+    skipped: SteeringMessageDecision[];
+    thread: Thread;
+  }): Promise<void> => {
+    for (const skipped of args.skipped) {
+      await maybeHandleThreadOptOutDecision({
+        thread: args.thread,
+        decision: skipped.decision,
+        beforeFirstResponsePost: args.beforeFirstResponsePost,
+      });
+      logSkippedSubscribedDecision(skipped);
+      await deps.recordSkippedSteeringMessage({
+        thread: args.thread,
+        message: skipped.message,
+        decision: skipped.decision,
+        text: skipped.text,
+      });
+      args.pending.push(skipped);
+    }
+  };
+
+  /** Reapply skipped steering after final turn persistence so replayed state keeps skipped context. */
+  const flushSkippedSteeringMessagesBestEffort = async (args: {
+    context: RuntimeLogContext;
+    pending: SteeringMessageDecision[];
+    thread: Thread;
+  }): Promise<void> => {
+    try {
+      while (args.pending.length > 0) {
+        const skipped = args.pending.shift()!;
+        await deps.recordSkippedSteeringMessage({
+          thread: args.thread,
+          message: skipped.message,
+          decision: skipped.decision,
+          text: skipped.text,
+        });
+      }
+    } catch (error) {
+      deps.logException(
+        error,
+        "skipped_steering_flush_failed",
+        args.context,
+        {},
+        "Failed to reapply skipped steering message records",
+      );
+    }
   };
 
   return {
@@ -471,9 +641,21 @@ export function createSlackTurnRuntime<
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
+      const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
+        await flushSkippedSteeringMessagesBestEffort({
+          thread,
+          pending: skippedSteeringMessages,
+          context: logContext({
+            threadId: deps.getThreadId(thread, message),
+            requesterId: message.author.userId,
+            requesterUserName: requesterUserName(message),
+            channelId: deps.getChannelId(thread, message),
+            runId: deps.getRunId(thread, message),
+          }),
+        });
       };
       try {
         const threadId = deps.getThreadId(thread, message);
@@ -514,15 +696,28 @@ export function createSlackTurnRuntime<
             await hooks.onInputCommitted?.();
             await startQueuedProcessingReactions();
           };
-          const drainSteeringMessages = createSteeringMessageDrain(hooks, {
+          const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
             explicitMention: true,
-            onMessagesAccepted: async (messages) => {
+            onAcceptedForProcessing: async (messages) => {
               await Promise.all(
                 messages.map((drainedMessage) =>
                   processingReactions.start(context, drainedMessage),
                 ),
               );
             },
+            onSkipped: (skipped) =>
+              handleSkippedSteeringMessages({
+                beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+                pending: skippedSteeringMessages,
+                skipped,
+                thread,
+              }),
+            selectMessages: (messages, drainContext) =>
+              selectAcceptedSteeringMessages({
+                conversationContext: drainContext?.conversationContext,
+                messages,
+                thread,
+              }),
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           await deps.replyToThread(thread, message, {
@@ -587,6 +782,17 @@ export function createSlackTurnRuntime<
         if (completed) {
           await processingReactions.completeAll();
         } else {
+          await flushSkippedSteeringMessagesBestEffort({
+            thread,
+            pending: skippedSteeringMessages,
+            context: logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: requesterUserName(message),
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message),
+            }),
+          });
           await processingReactions.stopAll();
         }
       }
@@ -599,9 +805,21 @@ export function createSlackTurnRuntime<
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReactionSession | undefined;
+      const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
+        await flushSkippedSteeringMessagesBestEffort({
+          thread,
+          pending: skippedSteeringMessages,
+          context: logContext({
+            threadId: deps.getThreadId(thread, message),
+            requesterId: message.author.userId,
+            requesterUserName: requesterUserName(message),
+            channelId: deps.getChannelId(thread, message),
+            runId: deps.getRunId(thread, message),
+          }),
+        });
       };
       try {
         const threadId = deps.getThreadId(thread, message);
@@ -638,17 +856,6 @@ export function createSlackTurnRuntime<
           };
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             explicitMention: Boolean(message.isMention),
-            stripLeadingBotMention: deps.stripLeadingBotMention,
-          });
-          const drainSteeringMessages = createSteeringMessageDrain(hooks, {
-            explicitMention: Boolean(message.isMention),
-            onMessagesAccepted: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(turnContext, drainedMessage),
-                ),
-              );
-            },
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           const combinedText = combineTurnText(queuedMessages, currentText);
@@ -739,6 +946,33 @@ export function createSlackTurnRuntime<
             return;
           }
 
+          const conversationContext =
+            deps.getPreparedConversationContext(preparedState);
+          const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
+            explicitMention: Boolean(message.isMention),
+            onAcceptedForProcessing: async (messages) => {
+              await Promise.all(
+                messages.map((drainedMessage) =>
+                  processingReactions.start(turnContext, drainedMessage),
+                ),
+              );
+            },
+            onSkipped: (skipped) =>
+              handleSkippedSteeringMessages({
+                beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+                pending: skippedSteeringMessages,
+                skipped,
+                thread,
+              }),
+            selectMessages: (messages, drainContext) =>
+              selectAcceptedSteeringMessages({
+                conversationContext:
+                  drainContext?.conversationContext ?? conversationContext,
+                messages,
+                thread,
+              }),
+            stripLeadingBotMention: deps.stripLeadingBotMention,
+          });
           processingReaction = await processingReactions.start(
             turnContext,
             message,
@@ -828,6 +1062,17 @@ export function createSlackTurnRuntime<
         if (completed) {
           await processingReactions.completeAll();
         } else {
+          await flushSkippedSteeringMessagesBestEffort({
+            thread,
+            pending: skippedSteeringMessages,
+            context: logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: requesterUserName(message),
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message),
+            }),
+          });
           await processingReactions.stopAll();
         }
       }

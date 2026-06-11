@@ -12,10 +12,13 @@ import {
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import type { ReplySteeringMessage } from "@/chat/respond";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import {
   countPendingConversationMessages,
@@ -74,7 +77,31 @@ function reactionTargetsByName(name: string) {
   );
 }
 
+type CompleteObjectOverride = NonNullable<
+  JuniorRuntimeServiceOverrides["subscribedReplyPolicy"]
+>["completeObject"];
+
+interface RouterDecision {
+  confidence: number;
+  reason: string;
+  should_unsubscribe?: boolean;
+  should_reply: boolean;
+}
+
+function completeObjectWithDecision(
+  decide: (prompt: string) => RouterDecision,
+): CompleteObjectOverride {
+  return async (args) => {
+    const decision = decide(args.prompt);
+    return {
+      object: args.schema.parse(decision),
+      text: JSON.stringify(decision),
+    };
+  };
+}
+
 function createTurnHarness(args: {
+  completeObject?: CompleteObjectOverride;
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
   services?: Parameters<typeof createSlackRuntime>[0]["services"];
   state: StateAdapter;
@@ -92,6 +119,15 @@ function createTurnHarness(args: {
       replyExecutor: {
         ...(args.services?.replyExecutor ?? {}),
         generateAssistantReply: args.generateAssistantReply,
+      },
+      subscribedReplyPolicy: {
+        completeObject:
+          args.completeObject ??
+          completeObjectWithDecision(() => ({
+            should_reply: true,
+            confidence: 1,
+            reason: "steering follow-up",
+          })),
       },
     },
   });
@@ -233,6 +269,19 @@ describe("Slack behavior: durable turn steering", () => {
       };
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
+        completeObject: completeObjectWithDecision((prompt) =>
+          prompt.includes("thanks folks")
+            ? {
+                should_reply: false,
+                confidence: 1,
+                reason: "passive side conversation",
+              }
+            : {
+                should_reply: true,
+                confidence: 1,
+                reason: "active steering follow-up",
+              },
+        ),
         generateAssistantReply,
         state,
       });
@@ -255,6 +304,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     for (const followUp of [
       { text: "add customer impact", ts: "1712345.000200" },
+      { text: "thanks folks", ts: "1712345.000250" },
       { text: "include the rollback owner", ts: "1712345.000300" },
       { text: "finish with the next action", ts: "1712345.000400" },
     ]) {
@@ -273,7 +323,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(queue.sentRecords()).toHaveLength(4);
+    expect(queue.sentRecords()).toHaveLength(5);
 
     expect(agentCalls).toEqual([
       {
@@ -307,9 +357,22 @@ describe("Slack behavior: durable turn steering", () => {
       state,
     });
     expect(work?.messages).toEqual([]);
-    expect(work?.execution.inboundMessageIds).toHaveLength(4);
+    expect(work?.execution.inboundMessageIds).toHaveLength(5);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
     expect(work?.needsRun).toBe(false);
+    const persistedState = await getPersistedThreadState(conversationId);
+    const conversation = coerceThreadConversationState(persistedState);
+    expect(conversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "thanks folks",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "side_conversation:passive side conversation",
+          }),
+        }),
+      ]),
+    );
 
     const expectedReactionTargets = (name: string) =>
       [THREAD_TS, "1712345.000200", "1712345.000300", "1712345.000400"].map(
@@ -337,6 +400,11 @@ describe("Slack behavior: durable turn steering", () => {
     const replyCalls: string[] = [];
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
+        completeObject: completeObjectWithDecision(() => ({
+          should_reply: false,
+          confidence: 1,
+          reason: "side conversation",
+        })),
         generateAssistantReply: async (prompt, context) => {
           replyCalls.push(prompt);
           await context?.onInputCommitted?.();
@@ -344,19 +412,6 @@ describe("Slack behavior: durable turn steering", () => {
             text: "Started.",
             diagnostics: makeDiagnostics(),
           };
-        },
-        services: {
-          subscribedReplyPolicy: {
-            completeObject: async () =>
-              ({
-                object: {
-                  should_reply: false,
-                  confidence: 0,
-                  reason: "side conversation",
-                },
-                text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
-              }) as never,
-          },
         },
         state,
       });
@@ -403,6 +458,130 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work?.needsRun).toBe(false);
     expect(queue.sentRecords()).toHaveLength(1);
     expect(replyCalls).toEqual(["start the incident summary"]);
+  });
+
+  it("applies opt-out decisions from drained steering messages without reacting to them", async () => {
+    const agentEntered = deferred();
+    const releaseAgent = deferred();
+    const drainedTexts: string[] = [];
+    const state = getStateAdapter();
+    const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
+      async (_prompt, context) => {
+        await context?.onInputCommitted?.();
+        agentEntered.resolve();
+        await releaseAgent.promise;
+        const drained = await context?.drainSteeringMessages?.(
+          async (messages) => {
+            drainedTexts.push(...messages.map((message) => message.text));
+          },
+        );
+        if (drainedTexts.length === 0 && drained) {
+          drainedTexts.push(...drained.map((message) => message.text));
+        }
+        return {
+          text: "Done with the initial request.",
+          diagnostics: makeDiagnostics(),
+        };
+      };
+    const { conversationId, runNextQueuedWork, services } = createTurnHarness({
+      completeObject: completeObjectWithDecision((prompt) =>
+        prompt.includes("stop watching")
+          ? {
+              should_reply: false,
+              should_unsubscribe: true,
+              confidence: 1,
+              reason: "explicit stop instruction",
+            }
+          : {
+              should_reply: true,
+              confidence: 1,
+              reason: "active steering follow-up",
+            },
+      ),
+      generateAssistantReply,
+      state,
+    });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const activeTurn = runNextQueuedWork();
+    await agentEntered.promise;
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "stop watching this thread",
+            ts: "1712345.000500",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "also add the rollout timeline",
+            ts: "1712345.000600",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    releaseAgent.resolve();
+    await expect(activeTurn).resolves.toEqual({ status: "completed" });
+    expect(await state.isSubscribed(conversationId)).toBe(false);
+    expect(drainedTexts).toEqual([]);
+
+    expect(reactionTargetsByName("eyes")).toEqual([
+      {
+        channel: CHANNEL_ID,
+        name: "eyes",
+        timestamp: THREAD_TS,
+      },
+    ]);
+    expect(reactionTargetsByName("white_check_mark")).toEqual([
+      {
+        channel: CHANNEL_ID,
+        name: "white_check_mark",
+        timestamp: THREAD_TS,
+      },
+    ]);
+    const persistedState = await getPersistedThreadState(conversationId);
+    const conversation = coerceThreadConversationState(persistedState);
+    expect(conversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "stop watching this thread",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "thread_opt_out:explicit stop instruction",
+          }),
+        }),
+        expect.objectContaining({
+          text: "also add the rollout timeline",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "thread_opt_out:batch opt-out",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {
