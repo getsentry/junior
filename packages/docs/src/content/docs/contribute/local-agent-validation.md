@@ -17,6 +17,11 @@ credential changes that are not specifically about Slack ingress, Slack message
 formatting, Slack retries, or Slack OAuth UI. The local agent should be the
 first manual behavior check for those changes.
 
+Inside this monorepo, `pnpm cli -- ...` runs Junior from `apps/example`. Treat
+that app as the canonical local validation app: it loads the example SOUL,
+WORLD, local skills, plugin-bundled skills, and normal development env without
+requiring Slack.
+
 ## First Check
 
 Confirm the app is configured:
@@ -46,6 +51,24 @@ pnpm cli -- chat --once "Describe the behavior I just changed in one sentence."
 The command should print a Junior response and exit with status `0`. If it
 reports missing model or provider credentials, refresh or add the required
 environment variables and rerun the same prompt.
+
+## Example App Checks
+
+Use the example app skills when you need to prove local skill and plugin
+discovery, not just a plain model response:
+
+```bash
+pnpm cli -- chat --conversation example-skill-proof --once "/example-local Confirm the example app local skill is available."
+```
+
+```bash
+pnpm cli -- chat --conversation example-plugin-proof --once "/example-bundle-help Explain where this plugin-bundled skill is discovered from and whether it supports jr-rpc issue-credential."
+```
+
+The first command should use the app-local `example-local` skill. The second
+should report that the skill is discovered from
+`app/plugins/example-bundle/skills` and that `example-bundle` is bundle-only
+without credential issuance support.
 
 ## Conversation Check
 

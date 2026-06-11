@@ -27,7 +27,7 @@ Co-Authored-By: (agent model name) <email>
 - Use `/skill-writer` skill when creating or updating skills.
 - Prefer integration tests for most product/runtime changes that need real wiring.
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
-- For any non-Slack-specific product/runtime/prompt/tool/plugin behavior change, use the local agent as the first manual behavior check. Follow `packages/docs/src/content/docs/contribute/local-agent-validation.md`; from this monorepo, run it with `pnpm cli -- chat ...`.
+- For any non-Slack-specific product/runtime/prompt/tool/plugin behavior change, use the local agent as the first manual behavior check. Follow `packages/docs/src/content/docs/contribute/local-agent-validation.md`; from this monorepo, run it with `pnpm cli -- chat ...`, which uses `apps/example` as the canonical local validation app.
 - Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
 - If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
 - Use instrumentation conventions from `specs/instrumentation.md`.
