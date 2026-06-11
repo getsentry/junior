@@ -10,6 +10,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
+  persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -305,6 +306,55 @@ describe("local agent runner", () => {
     );
 
     expect(contexts[0]?.piMessages).toEqual([generatedMessages[0]]);
+  });
+
+  it("uses conversation Pi history when the session projection is stale", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "pi-history-stale-projection",
+      cwd: "/tmp/local-agent-runner-seven",
+    });
+    expect(conversationId).toBeDefined();
+
+    const projectedMessage = {
+      role: "user",
+      content: [{ type: "text", text: "stale projected history" }],
+    } as PiMessage;
+    await commitMessages({
+      conversationId: conversationId!,
+      messages: [projectedMessage],
+      ttlMs: 60_000,
+    });
+
+    const newerMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "newer conversation history" }],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "newer assistant output" }],
+      },
+    ] as PiMessage[];
+    const conversation = coerceThreadConversationState({});
+    conversation.piMessages = newerMessages;
+    await persistThreadStateById(conversationId!, { conversation });
+
+    const contexts: ReplyRequestContext[] = [];
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "follow up",
+      },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: async (_text, context = {}) => {
+          contexts.push(context);
+          return successReply("uses newer fallback");
+        },
+      },
+    );
+
+    expect(contexts[0]?.piMessages).toEqual([newerMessages[0]]);
   });
 
   it("rolls back generated Pi output when local delivery fails", async () => {

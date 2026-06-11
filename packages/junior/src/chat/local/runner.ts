@@ -97,7 +97,13 @@ function nextUserMessageSequence(
   );
 }
 
-/** Load durable Pi projection first; fallback only preserves pre-session-log local state. */
+function preparedLocalPiMessages(
+  messages: ReturnType<typeof coerceThreadConversationState>["piMessages"],
+) {
+  return stripRuntimeTurnContext(trimTrailingAssistantMessages(messages));
+}
+
+/** Load the newest local Pi state, falling back from stale projection data. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
   fallback: ReturnType<typeof coerceThreadConversationState>["piMessages"];
@@ -105,11 +111,14 @@ async function loadLocalPiMessages(args: {
   const projection = await loadProjection({
     conversationId: args.conversationId,
   });
+  if (args.fallback.length >= projection.length && args.fallback.length > 0) {
+    return preparedLocalPiMessages(args.fallback);
+  }
   if (projection.length > 0) {
-    return stripRuntimeTurnContext(trimTrailingAssistantMessages(projection));
+    return preparedLocalPiMessages(projection);
   }
 
-  return args.fallback.length > 0 ? [...args.fallback] : undefined;
+  return undefined;
 }
 
 /** Persist the post-delivery completion state, retrying transient state writes. */
