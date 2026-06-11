@@ -280,11 +280,23 @@ export async function runLocalAgentTurn(
 
   await persistDeliveredLocalTurnState(input.conversationId, {
     artifacts: completedState.artifacts ?? artifacts,
-    conversation: completedState.conversation,
+    conversation: reply.piMessages
+      ? {
+          ...completedState.conversation,
+          piMessages: reply.piMessages,
+        }
+      : completedState.conversation,
     sandboxId: reply.sandboxId ?? sandboxId,
     sandboxDependencyProfileHash:
       reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
   });
+  if (reply.piMessages) {
+    await commitMessages({
+      conversationId: input.conversationId,
+      messages: reply.piMessages,
+      ttlMs: THREAD_STATE_TTL_MS,
+    });
+  }
 
   return {
     conversationId: input.conversationId,

@@ -15,9 +15,13 @@ import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 
-function successReply(text: string): AssistantReply {
+function successReply(
+  text: string,
+  options: Partial<Pick<AssistantReply, "piMessages">> = {},
+): AssistantReply {
   return {
     text,
+    ...options,
     diagnostics: {
       assistantMessageCount: 1,
       modelId: "fake-local-agent",
@@ -242,6 +246,65 @@ describe("local agent runner", () => {
     );
 
     expect(contexts[0]?.piMessages).toEqual([projectedMessage]);
+  });
+
+  it("commits generated Pi history after successful local delivery", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "pi-history-commit",
+      cwd: "/tmp/local-agent-runner-six",
+    });
+    expect(conversationId).toBeDefined();
+
+    const generatedMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "hello" }],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "persisted pi output" }],
+      },
+    ] as PiMessage[];
+    const generateReply = vi.fn<typeof generateAssistantReply>(async () =>
+      successReply("persisted visible output", {
+        piMessages: generatedMessages,
+      }),
+    );
+
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "hello",
+      },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: generateReply,
+      },
+    );
+
+    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
+      generatedMessages,
+    );
+    const state = await getPersistedThreadState(conversationId!);
+    const conversation = coerceThreadConversationState(state);
+    expect(conversation.piMessages).toEqual(generatedMessages);
+
+    const contexts: ReplyRequestContext[] = [];
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "follow up",
+      },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: async (_text, context = {}) => {
+          contexts.push(context);
+          return successReply("follow up reply");
+        },
+      },
+    );
+
+    expect(contexts[0]?.piMessages).toEqual([generatedMessages[0]]);
   });
 
   it("rolls back generated Pi output when local delivery fails", async () => {

@@ -2,6 +2,7 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
@@ -54,6 +55,7 @@ export interface AssistantReply {
   deliveryMode?: "thread" | "channel_only";
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
+  piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
 }
 
@@ -65,6 +67,7 @@ export interface TurnResultInput {
   toolCalls: string[];
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
+  piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
@@ -295,6 +298,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     deliveryMode,
     sandboxId,
     sandboxDependencyProfileHash,
+    piMessages: input.piMessages,
     diagnostics: resolvedDiagnostics,
   };
 }

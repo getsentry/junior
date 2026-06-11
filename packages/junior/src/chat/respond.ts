@@ -1570,6 +1570,7 @@ export async function generateAssistantReply(
       sandboxId: currentSandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash:
         currentSandboxExecutor.getDependencyProfileHash(),
+      piMessages: [...agent.state.messages],
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
       shouldTrace,
