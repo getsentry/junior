@@ -54,10 +54,10 @@ function createSchedulerToolContext(
   ctx: ToolRegistrationHookContext,
 ): SchedulerToolContext {
   return {
-    credentialSubject: ctx.credentialSubject,
+    credentialSubject: ctx.slack?.credentialSubject,
     destination:
-      ctx.destination?.platform === "slack" ? ctx.destination : undefined,
-    requester: ctx.requester,
+      ctx.destination.platform === "slack" ? ctx.destination : undefined,
+    requester: ctx.requester?.platform === "slack" ? ctx.requester : undefined,
     state: ctx.state,
     userText: ctx.userText,
   };
@@ -365,9 +365,8 @@ export function createSchedulerPlugin() {
     hooks: {
       tools(ctx) {
         if (
-          !ctx.destination ||
           ctx.destination.platform !== "slack" ||
-          !ctx.requester?.userId
+          ctx.requester?.platform !== "slack"
         ) {
           return {} as Record<string, AgentPluginToolDefinition<any>>;
         }

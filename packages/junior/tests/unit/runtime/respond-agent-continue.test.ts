@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const { promptAborted, promptMode } = vi.hoisted(() => ({
@@ -210,6 +211,18 @@ import {
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 
+const TEST_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} satisfies Destination;
+
+const TEST_REQUESTER = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const;
+
 describe("generateAssistantReply agent continuation", () => {
   beforeEach(async () => {
     promptAborted.value = false;
@@ -229,6 +242,7 @@ describe("generateAssistantReply agent continuation", () => {
     const onInputCommitted = vi.fn();
 
     const error = await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       onInputCommitted,
     }).catch((caught) => caught);
 
@@ -238,7 +252,8 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("stores the last safe boundary and throws a retryable timeout error", async () => {
     const replyPromise = generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-1",
         turnId: "turn-1",
@@ -295,7 +310,8 @@ describe("generateAssistantReply agent continuation", () => {
     });
 
     const replyPromise = generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-timeout-cap",
         turnId: "turn-timeout-cap",
@@ -327,7 +343,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
     const replyPromise = generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       turnDeadlineAtMs: startedAtMs + 2_500,
       correlation: {
         conversationId: "conversation-short-deadline",
@@ -353,7 +370,8 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = generateAssistantReply("what is in this image?", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       omittedImageAttachmentCount: 1,
       correlation: {
         conversationId: "conversation-2",
@@ -391,7 +409,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-hung",
         turnId: "turn-hung",
@@ -432,7 +451,8 @@ describe("generateAssistantReply agent continuation", () => {
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
     const replyPromise = generateAssistantReply("help me", {
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      destination: TEST_DESTINATION,
+      requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-retry",
         turnId: "turn-retry",

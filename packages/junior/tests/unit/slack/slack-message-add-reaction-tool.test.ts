@@ -7,6 +7,17 @@ vi.mock("@/chat/slack/outbound", () => ({
   addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
 }));
 
+const TEST_SLACK_CONTEXT = {
+  channelId: "C123",
+  destination: {
+    platform: "slack",
+    teamId: "T123",
+    channelId: "C123",
+  },
+  messageTs: "1700000000.100",
+  sandbox: {} as any,
+} as const;
+
 function createState() {
   const cache = new Map<string, unknown>();
   return {
@@ -22,11 +33,7 @@ describe("slackMessageAddReaction tool", () => {
   it("rejects non-alias emoji input", async () => {
     addReactionToMessage.mockReset();
     const tool = createSlackMessageAddReactionTool(
-      {
-        channelId: "C123",
-        messageTs: "1700000000.100",
-        sandbox: {} as any,
-      },
+      TEST_SLACK_CONTEXT,
       createState() as any,
     );
     if (!tool.execute) {
@@ -46,11 +53,7 @@ describe("slackMessageAddReaction tool", () => {
     addReactionToMessage.mockReset();
     addReactionToMessage.mockResolvedValue({ ok: true });
     const tool = createSlackMessageAddReactionTool(
-      {
-        channelId: "C123",
-        messageTs: "1700000000.100",
-        sandbox: {} as any,
-      },
+      TEST_SLACK_CONTEXT,
       createState() as any,
     );
     if (!tool.execute) {
@@ -75,11 +78,7 @@ describe("slackMessageAddReaction tool", () => {
     addReactionToMessage.mockReset();
     addReactionToMessage.mockResolvedValue({ ok: true });
     const tool = createSlackMessageAddReactionTool(
-      {
-        channelId: "C123",
-        messageTs: "1700000000.100",
-        sandbox: {} as any,
-      },
+      TEST_SLACK_CONTEXT,
       createState() as any,
     );
     if (!tool.execute) {

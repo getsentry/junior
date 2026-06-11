@@ -49,6 +49,25 @@ describe("requester", () => {
     ).toEqual({ platform: "slack", teamId: "T123", userId: "U039RR91S" });
   });
 
+  it("builds local requester identities without Slack team state", () => {
+    expect(
+      createRequester(
+        {
+          fullName: "Local CLI",
+          platform: "local",
+          userId: "local-cli",
+          userName: "local",
+        },
+        { platform: "local", userId: "local-cli" },
+      ),
+    ).toEqual({
+      fullName: "Local CLI",
+      platform: "local",
+      userId: "local-cli",
+      userName: "local",
+    });
+  });
+
   it("does not preserve synthetic unknown actor ids", () => {
     expect(
       createRequester(

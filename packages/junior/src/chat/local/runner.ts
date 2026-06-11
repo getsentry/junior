@@ -218,6 +218,12 @@ export async function runLocalAgentTurn(
         actor: { type: "system", id: "local-cli" },
       },
       destination,
+      requester: {
+        fullName: "Local CLI",
+        platform: "local",
+        userId: "local-cli",
+        userName: "local",
+      },
       piMessages,
       surface: "internal",
       correlation: {

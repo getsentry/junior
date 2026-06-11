@@ -48,6 +48,26 @@ function createToolState(
 
 const noopSandbox = {} as any;
 
+function slackContext(channelId: string) {
+  return {
+    channelId,
+    destination: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId,
+    },
+    sandbox: noopSandbox,
+  };
+}
+
+const LOCAL_CONTEXT = {
+  destination: {
+    platform: "local",
+    conversationId: "local:test:tool-idempotency",
+  },
+  sandbox: noopSandbox,
+} as const;
+
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
@@ -85,13 +105,7 @@ describe("tool idempotency", () => {
       }),
     });
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool(
-      {
-        channelId: "C123",
-        sandbox: noopSandbox,
-      },
-      state,
-    );
+    const tool = createSlackCanvasCreateTool(slackContext("C123"), state);
 
     const first = await executeTool(tool, {
       title: "Weekly plan",
@@ -137,13 +151,7 @@ describe("tool idempotency", () => {
     });
 
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool(
-      {
-        channelId: "D123",
-        sandbox: noopSandbox,
-      },
-      state,
-    );
+    const tool = createSlackCanvasCreateTool(slackContext("D123"), state);
 
     const result = await executeTool(tool, {
       title: "DM brief",
@@ -184,9 +192,8 @@ describe("tool idempotency", () => {
 
     const tool = createSlackCanvasCreateTool(
       {
-        channelId: "D123",
+        ...slackContext("D123"),
         deliveryChannelId: "C_SHARED",
-        sandbox: noopSandbox,
       },
       createToolState(),
     );
@@ -211,12 +218,7 @@ describe("tool idempotency", () => {
 
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool(
-      {
-        sandbox: noopSandbox,
-      },
-      state,
-    );
+    const tool = createSlackCanvasCreateTool(LOCAL_CONTEXT, state);
 
     await expect(
       executeTool(tool, {
@@ -280,13 +282,7 @@ describe("tool idempotency", () => {
       error: "internal_error",
     });
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool(
-      {
-        channelId: "C123",
-        sandbox: noopSandbox,
-      },
-      state,
-    );
+    const tool = createSlackCanvasCreateTool(slackContext("C123"), state);
 
     await expect(
       executeTool(tool, {

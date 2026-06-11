@@ -27,6 +27,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
+import type { Destination } from "@sentry/junior-plugin-api";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -329,8 +330,12 @@ function formatConfigurationLines(
   );
 }
 
-const HEADER =
+type PromptPlatform = Destination["platform"];
+
+const SLACK_HEADER =
   "You are a Slack-based helper assistant. Follow the personality section for voice and tone in every reply. Platform mechanics and output rules override personality and world context when they conflict.";
+const LOCAL_HEADER =
+  "You are a helper assistant. Follow the personality section for voice and tone in every reply. Platform mechanics and output rules override personality and world context when they conflict.";
 
 const TURN_CONTEXT_HEADER =
   "Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.";
@@ -399,20 +404,37 @@ function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
 }
 
-function buildBehaviorSection(): string {
-  return [
+function buildBehaviorSection(platform: PromptPlatform): string {
+  const sections = [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
     renderRuleSection("execution-contract", EXECUTION_CONTRACT_RULES),
     renderRuleSection("conversation", CONVERSATION_RULES),
-    renderRuleSection("slack-actions", SLACK_ACTION_RULES),
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
-  ].join("\n\n");
+  ];
+  if (platform === "slack") {
+    sections.splice(
+      5,
+      0,
+      renderRuleSection("slack-actions", SLACK_ACTION_RULES),
+    );
+  }
+  return sections.join("\n\n");
 }
 
-function buildOutputSection(): string {
+function buildOutputSection(platform: PromptPlatform): string {
+  if (platform === "local") {
+    return [
+      `<output format="markdown">`,
+      "- Start with the answer or result, not internal process narration.",
+      "- Use concise Markdown suitable for terminal output: short paragraphs, bullets, links, and fenced code blocks when helpful.",
+      "- End every turn with a final user-facing response.",
+      "</output>",
+    ].join("\n");
+  }
+
   const openTag = `<output format="slack-markdown" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
   return [
     openTag,
@@ -425,11 +447,12 @@ function buildOutputSection(): string {
   ].join("\n");
 }
 
-function buildIdentitySection(): string {
-  return [
-    "# Identity",
-    `Your Slack username is \`${botConfig.userName}\`.`,
-  ].join("\n");
+function buildIdentitySection(platform: PromptPlatform): string {
+  const name =
+    platform === "slack"
+      ? `Your Slack username is \`${botConfig.userName}\`.`
+      : `Your assistant name is \`${botConfig.userName}\`.`;
+  return ["# Identity", name].join("\n");
 }
 
 function buildPersonalitySection(): string {
@@ -579,20 +602,29 @@ type TurnContextPromptInput = {
   configuration?: Record<string, unknown>;
 };
 
-const STATIC_SYSTEM_PROMPT = [
-  HEADER,
-  buildIdentitySection(),
-  buildPersonalitySection(),
-  buildWorldSection(),
-  buildBehaviorSection(),
-  buildOutputSection(),
-]
-  .filter((section): section is string => Boolean(section))
-  .join("\n\n");
+function buildStaticSystemPrompt(platform: PromptPlatform): string {
+  return [
+    platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
+    buildIdentitySection(platform),
+    buildPersonalitySection(),
+    buildWorldSection(),
+    buildBehaviorSection(platform),
+    buildOutputSection(platform),
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join("\n\n");
+}
+
+const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
+  local: buildStaticSystemPrompt("local"),
+  slack: buildStaticSystemPrompt("slack"),
+};
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
-export function buildSystemPrompt(): string {
-  return STATIC_SYSTEM_PROMPT;
+export function buildSystemPrompt(params: {
+  destination: Destination;
+}): string {
+  return STATIC_SYSTEM_PROMPTS[params.destination.platform];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

@@ -49,7 +49,7 @@ export interface ToolRuntimeContext {
    * Raw Slack channel/conversation container for this turn: `C...`, `D...`,
    * or `G...`. Never overridden by assistant context. Stable binding key for
    * state scoped to a Slack conversation. Passed to plugin hooks as-is via
-   * `ToolRegistrationHookContext.channelId`.
+   * `ToolRegistrationHookContext.slack.channelId`.
    */
   channelId?: string;
 
@@ -68,7 +68,7 @@ export interface ToolRuntimeContext {
   conversationId?: string;
 
   /** Runtime-owned destination for provider-neutral side effects. */
-  destination?: Destination;
+  destination: Destination;
 
   requester?: Requester;
   teamId?: string;

@@ -11,8 +11,14 @@ import {
 function createContext(
   overrides: Partial<ToolRuntimeContext> = {},
 ): ToolRuntimeContext {
+  const channelId = overrides.channelId ?? "C_CURRENT";
   return {
-    channelId: "C_CURRENT",
+    channelId,
+    destination: overrides.destination ?? {
+      platform: "slack",
+      teamId: "T123",
+      channelId,
+    },
     sandbox: {} as any,
     ...overrides,
   };

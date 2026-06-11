@@ -58,6 +58,12 @@ import {
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 
+const TEST_SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T-test",
+  channelId: "C-test",
+} as const;
+
 describe("resumeAuthorizedRequest", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -87,6 +93,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
+        destination: TEST_SLACK_DESTINATION,
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: () => new Promise<never>(() => {}),
@@ -123,6 +130,7 @@ describe("resumeAuthorizedRequest", () => {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
+          destination: TEST_SLACK_DESTINATION,
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => {
@@ -164,6 +172,7 @@ describe("resumeAuthorizedRequest", () => {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
+          destination: TEST_SLACK_DESTINATION,
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => ({
@@ -226,6 +235,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
+        destination: TEST_SLACK_DESTINATION,
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
@@ -254,6 +264,7 @@ describe("resumeAuthorizedRequest", () => {
         credentialContext: {
           actor: { type: "user", userId: "U-test" },
         },
+        destination: TEST_SLACK_DESTINATION,
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {

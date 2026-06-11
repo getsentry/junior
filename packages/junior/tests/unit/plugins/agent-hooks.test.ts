@@ -22,6 +22,17 @@ const TEST_REQUESTER = {
   userId: "U123",
 } as const;
 
+const LOCAL_DESTINATION = {
+  platform: "local",
+  conversationId: "local:test:agent-hooks",
+} as const;
+
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "DDM",
+} as const;
+
 function fakeSandbox(
   writes: Array<{ content: string | Uint8Array; path: string }>,
 ): SandboxInstance {
@@ -97,6 +108,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getAgentPluginTools({
+        destination: SLACK_DESTINATION,
         requester: TEST_REQUESTER,
         sandbox: {} as any,
       });
@@ -131,6 +143,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getAgentPluginTools({
+          destination: LOCAL_DESTINATION,
           sandbox: {} as any,
         }),
       ).toThrow("must be a camelCase identifier");
@@ -166,6 +179,7 @@ describe("agent plugin hooks", () => {
           [],
           {},
           {
+            destination: LOCAL_DESTINATION,
             sandbox: {} as any,
           },
         ),
@@ -527,7 +541,7 @@ describe("getAgentPluginTools channel resolution", () => {
       }),
     ]);
     getAgentPluginTools({
-      requester: TEST_REQUESTER,
+      destination: LOCAL_DESTINATION,
       sandbox: {} as any,
       ...overrides,
     });
@@ -548,7 +562,7 @@ describe("getAgentPluginTools channel resolution", () => {
       },
       teamId: "T123",
     });
-    expect(ctx.channelId).toBe("slack:DDM");
+    expect(ctx.slack?.channelId).toBe("DDM");
     expect(ctx.destination).toEqual({
       platform: "slack",
       teamId: "T123",
@@ -558,20 +572,33 @@ describe("getAgentPluginTools channel resolution", () => {
 
   it("computes channelCapabilities from channelId", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
-    const ctx = capturePluginContext({ channelId: "DDM", teamId: "T123" });
-    expect(ctx.channelCapabilities?.canCreateCanvas).toBe(true);
-    expect(ctx.channelCapabilities?.canAddReactions).toBe(true);
-    expect(ctx.channelCapabilities?.canPostToChannel).toBe(false);
+    const ctx = capturePluginContext({
+      channelId: "DDM",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+      },
+      teamId: "T123",
+    });
+    expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
+    expect(ctx.slack?.channelCapabilities.canAddReactions).toBe(true);
+    expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
       channelId: "DDM",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+      },
       teamId: "T123",
       requester: TEST_REQUESTER,
     });
 
-    expect(ctx.credentialSubject).toMatchObject({
+    expect(ctx.slack?.credentialSubject).toMatchObject({
       type: "user",
       userId: "U123",
       allowedWhen: "private-direct-conversation",
@@ -581,28 +608,35 @@ describe("getAgentPluginTools channel resolution", () => {
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
       channelId: "CSOURCE",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "CSOURCE",
+      },
       teamId: "T123",
       requester: TEST_REQUESTER,
     });
 
-    expect(ctx.credentialSubject).toBeUndefined();
+    expect(ctx.slack?.credentialSubject).toBeUndefined();
   });
 
   it("exposes conversationId to plugins", () => {
     const ctx = capturePluginContext({
       channelId: "DDM",
       conversationId: "slack:DDM:1780479160.406339",
+      destination: SLACK_DESTINATION,
       teamId: "T123",
     });
 
     expect(ctx.conversationId).toBe("slack:DDM:1780479160.406339");
   });
 
-  it("does not synthesize destination from loose Slack context", () => {
+  it("does not synthesize Slack context from loose Slack fields", () => {
     const ctx = capturePluginContext({
       channelId: "DDM",
       teamId: "T123",
     });
-    expect(ctx.destination).toBeUndefined();
+    expect(ctx.destination).toEqual(LOCAL_DESTINATION);
+    expect(ctx.slack).toBeUndefined();
   });
 });

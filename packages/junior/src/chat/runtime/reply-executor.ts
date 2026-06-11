@@ -84,7 +84,7 @@ import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
   toStoredSlackRequester,
-  type Requester,
+  type SlackRequester,
   type StoredSlackRequester,
 } from "@/chat/requester";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
@@ -131,7 +131,7 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   );
 }
 
-function turnRequester(requester: Requester): StoredSlackRequester {
+function turnRequester(requester: SlackRequester): StoredSlackRequester {
   return toStoredSlackRequester(requester);
 }
 

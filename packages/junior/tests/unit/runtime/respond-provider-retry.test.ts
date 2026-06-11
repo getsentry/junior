@@ -257,6 +257,7 @@ describe("generateAssistantReply provider retry", () => {
 
   it("continues from the last safe boundary after a transient provider stream error", async () => {
     const replyPromise = generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
@@ -326,6 +327,7 @@ describe("generateAssistantReply provider retry", () => {
     ] satisfies PiMessage[];
 
     const reply = await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       piMessages: priorMessages,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
@@ -383,6 +385,7 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "cooperativeYield";
 
     const error = await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield",
@@ -390,7 +393,6 @@ describe("generateAssistantReply provider retry", () => {
         channelId: "C123",
         threadTs: "1712345.0003",
       },
-      destination: TEST_DESTINATION,
       shouldYield: () => true,
     }).then(
       () => undefined,
@@ -480,6 +482,7 @@ describe("generateAssistantReply provider retry", () => {
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-persist-failure",
@@ -513,6 +516,7 @@ describe("generateAssistantReply provider retry", () => {
     let injectCompleted = false;
 
     await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-steering-failure",

@@ -1,7 +1,7 @@
 import { completeObject, completeText } from "@/chat/pi/client";
 import {
   generateAssistantReply as generateAssistantReplyImpl,
-  type ReplyRequestContext,
+  type AssistantReplyRequestContext,
 } from "@/chat/respond";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import {
@@ -57,7 +57,7 @@ export function withSandboxTracePropagation(
   generateReply: typeof generateAssistantReplyImpl,
   tracePropagation?: SandboxEgressTracePropagationConfig,
 ): typeof generateAssistantReplyImpl {
-  return async (messageText: string, context?: ReplyRequestContext) =>
+  return async (messageText: string, context: AssistantReplyRequestContext) =>
     await generateReply(messageText, {
       ...context,
       sandbox: {

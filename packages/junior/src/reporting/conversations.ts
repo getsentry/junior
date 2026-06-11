@@ -12,6 +12,7 @@ import {
 } from "@/chat/conversation-privacy";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
+import type { Destination } from "@sentry/junior-plugin-api";
 import {
   buildSentryConversationUrl,
   buildSentryTraceUrl,
@@ -1049,10 +1050,10 @@ function countConversationMessages(transcript: TranscriptMessage[]): number {
   return transcript.filter(isConversationMessage).length;
 }
 
-function systemPromptMessage(): TranscriptMessage {
+function systemPromptMessage(destination: Destination): TranscriptMessage {
   return {
     role: "system",
-    parts: [{ type: "text", text: buildSystemPrompt() }],
+    parts: [{ type: "text", text: buildSystemPrompt({ destination }) }],
   };
 }
 
@@ -1263,8 +1264,9 @@ export async function readConversationReport(
       const transcript = canExposeTranscript
         ? [
             ...(scopedMessages.startsAtRunBoundary &&
-            normalizedTranscript.length > 0
-              ? [systemPromptMessage()]
+            normalizedTranscript.length > 0 &&
+            sessionRecord?.destination
+              ? [systemPromptMessage(sessionRecord.destination)]
               : []),
             ...normalizedTranscript,
           ]

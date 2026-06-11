@@ -15,6 +15,11 @@ import { tool } from "@/chat/tools/definition";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
+const LOCAL_DESTINATION = {
+  platform: "local",
+  conversationId: "local:test:advisor",
+} as const;
+
 const config: AdvisorConfig = {
   modelId: "openai/gpt-5.5",
   thinkingLevel: "xhigh",
@@ -88,6 +93,7 @@ async function executeAdvisor(
 describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
+      destination: LOCAL_DESTINATION,
       sandbox: {} as any,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
@@ -181,6 +187,7 @@ describe("advisor tool", () => {
         [],
         {},
         {
+          destination: LOCAL_DESTINATION,
           sandbox: {} as any,
         },
       ),
@@ -191,10 +198,6 @@ describe("advisor tool", () => {
       "grep",
       "listDir",
       "readFile",
-      "slackCanvasRead",
-      "slackListGetItems",
-      "slackThreadRead",
-      "slackUserLookup",
       "systemTime",
       "webFetch",
       "webSearch",

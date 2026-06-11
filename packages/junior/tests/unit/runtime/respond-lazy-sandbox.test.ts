@@ -510,7 +510,25 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   },
 }));
 
-import { generateAssistantReply } from "@/chat/respond";
+import {
+  generateAssistantReply,
+  type ReplyRequestContext,
+} from "@/chat/respond";
+
+const LOCAL_DESTINATION = {
+  platform: "local" as const,
+  conversationId: "local:test:respond-lazy-sandbox",
+};
+
+function generateLocalReply(
+  message: string,
+  context: Omit<ReplyRequestContext, "destination"> = {},
+) {
+  return generateAssistantReply(message, {
+    ...context,
+    destination: LOCAL_DESTINATION,
+  });
+}
 
 describe("generateAssistantReply lazy sandbox boot", () => {
   beforeEach(() => {
@@ -524,7 +542,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
-    const reply = await generateAssistantReply("hello");
+    const reply = await generateLocalReply("hello");
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
@@ -536,7 +554,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {
     agentMode.value = "loadSkill";
 
-    const reply = await generateAssistantReply("load the demo skill");
+    const reply = await generateLocalReply("load the demo skill");
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
@@ -558,7 +576,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
       },
     ];
 
-    const reply = await generateAssistantReply("hello");
+    const reply = await generateLocalReply("hello");
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
@@ -568,7 +586,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("memoizes the lazy sandbox workspace across multiple workspace calls", async () => {
     agentMode.value = "attachFile";
 
-    const reply = await generateAssistantReply("attach the report");
+    const reply = await generateLocalReply("attach the report");
 
     expect(reply.text).toBe("Attached report.");
     expect(createSandboxCallCount.value).toBe(1);
@@ -577,14 +595,14 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   });
 
   it("uses a high thinking level for explicit code-change asks", async () => {
-    const reply = await generateAssistantReply("fix the failing test in chat");
+    const reply = await generateLocalReply("fix the failing test in chat");
 
     expect(reply.text).toBe("Plain reply.");
     expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
   it("uses attachment text when routing the turn thinking level", async () => {
-    const reply = await generateAssistantReply("can you fix this?", {
+    const reply = await generateLocalReply("can you fix this?", {
       userAttachments: [
         {
           data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
@@ -599,7 +617,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   });
 
   it("uses structured-suffix attachment text when the media type has parameters", async () => {
-    const reply = await generateAssistantReply("can you fix this?", {
+    const reply = await generateLocalReply("can you fix this?", {
       userAttachments: [
         {
           data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
@@ -616,7 +634,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("retains sandbox reuse metadata after lazy boot on error turns", async () => {
     agentMode.value = "attachFileThenError";
 
-    const reply = await generateAssistantReply("attach the report");
+    const reply = await generateLocalReply("attach the report");
 
     expect(reply.text).toContain("Error: agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
@@ -628,7 +646,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     agentMode.value = "attachFileThenError";
     const onSandboxAcquired = vi.fn();
 
-    const reply = await generateAssistantReply("attach the report", {
+    const reply = await generateLocalReply("attach the report", {
       onSandboxAcquired,
     });
 
@@ -643,7 +661,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("retains sandbox reuse metadata after executor-backed boot on error turns", async () => {
     agentMode.value = "bashThenError";
 
-    const reply = await generateAssistantReply("run pwd");
+    const reply = await generateLocalReply("run pwd");
 
     expect(reply.text).toContain("Error: agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
@@ -654,7 +672,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("refreshes the cached workspace after sandbox replacement", async () => {
     agentMode.value = "attachFileBashRecoverAttachFile";
 
-    const reply = await generateAssistantReply("attach the report twice");
+    const reply = await generateLocalReply("attach the report twice");
 
     expect(reply.text).toBe("Attached report twice.");
     expect(createSandboxCallCount.value).toBe(2);
@@ -670,9 +688,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   it("refreshes the cached workspace when sandbox replacement races with lazy boot", async () => {
     agentMode.value = "attachFileBashRaceAttachFile";
 
-    const reply = await generateAssistantReply(
-      "attach the report after a race",
-    );
+    const reply = await generateLocalReply("attach the report after a race");
 
     expect(reply.text).toBe("Attached report after race.");
     expect(createSandboxCallCount.value).toBe(2);

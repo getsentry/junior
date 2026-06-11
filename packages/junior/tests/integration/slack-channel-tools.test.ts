@@ -39,6 +39,11 @@ function createContext(
 ): ToolRuntimeContext {
   return {
     channelId: "C123",
+    destination: {
+      platform: "slack",
+      teamId: "T123",
+      channelId: "C123",
+    },
     messageTs: "1700000000.321",
     userText,
     sandbox: {} as any,

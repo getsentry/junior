@@ -709,6 +709,11 @@ describe("dashboard reporting", () => {
 
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:999",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C1",
+      },
       sessionId: "target-turn",
       sliceId: 1,
       state: "completed",
@@ -755,6 +760,11 @@ describe("dashboard reporting", () => {
 
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:333",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C1",
+      },
       sessionId: "turn-one",
       sliceId: 1,
       state: "completed",
@@ -773,6 +783,11 @@ describe("dashboard reporting", () => {
     });
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:333",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C1",
+      },
       sessionId: "turn-two",
       sliceId: 1,
       state: "completed",

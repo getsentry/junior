@@ -198,7 +198,7 @@ export interface ReplyRequestContext {
   credentialContext?: CredentialContext;
   requester?: Requester;
   slackConversation?: SlackConversationContext;
-  destination?: Destination;
+  destination: Destination;
   surface?: AgentTurnSurface;
   correlation?: {
     conversationId?: string;
@@ -258,6 +258,8 @@ export interface ReplyRequestContext {
     params: Record<string, unknown>;
   }) => void;
 }
+
+export type AssistantReplyRequestContext = ReplyRequestContext;
 
 export interface ReplyRequestAttachment {
   data?: Buffer;
@@ -319,19 +321,70 @@ function requesterFromContext(
   context: ReplyRequestContext,
 ): StoredSlackRequester | undefined {
   const identity = actorRequesterFromContext(context);
-  return identity ? toStoredSlackRequester(identity) : undefined;
+  return identity?.platform === "slack"
+    ? toStoredSlackRequester(identity)
+    : undefined;
+}
+
+/** Reject requester identities that do not belong to the active destination. */
+function assertRequesterDestinationMatch(context: ReplyRequestContext): void {
+  const { destination, requester } = context;
+  if (!requester) {
+    return;
+  }
+  if (requester.platform !== destination.platform) {
+    throw new TypeError(
+      `Requester platform "${requester.platform}" does not match destination platform "${destination.platform}"`,
+    );
+  }
+  if (
+    requester.platform === "slack" &&
+    destination.platform === "slack" &&
+    requester.teamId !== destination.teamId
+  ) {
+    throw new TypeError("Slack requester team does not match destination team");
+  }
+}
+
+/** Reject legacy Slack correlation fields that conflict with the destination. */
+function assertCorrelationDestinationMatch(context: ReplyRequestContext): void {
+  const { correlation, destination } = context;
+  if (destination.platform !== "slack") {
+    return;
+  }
+  if (
+    correlation?.channelId !== undefined &&
+    correlation.channelId !== destination.channelId
+  ) {
+    throw new TypeError(
+      "Slack correlation channel does not match destination channel",
+    );
+  }
+  if (
+    correlation?.teamId !== undefined &&
+    correlation.teamId !== destination.teamId
+  ) {
+    throw new TypeError(
+      "Slack correlation team does not match destination team",
+    );
+  }
 }
 
 function actorRequesterFromContext(
   context: ReplyRequestContext,
 ): Requester | undefined {
   return createRequester(context.requester, {
+    platform:
+      context.requester?.platform ??
+      (context.destination?.platform === "slack" ? "slack" : undefined),
     teamId:
       (context.destination?.platform === "slack"
         ? context.destination.teamId
         : undefined) ??
       context.correlation?.teamId ??
-      context.requester?.teamId,
+      (context.requester?.platform === "slack"
+        ? context.requester.teamId
+        : undefined),
     userId: context.correlation?.requesterId,
   });
 }
@@ -481,8 +534,14 @@ function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
-  context: ReplyRequestContext = {},
+  context: AssistantReplyRequestContext,
 ): Promise<AssistantReply> {
+  if (!context.destination) {
+    throw new TypeError("Assistant reply generation requires a destination");
+  }
+  assertRequesterDestinationMatch(context);
+  assertCorrelationDestinationMatch(context);
+
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
   const contextTurnDeadlineAtMs =
@@ -877,12 +936,19 @@ export async function generateAssistantReply(
     };
 
     // ── MCP auth orchestration ───────────────────────────────────────
+    const slackDestination =
+      context.destination.platform === "slack"
+        ? context.destination
+        : undefined;
+    const slackChannelId = slackDestination?.channelId;
+    const slackTeamId = slackDestination?.teamId;
+
     const mcpAuth = createMcpAuthOrchestration(
       {
         conversationId: sessionConversationId,
         sessionId,
         requesterId: authRequesterId,
-        channelId: context.correlation?.channelId,
+        channelId: slackChannelId,
         destination: context.destination,
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
@@ -902,7 +968,7 @@ export async function generateAssistantReply(
         conversationId: sessionConversationId,
         sessionId,
         requesterId: authRequesterId,
-        channelId: context.correlation?.channelId,
+        channelId: slackChannelId,
         destination: context.destination,
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,
@@ -993,12 +1059,12 @@ export async function generateAssistantReply(
         },
       },
       {
-        channelId: context.correlation?.channelId,
+        channelId: slackChannelId,
         conversationId: sessionConversationId,
         deliveryChannelId: context.toolChannelId,
         destination: context.destination,
         requester: actorRequester,
-        teamId: context.correlation?.teamId,
+        teamId: slackTeamId,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -1057,7 +1123,7 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(),
     );
-    baseInstructions = buildSystemPrompt();
+    baseInstructions = buildSystemPrompt({ destination: context.destination });
     const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
     const turnContextPrompt = needsBootstrapContext
       ? buildTurnContextPrompt({

@@ -47,17 +47,34 @@ export const agentPluginCredentialSubjectSchema = z
   })
   .strict();
 
-/** Runtime-provided requester identity visible to plugin hooks. */
-export const requesterSchema = z
+/** Shared exact actor profile fields for platform-scoped requesters. */
+const requesterProfileSchema = {
+  email: nonBlankStringSchema.optional(),
+  fullName: nonBlankStringSchema.optional(),
+  userId: exactActorUserIdSchema,
+  userName: nonBlankStringSchema.optional(),
+};
+
+export const slackRequesterSchema = z
   .object({
+    ...requesterProfileSchema,
     platform: z.literal("slack"),
     teamId: slackTeamIdSchema,
-    userId: exactActorUserIdSchema,
-    userName: nonBlankStringSchema.optional(),
-    fullName: nonBlankStringSchema.optional(),
-    email: nonBlankStringSchema.optional(),
   })
   .strict();
+
+export const localRequesterSchema = z
+  .object({
+    ...requesterProfileSchema,
+    platform: z.literal("local"),
+  })
+  .strict();
+
+/** Runtime-provided requester identity visible to plugin hooks. */
+export const requesterSchema = z.discriminatedUnion("platform", [
+  slackRequesterSchema,
+  localRequesterSchema,
+]);
 
 const dispatchMetadataSchema = z
   .record(z.string(), z.string())
@@ -108,6 +125,8 @@ export const dispatchOptionsSchema = z
   .strict();
 
 export type Requester = z.output<typeof requesterSchema>;
+export type SlackRequester = z.output<typeof slackRequesterSchema>;
+export type LocalRequester = z.output<typeof localRequesterSchema>;
 
 export interface AgentPluginMetadata {
   name: string;
@@ -207,12 +226,12 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
   execute?: AgentPluginToolExecute<TInput>;
 }
 
-export interface ToolRegistrationHookContext extends AgentPluginContext {
+export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of `channelId` — the raw conversation channel exposed to
+   * Capabilities of `channelId` — the raw Slack conversation channel exposed to
    * this plugin. Recomputed from `channelId`, not from `destination`.
    */
-  channelCapabilities?: {
+  channelCapabilities: {
     canAddReactions: boolean;
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
@@ -223,7 +242,14 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
    * Use this as the stable binding key for state scoped to a Slack conversation.
    * `channelCapabilities` describes this channel.
    */
-  channelId?: string;
+  channelId: string;
+  credentialSubject?: AgentPluginCredentialSubject;
+  messageTs?: string;
+  teamId: string;
+  threadTs?: string;
+}
+
+interface BaseToolRegistrationHookContext extends AgentPluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
@@ -231,20 +257,31 @@ export interface ToolRegistrationHookContext extends AgentPluginContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
-  credentialSubject?: AgentPluginCredentialSubject;
+  state: AgentPluginState;
+  userText?: string;
+}
+
+interface SlackToolRegistrationContext extends BaseToolRegistrationHookContext {
   /**
    * Runtime-owned destination suitable for future autonomous dispatch. For
    * Slack, this is the raw conversation channel, not a thread timestamp or
    * assistant-context source channel.
    */
-  destination?: Destination;
-  messageTs?: string;
-  requester?: Requester;
-  state: AgentPluginState;
-  teamId?: string;
-  threadTs?: string;
-  userText?: string;
+  destination: SlackDestination;
+  requester?: SlackRequester;
+  slack: SlackToolRegistrationHookContext;
 }
+
+interface LocalToolRegistrationContext extends BaseToolRegistrationHookContext {
+  /** Runtime-owned local conversation destination. */
+  destination: LocalDestination;
+  requester?: LocalRequester;
+  slack?: never;
+}
+
+export type ToolRegistrationHookContext =
+  | LocalToolRegistrationContext
+  | SlackToolRegistrationContext;
 
 export type AgentPluginCredentialSubject = z.output<
   typeof agentPluginCredentialSubjectSchema

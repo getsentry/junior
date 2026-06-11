@@ -6,10 +6,10 @@ import {
   destinationSchema,
   isSlackDestination,
   type AgentPluginCredentialSubject,
-  type Requester,
   type AgentPluginState,
   type AgentPluginToolDefinition,
   type SlackDestination,
+  type SlackRequester,
 } from "@sentry/junior-plugin-api";
 import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
@@ -27,7 +27,7 @@ import type {
 export interface SchedulerToolContext {
   credentialSubject?: AgentPluginCredentialSubject;
   destination?: SlackDestination;
-  requester?: Requester;
+  requester?: SlackRequester;
   state: AgentPluginState;
   userText?: string;
 }
@@ -81,6 +81,9 @@ function requireActiveDestination(
 function requireRequester(
   context: SchedulerToolContext,
 ): ScheduledTaskPrincipal {
+  if (context.requester?.platform !== "slack") {
+    throwToolInputError("No active Slack requester context is available.");
+  }
   const userId = context.requester?.userId?.trim();
   if (!userId || userId.toLowerCase() === "unknown") {
     throwToolInputError("No active Slack requester context is available.");

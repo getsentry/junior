@@ -5,8 +5,24 @@ import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 
 function ctx(channelId?: string) {
+  if (!channelId) {
+    return {
+      destination: {
+        platform: "local" as const,
+        conversationId: "local:test:tool-registration",
+      },
+      sandbox: noopSandbox,
+    };
+  }
+
   return {
     channelId,
+    destination: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId,
+    },
+    teamId: "T123",
     sandbox: noopSandbox,
   };
 }
@@ -104,8 +120,27 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx());
 
     expect(tools).not.toHaveProperty("slackCanvasCreate");
+    expect(tools).not.toHaveProperty("slackCanvasRead");
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("slackMessageAddReaction");
+  });
+
+  it("does not register Slack tools for local destinations", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        destination: {
+          platform: "local",
+          conversationId: "local:test:run-test",
+        },
+        sandbox: noopSandbox,
+      },
+    );
+
+    expect(
+      Object.keys(tools).filter((name) => name.startsWith("slack")),
+    ).toEqual([]);
   });
 });

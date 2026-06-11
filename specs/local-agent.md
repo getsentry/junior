@@ -119,20 +119,22 @@ Rules:
 
 ### Identity And Credentials
 
-Local chat does not have a Slack requester.
+Local chat has a local requester identity for runtime/plugin context, but it
+does not have a Slack requester or user-bound credential actor.
 
 Rules:
 
 1. Local chat runs as credential actor `{ type: "system", id: "local-cli" }`.
-2. Local chat must not populate Slack requester fields.
-3. Local chat must not use Slack private auth, Slack ephemeral messages, or Slack
+2. Local chat may populate requester `{ platform: "local", userId: "local-cli" }`.
+3. Local chat must not populate Slack requester fields.
+4. Local chat must not use Slack private auth, Slack ephemeral messages, or Slack
    OAuth continuation notices.
-4. Local chat runs with `authorizationFlowMode: "disabled"` until a local auth
+5. Local chat runs with `authorizationFlowMode: "disabled"` until a local auth
    flow is specified.
-5. Provider credentials available through service-principal, install-owned, or
+6. Provider credentials available through service-principal, install-owned, or
    environment-backed brokers may be used when their broker accepts the
    `local-cli` system actor.
-6. Missing user-bound provider credentials must fail with an explicit local
+7. Missing user-bound provider credentials must fail with an explicit local
    error. The runtime must not silently fall back to a Slack user, task creator,
    last requester, or `unknown` actor.
 

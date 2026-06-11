@@ -107,15 +107,6 @@ export function createTools(
       hooks,
       hooks.toolOverrides?.imageGenerate,
     ),
-    slackCanvasRead: createSlackCanvasReadTool(),
-    slackCanvasEdit: createSlackCanvasEditTool(state),
-    slackCanvasWrite: createSlackCanvasWriteTool(state),
-    slackThreadRead: createSlackThreadReadTool(context),
-    slackUserLookup: createSlackUserLookupTool(),
-    slackListCreate: createSlackListCreateTool(state),
-    slackListAddItems: createSlackListAddItemsTool(state),
-    slackListGetItems: createSlackListGetItemsTool(state),
-    slackListUpdateItem: createSlackListUpdateItemTool(state),
   };
 
   if (context.advisor) {
@@ -127,28 +118,42 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  const outputChannelId = getSlackDeliveryChannelId(context);
-  const outputCapabilities = resolveChannelCapabilities(outputChannelId);
-  const rawChannelCapabilities = resolveChannelCapabilities(context.channelId);
+  if (context.destination.platform === "slack") {
+    tools.slackCanvasRead = createSlackCanvasReadTool();
+    tools.slackCanvasEdit = createSlackCanvasEditTool(state);
+    tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
+    tools.slackThreadRead = createSlackThreadReadTool(context);
+    tools.slackUserLookup = createSlackUserLookupTool();
+    tools.slackListCreate = createSlackListCreateTool(state);
+    tools.slackListAddItems = createSlackListAddItemsTool(state);
+    tools.slackListGetItems = createSlackListGetItemsTool(state);
+    tools.slackListUpdateItem = createSlackListUpdateItemTool(state);
 
-  if (outputCapabilities.canCreateCanvas) {
-    tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
-  }
-
-  if (outputCapabilities.canPostToChannel) {
-    tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
-      context,
-      state,
+    const outputChannelId = getSlackDeliveryChannelId(context);
+    const outputCapabilities = resolveChannelCapabilities(outputChannelId);
+    const rawChannelCapabilities = resolveChannelCapabilities(
+      context.destination.channelId,
     );
-    tools.slackChannelListMessages =
-      createSlackChannelListMessagesTool(context);
-  }
 
-  if (rawChannelCapabilities.canAddReactions) {
-    tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
-      context,
-      state,
-    );
+    if (outputCapabilities.canCreateCanvas) {
+      tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
+    }
+
+    if (outputCapabilities.canPostToChannel) {
+      tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
+        context,
+        state,
+      );
+      tools.slackChannelListMessages =
+        createSlackChannelListMessagesTool(context);
+    }
+
+    if (rawChannelCapabilities.canAddReactions) {
+      tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
+        context,
+        state,
+      );
+    }
   }
 
   for (const [name, pluginTool] of Object.entries(

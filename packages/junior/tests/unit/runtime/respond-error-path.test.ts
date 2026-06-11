@@ -14,6 +14,11 @@ vi.mock("@/chat/skills", () => ({
 
 const { generateAssistantReply } = await import("@/chat/respond");
 
+const LOCAL_DESTINATION = {
+  platform: "local" as const,
+  conversationId: "local:test:respond-error-path",
+};
+
 describe("generateAssistantReply error path", () => {
   afterAll(() => {
     if (originalAiModel === undefined) {
@@ -25,6 +30,7 @@ describe("generateAssistantReply error path", () => {
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
     const reply = await generateAssistantReply("hello", {
+      destination: LOCAL_DESTINATION,
       sandbox: {
         sandboxId: "sb-123",
         sandboxDependencyProfileHash: "hash-abc",
@@ -42,10 +48,53 @@ describe("generateAssistantReply error path", () => {
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
       generateAssistantReply("hello", {
+        destination: LOCAL_DESTINATION,
         onInputCommitted: async () => {
           throw new Error("input should not commit before startup succeeds");
         },
       }),
     ).rejects.toThrow("discover failed");
   }, 10_000);
+
+  it("hard-fails missing destinations", async () => {
+    await expect(
+      generateAssistantReply(
+        "hello",
+        {} as Parameters<typeof generateAssistantReply>[1],
+      ),
+    ).rejects.toThrow("Assistant reply generation requires a destination");
+  });
+
+  it("hard-fails requester and destination platform mismatches", async () => {
+    await expect(
+      generateAssistantReply("hello", {
+        destination: LOCAL_DESTINATION,
+        requester: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+      }),
+    ).rejects.toThrow(
+      'Requester platform "slack" does not match destination platform "local"',
+    );
+  });
+
+  it("hard-fails Slack correlation and destination mismatches", async () => {
+    await expect(
+      generateAssistantReply("hello", {
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        correlation: {
+          channelId: "C999",
+          teamId: "T123",
+        },
+      }),
+    ).rejects.toThrow(
+      "Slack correlation channel does not match destination channel",
+    );
+  });
 });

@@ -4,5 +4,10 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 export function getSlackDeliveryChannelId(
   context: ToolRuntimeContext,
 ): string | undefined {
-  return context.deliveryChannelId ?? context.channelId;
+  if (context.deliveryChannelId) {
+    return context.deliveryChannelId;
+  }
+  return context.destination.platform === "slack"
+    ? context.destination.channelId
+    : context.channelId;
 }

@@ -1,6 +1,6 @@
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
-import { createSlackRequester, type Requester } from "@/chat/requester";
+import { createSlackRequester, type SlackRequester } from "@/chat/requester";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -136,7 +136,7 @@ export async function lookupSlackUser(
 export async function lookupSlackRequester(
   teamId: string,
   userId: string,
-): Promise<Requester> {
+): Promise<SlackRequester> {
   return createSlackRequester(
     teamId,
     userId,

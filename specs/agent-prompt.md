@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-06-01
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -11,7 +11,7 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ## Scope
 
-- `buildSystemPrompt()` in `packages/junior/src/chat/prompt.ts`.
+- `buildSystemPrompt({ destination })` in `packages/junior/src/chat/prompt.ts`.
 - `buildTurnContextPrompt(...)` in `packages/junior/src/chat/prompt.ts`.
 - Platform-owned behavior, capability, context, and Slack output instructions.
 - Boundaries between the core harness prompt, deployment personality files, and skill instructions.
@@ -35,7 +35,7 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ### Section boundaries
 
-`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. Deployment-stable assistant identity, such as the bot Slack username, and deployment-stable world context from `WORLD.md` belong here. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
+`buildSystemPrompt({ destination })` must receive the active destination and return the byte-stable static prompt variant for that destination platform. It must not read requester/thread/session/runtime/model/provider/catalog data, and it must not include content that can vary between conversations or turns within the same platform. Deployment-stable assistant identity and deployment-stable world context from `WORLD.md` belong here. Platform-specific mechanics, such as Slack output rules or local terminal output rules, may differ by `destination.platform`. This preserves provider prompt-prefix caching per platform and keeps multi-turn behavior consistent inside each platform.
 
 `buildTurnContextPrompt(...)` owns session bootstrap prompt context. It is attached to the first model-visible user message in a Pi session projection, including requester identity, available capabilities, configuration, artifacts, model-actionable runtime identifiers, and resumed-turn context. Completed turns may store that bootstrap context as part of durable Pi history so later follow-up messages can avoid duplicating it. Compaction replacement history must omit stale bootstrap context; the next user turn after a projection reset receives fresh bootstrap context exactly once.
 
@@ -48,7 +48,7 @@ The combined prompt surface must keep these concerns distinct:
 1. Identity/personality.
 2. Deployment-stable world context.
 3. Core operating rules.
-4. Slack output contract.
+4. Platform output contract.
 5. Available and loaded capabilities.
 6. Runtime and thread context.
 
@@ -69,7 +69,7 @@ The core operating rules must be split into fixed sections:
 3. Skill policy.
 4. Execution contract.
 5. Conversation/thread continuity.
-6. Slack side-effect actions.
+6. Platform side-effect actions.
 7. Safety.
 8. Failure handling.
 

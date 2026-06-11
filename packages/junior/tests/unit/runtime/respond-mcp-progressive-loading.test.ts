@@ -102,6 +102,11 @@ function makeReplyContext(args: {
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
+    destination: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    },
     requester: TEST_REQUESTER,
     correlation: {
       channelId: "C123",
@@ -1089,6 +1094,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
       credentialContext: {
         actor: { type: "user" as const, userId: "U123" },
       },
+      destination: {
+        platform: "slack" as const,
+        teamId: "T123",
+        channelId: "C123",
+      },
       requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-3",
@@ -1174,6 +1184,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
       credentialContext: {
         actor: { type: "user", userId: "U123" },
       },
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+      },
       requester: TEST_REQUESTER,
       correlation: {
         conversationId: "conversation-5",
@@ -1204,6 +1219,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
     const firstError = await generateAssistantReply("help me", {
       credentialContext: {
         actor: { type: "user", userId: "U123" },
+      },
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
       },
       requester: TEST_REQUESTER,
       correlation: {

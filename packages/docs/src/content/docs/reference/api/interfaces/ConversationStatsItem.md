@@ -5,7 +5,7 @@ prev: false
 title: "ConversationStatsItem"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L160)
+Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L161)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getse
 
 > **active**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L161)
+Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L162)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getse
 
 > **conversations**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L162)
+Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L163)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getse
 
 > **durationMs**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L163)
+Defined in: [junior/src/reporting/conversations.ts:164](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L164)
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getse
 
 > **failed**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:164](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L164)
+Defined in: [junior/src/reporting/conversations.ts:165](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L165)
 
 ---
 
@@ -45,7 +45,7 @@ Defined in: [junior/src/reporting/conversations.ts:164](https://github.com/getse
 
 > **hung**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:165](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L165)
+Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L166)
 
 ---
 
@@ -53,7 +53,7 @@ Defined in: [junior/src/reporting/conversations.ts:165](https://github.com/getse
 
 > **label**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L166)
+Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L167)
 
 ---
 
@@ -61,7 +61,7 @@ Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getse
 
 > **runs**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L167)
+Defined in: [junior/src/reporting/conversations.ts:168](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L168)
 
 ---
 
@@ -69,4 +69,4 @@ Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getse
 
 > `optional` **tokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:168](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L168)
+Defined in: [junior/src/reporting/conversations.ts:169](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L169)

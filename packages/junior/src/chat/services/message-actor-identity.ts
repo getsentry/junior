@@ -5,6 +5,7 @@ import {
   isActorUserId,
   parseActorUserId,
   type Requester,
+  type SlackRequester,
   type SlackRequesterProfile,
 } from "@/chat/requester";
 
@@ -51,7 +52,8 @@ export function bindMessageActorIdentity(
 ): Requester {
   const userId = canonicalUserId(message.author, requester);
   const actorRequester = createRequester(requester, {
-    teamId: requester.teamId,
+    platform: requester.platform,
+    ...(requester.platform === "slack" ? { teamId: requester.teamId } : {}),
     userId,
   });
   if (!actorRequester) {
@@ -77,17 +79,26 @@ export async function ensureSlackMessageActorIdentity(
     teamId: string,
     userId: string,
   ) => Promise<SlackRequesterProfile | null | undefined>,
-): Promise<Requester> {
+): Promise<SlackRequester> {
   const existing = messageActors.get(message);
   if (existing) {
+    if (existing.platform !== "slack") {
+      throw new Error(
+        "Slack message actor identity requires a Slack requester",
+      );
+    }
     return existing;
   }
   const userId = parseActorUserId(message.author.userId);
   if (!userId) {
     throw new Error("Slack message actor identity requires a user id");
   }
-  return bindMessageActorIdentity(
+  const requester = bindMessageActorIdentity(
     message,
     createSlackRequester(teamId, userId, await lookupSlackUser(teamId, userId)),
   );
+  if (requester.platform !== "slack") {
+    throw new Error("Slack message actor identity requires a Slack requester");
+  }
+  return requester;
 }

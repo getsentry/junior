@@ -3,7 +3,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   generateAssistantReply,
   type AssistantReply,
-  type ReplyRequestContext,
+  type AssistantReplyRequestContext,
 } from "@/chat/respond";
 import {
   buildTurnFailureResponse,
@@ -112,7 +112,7 @@ interface ResumeSlackTurnArgs {
   channelId: string;
   threadTs: string;
   messageTs?: string;
-  replyContext?: ReplyRequestContext;
+  replyContext?: AssistantReplyRequestContext;
   lockKey?: string;
   initialText?: string;
   generateReply?: typeof generateAssistantReply;
@@ -201,8 +201,14 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-): ReplyRequestContext {
-  const replyContext = args.replyContext ?? {};
+): AssistantReplyRequestContext {
+  const replyContext = args.replyContext;
+  if (!replyContext) {
+    throw new TypeError("Slack resume requires a reply context");
+  }
+  if (replyContext.destination.platform !== "slack") {
+    throw new TypeError("Slack resume requires a Slack destination");
+  }
   const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
@@ -466,7 +472,7 @@ export async function resumeAuthorizedRequest(args: {
   threadTs: string;
   messageTs?: string;
   connectedText: string;
-  replyContext?: ReplyRequestContext;
+  replyContext?: AssistantReplyRequestContext;
   lockKey?: string;
   generateReply?: typeof generateAssistantReply;
   onSuccess?: (reply: AssistantReply) => Promise<void>;

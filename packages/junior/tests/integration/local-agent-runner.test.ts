@@ -45,7 +45,7 @@ describe("local agent runner", () => {
 
     const contexts: ReplyRequestContext[] = [];
     const generateReply = vi.fn<typeof generateAssistantReply>(
-      async (_text, context = {}) => {
+      async (_text, context) => {
         contexts.push(context);
         return successReply("hello from local");
       },
@@ -79,9 +79,15 @@ describe("local agent runner", () => {
         surface: "internal",
       }),
     );
-    expect(contexts[0]?.requester).toBeUndefined();
+    expect(contexts[0]?.requester).toEqual({
+      fullName: "Local CLI",
+      platform: "local",
+      userId: "local-cli",
+      userName: "local",
+    });
     expect(contexts[0]?.slackConversation).toBeUndefined();
     expect(contexts[0]?.correlation?.channelId).toBeUndefined();
+    expect(contexts[0]?.correlation?.teamId).toBeUndefined();
     expect(contexts[0]?.correlation?.threadId).toBeUndefined();
     expect(delivered).toEqual(["hello from local"]);
 
@@ -121,7 +127,7 @@ describe("local agent runner", () => {
 
     const contexts: ReplyRequestContext[] = [];
     const generateReply = vi.fn<typeof generateAssistantReply>(
-      async (text, context = {}) => {
+      async (text, context) => {
         contexts.push(context);
         return successReply(`reply to ${text}`);
       },
@@ -229,7 +235,7 @@ describe("local agent runner", () => {
 
     const contexts: ReplyRequestContext[] = [];
     const generateReply = vi.fn<typeof generateAssistantReply>(
-      async (_text, context = {}) => {
+      async (_text, context) => {
         contexts.push(context);
         return successReply("uses projection");
       },
@@ -298,7 +304,7 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        generateAssistantReply: async (_text, context = {}) => {
+        generateAssistantReply: async (_text, context) => {
           contexts.push(context);
           return successReply("follow up reply");
         },
@@ -347,7 +353,7 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        generateAssistantReply: async (_text, context = {}) => {
+        generateAssistantReply: async (_text, context) => {
           contexts.push(context);
           return successReply("uses newer fallback");
         },
@@ -369,7 +375,7 @@ describe("local agent runner", () => {
       content: [{ type: "text", text: "undelivered pi output" }],
     } as PiMessage;
     const generateReply = vi.fn<typeof generateAssistantReply>(
-      async (_text, context = {}) => {
+      async (_text, context) => {
         await context.onArtifactStateUpdated?.({
           lastCanvasId: "canvas-undelivered",
           lastCanvasUrl: "https://example.invalid/canvas",
