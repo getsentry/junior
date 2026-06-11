@@ -51,13 +51,18 @@ const noopSandbox = {} as any;
 
 function slackContext(channelId: string): SlackToolContext {
   return {
-    channelId,
     destination: {
       platform: "slack" as const,
       teamId: "T123",
       channelId,
     },
-    deliveryChannelId: channelId,
+    source: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId,
+    },
+    destinationChannelId: channelId,
+    sourceChannelId: channelId,
     teamId: "T123",
   };
 }
@@ -195,7 +200,12 @@ describe("tool idempotency", () => {
     const tool = createSlackCanvasCreateTool(
       {
         ...slackContext("D123"),
-        deliveryChannelId: "C_SHARED",
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C_SHARED",
+        },
+        destinationChannelId: "C_SHARED",
       },
       createToolState(),
     );

@@ -38,6 +38,26 @@ export const destinationSchema = z.discriminatedUnion("platform", [
   localDestinationSchema,
 ]);
 
+/** Runtime-owned Slack coordinates for the inbound invocation. */
+export const slackSourceSchema = z
+  .object({
+    platform: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
+    messageTs: nonBlankStringSchema.optional(),
+    threadTs: nonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Runtime-owned local CLI coordinates for the inbound invocation. */
+export const localSourceSchema = localDestinationSchema;
+
+/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
+export const sourceSchema = z.discriminatedUnion("platform", [
+  slackSourceSchema,
+  localSourceSchema,
+]);
+
 /** Stable user credential subject shape accepted from plugins. */
 export const agentPluginCredentialSubjectSchema = z
   .object({
@@ -127,6 +147,9 @@ export const dispatchOptionsSchema = z
 export type Requester = z.output<typeof requesterSchema>;
 export type SlackRequester = z.output<typeof slackRequesterSchema>;
 export type LocalRequester = z.output<typeof localRequesterSchema>;
+export type Source = z.output<typeof sourceSchema>;
+export type SlackSource = Extract<Source, { platform: "slack" }>;
+export type LocalSource = Extract<Source, { platform: "local" }>;
 
 export interface AgentPluginMetadata {
   name: string;
@@ -160,6 +183,32 @@ export interface AgentPluginContext {
   log: AgentPluginLogger;
   plugin: AgentPluginMetadata;
 }
+
+interface BaseInvocationContext {
+  /**
+   * Opaque Junior conversation/session identity for this invocation.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   */
+  conversationId?: string;
+}
+
+export interface SlackInvocationContext extends BaseInvocationContext {
+  /** Runtime-owned default outbound destination for this invocation, if any. */
+  destination?: SlackDestination;
+  requester?: SlackRequester;
+  /** Runtime-owned source where the invocation came from. */
+  source: SlackSource;
+}
+
+export interface LocalInvocationContext extends BaseInvocationContext {
+  /** Runtime-owned default outbound destination for this invocation, if any. */
+  destination?: LocalDestination;
+  requester?: LocalRequester;
+  /** Runtime-owned source where the invocation came from. */
+  source: LocalSource;
+}
+
+export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
 
 export interface AgentPluginSandbox {
   juniorRoot: string;
@@ -228,25 +277,15 @@ export interface AgentPluginToolDefinition<TInput = unknown> {
 
 export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of `channelId` — the raw Slack conversation channel exposed to
-   * this plugin. Recomputed from `channelId`, not from `destination`.
+   * Capabilities of the source Slack conversation exposed to this plugin.
+   * Recomputed from `source.channelId`, not from `destination`.
    */
   channelCapabilities: {
     canAddReactions: boolean;
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
-  /**
-   * The raw Slack channel ID for this conversation — the DM or channel where
-   * this turn is happening, without any assistant-context-source override.
-   * Use this as the stable binding key for state scoped to a Slack conversation.
-   * `channelCapabilities` describes this channel.
-   */
-  channelId: string;
   credentialSubject?: AgentPluginCredentialSubject;
-  messageTs?: string;
-  teamId: string;
-  threadTs?: string;
 }
 
 interface BaseToolRegistrationHookContext extends AgentPluginContext {
@@ -261,21 +300,13 @@ interface BaseToolRegistrationHookContext extends AgentPluginContext {
   userText?: string;
 }
 
-interface SlackToolRegistrationContext extends BaseToolRegistrationHookContext {
-  /**
-   * Runtime-owned destination suitable for future autonomous dispatch. For
-   * Slack, this is the raw conversation channel, not a thread timestamp or
-   * assistant-context source channel.
-   */
-  destination: SlackDestination;
-  requester?: SlackRequester;
+interface SlackToolRegistrationContext
+  extends BaseToolRegistrationHookContext, SlackInvocationContext {
   slack: SlackToolRegistrationHookContext;
 }
 
-interface LocalToolRegistrationContext extends BaseToolRegistrationHookContext {
-  /** Runtime-owned local conversation destination. */
-  destination: LocalDestination;
-  requester?: LocalRequester;
+interface LocalToolRegistrationContext
+  extends BaseToolRegistrationHookContext, LocalInvocationContext {
   slack?: never;
 }
 

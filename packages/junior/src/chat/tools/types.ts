@@ -2,7 +2,10 @@ import type { FileUpload } from "chat";
 import type {
   Destination,
   LocalDestination,
+  LocalSource,
   SlackDestination,
+  SlackSource,
+  Source,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -61,10 +64,12 @@ interface BaseToolRuntimeContext {
    */
   conversationId?: string;
 
-  /** Runtime-owned destination for provider-neutral side effects. */
-  destination: Destination;
+  /** Runtime-owned default outbound destination, if this invocation has one. */
+  destination?: Destination;
 
   requester?: Requester;
+  /** Runtime-owned source where this invocation came from. */
+  source: Source;
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
@@ -72,27 +77,16 @@ interface BaseToolRuntimeContext {
   sandbox: SandboxWorkspace;
 }
 
-interface SlackToolRuntimeHints {
-  /**
-   * Slack delivery override when assistant context points at a source channel
-   * different from the raw destination channel.
-   */
-  deliveryChannelId?: string;
-  /** Current inbound Slack message timestamp for reaction tools. */
-  messageTs?: string;
-  /** Current inbound Slack thread timestamp for hook context. */
-  threadTs?: string;
-}
-
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
-  destination: SlackDestination;
+  destination?: SlackDestination;
   requester?: SlackRequester;
-  slack?: SlackToolRuntimeHints;
+  source: SlackSource;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
-  destination: LocalDestination;
+  destination?: LocalDestination;
   requester?: LocalRequester;
+  source: LocalSource;
   slack?: never;
 }
 

@@ -5,17 +5,18 @@ import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 
-function ctx(): Extract<
-  ToolRuntimeContext,
-  { destination: { platform: "local" } }
->;
+function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
   channelId: string,
-): Extract<ToolRuntimeContext, { destination: { platform: "slack" } }>;
+): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
 function ctx(channelId?: string): ToolRuntimeContext {
   if (!channelId) {
     return {
       destination: {
+        platform: "local" as const,
+        conversationId: "local:test:tool-registration",
+      },
+      source: {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
       },
@@ -25,6 +26,11 @@ function ctx(channelId?: string): ToolRuntimeContext {
 
   return {
     destination: {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId,
+    },
+    source: {
       platform: "slack" as const,
       teamId: "T123",
       channelId,
@@ -66,8 +72,10 @@ describe("Slack tool registration", () => {
       {},
       {
         ...ctx("D12345"),
-        slack: {
-          deliveryChannelId: "C12345",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C12345",
         },
       },
     );
@@ -138,6 +146,10 @@ describe("Slack tool registration", () => {
       {},
       {
         destination: {
+          platform: "local",
+          conversationId: "local:test:run-test",
+        },
+        source: {
           platform: "local",
           conversationId: "local:test:run-test",
         },

@@ -129,10 +129,10 @@ resuming.
 
 Canonical stored Slack requesters include `platform: "slack"`, `teamId`,
 `slackUserId`, and optional display/contact fields. Continuation endpoints MUST
-assert stored `teamId` and `slackUserId` against the active destination and
+assert stored `teamId` and `slackUserId` against the active source and
 turn author when those fields are present. Legacy stored requesters without
 `teamId` may reuse display/contact fields only after the stored `slackUserId`
-matches the turn author; the runtime requester still uses the active destination
+matches the turn author; the runtime requester still uses the active source
 team id.
 
 Continuation endpoints MUST NOT call live Slack requester helpers such as

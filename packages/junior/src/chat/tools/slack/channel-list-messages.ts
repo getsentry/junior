@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
@@ -59,7 +60,10 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       inclusive,
       max_pages,
     }) => {
-      const targetChannelId = context.deliveryChannelId;
+      const targetChannelId = context.destinationChannelId;
+      if (!targetChannelId) {
+        throw new ToolInputError("No active Slack destination is available.");
+      }
 
       let result;
       try {

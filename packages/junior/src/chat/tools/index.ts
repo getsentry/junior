@@ -130,20 +130,22 @@ export function createTools(
     tools.slackListGetItems = createSlackListGetItemsTool(state);
     tools.slackListUpdateItem = createSlackListUpdateItemTool(state);
 
-    const outputChannelId = slackContext.deliveryChannelId;
-    const outputCapabilities = resolveChannelCapabilities(outputChannelId);
+    const outputChannelId = slackContext.destinationChannelId;
+    const outputCapabilities = outputChannelId
+      ? resolveChannelCapabilities(outputChannelId)
+      : undefined;
     const rawChannelCapabilities = resolveChannelCapabilities(
-      slackContext.channelId,
+      slackContext.sourceChannelId,
     );
 
-    if (outputCapabilities.canCreateCanvas) {
+    if (outputCapabilities?.canCreateCanvas) {
       tools.slackCanvasCreate = createSlackCanvasCreateTool(
         slackContext,
         state,
       );
     }
 
-    if (outputCapabilities.canPostToChannel) {
+    if (outputCapabilities?.canPostToChannel) {
       tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
         slackContext,
         state,

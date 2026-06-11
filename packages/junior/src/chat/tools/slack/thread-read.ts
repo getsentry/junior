@@ -174,7 +174,10 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
       }
 
       // Restrict private-thread reads to the active Slack delivery context.
-      const access = checkChannelAccess(channelId, context.deliveryChannelId);
+      const access = checkChannelAccess(
+        channelId,
+        context.destinationChannelId,
+      );
       if (!access.allowed) {
         return {
           ok: false,

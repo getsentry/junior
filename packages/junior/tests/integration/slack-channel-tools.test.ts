@@ -38,16 +38,24 @@ function createContext(
   _userText: string,
   overrides: Partial<SlackToolContext> = {},
 ): SlackToolContext {
-  const channelId = overrides.channelId ?? "C123";
+  const sourceChannelId = overrides.sourceChannelId ?? "C123";
+  const destinationChannelId =
+    overrides.destinationChannelId ?? sourceChannelId;
   return {
     destination: {
       platform: "slack",
       teamId: "T123",
-      channelId,
+      channelId: destinationChannelId,
     },
-    channelId,
-    deliveryChannelId: overrides.deliveryChannelId ?? channelId,
+    source: {
+      platform: "slack",
+      teamId: "T123",
+      channelId: sourceChannelId,
+      messageTs: "1700000000.321",
+    },
+    destinationChannelId,
     messageTs: "1700000000.321",
+    sourceChannelId,
     teamId: "T123",
     ...overrides,
   };
@@ -91,8 +99,8 @@ describe("slack channel tools", () => {
 
   it("uses assistant context channel for channel delivery tools in DM turns", async () => {
     const context = createContext("share this in the current channel", {
-      channelId: "D123",
-      deliveryChannelId: "C_SHARED",
+      sourceChannelId: "D123",
+      destinationChannelId: "C_SHARED",
     });
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({

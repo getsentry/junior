@@ -94,6 +94,7 @@ describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_DESTINATION,
       sandbox: {} as any,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
@@ -188,6 +189,7 @@ describe("advisor tool", () => {
         {},
         {
           destination: LOCAL_DESTINATION,
+          source: LOCAL_DESTINATION,
           sandbox: {} as any,
         },
       ),

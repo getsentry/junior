@@ -1,5 +1,5 @@
 import { PassThrough, Writable } from "node:stream";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_USAGE, runChat } from "@/cli/chat";
 import type {
   LocalAgentReply,
@@ -13,6 +13,9 @@ const runner = vi.hoisted(() => ({
 vi.mock("@/chat/local/runner", () => ({
   runLocalAgentTurn: runner.runLocalAgentTurn,
 }));
+
+const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_REDIS_URL = process.env.REDIS_URL;
 
 function reply(outcome: LocalAgentTurnResult["outcome"]): {
   conversationId: string;
@@ -31,6 +34,11 @@ function reply(outcome: LocalAgentTurnResult["outcome"]): {
 describe("chat cli", () => {
   beforeEach(() => {
     runner.runLocalAgentTurn.mockReset();
+  });
+
+  afterEach(() => {
+    restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_STATE_ADAPTER);
+    restoreEnv("REDIS_URL", ORIGINAL_REDIS_URL);
   });
 
   it("returns usage for invalid argument forms", async () => {
@@ -78,6 +86,69 @@ describe("chat cli", () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it("defaults prompt local chat to memory even when REDIS_URL is present", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    process.env.REDIS_URL = "redis://localhost:6379";
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(await runChat(["-p", "hello"], io)).toBe(0);
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
+  });
+
+  it("preserves an explicit prompt local chat state adapter", async () => {
+    process.env.JUNIOR_STATE_ADAPTER = "redis";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(await runChat(["-p", "hello"], io)).toBe(0);
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("redis");
+  });
+
+  it("defaults interactive local chat to memory even when REDIS_URL is present", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    process.env.REDIS_URL = "redis://localhost:6379";
+    const input = new PassThrough();
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+
+    const pending = runChat([], {
+      error: vi.fn(),
+      input,
+      output,
+      write: vi.fn(),
+    });
+    input.write("/exit\n");
+    input.end();
+
+    expect(await pending).toBe(0);
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
   });
 
   it("uses a fresh local conversation for each prompt invocation", async () => {
@@ -233,3 +304,11 @@ describe("chat cli", () => {
     expect(runner.runLocalAgentTurn.mock.calls[1]?.[0].message).toBe("again");
   });
 });
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}

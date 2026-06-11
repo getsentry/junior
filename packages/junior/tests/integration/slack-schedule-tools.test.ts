@@ -40,7 +40,7 @@ function createContext(
   delete contextOverrides.channelId;
   delete contextOverrides.teamId;
   const context: SchedulerToolContext = {
-    destination: {
+    source: {
       platform: "slack",
       teamId,
       channelId,
@@ -59,8 +59,8 @@ function createContext(
   const credentialSubject =
     context.credentialSubject ??
     createSlackDirectCredentialSubject({
-      channelId: context.destination?.channelId,
-      teamId: context.destination?.teamId,
+      channelId: context.source?.channelId,
+      teamId: context.source?.teamId,
       userId: context.requester?.userId,
     });
   return {
@@ -109,7 +109,7 @@ describe("Slack schedule tools", () => {
     await disconnectStateAdapter();
   });
 
-  it("creates and lists tasks only for the active Slack destination", async () => {
+  it("creates and lists tasks only for the active Slack conversation", async () => {
     const created = await createTask();
     expect(created).toMatchObject({
       ok: true,
@@ -233,7 +233,7 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
-  it("rejects invalid Slack destination before creating a task", async () => {
+  it("rejects invalid Slack source before creating a task", async () => {
     const rejected = executeTool(
       createSlackScheduleCreateTaskTool(createContext({ teamId: "D123" })),
       {
@@ -245,28 +245,28 @@ describe("Slack schedule tools", () => {
 
     await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
     await expect(rejected).rejects.toThrow(
-      "Active Slack destination workspace is invalid.",
+      "Active Slack conversation workspace is invalid.",
     );
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
   });
 
-  it("rejects non-canonical Slack destination context before creating a task", async () => {
+  it("rejects non-canonical Slack source context before creating a task", async () => {
     const rejected = createTask(
       createContext({
-        destination: {
+        source: {
           platform: "slack",
           teamId: TEST_TEAM_ID,
           channelId: "C123",
           threadTs: "1700000000.000",
-        } as SchedulerToolContext["destination"],
+        } as SchedulerToolContext["source"],
       }),
     );
 
     await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
     await expect(rejected).rejects.toThrow(
-      "Active Slack destination must not include unknown fields.",
+      "Active Slack conversation must not include unknown fields.",
     );
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -617,7 +617,7 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("rejects edits from another active Slack destination", async () => {
+  it("rejects edits from another active Slack conversation", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
@@ -637,14 +637,14 @@ describe("Slack schedule tools", () => {
   });
 
   it("binds tasks to the raw conversation channel, not the assistant context channel", async () => {
-    // The scheduler receives an active Destination built from the raw
-    // conversation channel by runtime wiring. Management works from any
-    // context with the same destination.
+    // The scheduler receives an active Source built from the raw conversation
+    // channel by runtime wiring. Management works from any context with the
+    // same source conversation.
     //
     // In practice: a DM opened via Slack’s “Ask Junior” panel from #js-alerts
-    // has getAgentPluginTools build destination.channelId = DDM rather than
-    // CJS (assistant source). Both creation and management from that DM use
-    // DDM, so the destination never drifts.
+    // has getAgentPluginTools build source.channelId = DDM rather than using
+    // the outbound assistant-context channel. Both creation and management
+    // from that DM use DDM, so the stored task destination never drifts.
     const dmCtx = createContext({ channelId: "DDM" });
     const created = (await createTask(dmCtx)) as { task: { id: string } };
     const taskId = created.task.id;
@@ -775,13 +775,13 @@ describe("Slack schedule tools", () => {
     expect(tasks[0]?.credentialSubject).toBeUndefined();
   });
 
-  it("rejects non-canonical Slack destinations before storing tasks", async () => {
+  it("rejects non-canonical Slack sources before storing tasks", async () => {
     const context = createContext({ channelId: "D123" });
     await expect(
       createTask(
         {
           ...context,
-          destination: {
+          source: {
             platform: "slack",
             teamId: TEST_TEAM_ID,
             channelId: "slack:D123:1700000000.000",
@@ -793,7 +793,7 @@ describe("Slack schedule tools", () => {
           recurrence: undefined,
         },
       ),
-    ).rejects.toThrow("Active Slack destination channel is invalid.");
+    ).rejects.toThrow("Active Slack conversation channel is invalid.");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
@@ -1001,8 +1001,8 @@ describe("Slack schedule tools", () => {
       status: "active",
       nextRunAtMs: scheduledNextRunAtMs,
       destination: {
-        teamId: context.destination?.teamId,
-        channelId: context.destination?.channelId,
+        teamId: context.source?.teamId,
+        channelId: context.source?.channelId,
       },
       createdBy: {
         slackUserId: context.requester?.userId,
@@ -1103,13 +1103,18 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
     await disconnectStateAdapter();
   });
 
-  it("scheduler tools bind to the runtime-owned destination", async () => {
-    // Verifies that the real getAgentPluginTools wiring passes Destination
-    // through to the scheduler, which stores it as the task destination.
+  it("scheduler tools bind to the runtime-owned source", async () => {
+    // Verifies that real getAgentPluginTools wiring passes Source through to
+    // the scheduler, which stores it as the task destination.
     const previous = setAgentPlugins([schedulerPlugin()]);
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getAgentPluginTools({
+        source: {
+          platform: "slack",
+          teamId: TEAM_ID,
+          channelId: "DDM",
+        },
         destination: {
           platform: "slack",
           teamId: TEAM_ID,

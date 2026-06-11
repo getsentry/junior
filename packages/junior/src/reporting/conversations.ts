@@ -1053,7 +1053,7 @@ function countConversationMessages(transcript: TranscriptMessage[]): number {
 function systemPromptMessage(destination: Destination): TranscriptMessage {
   return {
     role: "system",
-    parts: [{ type: "text", text: buildSystemPrompt({ destination }) }],
+    parts: [{ type: "text", text: buildSystemPrompt({ source: destination }) }],
   };
 }
 

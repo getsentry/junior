@@ -154,7 +154,7 @@ export function getAgentPluginTools(
     const slackToolContext = getSlackToolContext(context);
     const credentialSubject = slackToolContext
       ? createSlackDirectCredentialSubject({
-          channelId: slackToolContext.channelId,
+          channelId: slackToolContext.sourceChannelId,
           teamId: slackToolContext.teamId,
           userId: slackToolContext.requester?.userId,
         })
@@ -163,21 +163,13 @@ export function getAgentPluginTools(
       slackToolContext
         ? {
             channelCapabilities: resolveChannelCapabilities(
-              slackToolContext.channelId,
+              slackToolContext.sourceChannelId,
             ),
-            channelId: slackToolContext.channelId,
             ...(credentialSubject ? { credentialSubject } : {}),
-            ...(slackToolContext.messageTs
-              ? { messageTs: slackToolContext.messageTs }
-              : {}),
-            teamId: slackToolContext.teamId,
-            ...(slackToolContext.threadTs
-              ? { threadTs: slackToolContext.threadTs }
-              : {}),
           }
         : undefined;
     const pluginContext =
-      destination.platform === "slack"
+      context.source.platform === "slack"
         ? {
             plugin: { name: plugin.name },
             log,
@@ -186,8 +178,10 @@ export function getAgentPluginTools(
                 ? context.requester
                 : undefined,
             conversationId: context.conversationId,
-            destination,
+            destination:
+              destination?.platform === "slack" ? destination : undefined,
             slack: slackContext!,
+            source: context.source,
             userText: context.userText,
             state: createPluginState(plugin.name, {
               legacyStatePrefixes: plugin.legacyStatePrefixes,
@@ -201,7 +195,9 @@ export function getAgentPluginTools(
                 ? context.requester
                 : undefined,
             conversationId: context.conversationId,
-            destination,
+            destination:
+              destination?.platform === "local" ? destination : undefined,
+            source: context.source,
             userText: context.userText,
             state: createPluginState(plugin.name, {
               legacyStatePrefixes: plugin.legacyStatePrefixes,

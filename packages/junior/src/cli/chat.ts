@@ -89,8 +89,9 @@ function writeStream(
   });
 }
 
+/** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
 function defaultStateAdapterForLocalChat(): void {
-  if (process.env.JUNIOR_STATE_ADAPTER || process.env.REDIS_URL) {
+  if (process.env.JUNIOR_STATE_ADAPTER) {
     return;
   }
   process.env.JUNIOR_STATE_ADAPTER = "memory";

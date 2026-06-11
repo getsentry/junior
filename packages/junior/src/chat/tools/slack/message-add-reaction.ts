@@ -22,7 +22,7 @@ export function createSlackMessageAddReactionTool(
       }),
     }),
     execute: async ({ emoji }) => {
-      const targetChannelId = context.channelId;
+      const targetChannelId = context.sourceChannelId;
       const targetMessageTs = context.messageTs;
       if (!targetMessageTs) {
         return {

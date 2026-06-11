@@ -9,14 +9,20 @@ vi.mock("@/chat/slack/outbound", () => ({
 }));
 
 const TEST_SLACK_CONTEXT: SlackToolContext = {
-  channelId: "C123",
   destination: {
     platform: "slack",
     teamId: "T123",
     channelId: "C123",
   },
-  deliveryChannelId: "C123",
+  source: {
+    platform: "slack",
+    teamId: "T123",
+    channelId: "C123",
+    messageTs: "1700000000.100",
+  },
+  destinationChannelId: "C123",
   messageTs: "1700000000.100",
+  sourceChannelId: "C123",
   teamId: "T123",
 };
 

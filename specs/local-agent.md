@@ -56,9 +56,9 @@ Rules:
    conversation id before crossing into runtime state.
 6. The CLI must load env files through the same env loader as the existing
    command entrypoint before importing chat runtime modules.
-7. If no durable state adapter is configured for local chat, the command must
-   select the memory state adapter before importing chat runtime modules. It
-   must not require `REDIS_URL` for first-pass local use.
+7. If no state adapter is explicitly configured for local chat, the command
+   must select the memory state adapter before importing chat runtime modules.
+   `REDIS_URL` alone must not move local chat onto Redis.
 
 ### Interactive Flow
 
@@ -98,24 +98,25 @@ Rules:
 
 ### Source And Destination
 
-Local chat is a first-class local destination. The first CLI implementation runs
+Local chat is a first-class local source. The first CLI implementation runs
 through a direct local runner rather than the queued inbound-message mailbox.
 
 Rules:
 
 1. Local CLI user input is recorded as a local user turn in the selected local
    conversation.
-2. Local delivery uses `destination.platform: "local"`.
-3. Local turn ids are stable within the selected conversation and scoped to the
+2. Local invocation context uses `source.platform: "local"`.
+3. Local delivery may use `destination.platform: "local"` only at outbound delivery boundaries.
+4. Local turn ids are stable within the selected conversation and scoped to the
    local prompt sequence.
-4. If a later local or non-Slack platform enters through the durable
+5. If a later local or non-Slack platform enters through the durable
    inbound-message mailbox, it must use `source: "local"` or its own
    platform-specific source and stable idempotency ids scoped to that platform.
-5. Local inbound metadata may include CLI command mode and local prompt
+6. Local inbound metadata may include CLI command mode and local prompt
    sequence. It must not include raw terminal control sequences.
-6. Local delivery accepts the finalized reply when stdout/stderr writes have
+7. Local delivery accepts the finalized reply when stdout/stderr writes have
    completed or when the line-oriented output sink confirms delivery.
-7. Local delivery failure is a terminal delivery failure for the local turn.
+8. Local delivery failure is a terminal delivery failure for the local turn.
 
 ### Identity And Credentials
 
@@ -230,7 +231,8 @@ Required attributes when available:
 
 - `app.conversation.id`
 - `app.conversation.source` = `local`
-- `app.destination.platform` = `local`
+- `app.source.platform` = `local`
+- `app.destination.platform` = `local` when recording delivery
 - `app.local.command_mode` = `interactive|prompt`
 - `app.actor.type` = `system`
 - `app.actor.id` = `local-cli`
@@ -251,7 +253,7 @@ Required checks:
 2. Unit: CLI argument parsing accepts the supported command forms and rejects
    unsupported forms without side effects.
 3. Integration: `junior chat -p "hello"` reaches the shared conversation
-   runtime with `destination.platform: "local"`, actor `local-cli`, and no
+   runtime with `source.platform: "local"`, actor `local-cli`, and no
    Slack requester.
 4. Integration: local CLI does not construct Slack `Thread`, Slack `Message`, or
    Slack adapter wrappers.

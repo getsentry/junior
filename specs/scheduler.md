@@ -38,7 +38,8 @@ The stored task must include:
 - execution actor metadata
 - conversation access metadata
 - optional credential subject for private direct conversations
-- destination surface
+- source conversation
+- destination surface for scheduled delivery
 - schedule and timezone
 - current status
 - next-run timestamp when active
@@ -47,7 +48,7 @@ The stored task must include:
 
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
-Scheduled task destinations use Junior's strict shared Slack destination contract, not existing threads. A scheduled task targets the raw Slack conversation channel in `ToolRegistrationHookContext.destination` — the DM or channel where the user is interacting with Junior — not the assistant-context source channel, current message timestamp, or thread timestamp. Scheduled output posts as a new message in that destination.
+Scheduled task destinations use Junior's strict shared Slack destination contract, not existing threads. A scheduled task is authored from the raw Slack conversation channel in `ToolRegistrationHookContext.source` — the DM or channel where the user is interacting with Junior — not the outbound assistant-context destination, current message timestamp, or thread timestamp. Scheduled output posts as a new message in that stored task destination.
 The scheduler must parse active and stored destinations with the strict shared Slack destination schema from `@sentry/junior-plugin-api`. Unknown destination fields, missing required destination fields, legacy thread-shaped ids, and non-Slack team/channel ids are invalid rather than normalized during scheduler tool execution or store reads.
 When the scheduler stores an explicit delegated credential subject, it must parse that subject with the strict shared plugin credential-subject schema. Runtime-owned bindings or signatures must never be stored in scheduler task state.
 Each scheduled execution gets fresh dispatch-scoped conversation state. The runner must not load destination-level Slack conversation history as prior thread context for a scheduled run that is creating its own new message.
@@ -56,7 +57,7 @@ The scheduler must distinguish conversation audience from visibility. A private 
 
 Creator metadata records the user who confirmed the task so Junior can audit changes and privately notify someone when the task needs attention. The creator is not an owner, is not an authorization principal, and is not the actor for future scheduled runs.
 
-Task management is controlled only by access to the destination conversation window. If a user can post or trigger Junior in that Slack DM or channel context, they can manage scheduled tasks for that same context. The scheduler must not add creator-only, owner-only, workspace-admin-only, or channel-admin-only gates for V1 management.
+Task management is controlled only by access to the source conversation window. If a user can post or trigger Junior in that Slack DM or channel context, they can manage scheduled tasks for that same context. The scheduler must not add creator-only, owner-only, workspace-admin-only, or channel-admin-only gates for V1 management.
 
 ### Calendar Model
 
@@ -244,19 +245,19 @@ Credential subjects must be explicit and separate from creator metadata.
 
 ### Slack UX
 
-Slack authoring creates clear scheduled-work requests immediately for the active destination:
+Slack authoring creates clear scheduled-work requests immediately for the active source conversation:
 
 1. User asks Junior to schedule work.
 2. Junior normalizes the task text, cadence, timezone, destination, and next run.
-3. If the task text, schedule, and active destination are clear, Junior creates the task immediately.
-4. If the task text, schedule, or active destination is ambiguous, Junior asks for confirmation or clarification before creating the task.
+3. If the task text, schedule, and active source conversation are clear, Junior creates the task immediately.
+4. If the task text, schedule, or active source conversation is ambiguous, Junior asks for confirmation or clarification before creating the task.
 5. Junior replies with the task id, destination, schedule, timezone, and next run after creation.
 6. Junior supports list, pause, resume, delete, and run-now commands from the destination conversation.
 
 Confirmation should show the executable task text, not only echo the user's text.
-Anyone who can post or trigger Junior in the destination Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
-Task creation must use the current active `Destination`. For Slack, the destination is always the raw conversation channel carried by `ToolRegistrationHookContext.destination` — never the assistant-context source channel override. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
-List output must be scoped to the active destination conversation and must not reveal tasks from other channels or DMs in the same workspace.
+Anyone who can post or trigger Junior in the source Slack conversation window may manage that conversation's scheduled tasks. Creator identity remains audit and notification metadata, but it is not an edit/delete/run-now ownership gate and is not the execution actor.
+Task creation must use the current active `Source`. For Slack, the stored task destination is derived from the raw conversation channel carried by `ToolRegistrationHookContext.source` — never the outbound assistant-context destination. Users cannot create scheduled tasks for a different channel, and cannot create DMs for other users.
+List output must be scoped to the active source conversation and must not reveal tasks from other channels or DMs in the same workspace.
 Blocked tasks must appear in list output with their blocked reason. After the missing requirement is fixed, a conversation manager can resume the task or run it now from the same destination conversation.
 
 ## Failure Model

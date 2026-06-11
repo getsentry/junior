@@ -60,12 +60,12 @@ interface AgentPluginHooks {
 
 `ToolRegistrationContext` exposes only current turn context needed to decide whether tools are available:
 
-- active conversation destination, when present
+- active source context
+- default outbound destination, when present
 - requester, when present
-- `channelId`: raw Slack conversation channel (`C/D/G`), never assistant-context overridden
 - `conversationId`: opaque Junior session identity (e.g. `slack:{channelId}:{threadTs}` for interactive turns)
-- `destination`: runtime-owned shared `Destination` for future autonomous work; Slack destinations carry raw `teamId` and `channelId`
-- `teamId` and thread/message timestamps, when present
+- `source`: runtime-owned shared `Source`; Slack sources carry raw `teamId`, `channelId`, and optional thread/message timestamps
+- `destination`: runtime-owned shared outbound `Destination`, when an outbound target is available
 - namespaced plugin state
 - current user text
 - schedule-tool suppression for system dispatches

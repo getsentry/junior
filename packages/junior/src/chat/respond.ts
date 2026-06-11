@@ -8,7 +8,7 @@
  * should stay outside this file.
  */
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -388,6 +388,34 @@ function actorRequesterFromContext(
         : undefined),
     userId: context.correlation?.requesterId,
   });
+}
+
+function toolInvocationSource(context: ReplyRequestContext): Source {
+  if (context.destination.platform !== "slack") {
+    return context.destination;
+  }
+  return {
+    platform: "slack",
+    teamId: context.destination.teamId,
+    channelId: context.destination.channelId,
+    ...(context.correlation?.messageTs
+      ? { messageTs: context.correlation.messageTs }
+      : {}),
+    ...(context.correlation?.threadTs
+      ? { threadTs: context.correlation.threadTs }
+      : {}),
+  };
+}
+
+function toolInvocationDestination(context: ReplyRequestContext): Destination {
+  if (context.destination.platform !== "slack" || !context.toolChannelId) {
+    return context.destination;
+  }
+  return {
+    platform: "slack",
+    teamId: context.destination.teamId,
+    channelId: context.toolChannelId,
+  };
 }
 
 function surfaceFromContext(
@@ -1021,31 +1049,30 @@ export async function generateAssistantReply(
         streamFn: createTracedStreamFn({ conversationPrivacy }),
       },
     };
-    const toolRuntimeContext: ToolRuntimeContext =
-      context.destination.platform === "slack"
-        ? {
-            ...commonToolRuntimeContext,
-            destination: context.destination,
-            requester:
-              actorRequester?.platform === "slack" ? actorRequester : undefined,
-            slack: {
-              ...(context.toolChannelId
-                ? { deliveryChannelId: context.toolChannelId }
-                : {}),
-              ...(context.correlation?.messageTs
-                ? { messageTs: context.correlation.messageTs }
-                : {}),
-              ...(context.correlation?.threadTs
-                ? { threadTs: context.correlation.threadTs }
-                : {}),
-            },
-          }
-        : {
-            ...commonToolRuntimeContext,
-            destination: context.destination,
-            requester:
-              actorRequester?.platform === "local" ? actorRequester : undefined,
-          };
+    const toolSource = toolInvocationSource(context);
+    const toolDestination = toolInvocationDestination(context);
+    let toolRuntimeContext: ToolRuntimeContext;
+    if (toolSource.platform === "slack") {
+      toolRuntimeContext = {
+        ...commonToolRuntimeContext,
+        ...(toolDestination.platform === "slack"
+          ? { destination: toolDestination }
+          : {}),
+        requester:
+          actorRequester?.platform === "slack" ? actorRequester : undefined,
+        source: toolSource,
+      };
+    } else {
+      toolRuntimeContext = {
+        ...commonToolRuntimeContext,
+        ...(toolDestination.platform === "local"
+          ? { destination: toolDestination }
+          : {}),
+        requester:
+          actorRequester?.platform === "local" ? actorRequester : undefined,
+        source: toolSource,
+      };
+    }
     const tools = createTools(
       loadableSkills,
       {
@@ -1142,7 +1169,7 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(),
     );
-    baseInstructions = buildSystemPrompt({ destination: context.destination });
+    baseInstructions = buildSystemPrompt({ source: toolSource });
     const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
     const turnContextPrompt = needsBootstrapContext
       ? buildTurnContextPrompt({

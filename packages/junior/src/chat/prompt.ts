@@ -27,7 +27,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Source } from "@sentry/junior-plugin-api";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -330,7 +330,7 @@ function formatConfigurationLines(
   );
 }
 
-type PromptPlatform = Destination["platform"];
+type PromptPlatform = Source["platform"];
 
 const SLACK_HEADER =
   "You are a Slack-based helper assistant. Follow the personality section for voice and tone in every reply. Platform mechanics and output rules override personality and world context when they conflict.";
@@ -621,10 +621,8 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
 };
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
-export function buildSystemPrompt(params: {
-  destination: Destination;
-}): string {
-  return STATIC_SYSTEM_PROMPTS[params.destination.platform];
+export function buildSystemPrompt(params: { source: Source }): string {
+  return STATIC_SYSTEM_PROMPTS[params.source.platform];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

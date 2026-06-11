@@ -11,15 +11,22 @@ import {
 function createContext(
   overrides: Partial<SlackToolContext> = {},
 ): SlackToolContext {
-  const channelId = overrides.channelId ?? "C_CURRENT";
+  const sourceChannelId = overrides.sourceChannelId ?? "C_CURRENT";
+  const destinationChannelId =
+    overrides.destinationChannelId ?? sourceChannelId;
   return {
-    channelId,
     destination: overrides.destination ?? {
       platform: "slack",
       teamId: "T123",
-      channelId,
+      channelId: destinationChannelId,
     },
-    deliveryChannelId: overrides.deliveryChannelId ?? channelId,
+    source: overrides.source ?? {
+      platform: "slack",
+      teamId: "T123",
+      channelId: sourceChannelId,
+    },
+    destinationChannelId,
+    sourceChannelId,
     teamId: "T123",
     ...overrides,
   };
@@ -164,7 +171,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createSlackThreadReadTool(
-      createContext({ channelId: "G_PRIVATE" }),
+      createContext({ sourceChannelId: "G_PRIVATE" }),
     );
     const result = await executeTool(tool, {
       channel_id: "G_PRIVATE",
@@ -199,8 +206,8 @@ describe("slackThreadRead", () => {
 
     const tool = createSlackThreadReadTool(
       createContext({
-        channelId: "D_DM",
-        deliveryChannelId: "G_PRIVATE",
+        sourceChannelId: "D_DM",
+        destinationChannelId: "G_PRIVATE",
       }),
     );
     const result = await executeTool(tool, {
@@ -218,7 +225,7 @@ describe("slackThreadRead", () => {
 
   it("blocks reading a private group channel from a DM conversation without assistant context", async () => {
     const tool = createSlackThreadReadTool(
-      createContext({ channelId: "D_DM" }),
+      createContext({ sourceChannelId: "D_DM" }),
     );
     const result = await executeTool(tool, {
       channel_id: "G_PRIVATE",
@@ -235,7 +242,7 @@ describe("slackThreadRead", () => {
 
   it("blocks reading a private channel that is not the current channel", async () => {
     const tool = createSlackThreadReadTool(
-      createContext({ channelId: "C_CURRENT" }),
+      createContext({ sourceChannelId: "C_CURRENT" }),
     );
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
