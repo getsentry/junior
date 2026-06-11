@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-10
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -545,7 +545,9 @@ Local CLI is the first non-Slack destination implementation.
 
 Rules:
 
-1. Local CLI uses `source: "local"` and `destination.platform: "local"`.
+1. Local CLI uses `destination.platform: "local"`. It may bypass the durable
+   inbound-message mailbox for direct terminal turns; any later mailbox-backed
+   local ingress uses `source: "local"`.
 2. Local CLI conversation ids must be stable across prompts in the same selected
    terminal session.
 3. Local CLI must use the shared conversation runtime and `generateAssistantReply`

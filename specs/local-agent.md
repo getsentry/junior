@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-10
-- Last Edited: 2026-06-10
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -98,19 +98,24 @@ Rules:
 
 ### Source And Destination
 
-Local chat is a first-class source and destination.
+Local chat is a first-class local destination. The first CLI implementation runs
+through a direct local runner rather than the queued inbound-message mailbox.
 
 Rules:
 
-1. Local user input uses `source: "local"`.
+1. Local CLI user input is recorded as a local user turn in the selected local
+   conversation.
 2. Local delivery uses `destination.platform: "local"`.
-3. Local inbound messages use stable idempotency ids scoped to the local
-   conversation id and local prompt sequence.
-4. Local inbound metadata may include CLI command mode and local prompt
+3. Local turn ids are stable within the selected conversation and scoped to the
+   local prompt sequence.
+4. If a later local or non-Slack platform enters through the durable
+   inbound-message mailbox, it must use `source: "local"` or its own
+   platform-specific source and stable idempotency ids scoped to that platform.
+5. Local inbound metadata may include CLI command mode and local prompt
    sequence. It must not include raw terminal control sequences.
-5. Local delivery accepts the finalized reply when stdout/stderr writes have
+6. Local delivery accepts the finalized reply when stdout/stderr writes have
    completed or when the line-oriented output sink confirms delivery.
-6. Local delivery failure is a terminal delivery failure for the local turn.
+7. Local delivery failure is a terminal delivery failure for the local turn.
 
 ### Identity And Credentials
 
@@ -244,8 +249,8 @@ Required checks:
 2. Unit: CLI argument parsing accepts the supported command forms and rejects
    unsupported forms without side effects.
 3. Integration: `junior chat --once "hello"` reaches the shared conversation
-   runtime with `source: "local"`, `destination.platform: "local"`, actor
-   `local-cli`, and no Slack requester.
+   runtime with `destination.platform: "local"`, actor `local-cli`, and no
+   Slack requester.
 4. Integration: local CLI does not construct Slack `Thread`, Slack `Message`, or
    Slack adapter wrappers.
 5. Integration: two messages in the same local conversation preserve visible
