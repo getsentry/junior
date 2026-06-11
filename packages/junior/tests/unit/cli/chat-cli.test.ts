@@ -57,7 +57,7 @@ describe("chat cli", () => {
     const output: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
-      await deps.deliverReply?.(result.reply);
+      await deps.deliverReply(result.reply);
       return result;
     });
 
@@ -74,11 +74,34 @@ describe("chat cli", () => {
     expect(output).toEqual(["hello\n"]);
   });
 
+  it("accepts flag-like tokens as once message text", async () => {
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(await runChat(["--once", "explain", "--flag"], io)).toBe(0);
+    expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "explain --flag",
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("returns failure for a failed once reply after delivery", async () => {
     const output: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("provider_error");
-      await deps.deliverReply?.(result.reply);
+      await deps.deliverReply(result.reply);
       return result;
     });
 

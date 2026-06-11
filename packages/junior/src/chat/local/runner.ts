@@ -10,6 +10,10 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
+import {
+  stripRuntimeTurnContext,
+  trimTrailingAssistantMessages,
+} from "@/chat/respond-helpers";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -26,6 +30,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { loadProjection } from "@/chat/state/session-log";
 import type { Destination } from "@sentry/junior-plugin-api";
 
 export interface LocalAgentTurnInput {
@@ -66,6 +71,20 @@ function nextUserMessageSequence(
     conversation.messages.filter((message) => message.role === "user").length +
     1
   );
+}
+
+async function loadLocalPiMessages(args: {
+  conversationId: string;
+  fallback: ReturnType<typeof coerceThreadConversationState>["piMessages"];
+}) {
+  const projection = await loadProjection({
+    conversationId: args.conversationId,
+  });
+  if (projection.length > 0) {
+    return stripRuntimeTurnContext(trimTrailingAssistantMessages(projection));
+  }
+
+  return args.fallback.length > 0 ? [...args.fallback] : undefined;
 }
 
 /** Run one local CLI message through Junior's shared agent reply boundary. */
@@ -116,8 +135,13 @@ export async function runLocalAgentTurn(
   });
   await persistThreadStateById(input.conversationId, { conversation });
 
+  let reply: AssistantReply;
   try {
-    const reply = await generateAssistantReply(text, {
+    const piMessages = await loadLocalPiMessages({
+      conversationId: input.conversationId,
+      fallback: conversation.piMessages,
+    });
+    reply = await generateAssistantReply(text, {
       authorizationFlowMode: "disabled",
       conversationContext: buildConversationContext(conversation, {
         excludeMessageId: userMessageId,
@@ -127,7 +151,7 @@ export async function runLocalAgentTurn(
         actor: { type: "system", id: "local-cli" },
       },
       destination: localDestination(input.conversationId),
-      piMessages: conversation.piMessages,
+      piMessages,
       surface: "internal",
       correlation: {
         conversationId: input.conversationId,
@@ -165,26 +189,6 @@ export async function runLocalAgentTurn(
     });
 
     await deps.deliverReply(reply);
-
-    const completedState = buildDeliveredTurnStatePatch({
-      artifacts,
-      conversation,
-      reply,
-      sessionId: turnId,
-      userMessageId,
-    });
-    await persistThreadStateById(input.conversationId, {
-      artifacts: completedState.artifacts ?? artifacts,
-      conversation: completedState.conversation,
-      sandboxId: reply.sandboxId ?? sandboxId,
-      sandboxDependencyProfileHash:
-        reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
-    });
-
-    return {
-      conversationId: input.conversationId,
-      reply,
-    };
   } catch (error) {
     markTurnFailed({
       conversation,
@@ -197,4 +201,24 @@ export async function runLocalAgentTurn(
     await persistThreadStateById(input.conversationId, { conversation });
     throw error;
   }
+
+  const completedState = buildDeliveredTurnStatePatch({
+    artifacts,
+    conversation,
+    reply,
+    sessionId: turnId,
+    userMessageId,
+  });
+  await persistThreadStateById(input.conversationId, {
+    artifacts: completedState.artifacts ?? artifacts,
+    conversation: completedState.conversation,
+    sandboxId: reply.sandboxId ?? sandboxId,
+    sandboxDependencyProfileHash:
+      reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+  });
+
+  return {
+    conversationId: input.conversationId,
+    reply,
+  };
 }

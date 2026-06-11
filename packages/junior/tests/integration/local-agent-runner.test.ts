@@ -6,7 +6,9 @@ import type {
 } from "@/chat/respond";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import { runLocalAgentTurn } from "@/chat/local/runner";
+import type { PiMessage } from "@/chat/pi/messages";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { commitMessages } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 function successReply(text: string): AssistantReply {
@@ -186,5 +188,45 @@ describe("local agent runner", () => {
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
     expect(conversation.messages).toEqual([]);
+  });
+
+  it("uses durable Pi projection for follow-up local turns", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "pi-history",
+      cwd: "/tmp/local-agent-runner-four",
+    });
+    expect(conversationId).toBeDefined();
+    const projectedMessage = {
+      role: "user",
+      content: [{ type: "text", text: "projected history" }],
+    } as PiMessage;
+    await commitMessages({
+      conversationId: conversationId!,
+      messages: [projectedMessage],
+      ttlMs: 60_000,
+    });
+
+    const contexts: ReplyRequestContext[] = [];
+    const generateReply = vi.fn<typeof generateAssistantReply>(
+      async (_text, context = {}) => {
+        contexts.push(context);
+        return successReply("uses projection");
+      },
+    );
+
+    await runLocalAgentTurn(
+      {
+        conversationAlias: "pi-history",
+        conversationId: conversationId!,
+        message: "follow up",
+        mode: "once",
+      },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: generateReply,
+      },
+    );
+
+    expect(contexts[0]?.piMessages).toEqual([projectedMessage]);
   });
 });

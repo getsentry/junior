@@ -105,7 +105,7 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
 
     if (arg === "--once") {
       const rest = argv.slice(index + 1);
-      if (rest.length === 0 || rest.some((value) => value.startsWith("--"))) {
+      if (rest.length === 0) {
         return undefined;
       }
       message = rest.join(" ");
