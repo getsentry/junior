@@ -1,5 +1,5 @@
 export const CLI_USAGE =
-  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat [--conversation <name>]\n       junior chat [--conversation <name>] --once <message>";
+  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>";
 
 interface CliHandlers {
   runChat: (argv: string[]) => Promise<number>;

@@ -25,36 +25,29 @@ pnpm exec junior chat
 Send one message and exit:
 
 ```bash
-pnpm exec junior chat --once "Summarize this repository"
-```
-
-Name a local conversation when you want to keep separate threads:
-
-```bash
-pnpm exec junior chat --conversation docs-review
+pnpm exec junior chat -p "Summarize this repository"
 ```
 
 ## Options
 
-| Option                  | Purpose                                                       |
-| ----------------------- | ------------------------------------------------------------- |
-| `--once <message>`      | Sends one message, prints the response, and exits.            |
-| `--conversation <name>` | Uses a stable local conversation name. Defaults to `default`. |
+| Option         | Purpose                                            |
+| -------------- | -------------------------------------------------- |
+| `-p <message>` | Sends one message, prints the response, and exits. |
 
-Conversation names must start with a letter or number, may contain letters, numbers, dots, underscores, and hyphens, and may be at most 64 characters long. Junior lowercases names and normalizes dots to hyphens when building the stored conversation id. Junior scopes local conversation ids to the current working directory, so the same name in two projects does not collide.
+Every `junior chat` invocation creates a fresh local conversation. Interactive mode keeps context only while that process is running; `-p` sends one isolated message and exits.
 
 ## State and environment
 
 `junior chat` does not require Slack request signing, Slack tokens, or a Slack channel. It still needs the model and tool environment required by the behavior you are testing, such as `AI_GATEWAY_API_KEY` or plugin provider credentials.
 
-When neither `JUNIOR_STATE_ADAPTER` nor `REDIS_URL` is set, the command uses the in-memory state adapter so a new project can start a local session without Redis. Set `REDIS_URL` when you want conversation state to survive process restarts or match your deployed app state behavior.
+When neither `JUNIOR_STATE_ADAPTER` nor `REDIS_URL` is set, the command uses the in-memory state adapter so a new project can start a local session without Redis. Set `REDIS_URL` when you want local run state stored for diagnostics or to match your deployed app state behavior; the CLI still starts a new conversation on each invocation.
 
 The local actor is the `local-cli` system actor. Provider OAuth prompts are disabled for this local command, so tests that require user-bound provider credentials should use already configured credentials or a deployed Slack flow.
 
 ## Verification
 
 1. Run `pnpm exec junior check` from the app root.
-2. Run `pnpm exec junior chat --once "Say hello in one sentence"`.
+2. Run `pnpm exec junior chat -p "Say hello in one sentence"`.
 3. Confirm the command prints a Junior response and exits with status `0`.
 4. If the command reports missing model or provider credentials, add the required environment variables and retry.
 

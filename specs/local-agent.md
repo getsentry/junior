@@ -40,23 +40,23 @@ Supported first-pass forms:
 
 ```bash
 junior chat
-junior chat --once "explain this repository"
-junior chat --conversation demo
-junior chat --conversation demo --once "continue the previous answer"
+junior chat -p "explain this repository"
 ```
 
 Rules:
 
 1. `junior chat` starts an interactive terminal loop.
-2. `junior chat --once <message>` runs one local user message and exits after
+2. `junior chat -p <message>` runs one local user message and exits after
    final delivery.
-3. `--conversation <name>` selects a stable local conversation. If omitted, the
-   CLI uses `default`.
-4. Conversation names are user-facing aliases. They must be normalized into
-   storage-safe conversation ids before crossing into runtime state.
-5. The CLI must load env files through the same env loader as the existing
+3. Each CLI invocation creates a fresh local conversation, so repeated local
+   runs do not inherit prior local context.
+4. Interactive mode preserves multi-turn continuity only inside that running
+   process.
+5. The local conversation slug must be normalized into a storage-safe
+   conversation id before crossing into runtime state.
+6. The CLI must load env files through the same env loader as the existing
    command entrypoint before importing chat runtime modules.
-6. If no durable state adapter is configured for local chat, the command must
+7. If no durable state adapter is configured for local chat, the command must
    select the memory state adapter before importing chat runtime modules. It
    must not require `REDIS_URL` for first-pass local use.
 
@@ -76,22 +76,21 @@ Rules:
 7. Tool invocation progress and non-final status may be printed to stderr, but
    they are not persisted as assistant transcript messages.
 8. A failed turn must print an explicit error and keep the process exit code
-   non-zero for `--once`. Interactive mode may continue after a failed turn
+   non-zero for `-p`. Interactive mode may continue after a failed turn
    unless the failure is a local setup error.
 
 ### Conversation Identity
 
-Local conversation ids must be stable, storage-safe, and distinct from Slack
-thread ids.
+Local conversation ids must be storage-safe, stable for one CLI invocation, and
+distinct from Slack thread ids.
 
 Rules:
 
 1. Local conversation ids use the prefix `local:`.
 2. The normalized shape is `local:<workspace_key>:<conversation_slug>`.
-3. `workspace_key` is derived from the current working directory so separate
-   repositories do not share the same `default` conversation accidentally.
-4. `conversation_slug` is derived from `--conversation`; invalid or empty names
-   are rejected with CLI usage output.
+3. `workspace_key` is derived from the current working directory for local
+   observability and storage grouping.
+4. `conversation_slug` is generated per CLI invocation.
 5. Local conversation ids must never use Slack channel ids, thread timestamps,
    team ids, or message timestamps.
 6. Local conversation ids are the durable Pi/session history key.
@@ -158,20 +157,21 @@ Rules:
 ### Transcript And State
 
 Local chat must preserve conversation continuity across prompts in the same
-process and, when a durable adapter is configured, across processes.
+interactive process. New CLI invocations must start new conversations.
 
 Rules:
 
 1. User messages are appended to visible conversation state before the agent
    turn commits input.
 2. Assistant messages are appended only after final local delivery succeeds.
-3. Pi messages are restored from the durable agent session log or conversation
-   state using the same projection rules as other runtimes.
-4. Memory state is acceptable for first-pass local development. When memory
+3. Pi messages are restored within the run from the durable agent session log or
+   conversation state using the same projection rules as other runtimes.
+4. New CLI invocations do not restore prior visible or Pi conversation history.
+5. Memory state is acceptable for first-pass local development. When memory
    state is used, history is process-local and the CLI must not imply durable
    persistence.
-5. Redis-backed local state may persist history across CLI invocations when
-   configured through normal environment variables.
+6. Redis-backed local state may store local runs for diagnostics, but the CLI
+   must not automatically resume them.
 
 ### Attachments And Files
 
@@ -193,8 +193,8 @@ The local CLI should be predictable and scriptable.
 
 Rules:
 
-1. `--once` writes the assistant final answer to stdout.
-2. `--once` writes setup errors, status, and diagnostics to stderr.
+1. `-p` writes the assistant final answer to stdout.
+2. `-p` writes setup errors, status, and diagnostics to stderr.
 3. Interactive mode clearly separates user prompts from assistant output without
    requiring a full-screen terminal UI.
 4. The CLI must not print raw prompt context, raw provider credentials, raw OAuth
@@ -204,7 +204,7 @@ Rules:
 ## Failure Model
 
 1. Missing model credentials or provider configuration:
-   - Print an explicit setup error and exit non-zero for `--once`.
+   - Print an explicit setup error and exit non-zero for `-p`.
 2. Missing user-bound OAuth:
    - Print an explicit local authorization-unavailable error. Do not start Slack
      auth or local browser auth.
@@ -248,7 +248,7 @@ Required checks:
    and reject invalid names.
 2. Unit: CLI argument parsing accepts the supported command forms and rejects
    unsupported forms without side effects.
-3. Integration: `junior chat --once "hello"` reaches the shared conversation
+3. Integration: `junior chat -p "hello"` reaches the shared conversation
    runtime with `destination.platform: "local"`, actor `local-cli`, and no
    Slack requester.
 4. Integration: local CLI does not construct Slack `Thread`, Slack `Message`, or

@@ -44,10 +44,10 @@ describe("chat cli", () => {
       write: () => undefined,
     };
 
-    expect(await runChat(["--conversation"], io)).toBe(1);
     expect(await runChat(["--once"], io)).toBe(1);
+    expect(await runChat(["--conversation"], io)).toBe(1);
+    expect(await runChat(["-p"], io)).toBe(1);
     expect(await runChat(["unexpected"], io)).toBe(1);
-    expect(await runChat(["--conversation", "../bad"], io)).toBe(1);
 
     expect(lines).toEqual([CHAT_USAGE, CHAT_USAGE, CHAT_USAGE, CHAT_USAGE]);
   });
@@ -69,34 +69,18 @@ describe("chat cli", () => {
       },
     };
 
-    expect(await runChat(["--once", "hello"], io)).toBe(0);
+    expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(output).toEqual(["hello\n"]);
-  });
-
-  it("accepts flag-like tokens as once message text", async () => {
-    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
-      const result = reply("success");
-      await deps.deliverReply(result.reply);
-      return result;
-    });
-
-    const io = {
-      error: vi.fn(),
-      input: process.stdin,
-      output: process.stdout,
-      write: vi.fn(),
-    };
-
-    expect(await runChat(["--once", "explain", "--flag"], io)).toBe(0);
     expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "explain --flag",
+        conversationId: expect.stringMatching(/:run-[a-f0-9-]+$/),
+        message: "hello",
       }),
       expect.any(Object),
     );
   });
 
-  it("accepts conversation after the once message", async () => {
+  it("accepts flag-like tokens as prompt message text", async () => {
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
       await deps.deliverReply(result.reply);
@@ -110,13 +94,10 @@ describe("chat cli", () => {
       write: vi.fn(),
     };
 
-    expect(
-      await runChat(["--once", "hello", "--conversation", "later"], io),
-    ).toBe(0);
+    expect(await runChat(["-p", "explain", "--flag"], io)).toBe(0);
     expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
       expect.objectContaining({
-        conversationId: expect.stringMatching(/:later$/),
-        message: "hello",
+        message: "explain --flag",
       }),
       expect.any(Object),
     );
@@ -139,7 +120,7 @@ describe("chat cli", () => {
       },
     };
 
-    expect(await runChat(["--once", "hello"], io)).toBe(1);
+    expect(await runChat(["-p", "hello"], io)).toBe(1);
     expect(output).toEqual(["failed\n"]);
   });
 
@@ -158,7 +139,7 @@ describe("chat cli", () => {
       },
     };
 
-    expect(await runChat(["--once", "hello"], io)).toBe(1);
+    expect(await runChat(["-p", "hello"], io)).toBe(1);
     expect(io.error).toHaveBeenCalledWith("stdout closed");
   });
 
@@ -179,7 +160,7 @@ describe("chat cli", () => {
       write: vi.fn(),
     };
 
-    expect(await runChat(["--once", "hello"], io)).toBe(1);
+    expect(await runChat(["-p", "hello"], io)).toBe(1);
     expect(io.write).not.toHaveBeenCalled();
     expect(io.error).toHaveBeenCalledWith(
       "Local chat cannot deliver files yet: report.txt",
@@ -213,5 +194,12 @@ describe("chat cli", () => {
     expect(code).toBe(0);
     expect(errors).toEqual(["turn failed"]);
     expect(runner.runLocalAgentTurn).toHaveBeenCalledTimes(1);
+    expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: expect.stringMatching(/:run-[a-f0-9-]+$/),
+        message: "hello",
+      }),
+      expect.any(Object),
+    );
   });
 });

@@ -67,19 +67,11 @@ describe("cli command dispatch", () => {
   it("runs chat with its remaining arguments", async () => {
     const cliHandlers = handlers();
 
-    const exitCode = await runCli(
-      ["chat", "--conversation", "demo", "--once", "hello"],
-      cliHandlers,
-    );
+    const exitCode = await runCli(["chat", "-p", "hello"], cliHandlers);
 
     expect(exitCode).toBe(0);
     expect(cliHandlers.runChat).toHaveBeenCalledTimes(1);
-    expect(cliHandlers.runChat).toHaveBeenCalledWith([
-      "--conversation",
-      "demo",
-      "--once",
-      "hello",
-    ]);
+    expect(cliHandlers.runChat).toHaveBeenCalledWith(["-p", "hello"]);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
@@ -89,18 +81,10 @@ describe("cli command dispatch", () => {
   it("ignores a leading node argv separator before the command", async () => {
     const cliHandlers = handlers();
 
-    const exitCode = await runCli(
-      ["--", "chat", "--conversation", "demo", "--once", "hello"],
-      cliHandlers,
-    );
+    const exitCode = await runCli(["--", "chat", "-p", "hello"], cliHandlers);
 
     expect(exitCode).toBe(0);
-    expect(cliHandlers.runChat).toHaveBeenCalledWith([
-      "--conversation",
-      "demo",
-      "--once",
-      "hello",
-    ]);
+    expect(cliHandlers.runChat).toHaveBeenCalledWith(["-p", "hello"]);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();

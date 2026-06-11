@@ -39,18 +39,21 @@ pnpm cli -- check
 Run one local turn:
 
 ```bash
-pnpm exec junior chat --once "Describe the behavior I just changed in one sentence."
+pnpm exec junior chat -p "Describe the behavior I just changed in one sentence."
 ```
 
 From this monorepo, run the same check through the source CLI:
 
 ```bash
-pnpm cli -- chat --once "Describe the behavior I just changed in one sentence."
+pnpm cli -- chat -p "Describe the behavior I just changed in one sentence."
 ```
 
 The command should print a Junior response and exit with status `0`. If it
 reports missing model or provider credentials, refresh or add the required
 environment variables and rerun the same prompt.
+
+`-p` uses a fresh local conversation for each invocation. Use interactive mode
+when you need to validate multi-turn context.
 
 ## Example App Checks
 
@@ -58,11 +61,11 @@ Use the example app skills when you need to prove local skill and plugin
 discovery, not just a plain model response:
 
 ```bash
-pnpm cli -- chat --conversation example-skill-proof --once "/example-local Confirm the example app local skill is available."
+pnpm cli -- chat -p "/example-local Confirm the example app local skill is available."
 ```
 
 ```bash
-pnpm cli -- chat --conversation example-plugin-proof --once "/example-bundle-help Explain where this plugin-bundled skill is discovered from and whether it supports jr-rpc issue-credential."
+pnpm cli -- chat -p "/example-bundle-help Explain where this plugin-bundled skill is discovered from and whether it supports jr-rpc issue-credential."
 ```
 
 The first command should use the app-local `example-local` skill. The second
@@ -72,16 +75,16 @@ without credential issuance support.
 
 ## Conversation Check
 
-Use a named conversation when the change depends on context across turns:
+Use interactive mode when the change depends on context across turns:
 
 ```bash
-pnpm exec junior chat --conversation validation
+pnpm exec junior chat
 ```
 
 From this monorepo:
 
 ```bash
-pnpm cli -- chat --conversation validation
+pnpm cli -- chat
 ```
 
 Send two prompts that exercise the changed behavior, then type `/exit`. The

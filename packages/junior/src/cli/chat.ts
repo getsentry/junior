@@ -10,15 +10,14 @@ import {
   stderr as defaultStderr,
   stdout as defaultStdout,
 } from "node:process";
+import { randomUUID } from "node:crypto";
 import * as readline from "node:readline/promises";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type { LocalAgentReply } from "@/chat/local/runner";
 
-export const CHAT_USAGE =
-  "usage: junior chat [--conversation <name>]\n       junior chat [--conversation <name>] --once <message>";
+export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
 
 export interface ChatCommandOptions {
-  conversation: string;
   message?: string;
   mode: "interactive" | "once";
 }
@@ -99,51 +98,20 @@ function defaultStateAdapterForLocalChat(): void {
 }
 
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
-  let conversation = "default";
-  let mode: ChatCommandOptions["mode"] = "interactive";
-  const messageParts: string[] = [];
+  if (argv.length === 0) {
+    return { mode: "interactive" };
+  }
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--conversation") {
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) {
-        return undefined;
-      }
-      conversation = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--once") {
-      if (mode === "once") {
-        return undefined;
-      }
-      mode = "once";
-      continue;
-    }
-
-    if (mode === "once") {
-      messageParts.push(arg);
-      continue;
-    }
-
+  if (argv[0] !== "-p") {
     return undefined;
   }
 
-  const message =
-    mode === "once" && messageParts.length > 0
-      ? messageParts.join(" ")
-      : undefined;
-  if (mode === "once" && !message) {
+  const message = argv.slice(1).join(" ").trim();
+  if (!message) {
     return undefined;
   }
 
-  if (!normalizeLocalConversationId({ alias: conversation })) {
-    return undefined;
-  }
-
-  return { conversation, ...(message ? { message } : {}), mode };
+  return { message, mode: "once" };
 }
 
 function formatReply(reply: LocalAgentReply): string {
@@ -156,17 +124,22 @@ function formatReply(reply: LocalAgentReply): string {
   return `${lines.join("\n") || "[empty response]"}\n`;
 }
 
+function newRunConversationId(): string {
+  const conversationId = normalizeLocalConversationId({
+    alias: `run-${randomUUID()}`,
+  });
+  if (!conversationId) {
+    throw new Error("Invalid local conversation name");
+  }
+  return conversationId;
+}
+
 async function runOnce(
   options: ChatCommandOptions & { message: string },
   io: ChatIo,
 ): Promise<number> {
   defaultStateAdapterForLocalChat();
-  const conversationId = normalizeLocalConversationId({
-    alias: options.conversation,
-  });
-  if (!conversationId) {
-    throw new Error("Invalid local conversation name");
-  }
+  const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const result = await runLocalAgentTurn(
@@ -186,17 +159,9 @@ async function runOnce(
   return result.outcome === "success" ? 0 : 1;
 }
 
-async function runInteractive(
-  options: ChatCommandOptions,
-  io: ChatIo,
-): Promise<void> {
+async function runInteractive(io: ChatIo): Promise<void> {
   defaultStateAdapterForLocalChat();
-  const conversationId = normalizeLocalConversationId({
-    alias: options.conversation,
-  });
-  if (!conversationId) {
-    throw new Error("Invalid local conversation name");
-  }
+  const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const rl = readline.createInterface({
@@ -262,7 +227,7 @@ export async function runChat(
         io,
       );
     }
-    await runInteractive(options, io);
+    await runInteractive(io);
     return 0;
   } catch (error) {
     await io.error(errorMessage(error));
