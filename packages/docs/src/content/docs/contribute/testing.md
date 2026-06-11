@@ -5,6 +5,7 @@ type: reference
 prerequisites:
   - /contribute/development/
 related:
+  - /contribute/local-agent-validation/
   - /contribute/releasing/
   - /start-here/verify-and-troubleshoot/
 ---
@@ -39,9 +40,11 @@ pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts
 
 ## Notes
 
+- Use [Local Agent Validation](/contribute/local-agent-validation/) as the
+  first manual behavior check for changes that are not Slack-specific.
 - Evals require real sandbox access and are not always reliable in restricted sandbox environments.
 - Keep layer boundaries strict: behavior quality in evals, protocol details in integration tests, isolated invariants in unit tests.
 
 ## Next step
 
-After adding or changing tests, run the deploy checks in [Releasing](/contribute/releasing/) and validate runtime behavior via [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/).
+After adding or changing tests, run the deploy checks in [Releasing](/contribute/releasing/) and validate runtime behavior with [Local Agent Validation](/contribute/local-agent-validation/) or [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/).

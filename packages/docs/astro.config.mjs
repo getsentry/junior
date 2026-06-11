@@ -171,6 +171,10 @@ export default defineConfig({
             { label: "Development", link: "/contribute/development/" },
             { label: "Testing", link: "/contribute/testing/" },
             {
+              label: "Local Agent Validation",
+              link: "/contribute/local-agent-validation/",
+            },
+            {
               label: "Documentation Guidelines",
               link: "/contribute/documentation-guidelines/",
             },

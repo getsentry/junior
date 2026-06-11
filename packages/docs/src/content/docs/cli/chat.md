@@ -6,12 +6,13 @@ summary: Test Junior agent behavior from a local terminal conversation.
 prerequisites:
   - /start-here/quickstart/
 related:
+  - /contribute/local-agent-validation/
   - /reference/config-and-env/
   - /cli/check/
   - /operate/observability/
 ---
 
-Use `junior chat` when you want to exercise Junior's agent runtime without sending a Slack message. The command runs from a project that already has `@sentry/junior` installed and uses the same app files, skills, plugins, model settings, and sandbox behavior as a normal agent turn.
+Use `junior chat` when you want to exercise Junior's agent runtime without sending a Slack message. The command runs from a project that already has `@sentry/junior` installed and uses the same app files, skills, plugins, model settings, and sandbox behavior as a normal agent turn. For a focused validation workflow, use [Local Agent Validation](/contribute/local-agent-validation/).
 
 ## Usage
 
