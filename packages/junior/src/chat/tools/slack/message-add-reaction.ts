@@ -3,10 +3,11 @@ import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { addReactionToMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackMessageAddReactionTool(
-  context: ToolRuntimeContext,
+  context: SlackToolContext,
   state: ToolState,
 ) {
   return tool({
@@ -22,12 +23,6 @@ export function createSlackMessageAddReactionTool(
     }),
     execute: async ({ emoji }) => {
       const targetChannelId = context.channelId;
-      if (!targetChannelId) {
-        return {
-          ok: false,
-          error: "No active channel context is available for reactions",
-        };
-      }
       const targetMessageTs = context.messageTs;
       if (!targetMessageTs) {
         return {

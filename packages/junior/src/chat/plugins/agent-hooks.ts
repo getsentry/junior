@@ -15,6 +15,7 @@ import { createAgentPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import { getSlackToolContext } from "@/chat/tools/slack/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -150,28 +151,29 @@ export function getAgentPluginTools(
     }
     const log = createAgentPluginLogger(plugin.name);
     const destination = context.destination;
-    const credentialSubject =
-      destination.platform === "slack"
-        ? createSlackDirectCredentialSubject({
-            channelId: destination.channelId,
-            teamId: destination.teamId,
-            userId:
-              context.requester?.platform === "slack"
-                ? context.requester.userId
-                : undefined,
-          })
-        : undefined;
+    const slackToolContext = getSlackToolContext(context);
+    const credentialSubject = slackToolContext
+      ? createSlackDirectCredentialSubject({
+          channelId: slackToolContext.channelId,
+          teamId: slackToolContext.teamId,
+          userId: slackToolContext.requester?.userId,
+        })
+      : undefined;
     const slackContext: SlackToolRegistrationHookContext | undefined =
-      destination.platform === "slack"
+      slackToolContext
         ? {
             channelCapabilities: resolveChannelCapabilities(
-              destination.channelId,
+              slackToolContext.channelId,
             ),
-            channelId: destination.channelId,
+            channelId: slackToolContext.channelId,
             ...(credentialSubject ? { credentialSubject } : {}),
-            ...(context.messageTs ? { messageTs: context.messageTs } : {}),
-            teamId: destination.teamId,
-            ...(context.threadTs ? { threadTs: context.threadTs } : {}),
+            ...(slackToolContext.messageTs
+              ? { messageTs: slackToolContext.messageTs }
+              : {}),
+            teamId: slackToolContext.teamId,
+            ...(slackToolContext.threadTs
+              ? { threadTs: slackToolContext.threadTs }
+              : {}),
           }
         : undefined;
     const pluginContext =

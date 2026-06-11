@@ -1,12 +1,20 @@
 import type { FileUpload } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type {
+  Destination,
+  LocalDestination,
+  SlackDestination,
+} from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
-import type { Requester } from "@/chat/requester";
+import type {
+  LocalRequester,
+  Requester,
+  SlackRequester,
+} from "@/chat/requester";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -43,22 +51,8 @@ export interface ToolHooks {
   };
 }
 
-export interface ToolRuntimeContext {
+interface BaseToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
-  /**
-   * Raw Slack channel/conversation container for this turn: `C...`, `D...`,
-   * or `G...`. Never overridden by assistant context. Stable binding key for
-   * state scoped to a Slack conversation. Passed to plugin hooks as-is via
-   * `ToolRegistrationHookContext.slack.channelId`.
-   */
-  channelId?: string;
-
-  /**
-   * Slack channel used by first-class delivery tools when assistant context
-   * points at a source channel different from the raw conversation channel.
-   */
-  deliveryChannelId?: string;
-
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
@@ -71,15 +65,40 @@ export interface ToolRuntimeContext {
   destination: Destination;
 
   requester?: Requester;
-  teamId?: string;
-  messageTs?: string;
-  threadTs?: string;
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   mcpToolManager?: McpToolManager;
   sandbox: SandboxWorkspace;
 }
+
+interface SlackToolRuntimeHints {
+  /**
+   * Slack delivery override when assistant context points at a source channel
+   * different from the raw destination channel.
+   */
+  deliveryChannelId?: string;
+  /** Current inbound Slack message timestamp for reaction tools. */
+  messageTs?: string;
+  /** Current inbound Slack thread timestamp for hook context. */
+  threadTs?: string;
+}
+
+interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: SlackDestination;
+  requester?: SlackRequester;
+  slack?: SlackToolRuntimeHints;
+}
+
+interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: LocalDestination;
+  requester?: LocalRequester;
+  slack?: never;
+}
+
+export type ToolRuntimeContext =
+  | LocalToolRuntimeContext
+  | SlackToolRuntimeContext;
 
 export interface ToolState {
   artifactState: ThreadArtifactsState;

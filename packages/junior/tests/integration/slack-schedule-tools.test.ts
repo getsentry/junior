@@ -1110,13 +1110,11 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getAgentPluginTools({
-        channelId: "DDM",
         destination: {
           platform: "slack",
           teamId: TEAM_ID,
           channelId: "DDM",
         },
-        teamId: TEAM_ID,
         requester: {
           platform: "slack",
           teamId: TEAM_ID,

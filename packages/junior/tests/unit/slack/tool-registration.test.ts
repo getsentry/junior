@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTools } from "@/chat/tools";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 
-function ctx(channelId?: string) {
+function ctx(): Extract<
+  ToolRuntimeContext,
+  { destination: { platform: "local" } }
+>;
+function ctx(
+  channelId: string,
+): Extract<ToolRuntimeContext, { destination: { platform: "slack" } }>;
+function ctx(channelId?: string): ToolRuntimeContext {
   if (!channelId) {
     return {
       destination: {
@@ -16,13 +24,11 @@ function ctx(channelId?: string) {
   }
 
   return {
-    channelId,
     destination: {
       platform: "slack" as const,
       teamId: "T123",
       channelId,
     },
-    teamId: "T123",
     sandbox: noopSandbox,
   };
 }
@@ -60,7 +66,9 @@ describe("Slack tool registration", () => {
       {},
       {
         ...ctx("D12345"),
-        deliveryChannelId: "C12345",
+        slack: {
+          deliveryChannelId: "C12345",
+        },
       },
     );
 
@@ -82,7 +90,6 @@ describe("Slack tool registration", () => {
           teamId: "T123",
           channelId: "C12345",
         },
-        teamId: "T123",
         requester: {
           platform: "slack",
           teamId: "T123",
@@ -105,7 +112,6 @@ describe("Slack tool registration", () => {
       {},
       {
         ...ctx("C12345"),
-        teamId: "T123",
       },
     );
 

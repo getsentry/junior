@@ -9,9 +9,8 @@ import {
   SLACK_TS_PATTERN,
   parseSlackMessageReference,
 } from "@/chat/tools/slack/slack-message-url";
-import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
 import type { SlackThreadReply } from "@/chat/slack/channel";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 
 const MAX_THREAD_READ_CHARS = 40_000;
@@ -105,7 +104,7 @@ function checkChannelAccess(
 }
 
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool(context: ToolRuntimeContext) {
+export function createSlackThreadReadTool(context: SlackToolContext) {
   return tool({
     description:
       "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Public channel links can be read if the bot has access; private channels and DMs are only readable when they are the current conversation.",
@@ -175,10 +174,7 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
       }
 
       // Restrict private-thread reads to the active Slack delivery context.
-      const access = checkChannelAccess(
-        channelId,
-        getSlackDeliveryChannelId(context),
-      );
+      const access = checkChannelAccess(channelId, context.deliveryChannelId);
       if (!access.allowed) {
         return {
           ok: false,

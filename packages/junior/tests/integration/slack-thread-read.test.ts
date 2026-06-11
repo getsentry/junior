@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -9,8 +9,8 @@ import {
 } from "../msw/handlers/slack-api";
 
 function createContext(
-  overrides: Partial<ToolRuntimeContext> = {},
-): ToolRuntimeContext {
+  overrides: Partial<SlackToolContext> = {},
+): SlackToolContext {
   const channelId = overrides.channelId ?? "C_CURRENT";
   return {
     channelId,
@@ -19,7 +19,8 @@ function createContext(
       teamId: "T123",
       channelId,
     },
-    sandbox: {} as any,
+    deliveryChannelId: overrides.deliveryChannelId ?? channelId,
+    teamId: "T123",
     ...overrides,
   };
 }

@@ -32,7 +32,7 @@ For context-bound side-effect tools, target selection is owned by the harness/ru
 
 Examples:
 
-- First-class Slack delivery tools (channel post, canvas create, list messages, and thread reads) resolve their target channel from `ToolRuntimeContext.deliveryChannelId` when present, otherwise the raw Slack channel in `ToolRuntimeContext.destination.channelId`. Slack message reactions use the raw destination channel because they target the current inbound Slack message.
+- First-class Slack delivery tools (channel post, canvas create, list messages, and thread reads) resolve their target channel from `ToolRuntimeContext.slack.deliveryChannelId` when present, otherwise the raw Slack channel in `ToolRuntimeContext.destination.channelId`. Slack message reactions use the raw destination channel because they target the current inbound Slack message.
 - Plugin tools receive `ToolRegistrationHookContext.destination` as Junior's shared `Destination` contract for provider-neutral side effects. When `destination.platform === "slack"`, plugins also receive Slack-specific context at `ToolRegistrationHookContext.slack`, including `slack.channelId` and `slack.channelCapabilities`. Local hook contexts must not include `slack`.
 - List follow-up operations resolve target artifacts from harness-managed artifact state (`lastListId`, turn-created IDs).
 - Slack Canvas document operations use explicit file-like handles (`canvas`). Canvas IDs and URLs may be attempted directly; Slack file permissions and Canvas metadata decide whether the operation can proceed.
@@ -47,7 +47,7 @@ Examples:
 
 ## Slack-Specific Targeting Rules
 
-1. Channel-scoped Slack delivery tools use `ToolRuntimeContext.deliveryChannelId ?? ToolRuntimeContext.destination.channelId` as the delivery target. The model cannot override this.
+1. Channel-scoped Slack delivery tools use `ToolRuntimeContext.slack.deliveryChannelId ?? ToolRuntimeContext.destination.channelId` as the delivery target. The model cannot override this.
 2. Canvas creation uses the active Slack delivery context (`C*`/`G*`/`D*`) without model-provided destination overrides.
 3. Canvas read/edit/write tools are document tools: `canvas` is analogous to a file path, accepts a Slack canvas/file ID or URL, and must not expose Slack section IDs or section lookup criteria.
 4. Canvas edit uses exact markdown replacements against the current body; Canvas write is explicit full-document replacement. Slack section-scoped mutation APIs are implementation details, not model-facing contracts.

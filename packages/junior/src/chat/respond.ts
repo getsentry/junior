@@ -57,6 +57,7 @@ import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type {
   ImageGenerateToolDeps,
+  ToolRuntimeContext,
   WebFetchToolDeps,
   WebSearchToolDeps,
 } from "@/chat/tools/types";
@@ -941,7 +942,6 @@ export async function generateAssistantReply(
         ? context.destination
         : undefined;
     const slackChannelId = slackDestination?.channelId;
-    const slackTeamId = slackDestination?.teamId;
 
     const mcpAuth = createMcpAuthOrchestration(
       {
@@ -1005,6 +1005,47 @@ export async function generateAssistantReply(
         skill.disableModelInvocation !== true ||
         skill.name === invokedSkill?.name,
     );
+    const commonToolRuntimeContext = {
+      conversationId: sessionConversationId,
+      userText: userInput,
+      artifactState: context.artifactState,
+      configuration: configurationValues,
+      mcpToolManager: turnMcpToolManager,
+      sandbox,
+      advisor: {
+        config: botConfig.advisor,
+        conversationId: sessionConversationId,
+        conversationPrivacy,
+        logContext: spanContext,
+        getTools: () => advisorTools,
+        streamFn: createTracedStreamFn({ conversationPrivacy }),
+      },
+    };
+    const toolRuntimeContext: ToolRuntimeContext =
+      context.destination.platform === "slack"
+        ? {
+            ...commonToolRuntimeContext,
+            destination: context.destination,
+            requester:
+              actorRequester?.platform === "slack" ? actorRequester : undefined,
+            slack: {
+              ...(context.toolChannelId
+                ? { deliveryChannelId: context.toolChannelId }
+                : {}),
+              ...(context.correlation?.messageTs
+                ? { messageTs: context.correlation.messageTs }
+                : {}),
+              ...(context.correlation?.threadTs
+                ? { threadTs: context.correlation.threadTs }
+                : {}),
+            },
+          }
+        : {
+            ...commonToolRuntimeContext,
+            destination: context.destination,
+            requester:
+              actorRequester?.platform === "local" ? actorRequester : undefined,
+          };
     const tools = createTools(
       loadableSkills,
       {
@@ -1058,29 +1099,7 @@ export async function generateAssistantReply(
           };
         },
       },
-      {
-        channelId: slackChannelId,
-        conversationId: sessionConversationId,
-        deliveryChannelId: context.toolChannelId,
-        destination: context.destination,
-        requester: actorRequester,
-        teamId: slackTeamId,
-        messageTs: context.correlation?.messageTs,
-        threadTs: context.correlation?.threadTs,
-        userText: userInput,
-        artifactState: context.artifactState,
-        configuration: configurationValues,
-        mcpToolManager: turnMcpToolManager,
-        sandbox,
-        advisor: {
-          config: botConfig.advisor,
-          conversationId: sessionConversationId,
-          conversationPrivacy,
-          logContext: spanContext,
-          getTools: () => advisorTools,
-          streamFn: createTracedStreamFn({ conversationPrivacy }),
-        },
-      },
+      toolRuntimeContext,
     );
 
     const toolGuidance = Object.entries(

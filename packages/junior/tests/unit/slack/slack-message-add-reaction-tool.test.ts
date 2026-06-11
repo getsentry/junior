@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
 
 const addReactionToMessage = vi.fn();
 
@@ -7,16 +8,17 @@ vi.mock("@/chat/slack/outbound", () => ({
   addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
 }));
 
-const TEST_SLACK_CONTEXT = {
+const TEST_SLACK_CONTEXT: SlackToolContext = {
   channelId: "C123",
   destination: {
     platform: "slack",
     teamId: "T123",
     channelId: "C123",
   },
+  deliveryChannelId: "C123",
   messageTs: "1700000000.100",
-  sandbox: {} as any,
-} as const;
+  teamId: "T123",
+};
 
 function createState() {
   const cache = new Map<string, unknown>();

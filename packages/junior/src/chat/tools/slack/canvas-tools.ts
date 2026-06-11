@@ -9,7 +9,7 @@ import {
 } from "@/chat/tools/slack/canvases";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
 import { logError, logWarn } from "@/chat/logging";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
@@ -20,7 +20,7 @@ import {
   type TextReplacement,
 } from "@/chat/tools/sandbox/text-edits";
 import type { CanvasArtifactSummary } from "@/chat/state/artifacts";
-import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tools/types";
 
 const MAX_RECENT_CANVASES = 5;
 
@@ -95,7 +95,7 @@ const editReplacementSchema = Type.Object(
 
 /** Create a tool that provisions a new Slack canvas in the active channel. */
 export function createSlackCanvasCreateTool(
-  context: ToolRuntimeContext,
+  context: SlackToolContext,
   state: ToolState,
 ) {
   return tool({
@@ -113,7 +113,7 @@ export function createSlackCanvasCreateTool(
       }),
     }),
     execute: async ({ title, markdown }) => {
-      const targetChannelId = getSlackDeliveryChannelId(context);
+      const targetChannelId = context.deliveryChannelId;
       if (!isConversationScopedChannel(targetChannelId)) {
         logError(
           "slack_canvas_create_invalid_context",

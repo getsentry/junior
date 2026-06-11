@@ -4,6 +4,7 @@ import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
 import { SlackActionError } from "@/chat/slack/client";
 import type { ToolState } from "@/chat/tools/types";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
 import {
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -48,7 +49,7 @@ function createToolState(
 
 const noopSandbox = {} as any;
 
-function slackContext(channelId: string) {
+function slackContext(channelId: string): SlackToolContext {
   return {
     channelId,
     destination: {
@@ -56,7 +57,8 @@ function slackContext(channelId: string) {
       teamId: "T123",
       channelId,
     },
-    sandbox: noopSandbox,
+    deliveryChannelId: channelId,
+    teamId: "T123",
   };
 }
 
@@ -218,7 +220,10 @@ describe("tool idempotency", () => {
 
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool(LOCAL_CONTEXT, state);
+    const tool = createSlackCanvasCreateTool(
+      LOCAL_CONTEXT as unknown as SlackToolContext,
+      state,
+    );
 
     await expect(
       executeTool(tool, {

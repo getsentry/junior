@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
-import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { ToolState } from "@/chat/tools/types";
 import {
   chatGetPermalinkOk,
   chatPostMessageOk,
@@ -34,19 +35,20 @@ function createToolState(): ToolState {
 }
 
 function createContext(
-  userText: string,
-  overrides: Partial<ToolRuntimeContext> = {},
-): ToolRuntimeContext {
+  _userText: string,
+  overrides: Partial<SlackToolContext> = {},
+): SlackToolContext {
+  const channelId = overrides.channelId ?? "C123";
   return {
-    channelId: "C123",
     destination: {
       platform: "slack",
       teamId: "T123",
-      channelId: "C123",
+      channelId,
     },
+    channelId,
+    deliveryChannelId: overrides.deliveryChannelId ?? channelId,
     messageTs: "1700000000.321",
-    userText,
-    sandbox: {} as any,
+    teamId: "T123",
     ...overrides,
   };
 }

@@ -14,7 +14,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
-import { getSlackDeliveryChannelId } from "@/chat/tools/slack/context";
+import { getSlackToolContext } from "@/chat/tools/slack/context";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
   createSlackCanvasCreateTool,
@@ -118,39 +118,43 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  if (context.destination.platform === "slack") {
+  const slackContext = getSlackToolContext(context);
+  if (slackContext) {
     tools.slackCanvasRead = createSlackCanvasReadTool();
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
-    tools.slackThreadRead = createSlackThreadReadTool(context);
+    tools.slackThreadRead = createSlackThreadReadTool(slackContext);
     tools.slackUserLookup = createSlackUserLookupTool();
     tools.slackListCreate = createSlackListCreateTool(state);
     tools.slackListAddItems = createSlackListAddItemsTool(state);
     tools.slackListGetItems = createSlackListGetItemsTool(state);
     tools.slackListUpdateItem = createSlackListUpdateItemTool(state);
 
-    const outputChannelId = getSlackDeliveryChannelId(context);
+    const outputChannelId = slackContext.deliveryChannelId;
     const outputCapabilities = resolveChannelCapabilities(outputChannelId);
     const rawChannelCapabilities = resolveChannelCapabilities(
-      context.destination.channelId,
+      slackContext.channelId,
     );
 
     if (outputCapabilities.canCreateCanvas) {
-      tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
+      tools.slackCanvasCreate = createSlackCanvasCreateTool(
+        slackContext,
+        state,
+      );
     }
 
     if (outputCapabilities.canPostToChannel) {
       tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
-        context,
+        slackContext,
         state,
       );
       tools.slackChannelListMessages =
-        createSlackChannelListMessagesTool(context);
+        createSlackChannelListMessagesTool(slackContext);
     }
 
     if (rawChannelCapabilities.canAddReactions) {
       tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
-        context,
+        slackContext,
         state,
       );
     }
