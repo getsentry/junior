@@ -1,7 +1,10 @@
 import { PassThrough, Writable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AssistantReply } from "@/chat/respond";
 import { CHAT_USAGE, runChat } from "@/cli/chat";
+import type {
+  LocalAgentReply,
+  LocalAgentTurnResult,
+} from "@/chat/local/runner";
 
 const runner = vi.hoisted(() => ({
   runLocalAgentTurn: vi.fn(),
@@ -11,24 +14,17 @@ vi.mock("@/chat/local/runner", () => ({
   runLocalAgentTurn: runner.runLocalAgentTurn,
 }));
 
-function reply(outcome: AssistantReply["diagnostics"]["outcome"]): {
+function reply(outcome: LocalAgentTurnResult["outcome"]): {
   conversationId: string;
-  reply: AssistantReply;
+  outcome: LocalAgentTurnResult["outcome"];
+  reply: LocalAgentReply;
 } {
   return {
     conversationId: "local:test:default",
+    outcome,
     reply: {
       text: outcome === "success" ? "hello" : "failed",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "test",
-        outcome,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    } satisfies AssistantReply,
+    },
   };
 }
 

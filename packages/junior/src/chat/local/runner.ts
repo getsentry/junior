@@ -32,19 +32,25 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
-import type { Destination } from "@sentry/junior-plugin-api";
+import {
+  localDestinationSchema,
+  type LocalDestination,
+} from "@sentry/junior-plugin-api";
 
 const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
 
 export interface LocalAgentTurnInput {
-  conversationAlias: string;
   conversationId: string;
   message: string;
-  mode: "interactive" | "once";
+}
+
+export interface LocalAgentReply {
+  files?: AssistantReply["files"];
+  text: string;
 }
 
 export interface LocalAgentTurnDeps {
-  deliverReply: (reply: AssistantReply) => Promise<void>;
+  deliverReply: (reply: LocalAgentReply) => Promise<void>;
   generateAssistantReply?: typeof generateAssistantReplyImpl;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
@@ -53,18 +59,29 @@ export interface LocalAgentTurnDeps {
 
 export interface LocalAgentTurnResult {
   conversationId: string;
-  reply: AssistantReply;
+  outcome: AssistantReply["diagnostics"]["outcome"];
 }
 
-function localDestination(conversationId: string): Destination {
-  return {
+function localDestination(conversationId: string): LocalDestination {
+  const parsed = localDestinationSchema.safeParse({
     platform: "local",
     conversationId,
-  };
+  });
+  if (!parsed.success) {
+    throw new Error("Invalid local conversation id");
+  }
+  return parsed.data;
 }
 
 function localTurnId(sequence: number): string {
   return `local-turn-${sequence}`;
+}
+
+function localReply(reply: AssistantReply): LocalAgentReply {
+  return {
+    ...(reply.files ? { files: reply.files } : {}),
+    text: reply.text,
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -80,6 +97,7 @@ function nextUserMessageSequence(
   );
 }
 
+/** Load durable Pi projection first; fallback only preserves pre-session-log local state. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
   fallback: ReturnType<typeof coerceThreadConversationState>["piMessages"];
@@ -94,6 +112,7 @@ async function loadLocalPiMessages(args: {
   return args.fallback.length > 0 ? [...args.fallback] : undefined;
 }
 
+/** Persist the post-delivery completion state, retrying transient state writes. */
 async function persistDeliveredLocalTurnState(
   conversationId: string,
   patch: Parameters<typeof persistThreadStateById>[1],
@@ -129,6 +148,7 @@ export async function runLocalAgentTurn(
   if (!deps.deliverReply) {
     throw new Error("Local reply delivery is required");
   }
+  const destination = localDestination(input.conversationId);
 
   const generateAssistantReply =
     deps.generateAssistantReply ?? generateAssistantReplyImpl;
@@ -188,7 +208,7 @@ export async function runLocalAgentTurn(
       credentialContext: {
         actor: { type: "system", id: "local-cli" },
       },
-      destination: localDestination(input.conversationId),
+      destination,
       piMessages,
       surface: "internal",
       correlation: {
@@ -232,7 +252,7 @@ export async function runLocalAgentTurn(
       sessionId: turnId,
       userMessageId,
     });
-    await deps.deliverReply(reply);
+    await deps.deliverReply(localReply(reply));
   } catch (error) {
     if (reply) {
       await commitMessages({
@@ -268,6 +288,6 @@ export async function runLocalAgentTurn(
 
   return {
     conversationId: input.conversationId,
-    reply,
+    outcome: reply.diagnostics.outcome,
   };
 }

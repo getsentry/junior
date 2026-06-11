@@ -11,8 +11,8 @@ import {
   stdout as defaultStdout,
 } from "node:process";
 import * as readline from "node:readline/promises";
-import type { AssistantReply } from "@/chat/respond";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
+import type { LocalAgentReply } from "@/chat/local/runner";
 
 export const CHAT_USAGE =
   "usage: junior chat [--conversation <name>]\n       junior chat [--conversation <name>] --once <message>";
@@ -48,7 +48,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function deliverReply(io: ChatIo, reply: AssistantReply): Promise<void> {
+/** Deliver text-only local replies and turn unsupported files/output errors into failed delivery. */
+async function deliverReply(io: ChatIo, reply: LocalAgentReply): Promise<void> {
   try {
     const files = reply.files ?? [];
     if (files.length > 0) {
@@ -145,7 +146,7 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
   return { conversation, ...(message ? { message } : {}), mode };
 }
 
-function formatReply(reply: AssistantReply): string {
+function formatReply(reply: LocalAgentReply): string {
   const lines: string[] = [];
   const text = reply.text.trim();
   if (text) {
@@ -170,10 +171,8 @@ async function runOnce(
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const result = await runLocalAgentTurn(
     {
-      conversationAlias: options.conversation,
       conversationId,
       message: options.message,
-      mode: "once",
     },
     {
       deliverReply: async (reply) => {
@@ -184,7 +183,7 @@ async function runOnce(
       },
     },
   );
-  return result.reply.diagnostics.outcome === "success" ? 0 : 1;
+  return result.outcome === "success" ? 0 : 1;
 }
 
 async function runInteractive(
@@ -217,10 +216,8 @@ async function runInteractive(
       try {
         await runLocalAgentTurn(
           {
-            conversationAlias: options.conversation,
             conversationId,
             message,
-            mode: "interactive",
           },
           {
             deliverReply: async (reply) => {

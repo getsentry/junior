@@ -49,10 +49,8 @@ describe("local agent runner", () => {
 
     await runLocalAgentTurn(
       {
-        conversationAlias: "demo",
         conversationId: conversationId!,
         message: "hello",
-        mode: "once",
       },
       {
         deliverReply: async (reply) => {
@@ -126,10 +124,8 @@ describe("local agent runner", () => {
 
     await runLocalAgentTurn(
       {
-        conversationAlias: "followup",
         conversationId: conversationId!,
         message: "first question",
-        mode: "once",
       },
       {
         deliverReply: async () => undefined,
@@ -138,10 +134,8 @@ describe("local agent runner", () => {
     );
     await runLocalAgentTurn(
       {
-        conversationAlias: "followup",
         conversationId: conversationId!,
         message: "second question",
-        mode: "once",
       },
       {
         deliverReply: async () => undefined,
@@ -178,10 +172,8 @@ describe("local agent runner", () => {
     await expect(
       runLocalAgentTurn(
         {
-          conversationAlias: "missing-delivery",
           conversationId: conversationId!,
           message: "hello",
-          mode: "once",
         },
         {
           generateAssistantReply: generateReply,
@@ -193,6 +185,25 @@ describe("local agent runner", () => {
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
     expect(conversation.messages).toEqual([]);
+  });
+
+  it("rejects malformed local conversation ids before generation", async () => {
+    const generateReply = vi.fn<typeof generateAssistantReply>(async () => {
+      throw new Error("generation should not run");
+    });
+
+    await expect(
+      runLocalAgentTurn(
+        {
+          conversationId: "slack:C123:123.456",
+          message: "hello",
+        },
+        {
+          deliverReply: async () => undefined,
+          generateAssistantReply: generateReply,
+        },
+      ),
+    ).rejects.toThrow("Invalid local conversation id");
   });
 
   it("uses durable Pi projection for follow-up local turns", async () => {
@@ -221,10 +232,8 @@ describe("local agent runner", () => {
 
     await runLocalAgentTurn(
       {
-        conversationAlias: "pi-history",
         conversationId: conversationId!,
         message: "follow up",
-        mode: "once",
       },
       {
         deliverReply: async () => undefined,
@@ -268,10 +277,8 @@ describe("local agent runner", () => {
     await expect(
       runLocalAgentTurn(
         {
-          conversationAlias: "delivery-pi-rollback",
           conversationId: conversationId!,
           message: "hello",
-          mode: "once",
         },
         {
           deliverReply: async () => {

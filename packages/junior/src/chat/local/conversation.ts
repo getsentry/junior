@@ -11,6 +11,7 @@ function slugifyConversationAlias(alias: string): string | undefined {
   return trimmed.toLowerCase().replaceAll(".", "-");
 }
 
+/** Hash the resolved cwd into the stable workspace segment of local conversation ids. */
 function workspaceKey(cwd: string): string {
   return createHash("sha256")
     .update(path.resolve(cwd))

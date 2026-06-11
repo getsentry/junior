@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-06-10
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -40,7 +40,7 @@ the primary architecture by themselves.
 
 ```mermaid
 flowchart TD
-  A[Platform event or local CLI input] --> B[Platform adapter normalization and classification]
+  A[Platform event] --> B[Platform adapter normalization and classification]
   B --> C[Append to durable conversation mailbox]
   C --> D[Send Vercel Queue nudge: conversationId + Destination]
   D --> E[Queue worker acquires conversation lease]
@@ -49,6 +49,8 @@ flowchart TD
   E --> E3[Append drained input and attachment metadata to session log]
   E --> F[runtime/reply-executor]
   F --> G[Restore Pi state from reduced session log]
+  LA[Local CLI input] --> LB[Direct local runner: persist local turn and load state]
+  LB --> G
   G --> J[respond.ts generateAssistantReply / continue]
   J --> K[Build prompt context from durable conversation, config, artifacts, sandbox, attachments]
   K --> L[Pi agent continue loop]
@@ -77,16 +79,17 @@ flowchart TD
 
 Normative rules:
 
-1. Platform adapters parse and classify source events, append them to the durable mailbox, and send a queue nudge. They must not decide agent behavior beyond source-specific routing such as Slack mention/subscribed classification.
+1. Mailbox-backed platform adapters parse and classify source events, append them to the durable mailbox, and send a queue nudge. They must not decide agent behavior beyond source-specific routing such as Slack mention/subscribed classification.
 2. The task execution layer owns queue wake-ups, conversation leases, worker check-ins, and heartbeat recovery. Chat SDK queue/lock semantics are not canonical.
-3. The mailbox worker is the only point that drains inbound messages into persisted agent session context.
-4. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
-5. Tool calls and tool failures are internal agent-loop data until the assistant produces final run diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
-6. User-visible assistant text is posted only after the reply is finalized and planned for destination delivery.
-7. Final run success is defined by the destination delivery port accepting the visible final reply, not by model generation completing. Slack acceptance is one destination implementation.
-8. Agent recovery is session continuation: reload durable thread state plus the reduced session log, then continue the same session. It must not create a second active run or re-run from transient process memory.
-9. Cooperative yield at safe agent-loop boundaries is the normal accommodation for Vercel execution limits. Platform death is recovered by queue redelivery and heartbeat repair from the latest durable session boundary.
-10. Assistant status and logs are observability/UX surfaces. They never substitute for persisted session recovery or final reply delivery.
+3. The first-pass local CLI adapter uses the direct local runner from [Local Agent Spec](./local-agent.md). It must not claim mailbox-backed local source semantics until a local mailbox ingress contract exists.
+4. The mailbox worker is the only point that drains inbound messages into persisted agent session context for mailbox-backed paths.
+5. `respond.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
+6. Tool calls and tool failures are internal agent-loop data until the assistant produces final run diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
+7. User-visible assistant text is posted only after the reply is finalized and planned for destination delivery.
+8. Final run success is defined by the destination delivery port accepting the visible final reply, not by model generation completing. Slack acceptance is one destination implementation.
+9. Agent recovery is session continuation: reload durable thread state plus the reduced session log, then continue the same session. It must not create a second active run or re-run from transient process memory.
+10. Cooperative yield at safe agent-loop boundaries is the normal accommodation for Vercel execution limits. Platform death is recovered by queue redelivery and heartbeat repair from the latest durable session boundary.
+11. Assistant status and logs are observability/UX surfaces. They never substitute for persisted session recovery or final reply delivery.
 
 Data authority by stage:
 
@@ -97,7 +100,7 @@ Data authority by stage:
 | Conversation API/index rows             | Conversation record + `conversation:by-activity` index | Source for dashboard/API conversation lists; do not rebuild the primary list by grouping agent-run rows.                           |
 | Active execution discovery              | `conversation:active` index + conversation record      | Heartbeat discovers stale active conversations here, then uses the record to decide whether to enqueue a nudge.                    |
 | Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final destination delivery.              |
-| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries.                                                      |
+| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries for mailbox-backed paths.                             |
 | Pi execution transcript                 | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible conversation transcript. |
 | Sandbox/artifact state                  | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                               |
 | Pending auth                            | Auth-owned callback state plus session-log pause event | Auth pauses end the live run after private link delivery and are resumed by callback.                                              |
