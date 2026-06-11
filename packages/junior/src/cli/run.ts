@@ -17,13 +17,18 @@ const DEFAULT_IO: CliIo = {
   error: console.error,
 };
 
+/** Strip Node's leading argv separator while preserving command-level flags. */
+function normalizeCliArgv(argv: string[]): string[] {
+  return argv[0] === "--" ? argv.slice(1) : argv;
+}
+
 /** Dispatch CLI arguments to command handlers and return a process exit code. */
 export async function runCli(
   argv: string[],
   handlers: CliHandlers,
   io: CliIo = DEFAULT_IO,
 ): Promise<number> {
-  const [command, subcommand, ...rest] = argv;
+  const [command, subcommand, ...rest] = normalizeCliArgv(argv);
 
   if (command === "chat") {
     return await handlers.runChat(

@@ -86,6 +86,27 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
   });
 
+  it("ignores a leading node argv separator before the command", async () => {
+    const cliHandlers = handlers();
+
+    const exitCode = await runCli(
+      ["--", "chat", "--conversation", "demo", "--once", "hello"],
+      cliHandlers,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(cliHandlers.runChat).toHaveBeenCalledWith([
+      "--conversation",
+      "demo",
+      "--once",
+      "hello",
+    ]);
+    expect(cliHandlers.runInit).not.toHaveBeenCalled();
+    expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
+    expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
+  });
+
   it("returns usage for invalid argv forms", async () => {
     const cliHandlers = handlers();
     const lines: string[] = [];
