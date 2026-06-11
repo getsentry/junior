@@ -33,6 +33,8 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { loadProjection } from "@/chat/state/session-log";
 import type { Destination } from "@sentry/junior-plugin-api";
 
+const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
+
 export interface LocalAgentTurnInput {
   conversationAlias: string;
   conversationId: string;
@@ -64,6 +66,10 @@ function localTurnId(sequence: number): string {
   return `local-turn-${sequence}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function nextUserMessageSequence(
   conversation: ReturnType<typeof coerceThreadConversationState>,
 ): number {
@@ -85,6 +91,29 @@ async function loadLocalPiMessages(args: {
   }
 
   return args.fallback.length > 0 ? [...args.fallback] : undefined;
+}
+
+async function persistDeliveredLocalTurnState(
+  conversationId: string,
+  patch: Parameters<typeof persistThreadStateById>[1],
+): Promise<void> {
+  let lastError: unknown;
+  for (
+    let attempt = 1;
+    attempt <= DELIVERED_STATE_PERSIST_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await persistThreadStateById(conversationId, patch);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DELIVERED_STATE_PERSIST_ATTEMPTS) {
+        await sleep(attempt * 100);
+      }
+    }
+  }
+  throw lastError;
 }
 
 /** Run one local CLI message through Junior's shared agent reply boundary. */
@@ -136,6 +165,7 @@ export async function runLocalAgentTurn(
   await persistThreadStateById(input.conversationId, { conversation });
 
   let reply: AssistantReply;
+  let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
   try {
     const piMessages = await loadLocalPiMessages({
       conversationId: input.conversationId,
@@ -155,7 +185,6 @@ export async function runLocalAgentTurn(
       surface: "internal",
       correlation: {
         conversationId: input.conversationId,
-        threadId: input.conversationId,
         turnId,
         runId: turnId,
       },
@@ -188,6 +217,13 @@ export async function runLocalAgentTurn(
       onTextDelta: deps.onTextDelta,
     });
 
+    completedState = buildDeliveredTurnStatePatch({
+      artifacts,
+      conversation,
+      reply,
+      sessionId: turnId,
+      userMessageId,
+    });
     await deps.deliverReply(reply);
   } catch (error) {
     markTurnFailed({
@@ -202,14 +238,7 @@ export async function runLocalAgentTurn(
     throw error;
   }
 
-  const completedState = buildDeliveredTurnStatePatch({
-    artifacts,
-    conversation,
-    reply,
-    sessionId: turnId,
-    userMessageId,
-  });
-  await persistThreadStateById(input.conversationId, {
+  await persistDeliveredLocalTurnState(input.conversationId, {
     artifacts: completedState.artifacts ?? artifacts,
     conversation: completedState.conversation,
     sandboxId: reply.sandboxId ?? sandboxId,

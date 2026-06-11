@@ -176,8 +176,9 @@ Rules:
 
 1. Users may ask the agent to inspect files by path in the message text.
 2. The local adapter must not synthesize Slack file attachments.
-3. Generated files returned by the agent should be reported with filenames and
-   paths in the terminal output.
+3. Generated files returned by the agent fail delivery in the first local
+   adapter. The runner must not commit assistant state for a reply whose files
+   were not delivered.
 4. A later attachment UX must add explicit local attachment parsing and update
    this spec before implementation.
 

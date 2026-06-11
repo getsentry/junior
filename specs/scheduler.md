@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-18
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -47,8 +47,8 @@ The stored task must include:
 
 The original user utterance may be retained for audit/debugging, but it must not be the sole execution input.
 
-Scheduled task destinations use Junior's shared `Destination` contract, not existing threads. For Slack, a scheduled task targets the raw Slack conversation channel in `ToolRegistrationHookContext.destination` — the DM or channel where the user is interacting with Junior — not the assistant-context source channel, current message timestamp, or thread timestamp. Scheduled output posts as a new message in that destination.
-The scheduler must parse active and stored destinations with the strict shared `Destination` schema from `@sentry/junior-plugin-api`. Unknown destination fields, missing required destination fields, legacy thread-shaped ids, and non-Slack team/channel ids are invalid rather than normalized during scheduler tool execution or store reads.
+Scheduled task destinations use Junior's strict shared Slack destination contract, not existing threads. A scheduled task targets the raw Slack conversation channel in `ToolRegistrationHookContext.destination` — the DM or channel where the user is interacting with Junior — not the assistant-context source channel, current message timestamp, or thread timestamp. Scheduled output posts as a new message in that destination.
+The scheduler must parse active and stored destinations with the strict shared Slack destination schema from `@sentry/junior-plugin-api`. Unknown destination fields, missing required destination fields, legacy thread-shaped ids, and non-Slack team/channel ids are invalid rather than normalized during scheduler tool execution or store reads.
 When the scheduler stores an explicit delegated credential subject, it must parse that subject with the strict shared plugin credential-subject schema. Runtime-owned bindings or signatures must never be stored in scheduler task state.
 Each scheduled execution gets fresh dispatch-scoped conversation state. The runner must not load destination-level Slack conversation history as prior thread context for a scheduled run that is creating its own new message.
 

@@ -75,6 +75,7 @@ describe("local agent runner", () => {
     expect(contexts[0]?.requester).toBeUndefined();
     expect(contexts[0]?.slackConversation).toBeUndefined();
     expect(contexts[0]?.correlation?.channelId).toBeUndefined();
+    expect(contexts[0]?.correlation?.threadId).toBeUndefined();
     expect(delivered).toEqual(["hello from local"]);
 
     const state = await getPersistedThreadState(conversationId!);

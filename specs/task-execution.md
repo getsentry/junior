@@ -48,7 +48,7 @@ The durable execution model uses these terms precisely:
 - **Conversation**: the thread-level or session-level container identified by
   `conversationId`. For Slack, this is a normalized thread identity such as
   `slack:<channel_id>:<thread_ts>`. For local CLI, this is a normalized local
-  session identity such as `local:<session_id>`.
+  session identity such as `local:<workspace_key>:<conversation_slug>`.
 - **Inbound message**: one normalized source event that should be made
   available to the agent. Slack messages, local CLI prompts, scheduler prompts,
   and plugin dispatch prompts all become inbound messages.
@@ -119,7 +119,8 @@ Normative rules:
 
 `conversationId` is the execution key. For Slack, it must be a stable normalized
 thread identity such as `slack:<channel_id>:<thread_ts>`. For local CLI, it must
-be a stable normalized session identity such as `local:<session_id>`.
+be a stable normalized session identity such as
+`local:<workspace_key>:<conversation_slug>`.
 
 `inboundMessageId` is the idempotency key for one normalized inbound message.
 For Slack, it should be derived from the Slack team, channel, message timestamp,

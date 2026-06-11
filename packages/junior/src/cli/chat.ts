@@ -50,6 +50,17 @@ function errorMessage(error: unknown): string {
 
 async function deliverReply(io: ChatIo, reply: AssistantReply): Promise<void> {
   try {
+    const files = reply.files ?? [];
+    if (files.length > 0) {
+      const names = files
+        .map((file) =>
+          typeof file.filename === "string" && file.filename.trim()
+            ? file.filename
+            : "generated file",
+        )
+        .join(", ");
+      throw new Error(`Local chat cannot deliver files yet: ${names}`);
+    }
     await io.write(formatReply(reply));
   } catch (error) {
     throw new ChatOutputError(error);
@@ -88,8 +99,8 @@ function defaultStateAdapterForLocalChat(): void {
 
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
   let conversation = "default";
-  let message: string | undefined;
   let mode: ChatCommandOptions["mode"] = "interactive";
+  const messageParts: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -104,15 +115,26 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
     }
 
     if (arg === "--once") {
-      const rest = argv.slice(index + 1);
-      if (rest.length === 0) {
+      if (mode === "once") {
         return undefined;
       }
-      message = rest.join(" ");
       mode = "once";
-      break;
+      continue;
     }
 
+    if (mode === "once") {
+      messageParts.push(arg);
+      continue;
+    }
+
+    return undefined;
+  }
+
+  const message =
+    mode === "once" && messageParts.length > 0
+      ? messageParts.join(" ")
+      : undefined;
+  if (mode === "once" && !message) {
     return undefined;
   }
 
@@ -128,14 +150,6 @@ function formatReply(reply: AssistantReply): string {
   const text = reply.text.trim();
   if (text) {
     lines.push(text);
-  }
-
-  for (const file of reply.files ?? []) {
-    const filename =
-      typeof file.filename === "string" && file.filename.trim()
-        ? file.filename
-        : "generated file";
-    lines.push(`Generated file: ${filename}`);
   }
 
   return `${lines.join("\n") || "[empty response]"}\n`;

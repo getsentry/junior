@@ -11,7 +11,10 @@ vi.mock("@/chat/local/runner", () => ({
   runLocalAgentTurn: runner.runLocalAgentTurn,
 }));
 
-function reply(outcome: AssistantReply["diagnostics"]["outcome"]) {
+function reply(outcome: AssistantReply["diagnostics"]["outcome"]): {
+  conversationId: string;
+  reply: AssistantReply;
+} {
   return {
     conversationId: "local:test:default",
     reply: {
@@ -97,6 +100,32 @@ describe("chat cli", () => {
     );
   });
 
+  it("accepts conversation after the once message", async () => {
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(
+      await runChat(["--once", "hello", "--conversation", "later"], io),
+    ).toBe(0);
+    expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: expect.stringMatching(/:later$/),
+        message: "hello",
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("returns failure for a failed once reply after delivery", async () => {
     const output: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
@@ -135,6 +164,30 @@ describe("chat cli", () => {
 
     expect(await runChat(["--once", "hello"], io)).toBe(1);
     expect(io.error).toHaveBeenCalledWith("stdout closed");
+  });
+
+  it("returns failure when a once reply contains files", async () => {
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      result.reply.files = [
+        { data: Buffer.from("report"), filename: "report.txt" },
+      ];
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(await runChat(["--once", "hello"], io)).toBe(1);
+    expect(io.write).not.toHaveBeenCalled();
+    expect(io.error).toHaveBeenCalledWith(
+      "Local chat cannot deliver files yet: report.txt",
+    );
   });
 
   it("continues interactive chat after a turn error", async () => {

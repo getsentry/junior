@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-11
 
 ## Purpose
 
@@ -48,7 +48,7 @@ type DispatchOptions = {
     userId: string;
     allowedWhen: "private-direct-conversation";
   };
-  destination: Destination;
+  destination: SlackDestination;
   input: string;
   metadata?: Record<string, string>;
 };

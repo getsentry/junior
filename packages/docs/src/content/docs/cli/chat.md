@@ -40,7 +40,7 @@ pnpm exec junior chat --conversation docs-review
 | `--once <message>`      | Sends one message, prints the response, and exits.            |
 | `--conversation <name>` | Uses a stable local conversation name. Defaults to `default`. |
 
-Conversation names may contain letters, numbers, dots, underscores, and hyphens. Junior scopes local conversation ids to the current working directory, so the same name in two projects does not collide.
+Conversation names must start with a letter or number, may contain letters, numbers, dots, underscores, and hyphens, and may be at most 64 characters long. Junior lowercases names and normalizes dots to hyphens when building the stored conversation id. Junior scopes local conversation ids to the current working directory, so the same name in two projects does not collide.
 
 ## State and environment
 
