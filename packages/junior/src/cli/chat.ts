@@ -17,10 +17,9 @@ import type { LocalAgentReply } from "@/chat/local/runner";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
 
-export interface ChatCommandOptions {
-  message?: string;
-  mode: "interactive" | "once";
-}
+export type ChatCommandOptions =
+  | { mode: "interactive" }
+  | { message: string; mode: "prompt" };
 
 export interface ChatIo {
   error: (line: string) => Promise<void> | void;
@@ -111,7 +110,7 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
     return undefined;
   }
 
-  return { message, mode: "once" };
+  return { message, mode: "prompt" };
 }
 
 function formatReply(reply: LocalAgentReply): string {
@@ -124,6 +123,7 @@ function formatReply(reply: LocalAgentReply): string {
   return `${lines.join("\n") || "[empty response]"}\n`;
 }
 
+/** Create a fresh local conversation id for one CLI process invocation. */
 function newRunConversationId(): string {
   const conversationId = normalizeLocalConversationId({
     alias: `run-${randomUUID()}`,
@@ -134,8 +134,8 @@ function newRunConversationId(): string {
   return conversationId;
 }
 
-async function runOnce(
-  options: ChatCommandOptions & { message: string },
+async function runPrompt(
+  options: Extract<ChatCommandOptions, { mode: "prompt" }>,
   io: ChatIo,
 ): Promise<number> {
   defaultStateAdapterForLocalChat();
@@ -217,15 +217,8 @@ export async function runChat(
   }
 
   try {
-    if (options.mode === "once") {
-      if (!options.message) {
-        await io.error(CHAT_USAGE);
-        return 1;
-      }
-      return await runOnce(
-        options as ChatCommandOptions & { message: string },
-        io,
-      );
+    if (options.mode === "prompt") {
+      return await runPrompt(options, io);
     }
     await runInteractive(io);
     return 0;

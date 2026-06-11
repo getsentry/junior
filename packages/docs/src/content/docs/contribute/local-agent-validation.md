@@ -98,7 +98,7 @@ Local validation proves that the shared agent path can run without Slack:
 - the prompt reaches the agent runtime
 - the local destination is not Slack-shaped
 - tools and plugins run with the configured local environment
-- visible conversation context survives within the selected local conversation
+- visible conversation context survives within one interactive local process
 - terminal delivery succeeds for text replies
 
 Keep the usual focused tests for deterministic contracts. Use Slack-specific
@@ -116,7 +116,7 @@ If local validation fails, use the first matching symptom:
 | ------------------------------- | ---------------------------------------------------------------- |
 | Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.     |
 | Missing provider credentials    | Configure the plugin/provider env required by the changed path.  |
-| State does not persist          | Set `REDIS_URL`; memory state is process-local.                  |
+| Context resets between commands | Expected; use one interactive `junior chat` process for context. |
 | Generated files fail delivery   | Expected in the first local adapter; validate file UX elsewhere. |
 | Slack-specific behavior changed | Use the Slack specs and Slack integration tests instead.         |
 

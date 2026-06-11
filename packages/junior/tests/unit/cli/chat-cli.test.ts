@@ -20,7 +20,7 @@ function reply(outcome: LocalAgentTurnResult["outcome"]): {
   reply: LocalAgentReply;
 } {
   return {
-    conversationId: "local:test:default",
+    conversationId: "local:test:run-test",
     outcome,
     reply: {
       text: outcome === "success" ? "hello" : "failed",
@@ -52,7 +52,7 @@ describe("chat cli", () => {
     expect(lines).toEqual([CHAT_USAGE, CHAT_USAGE, CHAT_USAGE, CHAT_USAGE]);
   });
 
-  it("returns success for a successful once reply", async () => {
+  it("returns success for a successful prompt reply", async () => {
     const output: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
@@ -80,6 +80,32 @@ describe("chat cli", () => {
     );
   });
 
+  it("uses a fresh local conversation for each prompt invocation", async () => {
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: vi.fn(),
+      input: process.stdin,
+      output: process.stdout,
+      write: vi.fn(),
+    };
+
+    expect(await runChat(["-p", "first"], io)).toBe(0);
+    expect(await runChat(["-p", "second"], io)).toBe(0);
+
+    const firstConversationId =
+      runner.runLocalAgentTurn.mock.calls[0]?.[0].conversationId;
+    const secondConversationId =
+      runner.runLocalAgentTurn.mock.calls[1]?.[0].conversationId;
+    expect(firstConversationId).toMatch(/:run-[a-f0-9-]+$/);
+    expect(secondConversationId).toMatch(/:run-[a-f0-9-]+$/);
+    expect(secondConversationId).not.toBe(firstConversationId);
+  });
+
   it("accepts flag-like tokens as prompt message text", async () => {
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
@@ -103,7 +129,7 @@ describe("chat cli", () => {
     );
   });
 
-  it("returns failure for a failed once reply after delivery", async () => {
+  it("returns failure for a failed prompt reply after delivery", async () => {
     const output: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("provider_error");
@@ -124,7 +150,7 @@ describe("chat cli", () => {
     expect(output).toEqual(["failed\n"]);
   });
 
-  it("returns failure when once delivery fails", async () => {
+  it("returns failure when prompt delivery fails", async () => {
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       await deps.deliverReply(reply("success").reply);
       return reply("success");
@@ -143,7 +169,7 @@ describe("chat cli", () => {
     expect(io.error).toHaveBeenCalledWith("stdout closed");
   });
 
-  it("returns failure when a once reply contains files", async () => {
+  it("returns failure when a prompt reply contains files", async () => {
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
       result.reply.files = [
@@ -176,6 +202,7 @@ describe("chat cli", () => {
       },
     });
     runner.runLocalAgentTurn.mockRejectedValueOnce(new Error("turn failed"));
+    runner.runLocalAgentTurn.mockResolvedValueOnce(reply("success"));
 
     const pending = runChat([], {
       error: (line) => {
@@ -187,19 +214,22 @@ describe("chat cli", () => {
     });
     input.write("hello\n");
     await new Promise((resolve) => setImmediate(resolve));
+    input.write("again\n");
+    await new Promise((resolve) => setImmediate(resolve));
     input.write("/exit\n");
     input.end();
 
     const code = await pending;
     expect(code).toBe(0);
     expect(errors).toEqual(["turn failed"]);
-    expect(runner.runLocalAgentTurn).toHaveBeenCalledTimes(1);
-    expect(runner.runLocalAgentTurn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: expect.stringMatching(/:run-[a-f0-9-]+$/),
-        message: "hello",
-      }),
-      expect.any(Object),
-    );
+    expect(runner.runLocalAgentTurn).toHaveBeenCalledTimes(2);
+    const firstConversationId =
+      runner.runLocalAgentTurn.mock.calls[0]?.[0].conversationId;
+    const secondConversationId =
+      runner.runLocalAgentTurn.mock.calls[1]?.[0].conversationId;
+    expect(firstConversationId).toMatch(/:run-[a-f0-9-]+$/);
+    expect(secondConversationId).toBe(firstConversationId);
+    expect(runner.runLocalAgentTurn.mock.calls[0]?.[0].message).toBe("hello");
+    expect(runner.runLocalAgentTurn.mock.calls[1]?.[0].message).toBe("again");
   });
 });

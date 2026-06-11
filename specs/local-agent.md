@@ -69,7 +69,8 @@ Rules:
 1. The prompt reads one user message at a time from stdin.
 2. Empty input is ignored.
 3. `/exit` and `/quit` end the loop without creating an inbound message.
-4. Each non-empty user message is sent to the same selected local conversation.
+4. Each non-empty user message is sent to the same process-scoped local
+   conversation.
 5. The assistant reply may stream to stdout as deltas arrive.
 6. The finalized assistant reply is the delivered output recorded in
    conversation state.
@@ -228,8 +229,7 @@ Required attributes when available:
 - `app.conversation.id`
 - `app.conversation.source` = `local`
 - `app.destination.platform` = `local`
-- `app.local.conversation_alias`
-- `app.local.command_mode` = `interactive|once`
+- `app.local.command_mode` = `interactive|prompt`
 - `app.actor.type` = `system`
 - `app.actor.id` = `local-cli`
 - `gen_ai.request.model`
@@ -244,8 +244,8 @@ Layer choice follows `./testing.md`.
 
 Required checks:
 
-1. Unit: local conversation aliases normalize to `local:<workspace_key>:<slug>`
-   and reject invalid names.
+1. Unit: local conversation ids normalize to `local:<workspace_key>:<slug>`
+   for generated run slugs.
 2. Unit: CLI argument parsing accepts the supported command forms and rejects
    unsupported forms without side effects.
 3. Integration: `junior chat -p "hello"` reaches the shared conversation
@@ -253,8 +253,9 @@ Required checks:
    Slack requester.
 4. Integration: local CLI does not construct Slack `Thread`, Slack `Message`, or
    Slack adapter wrappers.
-5. Integration: two messages in the same local conversation preserve visible
-   conversation context.
+5. Integration: two messages in the same interactive process preserve visible
+   conversation context, while separate CLI invocations start fresh local
+   conversations.
 6. Integration: missing user-bound auth produces a local error and does not
    start Slack OAuth or ephemeral-message delivery.
 7. Integration: invalid arguments print usage and exit non-zero without creating

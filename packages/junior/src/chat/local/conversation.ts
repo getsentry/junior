@@ -21,17 +21,12 @@ function workspaceKey(cwd: string): string {
 
 /** Normalize a local CLI conversation alias into the durable conversation id. */
 export function normalizeLocalConversationId(input: {
-  alias?: string;
+  alias: string;
   cwd?: string;
 }): string | undefined {
-  const slug = slugifyConversationAlias(input.alias ?? "default");
+  const slug = slugifyConversationAlias(input.alias);
   if (!slug) {
     return undefined;
   }
   return `local:${workspaceKey(input.cwd ?? process.cwd())}:${slug}`;
-}
-
-/** Return whether a user-facing local conversation alias is accepted. */
-export function isLocalConversationAlias(value: string): boolean {
-  return Boolean(slugifyConversationAlias(value));
 }
