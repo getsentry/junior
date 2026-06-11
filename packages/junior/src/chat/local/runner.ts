@@ -36,7 +36,7 @@ export interface LocalAgentTurnInput {
 }
 
 export interface LocalAgentTurnDeps {
-  deliverReply?: (reply: AssistantReply) => Promise<void>;
+  deliverReply: (reply: AssistantReply) => Promise<void>;
   generateAssistantReply?: typeof generateAssistantReplyImpl;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
@@ -71,11 +71,14 @@ function nextUserMessageSequence(
 /** Run one local CLI message through Junior's shared agent reply boundary. */
 export async function runLocalAgentTurn(
   input: LocalAgentTurnInput,
-  deps: LocalAgentTurnDeps = {},
+  deps: LocalAgentTurnDeps,
 ): Promise<LocalAgentTurnResult> {
   const text = input.message.trim();
   if (!text) {
     throw new Error("Local agent message must not be empty");
+  }
+  if (!deps.deliverReply) {
+    throw new Error("Local reply delivery is required");
   }
 
   const generateAssistantReply =
@@ -161,7 +164,7 @@ export async function runLocalAgentTurn(
       onTextDelta: deps.onTextDelta,
     });
 
-    await deps.deliverReply?.(reply);
+    await deps.deliverReply(reply);
 
     const completedState = buildDeliveredTurnStatePatch({
       artifacts,

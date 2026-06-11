@@ -124,7 +124,10 @@ describe("local agent runner", () => {
         message: "first question",
         mode: "once",
       },
-      { generateAssistantReply: generateReply },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: generateReply,
+      },
     );
     await runLocalAgentTurn(
       {
@@ -133,7 +136,10 @@ describe("local agent runner", () => {
         message: "second question",
         mode: "once",
       },
-      { generateAssistantReply: generateReply },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: generateReply,
+      },
     );
 
     expect(contexts[1]?.conversationContext).toContain("first question");
@@ -149,5 +155,36 @@ describe("local agent runner", () => {
       "second question",
       "reply to second question",
     ]);
+  });
+
+  it("requires local delivery before running a turn", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "missing-delivery",
+      cwd: "/tmp/local-agent-runner-three",
+    });
+    expect(conversationId).toBeDefined();
+
+    const generateReply = vi.fn<typeof generateAssistantReply>(async () =>
+      successReply("not delivered"),
+    );
+
+    await expect(
+      runLocalAgentTurn(
+        {
+          conversationAlias: "missing-delivery",
+          conversationId: conversationId!,
+          message: "hello",
+          mode: "once",
+        },
+        {
+          generateAssistantReply: generateReply,
+        } as unknown as Parameters<typeof runLocalAgentTurn>[1],
+      ),
+    ).rejects.toThrow("Local reply delivery is required");
+    expect(generateReply).not.toHaveBeenCalled();
+
+    const state = await getPersistedThreadState(conversationId!);
+    const conversation = coerceThreadConversationState(state);
+    expect(conversation.messages).toEqual([]);
   });
 });

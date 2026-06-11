@@ -37,6 +37,33 @@ const DEFAULT_IO: ChatIo = {
   write: (text) => writeStream(defaultStdout, text),
 };
 
+class ChatOutputError extends Error {
+  constructor(error: unknown) {
+    super(errorMessage(error));
+    this.name = "ChatOutputError";
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function deliverReply(io: ChatIo, reply: AssistantReply): Promise<void> {
+  try {
+    await io.write(formatReply(reply));
+  } catch (error) {
+    throw new ChatOutputError(error);
+  }
+}
+
+async function reportStatus(io: ChatIo, status: string): Promise<void> {
+  try {
+    await io.error(status);
+  } catch (error) {
+    throw new ChatOutputError(error);
+  }
+}
+
 function writeStream(
   stream: NodeJS.WritableStream,
   text: string,
@@ -136,10 +163,10 @@ async function runOnce(
     },
     {
       deliverReply: async (reply) => {
-        await io.write(formatReply(reply));
+        await deliverReply(io, reply);
       },
       onStatus: async (status) => {
-        await io.error(status);
+        await reportStatus(io, status);
       },
     },
   );
@@ -173,22 +200,29 @@ async function runInteractive(
       if (message === "/exit" || message === "/quit") {
         break;
       }
-      await runLocalAgentTurn(
-        {
-          conversationAlias: options.conversation,
-          conversationId,
-          message,
-          mode: "interactive",
-        },
-        {
-          deliverReply: async (reply) => {
-            await io.write(formatReply(reply));
+      try {
+        await runLocalAgentTurn(
+          {
+            conversationAlias: options.conversation,
+            conversationId,
+            message,
+            mode: "interactive",
           },
-          onStatus: async (status) => {
-            await io.error(status);
+          {
+            deliverReply: async (reply) => {
+              await deliverReply(io, reply);
+            },
+            onStatus: async (status) => {
+              await reportStatus(io, status);
+            },
           },
-        },
-      );
+        );
+      } catch (error) {
+        if (error instanceof ChatOutputError) {
+          throw error;
+        }
+        await reportStatus(io, errorMessage(error));
+      }
     }
   } finally {
     rl.close();
@@ -220,7 +254,7 @@ export async function runChat(
     await runInteractive(options, io);
     return 0;
   } catch (error) {
-    await io.error(error instanceof Error ? error.message : String(error));
+    await io.error(errorMessage(error));
     return 1;
   }
 }

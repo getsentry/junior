@@ -1,3 +1,4 @@
+import { PassThrough, Writable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantReply } from "@/chat/respond";
 import { CHAT_USAGE, runChat } from "@/cli/chat";
@@ -96,7 +97,7 @@ describe("chat cli", () => {
 
   it("returns failure when once delivery fails", async () => {
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
-      await deps.deliverReply?.(reply("success").reply);
+      await deps.deliverReply(reply("success").reply);
       return reply("success");
     });
 
@@ -111,5 +112,34 @@ describe("chat cli", () => {
 
     expect(await runChat(["--once", "hello"], io)).toBe(1);
     expect(io.error).toHaveBeenCalledWith("stdout closed");
+  });
+
+  it("continues interactive chat after a turn error", async () => {
+    const errors: string[] = [];
+    const input = new PassThrough();
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    runner.runLocalAgentTurn.mockRejectedValueOnce(new Error("turn failed"));
+
+    const pending = runChat([], {
+      error: (line) => {
+        errors.push(line);
+      },
+      input,
+      output,
+      write: vi.fn(),
+    });
+    input.write("hello\n");
+    await new Promise((resolve) => setImmediate(resolve));
+    input.write("/exit\n");
+    input.end();
+
+    const code = await pending;
+    expect(code).toBe(0);
+    expect(errors).toEqual(["turn failed"]);
+    expect(runner.runLocalAgentTurn).toHaveBeenCalledTimes(1);
   });
 });
