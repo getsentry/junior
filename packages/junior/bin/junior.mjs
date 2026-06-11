@@ -88,9 +88,7 @@ async function main() {
     runCheck,
     runUpgrade,
   });
-  if (exitCode !== 0) {
-    process.exit(exitCode);
-  }
+  process.exit(exitCode);
 }
 
 main().catch((error) => {

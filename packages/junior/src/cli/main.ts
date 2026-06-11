@@ -35,9 +35,7 @@ async function main(argv: string[]): Promise<void> {
     runCheck,
     runUpgrade,
   });
-  if (exitCode !== 0) {
-    process.exit(exitCode);
-  }
+  process.exit(exitCode);
 }
 
 main(process.argv.slice(2)).catch((error) => {
