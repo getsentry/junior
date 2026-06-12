@@ -91,6 +91,7 @@ describe("conversation work execution", () => {
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
+    expect(state?.execution.inboundMessageIds).toEqual(["m1"]);
     expect(state?.messages).toHaveLength(1);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(queue.sendAttempts()).toHaveLength(1);

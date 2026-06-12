@@ -259,7 +259,11 @@ export async function checkInConversationWork(args: {
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await workState.checkInConversationWork(args);
+  const result = await workState.checkInConversationWork(args);
+  if (result) {
+    await mirrorExecution(args);
+  }
+  return result;
 }
 
 /** Drain pending mailbox entries after the caller has durably injected them. */

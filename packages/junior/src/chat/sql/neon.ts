@@ -11,7 +11,12 @@ import { juniorSqlSchema } from "./schema";
 
 type QueryClient = Pool | PoolClient | Client;
 
-class NeonJuniorSqlExecutor implements JuniorSqlMigrationExecutor {
+/** Neon-backed SQL executor with an owned connection pool lifecycle. */
+export interface NeonJuniorSqlExecutor extends JuniorSqlMigrationExecutor {
+  close(): Promise<void>;
+}
+
+class NeonExecutor implements NeonJuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
 
   constructor(private readonly pool: Pool) {}
@@ -75,10 +80,10 @@ class NeonJuniorSqlExecutor implements JuniorSqlMigrationExecutor {
     try {
       await client.query("BEGIN");
       return await this.transactionClient.run(client, async () => {
-        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-          lockName,
-        ]);
         try {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+            lockName,
+          ]);
           const result = await callback();
           await client.query("COMMIT");
           return result;
@@ -92,6 +97,10 @@ class NeonJuniorSqlExecutor implements JuniorSqlMigrationExecutor {
     }
   }
 
+  async close(): Promise<void> {
+    await this.pool.end();
+  }
+
   private queryClient(): QueryClient {
     return this.transactionClient.getStore() ?? this.pool;
   }
@@ -100,8 +109,8 @@ class NeonJuniorSqlExecutor implements JuniorSqlMigrationExecutor {
 /** Create the shared Neon-backed Junior SQL executor. */
 export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
-}): JuniorSqlMigrationExecutor {
-  return new NeonJuniorSqlExecutor(
+}): NeonJuniorSqlExecutor {
+  return new NeonExecutor(
     new Pool({
       connectionString: args.connectionString,
       max: 3,

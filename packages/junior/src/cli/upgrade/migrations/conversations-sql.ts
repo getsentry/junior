@@ -33,33 +33,39 @@ export async function migrateConversationsToSql(
   }
 
   const source = createStateConversationStore(context.stateAdapter);
-  const target =
-    options.target ??
-    createSqlStore(
-      createNeonJuniorSqlExecutor({
-        connectionString: databaseUrl!,
-      }),
-    );
+  let target = options.target;
+  let closeTarget: (() => Promise<void>) | undefined;
+  if (!target) {
+    const executor = createNeonJuniorSqlExecutor({
+      connectionString: databaseUrl!,
+    });
+    target = createSqlStore(executor);
+    closeTarget = () => executor.close();
+  }
   const limit = Math.max(1, options.batchSize ?? CONVERSATION_BACKFILL_LIMIT);
   let copiedCount = 0;
   let hasMore = false;
-  do {
-    const result = await backfillToSql({
-      limit,
-      offset: copiedCount,
-      source,
-      target,
-    });
-    copiedCount += result.copiedCount;
-    hasMore = result.hasMore;
-  } while (hasMore);
+  try {
+    do {
+      const result = await backfillToSql({
+        limit,
+        offset: copiedCount,
+        source,
+        target,
+      });
+      copiedCount += result.copiedCount;
+      hasMore = result.hasMore;
+    } while (hasMore);
 
-  return {
-    existing: 0,
-    migrated: copiedCount,
-    missing: 0,
-    scanned: copiedCount,
-  };
+    return {
+      existing: 0,
+      migrated: copiedCount,
+      missing: 0,
+      scanned: copiedCount,
+    };
+  } finally {
+    await closeTarget?.();
+  }
 }
 
 export const sqlConversationMigration = {

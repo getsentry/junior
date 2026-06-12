@@ -1040,10 +1040,6 @@ export async function appendInboundMessage(args: {
             {
               ...current.execution,
               status: nextStatus,
-              inboundMessageIds: [
-                ...current.execution.inboundMessageIds,
-                args.message.inboundMessageId,
-              ],
             },
             nowMs,
           ),

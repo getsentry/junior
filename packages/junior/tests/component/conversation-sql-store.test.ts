@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { backfillToSql } from "@/chat/conversations/sql/backfill";
 import { createSqlStore, SqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
 import { appendInboundMessage } from "@/chat/task-execution/store";
+import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
@@ -13,7 +14,13 @@ import {
 } from "@/chat/sql/schema";
 import { eq } from "drizzle-orm";
 import { listRecentConversationSummaries } from "@/reporting/conversations";
-import { CONVERSATION_ID, inboundMessage } from "../fixtures/conversation-work";
+import {
+  CONVERSATION_ID,
+  conversationQueueMessage,
+  createConversationWorkQueueTestAdapter,
+  deferred,
+  inboundMessage,
+} from "../fixtures/conversation-work";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
@@ -285,6 +292,59 @@ INSERT INTO junior_conversations (
         }),
       ]);
     } finally {
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("mirrors worker check-ins into SQL execution progress", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      vi.useFakeTimers({ now: 1_000 });
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await appendInboundMessage({
+        message: inboundMessage("check-in"),
+        conversationStore: store,
+        nowMs: 1_000,
+        state,
+      });
+      const queue = createConversationWorkQueueTestAdapter();
+      const entered = deferred<void>();
+      const finish = deferred<void>();
+
+      const running = processConversationWork(conversationQueueMessage(), {
+        checkInIntervalMs: 15_000,
+        conversationStore: store,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          entered.resolve();
+          await finish.promise;
+          return { status: "completed" };
+        },
+        state,
+      });
+      await entered.promise;
+
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        execution: {
+          status: "running",
+          updatedAtMs: 16_000,
+        },
+      });
+
+      finish.resolve();
+      await expect(running).resolves.toEqual({ status: "completed" });
+    } finally {
+      vi.useRealTimers();
       await disconnectStateAdapter();
       await fixture.close();
     }
