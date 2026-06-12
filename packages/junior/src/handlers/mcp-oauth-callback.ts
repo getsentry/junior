@@ -364,7 +364,7 @@ async function resumeAuthorizedMcpTurn(args: {
           pendingAuth: lockedPendingAuth,
           channelConfiguration: lockedChannelConfiguration,
           sandbox: getPersistedSandboxState(lockedState),
-          onAuthPending: async (nextPendingAuth) => {
+          recordPendingAuth: async (nextPendingAuth) => {
             await applyPendingAuthUpdate({
               conversation: lockedConversation,
               conversationId: authSession.conversationId,

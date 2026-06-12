@@ -391,7 +391,7 @@ async function resumeOAuthSessionRecordTurn(
           channelConfiguration: lockedChannelConfiguration,
           piMessages: lockedConversation.piMessages,
           sandbox: getPersistedSandboxState(lockedState),
-          onAuthPending: async (nextPendingAuth) => {
+          recordPendingAuth: async (nextPendingAuth) => {
             await applyPendingAuthUpdate({
               conversation: lockedConversation,
               conversationId: stored.resumeConversationId!,

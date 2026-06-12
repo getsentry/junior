@@ -86,14 +86,12 @@ describe("createPluginAuthOrchestration", () => {
     });
 
     const tokens = tokenStore();
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokens,
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokens,
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({
@@ -122,14 +120,12 @@ describe("createPluginAuthOrchestration", () => {
     });
 
     const tokens = tokenStore();
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokens,
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokens,
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({
@@ -145,15 +141,13 @@ describe("createPluginAuthOrchestration", () => {
 
   it("returns AuthorizationFlowDisabledError when flow is disabled", async () => {
     const abortAgent = vi.fn();
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
-        authorizationFlowMode: "disabled",
-      },
+    const orchestration = createPluginAuthOrchestration({
       abortAgent,
-    );
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokenStore(),
+      authorizationFlowMode: "disabled",
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
@@ -164,13 +158,11 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("returns AuthorizationFlowDisabledError when no requester and flow is disabled", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        userMessage: "<scheduled-task-run />",
-        authorizationFlowMode: "disabled",
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      userMessage: "<scheduled-task-run />",
+      authorizationFlowMode: "disabled",
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
@@ -192,14 +184,12 @@ describe("createPluginAuthOrchestration", () => {
       order.push("unlink");
     });
 
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokens,
-      },
+    const orchestration = createPluginAuthOrchestration({
       abortAgent,
-    );
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokens,
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
@@ -210,17 +200,37 @@ describe("createPluginAuthOrchestration", () => {
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
+  it("fails before starting oauth when pending auth cannot be recorded", async () => {
+    const abortAgent = vi.fn();
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent,
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_new",
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokenStore(),
+    });
+
+    await expect(
+      orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
+    ).rejects.toThrow(
+      'Missing pending auth recorder for plugin authorization pause "sentry"',
+    );
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+    expect(abortAgent).not.toHaveBeenCalled();
+  });
+
   it("keeps the stored token when oauth start fails", async () => {
     startOAuthFlow.mockResolvedValue({ ok: false, error: "Missing base URL" });
 
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokenStore(),
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
@@ -236,14 +246,12 @@ describe("createPluginAuthOrchestration", () => {
     });
 
     const tokens = tokenStore();
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "push the branch",
-        userTokenStore: tokens,
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "push the branch",
+      userTokenStore: tokens,
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({
@@ -268,26 +276,24 @@ describe("createPluginAuthOrchestration", () => {
       ok: true,
       delivery: { channelId: "D123" },
     });
-    const onPendingAuth = vi.fn();
+    const recordPendingAuth = vi.fn();
 
-    const orchestration = createPluginAuthOrchestration(
-      {
-        conversationId: "slack:C123:1700000000.000000",
-        sessionId: "run_new",
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_new",
+      requesterId: "U123",
+      userMessage: "check Sentry",
+      userTokenStore: tokenStore(),
+      pendingAuth: {
+        kind: "plugin",
+        provider: "sentry",
         requesterId: "U123",
-        userMessage: "check Sentry",
-        userTokenStore: tokenStore(),
-        currentPendingAuth: {
-          kind: "plugin",
-          provider: "sentry",
-          requesterId: "U123",
-          sessionId: "run_old",
-          linkSentAtMs: Date.now(),
-        },
-        onPendingAuth,
+        sessionId: "run_old",
+        linkSentAtMs: Date.now(),
       },
-      vi.fn(),
-    );
+      recordPendingAuth,
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
@@ -299,7 +305,7 @@ describe("createPluginAuthOrchestration", () => {
         resumeSessionId: "run_new",
       }),
     );
-    expect(onPendingAuth).toHaveBeenCalledWith(
+    expect(recordPendingAuth).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "plugin",
         provider: "sentry",
@@ -311,14 +317,12 @@ describe("createPluginAuthOrchestration", () => {
 
   it("throws PluginCredentialFailureError for signals without oauth authorization", async () => {
     // Installation-read grant has no authorization field — not user-OAuth-able.
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "inspect a repo",
-        userTokenStore: tokenStore(),
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "inspect a repo",
+      userTokenStore: tokenStore(),
+    });
 
     await expectPluginCredentialFailure(
       orchestration.maybeHandleAuthSignal({
@@ -340,14 +344,12 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("preserves auth signal messages when no oauth authorization is available", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "inspect a repo",
-        userTokenStore: tokenStore(),
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "inspect a repo",
+      userTokenStore: tokenStore(),
+    });
 
     await expectPluginCredentialFailure(
       orchestration.maybeHandleAuthSignal({
@@ -365,14 +367,12 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("preserves unavailable auth signal messages without starting oauth", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "inspect a repo",
-        userTokenStore: tokenStore(),
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "inspect a repo",
+      userTokenStore: tokenStore(),
+    });
 
     await expectPluginCredentialFailure(
       orchestration.maybeHandleAuthSignal({
@@ -391,13 +391,11 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("preserves no-oauth auth signal messages when authorization flow is disabled", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        userMessage: "<scheduled-task-run />",
-        authorizationFlowMode: "disabled",
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      userMessage: "<scheduled-task-run />",
+      authorizationFlowMode: "disabled",
+    });
 
     await expectPluginCredentialFailure(
       orchestration.maybeHandleAuthSignal({
@@ -415,14 +413,12 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("no-ops when no auth_required field is in the result", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check GitHub",
-        userTokenStore: tokenStore(),
-      },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      requesterId: "U123",
+      userMessage: "check GitHub",
+      userTokenStore: tokenStore(),
+    });
 
     // exit_code non-zero, auth-like text — but no structured signal
     await expect(
@@ -436,10 +432,10 @@ describe("createPluginAuthOrchestration", () => {
   });
 
   it("no-ops when result is empty", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      { userMessage: "check Sentry" },
-      vi.fn(),
-    );
+    const orchestration = createPluginAuthOrchestration({
+      abortAgent: vi.fn(),
+      userMessage: "check Sentry",
+    });
 
     await expect(
       orchestration.maybeHandleAuthSignal({ exit_code: 0 }),
@@ -468,14 +464,12 @@ describe("createPluginAuthOrchestration", () => {
         },
       },
     ]) {
-      const orchestration = createPluginAuthOrchestration(
-        {
-          requesterId: "U123",
-          userMessage: "do something",
-          userTokenStore: tokenStore(),
-        },
-        vi.fn(),
-      );
+      const orchestration = createPluginAuthOrchestration({
+        abortAgent: vi.fn(),
+        requesterId: "U123",
+        userMessage: "do something",
+        userTokenStore: tokenStore(),
+      });
 
       await expect(
         orchestration.maybeHandleAuthSignal(input),

@@ -249,7 +249,7 @@ export interface ReplyRequestContext {
   ) => Promise<ReplySteeringMessage[]>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
-  onAuthPending?: (
+  recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -971,43 +971,39 @@ export async function generateAssistantReply(
         : undefined;
     const slackChannelId = slackDestination?.channelId;
 
-    const mcpAuth = createMcpAuthOrchestration(
-      {
-        conversationId: sessionConversationId,
-        sessionId,
-        requesterId: authRequesterId,
-        channelId: slackChannelId,
-        destination: context.destination,
-        threadTs: context.correlation?.threadTs,
-        toolChannelId: context.toolChannelId,
-        userMessage: userInput,
-        currentPendingAuth: context.pendingAuth,
-        getConfiguration: () => configurationValues,
-        getArtifactState: () => context.artifactState,
-        getMergedArtifactState: () =>
-          mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
-        onPendingAuth: context.onAuthPending,
-        authorizationFlowMode: context.authorizationFlowMode,
-      },
-      () => agent?.abort(),
-    );
-    const pluginAuth = createPluginAuthOrchestration(
-      {
-        conversationId: sessionConversationId,
-        sessionId,
-        requesterId: authRequesterId,
-        channelId: slackChannelId,
-        destination: context.destination,
-        threadTs: context.correlation?.threadTs,
-        userMessage: userInput,
-        channelConfiguration: context.channelConfiguration,
-        currentPendingAuth: context.pendingAuth,
-        onPendingAuth: context.onAuthPending,
-        authorizationFlowMode: context.authorizationFlowMode,
-        userTokenStore,
-      },
-      () => agent?.abort(),
-    );
+    const mcpAuth = createMcpAuthOrchestration({
+      abortAgent: () => agent?.abort(),
+      conversationId: sessionConversationId,
+      sessionId,
+      requesterId: authRequesterId,
+      channelId: slackChannelId,
+      destination: context.destination,
+      threadTs: context.correlation?.threadTs,
+      toolChannelId: context.toolChannelId,
+      userMessage: userInput,
+      pendingAuth: context.pendingAuth,
+      getConfiguration: () => configurationValues,
+      getArtifactState: () => context.artifactState,
+      getMergedArtifactState: () =>
+        mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
+      recordPendingAuth: context.recordPendingAuth,
+      authorizationFlowMode: context.authorizationFlowMode,
+    });
+    const pluginAuth = createPluginAuthOrchestration({
+      abortAgent: () => agent?.abort(),
+      conversationId: sessionConversationId,
+      sessionId,
+      requesterId: authRequesterId,
+      channelId: slackChannelId,
+      destination: context.destination,
+      threadTs: context.correlation?.threadTs,
+      userMessage: userInput,
+      channelConfiguration: context.channelConfiguration,
+      pendingAuth: context.pendingAuth,
+      recordPendingAuth: context.recordPendingAuth,
+      authorizationFlowMode: context.authorizationFlowMode,
+      userTokenStore,
+    });
 
     mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
       authProviderFactory: mcpAuth.authProviderFactory,

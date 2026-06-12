@@ -886,7 +886,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   artifacts: latestArtifacts,
                 });
               },
-              onAuthPending: async (pendingAuth) => {
+              recordPendingAuth: async (pendingAuth) => {
                 await applyPendingAuthUpdate({
                   conversation: preparedState.conversation,
                   conversationId,

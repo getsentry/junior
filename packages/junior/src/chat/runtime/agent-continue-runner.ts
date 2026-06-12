@@ -294,7 +294,7 @@ export async function continueSlackAgentRun(
             channelConfiguration,
             piMessages: conversation.piMessages,
             sandbox,
-            onAuthPending: async (nextPendingAuth) => {
+            recordPendingAuth: async (nextPendingAuth) => {
               await applyPendingAuthUpdate({
                 conversation,
                 conversationId: payload.conversationId,
