@@ -246,7 +246,7 @@ describe("upgrade CLI migrations", () => {
     }
   });
 
-  it("pages SQL conversation backfill until all retained conversations are copied", async () => {
+  it("copies a bounded SQL conversation backfill snapshot", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -273,14 +273,14 @@ describe("upgrade CLI migrations", () => {
         ),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 3,
+        migrated: 2,
         missing: 0,
-        scanned: 3,
+        scanned: 2,
+        skipped: 1,
       });
       await expect(sqlStore.listByActivity({ limit: 10 })).resolves.toEqual([
         expect.objectContaining({ conversationId: "slack:C123:page-2" }),
         expect.objectContaining({ conversationId: "slack:C123:page-1" }),
-        expect.objectContaining({ conversationId: "slack:C123:page-0" }),
       ]);
     } finally {
       await fixture.close();

@@ -241,7 +241,7 @@ INSERT INTO junior_conversations (
         limit: 10,
       });
 
-      expect(result).toEqual({ copiedCount: 1, hasMore: false });
+      expect(result).toEqual({ copiedCount: 1, truncated: false });
       const conversation = await target.get({
         conversationId: CONVERSATION_ID,
       });
@@ -257,6 +257,57 @@ INSERT INTO junior_conversations (
       expect(conversation?.execution).not.toHaveProperty("pendingMessages");
     } finally {
       await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("keeps newer SQL execution when a stale mirror arrives later", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          lastCheckpointAtMs: 5_000,
+          lastEnqueuedAtMs: 4_000,
+          runId: "run-new",
+          status: "running",
+          updatedAtMs: 5_000,
+        },
+        lastActivityAtMs: 5_000,
+        title: "Fresh execution",
+        updatedAtMs: 5_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-old",
+          status: "idle",
+          updatedAtMs: 4_000,
+        },
+        lastActivityAtMs: 6_000,
+        title: "Stale execution",
+        updatedAtMs: 4_000,
+      });
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        lastActivityAtMs: 6_000,
+        execution: {
+          lastCheckpointAtMs: 5_000,
+          lastEnqueuedAtMs: 4_000,
+          runId: "run-new",
+          status: "running",
+          updatedAtMs: 5_000,
+        },
+      });
+    } finally {
       await fixture.close();
     }
   });

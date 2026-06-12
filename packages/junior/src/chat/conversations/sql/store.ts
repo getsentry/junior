@@ -512,6 +512,9 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
+    const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
+    const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
+    const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
     const destinationId = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
@@ -582,12 +585,12 @@ export class SqlStore implements ConversationStore {
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
           lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
-          updatedAt: sql`excluded.updated_at`,
-          executionUpdatedAt: sql`excluded.execution_updated_at`,
-          executionStatus: sql`excluded.execution_status`,
-          runId: sql`excluded.run_id`,
-          lastCheckpointAt: sql`excluded.last_checkpoint_at`,
-          lastEnqueuedAt: sql`excluded.last_enqueued_at`,
+          updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
+          executionUpdatedAt: sql`case when ${incomingExecutionIsFresh} then excluded.execution_updated_at else ${juniorConversations.executionUpdatedAt} end`,
+          executionStatus: sql`case when ${incomingExecutionIsFresh} then excluded.execution_status else ${juniorConversations.executionStatus} end`,
+          runId: sql`case when ${incomingExecutionIsFresh} then excluded.run_id else ${juniorConversations.runId} end`,
+          lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then excluded.last_checkpoint_at else ${juniorConversations.lastCheckpointAt} end`,
+          lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then excluded.last_enqueued_at else ${juniorConversations.lastEnqueuedAt} end`,
         },
       });
   }

@@ -43,25 +43,19 @@ export async function migrateConversationsToSql(
     closeTarget = () => executor.close();
   }
   const limit = Math.max(1, options.batchSize ?? CONVERSATION_BACKFILL_LIMIT);
-  let copiedCount = 0;
-  let hasMore = false;
   try {
-    do {
-      const result = await backfillToSql({
-        limit,
-        offset: copiedCount,
-        source,
-        target,
-      });
-      copiedCount += result.copiedCount;
-      hasMore = result.hasMore;
-    } while (hasMore);
+    const result = await backfillToSql({
+      limit,
+      source,
+      target,
+    });
 
     return {
       existing: 0,
-      migrated: copiedCount,
+      migrated: result.copiedCount,
       missing: 0,
-      scanned: copiedCount,
+      scanned: result.copiedCount,
+      ...(result.truncated ? { skipped: 1 } : {}),
     };
   } finally {
     await closeTarget?.();
