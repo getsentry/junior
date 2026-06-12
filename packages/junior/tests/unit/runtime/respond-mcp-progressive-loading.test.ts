@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
 const {
   DEMO_SKILL,
@@ -15,6 +16,7 @@ const {
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
   omitFinalAssistantAfterTool,
+  pendingAuthRecords,
   pushPreToolAssistantMessage,
   promptCallCount,
   promptMessages,
@@ -43,6 +45,7 @@ const {
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
   omitFinalAssistantAfterTool: { value: false },
+  pendingAuthRecords: [] as ConversationPendingAuthState[],
   promptCallCount: { value: 0 },
   promptMessages: [] as unknown[],
   promptSeedMessages: [] as unknown[][],
@@ -108,6 +111,9 @@ function makeReplyContext(args: {
       channelId: "C123",
     },
     requester: TEST_REQUESTER,
+    recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
+      pendingAuthRecords.push(pendingAuth);
+    },
     correlation: {
       channelId: "C123",
       conversationId: args.conversationId,
@@ -600,6 +606,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
     omitFinalAssistantAfterTool.value = false;
+    pendingAuthRecords.length = 0;
     promptCallCount.value = 0;
     promptMessages.length = 0;
     promptSeedMessages.length = 0;
@@ -687,6 +694,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       toolName: "loadSkill",
     });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
+    expect(pendingAuthRecords).toEqual([
+      expect.objectContaining({
+        kind: "mcp",
+        provider: "demo",
+        requesterId: "U123",
+        sessionId: "turn-1",
+      }),
+    ]);
     expect(loadSkillExecutionErrorCount.value).toBe(0);
 
     const reply = await generateAssistantReply("help me", context);
@@ -1100,6 +1115,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
         channelId: "C123",
       },
       requester: TEST_REQUESTER,
+      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
+        pendingAuthRecords.push(pendingAuth);
+      },
       correlation: {
         conversationId: "conversation-3",
         turnId: "turn-3",
@@ -1190,6 +1208,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
         channelId: "C123",
       },
       requester: TEST_REQUESTER,
+      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
+        pendingAuthRecords.push(pendingAuth);
+      },
       correlation: {
         conversationId: "conversation-5",
         turnId: "turn-5",
@@ -1226,6 +1247,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
         channelId: "C123",
       },
       requester: TEST_REQUESTER,
+      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
+        pendingAuthRecords.push(pendingAuth);
+      },
       correlation: {
         conversationId: "conversation-6",
         turnId: "turn-6",
