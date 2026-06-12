@@ -29,7 +29,6 @@ export interface ConversationStore {
       ConversationExecution,
       | "lastCheckpointAtMs"
       | "lastEnqueuedAtMs"
-      | "lease"
       | "runId"
       | "status"
       | "updatedAtMs"

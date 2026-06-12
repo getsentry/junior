@@ -116,7 +116,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
 - `specs/terminology.md` (canonical execution vocabulary and historical turn naming rules)
 - `specs/task-execution.md` (durable conversation mailbox, queue wake-up, lease, and heartbeat execution contract)
-- `specs/conversation-metadata-storage.md` (SQL-backed queryable conversation metadata, transcript exclusions, and deploy-safe migration/backfill contract)
+- `specs/conversation-storage.md` (shared SQL-backed durable conversation records, transcript exclusions, and deploy-safe migration/backfill contract)
 - `specs/local-agent.md` (local CLI/local adapter user flows, identity, state, and delivery contract)
 - `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed runs, and completion)
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)

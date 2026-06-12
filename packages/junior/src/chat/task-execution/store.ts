@@ -86,7 +86,6 @@ async function recordConversationStatus(args: {
     execution: {
       lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
       lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
-      lease: conversation.execution.lease,
       runId: conversation.execution.runId,
       status: conversation.execution.status,
       updatedAtMs: conversation.execution.updatedAtMs,

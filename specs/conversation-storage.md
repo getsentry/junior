@@ -3,12 +3,12 @@
 ## Metadata
 
 - Created: 2026-06-11
-- Last Edited: 2026-06-11
+- Last Edited: 2026-06-12
 
 ## Purpose
 
-Define Junior's SQL-backed storage contract for queryable conversation records
-without moving transcript authorities into SQL.
+Define Junior's first SQL-backed storage contract for queryable conversation
+records without moving transcript authorities into SQL.
 
 This storage exists to support stats, dashboard lists, audit queries,
 conversation configuration, durable source/destination/identity metadata, and
@@ -39,7 +39,8 @@ deploy-safe schema evolution.
 
 ### Data Authorities
 
-SQL owns durable, queryable conversation records only.
+SQL owns durable, queryable Junior data. This spec covers the first
+feature-owned slice: conversation records and their long-term metadata.
 
 The transcript authorities from `./task-execution.md` remain unchanged:
 
@@ -108,10 +109,9 @@ transactional invariants:
   - `conversation_id`, `source`, origin fields, `destination_id`,
     role-specific identity references (`actor_identity_id`,
     `requester_identity_id`, `creator_identity_id`,
-    `credential_subject_identity_id`), provider detail JSON,
-    `channel_name`, `title`, `created_at`, `last_activity_at`, `updated_at`,
-    `execution_status`, `run_id`, checkpoint/enqueue timestamps, and optional
-    lease summary fields copied from state for diagnostics
+    `credential_subject_identity_id`), provider detail JSON, `channel_name`,
+    `title`, `created_at`, `last_activity_at`, `updated_at`,
+    `execution_status`, `run_id`, and checkpoint/enqueue timestamps
 
 Identities model provider-scoped principals, not just requesters. A Slack user
 turn may use the same identity row for actor and requester. Scheduled work uses
@@ -129,9 +129,10 @@ Opaque JSON columns are allowed for source-specific payloads that are not used
 for authorization, lock ownership, credential routing, or external side-effect
 authority.
 
-Inbound mailbox rows are not part of the SQL schema. Pending input payloads are
-temporary execution data and remain in the state-backed task-execution store
-until they are injected into the session log.
+Inbound mailbox rows and lease fields are not part of the SQL schema. Pending
+input payloads and active lease ownership are temporary execution data and
+remain in the state-backed task-execution store until they either become
+durable session-log entries or expire.
 
 ### Production Database
 

@@ -125,6 +125,7 @@ describe("conversation SQL migrations", () => {
     expect(ddl).not.toContain("thread-state");
     expect(ddl).not.toContain("agent-session-log");
     expect(ddl).not.toContain("inbound_messages");
+    expect(ddl).not.toContain("lease_");
     expect(ddl).not.toMatch(/\btranscript\b/i);
   });
 

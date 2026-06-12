@@ -10,7 +10,6 @@ import {
   type Conversation,
   type ConversationExecution,
   type ExecutionStatus,
-  type Lease,
   type Source,
 } from "@/chat/task-execution/state";
 import { migrateSchema } from "./migrations";
@@ -214,28 +213,6 @@ function executionStatusFromValue(value: unknown): ExecutionStatus {
   throw new Error("Conversation record execution status is invalid");
 }
 
-function leaseFromRow(row: ConversationRow): Lease | undefined {
-  if (!row.leaseToken) {
-    return undefined;
-  }
-  const acquiredAtMs = msFromDate(row.leaseAcquiredAt);
-  const lastCheckInAtMs = msFromDate(row.leaseLastCheckInAt);
-  const expiresAtMs = msFromDate(row.leaseExpiresAt);
-  if (
-    typeof acquiredAtMs !== "number" ||
-    typeof lastCheckInAtMs !== "number" ||
-    typeof expiresAtMs !== "number"
-  ) {
-    return undefined;
-  }
-  return {
-    token: row.leaseToken,
-    acquiredAtMs,
-    lastCheckInAtMs,
-    expiresAtMs,
-  };
-}
-
 function conversationFromRow(row: ConversationRow): Conversation {
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
@@ -252,7 +229,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
   if (row.source !== undefined && row.source !== null && !source) {
     throw new Error("Conversation record source is invalid");
   }
-  const lease = leaseFromRow(row);
   const execution: ConversationExecution = {
     status: executionStatusFromValue(row.executionStatus),
     inboundMessageIds: [],
@@ -260,7 +236,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
     pendingMessages: [],
     lastCheckpointAtMs: msFromDate(row.lastCheckpointAt),
     lastEnqueuedAtMs: msFromDate(row.lastEnqueuedAt),
-    ...(lease ? { lease } : {}),
     ...(row.runId ? { runId: row.runId } : {}),
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
@@ -411,7 +386,6 @@ export class SqlStore implements ConversationStore {
       ConversationExecution,
       | "lastCheckpointAtMs"
       | "lastEnqueuedAtMs"
-      | "lease"
       | "runId"
       | "status"
       | "updatedAtMs"
@@ -543,7 +517,6 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
-    const lease = conversation.execution.lease;
     const destinationId = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
@@ -596,10 +569,6 @@ export class SqlStore implements ConversationStore {
           conversation.execution.lastEnqueuedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
-        leaseToken: lease?.token ?? null,
-        leaseAcquiredAt: lease ? dateFromMs(lease.acquiredAtMs) : null,
-        leaseLastCheckInAt: lease ? dateFromMs(lease.lastCheckInAtMs) : null,
-        leaseExpiresAt: lease ? dateFromMs(lease.expiresAtMs) : null,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -624,10 +593,6 @@ export class SqlStore implements ConversationStore {
           runId: sql`excluded.run_id`,
           lastCheckpointAt: sql`excluded.last_checkpoint_at`,
           lastEnqueuedAt: sql`excluded.last_enqueued_at`,
-          leaseToken: sql`excluded.lease_token`,
-          leaseAcquiredAt: sql`excluded.lease_acquired_at`,
-          leaseLastCheckInAt: sql`excluded.lease_last_check_in_at`,
-          leaseExpiresAt: sql`excluded.lease_expires_at`,
         },
       });
   }

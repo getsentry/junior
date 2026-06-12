@@ -120,11 +120,7 @@ CREATE TABLE IF NOT EXISTS junior_conversations (
   execution_status TEXT NOT NULL,
   run_id TEXT,
   last_checkpoint_at TIMESTAMPTZ,
-  last_enqueued_at TIMESTAMPTZ,
-  lease_token TEXT,
-  lease_acquired_at TIMESTAMPTZ,
-  lease_last_check_in_at TIMESTAMPTZ,
-  lease_expires_at TIMESTAMPTZ
+  last_enqueued_at TIMESTAMPTZ
 )
 `,
   `

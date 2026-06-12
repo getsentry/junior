@@ -45,10 +45,6 @@ export const juniorConversations = pgTable(
     runId: text("run_id"),
     lastCheckpointAt: timestamptz("last_checkpoint_at"),
     lastEnqueuedAt: timestamptz("last_enqueued_at"),
-    leaseToken: text("lease_token"),
-    leaseAcquiredAt: timestamptz("lease_acquired_at"),
-    leaseLastCheckInAt: timestamptz("lease_last_check_in_at"),
-    leaseExpiresAt: timestamptz("lease_expires_at"),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(
