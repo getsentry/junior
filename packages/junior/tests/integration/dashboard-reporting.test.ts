@@ -419,13 +419,13 @@ describe("dashboard reporting", () => {
     const stats = await createJuniorReporting().getConversationStats();
 
     expect(stats).toMatchObject({
-      active: 0,
+      active: 1,
       conversations: 2,
       durationMs: 5_000,
       failed: 1,
       requesters: [
         {
-          active: 0,
+          active: 1,
           conversations: 2,
           durationMs: 4_000,
           failed: 0,

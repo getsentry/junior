@@ -17,7 +17,10 @@ import {
   juniorIdentities,
 } from "@/chat/sql/schema";
 import { eq } from "drizzle-orm";
-import { listRecentConversationSummaries } from "@/reporting/conversations";
+import {
+  listRecentConversationSummaries,
+  readConversationFeed,
+} from "@/reporting/conversations";
 import {
   CONVERSATION_ID,
   conversationQueueMessage,
@@ -381,6 +384,98 @@ INSERT INTO junior_conversations (
         }),
       ]);
     } finally {
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("keeps active turn-session status over idle SQL execution", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      vi.useFakeTimers({ now: 2_000 });
+      await disconnectStateAdapter();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("active-target").destination,
+        nowMs: 1_000,
+      });
+      await upsertAgentTurnSessionRecord({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("active-target").destination,
+        lastProgressAtMs: 1_500,
+        piMessages: [],
+        sessionId: "turn-active",
+        sliceId: 1,
+        state: "running",
+        surface: "slack",
+      });
+
+      await expect(
+        listRecentConversationSummaries({
+          limit: 1,
+          conversationStore: store,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          status: "active",
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("keeps hung turn-session progress over fresh SQL check-ins", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      vi.useFakeTimers({ now: 600_000 });
+      await disconnectStateAdapter();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        destination: inboundMessage("hung-target").destination,
+        execution: {
+          runId: "run-hung",
+          status: "running",
+          updatedAtMs: 600_000,
+        },
+        lastActivityAtMs: 600_000,
+        updatedAtMs: 600_000,
+      });
+      await upsertAgentTurnSessionRecord({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("hung-target").destination,
+        lastProgressAtMs: 1_000,
+        piMessages: [],
+        sessionId: "turn-hung",
+        sliceId: 1,
+        state: "running",
+        surface: "slack",
+      });
+
+      await expect(
+        readConversationFeed({ conversationStore: store }),
+      ).resolves.toMatchObject({
+        sessions: [
+          {
+            conversationId: CONVERSATION_ID,
+            lastProgressAt: new Date(1_000).toISOString(),
+            lastSeenAt: new Date(600_000).toISOString(),
+            status: "hung",
+          },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
       await disconnectStateAdapter();
       await fixture.close();
     }

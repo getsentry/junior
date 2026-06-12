@@ -366,10 +366,15 @@ function statusFromConversation(
   fallback: ConversationReportStatus | undefined,
   nowMs: number,
 ): ConversationReportStatus {
+  if (
+    fallback === "active" ||
+    fallback === "failed" ||
+    fallback === "hung" ||
+    fallback === "superseded"
+  ) {
+    return fallback;
+  }
   if (conversation.execution.status === "idle") {
-    if (fallback === "failed" || fallback === "superseded") {
-      return fallback;
-    }
     return "completed";
   }
   const updatedAtMs =
@@ -472,10 +477,6 @@ function applyConversationIndexMetadata(args: {
     reportTime(args.report.lastSeenAt) ?? 0,
     args.conversation.lastActivityAtMs,
   );
-  const lastProgressAtMs = Math.max(
-    reportTime(args.report.lastProgressAt) ?? 0,
-    args.conversation.execution.updatedAtMs ?? args.conversation.updatedAtMs,
-  );
   return {
     ...args.report,
     displayTitle: titleFromConversation({
@@ -485,7 +486,6 @@ function applyConversationIndexMetadata(args: {
     }),
     status,
     lastSeenAt: new Date(lastSeenAtMs).toISOString(),
-    lastProgressAt: new Date(lastProgressAtMs).toISOString(),
     surface,
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
