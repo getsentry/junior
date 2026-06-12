@@ -19,6 +19,7 @@ export default defineConfig({
     "lucide-react",
     "react",
     "react-dom",
+    "react-is",
     "react-router",
     "recharts",
     "shiki",

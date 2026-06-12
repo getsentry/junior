@@ -23,6 +23,7 @@
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-dashboard test",
+    "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
@@ -56,6 +57,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@spotlightjs/spotlight": "4.11.6",
     "agent-browser": "^0.27.0",
     "lint-staged": "^17.0.5",

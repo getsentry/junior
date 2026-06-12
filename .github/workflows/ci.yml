@@ -42,9 +42,11 @@ jobs:
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm release:check
       - run: pnpm lint
       - run: pnpm test:ci
+      - run: pnpm test:e2e:dashboard
       - run: pnpm --filter @sentry/junior-example build
       - run: pnpm docs:check
 

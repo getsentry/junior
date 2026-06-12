@@ -5,6 +5,7 @@ node_modules
 .env
 .env.local
 coverage
+.playwright
 *.tsbuildinfo
 .vercel
 .env*.local
