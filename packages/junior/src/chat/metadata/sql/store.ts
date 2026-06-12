@@ -1025,26 +1025,59 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
         const existing = await this.getConversation({
           conversationId: conversation.conversationId,
         });
-        if (!existing) {
-          await this.upsertConversation({ conversation });
+        const sourceExecutionAtMs =
+          conversation.execution.updatedAtMs ?? conversation.updatedAtMs;
+        const existingExecutionAtMs =
+          existing === undefined
+            ? undefined
+            : (existing.execution.updatedAtMs ?? existing.updatedAtMs);
+        const refreshExecutionFromSource =
+          existingExecutionAtMs === undefined ||
+          sourceExecutionAtMs >= existingExecutionAtMs;
+        const mergedConversation = existing
+          ? {
+              ...conversation,
+              channelName: existing.channelName ?? conversation.channelName,
+              createdAtMs: Math.min(
+                existing.createdAtMs,
+                conversation.createdAtMs,
+              ),
+              destination: existing.destination ?? conversation.destination,
+              lastActivityAtMs: Math.max(
+                existing.lastActivityAtMs,
+                conversation.lastActivityAtMs,
+              ),
+              requester: existing.requester ?? conversation.requester,
+              source: existing.source ?? conversation.source,
+              title: existing.title ?? conversation.title,
+              updatedAtMs: Math.max(
+                existing.updatedAtMs,
+                conversation.updatedAtMs,
+              ),
+              execution: refreshExecutionFromSource
+                ? conversation.execution
+                : existing.execution,
+            }
+          : conversation;
+        await this.upsertConversation({ conversation: mergedConversation });
+        if (!refreshExecutionFromSource) {
+          return;
         }
         const pendingIds = new Set(
           conversation.execution.pendingMessages.map(
             (message) => message.inboundMessageId,
           ),
         );
+        for (const message of conversation.execution.pendingMessages) {
+          await this.upsertInboundMessage(message);
+        }
         for (const inboundMessageId of conversation.execution
           .inboundMessageIds) {
-          if (existing || !pendingIds.has(inboundMessageId)) {
+          if (!pendingIds.has(inboundMessageId)) {
             await this.upsertSeenInboundMessage({
-              conversation,
+              conversation: mergedConversation,
               inboundMessageId,
             });
-          }
-        }
-        if (!existing) {
-          for (const message of conversation.execution.pendingMessages) {
-            await this.upsertInboundMessage(message);
           }
         }
       },

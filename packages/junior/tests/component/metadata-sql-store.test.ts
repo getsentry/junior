@@ -351,7 +351,7 @@ describe("conversation metadata SQL store", () => {
     }
   });
 
-  it("does not overwrite existing SQL conversation metadata during backfill", async () => {
+  it("refreshes existing SQL execution state during backfill", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -360,6 +360,80 @@ describe("conversation metadata SQL store", () => {
       const source = createStateConversationMetadataStore(state);
       await source.appendInboundMessage({
         message: inboundMessage("backfill-existing"),
+        nowMs: 1_000,
+      });
+      await source.recordConversationActivity({
+        conversationId: CONVERSATION_ID,
+        channelName: "state-channel",
+        title: "Stale state metadata",
+        nowMs: 1_500,
+      });
+
+      const target = createSqlConversationMetadataStore(fixture.executor);
+      await target.requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("target").destination,
+        nowMs: 500,
+      });
+      await target.recordConversationActivity({
+        conversationId: CONVERSATION_ID,
+        channelName: "sql-channel",
+        title: "Current SQL metadata",
+        nowMs: 600,
+      });
+      const started = await target.startConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 700,
+      });
+      expect(started.status).toBe("acquired");
+      if (started.status !== "acquired") {
+        return;
+      }
+
+      const result = await backfillConversationMetadataToSql({
+        source,
+        target,
+        limit: 10,
+      });
+
+      expect(result).toEqual({ copiedCount: 1, hasMore: false });
+      await expect(
+        target.getConversationWorkState({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        channelName: "sql-channel",
+        title: "Current SQL metadata",
+        execution: {
+          status: "pending",
+          pendingCount: 1,
+        },
+        messages: [
+          expect.objectContaining({
+            inboundMessageId:
+              inboundMessage("backfill-existing").inboundMessageId,
+          }),
+        ],
+      });
+      await expect(
+        target.appendInboundMessage({
+          message: inboundMessage("backfill-existing"),
+          nowMs: 7_000,
+        }),
+      ).resolves.toEqual({ status: "duplicate" });
+    } finally {
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("preserves newer SQL execution state during backfill", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const source = createStateConversationMetadataStore(state);
+      await source.appendInboundMessage({
+        message: inboundMessage("backfill-stale"),
         nowMs: 1_000,
       });
       await source.recordConversationActivity({
@@ -406,16 +480,11 @@ describe("conversation metadata SQL store", () => {
           lease: {
             token: started.leaseToken,
           },
-          status: "running",
           pendingCount: 0,
+          status: "running",
         },
+        messages: [],
       });
-      await expect(
-        target.appendInboundMessage({
-          message: inboundMessage("backfill-existing"),
-          nowMs: 7_000,
-        }),
-      ).resolves.toEqual({ status: "duplicate" });
     } finally {
       await disconnectStateAdapter();
       await fixture.close();
