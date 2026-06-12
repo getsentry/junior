@@ -167,10 +167,9 @@ export async function appendAndEnqueueInboundMessage(args: {
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
-  const appendResult = await appendInboundMessage({
+  const appendResult = await workState.appendInboundMessage({
     message: args.message,
     nowMs,
-    conversationStore: args.conversationStore,
     state: args.state,
   });
   let idempotencyKey = args.message.inboundMessageId;

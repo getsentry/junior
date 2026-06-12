@@ -2,7 +2,10 @@ import {
   disconnectStateAdapter,
   getConnectedStateContext,
 } from "@/chat/state/adapter";
-import { sqlConversationMigration } from "./upgrade/migrations/conversations-sql";
+import {
+  requireConversationSqlDatabaseUrl,
+  sqlConversationMigration,
+} from "./upgrade/migrations/conversations-sql";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import type {
   MigrationContext,
@@ -37,6 +40,7 @@ function formatMigrationResult(result: MigrationResult): string {
 export async function runUpgradeMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult[]> {
+  requireConversationSqlDatabaseUrl(context);
   const results: MigrationResult[] = [];
   for (const migration of MIGRATIONS) {
     context.io.info(`Running migration ${migration.name}...`);

@@ -33,6 +33,7 @@ import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
 } from "@/chat/task-execution/queue-signing";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
@@ -59,6 +60,17 @@ function failingProjectionStore(): ConversationStore {
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       throw new Error("projection unavailable");
+    }),
+    listByActivity: vi.fn(async () => []),
+  };
+}
+
+function projectionEventsStore(events: string[]): ConversationStore {
+  return {
+    get: vi.fn(async () => undefined),
+    recordActivity: vi.fn(),
+    recordExecution: vi.fn(async () => {
+      events.push("projection");
     }),
     listByActivity: vi.fn(async () => []),
   };
@@ -133,6 +145,27 @@ describe("conversation work execution", () => {
         idempotencyKey: "m1",
       },
     ]);
+  });
+
+  it("sends queue wake-up before conversation projection", async () => {
+    const events: string[] = [];
+    const queue: ConversationWorkQueue = {
+      send: vi.fn(async () => {
+        events.push("queue");
+        return { messageId: "queue-1" };
+      }),
+    };
+
+    await expect(
+      appendAndEnqueueInboundMessage({
+        conversationStore: projectionEventsStore(events),
+        message: inboundMessage("m1"),
+        nowMs: 2_000,
+        queue,
+      }),
+    ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
+
+    expect(events).toEqual(["queue", "projection"]);
   });
 
   it("does not overwrite malformed persisted conversation work", async () => {

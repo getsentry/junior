@@ -82,7 +82,7 @@ describe("upgrade CLI migrations", () => {
     vi.restoreAllMocks();
   });
 
-  it("migrates legacy conversation work records into conversation records", async () => {
+  it("requires SQL before running upgrade migrations", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const legacyMessage = inboundMessage("m1");
@@ -115,50 +115,17 @@ describe("upgrade CLI migrations", () => {
     );
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
-    ).resolves.toBeNull();
+    ).resolves.toEqual(legacyWork);
     await expect(
       stateAdapter.get("junior:conversation-work:index"),
-    ).resolves.toBeNull();
-    await expect(
-      stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
-    ).resolves.toMatchObject({
-      schemaVersion: 1,
-      conversationId: CONVERSATION_ID,
-      createdAtMs: 1_000,
-      destination: SLACK_DESTINATION,
-      lastActivityAtMs: 1_100,
-      source: "slack",
-      updatedAtMs: 2_000,
-      execution: {
-        inboundMessageIds: ["m1"],
-        lastEnqueuedAtMs: 1_500,
-        pendingCount: 1,
-        pendingMessages: [expect.objectContaining({ inboundMessageId: "m1" })],
-        status: "pending",
-        updatedAtMs: 2_000,
-      },
-    });
+    ).resolves.toEqual([CONVERSATION_ID, "missing-conversation"]);
     await expect(
       stateAdapter.get(CONVERSATION_BY_ACTIVITY_INDEX_KEY),
-    ).resolves.toEqual([
-      {
-        conversationId: CONVERSATION_ID,
-        score: 1_100,
-      },
-    ]);
+    ).resolves.toBeNull();
     await expect(
       stateAdapter.get(CONVERSATION_ACTIVE_INDEX_KEY),
-    ).resolves.toEqual([
-      {
-        conversationId: CONVERSATION_ID,
-        score: 2_000,
-      },
-    ]);
-    expect(logs).toEqual([
-      "Running migration migrate-redis-conversation-state...",
-      "Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1",
-      "Running migration backfill-conversations-sql...",
-    ]);
+    ).resolves.toBeNull();
+    expect(logs).toEqual([]);
   });
 
   it("migrates legacy conversation work before SQL conversation backfill", async () => {
@@ -292,13 +259,16 @@ describe("upgrade CLI migrations", () => {
     await persistActiveTurn(CONVERSATION_ID, "turn-timeout");
 
     await expect(
-      runUpgradeMigrations({
+      redisConversationStateMigration.run({
         io: { info: () => {} },
         stateAdapter,
       }),
-    ).rejects.toThrow(
-      "Junior SQL database URL is required for conversation metadata upgrade",
-    );
+    ).resolves.toEqual({
+      existing: 0,
+      migrated: 1,
+      missing: 0,
+      scanned: 1,
+    });
     await expect(
       stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
     ).resolves.toMatchObject({
@@ -345,13 +315,16 @@ describe("upgrade CLI migrations", () => {
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
 
     await expect(
-      runUpgradeMigrations({
+      redisConversationStateMigration.run({
         io: { info: () => {} },
         stateAdapter,
       }),
-    ).rejects.toThrow(
-      "Junior SQL database URL is required for conversation metadata upgrade",
-    );
+    ).resolves.toEqual({
+      existing: 1,
+      migrated: 0,
+      missing: 0,
+      scanned: 1,
+    });
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
     ).resolves.toBeNull();
@@ -418,7 +391,7 @@ describe("upgrade CLI migrations", () => {
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
 
     await expect(
-      runUpgradeMigrations({
+      redisConversationStateMigration.run({
         io: { info: () => {} },
         stateAdapter,
       }),
@@ -452,7 +425,7 @@ describe("upgrade CLI migrations", () => {
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
 
     await expect(
-      runUpgradeMigrations({
+      redisConversationStateMigration.run({
         io: { info: () => {} },
         stateAdapter,
       }),
@@ -472,13 +445,16 @@ describe("upgrade CLI migrations", () => {
     });
 
     await expect(
-      runUpgradeMigrations({
+      redisConversationStateMigration.run({
         io: { info: () => {} },
         stateAdapter,
       }),
-    ).rejects.toThrow(
-      "Junior SQL database URL is required for conversation metadata upgrade",
-    );
+    ).resolves.toEqual({
+      existing: 0,
+      migrated: 0,
+      missing: 0,
+      scanned: 0,
+    });
   });
 
   it("backfills retained conversation record into SQL when configured", async () => {
