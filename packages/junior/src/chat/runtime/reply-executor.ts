@@ -121,7 +121,6 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { requireSlackDestination } from "@/chat/destination";
-import type { ConversationStore } from "@/chat/conversations/store";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -234,7 +233,6 @@ export interface ReplyExecutorServices {
     sessionId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
-  conversationStore?: ConversationStore;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
 }
 
@@ -546,7 +544,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             startedAtMs: turnStartedAtMs,
             state: "running",
             surface: "slack",
-            conversationStore: deps.services.conversationStore,
             requester,
             destination,
             traceId: getActiveTraceId(),
@@ -1052,7 +1049,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sliceId: 1,
               startedAtMs: message.metadata.dateSent.getTime(),
               state: "completed",
-              conversationStore: deps.services.conversationStore,
               requester,
               destination,
               traceId: getActiveTraceId(),
@@ -1214,7 +1210,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   sliceId: 1,
                   startedAtMs: message.metadata.dateSent.getTime(),
                   state: "failed",
-                  conversationStore: deps.services.conversationStore,
                   requester,
                   destination,
                   traceId: getActiveTraceId(),

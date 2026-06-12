@@ -6,9 +6,8 @@ import {
 } from "@/chat/conversations/sql/migrations";
 import { schema } from "@/chat/conversations/sql/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import type { PiMessage } from "@/chat/pi/messages";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -202,9 +201,9 @@ WHERE conversation_id = $1
       await migrateSchema(fixture.executor);
       const store = createSqlStore(fixture.executor);
 
-      await persistCompletedSessionRecord({
+      await recordAgentTurnSessionSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
-        currentDurationMs: 2400,
+        cumulativeDurationMs: 2400,
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -212,21 +211,7 @@ WHERE conversation_id = $1
         },
         sessionId: "dispatch:scheduler-run",
         sliceId: 1,
-        allMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "Run the scheduled task." }],
-            timestamp: 1,
-          },
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "Done." }],
-            timestamp: 2,
-          },
-        ] as PiMessage[],
-        logContext: {
-          modelId: "test-model",
-        },
+        state: "completed",
         conversationStore: store,
         surface: "scheduler",
       });

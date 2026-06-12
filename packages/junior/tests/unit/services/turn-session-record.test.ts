@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -537,41 +536,6 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
       "Failed to persist completed turn session record",
     );
-  });
-
-  it("surfaces configured conversation store failures through completed turn persistence", async () => {
-    const { persistCompletedSessionRecord } =
-      await import("@/chat/services/turn-session-record");
-    const conversationStore = {
-      recordConversationStatus: vi.fn(async () => {
-        throw new Error("sql unavailable");
-      }),
-    } as unknown as ConversationStore;
-
-    await expect(
-      persistCompletedSessionRecord({
-        conversationId: "conversation-store-failure",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
-        sessionId: "turn-store-failure",
-        sliceId: 1,
-        allMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "help me" }],
-            timestamp: 1,
-          },
-        ],
-        logContext: {
-          modelId: "test-model",
-        },
-        conversationStore,
-        surface: "scheduler",
-      }),
-    ).rejects.toThrow("sql unavailable");
   });
 
   it("keeps completed session bootstrap context for later turns in the same session", async () => {

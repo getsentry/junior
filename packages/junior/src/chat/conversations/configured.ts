@@ -27,3 +27,8 @@ export function getConfiguredConversationStore(): ConversationStore {
   }
   return configuredStore.store;
 }
+
+/** Return whether conversation records use the configured SQL store. */
+export function hasConfiguredSqlConversationStore(): boolean {
+  return Boolean(getChatConfig().sql.databaseUrl);
+}

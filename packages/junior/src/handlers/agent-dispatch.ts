@@ -1,12 +1,10 @@
 import { logException } from "@/chat/logging";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
-import type { ConversationStore } from "@/chat/conversations/store";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface AgentDispatchHandlerOptions {
-  conversationStore?: ConversationStore;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
@@ -23,7 +21,6 @@ export async function POST(
 
   waitUntil(() =>
     runAgentDispatchSlice(payload, {
-      conversationStore: options.conversationStore,
       tracePropagation: options.tracePropagation,
     }).catch((error) => {
       logException(

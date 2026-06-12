@@ -67,18 +67,10 @@ export function getProductionConversationStore(): ConversationStore {
 export function createProductionSlackWebhookServices(options?: {
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
-  const conversationStore =
-    options?.services?.replyExecutor?.conversationStore ??
-    getProductionConversationStore();
+  const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: {
-      ...options?.services,
-      replyExecutor: {
-        ...options?.services?.replyExecutor,
-        conversationStore,
-      },
-    },
+    services: options?.services,
   });
   return {
     getSlackAdapter: getProductionSlackAdapter,
@@ -105,18 +97,10 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 export function createProductionConversationWorkOptions(options?: {
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
-  const conversationStore =
-    options?.services?.replyExecutor?.conversationStore ??
-    getProductionConversationStore();
+  const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: {
-      ...options?.services,
-      replyExecutor: {
-        ...options?.services?.replyExecutor,
-        conversationStore,
-      },
-    },
+    services: options?.services,
   });
   return {
     conversationStore,

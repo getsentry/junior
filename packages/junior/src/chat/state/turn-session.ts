@@ -18,7 +18,10 @@ import {
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
-import { recordConversationActivity } from "@/chat/task-execution/store";
+import {
+  getConfiguredConversationStore,
+  hasConfiguredSqlConversationStore,
+} from "@/chat/conversations/configured";
 import type { ConversationStore } from "@/chat/conversations/store";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -317,16 +320,24 @@ async function recordConversationActivityMirror(args: {
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
+  if (
+    !args.conversationStore &&
+    args.summary.destination?.platform === "slack" &&
+    !hasConfiguredSqlConversationStore()
+  ) {
+    return;
+  }
+  const conversationStore =
+    args.conversationStore ?? getConfiguredConversationStore();
   const source =
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  await recordConversationActivity({
+  await conversationStore.recordConversationActivity({
     activityAtMs: args.summary.updatedAtMs,
     channelName: args.summary.channelName,
     conversationId: args.summary.conversationId,
     destination: args.summary.destination,
-    conversationStore: args.conversationStore,
     nowMs: args.nowMs,
     requester: args.summary.requester,
     source,
