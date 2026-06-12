@@ -327,16 +327,18 @@ async function recordConversationActivityMirror(args: {
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
+  const shouldRequireExistingStateConversation =
+    !args.conversationStore &&
+    args.summary.destination?.platform === "slack" &&
+    !hasConfiguredSqlConversationStore();
   try {
-    if (
-      !args.conversationStore &&
-      args.summary.destination?.platform === "slack" &&
-      !hasConfiguredSqlConversationStore() &&
-      !(await conversationStore.get({
+    if (shouldRequireExistingStateConversation) {
+      const existing = await conversationStore.get({
         conversationId: args.summary.conversationId,
-      }))
-    ) {
-      return;
+      });
+      if (!existing) {
+        return;
+      }
     }
     await conversationStore.recordActivity({
       activityAtMs: args.summary.updatedAtMs,
