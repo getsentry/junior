@@ -1,7 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Destination } from "@sentry/junior-plugin-api";
+import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
+const SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const satisfies Destination;
+
+function userMessage(text: string): PiMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    timestamp: Date.now(),
+  };
+}
+
+function failingConversationStore(): ConversationStore {
+  return {
+    get: vi.fn(),
+    recordActivity: vi.fn(async () => {
+      throw new Error("conversation projection unavailable");
+    }),
+    recordExecution: vi.fn(),
+    listByActivity: vi.fn(),
+  };
+}
 
 describe("persistAuthPauseSessionRecord", () => {
   beforeEach(async () => {
@@ -95,6 +121,120 @@ describe("persistAuthPauseSessionRecord", () => {
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
+  });
+
+  it("records Slack turn activity in state conversations when SQL is not configured", async () => {
+    delete process.env.JUNIOR_DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    vi.useFakeTimers({ now: 10_000 });
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { appendInboundMessage, getConversation } =
+      await import("@/chat/task-execution/store");
+
+    try {
+      await appendInboundMessage({
+        message: {
+          conversationId: "slack:C123:turn-activity",
+          createdAtMs: 9_000,
+          destination: SLACK_DESTINATION,
+          inboundMessageId: "turn-activity-message",
+          input: {
+            authorId: "U123",
+            text: "start",
+          },
+          receivedAtMs: 9_000,
+          source: "slack",
+        },
+        nowMs: 9_000,
+      });
+      await upsertAgentTurnSessionRecord({
+        channelName: "runtime-team",
+        conversationId: "slack:C123:turn-activity",
+        destination: SLACK_DESTINATION,
+        piMessages: [userMessage("ship it")],
+        sessionId: "turn-activity",
+        sliceId: 1,
+        state: "completed",
+        surface: "slack",
+      });
+
+      await expect(
+        getConversation({ conversationId: "slack:C123:turn-activity" }),
+      ).resolves.toMatchObject({
+        channelName: "runtime-team",
+        conversationId: "slack:C123:turn-activity",
+        destination: SLACK_DESTINATION,
+        lastActivityAtMs: 10_000,
+        source: "slack",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps turn-session records when conversation projection fails", async () => {
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    await expect(
+      upsertAgentTurnSessionRecord({
+        conversationId: "slack:C123:projection-failure",
+        conversationStore: failingConversationStore(),
+        destination: SLACK_DESTINATION,
+        piMessages: [userMessage("persist anyway")],
+        sessionId: "turn-projection-failure",
+        sliceId: 1,
+        state: "completed",
+        surface: "slack",
+      }),
+    ).resolves.toMatchObject({
+      conversationId: "slack:C123:projection-failure",
+      sessionId: "turn-projection-failure",
+      state: "completed",
+    });
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "slack:C123:projection-failure",
+        "turn-projection-failure",
+      ),
+    ).resolves.toMatchObject({
+      conversationId: "slack:C123:projection-failure",
+      sessionId: "turn-projection-failure",
+      state: "completed",
+    });
+  });
+
+  it("keeps turn-session summaries when conversation projection fails", async () => {
+    const {
+      listAgentTurnSessionSummariesForConversation,
+      recordAgentTurnSessionSummary,
+    } = await import("@/chat/state/turn-session");
+
+    await expect(
+      recordAgentTurnSessionSummary({
+        conversationId: "slack:C123:summary-projection-failure",
+        conversationStore: failingConversationStore(),
+        destination: SLACK_DESTINATION,
+        sessionId: "turn-summary-projection-failure",
+        sliceId: 1,
+        state: "failed",
+        surface: "slack",
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      listAgentTurnSessionSummariesForConversation(
+        "slack:C123:summary-projection-failure",
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        conversationId: "slack:C123:summary-projection-failure",
+        sessionId: "turn-summary-projection-failure",
+        state: "failed",
+      }),
+    ]);
   });
 
   it("materializes auth completion events appended after the pause record", async () => {

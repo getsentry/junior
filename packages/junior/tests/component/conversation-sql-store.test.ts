@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { backfillToSql } from "@/chat/conversations/sql/backfill";
 import { createSqlStore, SqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
-import { appendInboundMessage } from "@/chat/task-execution/store";
+import {
+  appendInboundMessage,
+  drainConversationMailbox,
+  startConversationWork,
+} from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -345,6 +349,54 @@ INSERT INTO junior_conversations (
       await expect(running).resolves.toEqual({ status: "completed" });
     } finally {
       vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("mirrors mailbox drains into SQL execution progress", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await appendInboundMessage({
+        message: inboundMessage("drain-sql"),
+        conversationStore: store,
+        nowMs: 1_000,
+        state,
+      });
+      const lease = await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        nowMs: 2_000,
+        state,
+      });
+      expect(lease.status).toBe("acquired");
+      if (lease.status !== "acquired") {
+        throw new Error("Expected conversation work lease");
+      }
+
+      await drainConversationMailbox({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        inject: async () => {},
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        state,
+      });
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        execution: {
+          status: "running",
+          updatedAtMs: 3_000,
+        },
+      });
+    } finally {
       await disconnectStateAdapter();
       await fixture.close();
     }

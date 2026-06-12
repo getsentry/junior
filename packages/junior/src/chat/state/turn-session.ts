@@ -23,6 +23,7 @@ import {
   hasConfiguredSqlConversationStore,
 } from "@/chat/conversations/configured";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { logWarn } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -320,28 +321,43 @@ async function recordConversationActivityMirror(args: {
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
-  if (
-    !args.conversationStore &&
-    args.summary.destination?.platform === "slack" &&
-    !hasConfiguredSqlConversationStore()
-  ) {
-    return;
-  }
   const conversationStore =
     args.conversationStore ?? getConfiguredConversationStore();
   const source =
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  await conversationStore.recordActivity({
-    activityAtMs: args.summary.updatedAtMs,
-    channelName: args.summary.channelName,
-    conversationId: args.summary.conversationId,
-    destination: args.summary.destination,
-    nowMs: args.nowMs,
-    requester: args.summary.requester,
-    source,
-  });
+  try {
+    if (
+      !args.conversationStore &&
+      args.summary.destination?.platform === "slack" &&
+      !hasConfiguredSqlConversationStore() &&
+      !(await conversationStore.get({
+        conversationId: args.summary.conversationId,
+      }))
+    ) {
+      return;
+    }
+    await conversationStore.recordActivity({
+      activityAtMs: args.summary.updatedAtMs,
+      channelName: args.summary.channelName,
+      conversationId: args.summary.conversationId,
+      destination: args.summary.destination,
+      nowMs: args.nowMs,
+      requester: args.summary.requester,
+      source,
+    });
+  } catch (error) {
+    logWarn(
+      "conversation_activity_projection_failed",
+      { conversationId: args.summary.conversationId },
+      {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Failed to update conversation activity projection",
+    );
+  }
 }
 
 /**

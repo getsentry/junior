@@ -273,7 +273,11 @@ export async function drainConversationMailbox(
     state?: StateAdapter;
   },
 ) {
-  return await workState.drainConversationMailbox(args);
+  const result = await workState.drainConversationMailbox(args);
+  if (result.length > 0) {
+    await mirrorExecution(args);
+  }
+  return result;
 }
 
 /** Mark selected leased mailbox entries after their session-log injection succeeds. */
