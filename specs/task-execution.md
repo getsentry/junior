@@ -150,8 +150,9 @@ part of execution-index cleanup:
 - `junior:agent-session-log:<conversationId>` stores the append-only Pi/model
   execution transcript.
 
-The state-backed conversation record owns mailbox execution coordination and
-the retained activity summary used by local/default reporting and SQL backfill:
+The state-backed conversation record owns mailbox execution coordination. In
+local/no-SQL mode it can also provide an expiring activity feed, and during
+SQL cutover it can provide legacy metadata for the one-time SQL import:
 
 ```text
 junior:conversation:<conversationId>

@@ -244,7 +244,7 @@ INSERT INTO junior_conversations (
         limit: 10,
       });
 
-      expect(result).toEqual({ copiedCount: 1, truncated: false });
+      expect(result).toEqual({ copiedCount: 1 });
       const conversation = await target.get({
         conversationId: CONVERSATION_ID,
       });
@@ -422,6 +422,55 @@ INSERT INTO junior_conversations (
         expect.objectContaining({
           conversationId: CONVERSATION_ID,
           status: "active",
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("keeps completed turn-session status over running SQL execution", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      vi.useFakeTimers({ now: 2_000 });
+      await disconnectStateAdapter();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        destination: inboundMessage("completed-target").destination,
+        execution: {
+          runId: "run-completed",
+          status: "running",
+          updatedAtMs: 2_000,
+        },
+        lastActivityAtMs: 2_000,
+        updatedAtMs: 2_000,
+      });
+      await upsertAgentTurnSessionRecord({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("completed-target").destination,
+        lastProgressAtMs: 1_500,
+        piMessages: [],
+        sessionId: "turn-completed",
+        sliceId: 1,
+        state: "completed",
+        surface: "slack",
+      });
+
+      await expect(
+        listRecentConversationSummaries({
+          limit: 1,
+          conversationStore: store,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          status: "completed",
         }),
       ]);
     } finally {

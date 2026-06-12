@@ -20,16 +20,9 @@ export async function migrateConversationsToSql(
 ): Promise<MigrationResult> {
   const databaseUrl = context.sqlDatabaseUrl ?? getChatConfig().sql.databaseUrl;
   if (!databaseUrl && !options.target) {
-    context.io.info(
-      "Skipping SQL conversation record backfill: no Junior SQL database URL is configured.",
+    throw new Error(
+      "Junior SQL database URL is required for conversation metadata upgrade. Set JUNIOR_DATABASE_URL or DATABASE_URL.",
     );
-    return {
-      existing: 0,
-      migrated: 0,
-      missing: 0,
-      scanned: 0,
-      skipped: 1,
-    };
   }
 
   const source = createStateConversationStore(context.stateAdapter);
@@ -55,7 +48,6 @@ export async function migrateConversationsToSql(
       migrated: result.copiedCount,
       missing: 0,
       scanned: result.copiedCount,
-      ...(result.truncated ? { skipped: 1 } : {}),
     };
   } finally {
     await closeTarget?.();

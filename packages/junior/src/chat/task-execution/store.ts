@@ -1,6 +1,7 @@
 import type { StateAdapter } from "chat";
 import { getConfiguredConversationStore } from "@/chat/conversations/configured";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { logWarn } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import * as workState from "./state";
 export {
@@ -69,31 +70,43 @@ async function mirrorExecution(args: {
   conversationStore?: ConversationStore;
   state?: StateAdapter;
 }): Promise<void> {
-  const conversation = await workState.getConversation({
-    conversationId: args.conversationId,
-    state: args.state,
-  });
-  if (!conversation) {
-    return;
+  try {
+    const conversation = await workState.getConversation({
+      conversationId: args.conversationId,
+      state: args.state,
+    });
+    if (!conversation) {
+      return;
+    }
+    await projectionStore(args).recordExecution({
+      channelName: conversation.channelName,
+      conversationId: conversation.conversationId,
+      createdAtMs: conversation.createdAtMs,
+      destination: conversation.destination,
+      execution: {
+        lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
+        lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
+        runId: conversation.execution.runId,
+        status: conversation.execution.status,
+        updatedAtMs: conversation.execution.updatedAtMs,
+      },
+      lastActivityAtMs: conversation.lastActivityAtMs,
+      requester: conversation.requester,
+      source: conversation.source,
+      title: conversation.title,
+      updatedAtMs: conversation.updatedAtMs,
+    });
+  } catch (error) {
+    logWarn(
+      "conversation_execution_projection_failed",
+      { conversationId: args.conversationId },
+      {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Failed to update conversation execution projection",
+    );
   }
-  await projectionStore(args).recordExecution({
-    channelName: conversation.channelName,
-    conversationId: conversation.conversationId,
-    createdAtMs: conversation.createdAtMs,
-    destination: conversation.destination,
-    execution: {
-      lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
-      lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
-      runId: conversation.execution.runId,
-      status: conversation.execution.status,
-      updatedAtMs: conversation.execution.updatedAtMs,
-    },
-    lastActivityAtMs: conversation.lastActivityAtMs,
-    requester: conversation.requester,
-    source: conversation.source,
-    title: conversation.title,
-    updatedAtMs: conversation.updatedAtMs,
-  });
 }
 
 /** Return a persisted conversation record, if one exists. */

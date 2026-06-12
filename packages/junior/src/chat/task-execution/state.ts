@@ -1,10 +1,11 @@
 /**
- * Durable conversation mailbox and execution index store.
+ * Expiring conversation mailbox and execution index store.
  *
  * The conversation record owns pending inbound work, execution status, and the
- * lease. `conversation:by-activity` feeds reporting; `conversation:active`
- * feeds heartbeat recovery and contains every non-idle conversation until the
- * lease/status path makes it idle.
+ * lease. `conversation:active` feeds heartbeat recovery and contains every
+ * non-idle conversation until the lease/status path makes it idle.
+ * `conversation:by-activity` supports local/no-SQL reporting and legacy SQL
+ * import only; SQL owns durable conversation metadata in configured runtime.
  */
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";

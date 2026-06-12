@@ -29,13 +29,6 @@ const ORIGINAL_ENV = vi.hoisted(() => {
   delete process.env.JUNIOR_DATABASE_URL;
   return original;
 });
-const SQL_METADATA_SKIPPED_RESULT = {
-  existing: 0,
-  migrated: 0,
-  missing: 0,
-  scanned: 0,
-  skipped: 1,
-};
 const OTHER_SLACK_DESTINATION = {
   ...SLACK_DESTINATION,
   channelId: "C999",
@@ -112,20 +105,14 @@ describe("upgrade CLI migrations", () => {
     ]);
     const logs: string[] = [];
 
-    const results = await runUpgradeMigrations({
-      io: { info: (line) => logs.push(line) },
-      stateAdapter,
-    });
-
-    expect(results).toEqual([
-      {
-        existing: 0,
-        migrated: 1,
-        missing: 1,
-        scanned: 2,
-      },
-      SQL_METADATA_SKIPPED_RESULT,
-    ]);
+    await expect(
+      runUpgradeMigrations({
+        io: { info: (line) => logs.push(line) },
+        stateAdapter,
+      }),
+    ).rejects.toThrow(
+      "Junior SQL database URL is required for conversation metadata upgrade",
+    );
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
     ).resolves.toBeNull();
@@ -171,8 +158,6 @@ describe("upgrade CLI migrations", () => {
       "Running migration migrate-redis-conversation-state...",
       "Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1",
       "Running migration backfill-conversations-sql...",
-      "Skipping SQL conversation record backfill: no Junior SQL database URL is configured.",
-      "Finished migration backfill-conversations-sql: scanned=0 migrated=0 existing=0 missing=0 skipped=1",
     ]);
   });
 
@@ -246,7 +231,7 @@ describe("upgrade CLI migrations", () => {
     }
   });
 
-  it("copies a bounded SQL conversation backfill snapshot", async () => {
+  it("copies a bounded SQL conversation backfill slice", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -276,7 +261,6 @@ describe("upgrade CLI migrations", () => {
         migrated: 2,
         missing: 0,
         scanned: 2,
-        skipped: 1,
       });
       await expect(sqlStore.listByActivity({ limit: 10 })).resolves.toEqual([
         expect.objectContaining({ conversationId: "slack:C123:page-2" }),
@@ -307,20 +291,14 @@ describe("upgrade CLI migrations", () => {
     });
     await persistActiveTurn(CONVERSATION_ID, "turn-timeout");
 
-    const results = await runUpgradeMigrations({
-      io: { info: () => {} },
-      stateAdapter,
-    });
-
-    expect(results).toEqual([
-      {
-        existing: 0,
-        migrated: 1,
-        missing: 0,
-        scanned: 1,
-      },
-      SQL_METADATA_SKIPPED_RESULT,
-    ]);
+    await expect(
+      runUpgradeMigrations({
+        io: { info: () => {} },
+        stateAdapter,
+      }),
+    ).rejects.toThrow(
+      "Junior SQL database URL is required for conversation metadata upgrade",
+    );
     await expect(
       stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
     ).resolves.toMatchObject({
@@ -366,20 +344,14 @@ describe("upgrade CLI migrations", () => {
     );
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
 
-    const results = await runUpgradeMigrations({
-      io: { info: () => {} },
-      stateAdapter,
-    });
-
-    expect(results).toEqual([
-      {
-        existing: 1,
-        migrated: 0,
-        missing: 0,
-        scanned: 1,
-      },
-      SQL_METADATA_SKIPPED_RESULT,
-    ]);
+    await expect(
+      runUpgradeMigrations({
+        io: { info: () => {} },
+        stateAdapter,
+      }),
+    ).rejects.toThrow(
+      "Junior SQL database URL is required for conversation metadata upgrade",
+    );
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
     ).resolves.toBeNull();
@@ -504,15 +476,9 @@ describe("upgrade CLI migrations", () => {
         io: { info: () => {} },
         stateAdapter,
       }),
-    ).resolves.toEqual([
-      {
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 0,
-      },
-      SQL_METADATA_SKIPPED_RESULT,
-    ]);
+    ).rejects.toThrow(
+      "Junior SQL database URL is required for conversation metadata upgrade",
+    );
   });
 
   it("backfills retained conversation record into SQL when configured", async () => {

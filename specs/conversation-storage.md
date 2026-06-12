@@ -187,20 +187,19 @@ traffic.
 
 ### Backfill And Cutover
 
-Historical Redis conversation summaries move to SQL through a bounded migration, not through
-a single blocking request and not through long-lived read fallbacks.
+Historical conversation metadata that still exists in Redis moves to SQL
+through a bounded legacy import. This is a one-time compatibility path, not the
+steady-state storage model.
 
 1. Deploy A introduces schema, migration runner, and the SQL conversation store
    implementation.
-2. `junior upgrade` copies historical Redis metadata into the shared Junior SQL
-   database after a SQL database URL is configured. The registered SQL
-   migration uses `backfillToSql` to copy retained conversation records from
-   the state-backed conversation store into the SQL store. Pending inbound
-   payloads and lease ownership remain in state.
-3. The retained activity index is bounded, and the migration scans it in
-   bounded, idempotent batches until the retained source is copied. If a batch
-   fails, the upgrade command fails clearly and the next run repeats the scan
-   without corrupting already copied rows.
+2. `junior upgrade` requires a SQL database URL and copies legacy Redis
+   conversation metadata into the shared Junior SQL database. Pending inbound
+   payloads, leases, wake-up state, and transcripts remain in Redis because
+   they are execution/cache state, not durable reporting metadata.
+3. The legacy import reads only a bounded newest-first slice of the old Redis
+   activity index. SQL reporting starts from the copied metadata plus any new
+   and updated conversation metadata written directly to SQL after cutover.
 4. The runtime and dashboard use the canonical conversation store interface. Junior
    points that interface at Neon-backed SQL when it can resolve a SQL database
    URL from `JUNIOR_DATABASE_URL` or `DATABASE_URL`, in that order. The explicit
@@ -217,14 +216,20 @@ storage spec changes their authority.
 
 - If schema migration fails during `junior upgrade`, the deployment must fail
   before the new runtime serves traffic.
+- If `junior upgrade` cannot resolve a SQL database URL, the command must fail.
+  Do not silently skip SQL conversation metadata setup.
 - If a migration lock is held by another upgrade process, the command waits or
   fails according to the SQL executor. Runtime request handlers must not run
   migrations concurrently.
 - If backfill fails partway through, already copied rows remain valid. The next
-  `junior upgrade` run repeats the bounded retained-activity scan and
-  idempotently upserts rows.
-- If SQL is unavailable after the conversation store cutover, the caller must
-  surface the failure. Do not hide SQL failures with broad Redis read fallbacks.
+  `junior upgrade` run repeats the bounded legacy import and idempotently
+  upserts rows.
+- If SQL projection writes are unavailable while Redis-backed task execution is
+  accepting or running work, task execution must continue and log the projection
+  failure. Redis remains the mailbox, lease, wake-up, and transcript authority.
+- If SQL reporting reads are unavailable after the conversation store cutover,
+  reporting callers must surface the failure. Do not hide SQL read failures with
+  broad Redis read fallbacks.
 - Rollback must be supported by expand-only schema changes and delayed read
   cutover. A code rollback after schema deployment can ignore unused SQL tables.
 

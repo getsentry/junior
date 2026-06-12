@@ -28,6 +28,7 @@ import {
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
   signConversationQueueMessage,
   verifySignedConversationQueueMessage,
@@ -51,6 +52,17 @@ const OTHER_SLACK_DESTINATION = {
   channelId: "C456",
 } as const;
 const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
+
+function failingProjectionStore(): ConversationStore {
+  return {
+    get: vi.fn(async () => undefined),
+    recordActivity: vi.fn(),
+    recordExecution: vi.fn(async () => {
+      throw new Error("projection unavailable");
+    }),
+    listByActivity: vi.fn(async () => []),
+  };
+}
 
 describe("conversation work execution", () => {
   const originalJuniorSecret = process.env.JUNIOR_SECRET;
@@ -96,6 +108,31 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(queue.sendAttempts()).toHaveLength(1);
     expect(queue.sentRecords()).toHaveLength(1);
+  });
+
+  it("keeps queue wake-up when conversation projection fails", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+
+    await expect(
+      appendAndEnqueueInboundMessage({
+        conversationStore: failingProjectionStore(),
+        message: inboundMessage("m1"),
+        nowMs: 2_000,
+        queue,
+      }),
+    ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: "m1",
+      },
+    ]);
   });
 
   it("does not overwrite malformed persisted conversation work", async () => {

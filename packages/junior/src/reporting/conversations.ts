@@ -366,12 +366,7 @@ function statusFromConversation(
   fallback: ConversationReportStatus | undefined,
   nowMs: number,
 ): ConversationReportStatus {
-  if (
-    fallback === "active" ||
-    fallback === "failed" ||
-    fallback === "hung" ||
-    fallback === "superseded"
-  ) {
+  if (fallback) {
     return fallback;
   }
   if (conversation.execution.status === "idle") {
