@@ -25,6 +25,23 @@ pnpm dlx vercel@latest link
 
 If your account requires a team scope, pass the same `--scope <team-slug>` value to Vercel commands.
 
+## Add Postgres storage
+
+New Junior installs expect a SQL database for upgrade migrations and reporting.
+After the project is linked, create one from the Vercel dashboard:
+
+1. Open the Vercel project.
+2. Select **Storage**.
+3. Select **Create Database**.
+4. Choose a Postgres provider such as **Neon**.
+5. Accept the default database settings and connect it to the project.
+
+Vercel Marketplace storage providers inject database credentials into the
+project environment. For Neon and other Postgres providers, confirm the project
+has a `DATABASE_URL` value before the first production deploy. Set
+`JUNIOR_DATABASE_URL` only when Junior should use a different database than the
+project default.
+
 ## Configure build command
 
 The scaffolded `package.json` includes the production build script:
