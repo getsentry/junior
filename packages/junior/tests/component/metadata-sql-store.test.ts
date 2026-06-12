@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { backfillConversationMetadataToSql } from "@/chat/metadata/sql/backfill";
-import { createSqlConversationMetadataStore } from "@/chat/metadata/sql/store";
+import {
+  createSqlConversationMetadataStore,
+  SqlConversationMetadataStore,
+} from "@/chat/metadata/sql/store";
 import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 import {
   juniorConversationInboundMessages,
   juniorConversations,
@@ -40,6 +44,41 @@ describe("conversation metadata SQL store", () => {
           "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
         ),
       ).resolves.toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("retries schema migration after a failed first attempt", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      let attempts = 0;
+      const migrationExecutor: JuniorSqlMigrationExecutor = {
+        db: () => fixture.executor.db(),
+        execute: (statement, params) =>
+          fixture.executor.execute(statement, params),
+        query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
+          fixture.executor.query<T>(statement, params),
+        transaction: (callback) => fixture.executor.transaction(callback),
+        withLock: async (lockName, callback) => {
+          attempts++;
+          if (attempts === 1) {
+            throw new Error("transient schema failure");
+          }
+          return await fixture.executor.withLock(lockName, callback);
+        },
+      };
+      const store = new SqlConversationMetadataStore(
+        fixture.executor,
+        migrationExecutor,
+      );
+
+      await expect(store.ensureSchema()).rejects.toThrow(
+        "transient schema failure",
+      );
+      await expect(store.ensureSchema()).resolves.toBeUndefined();
+      expect(attempts).toBe(2);
     } finally {
       await fixture.close();
     }

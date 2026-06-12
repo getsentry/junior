@@ -444,10 +444,20 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
 
   /** Ensure SQL metadata tables exist before read or write use. */
   async ensureSchema(): Promise<void> {
-    this.schemaReady ??= ensureConversationMetadataSchema(
-      this.migrationExecutor,
-    );
-    await this.schemaReady;
+    if (!this.schemaReady) {
+      this.schemaReady = ensureConversationMetadataSchema(
+        this.migrationExecutor,
+      );
+    }
+    const schemaReady = this.schemaReady;
+    try {
+      await schemaReady;
+    } catch (error) {
+      if (this.schemaReady === schemaReady) {
+        this.schemaReady = undefined;
+      }
+      throw error;
+    }
   }
 
   async getConversation(args: {
