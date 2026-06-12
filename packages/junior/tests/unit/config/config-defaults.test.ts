@@ -12,6 +12,7 @@ function registerConfigKeys(): void {
       {
         manifest: {
           name: "sentry",
+          displayName: "Sentry",
           description: "Sentry",
           capabilities: [],
           configKeys: ["sentry.org", "sentry.project"],
@@ -20,6 +21,7 @@ function registerConfigKeys(): void {
       {
         manifest: {
           name: "github",
+          displayName: "GitHub",
           description: "GitHub",
           capabilities: [],
           configKeys: ["github.org", "github.repo"],

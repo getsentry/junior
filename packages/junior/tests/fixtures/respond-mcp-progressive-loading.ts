@@ -22,6 +22,10 @@ import {
   createScriptedSandboxExecutorFactory,
   createScriptedSandboxExecutorState,
 } from "./respond-sandbox";
+import {
+  makeTestReplyContext,
+  type TestReplyRequestContext,
+} from "./reply-context";
 import { DEFAULT_TEST_NOW_MS } from "./vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
@@ -154,7 +158,7 @@ async function createDemoPluginApp(): Promise<void> {
       "mcp:",
       "  transport: http",
       "  url: https://mcp.example.com",
-      "  allowedTools:",
+      "  allowed-tools:",
       "    - ping",
     ].join("\n"),
     "utf8",
@@ -183,7 +187,7 @@ export function makeReplyContext(args: {
   conversationId: string;
   threadTs: string;
   turnId: string;
-}) {
+}): TestReplyRequestContext {
   return {
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
@@ -491,15 +495,15 @@ const mcpAuthServices = {
   getMcpAuthSession: getMcpAuthSessionImpl,
   patchMcpAuthSession: patchMcpAuthSessionImpl,
   recordAuthorizationRequested: recordAuthorizationRequestedImpl,
-} satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[2]>;
+} satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[1]>;
 
 type ReplyContext = NonNullable<
   Parameters<typeof generateAssistantReplyImpl>[1]
 >;
 
 const respondRuntimeServices = {
-  createMcpAuthOrchestration: (deps, abortAgent) =>
-    createMcpAuthOrchestrationImpl(deps, abortAgent, mcpAuthServices),
+  createMcpAuthOrchestration: (input) =>
+    createMcpAuthOrchestrationImpl(input, mcpAuthServices),
   discoverSkills: discoverSkillsImpl,
   findSkillByName: findSkillByNameImpl,
   getConfigDefaults: getConfigDefaultsImpl,
@@ -513,12 +517,12 @@ const respondRuntimeServices = {
 /** Run respond through the explicit MCP/agent/sandbox ports used by this fixture. */
 export async function generateAssistantReply(
   message: string,
-  context: Parameters<typeof generateAssistantReplyImpl>[1] = {},
+  context: TestReplyRequestContext = {},
 ) {
   const { harness, ...restContext } = context;
   return await generateAssistantReplyImpl(message, {
-    recordPendingAuth: async () => undefined,
-    ...restContext,
+    ...makeTestReplyContext(restContext),
+    recordPendingAuth: restContext.recordPendingAuth ?? (async () => {}),
     harness: {
       agentFactory,
       mcpClientFactory,

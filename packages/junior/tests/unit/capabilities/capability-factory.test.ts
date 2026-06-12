@@ -27,6 +27,7 @@ describe("capability factory", () => {
         {
           manifest: {
             name: "example",
+            displayName: "Example",
             description: "Example",
             capabilities: ["example.api"],
             configKeys: [],
@@ -78,6 +79,7 @@ describe("capability factory", () => {
         {
           manifest: {
             name: "github",
+            displayName: "GitHub",
             description: "GitHub",
             capabilities: ["github.api"],
             configKeys: [],
@@ -87,6 +89,7 @@ describe("capability factory", () => {
         {
           manifest: {
             name: "sentry",
+            displayName: "Sentry",
             description: "Sentry",
             capabilities: ["sentry.api"],
             configKeys: [],

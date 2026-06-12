@@ -36,7 +36,29 @@ export function mkdir(targetPath: string): void {
 /** Write a fixture file, creating parent directories as needed. */
 export function writeFile(targetPath: string, contents: string): void {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, contents, "utf8");
+  fs.writeFileSync(targetPath, fixtureContents(targetPath, contents), "utf8");
+}
+
+function fixtureContents(targetPath: string, contents: string): string {
+  if (path.basename(targetPath) !== "plugin.yaml") {
+    return contents;
+  }
+  const lines = contents.split("\n");
+  if (lines.some((line) => line.startsWith("display-name:"))) {
+    return contents;
+  }
+  const nameIndex = lines.findIndex((line) => line.startsWith("name:"));
+  if (nameIndex === -1) {
+    return contents;
+  }
+  const name = lines[nameIndex]!.slice("name:".length).trim();
+  const displayName = name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+  lines.splice(nameIndex + 1, 0, `display-name: ${displayName}`);
+  return lines.join("\n");
 }
 
 /** Write the required Junior app markdown files into a fixture repository. */

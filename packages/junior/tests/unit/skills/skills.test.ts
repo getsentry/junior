@@ -22,6 +22,27 @@ async function writeSkillFile(
   await fs.writeFile(path.join(skillDir, "SKILL.md"), lines.join("\n"), "utf8");
 }
 
+function withDefaultPluginDisplayName(lines: string[]): string[] {
+  if (lines.some((line) => line.startsWith("display-name:"))) {
+    return lines;
+  }
+  const nameIndex = lines.findIndex((line) => line.startsWith("name:"));
+  if (nameIndex === -1) {
+    return lines;
+  }
+  const name = lines[nameIndex]!.slice("name:".length).trim();
+  const displayName = name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+  return [
+    ...lines.slice(0, nameIndex + 1),
+    `display-name: ${displayName}`,
+    ...lines.slice(nameIndex + 1),
+  ];
+}
+
 async function writeDemoPluginSkill(
   rootDir: string,
   skillName: string,
@@ -33,7 +54,7 @@ async function writeDemoPluginSkill(
   await fs.mkdir(path.dirname(skillFile), { recursive: true });
   await fs.writeFile(
     path.join(pluginRoot, "plugin.yaml"),
-    pluginLines.join("\n"),
+    withDefaultPluginDisplayName(pluginLines).join("\n"),
     "utf8",
   );
   await fs.writeFile(skillFile, skillLines.join("\n"), "utf8");

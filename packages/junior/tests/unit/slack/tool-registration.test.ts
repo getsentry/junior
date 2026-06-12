@@ -2,9 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDb } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import * as pluginDbModule from "@/chat/plugins/db";
-import { createTestToolRuntimeContext } from "../../fixtures/tool-runtime";
+import {
+  createTestToolRuntimeContext,
+  createUnavailableSandbox,
+} from "../../fixtures/tool-runtime";
 
 function ctx(channelId?: string) {
   return createTestToolRuntimeContext({
@@ -12,9 +16,44 @@ function ctx(channelId?: string) {
   });
 }
 
+function slackCtxWithoutRequester(channelId: string): ToolRuntimeContext {
+  return {
+    destination: {
+      platform: "slack",
+      teamId: "T123",
+      channelId,
+    },
+    source: {
+      platform: "slack",
+      teamId: "T123",
+      channelId,
+    },
+    sandbox: createUnavailableSandbox(),
+  };
+}
+
+function slackCtxWithoutDestination(channelId: string): ToolRuntimeContext {
+  return {
+    requester: {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U123",
+    },
+    source: {
+      platform: "slack",
+      teamId: "T123",
+      channelId,
+    },
+    sandbox: createUnavailableSandbox(),
+  };
+}
+
 describe("Slack tool registration", () => {
   beforeEach(() => {
     setPlugins([schedulerPlugin()]);
+    vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(
+      {} as PluginDb,
+    );
   });
 
   afterEach(() => {
@@ -61,10 +100,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
-    vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(
-      {} as PluginDb,
-    );
-    const incomplete = createTools([], {}, ctx("C12345"));
+    const incomplete = createTools([], {}, slackCtxWithoutRequester("C12345"));
     const complete = createTools(
       [],
       {},
@@ -91,30 +127,13 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("slackScheduleRunTaskNow");
   });
 
-  it("does not register schedule tools without a requester", () => {
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-      },
-    );
-
-    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
-    expect(tools).not.toHaveProperty("slackScheduleListTasks");
-    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
-    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
-    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
-  });
-
-  it("does not register canvas create when channel context is unavailable", () => {
-    const tools = createTools([], {}, ctx());
+  it("does not register destination-scoped Slack tools without an output destination", () => {
+    const tools = createTools([], {}, slackCtxWithoutDestination("C12345"));
 
     expect(tools).not.toHaveProperty("slackCanvasCreate");
-    expect(tools).not.toHaveProperty("slackCanvasRead");
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
-    expect(tools).not.toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("slackMessageAddReaction");
   });
 
   it("does not register Slack tools for local destinations", () => {
@@ -122,16 +141,15 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
-        ...createTestToolRuntimeContext({
-          destination: {
-            platform: "local",
-            conversationId: "local:test:run-test",
-          },
-          source: {
-            platform: "local",
-            conversationId: "local:test:run-test",
-          },
-        }),
+        destination: {
+          platform: "local",
+          conversationId: "local:test:run-test",
+        },
+        source: {
+          platform: "local",
+          conversationId: "local:test:run-test",
+        },
+        sandbox: createUnavailableSandbox(),
       },
     );
 

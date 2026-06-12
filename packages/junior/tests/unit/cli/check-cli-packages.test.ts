@@ -49,6 +49,7 @@ describe("check cli packaged plugins", () => {
         '    name: "github",',
         "    manifest: {",
         '      name: "github",',
+        '      displayName: "GitHub",',
         '      description: "GitHub plugin",',
         '      configKeys: ["org", "repo"],',
         "    },",

@@ -17,11 +17,6 @@ import { DEFAULT_TEST_NOW_MS } from "../../fixtures/vitest";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
-const LOCAL_DESTINATION = {
-  platform: "local",
-  conversationId: "local:test:advisor",
-} as const;
-
 const config: AdvisorConfig = {
   modelId: "openai/gpt-5.5",
   thinkingLevel: "xhigh",

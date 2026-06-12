@@ -245,10 +245,14 @@ describe("Slack behavior: thread title", () => {
     await vi.waitFor(() => {
       expect(postIncludes(thread, "Today is April 16, 2026.")).toBe(true);
     });
-    expect(settled).toBe(false);
+    await turnPromise;
+    expect(settled).toBe(true);
 
     resolveTitle!();
-    await turnPromise;
+    await flushTitleWork();
+    expect(generatedTitleCall(slackAdapter)).toMatchObject({
+      title: "Today's Date",
+    });
   });
 
   it("does not generate title on subsequent replies", async () => {

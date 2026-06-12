@@ -5,6 +5,7 @@ import {
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
@@ -32,7 +33,8 @@ describe("oauth resume slack file delivery", () => {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
-        requester: { userId: "U123" },
+        destination: TEST_SLACK_DESTINATION,
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
         successfulAssistantReply("Here is the resumed artifact.", {
@@ -86,7 +88,8 @@ describe("oauth resume slack file delivery", () => {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
-        requester: { userId: "U123" },
+        destination: TEST_SLACK_DESTINATION,
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
         successfulAssistantReply("Here is the resumed artifact.", {

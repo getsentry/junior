@@ -44,7 +44,7 @@ const turnThinkingSelection = {
 } satisfies TurnThinkingSelection;
 const TEST_DESTINATION = {
   platform: "local",
-  conversationId: "local:test:timeout_resume",
+  conversationId: "local:test:agent_continue",
 } as const;
 const TEST_REQUESTER = {
   platform: "local",

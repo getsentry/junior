@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   createTestToolRuntimeContext,
   createTestToolState,
   executeTestTool,
+  type TestToolRuntimeOverrides,
 } from "../../fixtures/tool-runtime";
 import {
   chatGetPermalinkOk,
@@ -22,8 +22,8 @@ import {
 
 function createContext(
   userText: string,
-  overrides: Partial<ToolRuntimeContext> = {},
-): ToolRuntimeContext {
+  overrides: TestToolRuntimeOverrides = {},
+) {
   return createTestToolRuntimeContext({
     channelId: "C123",
     messageTs: "1700000000.321",

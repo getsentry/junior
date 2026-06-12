@@ -1,7 +1,6 @@
 import path from "node:path";
 import { expect, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { ReplyRequestContext } from "@/chat/respond";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import {
@@ -15,6 +14,10 @@ import {
 import { type TestThread } from "./slack-harness";
 import { createPluginAppFixture, type PluginAppFixture } from "./plugin-app";
 import { piTextResponse, piToolCallResponse } from "./pi-stream";
+import {
+  makeTestReplyContext,
+  type TestReplyRequestContext,
+} from "./reply-context";
 
 export const MCP_TOOL_NAME = "mcp__eval-auth__budget-echo";
 export const SKILL_NAME = "eval-auth";
@@ -254,15 +257,18 @@ export async function createMcpAuthRuntimeSlackFixture() {
     /** Creates a deterministic MCP-auth reply generator for this fixture. */
     createMcpAuthReplyGenerator(): ResumeReplyGenerator {
       const streamFn = createMcpAuthStreamFn(agentProbe);
-      return (messageText: string, context: ReplyRequestContext = {}) =>
-        respond.generateAssistantReply(messageText, {
-          ...context,
-          harness: {
-            ...context.harness,
-            streamFn,
-            turnThinkingSelection: testThinkingSelection,
-          },
-        });
+      return (messageText: string, context: TestReplyRequestContext = {}) =>
+        respond.generateAssistantReply(
+          messageText,
+          makeTestReplyContext({
+            ...context,
+            harness: {
+              ...context.harness,
+              streamFn,
+              turnThinkingSelection: testThinkingSelection,
+            },
+          }),
+        );
     },
 
     /** Mirrors fixture thread writes into the memory adapter used by callbacks. */

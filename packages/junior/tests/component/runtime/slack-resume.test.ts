@@ -4,6 +4,7 @@ import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
+import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import { mockTestClock } from "../../fixtures/vitest";
 
 type Testbed = Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;

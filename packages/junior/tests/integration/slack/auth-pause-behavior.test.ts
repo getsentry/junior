@@ -33,7 +33,7 @@ function expectAuthPauseParked(
 ): void {
   expect(thread.posts).toEqual([
     expect.objectContaining({
-      markdown: expect.stringContaining("private link"),
+      markdown: expect.stringContaining("I sent you a link"),
     }),
   ]);
   const conversation = conversationState(thread);
@@ -42,7 +42,7 @@ function expectAuthPauseParked(
     expect.arrayContaining([
       expect.objectContaining({
         role: "assistant",
-        text: expect.stringContaining("private link"),
+        text: expect.stringContaining("Click here to link"),
       }),
     ]),
   );
@@ -102,6 +102,8 @@ describe("Slack behavior: auth-pause turns", () => {
               authDisposition: "link_sent",
               authKind,
               authProvider,
+              authProviderDisplayName:
+                authProvider === "github" ? "GitHub" : "Notion",
             });
           },
         },

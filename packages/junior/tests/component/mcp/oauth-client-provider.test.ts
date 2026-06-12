@@ -21,6 +21,7 @@ function registerMcpPlugin(): void {
       {
         manifest: {
           name: "demo",
+          displayName: "Demo",
           description: "Demo plugin",
           capabilities: [],
           configKeys: [],

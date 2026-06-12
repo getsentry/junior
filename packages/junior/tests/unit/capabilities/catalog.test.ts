@@ -22,6 +22,7 @@ describe("capability catalog", () => {
     configureCatalog([
       {
         name: "demo",
+        displayName: "Demo",
         description: "Demo plugin",
         capabilities: ["demo.read"],
         configKeys: ["demo.token"],
@@ -35,6 +36,7 @@ describe("capability catalog", () => {
     configureCatalog([
       {
         name: "other",
+        displayName: "Other",
         description: "Other plugin",
         capabilities: ["other.read"],
         configKeys: ["other.token"],
@@ -49,6 +51,7 @@ describe("capability catalog", () => {
     configureCatalog([
       {
         name: "demo",
+        displayName: "Demo",
         description: "Demo plugin",
         capabilities: ["demo.read"],
         configKeys: ["demo.token", "demo.repo"],

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
   createTestToolRuntimeContext,
   executeTestTool,
+  type TestToolRuntimeOverrides,
 } from "../../fixtures/tool-runtime";
 import {
   getCapturedSlackApiCalls,
@@ -12,7 +12,7 @@ import {
   queueSlackApiResponse,
 } from "../../msw/handlers/slack-api";
 
-function createContext(overrides: Partial<ToolRuntimeContext> = {}) {
+function createContext(overrides: TestToolRuntimeOverrides = {}) {
   return createTestToolRuntimeContext({
     channelId: "C_CURRENT",
     ...overrides,

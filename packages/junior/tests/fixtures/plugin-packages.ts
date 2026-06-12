@@ -109,6 +109,27 @@ export function pluginSkillRoot(
   );
 }
 
+function withDefaultDisplayName(manifest: string[]): string[] {
+  if (manifest.some((line) => line.startsWith("display-name:"))) {
+    return manifest;
+  }
+  const nameIndex = manifest.findIndex((line) => line.startsWith("name:"));
+  if (nameIndex === -1) {
+    return manifest;
+  }
+  const name = manifest[nameIndex]!.slice("name:".length).trim();
+  const displayName = name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+  return [
+    ...manifest.slice(0, nameIndex + 1),
+    `display-name: ${displayName}`,
+    ...manifest.slice(nameIndex + 1),
+  ];
+}
+
 async function writePackagedPlugin(
   tempRoot: string,
   plugin: PackagedPluginFixture,
@@ -127,7 +148,7 @@ async function writePackagedPlugin(
   await fs.mkdir(skillsDir, { recursive: true });
   await fs.writeFile(
     path.join(packageRoot, "plugin.yaml"),
-    plugin.manifest.join("\n"),
+    withDefaultDisplayName(plugin.manifest).join("\n"),
     "utf8",
   );
 }

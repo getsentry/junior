@@ -89,7 +89,7 @@ describe("mcp auth runtime subscribed parking", () => {
 
     expect(thread.posts).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining("private link"),
+        markdown: expect.stringContaining("I sent you a link"),
       }),
     ]);
 

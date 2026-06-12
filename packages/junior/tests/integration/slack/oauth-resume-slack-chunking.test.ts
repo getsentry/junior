@@ -5,6 +5,7 @@ import {
   makeResumeDiagnostics,
 } from "../../fixtures/oauth-resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
+import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthResumeSlackFixture>>;
@@ -33,7 +34,8 @@ describe("oauth resume slack chunking", () => {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
-        requester: { userId: "U123" },
+        destination: TEST_SLACK_DESTINATION,
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
         successfulAssistantReply(longReply, {

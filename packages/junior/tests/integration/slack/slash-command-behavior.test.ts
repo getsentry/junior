@@ -151,7 +151,7 @@ describe("Slack behavior: slash commands", () => {
           channel: "C123",
           user: "U123",
           text: expect.stringContaining(
-            `Click here to link your Eval-oauth account`,
+            `Click here to link your Eval OAuth account`,
           ),
         }),
       }),
@@ -198,7 +198,7 @@ describe("Slack behavior: slash commands", () => {
         params: expect.objectContaining({
           channel: "C123",
           user: "U123",
-          text: "Your Eval-oauth account has been unlinked.",
+          text: "Your Eval OAuth account has been unlinked.",
         }),
       }),
     ]);

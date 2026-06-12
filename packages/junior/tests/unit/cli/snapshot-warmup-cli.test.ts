@@ -22,6 +22,7 @@ function createPluginManifest(
 ): PluginManifest {
   return {
     name,
+    displayName: name,
     description: `${name} plugin`,
     capabilities: [],
     configKeys: [],

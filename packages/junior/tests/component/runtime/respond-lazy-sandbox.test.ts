@@ -25,6 +25,10 @@ import {
   createScriptedSandboxExecutorState,
   type ScriptedSandboxExecutorState,
 } from "../../fixtures/respond-sandbox";
+import {
+  makeTestReplyContext,
+  type TestReplyRequestContext,
+} from "../../fixtures/reply-context";
 
 const originalEnv = configureRespondRuntimeEnv();
 
@@ -164,7 +168,7 @@ function sandboxExecutorFactory() {
 
 async function generateReply(
   message: string,
-  options: Parameters<typeof generateAssistantReply>[1] = {},
+  options: TestReplyRequestContext = {},
 ) {
   const { harness, ...restOptions } = options;
   return await generateAssistantReply(message, {
@@ -178,7 +182,7 @@ async function generateReply(
       userName: "Test User",
     },
     skillDirs: skillRoot ? [skillRoot] : [],
-    ...restOptions,
+    ...makeTestReplyContext(restOptions),
     harness: {
       agentFactory,
       sandboxExecutorFactory: sandboxExecutorFactory(),

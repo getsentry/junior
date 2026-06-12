@@ -46,6 +46,7 @@ function defaultProviders(): PluginManifest[] {
   return [
     {
       name: "sentry",
+      displayName: "Sentry",
       description: "Sentry provider",
       capabilities: [],
       configKeys: [],
@@ -57,6 +58,7 @@ function defaultProviders(): PluginManifest[] {
     },
     {
       name: "notion",
+      displayName: "Notion",
       description: "Notion provider",
       capabilities: [],
       configKeys: [],
@@ -67,6 +69,7 @@ function defaultProviders(): PluginManifest[] {
     },
     {
       name: "github",
+      displayName: "GitHub",
       description: "GitHub provider",
       domains: ["api.github.com", "github.com"],
       capabilities: [],
@@ -80,6 +83,7 @@ function defaultProviders(): PluginManifest[] {
     },
     {
       name: "example-bundle",
+      displayName: "Example Bundle",
       description: "Bundle-only plugin",
       capabilities: [],
       configKeys: [],
