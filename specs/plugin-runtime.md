@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-30
+- Last Edited: 2026-06-12
 
 ## Purpose
 
@@ -21,7 +21,11 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 
 - Manifest field syntax; see [Plugin Manifest Spec](./plugin-manifest.md).
 - Provider credential issuance; see [Credential Injection Spec](./credential-injection.md).
-- Plugin heartbeat/dispatch hooks; see [Plugin Heartbeat Spec](./plugin-heartbeat.md).
+- Plugin prompt, database, heartbeat, and dispatch hooks; see
+  [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md),
+  [Plugin Database Spec](./plugin-database.md),
+  [Plugin Heartbeat Spec](./plugin-heartbeat.md), and
+  [Plugin Dispatch Spec](./plugin-dispatch.md).
 
 ## Discovery And Loading
 
@@ -125,7 +129,7 @@ and validates that every registration has a matching manifest. Hook
 factories carry their manifest inline, so runtime code is not declared from
 `plugin.yaml`.
 
-Hook contexts expose narrow capabilities rather than raw Junior internals. Plugin hook contracts are defined in [Plugin Heartbeat Spec](./plugin-heartbeat.md) and [Plugin Dispatch Spec](./plugin-dispatch.md).
+Hook contexts expose narrow capabilities rather than raw Junior internals. Plugin hook contracts are defined in [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md), [Plugin Database Spec](./plugin-database.md), [Plugin Heartbeat Spec](./plugin-heartbeat.md), and [Plugin Dispatch Spec](./plugin-dispatch.md).
 
 Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
 
@@ -159,5 +163,7 @@ Plugins may also provide `slackConversationLink` to replace the finalized Slack 
 - `./plugin-manifest.md`
 - `./credential-injection.md`
 - `./agent-prompt.md`
+- `./plugin-prompt-hooks.md`
+- `./plugin-database.md`
 - `./plugin-heartbeat.md`
 - `./plugin-dispatch.md`

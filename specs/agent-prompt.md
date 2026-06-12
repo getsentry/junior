@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-06-11
+- Last Edited: 2026-06-12
 
 ## Purpose
 
@@ -21,7 +21,8 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 - Defining Pi agent loop mechanics or terminal output assembly; see `./harness-agent.md`.
 - Defining Slack delivery transport behavior; see `./slack-agent-delivery.md` and `./slack-outbound-contract.md`.
 - Defining test-layer taxonomy; see `./testing.md`.
-- Defining plugin-specific prompt overlays or provider workflows. Plugins own that guidance through their skills, tools, schemas, and tool guidance.
+- Defining plugin prompt hook contracts; see `./plugin-prompt-hooks.md`.
+- Defining provider workflows. Plugins own provider guidance through their skills, tools, schemas, tool guidance, and prompt hooks.
 
 ## Contracts
 
@@ -42,6 +43,8 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 Turn context may disclose dynamic capability surfaces that the model can act on, such as available skill names/descriptions, active MCP catalog summaries, and tool guidance attached to the current native tool set. It must not separately disclose plugin ownership or installed plugin/provider catalogs as prompt knowledge. If the model needs plugin-specific behavior, that behavior must arrive through the loaded skill body, tool description, tool schema, `promptSnippet`, or `promptGuidelines`.
 
 Turn context is not a session-state cache. If prior tool use, loaded skills, MCP provider activation, or provider descriptors are already present in the agent session log, runtime must recover handles from that log and only disclose the currently actionable capability surface for this turn. Do not add prompt blocks whose purpose is to preserve or replay state that belongs in the session log.
+
+Plugin prompt contributions are governed by `./plugin-prompt-hooks.md`. Core prompt code owns where accepted plugin contributions render, and plugin-provided session append state is plugin-visible bookkeeping rather than model-visible prompt history.
 
 The combined prompt surface must keep these concerns distinct:
 
@@ -165,6 +168,7 @@ When debugging prompt behavior, use existing turn diagnostics, observed tool inv
 ## Related Specs
 
 - `./harness-agent.md`
+- `./plugin-prompt-hooks.md`
 - `./harness-tool-context.md`
 - `./slack-agent-delivery.md`
 - `./slack-outbound-contract.md`

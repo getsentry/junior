@@ -10,9 +10,10 @@
 Define Junior's first SQL-backed storage contract for queryable conversation
 records without moving transcript authorities into SQL.
 
-This storage exists to support stats, dashboard lists, audit queries,
-conversation configuration, durable source/destination/identity metadata, and
-deploy-safe schema evolution.
+This storage is the first feature-owned slice of Junior's shared SQL database.
+It supports stats, dashboard lists, audit queries, conversation configuration,
+durable source/destination/identity metadata, and deploy-safe schema evolution.
+Plugin-owned SQL extensions are governed by `./plugin-database.md`.
 
 ## Scope
 
@@ -40,7 +41,9 @@ deploy-safe schema evolution.
 ### Data Authorities
 
 SQL owns durable, queryable Junior data. This spec covers the first
-feature-owned slice: conversation records and their long-term metadata.
+feature-owned slice: conversation records and their long-term metadata. Plugin
+tables may join the same shared database through the package migration contract
+in `./plugin-database.md`.
 
 The transcript authorities from `./task-execution.md` remain unchanged:
 
@@ -124,6 +127,8 @@ source-specific JSON extraction.
 Future slices may add feature-owned SQL tables for conversation configuration,
 artifact references, agent-run summaries, scheduler links, and other metadata
 concerns once their owning store interfaces are implemented.
+Plugin-owned slices add tables through `./plugin-database.md` and must keep
+their table names under their plugin-owned prefix.
 
 Opaque JSON columns are allowed for source-specific payloads that are not used
 for authorization, lock ownership, credential routing, or external side-effect
@@ -270,6 +275,7 @@ normal runtime tests.
 - `./chat-architecture.md`
 - `./agent-session-resumability.md`
 - `./scheduler.md`
+- `./plugin-database.md`
 - `./dashboard.md`
 - `./testing.md`
 

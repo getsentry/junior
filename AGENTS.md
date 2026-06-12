@@ -130,6 +130,8 @@ Co-Authored-By: (agent model name) <email>
 - `specs/scheduler.md` (scheduled Junior task contract)
 - `specs/plugin-heartbeat.md` (plugin heartbeat and tool hook contract)
 - `specs/plugin-dispatch.md` (durable plugin agent dispatch contract)
+- `specs/plugin-prompt-hooks.md` (plugin prompt contribution, turn observation, and session append state contract)
+- `specs/plugin-database.md` (plugin packaged SQL migrations and ctx.db contract)
 - `specs/harness-agent.md` (agent loop and output contract)
 - `specs/agent-session-resumability.md` (multi-slice agent-run resumability and timeout recovery contract)
 - `specs/agent-execution.md` (agent execution rubric and completion gates)
