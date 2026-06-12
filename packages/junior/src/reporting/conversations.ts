@@ -508,6 +508,7 @@ function sessionReportFromConversation(
     details?.originRequester ?? conversation.requester,
   );
   const slackThread = parseSlackThreadId(conversation.conversationId);
+  const channelName = channelNameFromConversation(conversation, details);
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: 0,
@@ -522,9 +523,7 @@ function sessionReportFromConversation(
     surface,
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
-    ...((details?.channelName ?? conversation.channelName)
-      ? { channelName: details?.channelName ?? conversation.channelName }
-      : {}),
+    ...(channelName ? { channelName } : {}),
     ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
   };
 }

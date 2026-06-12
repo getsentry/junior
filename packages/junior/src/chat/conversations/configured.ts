@@ -11,12 +11,7 @@ let configuredStore:
     }
   | undefined;
 
-/** Return whether process configuration points Junior at SQL. */
-export function hasConfiguredJuniorDatabase(): boolean {
-  return Boolean(getChatConfig().sql.databaseUrl);
-}
-
-/** Return the process-configured conversation feed store. */
+/** Return the process-configured conversation record store. */
 export function getConfiguredConversationStore(): ConversationStore {
   const databaseUrl = getChatConfig().sql.databaseUrl;
   if (!databaseUrl) {

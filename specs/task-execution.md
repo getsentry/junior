@@ -150,7 +150,8 @@ part of execution-index cleanup:
 - `junior:agent-session-log:<conversationId>` stores the append-only Pi/model
   execution transcript.
 
-The conversation record owns API-facing metadata and execution coordination:
+The state-backed conversation record owns mailbox execution coordination and
+the retained activity summary used by local/default reporting and SQL backfill:
 
 ```text
 junior:conversation:<conversationId>
@@ -270,13 +271,15 @@ Tests may use an in-memory adapter that emulates the same score/member behavior,
 but the production Redis path must use sorted-set commands directly instead of
 storing serialized index arrays.
 
-`junior:conversation:by-activity` contains all retained conversations and powers
-conversation list APIs, dashboard recent-conversation views, and aggregate
-conversation stats. Writes that create or update visible conversation activity
-must upsert this index. Inbound mailbox appends and committed agent-run summary
-updates both count as visible conversation activity. Retention cleanup may trim
-old scores, and individual conversation records must use the same retention
-window so dangling index members can be skipped safely.
+`junior:conversation:by-activity` contains all retained state-backed
+conversations. It powers local/default conversation reads and SQL backfill; once
+SQL is configured, dashboard recent-conversation views and aggregate stats read
+the `ConversationStore` described in `./conversation-storage.md`. Writes that
+create or update visible conversation activity must upsert this index. Inbound
+mailbox appends and committed agent-run summary updates both count as visible
+conversation activity. Retention cleanup may trim old scores, and individual
+conversation records must use the same retention window so dangling index
+members can be skipped safely.
 
 `junior:conversation:active` contains only conversations whose
 `execution.status !== "idle"`. Heartbeat scans this index for stale active

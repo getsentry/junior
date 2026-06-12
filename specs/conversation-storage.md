@@ -265,5 +265,8 @@ normal runtime tests.
 - `./agent-session-resumability.md`
 - `./scheduler.md`
 - `./dashboard.md`
-- `./runtime-boundary-schemas.md`
 - `./testing.md`
+
+Related policy:
+
+- `../policies/runtime-boundary-schemas.md`

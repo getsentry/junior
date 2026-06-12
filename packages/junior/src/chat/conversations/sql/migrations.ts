@@ -1,3 +1,9 @@
+/**
+ * SQL schema migrations for durable conversation records.
+ *
+ * Migrations are checksum-pinned and run under an advisory lock from
+ * `junior upgrade`; request handlers must not apply them.
+ */
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { schema } from "./schema";

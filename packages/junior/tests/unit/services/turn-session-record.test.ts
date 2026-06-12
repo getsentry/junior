@@ -540,14 +540,6 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("surfaces configured conversation store failures through completed turn persistence", async () => {
-    const logException = vi.fn();
-    vi.doMock("@/chat/logging", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/chat/logging")>();
-      return {
-        ...actual,
-        logException,
-      };
-    });
     const { persistCompletedSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const conversationStore = {
@@ -579,27 +571,7 @@ describe("persistAuthPauseSessionRecord", () => {
         conversationStore,
         surface: "scheduler",
       }),
-    ).resolves.toBeUndefined();
-
-    expect(conversationStore.recordConversationStatus).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "conversation-store-failure",
-        source: "scheduler",
-      }),
-    );
-    expect(logException).toHaveBeenCalledWith(
-      expect.any(Error),
-      "agent_turn_completed_session_record_failed",
-      expect.objectContaining({
-        modelId: "test-model",
-      }),
-      expect.objectContaining({
-        "app.ai.resume_conversation_id": "conversation-store-failure",
-        "app.ai.resume_session_id": "turn-store-failure",
-        "app.ai.resume_slice_id": 1,
-      }),
-      "Failed to persist completed turn session record",
-    );
+    ).rejects.toThrow("sql unavailable");
   });
 
   it("keeps completed session bootstrap context for later turns in the same session", async () => {

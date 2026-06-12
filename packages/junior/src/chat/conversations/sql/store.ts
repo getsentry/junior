@@ -215,6 +215,7 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   throw new Error("Conversation record execution status is invalid");
 }
 
+/** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(row: ConversationRow): Conversation {
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
@@ -224,6 +225,16 @@ function conversationFromRow(row: ConversationRow): Conversation {
       ? undefined
       : parseDestination(row.destination);
   const requester = parseStoredSlackRequester(row.requester);
+  if (
+    row.destination !== undefined &&
+    row.destination !== null &&
+    !destination
+  ) {
+    throw new Error("Conversation record destination is invalid");
+  }
+  if (row.requester !== undefined && row.requester !== null && !requester) {
+    throw new Error("Conversation record requester is invalid");
+  }
   const source =
     row.source === undefined || row.source === null
       ? undefined

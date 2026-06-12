@@ -167,6 +167,43 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("rejects invalid serialized provider fields", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+      await fixture.executor.execute(
+        `
+INSERT INTO junior_conversations (
+  conversation_id,
+  destination_json,
+  requester_json,
+  created_at,
+  last_activity_at,
+  updated_at,
+  execution_status
+) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7)
+`,
+        [
+          "slack:C123:invalid-json",
+          JSON.stringify({ platform: "slack", teamId: "T123" }),
+          JSON.stringify({ platform: "slack", teamId: "T123" }),
+          new Date(1_000).toISOString(),
+          new Date(1_000).toISOString(),
+          new Date(1_000).toISOString(),
+          "idle",
+        ],
+      );
+
+      await expect(
+        store.getConversation({ conversationId: "slack:C123:invalid-json" }),
+      ).rejects.toThrow("Conversation record destination is invalid");
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("backfills state-backed conversations without copying pending input", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

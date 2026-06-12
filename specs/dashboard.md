@@ -264,8 +264,10 @@ Public health responses must not include runtime discovery data such as cwd, hom
 
 ### Conversation Stats Reports
 
-Conversation list and stats APIs should read the conversation index defined in
-`./task-execution.md`:
+Conversation list and stats APIs should read queryable conversation records
+through the `ConversationStore` defined in `./conversation-storage.md`. In
+state-backed local/default mode and during SQL backfill, that store reads the
+bounded activity index defined in `./task-execution.md`:
 
 ```text
 junior:conversation:by-activity

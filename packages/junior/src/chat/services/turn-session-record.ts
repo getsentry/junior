@@ -276,6 +276,9 @@ export async function persistCompletedSessionRecord(args: {
       },
       "Failed to persist completed turn session record",
     );
+    if (args.conversationStore) {
+      throw recordError;
+    }
   }
 }
 
