@@ -3,6 +3,7 @@ import { backfillConversationMetadataToSql } from "@/chat/metadata/sql/backfill"
 import { createSqlConversationMetadataStore } from "@/chat/metadata/sql/store";
 import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import {
   juniorConversationInboundMessages,
   juniorConversations,
@@ -10,6 +11,7 @@ import {
   juniorIdentities,
 } from "@/chat/sql/schema";
 import { and, eq } from "drizzle-orm";
+import { listRecentConversationMetadataSummaries } from "@/reporting/conversations";
 import { CONVERSATION_ID, inboundMessage } from "../fixtures/conversation-work";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
@@ -522,6 +524,58 @@ describe("conversation metadata SQL store", () => {
         ],
       });
     } finally {
+      await fixture.close();
+    }
+  });
+
+  it("uses turn-session status for plugin metadata summaries", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const store = createSqlConversationMetadataStore(fixture.executor);
+      await store.requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("summary-target").destination,
+        nowMs: 1_000,
+      });
+      const started = await store.startConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_100,
+      });
+      expect(started.status).toBe("acquired");
+      if (started.status !== "acquired") {
+        return;
+      }
+      await store.completeConversationWork({
+        conversationId: CONVERSATION_ID,
+        leaseToken: started.leaseToken,
+        nowMs: 1_200,
+      });
+      await upsertAgentTurnSessionRecord({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("summary-target").destination,
+        lastProgressAtMs: 1_200,
+        piMessages: [],
+        sessionId: "turn-failed",
+        sliceId: 1,
+        state: "failed",
+        surface: "slack",
+      });
+
+      await expect(
+        listRecentConversationMetadataSummaries({
+          limit: 1,
+          metadataStore: store,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          status: "failed",
+        }),
+      ]);
+    } finally {
+      await disconnectStateAdapter();
       await fixture.close();
     }
   });

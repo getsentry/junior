@@ -1294,6 +1294,11 @@ export async function listRecentConversationMetadataSummaries(
   const detailsByConversationId = await getConversationDetailsForIds(
     conversations.map((conversation) => conversation.conversationId),
   );
+  const reportsByConversation = await reportsFromConversations({
+    conversations,
+    detailsByConversationId,
+    nowMs,
+  });
   return conversations.map((conversation) => {
     const details = detailsByConversationId.get(conversation.conversationId);
     const surface = surfaceFromSource(
@@ -1301,6 +1306,11 @@ export async function listRecentConversationMetadataSummaries(
       conversation.conversationId,
     );
     const channelName = channelNameFromConversation(conversation, details);
+    const report = newestRun(
+      reportsByConversation.get(conversation.conversationId) ?? [
+        sessionReportFromConversation(conversation, nowMs, details),
+      ],
+    );
     return {
       conversationId: conversation.conversationId,
       displayTitle: titleFromConversation({ conversation, details, surface }),
@@ -1308,7 +1318,7 @@ export async function listRecentConversationMetadataSummaries(
       lastUpdatedAt: new Date(
         conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
       ).toISOString(),
-      status: statusFromConversation(conversation, undefined, nowMs),
+      status: report.status,
       ...(channelName ? { channelName } : {}),
       ...(conversation.source ? { source: conversation.source } : {}),
     };
