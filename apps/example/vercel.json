@@ -1,4 +1,4 @@
 {
   "framework": "nitro",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm exec junior upgrade && pnpm build"
 }

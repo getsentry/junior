@@ -39,13 +39,13 @@ The scaffolded `package.json` includes the production build script:
 }
 ```
 
-If your app uses Junior's SQL database, set the Vercel build command to run upgrades before the normal build:
+New scaffolded apps run Junior upgrades before the normal build:
 
 ```bash
 pnpm exec junior upgrade && pnpm build
 ```
 
-Otherwise, keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. When included in the build command, `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
+Keep that Vercel build command unless you have an older install without Junior's SQL database configured. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
 
 ## Enable Junior's Nitro deployment module
 

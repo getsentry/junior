@@ -14,9 +14,18 @@ describe("juniorVercelConfig", () => {
     const config = juniorVercelConfig();
 
     expect(config.framework).toBe("nitro");
-    expect(config.buildCommand).toBe("pnpm build");
+    expect(config.buildCommand).toBe("pnpm exec junior upgrade && pnpm build");
     expect(config.crons).toBeUndefined();
     expect(config.functions).toBeUndefined();
+  });
+
+  it("allows apps to override the build command", () => {
+    const config = juniorVercelConfig({
+      buildCommand: "pnpm build",
+    });
+
+    expect(config.framework).toBe("nitro");
+    expect(config.buildCommand).toBe("pnpm build");
   });
 
   it("omits buildCommand when set to null", () => {

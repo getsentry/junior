@@ -57,7 +57,9 @@ describe("init cli", () => {
       fs.readFileSync(path.join(target, "vercel.json"), "utf8"),
     );
     expect(vercelConfig.framework).toBe("nitro");
-    expect(vercelConfig.buildCommand).toBe("pnpm build");
+    expect(vercelConfig.buildCommand).toBe(
+      "pnpm exec junior upgrade && pnpm build",
+    );
     expect(vercelConfig.crons).toBeUndefined();
     expect(vercelConfig.functions).toBeUndefined();
 
