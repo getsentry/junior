@@ -1,6 +1,9 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { migrateSchema } from "@/chat/metadata/sql/migrations";
+import {
+  migrations as declaredMigrations,
+  migrateSchema,
+} from "@/chat/metadata/sql/migrations";
 import { schema } from "@/chat/metadata/sql/schema";
 import {
   buildJuniorSqlConversation,
@@ -105,11 +108,13 @@ WHERE conversation_id = $1
 `,
         ["slack:C123:1718123456.000000"],
       );
-      const migrations = await fixture.executor.query<{ id: string }>(
+      const migrationRows = await fixture.executor.query<{ id: string }>(
         "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
       );
 
-      expect(migrations).toEqual([{ id: migrations[0].id }]);
+      expect(migrationRows).toEqual(
+        declaredMigrations.map((migration) => ({ id: migration.id })),
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",

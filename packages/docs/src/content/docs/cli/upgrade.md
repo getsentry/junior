@@ -50,13 +50,6 @@ pnpm exec junior upgrade && pnpm --filter <app> build
 
 This keeps schema creation and SQL backfills out of request handlers. Runtime code trusts that the deployment ran `junior upgrade`; if schema is missing, the deployment is misconfigured and should fail clearly.
 
-For production deploys that need to capture writes made by the previous deployment during the Vercel build or promotion window, run the same command again from the production environment after the new deployment is serving traffic:
-
-1. Load the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and database URL variables used by the production deployment.
-2. Run `pnpm exec junior upgrade`.
-
-The rerun is safe because the migration is idempotent.
-
 ## Example output
 
 Typical logs look like this:
