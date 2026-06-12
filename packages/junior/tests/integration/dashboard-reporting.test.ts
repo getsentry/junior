@@ -21,7 +21,7 @@ describe("dashboard reporting", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       DATABASE_URL: undefined,
-      JUNIOR_CONVERSATION_METADATA_DATABASE_URL: undefined,
+      JUNIOR_DATABASE_URL: undefined,
     };
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");

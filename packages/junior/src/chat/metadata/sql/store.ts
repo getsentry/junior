@@ -29,7 +29,7 @@ import {
   type Source,
   type StartConversationWorkResult,
 } from "../state-task-execution-store";
-import { ensureConversationMetadataSchema } from "./migrations";
+import { migrateSchema } from "./migrations";
 import type {
   JuniorSqlDatabase,
   JuniorSqlMigrationExecutor,
@@ -434,7 +434,7 @@ function attachmentCount(input: AgentInput): number {
   return Array.isArray(input.attachments) ? input.attachments.length : 0;
 }
 
-export class SqlConversationMetadataStore implements ConversationMetadataStore {
+export class SqlStore implements ConversationMetadataStore {
   private schemaReady: Promise<void> | undefined;
 
   constructor(
@@ -442,12 +442,10 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     private readonly migrationExecutor: JuniorSqlMigrationExecutor,
   ) {}
 
-  /** Ensure SQL metadata tables exist before read or write use. */
-  async ensureSchema(): Promise<void> {
+  /** Apply SQL schema migrations before runtime uses this store. */
+  async migrate(): Promise<void> {
     if (!this.schemaReady) {
-      this.schemaReady = ensureConversationMetadataSchema(
-        this.migrationExecutor,
-      );
+      this.schemaReady = migrateSchema(this.migrationExecutor);
     }
     const schemaReady = this.schemaReady;
     try {
@@ -463,7 +461,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
   async getConversation(args: {
     conversationId: string;
   }): Promise<Conversation | undefined> {
-    await this.ensureSchema();
     const row = await this.readConversationRow(args.conversationId);
     if (!row) {
       return undefined;
@@ -477,7 +474,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
   async getConversationWorkState(args: {
     conversationId: string;
   }): Promise<ConversationWorkState | undefined> {
-    await this.ensureSchema();
     const conversation = await this.getConversation(args);
     return conversation ? conversationWorkState(conversation) : undefined;
   }
@@ -486,7 +482,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     message: InboundMessage;
     nowMs?: number;
   }): Promise<AppendInboundMessageResult> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.message.conversationId,
@@ -577,7 +572,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     destination: Destination;
     nowMs?: number;
   }): Promise<RequestConversationWorkResult> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -626,7 +620,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     source?: Source;
     title?: string;
   }): Promise<void> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
     await this.withConversationMutation(args.conversationId, async () => {
@@ -671,7 +664,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     conversationId: string;
     nowMs?: number;
   }): Promise<StartConversationWorkResult> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -726,7 +718,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<boolean> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -763,7 +754,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<InboundMessage[]> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     const pending = await this.withConversationMutation(
       args.conversationId,
@@ -799,7 +789,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<boolean> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -857,7 +846,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<boolean> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -894,7 +882,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<boolean> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -930,7 +917,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     leaseToken: string;
     nowMs?: number;
   }): Promise<"completed" | "lost_lease" | "pending"> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -966,7 +952,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     conversationId: string;
     nowMs?: number;
   }): Promise<void> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     await this.withConversationMutation(args.conversationId, async () => {
       const current = await this.getConversation({
@@ -993,7 +978,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
     conversationId: string;
     nowMs?: number;
   }): Promise<boolean> {
-    await this.ensureSchema();
     const nowMs = args.nowMs ?? now();
     return await this.withConversationMutation(
       args.conversationId,
@@ -1028,7 +1012,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
 
   /** Copy one conversation record into SQL during metadata backfill. */
   async backfillConversation(conversation: Conversation): Promise<void> {
-    await this.ensureSchema();
     await this.withConversationMutation(
       conversation.conversationId,
       async () => {
@@ -1100,7 +1083,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
       offset?: number;
     } = {},
   ): Promise<Conversation[]> {
-    await this.ensureSchema();
     const rows = await this.executor
       .db()
       .select()
@@ -1129,7 +1111,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
       staleBeforeMs?: number;
     } = {},
   ): Promise<string[]> {
-    await this.ensureSchema();
     const executionUpdatedAt = sql<Date>`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const rows = await this.executor
       .db()
@@ -1458,8 +1439,6 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
 }
 
 /** Create a SQL-backed conversation metadata store. */
-export function createSqlConversationMetadataStore(
-  executor: JuniorSqlMigrationExecutor,
-): SqlConversationMetadataStore {
-  return new SqlConversationMetadataStore(executor, executor);
+export function createSqlStore(executor: JuniorSqlMigrationExecutor): SqlStore {
+  return new SqlStore(executor, executor);
 }

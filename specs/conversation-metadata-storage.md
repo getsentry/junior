@@ -145,24 +145,25 @@ do not include PGlite. `packages/junior/tests/fixtures/sql.ts` wraps that
 fixture with Junior's schema and factories so future metadata tables can be
 covered without rebuilding ad-hoc stores.
 
-### Vercel Deployment And Auto-Migration
+### Vercel Deployment And Upgrade
 
 Vercel deployments can be created from Git, CLI, Deploy Hooks, or REST API, and
 Git pushes normally trigger deployments automatically. Vercel Cron Jobs invoke
-production functions by HTTP GET. Junior must not rely on a build step as the
-only production migration point.
+production functions by HTTP GET. Junior SQL schema and metadata backfills are
+applied by `junior upgrade`, not by request handlers.
 
-Schema migration is runtime-coordinated:
+Vercel projects using Neon normally receive a standard `DATABASE_URL` from the
+integration. Projects that need a Junior-specific database set
+`JUNIOR_DATABASE_URL`; otherwise Junior uses `DATABASE_URL`. Vercel build
+commands can run `junior upgrade` before the app build so schema changes are
+applied before the new deployment starts serving traffic:
 
-1. Runtime startup or first metadata-store use calls `ensureSchema()`.
-2. `ensureSchema()` takes a database migration lock.
-3. The store reads `junior_schema_migrations`.
-4. Pending migrations run in order.
-5. The lock is released after successful commit.
-6. Concurrent cold starts either wait for the lock or observe the completed
-   migration.
+```bash
+pnpm exec junior upgrade && pnpm build
+```
 
-Automatic migrations in the runtime path must be expand-only:
+Schema migrations must be expand-only because the old deployment can continue
+serving traffic while Vercel builds and promotes the new deployment:
 
 - create tables
 - add nullable columns
@@ -170,9 +171,9 @@ Automatic migrations in the runtime path must be expand-only:
 - add new non-breaking constraints only after data is clean
 - create or update backfill tracking records
 
-Automatic migrations must not drop columns, rewrite large tables synchronously,
-or require all old deployment instances to stop before the new deployment can
-serve traffic.
+Migrations must not drop columns, rewrite large tables synchronously, or require
+all old deployment instances to stop before the new deployment can serve
+traffic.
 
 ### Backfill And Cutover
 
@@ -183,7 +184,7 @@ a single blocking request and not through long-lived read fallbacks.
    implementation.
 2. `junior upgrade` copies historical Redis metadata into the shared Junior SQL
    database after a SQL database URL is configured. The registered SQL
-   migration uses `backfillConversationMetadataToSql` to copy retained
+   migration uses `backfillToSql` to copy retained
    conversation metadata from the state-backed metadata store into the SQL
    store.
 3. The retained activity index is bounded, so the migration should finish in
@@ -191,11 +192,11 @@ a single blocking request and not through long-lived read fallbacks.
    clearly instead of enabling SQL metadata from a partial copy.
 4. The runtime and dashboard use the canonical metadata store interface. Junior
    points that interface at Neon-backed SQL when it can resolve a SQL database
-   URL from `JUNIOR_CONVERSATION_METADATA_DATABASE_URL` or `DATABASE_URL`, in
-   that order. The explicit Junior variable remains the
-   override for projects where the default application database is not the
-   Junior SQL database. Leaving both database URL variables unset keeps the
-   state-backed local/default store. During the migration deployment, enable the
+   URL from `JUNIOR_DATABASE_URL` or `DATABASE_URL`, in that order. The explicit
+   Junior variable remains the override for projects where the default
+   application database is not the Junior SQL database. Leaving both database
+   URL variables unset keeps the state-backed local/default store. During the
+   migration deployment, enable the
    SQL metadata store once required schema and migration completion checks pass.
 5. A cleanup deployment removes obsolete metadata-only Redis writes after
    production observation.
@@ -205,11 +206,11 @@ storage spec changes their authority.
 
 ## Failure Model
 
-- If schema migration fails, metadata-store initialization must fail closed for
-  SQL-backed metadata paths instead of silently using partial tables.
-- If a migration lock is held by another Vercel instance, callers may wait or
-  retry according to the store implementation. They must not run migrations
-  concurrently.
+- If schema migration fails during `junior upgrade`, the deployment must fail
+  before the new runtime serves traffic.
+- If a migration lock is held by another upgrade process, the command waits or
+  fails according to the SQL executor. Runtime request handlers must not run
+  migrations concurrently.
 - If backfill fails partway through, already copied rows remain valid. The next
   `junior upgrade` run repeats the bounded retained-activity scan and
   idempotently upserts rows.

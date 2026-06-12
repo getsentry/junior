@@ -14,7 +14,7 @@ export {
   juniorSchemaMigrations,
 };
 
-export const conversationMetadataSqlSchema = {
+export const schema = {
   juniorConversationInboundMessages,
   juniorConversations,
   juniorDestinations,

@@ -68,8 +68,7 @@ describe("chat config", () => {
   });
 
   it("reads the optional Junior SQL database URL override", async () => {
-    process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL =
-      "postgres://user:pass@example.test/neon";
+    process.env.JUNIOR_DATABASE_URL = "postgres://user:pass@example.test/neon";
 
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().sql.databaseUrl).toBe(
@@ -78,7 +77,7 @@ describe("chat config", () => {
   });
 
   it("uses the standard Neon database URL by default", async () => {
-    delete process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL;
+    delete process.env.JUNIOR_DATABASE_URL;
     process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 
     const { getChatConfig } = await loadConfig();
@@ -88,7 +87,7 @@ describe("chat config", () => {
   });
 
   it("prefers the explicit Junior SQL URL over standard database URLs", async () => {
-    process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL =
+    process.env.JUNIOR_DATABASE_URL =
       "postgres://user:pass@metadata.example.test/neon";
     process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 

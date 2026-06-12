@@ -1,9 +1,9 @@
 import { getChatConfig } from "@/chat/config";
 import {
-  backfillConversationMetadataToSql,
-  type ConversationMetadataSqlBackfillTarget,
+  backfillToSql,
+  type BackfillTarget,
 } from "@/chat/metadata/sql/backfill";
-import { createSqlConversationMetadataStore } from "@/chat/metadata/sql/store";
+import { createSqlStore } from "@/chat/metadata/sql/store";
 import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 import type { MigrationContext, MigrationResult } from "../types";
@@ -13,11 +13,11 @@ const CONVERSATION_METADATA_BACKFILL_LIMIT = 10_000;
 /**
  * Copy retained conversation execution metadata into the configured SQL store.
  */
-export async function migrateConversationMetadataToSql(
+export async function migrateMetadataToSql(
   context: MigrationContext,
   options: {
     batchSize?: number;
-    target?: ConversationMetadataSqlBackfillTarget;
+    target?: BackfillTarget;
   } = {},
 ): Promise<MigrationResult> {
   const databaseUrl = context.sqlDatabaseUrl ?? getChatConfig().sql.databaseUrl;
@@ -37,7 +37,7 @@ export async function migrateConversationMetadataToSql(
   const source = createStateConversationMetadataStore(context.stateAdapter);
   const target =
     options.target ??
-    createSqlConversationMetadataStore(
+    createSqlStore(
       createNeonJuniorSqlExecutor({
         connectionString: databaseUrl!,
       }),
@@ -49,7 +49,7 @@ export async function migrateConversationMetadataToSql(
   let copiedCount = 0;
   let hasMore = false;
   do {
-    const result = await backfillConversationMetadataToSql({
+    const result = await backfillToSql({
       limit,
       offset: copiedCount,
       source,
@@ -67,7 +67,7 @@ export async function migrateConversationMetadataToSql(
   };
 }
 
-export const conversationMetadataSqlMigration = {
+export const sqlMetadataMigration = {
   name: "backfill-conversation-metadata-sql",
-  run: migrateConversationMetadataToSql,
+  run: migrateMetadataToSql,
 };

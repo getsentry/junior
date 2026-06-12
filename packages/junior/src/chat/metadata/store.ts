@@ -10,7 +10,6 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackRequester } from "@/chat/requester";
 
 export interface ConversationMetadataStore {
-  ensureSchema(): Promise<void>;
   getConversation(args: {
     conversationId: string;
   }): Promise<Conversation | undefined>;

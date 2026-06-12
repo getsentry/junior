@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { conversationMetadataSqlSchema } from "./schema";
+import { schema } from "./schema";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 
 const MIGRATION_LOCK_NAME = "junior_conversation_metadata_schema";
@@ -12,7 +12,7 @@ const migrationRecordSchema = z
   })
   .strict();
 
-export interface ConversationMetadataSqlMigration {
+export interface Migration {
   checksum: string;
   id: string;
   statements: readonly string[];
@@ -32,10 +32,7 @@ function checksumStatements(statements: readonly string[]): string {
   return hash.digest("hex");
 }
 
-function defineMigration(
-  id: string,
-  statements: readonly string[],
-): ConversationMetadataSqlMigration {
+function defineMigration(id: string, statements: readonly string[]): Migration {
   return {
     id,
     checksum: checksumStatements(statements),
@@ -178,11 +175,11 @@ CREATE INDEX IF NOT EXISTS junior_conversation_inbound_pending_idx
 `,
 ] as const;
 
-export const conversationMetadataSqlMigrations = [
+export const migrations = [
   defineMigration("0001_conversation_metadata_core", coreMetadataStatements),
 ] as const;
 
-export { conversationMetadataSqlSchema };
+export { schema };
 
 function parseStoredMigrationRecord(value: unknown): StoredMigrationRecord {
   return migrationRecordSchema.parse(value);
@@ -204,7 +201,7 @@ async function listAppliedMigrations(
 
 async function applyMigration(
   executor: JuniorSqlMigrationExecutor,
-  migration: ConversationMetadataSqlMigration,
+  migration: Migration,
 ): Promise<void> {
   await executor.transaction(async () => {
     for (const statement of migration.statements) {
@@ -217,17 +214,15 @@ async function applyMigration(
   });
 }
 
-/**
- * Ensure the SQL schema for queryable conversation metadata exists.
- */
-export async function ensureConversationMetadataSchema(
+/** Apply pending SQL schema migrations for queryable conversation metadata. */
+export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
-  migrations: readonly ConversationMetadataSqlMigration[] = conversationMetadataSqlMigrations,
+  migrationList: readonly Migration[] = migrations,
 ): Promise<void> {
   await executor.withLock(MIGRATION_LOCK_NAME, async () => {
     await executor.execute(createMigrationTable);
     const applied = await listAppliedMigrations(executor);
-    for (const migration of migrations) {
+    for (const migration of migrationList) {
       const existing = applied.get(migration.id);
       if (existing) {
         if (existing.checksum !== migration.checksum) {

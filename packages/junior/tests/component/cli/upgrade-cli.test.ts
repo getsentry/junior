@@ -6,12 +6,12 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   requestConversationWork,
 } from "@/chat/task-execution/store";
-import { createSqlConversationMetadataStore } from "@/chat/metadata/sql/store";
+import { createSqlStore } from "@/chat/metadata/sql/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { runUpgradeMigrations } from "@/cli/upgrade";
-import { migrateConversationMetadataToSql } from "@/cli/upgrade/migrations/conversation-metadata-sql";
+import { migrateMetadataToSql } from "@/cli/upgrade/migrations/conversation-metadata-sql";
 import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
 import {
   CONVERSATION_ID,
@@ -22,12 +22,11 @@ import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
-    JUNIOR_CONVERSATION_METADATA_DATABASE_URL:
-      process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL,
+    JUNIOR_DATABASE_URL: process.env.JUNIOR_DATABASE_URL,
     JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
   };
   process.env.JUNIOR_STATE_ADAPTER = "memory";
-  delete process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL;
+  delete process.env.JUNIOR_DATABASE_URL;
   return original;
 });
 const SQL_METADATA_SKIPPED_RESULT = {
@@ -85,10 +84,7 @@ describe("upgrade CLI migrations", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
-    restoreEnv(
-      "JUNIOR_CONVERSATION_METADATA_DATABASE_URL",
-      ORIGINAL_ENV.JUNIOR_CONVERSATION_METADATA_DATABASE_URL,
-    );
+    restoreEnv("JUNIOR_DATABASE_URL", ORIGINAL_ENV.JUNIOR_DATABASE_URL);
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
     vi.restoreAllMocks();
   });
@@ -197,7 +193,7 @@ describe("upgrade CLI migrations", () => {
     );
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.executor);
 
     try {
       const context = {
@@ -207,7 +203,7 @@ describe("upgrade CLI migrations", () => {
       };
       const results = [
         await redisConversationStateMigration.run(context),
-        await migrateConversationMetadataToSql(context, { target: sqlStore }),
+        await migrateMetadataToSql(context, { target: sqlStore }),
       ];
 
       expect(results).toEqual([
@@ -252,7 +248,7 @@ describe("upgrade CLI migrations", () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.executor);
 
     try {
       for (let index = 0; index < 3; index++) {
@@ -265,7 +261,7 @@ describe("upgrade CLI migrations", () => {
       }
 
       await expect(
-        migrateConversationMetadataToSql(
+        migrateMetadataToSql(
           {
             io: { info: () => {} },
             sqlDatabaseUrl: "postgres://configured.example.test/neon",
@@ -529,7 +525,7 @@ describe("upgrade CLI migrations", () => {
       state: stateAdapter,
     });
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.executor);
 
     try {
       const context = {
@@ -539,7 +535,7 @@ describe("upgrade CLI migrations", () => {
       };
       const results = [
         await redisConversationStateMigration.run(context),
-        await migrateConversationMetadataToSql(context, { target: sqlStore }),
+        await migrateMetadataToSql(context, { target: sqlStore }),
       ];
 
       expect(results).toEqual([

@@ -248,7 +248,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
 
 function readJuniorDatabaseUrl(env: NodeJS.ProcessEnv): string | undefined {
   return (
-    toOptionalTrimmed(env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL) ??
+    toOptionalTrimmed(env.JUNIOR_DATABASE_URL) ??
     toOptionalTrimmed(env.DATABASE_URL)
   );
 }

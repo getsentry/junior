@@ -25,7 +25,6 @@ export function createStateConversationMetadataStore(
   state?: StateAdapter,
 ): ConversationMetadataStore {
   return {
-    async ensureSchema() {},
     getConversation: (args) => getConversation({ ...args, state }),
     getConversationWorkState: (args) =>
       getConversationWorkState({ ...args, state }),

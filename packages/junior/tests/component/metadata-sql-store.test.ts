@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { backfillConversationMetadataToSql } from "@/chat/metadata/sql/backfill";
-import {
-  createSqlConversationMetadataStore,
-  SqlConversationMetadataStore,
-} from "@/chat/metadata/sql/store";
+import { backfillToSql } from "@/chat/metadata/sql/backfill";
+import { createSqlStore, SqlStore } from "@/chat/metadata/sql/store";
 import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -20,12 +17,20 @@ import { CONVERSATION_ID, inboundMessage } from "../fixtures/conversation-work";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation metadata SQL store", () => {
-  it("runs schema migration from lease recovery first-use methods", async () => {
+  it("requires explicit schema migration before store use", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlConversationMetadataStore(fixture.executor);
+      const store = createSqlStore(fixture.executor);
 
+      await expect(
+        store.markConversationWorkEnqueued({
+          conversationId: CONVERSATION_ID,
+          nowMs: 1_000,
+        }),
+      ).rejects.toThrow("junior_conversations");
+
+      await store.migrate();
       await expect(
         store.markConversationWorkEnqueued({
           conversationId: CONVERSATION_ID,
@@ -69,15 +74,10 @@ describe("conversation metadata SQL store", () => {
           return await fixture.executor.withLock(lockName, callback);
         },
       };
-      const store = new SqlConversationMetadataStore(
-        fixture.executor,
-        migrationExecutor,
-      );
+      const store = new SqlStore(fixture.executor, migrationExecutor);
 
-      await expect(store.ensureSchema()).rejects.toThrow(
-        "transient schema failure",
-      );
-      await expect(store.ensureSchema()).resolves.toBeUndefined();
+      await expect(store.migrate()).rejects.toThrow("transient schema failure");
+      await expect(store.migrate()).resolves.toBeUndefined();
       expect(attempts).toBe(2);
     } finally {
       await fixture.close();
@@ -88,8 +88,8 @@ describe("conversation metadata SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlConversationMetadataStore(fixture.executor);
-      await store.ensureSchema();
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
 
       await expect(
         store.appendInboundMessage({
@@ -303,8 +303,8 @@ describe("conversation metadata SQL store", () => {
         nowMs: 2_000,
       });
 
-      const target = createSqlConversationMetadataStore(fixture.executor);
-      const result = await backfillConversationMetadataToSql({
+      const target = createSqlStore(fixture.executor);
+      const result = await backfillToSql({
         source,
         target,
         limit: 10,
@@ -338,7 +338,8 @@ describe("conversation metadata SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlConversationMetadataStore(fixture.executor);
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
       await store.recordConversationActivity({
         conversationId: "local:workspace:run-123",
         destination: {
@@ -410,7 +411,8 @@ describe("conversation metadata SQL store", () => {
         nowMs: 1_500,
       });
 
-      const target = createSqlConversationMetadataStore(fixture.executor);
+      const target = createSqlStore(fixture.executor);
+      await target.migrate();
       await target.requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("target").destination,
@@ -431,7 +433,7 @@ describe("conversation metadata SQL store", () => {
         return;
       }
 
-      const result = await backfillConversationMetadataToSql({
+      const result = await backfillToSql({
         source,
         target,
         limit: 10,
@@ -484,7 +486,8 @@ describe("conversation metadata SQL store", () => {
         nowMs: 1_500,
       });
 
-      const target = createSqlConversationMetadataStore(fixture.executor);
+      const target = createSqlStore(fixture.executor);
+      await target.migrate();
       await target.requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("target").destination,
@@ -505,7 +508,7 @@ describe("conversation metadata SQL store", () => {
         return;
       }
 
-      const result = await backfillConversationMetadataToSql({
+      const result = await backfillToSql({
         source,
         target,
         limit: 10,
@@ -536,7 +539,8 @@ describe("conversation metadata SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlConversationMetadataStore(fixture.executor);
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
       await store.requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("activity-target").destination,
@@ -572,7 +576,8 @@ describe("conversation metadata SQL store", () => {
 
     try {
       await disconnectStateAdapter();
-      const store = createSqlConversationMetadataStore(fixture.executor);
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
       await store.requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("summary-target").destination,

@@ -1,10 +1,7 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  conversationMetadataSqlMigrations,
-  ensureConversationMetadataSchema,
-} from "@/chat/metadata/sql/migrations";
-import { conversationMetadataSqlSchema } from "@/chat/metadata/sql/schema";
+import { migrateSchema } from "@/chat/metadata/sql/migrations";
+import { schema } from "@/chat/metadata/sql/schema";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -15,7 +12,7 @@ describe("conversation metadata SQL local mode", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await ensureConversationMetadataSchema(fixture.executor);
+      await migrateSchema(fixture.executor);
 
       const rows = await fixture.executor.query<{
         column_name: string;
@@ -37,7 +34,7 @@ ORDER BY table_name ASC, ordinal_position ASC
         ]);
       }
       const expected = new Map(
-        Object.values(conversationMetadataSqlSchema).map((table) => [
+        Object.values(schema).map((table) => [
           getTableName(table),
           Object.values(getTableColumns(table)).map((column) => column.name),
         ]),
@@ -56,8 +53,8 @@ ORDER BY table_name ASC, ordinal_position ASC
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await ensureConversationMetadataSchema(fixture.executor);
-      await ensureConversationMetadataSchema(fixture.executor);
+      await migrateSchema(fixture.executor);
+      await migrateSchema(fixture.executor);
 
       const conversation = buildJuniorSqlConversation({
         conversationId: "slack:C123:1718123456.000000",
@@ -112,9 +109,7 @@ WHERE conversation_id = $1
         "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
       );
 
-      expect(migrations).toEqual([
-        { id: conversationMetadataSqlMigrations[0].id },
-      ]);
+      expect(migrations).toEqual([{ id: migrations[0].id }]);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",

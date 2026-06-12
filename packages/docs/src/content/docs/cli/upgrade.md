@@ -28,22 +28,34 @@ The command takes no extra arguments.
 `junior upgrade` runs registered migrations sequentially. Current migrations:
 
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.
-- Backfill retained conversation execution metadata into the shared Junior SQL database when a SQL database URL is configured. Junior uses `JUNIOR_CONVERSATION_METADATA_DATABASE_URL` when set, then falls back to Neon/Vercel's standard `DATABASE_URL`.
+- Backfill retained conversation execution metadata into the shared Junior SQL database when a SQL database URL is configured. Junior uses `JUNIOR_DATABASE_URL` when set, then falls back to Neon/Vercel's standard `DATABASE_URL`.
 
 The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL metadata rows.
 
 ## Vercel deploys
 
-Run `junior upgrade` as an out-of-band production maintenance command, not as a permanent request-time path. Vercel build jobs can run the command when they have production `REDIS_URL` and database URL access, but build-time alone can leave a small cutover window where the old deployment writes more legacy state.
+Run `junior upgrade` from the Vercel build command when the deployment has access to the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and database URL variables used by production. Neon's Vercel integration provides `DATABASE_URL`; set `JUNIOR_DATABASE_URL` only when Junior should use a different SQL database.
 
-For production deploys that need this migration, use this order:
+Use a build command like:
+
+```bash
+pnpm exec junior upgrade && pnpm build
+```
+
+For monorepos, keep the same prefix and replace the build command with the app-specific build:
+
+```bash
+pnpm exec junior upgrade && pnpm --filter <app> build
+```
+
+This keeps schema creation and SQL backfills out of request handlers. Runtime code trusts that the deployment ran `junior upgrade`; if schema is missing, the deployment is misconfigured and should fail clearly.
+
+For production deploys that need to capture writes made by the previous deployment during the Vercel build or promotion window, run the same command again from the production environment after the new deployment is serving traffic:
 
 1. Load the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and database URL variables used by the production deployment.
 2. Run `pnpm exec junior upgrade`.
-3. Build and deploy the new release.
-4. Run `pnpm exec junior upgrade` again after the deploy is serving traffic.
 
-The second run is safe because the migration is idempotent, and it catches records written by the old deployment during the Vercel build or promotion window.
+The rerun is safe because the migration is idempotent.
 
 ## Example output
 

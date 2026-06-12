@@ -1,10 +1,10 @@
 import { getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
-  conversationMetadataSqlSchema,
-  conversationMetadataSqlMigrations,
-  ensureConversationMetadataSchema,
-  type ConversationMetadataSqlMigration,
+  schema,
+  migrations,
+  migrateSchema,
+  type Migration,
 } from "@/chat/metadata/sql/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 
@@ -70,7 +70,7 @@ describe("conversation metadata SQL migrations", () => {
   it("runs pending migrations under the schema lock", async () => {
     const executor = new FakeSqlExecutor();
 
-    await ensureConversationMetadataSchema(executor);
+    await migrateSchema(executor);
 
     expect(executor.locks).toEqual(["junior_conversation_metadata_schema"]);
     expect(executor.statements[0]).toContain(
@@ -95,10 +95,10 @@ describe("conversation metadata SQL migrations", () => {
   });
 
   it("does not reapply migrations already recorded with the same checksum", async () => {
-    const migration = conversationMetadataSqlMigrations[0];
+    const migration = migrations[0];
     const executor = new FakeSqlExecutor([[migration.id, migration.checksum]]);
 
-    await ensureConversationMetadataSchema(executor);
+    await migrateSchema(executor);
 
     expect(executor.transactions).toHaveLength(0);
     expect(
@@ -109,17 +109,17 @@ describe("conversation metadata SQL migrations", () => {
   });
 
   it("fails when an applied migration checksum has changed", async () => {
-    const migration = conversationMetadataSqlMigrations[0];
+    const migration = migrations[0];
     const executor = new FakeSqlExecutor([[migration.id, "old-checksum"]]);
 
-    await expect(ensureConversationMetadataSchema(executor)).rejects.toThrow(
+    await expect(migrateSchema(executor)).rejects.toThrow(
       `Conversation metadata migration ${migration.id} checksum changed`,
     );
   });
 
   it("keeps transcript authorities out of the metadata schema", () => {
-    const ddl = conversationMetadataSqlMigrations
-      .flatMap((migration: ConversationMetadataSqlMigration) => [
+    const ddl = migrations
+      .flatMap((migration: Migration) => [
         migration.id,
         ...migration.statements,
       ])
@@ -131,11 +131,7 @@ describe("conversation metadata SQL migrations", () => {
   });
 
   it("exports Drizzle table definitions for the metadata schema", () => {
-    expect(
-      Object.values(conversationMetadataSqlSchema).map((table) =>
-        getTableName(table),
-      ),
-    ).toEqual([
+    expect(Object.values(schema).map((table) => getTableName(table))).toEqual([
       "junior_conversation_inbound_messages",
       "junior_conversations",
       "junior_destinations",

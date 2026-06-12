@@ -8,7 +8,7 @@
 import { getChatConfig } from "@/chat/config";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 import { createStateConversationMetadataStore } from "./state-store";
-import { createSqlConversationMetadataStore } from "./sql/store";
+import { createSqlStore } from "./sql/store";
 import type { ConversationMetadataStore } from "./store";
 
 let configuredStore:
@@ -18,8 +18,8 @@ let configuredStore:
     }
   | undefined;
 
-/** Return whether process configuration points conversation metadata at SQL. */
-export function hasConfiguredConversationMetadataDatabase(): boolean {
+/** Return whether process configuration points Junior at SQL. */
+export function hasConfiguredJuniorDatabase(): boolean {
   return Boolean(getChatConfig().sql.databaseUrl);
 }
 
@@ -32,7 +32,7 @@ export function getConfiguredConversationMetadataStore(): ConversationMetadataSt
   if (configuredStore?.databaseUrl !== databaseUrl) {
     configuredStore = {
       databaseUrl,
-      store: createSqlConversationMetadataStore(
+      store: createSqlStore(
         createNeonJuniorSqlExecutor({ connectionString: databaseUrl }),
       ),
     };

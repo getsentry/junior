@@ -2,7 +2,7 @@ import {
   disconnectStateAdapter,
   getConnectedStateContext,
 } from "@/chat/state/adapter";
-import { conversationMetadataSqlMigration } from "./upgrade/migrations/conversation-metadata-sql";
+import { sqlMetadataMigration } from "./upgrade/migrations/conversation-metadata-sql";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import type {
   MigrationContext,
@@ -17,7 +17,7 @@ const DEFAULT_IO: UpgradeIo = {
 
 const MIGRATIONS: UpgradeMigration[] = [
   redisConversationStateMigration,
-  conversationMetadataSqlMigration,
+  sqlMetadataMigration,
 ];
 
 function formatMigrationResult(result: MigrationResult): string {

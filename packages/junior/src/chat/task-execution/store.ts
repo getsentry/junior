@@ -2,7 +2,7 @@ import type { StateAdapter } from "chat";
 import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
 import {
   getConfiguredConversationMetadataStore,
-  hasConfiguredConversationMetadataDatabase,
+  hasConfiguredJuniorDatabase,
 } from "@/chat/metadata/configured-store";
 import type { ConversationMetadataStore } from "@/chat/metadata/store";
 import type { ConversationWorkQueue } from "./queue";
@@ -50,7 +50,7 @@ function metadataStore(
   // SQL configuration is the hard cutover for durable conversation work.
   // Injected state adapters remain the local/no-SQL backend, not a parallel
   // production path.
-  if (options.state && !hasConfiguredConversationMetadataDatabase()) {
+  if (options.state && !hasConfiguredJuniorDatabase()) {
     return createStateConversationMetadataStore(options.state);
   }
   return getConfiguredConversationMetadataStore();

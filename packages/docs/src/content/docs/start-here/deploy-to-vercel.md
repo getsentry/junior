@@ -39,7 +39,13 @@ The scaffolded `package.json` includes the production build script:
 }
 ```
 
-Keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts.
+If your app uses Junior's SQL database, set the Vercel build command to run upgrades before the normal build:
+
+```bash
+pnpm exec junior upgrade && pnpm build
+```
+
+Otherwise, keep the Vercel build command as `pnpm build`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. When included in the build command, `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
 
 ## Enable Junior's Nitro deployment module
 
@@ -73,6 +79,8 @@ Set the core runtime variables in Vercel:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                       |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                            |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
+| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL for Junior SQL metadata.                     |
+| `JUNIOR_DATABASE_URL`                       | No          | Override when Junior should use a different SQL database than `DATABASE_URL`.  |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox requester context.                        |
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |

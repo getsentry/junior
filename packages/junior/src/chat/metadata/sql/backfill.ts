@@ -1,23 +1,23 @@
 import type { ConversationMetadataStore } from "../store";
 import type { Conversation } from "../state-task-execution-store";
 
-export interface ConversationMetadataBackfillResult {
+export interface BackfillResult {
   copiedCount: number;
   hasMore: boolean;
 }
 
-export interface ConversationMetadataSqlBackfillTarget {
+export interface BackfillTarget {
   backfillConversation(conversation: Conversation): Promise<void>;
-  ensureSchema(): Promise<void>;
+  migrate(): Promise<void>;
 }
 
 /** Copy bounded conversation metadata from an existing store into SQL. */
-export async function backfillConversationMetadataToSql(args: {
+export async function backfillToSql(args: {
   limit?: number;
   offset?: number;
   source: ConversationMetadataStore;
-  target: ConversationMetadataSqlBackfillTarget;
-}): Promise<ConversationMetadataBackfillResult> {
+  target: BackfillTarget;
+}): Promise<BackfillResult> {
   const limit = Math.max(0, args.limit ?? 500);
   const offset = Math.max(0, args.offset ?? 0);
   const conversations = await args.source.listConversationsByActivity({
@@ -25,7 +25,7 @@ export async function backfillConversationMetadataToSql(args: {
     offset,
   });
   const batch = conversations.slice(0, limit);
-  await args.target.ensureSchema();
+  await args.target.migrate();
   for (const conversation of batch) {
     await args.target.backfillConversation(conversation);
   }
