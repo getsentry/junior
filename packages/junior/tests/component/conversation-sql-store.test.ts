@@ -312,6 +312,40 @@ INSERT INTO junior_conversations (
     }
   });
 
+  it("keeps the earliest creation time across SQL projection updates", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.executor);
+      await store.migrate();
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        nowMs: 5_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          status: "running",
+          updatedAtMs: 6_000,
+        },
+        lastActivityAtMs: 6_000,
+        updatedAtMs: 6_000,
+      });
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        createdAtMs: 1_000,
+        lastActivityAtMs: 6_000,
+        updatedAtMs: 6_000,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("uses turn-session status for plugin conversation summaries", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

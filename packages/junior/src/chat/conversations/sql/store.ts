@@ -584,6 +584,7 @@ export class SqlStore implements ConversationStore {
           requester: sql`coalesce(excluded.requester_json, ${juniorConversations.requester})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
+          createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,
           lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
           updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
           executionUpdatedAt: sql`case when ${incomingExecutionIsFresh} then excluded.execution_updated_at else ${juniorConversations.executionUpdatedAt} end`,
