@@ -217,7 +217,7 @@ WHERE conversation_id = $1
       });
 
       await expect(
-        store.getConversation({
+        store.get({
           conversationId: "agent-dispatch:dispatch_scheduler_run",
         }),
       ).resolves.toMatchObject({

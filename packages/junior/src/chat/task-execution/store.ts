@@ -33,14 +33,12 @@ import type {
 } from "@/chat/task-execution/state";
 import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
 
-interface ConversationStoreOptions {
+interface ProjectionOptions {
   conversationStore?: ConversationStore;
   state?: StateAdapter;
 }
 
-function conversationStore(
-  options: ConversationStoreOptions,
-): ConversationStore {
+function projectionStore(options: ProjectionOptions): ConversationStore {
   return options.conversationStore ?? getConfiguredConversationStore();
 }
 
@@ -66,7 +64,7 @@ function now(): number {
   return Date.now();
 }
 
-async function recordConversationStatus(args: {
+async function mirrorExecution(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   state?: StateAdapter;
@@ -78,7 +76,7 @@ async function recordConversationStatus(args: {
   if (!conversation) {
     return;
   }
-  await conversationStore(args).recordConversationStatus({
+  await projectionStore(args).recordExecution({
     channelName: conversation.channelName,
     conversationId: conversation.conversationId,
     createdAtMs: conversation.createdAtMs,
@@ -101,7 +99,6 @@ async function recordConversationStatus(args: {
 /** Return a persisted conversation record, if one exists. */
 export async function getConversation(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
   return await workState.getConversation(args);
@@ -110,7 +107,6 @@ export async function getConversation(args: {
 /** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
   return await workState.getConversationWorkState(args);
@@ -141,7 +137,7 @@ export async function appendInboundMessage(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.appendInboundMessage(args);
-  await recordConversationStatus({
+  await mirrorExecution({
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -209,7 +205,7 @@ export async function requestConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.requestConversationWork(args);
-  await recordConversationStatus({
+  await mirrorExecution({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -219,13 +215,13 @@ export async function requestConversationWork(args: {
 
 /** Record visible conversation activity without making the conversation runnable. */
 export async function recordConversationActivity(
-  args: Parameters<ConversationStore["recordConversationActivity"]>[0] & {
+  args: Parameters<ConversationStore["recordActivity"]>[0] & {
     conversationStore?: ConversationStore;
     state?: StateAdapter;
   },
 ) {
   await workState.recordConversationActivity(args);
-  await recordConversationStatus({
+  await mirrorExecution({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -240,7 +236,7 @@ export async function markConversationWorkEnqueued(args: {
   state?: StateAdapter;
 }) {
   await workState.markConversationWorkEnqueued(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
 }
 
 /** Try to acquire the durable execution lease for one conversation. */
@@ -251,7 +247,7 @@ export async function startConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.startConversationWork(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
@@ -286,7 +282,7 @@ export async function markConversationMessagesInjected(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.markConversationMessagesInjected(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
@@ -300,7 +296,7 @@ export async function requestConversationContinuation(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.requestConversationContinuation(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
@@ -313,7 +309,7 @@ export async function releaseConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.releaseConversationWork(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
@@ -326,7 +322,7 @@ export async function completeConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.completeConversationWork(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
@@ -338,14 +334,13 @@ export async function clearExpiredConversationLease(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.clearExpiredConversationLease(args);
-  await recordConversationStatus(args);
+  await mirrorExecution(args);
   return result;
 }
 
 /** Remove one conversation from the active index after it is missing or idle. */
 export async function removeActiveConversation(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
   return await workState.removeActiveConversation(args);
@@ -355,7 +350,6 @@ export async function removeActiveConversation(args: {
 export async function listActiveConversationIds(
   args: {
     limit?: number;
-    conversationStore?: ConversationStore;
     staleBeforeMs?: number;
     state?: StateAdapter;
   } = {},
@@ -367,7 +361,6 @@ export async function listActiveConversationIds(
 export async function listConversationsByActivity(
   args: {
     limit?: number;
-    conversationStore?: ConversationStore;
     state?: StateAdapter;
   } = {},
 ) {

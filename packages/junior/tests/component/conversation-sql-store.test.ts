@@ -24,7 +24,7 @@ describe("conversation SQL store", () => {
       const store = createSqlStore(fixture.executor);
 
       await expect(
-        store.recordConversationActivity({
+        store.recordActivity({
           conversationId: CONVERSATION_ID,
           nowMs: 1_000,
         }),
@@ -32,7 +32,7 @@ describe("conversation SQL store", () => {
 
       await store.migrate();
       await expect(
-        store.recordConversationActivity({
+        store.recordActivity({
           conversationId: CONVERSATION_ID,
           nowMs: 1_000,
         }),
@@ -85,7 +85,7 @@ describe("conversation SQL store", () => {
       const store = createSqlStore(fixture.executor);
       await store.migrate();
 
-      await store.recordConversationActivity({
+      await store.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
         destination: inboundMessage("activity").destination,
@@ -102,7 +102,7 @@ describe("conversation SQL store", () => {
         nowMs: 3_000,
       });
 
-      const conversations = await store.listConversationsByActivity({
+      const conversations = await store.listByActivity({
         limit: 5,
       });
       expect(conversations).toMatchObject([
@@ -197,7 +197,7 @@ INSERT INTO junior_conversations (
       );
 
       await expect(
-        store.getConversation({ conversationId: "slack:C123:invalid-json" }),
+        store.get({ conversationId: "slack:C123:invalid-json" }),
       ).rejects.toThrow("Conversation record destination is invalid");
     } finally {
       await fixture.close();
@@ -216,7 +216,7 @@ INSERT INTO junior_conversations (
         nowMs: 1_000,
         state,
       });
-      await source.recordConversationActivity({
+      await source.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
         title: "Backfilled conversation",
@@ -231,7 +231,7 @@ INSERT INTO junior_conversations (
       });
 
       expect(result).toEqual({ copiedCount: 1, hasMore: false });
-      const conversation = await target.getConversation({
+      const conversation = await target.get({
         conversationId: CONVERSATION_ID,
       });
       expect(conversation).toMatchObject({
@@ -257,7 +257,7 @@ INSERT INTO junior_conversations (
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.executor);
       await store.migrate();
-      await store.recordConversationActivity({
+      await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("summary-target").destination,
         nowMs: 1_000,

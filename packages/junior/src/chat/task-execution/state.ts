@@ -973,7 +973,7 @@ export async function getConversation(args: {
   return await readConversation(state, args.conversationId);
 }
 
-/** Return a persisted conversation record, if one exists. */
+/** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
   state?: StateAdapter;

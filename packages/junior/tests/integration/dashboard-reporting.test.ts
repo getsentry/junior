@@ -116,7 +116,7 @@ describe("dashboard reporting", () => {
     const { createJuniorReporting } = await import("@/reporting");
     const conversationStore = getConfiguredConversationStore();
 
-    await conversationStore.recordConversationActivity({
+    await conversationStore.recordActivity({
       conversationId: "slack:C1:111",
       channelName: "incidents",
       nowMs: 1_000,
@@ -158,7 +158,7 @@ describe("dashboard reporting", () => {
     });
 
     await expect(
-      getConfiguredConversationStore().getConversation({
+      getConfiguredConversationStore().get({
         conversationId,
       }),
     ).resolves.toMatchObject({
@@ -173,7 +173,7 @@ describe("dashboard reporting", () => {
     const { createJuniorReporting } = await import("@/reporting");
     const conversationStore = getConfiguredConversationStore();
 
-    await conversationStore.recordConversationActivity({
+    await conversationStore.recordActivity({
       conversationId: "slack:G1:222",
       channelName: "private-incident-room",
       nowMs: 1_000,

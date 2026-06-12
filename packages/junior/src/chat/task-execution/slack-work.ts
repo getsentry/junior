@@ -213,7 +213,6 @@ export function createSlackConversationWorker(
     const records = getPendingRecords(
       await getConversationWorkState({
         conversationId: context.conversationId,
-        conversationStore: options.conversationStore,
         state,
       }),
     );

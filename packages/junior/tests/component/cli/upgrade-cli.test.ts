@@ -230,7 +230,7 @@ describe("upgrade CLI migrations", () => {
           status: "pending",
         },
       });
-      const sqlConversation = await sqlStore.getConversation({
+      const sqlConversation = await sqlStore.get({
         conversationId: CONVERSATION_ID,
       });
       expect(sqlConversation).toMatchObject({
@@ -277,9 +277,7 @@ describe("upgrade CLI migrations", () => {
         missing: 0,
         scanned: 3,
       });
-      await expect(
-        sqlStore.listConversationsByActivity({ limit: 10 }),
-      ).resolves.toEqual([
+      await expect(sqlStore.listByActivity({ limit: 10 })).resolves.toEqual([
         expect.objectContaining({ conversationId: "slack:C123:page-2" }),
         expect.objectContaining({ conversationId: "slack:C123:page-1" }),
         expect.objectContaining({ conversationId: "slack:C123:page-0" }),
@@ -554,7 +552,7 @@ describe("upgrade CLI migrations", () => {
           scanned: 1,
         },
       ]);
-      const sqlConversation = await sqlStore.getConversation({
+      const sqlConversation = await sqlStore.get({
         conversationId: CONVERSATION_ID,
       });
       expect(sqlConversation).toMatchObject({

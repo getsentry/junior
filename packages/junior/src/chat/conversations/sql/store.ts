@@ -324,7 +324,7 @@ export class SqlStore implements ConversationStore {
     }
   }
 
-  async getConversation(args: {
+  async get(args: {
     conversationId: string;
   }): Promise<Conversation | undefined> {
     const row = await this.readConversationRow(args.conversationId);
@@ -334,7 +334,7 @@ export class SqlStore implements ConversationStore {
     return conversationFromRow(row);
   }
 
-  async recordConversationActivity(args: {
+  async recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
@@ -347,7 +347,7 @@ export class SqlStore implements ConversationStore {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
     await this.withConversationMutation(args.conversationId, async () => {
-      const existing = await this.getConversation({
+      const existing = await this.get({
         conversationId: args.conversationId,
       });
       if (existing && args.destination) {
@@ -384,7 +384,7 @@ export class SqlStore implements ConversationStore {
     });
   }
 
-  async recordConversationStatus(args: {
+  async recordExecution(args: {
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -420,7 +420,7 @@ export class SqlStore implements ConversationStore {
     await this.withConversationMutation(
       conversation.conversationId,
       async () => {
-        const existing = await this.getConversation({
+        const existing = await this.get({
           conversationId: conversation.conversationId,
         });
         const sourceExecutionAtMs =
@@ -462,7 +462,7 @@ export class SqlStore implements ConversationStore {
     );
   }
 
-  async listConversationsByActivity(
+  async listByActivity(
     args: {
       limit?: number;
       offset?: number;

@@ -333,7 +333,7 @@ async function recordConversationActivityMirror(args: {
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  await conversationStore.recordConversationActivity({
+  await conversationStore.recordActivity({
     activityAtMs: args.summary.updatedAtMs,
     channelName: args.summary.channelName,
     conversationId: args.summary.conversationId,

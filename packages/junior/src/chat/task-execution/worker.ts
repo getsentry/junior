@@ -189,7 +189,6 @@ export async function processConversationWork(
   const conversationId = message.conversationId;
   const initial = await getConversationWorkState({
     conversationId,
-    conversationStore: options.conversationStore,
     state: options.state,
   });
   if (

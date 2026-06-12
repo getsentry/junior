@@ -19,7 +19,7 @@ export async function backfillToSql(args: {
 }): Promise<BackfillResult> {
   const limit = Math.max(0, args.limit ?? 500);
   const offset = Math.max(0, args.offset ?? 0);
-  const conversations = await args.source.listConversationsByActivity({
+  const conversations = await args.source.listByActivity({
     limit: limit + 1,
     offset,
   });

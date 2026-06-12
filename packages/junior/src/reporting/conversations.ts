@@ -1209,7 +1209,7 @@ export async function readConversationFeed(
 ): Promise<ConversationFeed> {
   const store = conversationStore(options);
   const nowMs = Date.now();
-  const conversations = await store.listConversationsByActivity({
+  const conversations = await store.listByActivity({
     limit: CONVERSATION_FEED_LIMIT,
   });
   const detailsByConversationId = await getConversationDetailsForIds(
@@ -1244,7 +1244,7 @@ export async function readConversationStatsReport(
   const store = conversationStore(options);
   const nowMs = Date.now();
   const generatedAt = new Date(nowMs).toISOString();
-  const conversations = await store.listConversationsByActivity({
+  const conversations = await store.listByActivity({
     limit: CONVERSATION_STATS_LIMIT + 1,
   });
   const truncated = conversations.length > CONVERSATION_STATS_LIMIT;
@@ -1286,7 +1286,7 @@ export async function listRecentConversationSummaries(
   const store = conversationStore(options);
   const nowMs = Date.now();
   const limit = Math.max(0, Math.min(100, Math.floor(options.limit ?? 25)));
-  const conversations = await store.listConversationsByActivity({
+  const conversations = await store.listByActivity({
     limit,
   });
   const detailsByConversationId = await getConversationDetailsForIds(
@@ -1333,7 +1333,7 @@ export async function readConversationReport(
   const [rawSummaries, details, conversation] = await Promise.all([
     listAgentTurnSessionSummariesForConversation(conversationId),
     getConversationDetails(conversationId),
-    store.getConversation({ conversationId }),
+    store.get({ conversationId }),
   ]);
   const summaries = rawSummaries.sort(
     (left, right) =>

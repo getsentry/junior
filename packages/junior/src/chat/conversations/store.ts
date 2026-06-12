@@ -37,12 +37,10 @@ export interface Conversation {
   updatedAtMs: number;
 }
 
-/** Persist and read queryable conversation records for reporting surfaces. */
+/** Persist and read queryable conversation projections for reporting surfaces. */
 export interface ConversationStore {
-  getConversation(args: {
-    conversationId: string;
-  }): Promise<Conversation | undefined>;
-  recordConversationActivity(args: {
+  get(args: { conversationId: string }): Promise<Conversation | undefined>;
+  recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
@@ -52,7 +50,8 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
   }): Promise<void>;
-  recordConversationStatus(args: {
+  /** Mirror task-execution state into the queryable conversation projection. */
+  recordExecution(args: {
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -64,7 +63,7 @@ export interface ConversationStore {
     title?: string;
     updatedAtMs: number;
   }): Promise<void>;
-  listConversationsByActivity(args?: {
+  listByActivity(args?: {
     limit?: number;
     offset?: number;
   }): Promise<Conversation[]>;

@@ -1,7 +1,7 @@
 import {
-  getConversation,
-  listConversationsByActivity,
-  recordConversationActivity,
+  getConversation as getTaskConversation,
+  listConversationsByActivity as listTaskConversationsByActivity,
+  recordConversationActivity as recordTaskConversationActivity,
 } from "@/chat/task-execution/state";
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "./store";
@@ -11,11 +11,11 @@ export function createStateConversationStore(
   state?: StateAdapter,
 ): ConversationStore {
   return {
-    getConversation: (args) => getConversation({ ...args, state }),
-    recordConversationActivity: (args) =>
-      recordConversationActivity({ ...args, state }),
-    recordConversationStatus: async () => {},
-    listConversationsByActivity: (args) =>
-      listConversationsByActivity({ ...args, state }),
+    get: (args) => getTaskConversation({ ...args, state }),
+    recordActivity: (args) =>
+      recordTaskConversationActivity({ ...args, state }),
+    recordExecution: async () => {},
+    listByActivity: (args) =>
+      listTaskConversationsByActivity({ ...args, state }),
   };
 }
