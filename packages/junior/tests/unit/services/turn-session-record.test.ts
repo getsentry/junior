@@ -22,7 +22,7 @@ function failingConversationStore(): ConversationStore {
   return {
     get: vi.fn(),
     recordActivity: vi.fn(async () => {
-      throw new Error("conversation projection unavailable");
+      throw new Error("conversation metadata unavailable");
     }),
     recordExecution: vi.fn(),
     listByActivity: vi.fn(),
@@ -173,40 +173,40 @@ describe("persistAuthPauseSessionRecord", () => {
     }
   });
 
-  it("keeps turn-session records when conversation projection fails", async () => {
+  it("keeps turn-session records when conversation metadata update fails", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
     await expect(
       upsertAgentTurnSessionRecord({
-        conversationId: "slack:C123:projection-failure",
+        conversationId: "slack:C123:metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
         piMessages: [userMessage("persist anyway")],
-        sessionId: "turn-projection-failure",
+        sessionId: "turn-metadata-failure",
         sliceId: 1,
         state: "completed",
         surface: "slack",
       }),
     ).resolves.toMatchObject({
-      conversationId: "slack:C123:projection-failure",
-      sessionId: "turn-projection-failure",
+      conversationId: "slack:C123:metadata-failure",
+      sessionId: "turn-metadata-failure",
       state: "completed",
     });
 
     await expect(
       getAgentTurnSessionRecord(
-        "slack:C123:projection-failure",
-        "turn-projection-failure",
+        "slack:C123:metadata-failure",
+        "turn-metadata-failure",
       ),
     ).resolves.toMatchObject({
-      conversationId: "slack:C123:projection-failure",
-      sessionId: "turn-projection-failure",
+      conversationId: "slack:C123:metadata-failure",
+      sessionId: "turn-metadata-failure",
       state: "completed",
     });
   });
 
-  it("keeps turn-session summaries when conversation projection fails", async () => {
+  it("keeps turn-session summaries when conversation metadata update fails", async () => {
     const {
       listAgentTurnSessionSummariesForConversation,
       recordAgentTurnSessionSummary,
@@ -214,10 +214,10 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       recordAgentTurnSessionSummary({
-        conversationId: "slack:C123:summary-projection-failure",
+        conversationId: "slack:C123:summary-metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
-        sessionId: "turn-summary-projection-failure",
+        sessionId: "turn-summary-metadata-failure",
         sliceId: 1,
         state: "failed",
         surface: "slack",
@@ -226,12 +226,12 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       listAgentTurnSessionSummariesForConversation(
-        "slack:C123:summary-projection-failure",
+        "slack:C123:summary-metadata-failure",
       ),
     ).resolves.toEqual([
       expect.objectContaining({
-        conversationId: "slack:C123:summary-projection-failure",
-        sessionId: "turn-summary-projection-failure",
+        conversationId: "slack:C123:summary-metadata-failure",
+        sessionId: "turn-summary-metadata-failure",
         state: "failed",
       }),
     ]);

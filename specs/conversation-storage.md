@@ -224,9 +224,10 @@ storage spec changes their authority.
 - If backfill fails partway through, already copied rows remain valid. The next
   `junior upgrade` run repeats the bounded legacy import and idempotently
   upserts rows.
-- If SQL projection writes are unavailable while Redis-backed task execution is
-  accepting or running work, task execution must continue and log the projection
-  failure. Redis remains the mailbox, lease, wake-up, and transcript authority.
+- If SQL metadata writes are unavailable while Redis-backed task execution is
+  accepting or running work, task execution must continue and log the metadata
+  update failure. Redis remains the mailbox, lease, wake-up, and transcript
+  authority.
 - If SQL reporting reads are unavailable after the conversation store cutover,
   reporting callers must surface the failure. Do not hide SQL read failures with
   broad Redis read fallbacks.

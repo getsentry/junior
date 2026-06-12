@@ -34,12 +34,12 @@ import type {
 } from "@/chat/task-execution/state";
 import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
 
-interface ProjectionOptions {
+interface MetadataOptions {
   conversationStore?: ConversationStore;
   state?: StateAdapter;
 }
 
-function projectionStore(options: ProjectionOptions): ConversationStore {
+function metadataStore(options: MetadataOptions): ConversationStore {
   return options.conversationStore ?? getConfiguredConversationStore();
 }
 
@@ -65,7 +65,7 @@ function now(): number {
   return Date.now();
 }
 
-async function mirrorExecution(args: {
+async function recordExecutionMetadata(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   state?: StateAdapter;
@@ -78,7 +78,7 @@ async function mirrorExecution(args: {
     if (!conversation) {
       return;
     }
-    await projectionStore(args).recordExecution({
+    await metadataStore(args).recordExecution({
       channelName: conversation.channelName,
       conversationId: conversation.conversationId,
       createdAtMs: conversation.createdAtMs,
@@ -98,13 +98,13 @@ async function mirrorExecution(args: {
     });
   } catch (error) {
     logWarn(
-      "conversation_execution_projection_failed",
+      "conversation_execution_metadata_update_failed",
       { conversationId: args.conversationId },
       {
         "exception.message":
           error instanceof Error ? error.message : String(error),
       },
-      "Failed to update conversation execution projection",
+      "Failed to update conversation execution metadata",
     );
   }
 }
@@ -150,7 +150,7 @@ export async function appendInboundMessage(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.appendInboundMessage(args);
-  await mirrorExecution({
+  await recordExecutionMetadata({
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -217,7 +217,7 @@ export async function requestConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.requestConversationWork(args);
-  await mirrorExecution({
+  await recordExecutionMetadata({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -233,7 +233,7 @@ export async function recordConversationActivity(
   },
 ) {
   await workState.recordConversationActivity(args);
-  await mirrorExecution({
+  await recordExecutionMetadata({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
     state: args.state,
@@ -248,7 +248,7 @@ export async function markConversationWorkEnqueued(args: {
   state?: StateAdapter;
 }) {
   await workState.markConversationWorkEnqueued(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
 }
 
 /** Try to acquire the durable execution lease for one conversation. */
@@ -259,7 +259,7 @@ export async function startConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.startConversationWork(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 
@@ -273,7 +273,7 @@ export async function checkInConversationWork(args: {
 }) {
   const result = await workState.checkInConversationWork(args);
   if (result) {
-    await mirrorExecution(args);
+    await recordExecutionMetadata(args);
   }
   return result;
 }
@@ -287,7 +287,7 @@ export async function drainConversationMailbox(
 ) {
   const result = await workState.drainConversationMailbox(args);
   if (result.length > 0) {
-    await mirrorExecution(args);
+    await recordExecutionMetadata(args);
   }
   return result;
 }
@@ -302,7 +302,7 @@ export async function markConversationMessagesInjected(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.markConversationMessagesInjected(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 
@@ -316,7 +316,7 @@ export async function requestConversationContinuation(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.requestConversationContinuation(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 
@@ -329,7 +329,7 @@ export async function releaseConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.releaseConversationWork(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 
@@ -342,7 +342,7 @@ export async function completeConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.completeConversationWork(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 
@@ -354,7 +354,7 @@ export async function clearExpiredConversationLease(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.clearExpiredConversationLease(args);
-  await mirrorExecution(args);
+  await recordExecutionMetadata(args);
   return result;
 }
 

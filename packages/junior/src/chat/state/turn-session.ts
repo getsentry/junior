@@ -315,8 +315,8 @@ async function appendAgentTurnSessionSummary(
   ]);
 }
 
-/** Mirror run summaries into the conversation feed through the configured conversation store. */
-async function recordConversationActivityMirror(args: {
+/** Store run summary metadata in the configured conversation store. */
+async function recordConversationActivityMetadata(args: {
   conversationStore?: ConversationStore;
   nowMs: number;
   summary: AgentTurnSessionSummary;
@@ -351,13 +351,13 @@ async function recordConversationActivityMirror(args: {
     });
   } catch (error) {
     logWarn(
-      "conversation_activity_projection_failed",
+      "conversation_activity_metadata_update_failed",
       { conversationId: args.summary.conversationId },
       {
         "exception.message":
           error instanceof Error ? error.message : String(error),
       },
-      "Failed to update conversation activity projection",
+      "Failed to update conversation activity metadata",
     );
   }
 }
@@ -558,7 +558,7 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
-  await recordConversationActivityMirror({
+  await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
     nowMs: Date.now(),
     summary,
@@ -792,7 +792,7 @@ export async function recordAgentTurnSessionSummary(args: {
       : {}),
   };
   await appendAgentTurnSessionSummary(summary, ttlMs);
-  await recordConversationActivityMirror({
+  await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
     nowMs,
     summary,

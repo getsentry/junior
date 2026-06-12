@@ -37,7 +37,7 @@ export interface Conversation {
   updatedAtMs: number;
 }
 
-/** Persist and read queryable conversation projections for reporting surfaces. */
+/** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
   recordActivity(args: {
@@ -50,7 +50,7 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
   }): Promise<void>;
-  /** Mirror task-execution state into the queryable conversation projection. */
+  /** Store task-execution metadata for long-term conversation history. */
   recordExecution(args: {
     channelName?: string;
     conversationId: string;

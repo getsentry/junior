@@ -54,23 +54,23 @@ const OTHER_SLACK_DESTINATION = {
 } as const;
 const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 
-function failingProjectionStore(): ConversationStore {
+function failingMetadataStore(): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
-      throw new Error("projection unavailable");
+      throw new Error("metadata unavailable");
     }),
     listByActivity: vi.fn(async () => []),
   };
 }
 
-function projectionEventsStore(events: string[]): ConversationStore {
+function metadataEventsStore(events: string[]): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
-      events.push("projection");
+      events.push("metadata");
     }),
     listByActivity: vi.fn(async () => []),
   };
@@ -122,12 +122,12 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toHaveLength(1);
   });
 
-  it("keeps queue wake-up when conversation projection fails", async () => {
+  it("keeps queue wake-up when conversation metadata update fails", async () => {
     const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
       appendAndEnqueueInboundMessage({
-        conversationStore: failingProjectionStore(),
+        conversationStore: failingMetadataStore(),
         message: inboundMessage("m1"),
         nowMs: 2_000,
         queue,
@@ -147,7 +147,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("sends queue wake-up before conversation projection", async () => {
+  it("sends queue wake-up before conversation metadata update", async () => {
     const events: string[] = [];
     const queue: ConversationWorkQueue = {
       send: vi.fn(async () => {
@@ -158,14 +158,14 @@ describe("conversation work execution", () => {
 
     await expect(
       appendAndEnqueueInboundMessage({
-        conversationStore: projectionEventsStore(events),
+        conversationStore: metadataEventsStore(events),
         message: inboundMessage("m1"),
         nowMs: 2_000,
         queue,
       }),
     ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
 
-    expect(events).toEqual(["queue", "projection"]);
+    expect(events).toEqual(["queue", "metadata"]);
   });
 
   it("does not overwrite malformed persisted conversation work", async () => {

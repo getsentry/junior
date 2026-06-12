@@ -315,7 +315,7 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("keeps the earliest creation time across SQL projection updates", async () => {
+  it("keeps the earliest creation time across SQL metadata updates", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
