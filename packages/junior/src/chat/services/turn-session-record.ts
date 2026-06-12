@@ -13,7 +13,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 export const AGENT_CONTINUE_MAX_SLICES = 48;
 
@@ -137,7 +137,7 @@ export async function persistRunningSessionRecord(args: {
   messages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
@@ -171,7 +171,7 @@ export async function persistRunningSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      metadataStore: args.metadataStore,
+      conversationStore: args.conversationStore,
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
@@ -214,7 +214,7 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
@@ -250,7 +250,7 @@ export async function persistCompletedSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      metadataStore: args.metadataStore,
+      conversationStore: args.conversationStore,
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
         : {}),
@@ -295,7 +295,7 @@ export async function persistAuthPauseSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
@@ -338,7 +338,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      metadataStore: args.metadataStore,
+      conversationStore: args.conversationStore,
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
@@ -380,7 +380,7 @@ export async function persistTimeoutSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
@@ -431,7 +431,7 @@ export async function persistTimeoutSessionRecord(args: {
         ...(args.loadedSkillNames
           ? { loadedSkillNames: args.loadedSkillNames }
           : {}),
-        metadataStore: args.metadataStore,
+        conversationStore: args.conversationStore,
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
         errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
@@ -463,7 +463,7 @@ export async function persistTimeoutSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      metadataStore: args.metadataStore,
+      conversationStore: args.conversationStore,
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
@@ -504,7 +504,7 @@ export async function persistYieldSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
@@ -546,7 +546,7 @@ export async function persistYieldSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      metadataStore: args.metadataStore,
+      conversationStore: args.conversationStore,
       resumeReason: "yield",
       resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
       errorMessage: args.errorMessage,

@@ -14,7 +14,7 @@ import {
   type InboundMessage,
   type Lease,
   type Source,
-} from "@/chat/metadata/state-task-execution-store";
+} from "@/chat/task-execution/state";
 import type {
   MigrationContext,
   MigrationResult,

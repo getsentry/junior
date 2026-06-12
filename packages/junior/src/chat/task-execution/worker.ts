@@ -2,7 +2,7 @@ import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { sameDestination } from "@/chat/destination";
 import { logException, logInfo, logWarn } from "@/chat/logging";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
 import {
   ConversationQueueMessageRejectedError,
@@ -53,7 +53,7 @@ export interface ConversationWorkProcessResult {
 
 export interface ProcessConversationWorkOptions {
   checkInIntervalMs?: number;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: () => number;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
@@ -93,7 +93,7 @@ async function sendWakeNudge(args: {
   );
   await markConversationWorkEnqueued({
     conversationId: args.conversationId,
-    metadataStore: args.options.metadataStore,
+    conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
     state: args.options.state,
   });
@@ -110,7 +110,7 @@ async function requestLostLeaseRecovery(args: {
     conversationId: args.conversationId,
     destination: args.destination,
     leaseToken: args.leaseToken,
-    metadataStore: args.options.metadataStore,
+    conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
     state: args.options.state,
   });
@@ -120,7 +120,7 @@ async function requestLostLeaseRecovery(args: {
   const released = await releaseConversationWork({
     conversationId: args.conversationId,
     leaseToken: args.leaseToken,
-    metadataStore: args.options.metadataStore,
+    conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
     state: args.options.state,
   });
@@ -151,7 +151,7 @@ function startLeaseCheckIn(args: {
     void checkInConversationWork({
       conversationId: args.conversationId,
       leaseToken: args.leaseToken,
-      metadataStore: args.options.metadataStore,
+      conversationStore: args.options.conversationStore,
       nowMs,
       state: args.options.state,
     }).then(
@@ -189,7 +189,7 @@ export async function processConversationWork(
   const conversationId = message.conversationId;
   const initial = await getConversationWorkState({
     conversationId,
-    metadataStore: options.metadataStore,
+    conversationStore: options.conversationStore,
     state: options.state,
   });
   if (
@@ -214,7 +214,7 @@ export async function processConversationWork(
 
   const lease = await startConversationWork({
     conversationId,
-    metadataStore: options.metadataStore,
+    conversationStore: options.conversationStore,
     nowMs: now(options),
     state: options.state,
   });
@@ -275,7 +275,7 @@ export async function processConversationWork(
       const checkedIn = await checkInConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         nowMs: now(options),
         state: options.state,
       });
@@ -288,7 +288,7 @@ export async function processConversationWork(
       drainConversationMailbox({
         conversationId,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         inject,
         nowMs: now(options),
         state: options.state,
@@ -323,7 +323,7 @@ export async function processConversationWork(
         conversationId,
         destination,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         nowMs: yieldNowMs,
         state: options.state,
       });
@@ -344,7 +344,7 @@ export async function processConversationWork(
       await releaseConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         nowMs: yieldNowMs,
         state: options.state,
       });
@@ -363,7 +363,7 @@ export async function processConversationWork(
     const completion = await completeConversationWork({
       conversationId,
       leaseToken: lease.leaseToken,
-      metadataStore: options.metadataStore,
+      conversationStore: options.conversationStore,
       nowMs: now(options),
       state: options.state,
     });
@@ -402,7 +402,7 @@ export async function processConversationWork(
         conversationId,
         destination,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         nowMs: errorNowMs,
         state: options.state,
       });
@@ -432,7 +432,7 @@ export async function processConversationWork(
       await releaseConversationWork({
         conversationId,
         leaseToken: lease.leaseToken,
-        metadataStore: options.metadataStore,
+        conversationStore: options.conversationStore,
         nowMs: errorNowMs,
         state: options.state,
       });

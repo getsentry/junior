@@ -399,7 +399,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("passes conversation metadata reader to operational reports", async () => {
+  it("passes conversation reader to operational reports", async () => {
     const previous = setAgentPlugins([
       defineJuniorPlugin({
         name: "agent-demo",

@@ -13,7 +13,7 @@ import {
 } from "@/chat/respond";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import { logException } from "@/chat/logging";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -62,7 +62,7 @@ const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 
 export interface AgentDispatchRunnerDeps {
   generateAssistantReply?: typeof generateAssistantReplyImpl;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   scheduleCallback?: typeof scheduleDispatchCallback;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
@@ -292,7 +292,7 @@ export async function runAgentDispatchSlice(
       configuration,
       channelConfiguration,
       conversationContext,
-      metadataStore: deps.metadataStore,
+      conversationStore: deps.conversationStore,
       artifactState: artifacts,
       piMessages: conversation.piMessages,
       destination: dispatch.destination,

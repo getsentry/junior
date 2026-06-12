@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   migrations as declaredMigrations,
   migrateSchema,
-} from "@/chat/metadata/sql/migrations";
-import { schema } from "@/chat/metadata/sql/schema";
-import { createSqlStore } from "@/chat/metadata/sql/store";
+} from "@/chat/conversations/sql/migrations";
+import { schema } from "@/chat/conversations/sql/schema";
+import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -14,7 +14,7 @@ import {
   createLocalJuniorSqlFixture,
 } from "../fixtures/sql";
 
-describe("conversation metadata SQL local mode", () => {
+describe("conversation SQL local mode", () => {
   it("creates migrated tables matching the Drizzle schema", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -48,9 +48,7 @@ ORDER BY table_name ASC, ordinal_position ASC
       );
 
       expect(actual).toEqual(expected);
-      expect(actual.get("junior_conversation_inbound_messages")).toContain(
-        "input_json",
-      );
+      expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
       const indexRows = await fixture.executor.query<{ indexname: string }>(
         `
@@ -64,8 +62,6 @@ ORDER BY indexname ASC
       const indexNames = indexRows.map((row) => row.indexname);
       expect(indexNames).toEqual(
         expect.arrayContaining([
-          "junior_conversation_inbound_messages_pkey",
-          "junior_conversation_inbound_pending_idx",
           "junior_conversations_active_idx",
           "junior_conversations_actor_activity_idx",
           "junior_conversations_destination_activity_idx",
@@ -97,23 +93,17 @@ ORDER BY table_name ASC, constraint_name ASC
       expect(constraintRows).toEqual(
         expect.arrayContaining([
           {
-            table_name: "junior_conversation_inbound_messages",
-            constraint_name: "junior_conversation_inbound_messages_pkey",
-            constraint_type: "PRIMARY KEY",
-          },
-          {
-            table_name: "junior_conversation_inbound_messages",
-            constraint_name:
-              "junior_conversation_inbound_messages_conversation_id_fkey",
-            constraint_type: "FOREIGN KEY",
-          },
-          {
             table_name: "junior_conversations",
             constraint_name: "junior_conversations_pkey",
             constraint_type: "PRIMARY KEY",
           },
         ]),
       );
+      expect(
+        constraintRows.some(
+          (row) => row.table_name === "junior_conversation_inbound_messages",
+        ),
+      ).toBe(false);
     } finally {
       await fixture.close();
     }
@@ -205,7 +195,7 @@ WHERE conversation_id = $1
     }
   });
 
-  it("mirrors completed scheduler turns into SQL conversation metadata", async () => {
+  it("mirrors completed scheduler turns into SQL conversation record", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -237,7 +227,7 @@ WHERE conversation_id = $1
         logContext: {
           modelId: "test-model",
         },
-        metadataStore: store,
+        conversationStore: store,
         surface: "scheduler",
       });
 

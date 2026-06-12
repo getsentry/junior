@@ -3,7 +3,7 @@ import { z } from "zod";
 import { schema } from "./schema";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 
-const MIGRATION_LOCK_NAME = "junior_conversation_metadata_schema";
+const MIGRATION_LOCK_NAME = "junior_conversation_schema";
 
 const migrationRecordSchema = z
   .object({
@@ -152,31 +152,10 @@ CREATE INDEX IF NOT EXISTS junior_conversations_requester_activity_idx
 CREATE INDEX IF NOT EXISTS junior_conversations_origin_idx
   ON junior_conversations (origin_type, origin_id, last_activity_at DESC)
 `,
-  `
-CREATE TABLE IF NOT EXISTS junior_conversation_inbound_messages (
-  conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id) ON DELETE CASCADE,
-  inbound_message_id TEXT NOT NULL,
-  source TEXT NOT NULL,
-  destination_id TEXT NOT NULL REFERENCES junior_destinations (id),
-  destination_json JSONB NOT NULL,
-  input_json JSONB,
-  input_text_length INTEGER NOT NULL DEFAULT 0,
-  attachment_count INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL,
-  received_at TIMESTAMPTZ NOT NULL,
-  injected_at TIMESTAMPTZ,
-  PRIMARY KEY (conversation_id, inbound_message_id)
-)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversation_inbound_pending_idx
-  ON junior_conversation_inbound_messages (conversation_id, created_at, received_at, inbound_message_id)
-  WHERE injected_at IS NULL
-`,
 ] as const;
 
 export const migrations = [
-  defineMigration("0001_conversation_metadata_core", coreMetadataStatements),
+  defineMigration("0001_conversation_core", coreMetadataStatements),
 ] as const;
 
 export { schema };
@@ -214,7 +193,7 @@ async function applyMigration(
   });
 }
 
-/** Apply pending SQL schema migrations for queryable conversation metadata. */
+/** Apply pending SQL schema migrations for queryable conversation records. */
 export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
   migrationList: readonly Migration[] = migrations,
@@ -227,7 +206,7 @@ export async function migrateSchema(
       if (existing) {
         if (existing.checksum !== migration.checksum) {
           throw new Error(
-            `Conversation metadata migration ${migration.id} checksum changed`,
+            `Conversation migration ${migration.id} checksum changed`,
           );
         }
         continue;

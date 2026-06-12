@@ -13,8 +13,8 @@ import {
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { migrateSchema } from "@/chat/metadata/sql/migrations";
-import { createSqlStore } from "@/chat/metadata/sql/store";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { AssistantReply } from "@/chat/respond";
 import {
   bindSlackDirectCredentialSubject,
@@ -87,7 +87,7 @@ describe("agent dispatch runner", () => {
   it("runs a system dispatch and persists Slack delivery", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.executor);
-    const metadataStore = createSqlStore(fixture.executor);
+    const conversationStore = createSqlStore(fixture.executor);
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
         channel: "C123",
@@ -112,7 +112,7 @@ describe("agent dispatch runner", () => {
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
-      expect(context.metadataStore).toBe(metadataStore);
+      expect(context.conversationStore).toBe(conversationStore);
       expect(context.correlation).toMatchObject({
         conversationId: dispatchConversationId,
         threadId: dispatchConversationId,
@@ -135,7 +135,7 @@ describe("agent dispatch runner", () => {
       },
       {
         generateAssistantReply,
-        metadataStore,
+        conversationStore,
         tracePropagation: { domains: ["*.sentry.io"] },
       },
     );

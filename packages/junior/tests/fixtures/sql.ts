@@ -1,4 +1,4 @@
-import type { juniorConversations } from "@/chat/metadata/sql/schema";
+import type { juniorConversations } from "@/chat/conversations/sql/schema";
 import type { JuniorDatabase, JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 import { juniorSqlSchema } from "@/chat/sql/schema";
 import {
@@ -30,7 +30,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
 }
 
 /**
- * Build a conversation metadata row for tests that need scalable SQL fixtures.
+ * Build a conversation record row for tests that need scalable SQL fixtures.
  */
 export function buildJuniorSqlConversation(
   overrides: Partial<JuniorSqlConversationInsert> = {},

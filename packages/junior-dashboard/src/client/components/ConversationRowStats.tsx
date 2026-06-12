@@ -5,7 +5,7 @@ import {
 } from "../format";
 import type { Conversation } from "../types";
 
-/** Render compact conversation metadata aligned to row context. */
+/** Render compact conversation details aligned to row context. */
 export function ConversationRowStats(props: {
   conversation: Conversation;
   timeLabel: string;

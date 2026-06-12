@@ -1,5 +1,5 @@
-import type { ConversationMetadataStore } from "../store";
-import type { Conversation } from "../state-task-execution-store";
+import type { ConversationStore } from "../store";
+import type { Conversation } from "@/chat/task-execution/state";
 
 export interface BackfillResult {
   copiedCount: number;
@@ -11,11 +11,11 @@ export interface BackfillTarget {
   migrate(): Promise<void>;
 }
 
-/** Copy bounded conversation metadata from an existing store into SQL. */
+/** Copy bounded conversation record from an existing store into SQL. */
 export async function backfillToSql(args: {
   limit?: number;
   offset?: number;
-  source: ConversationMetadataStore;
+  source: ConversationStore;
   target: BackfillTarget;
 }): Promise<BackfillResult> {
   const limit = Math.max(0, args.limit ?? 500);

@@ -1,4 +1,4 @@
-# Conversation Metadata Storage
+# Conversation Storage
 
 ## Metadata
 
@@ -7,18 +7,17 @@
 
 ## Purpose
 
-Define Junior's SQL-backed storage contract for queryable conversation metadata
+Define Junior's SQL-backed storage contract for queryable conversation records
 without moving transcript authorities into SQL.
 
 This storage exists to support stats, dashboard lists, audit queries,
-conversation configuration, recovery metadata, and deploy-safe schema
-evolution.
+conversation configuration, durable source/destination/identity metadata, and
+deploy-safe schema evolution.
 
 ## Scope
 
 - Conversation records and query indexes.
-- Inbound mailbox metadata and dedupe ids.
-- Execution status, run ids, leases, and recovery timestamps.
+- Execution status summaries and run/checkpoint timestamps.
 - Conversation display details such as title, channel, source, destination, and
   requester.
 - Conversation-scoped configuration entries.
@@ -30,6 +29,8 @@ evolution.
 
 - Moving visible conversation transcript messages to SQL.
 - Moving Pi/model execution transcript entries to SQL.
+- Moving pending inbound mailbox payloads to SQL.
+- Moving lease ownership and worker wake-up state to SQL.
 - Reconstructing model context from SQL metadata.
 - Replacing Redis/blob transcript storage in this project.
 - Adding a general workflow engine or durable task database.
@@ -38,7 +39,7 @@ evolution.
 
 ### Data Authorities
 
-SQL owns queryable metadata only.
+SQL owns durable, queryable conversation records only.
 
 The transcript authorities from `./task-execution.md` remain unchanged:
 
@@ -51,21 +52,36 @@ SQL records may reference transcript authorities by `conversationId`,
 `sessionId`, message count, or summary fields, but must not duplicate full
 transcript payloads as the normal read path.
 
-### Metadata Store Boundary
+The transient task-execution authorities from `./task-execution.md` also remain
+state-backed:
 
-Runtime modules must depend on a small metadata storage port. Drizzle owns SQL
+- `junior:conversation:<conversationId>` stores pending inbound mailbox entries,
+  lease ownership, active execution state, and worker recovery indexes.
+- `conversation:active` and `conversation:by-activity` remain the bounded
+  state indexes used by task execution and by the SQL backfill source.
+
+### Conversation Store Boundary
+
+Runtime modules must depend on small feature storage ports. Drizzle owns SQL
 schema definitions and typed query implementation details, but Drizzle client,
 table, and ORM types must not leak through chat runtime, services, ingress,
 scheduler, or dashboard boundaries.
 
-The first storage port is `ConversationMetadataStore` in
-`packages/junior/src/chat/metadata/store.ts`. It covers the existing
-conversation execution record shape, mailbox dedupe and injection state,
-lease/check-in/release operations, continuation wake-ups, activity listing, and
-active-conversation recovery scans.
+The first SQL-backed feature port is `ConversationStore` in
+`packages/junior/src/chat/conversations/store.ts`. It covers queryable
+conversation rows only:
 
-Additional metadata concerns should join this boundary in separate vertical
-slices:
+- read one conversation summary by id
+- record visible conversation activity/source/destination/identity fields
+- list retained conversations by activity for dashboard/plugin/reporting reads
+
+It explicitly does not own mailbox append/drain, inbound dedupe, lease
+check-in/release, continuation wake-ups, or active-conversation recovery scans.
+Those operations remain in `packages/junior/src/chat/task-execution/state.ts`
+and the state-backed task execution store.
+
+Additional SQL concerns should join the shared Junior database in separate
+vertical slices:
 
 - conversation context and generated titles
 - conversation-scoped configuration
@@ -94,12 +110,8 @@ transactional invariants:
     `requester_identity_id`, `creator_identity_id`,
     `credential_subject_identity_id`), provider detail JSON,
     `channel_name`, `title`, `created_at`, `last_activity_at`, `updated_at`,
-    `execution_status`, `run_id`, lease fields
-- `junior_conversation_inbound_messages`
-  - `conversation_id`, `inbound_message_id`, `source`, `created_at`,
-    `received_at`, `injected_at`, `destination_id`, provider detail JSON, safe
-    input size/count metadata, and transient pending `input_json`
-  - unique `(conversation_id, inbound_message_id)`
+    `execution_status`, `run_id`, checkpoint/enqueue timestamps, and optional
+    lease summary fields copied from state for diagnostics
 
 Identities model provider-scoped principals, not just requesters. A Slack user
 turn may use the same identity row for actor and requester. Scheduled work uses
@@ -117,21 +129,18 @@ Opaque JSON columns are allowed for source-specific payloads that are not used
 for authorization, lock ownership, credential routing, or external side-effect
 authority.
 
-Inbound mailbox SQL rows may store raw inbound input only while the message is
-pending worker injection. Once the worker durably injects the message into the
-session log, SQL must clear the raw input payload and retain only metadata such
-as id, timestamps, source, destination, injected status, text length, and
-attachment count. This keeps SQL from becoming a long-term transcript history
-authority while still allowing a single SQL-backed mailbox path.
+Inbound mailbox rows are not part of the SQL schema. Pending input payloads are
+temporary execution data and remain in the state-backed task-execution store
+until they are injected into the session log.
 
 ### Production Database
 
-Production uses Neon Postgres. The runtime metadata store must treat Neon as
-Postgres, not as a special transcript or analytics backend:
+Production uses Neon Postgres. The shared Junior SQL database must treat Neon as
+Postgres, not as a special transcript, queue, or analytics backend:
 
 - Drizzle owns schema and typed queries.
 - Neon driver/client types stay inside SQL infrastructure modules.
-- The metadata-store port remains the public runtime/dashboard/plugin boundary.
+- Feature store ports remain the public runtime/dashboard/plugin boundaries.
 - Migration and backfill code must use transaction-scoped database locks so
   Neon/Vercel's normal pooled `DATABASE_URL` works. Neon HTTP may be used for
   one-shot query paths only when no advisory lock or interactive transaction is
@@ -149,7 +158,7 @@ covered without rebuilding ad-hoc stores.
 
 Vercel deployments can be created from Git, CLI, Deploy Hooks, or REST API, and
 Git pushes normally trigger deployments automatically. Vercel Cron Jobs invoke
-production functions by HTTP GET. Junior SQL schema and metadata backfills are
+production functions by HTTP GET. Junior SQL schema and conversation backfills are
 applied by `junior upgrade`, not by request handlers.
 
 Vercel projects using Neon normally receive a standard `DATABASE_URL` from the
@@ -177,27 +186,27 @@ traffic.
 
 ### Backfill And Cutover
 
-Historical Redis metadata moves to SQL through a bounded migration, not through
+Historical Redis conversation summaries move to SQL through a bounded migration, not through
 a single blocking request and not through long-lived read fallbacks.
 
-1. Deploy A introduces schema, migration runner, and the SQL metadata store
+1. Deploy A introduces schema, migration runner, and the SQL conversation store
    implementation.
 2. `junior upgrade` copies historical Redis metadata into the shared Junior SQL
    database after a SQL database URL is configured. The registered SQL
-   migration uses `backfillToSql` to copy retained
-   conversation metadata from the state-backed metadata store into the SQL
-   store.
+   migration uses `backfillToSql` to copy retained conversation records from
+   the state-backed conversation store into the SQL store. Pending inbound
+   payloads and lease ownership remain in state.
 3. The retained activity index is bounded, and the migration scans it in
    bounded, idempotent batches until the retained source is copied. If a batch
    fails, the upgrade command fails clearly and the next run repeats the scan
    without corrupting already copied rows.
-4. The runtime and dashboard use the canonical metadata store interface. Junior
+4. The runtime and dashboard use the canonical conversation store interface. Junior
    points that interface at Neon-backed SQL when it can resolve a SQL database
    URL from `JUNIOR_DATABASE_URL` or `DATABASE_URL`, in that order. The explicit
    Junior variable remains the override for projects where the default
    application database is not the Junior SQL database. Leaving both database
    URL variables unset keeps the state-backed local/default store. During the
-   migration deployment, enable the SQL metadata store once required schema and
+   migration deployment, enable the SQL conversation store once required schema and
    migration completion checks pass.
 
 Transcript keys are excluded from this backfill unless a separate transcript
@@ -213,20 +222,20 @@ storage spec changes their authority.
 - If backfill fails partway through, already copied rows remain valid. The next
   `junior upgrade` run repeats the bounded retained-activity scan and
   idempotently upserts rows.
-- If SQL is unavailable after the metadata store cutover, the caller must
+- If SQL is unavailable after the conversation store cutover, the caller must
   surface the failure. Do not hide SQL failures with broad Redis read fallbacks.
 - Rollback must be supported by expand-only schema changes and delayed read
   cutover. A code rollback after schema deployment can ignore unused SQL tables.
 
 ## Observability
 
-The metadata store should emit existing logging/tracing conventions from
+The conversation store should emit existing logging/tracing conventions from
 `./instrumentation.md` for:
 
 - migration start, success, failure, and duration
 - migration lock contention
 - backfill chunk progress and failure
-- SQL metadata migration progress and cutover readiness
+- SQL conversation migration progress and cutover readiness
 - SQL read/write latency at the store boundary
 
 Telemetry output is diagnostic and must not be used as the behavior contract in
@@ -234,12 +243,15 @@ normal runtime tests.
 
 ## Verification
 
-- Component tests for metadata-store invariants: inbound dedupe, mailbox
-  ordering, lease exclusivity, active/recent list ordering, and schema migration
-  idempotency.
+- Component tests for task-execution invariants: inbound dedupe, mailbox
+  ordering, lease exclusivity, and active/recent state-index ordering.
+- Component tests for conversation-store invariants: SQL migration idempotency,
+  activity ordering, identity/destination linking, and state-to-SQL backfill
+  without pending input payloads.
 - Integration tests for the SQL migration and Drizzle schema against the local
   Postgres-compatible PGlite fixture. Do not replace this with SQLite mocks.
-- Component tests for backfill conversion from Redis metadata to SQL rows.
+- Component tests for backfill conversion from Redis conversation records to SQL
+  rows.
 - Integration tests for production wiring once reads move to SQL: inbound event
   persistence, worker recovery, heartbeat recovery, and final delivery metadata.
 - No evals are required unless prompt behavior or agent-facing continuity

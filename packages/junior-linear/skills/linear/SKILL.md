@@ -48,7 +48,7 @@ Classify the work as `bug`, `feature`, or `task`. Shape the title and body per [
 - Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
 - When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the action requester's real name. The action requester is the current `<requester>` or the person who explicitly asked you to create/update the issue, not necessarily the original reporter.
 
-Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice during incident triage"). If the reporter differs from the action requester, keep them separate with durable body text such as `Reported by Alice.` — do not reference Slack channels, threads, or conversation metadata. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
+Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice during incident triage"). If the reporter differs from the action requester, keep them separate with durable body text such as `Reported by Alice.` — do not reference Slack channels, threads, or conversation internals. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
 
 4. Set optional Linear fields literally:
 

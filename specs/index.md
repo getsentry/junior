@@ -33,7 +33,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/chat-architecture.md`
 - `specs/terminology.md`
 - `specs/task-execution.md`
-- `specs/conversation-metadata-storage.md`
+- `specs/conversation-storage.md`
 - `specs/local-agent.md`
 - `specs/agent-turn-handling.md`
 - `specs/slack-agent-delivery.md`
@@ -74,7 +74,7 @@ For chat/agent/Slack execution and response behavior:
 - `specs/terminology.md` owns canonical execution vocabulary and historical `turn` naming rules.
 - `specs/chat-architecture.md` owns the end-to-end platform-event-to-agent-run data flow, platform adapter boundary, data authority map, and module boundaries.
 - `specs/task-execution.md` owns durable conversation mailbox execution, queue wake-up semantics, conversation leases, cooperative yield, and heartbeat repair.
-- `specs/conversation-metadata-storage.md` owns SQL-backed queryable conversation metadata, transcript-storage exclusions, and Vercel-safe migration/backfill behavior.
+- `specs/conversation-storage.md` owns SQL-backed queryable conversation record, transcript-storage exclusions, and Vercel-safe migration/backfill behavior.
 - `specs/local-agent.md` owns local CLI/local adapter user flows, identity, state, delivery, and verification contracts.
 - `specs/agent-turn-handling.md` owns user-message response policy: when Junior answers, stays silent, asks, uses tools, satisfies Slack side effects, handles resumed turns, and considers a turn complete.
 - `specs/agent-execution.md` owns coding-agent execution discipline and the repository-wide model-repairable tool failure contract.

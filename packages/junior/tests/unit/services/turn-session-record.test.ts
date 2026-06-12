@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -539,7 +539,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
-  it("surfaces configured metadata store failures through completed turn persistence", async () => {
+  it("surfaces configured conversation store failures through completed turn persistence", async () => {
     const logException = vi.fn();
     vi.doMock("@/chat/logging", async (importOriginal) => {
       const actual = await importOriginal<typeof import("@/chat/logging")>();
@@ -550,21 +550,21 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     const { persistCompletedSessionRecord } =
       await import("@/chat/services/turn-session-record");
-    const metadataStore = {
-      recordConversationActivity: vi.fn(async () => {
+    const conversationStore = {
+      recordConversationStatus: vi.fn(async () => {
         throw new Error("sql unavailable");
       }),
-    } as unknown as ConversationMetadataStore;
+    } as unknown as ConversationStore;
 
     await expect(
       persistCompletedSessionRecord({
-        conversationId: "conversation-metadata-failure",
+        conversationId: "conversation-store-failure",
         destination: {
           platform: "slack",
           teamId: "T123",
           channelId: "C123",
         },
-        sessionId: "turn-metadata-failure",
+        sessionId: "turn-store-failure",
         sliceId: 1,
         allMessages: [
           {
@@ -576,14 +576,14 @@ describe("persistAuthPauseSessionRecord", () => {
         logContext: {
           modelId: "test-model",
         },
-        metadataStore,
+        conversationStore,
         surface: "scheduler",
       }),
     ).resolves.toBeUndefined();
 
-    expect(metadataStore.recordConversationActivity).toHaveBeenCalledWith(
+    expect(conversationStore.recordConversationStatus).toHaveBeenCalledWith(
       expect.objectContaining({
-        conversationId: "conversation-metadata-failure",
+        conversationId: "conversation-store-failure",
         source: "scheduler",
       }),
     );
@@ -594,8 +594,8 @@ describe("persistAuthPauseSessionRecord", () => {
         modelId: "test-model",
       }),
       expect.objectContaining({
-        "app.ai.resume_conversation_id": "conversation-metadata-failure",
-        "app.ai.resume_session_id": "turn-metadata-failure",
+        "app.ai.resume_conversation_id": "conversation-store-failure",
+        "app.ai.resume_session_id": "turn-store-failure",
         "app.ai.resume_slice_id": 1,
       }),
       "Failed to persist completed turn session record",

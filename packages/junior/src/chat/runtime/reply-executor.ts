@@ -121,7 +121,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { requireSlackDestination } from "@/chat/destination";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -234,7 +234,7 @@ export interface ReplyExecutorServices {
     sessionId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
 }
 
@@ -546,7 +546,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             startedAtMs: turnStartedAtMs,
             state: "running",
             surface: "slack",
-            metadataStore: deps.services.metadataStore,
+            conversationStore: deps.services.conversationStore,
             requester,
             destination,
             traceId: getActiveTraceId(),
@@ -1052,7 +1052,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sliceId: 1,
               startedAtMs: message.metadata.dateSent.getTime(),
               state: "completed",
-              metadataStore: deps.services.metadataStore,
+              conversationStore: deps.services.conversationStore,
               requester,
               destination,
               traceId: getActiveTraceId(),
@@ -1214,7 +1214,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   sliceId: 1,
                   startedAtMs: message.metadata.dateSent.getTime(),
                   state: "failed",
-                  metadataStore: deps.services.metadataStore,
+                  conversationStore: deps.services.conversationStore,
                   requester,
                   destination,
                   traceId: getActiveTraceId(),

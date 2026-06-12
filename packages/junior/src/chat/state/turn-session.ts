@@ -19,7 +19,7 @@ import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { recordConversationActivity } from "@/chat/task-execution/store";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -311,9 +311,9 @@ async function appendAgentTurnSessionSummary(
   ]);
 }
 
-/** Mirror run summaries into the conversation feed through the configured metadata store. */
+/** Mirror run summaries into the conversation feed through the configured conversation store. */
 async function recordConversationActivityMirror(args: {
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
@@ -326,7 +326,7 @@ async function recordConversationActivityMirror(args: {
     channelName: args.summary.channelName,
     conversationId: args.summary.conversationId,
     destination: args.summary.destination,
-    metadataStore: args.metadataStore,
+    conversationStore: args.conversationStore,
     nowMs: args.nowMs,
     requester: args.summary.requester,
     source,
@@ -508,7 +508,7 @@ function buildStoredRecord(args: {
 }
 
 async function setStoredRecord(args: {
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   piMessages: PiMessage[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
@@ -530,7 +530,7 @@ async function setStoredRecord(args: {
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
   await recordConversationActivityMirror({
-    metadataStore: args.metadataStore,
+    conversationStore: args.conversationStore,
     nowMs: Date.now(),
     summary,
   });
@@ -608,7 +608,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
@@ -635,7 +635,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   });
 
   return await setStoredRecord({
-    metadataStore: args.metadataStore,
+    conversationStore: args.conversationStore,
     piMessages: args.piMessages,
     ttlMs,
     record: buildStoredRecord({
@@ -703,7 +703,7 @@ export async function recordAgentTurnSessionSummary(args: {
   destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   sessionId: string;
@@ -764,7 +764,7 @@ export async function recordAgentTurnSessionSummary(args: {
   };
   await appendAgentTurnSessionSummary(summary, ttlMs);
   await recordConversationActivityMirror({
-    metadataStore: args.metadataStore,
+    conversationStore: args.conversationStore,
     nowMs,
     summary,
   });

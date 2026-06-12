@@ -45,7 +45,7 @@ import {
 } from "@/chat/task-execution/vercel-callback";
 import {
   createProductionConversationWorkOptions,
-  getProductionConversationMetadataStore,
+  getProductionConversationStore,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
 import { withSandboxTracePropagation } from "@/chat/app/services";
@@ -377,10 +377,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
-  const conversationMetadataStore = getProductionConversationMetadataStore();
+  const conversationStore = getProductionConversationStore();
   const runtimeServiceOverrides = {
     replyExecutor: {
-      metadataStore: conversationMetadataStore,
+      conversationStore,
     },
     sandbox: {
       tracePropagation: { domains: sandboxEgressTracePropagationDomains },
@@ -433,7 +433,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
-      metadataStore: conversationMetadataStore,
+      conversationStore,
       tracePropagation: { domains: sandboxEgressTracePropagationDomains },
     });
   });

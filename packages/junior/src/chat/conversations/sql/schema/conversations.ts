@@ -1,22 +1,11 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-} from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackRequester } from "@/chat/requester";
-import type {
-  AgentInput,
-  ExecutionStatus,
-  Source,
-} from "../../state-task-execution-store";
+import type { ExecutionStatus, Source } from "@/chat/task-execution/state";
 
 export const juniorConversations = pgTable(
   "junior_conversations",
@@ -90,41 +79,5 @@ export const juniorConversations = pgTable(
       table.originId,
       table.lastActivityAt.desc(),
     ),
-  ],
-);
-
-export const juniorConversationInboundMessages = pgTable(
-  "junior_conversation_inbound_messages",
-  {
-    conversationId: text("conversation_id")
-      .notNull()
-      .references(() => juniorConversations.conversationId, {
-        onDelete: "cascade",
-      }),
-    inboundMessageId: text("inbound_message_id").notNull(),
-    source: text("source").$type<Source>().notNull(),
-    destinationId: text("destination_id")
-      .notNull()
-      .references(() => juniorDestinations.id),
-    destination: jsonb("destination_json").$type<Destination>().notNull(),
-    input: jsonb("input_json").$type<AgentInput>(),
-    inputTextLength: integer("input_text_length").notNull().default(0),
-    attachmentCount: integer("attachment_count").notNull().default(0),
-    createdAt: timestamptz("created_at").notNull(),
-    receivedAt: timestamptz("received_at").notNull(),
-    injectedAt: timestamptz("injected_at"),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.conversationId, table.inboundMessageId],
-    }),
-    index("junior_conversation_inbound_pending_idx")
-      .on(
-        table.conversationId,
-        table.createdAt,
-        table.receivedAt,
-        table.inboundMessageId,
-      )
-      .where(sql`${table.injectedAt} IS NULL`),
   ],
 );

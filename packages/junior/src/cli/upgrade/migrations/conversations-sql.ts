@@ -2,18 +2,16 @@ import { getChatConfig } from "@/chat/config";
 import {
   backfillToSql,
   type BackfillTarget,
-} from "@/chat/metadata/sql/backfill";
-import { createSqlStore } from "@/chat/metadata/sql/store";
-import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
+} from "@/chat/conversations/sql/backfill";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import { createStateConversationStore } from "@/chat/conversations/state";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 import type { MigrationContext, MigrationResult } from "../types";
 
-const CONVERSATION_METADATA_BACKFILL_LIMIT = 10_000;
+const CONVERSATION_BACKFILL_LIMIT = 10_000;
 
-/**
- * Copy retained conversation execution metadata into the configured SQL store.
- */
-export async function migrateMetadataToSql(
+/** Copy retained conversation records into the configured SQL store. */
+export async function migrateConversationsToSql(
   context: MigrationContext,
   options: {
     batchSize?: number;
@@ -23,7 +21,7 @@ export async function migrateMetadataToSql(
   const databaseUrl = context.sqlDatabaseUrl ?? getChatConfig().sql.databaseUrl;
   if (!databaseUrl && !options.target) {
     context.io.info(
-      "Skipping SQL conversation metadata backfill: no Junior SQL database URL is configured.",
+      "Skipping SQL conversation record backfill: no Junior SQL database URL is configured.",
     );
     return {
       existing: 0,
@@ -34,7 +32,7 @@ export async function migrateMetadataToSql(
     };
   }
 
-  const source = createStateConversationMetadataStore(context.stateAdapter);
+  const source = createStateConversationStore(context.stateAdapter);
   const target =
     options.target ??
     createSqlStore(
@@ -42,10 +40,7 @@ export async function migrateMetadataToSql(
         connectionString: databaseUrl!,
       }),
     );
-  const limit = Math.max(
-    1,
-    options.batchSize ?? CONVERSATION_METADATA_BACKFILL_LIMIT,
-  );
+  const limit = Math.max(1, options.batchSize ?? CONVERSATION_BACKFILL_LIMIT);
   let copiedCount = 0;
   let hasMore = false;
   do {
@@ -67,7 +62,7 @@ export async function migrateMetadataToSql(
   };
 }
 
-export const sqlMetadataMigration = {
-  name: "backfill-conversation-metadata-sql",
-  run: migrateMetadataToSql,
+export const sqlConversationMigration = {
+  name: "backfill-conversations-sql",
+  run: migrateConversationsToSql,
 };

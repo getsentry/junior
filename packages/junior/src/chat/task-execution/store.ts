@@ -1,11 +1,8 @@
 import type { StateAdapter } from "chat";
-import { createStateConversationMetadataStore } from "@/chat/metadata/state-store";
-import {
-  getConfiguredConversationMetadataStore,
-  hasConfiguredJuniorDatabase,
-} from "@/chat/metadata/configured-store";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "./queue";
+import * as workState from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -28,32 +25,23 @@ export {
   type StartConversationWorkActive,
   type StartConversationWorkNoWork,
   type StartConversationWorkResult,
-} from "@/chat/metadata/state-task-execution-store";
+} from "@/chat/task-execution/state";
 import type {
   AppendAndEnqueueInboundMessageResult,
   Conversation,
   InboundMessage,
-} from "@/chat/metadata/state-task-execution-store";
-import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/metadata/state-task-execution-store";
+} from "@/chat/task-execution/state";
+import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
 
-interface MetadataStoreOptions {
-  metadataStore?: ConversationMetadataStore;
+interface ConversationStoreOptions {
+  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }
 
-function metadataStore(
-  options: MetadataStoreOptions,
-): ConversationMetadataStore {
-  if (options.metadataStore) {
-    return options.metadataStore;
-  }
-  // SQL configuration is the hard cutover for durable conversation work.
-  // Injected state adapters remain the local/no-SQL backend, not a parallel
-  // production path.
-  if (options.state && !hasConfiguredJuniorDatabase()) {
-    return createStateConversationMetadataStore(options.state);
-  }
-  return getConfiguredConversationMetadataStore();
+function conversationStore(
+  options: ConversationStoreOptions,
+): ConversationStore {
+  return options.conversationStore ?? getConfiguredConversationStore();
 }
 
 function duplicateInboundNudgeIdempotencyKey(
@@ -78,22 +66,55 @@ function now(): number {
   return Date.now();
 }
 
+async function recordConversationStatus(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  state?: StateAdapter;
+}): Promise<void> {
+  const conversation = await workState.getConversation({
+    conversationId: args.conversationId,
+    state: args.state,
+  });
+  if (!conversation) {
+    return;
+  }
+  await conversationStore(args).recordConversationStatus({
+    channelName: conversation.channelName,
+    conversationId: conversation.conversationId,
+    createdAtMs: conversation.createdAtMs,
+    destination: conversation.destination,
+    execution: {
+      lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
+      lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
+      lease: conversation.execution.lease,
+      runId: conversation.execution.runId,
+      status: conversation.execution.status,
+      updatedAtMs: conversation.execution.updatedAtMs,
+    },
+    lastActivityAtMs: conversation.lastActivityAtMs,
+    requester: conversation.requester,
+    source: conversation.source,
+    title: conversation.title,
+    updatedAtMs: conversation.updatedAtMs,
+  });
+}
+
 /** Return a persisted conversation record, if one exists. */
 export async function getConversation(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).getConversation(args);
+  return await workState.getConversation(args);
 }
 
 /** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).getConversationWorkState(args);
+  return await workState.getConversationWorkState(args);
 }
 
 /** Count mailbox messages that have not yet reached the session log. */
@@ -116,31 +137,39 @@ export function hasRunnableConversationWork(
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {
   message: InboundMessage;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).appendInboundMessage(args);
+  const result = await workState.appendInboundMessage(args);
+  await recordConversationStatus({
+    conversationId: args.message.conversationId,
+    conversationStore: args.conversationStore,
+    state: args.state,
+  });
+  return result;
 }
 
 /** Persist inbound work and send the queue nudge that wakes a worker. */
 export async function appendAndEnqueueInboundMessage(args: {
   message: InboundMessage;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
-  const store = metadataStore(args);
-  const appendResult = await store.appendInboundMessage({
+  const appendResult = await appendInboundMessage({
     message: args.message,
     nowMs,
+    conversationStore: args.conversationStore,
+    state: args.state,
   });
   let idempotencyKey = args.message.inboundMessageId;
   if (appendResult.status === "duplicate") {
-    const conversation = await store.getConversation({
+    const conversation = await workState.getConversation({
       conversationId: args.message.conversationId,
+      state: args.state,
     });
     if (!conversation || hasRecentEnqueueMarker(conversation, nowMs)) {
       return appendResult;
@@ -160,9 +189,11 @@ export async function appendAndEnqueueInboundMessage(args: {
     },
     { idempotencyKey },
   );
-  await store.markConversationWorkEnqueued({
+  await markConversationWorkEnqueued({
     conversationId: args.message.conversationId,
+    conversationStore: args.conversationStore,
     nowMs,
+    state: args.state,
   });
   return {
     ...appendResult,
@@ -174,64 +205,76 @@ export async function appendAndEnqueueInboundMessage(args: {
 export async function requestConversationWork(args: {
   conversationId: string;
   destination: InboundMessage["destination"];
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).requestConversationWork(args);
+  const result = await workState.requestConversationWork(args);
+  await recordConversationStatus({
+    conversationId: args.conversationId,
+    conversationStore: args.conversationStore,
+    state: args.state,
+  });
+  return result;
 }
 
 /** Record visible conversation activity without making the conversation runnable. */
 export async function recordConversationActivity(
-  args: Parameters<
-    ConversationMetadataStore["recordConversationActivity"]
-  >[0] & {
-    metadataStore?: ConversationMetadataStore;
+  args: Parameters<ConversationStore["recordConversationActivity"]>[0] & {
+    conversationStore?: ConversationStore;
     state?: StateAdapter;
   },
 ) {
-  return await metadataStore(args).recordConversationActivity(args);
+  await workState.recordConversationActivity(args);
+  await recordConversationStatus({
+    conversationId: args.conversationId,
+    conversationStore: args.conversationStore,
+    state: args.state,
+  });
 }
 
 /** Record that a wake-up nudge was accepted for the conversation. */
 export async function markConversationWorkEnqueued(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).markConversationWorkEnqueued(args);
+  await workState.markConversationWorkEnqueued(args);
+  await recordConversationStatus(args);
 }
 
 /** Try to acquire the durable execution lease for one conversation. */
 export async function startConversationWork(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).startConversationWork(args);
+  const result = await workState.startConversationWork(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Extend the durable execution lease when the worker checks in. */
 export async function checkInConversationWork(args: {
   conversationId: string;
   leaseToken: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).checkInConversationWork(args);
+  return await workState.checkInConversationWork(args);
 }
 
 /** Drain pending mailbox entries after the caller has durably injected them. */
 export async function drainConversationMailbox(
-  args: Parameters<ConversationMetadataStore["drainConversationMailbox"]>[0] & {
-    metadataStore?: ConversationMetadataStore;
+  args: Parameters<typeof workState.drainConversationMailbox>[0] & {
+    conversationStore?: ConversationStore;
     state?: StateAdapter;
   },
 ) {
-  return await metadataStore(args).drainConversationMailbox(args);
+  return await workState.drainConversationMailbox(args);
 }
 
 /** Mark selected leased mailbox entries after their session-log injection succeeds. */
@@ -239,11 +282,13 @@ export async function markConversationMessagesInjected(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).markConversationMessagesInjected(args);
+  const result = await workState.markConversationMessagesInjected(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Mark the leased conversation as needing another queue-delivered slice. */
@@ -251,73 +296,81 @@ export async function requestConversationContinuation(args: {
   conversationId: string;
   destination: InboundMessage["destination"];
   leaseToken: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).requestConversationContinuation(args);
+  const result = await workState.requestConversationContinuation(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Release the durable execution lease without changing completion state. */
 export async function releaseConversationWork(args: {
   conversationId: string;
   leaseToken: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).releaseConversationWork(args);
+  const result = await workState.releaseConversationWork(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Finish a leased conversation and report whether runnable work remains. */
 export async function completeConversationWork(args: {
   conversationId: string;
   leaseToken: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).completeConversationWork(args);
+  const result = await workState.completeConversationWork(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Clear an expired durable lease so a later worker can resume safely. */
 export async function clearExpiredConversationLease(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).clearExpiredConversationLease(args);
+  const result = await workState.clearExpiredConversationLease(args);
+  await recordConversationStatus(args);
+  return result;
 }
 
 /** Remove one conversation from the active index after it is missing or idle. */
 export async function removeActiveConversation(args: {
   conversationId: string;
-  metadataStore?: ConversationMetadataStore;
+  conversationStore?: ConversationStore;
   state?: StateAdapter;
 }) {
-  return await metadataStore(args).removeActiveConversation(args);
+  return await workState.removeActiveConversation(args);
 }
 
 /** List active conversation ids by oldest execution update first. */
 export async function listActiveConversationIds(
   args: {
     limit?: number;
-    metadataStore?: ConversationMetadataStore;
+    conversationStore?: ConversationStore;
     staleBeforeMs?: number;
     state?: StateAdapter;
   } = {},
 ) {
-  return await metadataStore(args).listActiveConversationIds(args);
+  return await workState.listActiveConversationIds(args);
 }
 
 /** List retained conversations by newest visible activity first. */
 export async function listConversationsByActivity(
   args: {
     limit?: number;
-    metadataStore?: ConversationMetadataStore;
+    conversationStore?: ConversationStore;
     state?: StateAdapter;
   } = {},
 ) {
-  return await metadataStore(args).listConversationsByActivity(args);
+  return await workState.listConversationsByActivity(args);
 }

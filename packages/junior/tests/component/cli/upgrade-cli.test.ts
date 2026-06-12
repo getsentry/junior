@@ -6,12 +6,12 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   requestConversationWork,
 } from "@/chat/task-execution/store";
-import { createSqlStore } from "@/chat/metadata/sql/store";
+import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { runUpgradeMigrations } from "@/cli/upgrade";
-import { migrateMetadataToSql } from "@/cli/upgrade/migrations/conversation-metadata-sql";
+import { migrateConversationsToSql } from "@/cli/upgrade/migrations/conversations-sql";
 import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
 import {
   CONVERSATION_ID,
@@ -170,13 +170,13 @@ describe("upgrade CLI migrations", () => {
     expect(logs).toEqual([
       "Running migration migrate-redis-conversation-state...",
       "Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1",
-      "Running migration backfill-conversation-metadata-sql...",
-      "Skipping SQL conversation metadata backfill: no Junior SQL database URL is configured.",
-      "Finished migration backfill-conversation-metadata-sql: scanned=0 migrated=0 existing=0 missing=0 skipped=1",
+      "Running migration backfill-conversations-sql...",
+      "Skipping SQL conversation record backfill: no Junior SQL database URL is configured.",
+      "Finished migration backfill-conversations-sql: scanned=0 migrated=0 existing=0 missing=0 skipped=1",
     ]);
   });
 
-  it("migrates legacy conversation work before SQL metadata backfill", async () => {
+  it("migrates legacy conversation work before SQL conversation backfill", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const legacyMessage = inboundMessage("legacy-sql");
@@ -203,7 +203,7 @@ describe("upgrade CLI migrations", () => {
       };
       const results = [
         await redisConversationStateMigration.run(context),
-        await migrateMetadataToSql(context, { target: sqlStore }),
+        await migrateConversationsToSql(context, { target: sqlStore }),
       ];
 
       expect(results).toEqual([
@@ -231,11 +231,12 @@ describe("upgrade CLI migrations", () => {
         },
       });
       await expect(
-        sqlStore.getConversationWorkState({ conversationId: CONVERSATION_ID }),
+        sqlStore.getConversation({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         conversationId: CONVERSATION_ID,
         execution: {
-          pendingCount: 1,
+          pendingCount: 0,
+          pendingMessages: [],
           status: "pending",
         },
       });
@@ -244,7 +245,7 @@ describe("upgrade CLI migrations", () => {
     }
   });
 
-  it("pages SQL metadata backfill until all retained conversations are copied", async () => {
+  it("pages SQL conversation backfill until all retained conversations are copied", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -261,7 +262,7 @@ describe("upgrade CLI migrations", () => {
       }
 
       await expect(
-        migrateMetadataToSql(
+        migrateConversationsToSql(
           {
             io: { info: () => {} },
             sqlDatabaseUrl: "postgres://configured.example.test/neon",
@@ -515,7 +516,7 @@ describe("upgrade CLI migrations", () => {
     ]);
   });
 
-  it("backfills retained conversation metadata into SQL when configured", async () => {
+  it("backfills retained conversation record into SQL when configured", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     await requestConversationWork({
@@ -535,7 +536,7 @@ describe("upgrade CLI migrations", () => {
       };
       const results = [
         await redisConversationStateMigration.run(context),
-        await migrateMetadataToSql(context, { target: sqlStore }),
+        await migrateConversationsToSql(context, { target: sqlStore }),
       ];
 
       expect(results).toEqual([

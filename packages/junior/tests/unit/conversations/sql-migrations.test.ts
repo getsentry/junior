@@ -5,7 +5,7 @@ import {
   migrations,
   migrateSchema,
   type Migration,
-} from "@/chat/metadata/sql/migrations";
+} from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 
 class FakeSqlExecutor implements JuniorSqlMigrationExecutor {
@@ -66,13 +66,13 @@ class FakeSqlExecutor implements JuniorSqlMigrationExecutor {
   }
 }
 
-describe("conversation metadata SQL migrations", () => {
+describe("conversation SQL migrations", () => {
   it("runs pending migrations under the schema lock", async () => {
     const executor = new FakeSqlExecutor();
 
     await migrateSchema(executor);
 
-    expect(executor.locks).toEqual(["junior_conversation_metadata_schema"]);
+    expect(executor.locks).toEqual(["junior_conversation_schema"]);
     expect(executor.statements[0]).toContain(
       "CREATE TABLE IF NOT EXISTS junior_schema_migrations",
     );
@@ -85,9 +85,6 @@ describe("conversation metadata SQL migrations", () => {
         ),
         expect.stringContaining(
           "CREATE TABLE IF NOT EXISTS junior_conversations",
-        ),
-        expect.stringContaining(
-          "CREATE TABLE IF NOT EXISTS junior_conversation_inbound_messages",
         ),
         expect.stringContaining("INSERT INTO junior_schema_migrations"),
       ]),
@@ -113,11 +110,11 @@ describe("conversation metadata SQL migrations", () => {
     const executor = new FakeSqlExecutor([[migration.id, "old-checksum"]]);
 
     await expect(migrateSchema(executor)).rejects.toThrow(
-      `Conversation metadata migration ${migration.id} checksum changed`,
+      `Conversation migration ${migration.id} checksum changed`,
     );
   });
 
-  it("keeps transcript authorities out of the metadata schema", () => {
+  it("keeps transcript and mailbox authorities out of the SQL schema", () => {
     const ddl = migrations
       .flatMap((migration: Migration) => [
         migration.id,
@@ -127,12 +124,12 @@ describe("conversation metadata SQL migrations", () => {
 
     expect(ddl).not.toContain("thread-state");
     expect(ddl).not.toContain("agent-session-log");
+    expect(ddl).not.toContain("inbound_messages");
     expect(ddl).not.toMatch(/\btranscript\b/i);
   });
 
-  it("exports Drizzle table definitions for the metadata schema", () => {
+  it("exports Drizzle table definitions for the SQL schema", () => {
     expect(Object.values(schema).map((table) => getTableName(table))).toEqual([
-      "junior_conversation_inbound_messages",
       "junior_conversations",
       "junior_destinations",
       "junior_identities",

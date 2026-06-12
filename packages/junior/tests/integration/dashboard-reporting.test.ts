@@ -111,10 +111,10 @@ describe("dashboard reporting", () => {
   });
 
   it("lists recent conversations through reporting", async () => {
-    const { getConfiguredConversationMetadataStore } =
-      await import("@/chat/metadata/configured-store");
+    const { getConfiguredConversationStore } =
+      await import("@/chat/conversations/configured");
     const { createJuniorReporting } = await import("@/reporting");
-    const metadata = getConfiguredConversationMetadataStore();
+    const metadata = getConfiguredConversationStore();
 
     await metadata.recordConversationActivity({
       conversationId: "slack:C1:111",
@@ -140,8 +140,8 @@ describe("dashboard reporting", () => {
   it("mirrors local turn sessions as local conversation summaries", async () => {
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
-    const { getConfiguredConversationMetadataStore } =
-      await import("@/chat/metadata/configured-store");
+    const { getConfiguredConversationStore } =
+      await import("@/chat/conversations/configured");
     const conversationId = "local:workspace:run-123";
 
     await recordAgentTurnSessionSummary({
@@ -158,7 +158,7 @@ describe("dashboard reporting", () => {
     });
 
     await expect(
-      getConfiguredConversationMetadataStore().getConversation({
+      getConfiguredConversationStore().getConversation({
         conversationId,
       }),
     ).resolves.toMatchObject({
@@ -168,10 +168,10 @@ describe("dashboard reporting", () => {
   });
 
   it("redacts private conversation summaries", async () => {
-    const { getConfiguredConversationMetadataStore } =
-      await import("@/chat/metadata/configured-store");
+    const { getConfiguredConversationStore } =
+      await import("@/chat/conversations/configured");
     const { createJuniorReporting } = await import("@/reporting");
-    const metadata = getConfiguredConversationMetadataStore();
+    const metadata = getConfiguredConversationStore();
 
     await metadata.recordConversationActivity({
       conversationId: "slack:G1:222",

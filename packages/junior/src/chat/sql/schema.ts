@@ -1,12 +1,11 @@
 export {
-  juniorConversationInboundMessages,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorSchemaMigrations,
-} from "@/chat/metadata/sql/schema";
-import { schema as metadataSchema } from "@/chat/metadata/sql/schema";
+} from "@/chat/conversations/sql/schema";
+import { schema as conversationSchema } from "@/chat/conversations/sql/schema";
 
 export const juniorSqlSchema = {
-  ...metadataSchema,
+  ...conversationSchema,
 };

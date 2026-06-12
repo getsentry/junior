@@ -43,8 +43,8 @@ import type {
   Source,
 } from "@/chat/task-execution/store";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getConfiguredConversationMetadataStore } from "@/chat/metadata/configured-store";
-import type { ConversationMetadataStore } from "@/chat/metadata/store";
+import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 export type {
   AgentPluginConversationStatus,
@@ -59,14 +59,14 @@ const CONVERSATION_FEED_LIMIT = 50;
 const CONVERSATION_STATS_LIMIT = 5_000;
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-interface ConversationMetadataReaderOptions {
-  metadataStore?: ConversationMetadataStore;
+interface ConversationReaderOptions {
+  conversationStore?: ConversationStore;
 }
 
-function conversationMetadataStore(
-  options: ConversationMetadataReaderOptions = {},
-): ConversationMetadataStore {
-  return options.metadataStore ?? getConfiguredConversationMetadataStore();
+function conversationStore(
+  options: ConversationReaderOptions = {},
+): ConversationStore {
+  return options.conversationStore ?? getConfiguredConversationStore();
 }
 
 export type ConversationReportStatus =
@@ -1206,11 +1206,11 @@ async function reportsFromConversations(args: {
 
 /** Read the recent conversation feed for reporting consumers. */
 export async function readConversationFeed(
-  options: ConversationMetadataReaderOptions = {},
+  options: ConversationReaderOptions = {},
 ): Promise<ConversationFeed> {
-  const metadata = conversationMetadataStore(options);
+  const store = conversationStore(options);
   const nowMs = Date.now();
-  const conversations = await metadata.listConversationsByActivity({
+  const conversations = await store.listConversationsByActivity({
     limit: CONVERSATION_FEED_LIMIT,
   });
   const detailsByConversationId = await getConversationDetailsForIds(
@@ -1240,12 +1240,12 @@ export async function readConversationFeed(
 
 /** Read aggregate conversation statistics for reporting consumers. */
 export async function readConversationStatsReport(
-  options: ConversationMetadataReaderOptions = {},
+  options: ConversationReaderOptions = {},
 ): Promise<ConversationStatsReport> {
-  const metadata = conversationMetadataStore(options);
+  const store = conversationStore(options);
   const nowMs = Date.now();
   const generatedAt = new Date(nowMs).toISOString();
-  const conversations = await metadata.listConversationsByActivity({
+  const conversations = await store.listConversationsByActivity({
     limit: CONVERSATION_STATS_LIMIT + 1,
   });
   const truncated = conversations.length > CONVERSATION_STATS_LIMIT;
@@ -1282,12 +1282,12 @@ export async function readConversationStatsReport(
 export async function listRecentConversationSummaries(
   options: {
     limit?: number;
-  } & ConversationMetadataReaderOptions = {},
+  } & ConversationReaderOptions = {},
 ): Promise<AgentPluginConversationSummary[]> {
-  const metadata = conversationMetadataStore(options);
+  const store = conversationStore(options);
   const nowMs = Date.now();
   const limit = Math.max(0, Math.min(100, Math.floor(options.limit ?? 25)));
-  const conversations = await metadata.listConversationsByActivity({
+  const conversations = await store.listConversationsByActivity({
     limit,
   });
   const detailsByConversationId = await getConversationDetailsForIds(
@@ -1327,14 +1327,14 @@ export async function listRecentConversationSummaries(
 /** Read one conversation transcript for reporting consumers. */
 export async function readConversationReport(
   conversationId: string,
-  options: ConversationMetadataReaderOptions = {},
+  options: ConversationReaderOptions = {},
 ): Promise<ConversationReport> {
-  const metadata = conversationMetadataStore(options);
+  const store = conversationStore(options);
   const nowMs = Date.now();
   const [rawSummaries, details, conversation] = await Promise.all([
     listAgentTurnSessionSummariesForConversation(conversationId),
     getConversationDetails(conversationId),
-    metadata.getConversation({ conversationId }),
+    store.getConversation({ conversationId }),
   ]);
   const summaries = rawSummaries.sort(
     (left, right) =>

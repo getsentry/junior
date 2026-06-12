@@ -9,7 +9,7 @@ import { discoverSkills } from "@/chat/skills";
 import { homeDir } from "@/chat/discovery";
 import { GET as healthGET } from "@/handlers/health";
 import type { PluginOperationalReport } from "@sentry/junior-plugin-api";
-import { getConfiguredConversationMetadataStore } from "@/chat/metadata/configured-store";
+import { getConfiguredConversationStore } from "@/chat/conversations/configured";
 import {
   readConversationFeed,
   readConversationReport,
@@ -155,11 +155,11 @@ export function createJuniorReporting(): JuniorReporting & {
   }): Promise<AgentPluginConversationSummary[]>;
   getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
-  const metadataStore = getConfiguredConversationMetadataStore();
+  const conversationStore = getConfiguredConversationStore();
   const listRecent = (listOptions?: { limit?: number }) =>
     listRecentConversationSummaries({
       ...listOptions,
-      metadataStore,
+      conversationStore,
     });
   return {
     getHealth: readHealth,
@@ -180,8 +180,9 @@ export function createJuniorReporting(): JuniorReporting & {
     },
     getPlugins: readPlugins,
     getSkills: readSkills,
-    getSessions: () => readConversationFeed({ metadataStore }),
-    getConversationStats: () => readConversationStatsReport({ metadataStore }),
+    getSessions: () => readConversationFeed({ conversationStore }),
+    getConversationStats: () =>
+      readConversationStatsReport({ conversationStore }),
     listRecentConversations: listRecent,
     getPluginOperationalReports: async () => {
       const nowMs = Date.now();
@@ -194,6 +195,6 @@ export function createJuniorReporting(): JuniorReporting & {
       };
     },
     getConversation: (conversationId) =>
-      readConversationReport(conversationId, { metadataStore }),
+      readConversationReport(conversationId, { conversationStore }),
   };
 }
