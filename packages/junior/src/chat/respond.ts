@@ -150,6 +150,7 @@ import {
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
 } from "@/chat/conversation-privacy";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
@@ -197,6 +198,7 @@ function waitForAbortSettlement(
 export interface ReplyRequestContext {
   skillDirs?: string[];
   credentialContext?: CredentialContext;
+  metadataStore?: ConversationMetadataStore;
   requester?: Requester;
   slackConversation?: SlackConversationContext;
   destination: Destination;
@@ -1284,6 +1286,7 @@ export async function generateAssistantReply(
         messages,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
+        metadataStore: context.metadataStore,
         requester,
         ...(surface ? { surface } : {}),
         ...(turnStartMessageIndex !== undefined
@@ -1660,6 +1663,7 @@ export async function generateAssistantReply(
         allMessages: agent.state.messages,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
+        metadataStore: context.metadataStore,
         requester,
         ...(surface ? { surface } : {}),
         ...(turnStartMessageIndex !== undefined
@@ -1711,6 +1715,7 @@ export async function generateAssistantReply(
         errorMessage: error.message,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
+        metadataStore: context.metadataStore,
         requester,
         ...(surface ? { surface } : {}),
       });
@@ -1739,6 +1744,7 @@ export async function generateAssistantReply(
         errorMessage: error instanceof Error ? error.message : String(error),
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
+        metadataStore: context.metadataStore,
         requester,
         ...(surface ? { surface } : {}),
       });
@@ -1790,6 +1796,7 @@ export async function generateAssistantReply(
         errorMessage: error.message,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
+        metadataStore: context.metadataStore,
         requester,
         ...(surface ? { surface } : {}),
       });

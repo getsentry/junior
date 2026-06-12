@@ -433,6 +433,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
+      metadataStore: conversationMetadataStore,
       tracePropagation: { domains: sandboxEgressTracePropagationDomains },
     });
   });

@@ -11,9 +11,9 @@ export type {
 } from "./plugins";
 export { createJuniorReporting } from "./reporting";
 export type {
-  AgentPluginConversationMetadataReader,
-  AgentPluginConversationMetadataStatus,
-  AgentPluginConversationMetadataSummary,
+  AgentPluginConversationStatus,
+  AgentPluginConversations,
+  AgentPluginConversationSummary,
   ConversationFeed,
   ConversationReport,
   ConversationReportStatus,

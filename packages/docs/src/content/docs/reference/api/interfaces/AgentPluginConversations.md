@@ -2,7 +2,7 @@
 editUrl: false
 next: false
 prev: false
-title: "AgentPluginConversationMetadataReader"
+title: "AgentPluginConversations"
 ---
 
 Defined in: [junior-plugin-api/src/index.ts:387](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L387)
@@ -11,7 +11,7 @@ Defined in: [junior-plugin-api/src/index.ts:387](https://github.com/getsentry/ju
 
 ### listRecent()
 
-> **listRecent**(`options?`): `Promise`\<[`AgentPluginConversationMetadataSummary`](/reference/api/interfaces/agentpluginconversationmetadatasummary/)[]\>
+> **listRecent**(`options?`): `Promise`\<[`AgentPluginConversationSummary`](/reference/api/interfaces/agentpluginconversationsummary/)[]\>
 
 Defined in: [junior-plugin-api/src/index.ts:388](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L388)
 
@@ -25,4 +25,4 @@ Defined in: [junior-plugin-api/src/index.ts:388](https://github.com/getsentry/ju
 
 #### Returns
 
-`Promise`\<[`AgentPluginConversationMetadataSummary`](/reference/api/interfaces/agentpluginconversationmetadatasummary/)[]\>
+`Promise`\<[`AgentPluginConversationSummary`](/reference/api/interfaces/agentpluginconversationsummary/)[]\>

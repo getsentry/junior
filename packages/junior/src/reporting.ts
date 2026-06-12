@@ -14,17 +14,17 @@ import {
   readConversationFeed,
   readConversationReport,
   readConversationStatsReport,
-  listRecentConversationMetadataSummaries,
+  listRecentConversationSummaries,
   type ConversationFeed,
-  type AgentPluginConversationMetadataSummary,
+  type AgentPluginConversationSummary,
   type ConversationReport,
   type ConversationStatsReport,
 } from "./reporting/conversations";
 
 export type {
-  AgentPluginConversationMetadataReader,
-  AgentPluginConversationMetadataStatus,
-  AgentPluginConversationMetadataSummary,
+  AgentPluginConversationStatus,
+  AgentPluginConversations,
+  AgentPluginConversationSummary,
   ConversationFeed,
   ConversationReport,
   ConversationReportStatus,
@@ -100,10 +100,10 @@ export interface JuniorReporting {
   getSessions(): Promise<ConversationFeed>;
   /** Read aggregate conversation stats for reporting consumers. */
   getConversationStats?(): Promise<ConversationStatsReport>;
-  /** Read recent conversation metadata summaries without transcript payloads. */
-  listRecentConversationMetadata?(options?: {
+  /** Read recent conversation summaries without transcript payloads. */
+  listRecentConversations?(options?: {
     limit?: number;
-  }): Promise<AgentPluginConversationMetadataSummary[]>;
+  }): Promise<AgentPluginConversationSummary[]>;
   /** Read sanitized operational summaries contributed by plugins. */
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   /**
@@ -150,14 +150,14 @@ async function readPlugins(): Promise<PluginReport[]> {
 /** Create the read-only reporting boundary used by plugins and other consumers. */
 export function createJuniorReporting(): JuniorReporting & {
   getConversationStats(): Promise<ConversationStatsReport>;
-  listRecentConversationMetadata(options?: {
+  listRecentConversations(options?: {
     limit?: number;
-  }): Promise<AgentPluginConversationMetadataSummary[]>;
+  }): Promise<AgentPluginConversationSummary[]>;
   getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
   const metadataStore = getConfiguredConversationMetadataStore();
   const listRecent = (listOptions?: { limit?: number }) =>
-    listRecentConversationMetadataSummaries({
+    listRecentConversationSummaries({
       ...listOptions,
       metadataStore,
     });
@@ -182,7 +182,7 @@ export function createJuniorReporting(): JuniorReporting & {
     getSkills: readSkills,
     getSessions: () => readConversationFeed({ metadataStore }),
     getConversationStats: () => readConversationStatsReport({ metadataStore }),
-    listRecentConversationMetadata: listRecent,
+    listRecentConversations: listRecent,
     getPluginOperationalReports: async () => {
       const nowMs = Date.now();
       return {

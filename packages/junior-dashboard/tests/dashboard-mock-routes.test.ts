@@ -73,7 +73,7 @@ function reporting(): JuniorReporting {
         windowStart: "2026-05-22T00:00:00.000Z",
       };
     },
-    async listRecentConversationMetadata() {
+    async listRecentConversations() {
       return [];
     },
     async getPluginOperationalReports() {

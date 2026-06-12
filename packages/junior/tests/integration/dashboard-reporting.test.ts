@@ -110,7 +110,7 @@ describe("dashboard reporting", () => {
     );
   });
 
-  it("lists recent conversation metadata through reporting", async () => {
+  it("lists recent conversations through reporting", async () => {
     const { getConfiguredConversationMetadataStore } =
       await import("@/chat/metadata/configured-store");
     const { createJuniorReporting } = await import("@/reporting");
@@ -126,7 +126,7 @@ describe("dashboard reporting", () => {
 
     const reporting = createJuniorReporting();
 
-    await expect(reporting.listRecentConversationMetadata()).resolves.toEqual([
+    await expect(reporting.listRecentConversations()).resolves.toEqual([
       expect.objectContaining({
         channelName: "incidents",
         conversationId: "slack:C1:111",
@@ -137,7 +137,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("mirrors local turn sessions as local conversation metadata", async () => {
+  it("mirrors local turn sessions as local conversation summaries", async () => {
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
     const { getConfiguredConversationMetadataStore } =
@@ -167,7 +167,7 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("redacts private conversation metadata summaries", async () => {
+  it("redacts private conversation summaries", async () => {
     const { getConfiguredConversationMetadataStore } =
       await import("@/chat/metadata/configured-store");
     const { createJuniorReporting } = await import("@/reporting");
@@ -181,8 +181,7 @@ describe("dashboard reporting", () => {
       title: "Sensitive escalation",
     });
 
-    const summaries =
-      await createJuniorReporting().listRecentConversationMetadata();
+    const summaries = await createJuniorReporting().listRecentConversations();
 
     expect(JSON.stringify(summaries)).not.toContain("private-incident-room");
     expect(JSON.stringify(summaries)).not.toContain("Sensitive escalation");

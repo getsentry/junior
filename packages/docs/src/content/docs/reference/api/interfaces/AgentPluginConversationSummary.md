@@ -2,7 +2,7 @@
 editUrl: false
 next: false
 prev: false
-title: "AgentPluginConversationMetadataSummary"
+title: "AgentPluginConversationSummary"
 ---
 
 Defined in: [junior-plugin-api/src/index.ts:377](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L377)
@@ -59,6 +59,6 @@ Defined in: [junior-plugin-api/src/index.ts:383](https://github.com/getsentry/ju
 
 ### status
 
-> **status**: [`AgentPluginConversationMetadataStatus`](/reference/api/type-aliases/agentpluginconversationmetadatastatus/)
+> **status**: [`AgentPluginConversationStatus`](/reference/api/type-aliases/agentpluginconversationstatus/)
 
 Defined in: [junior-plugin-api/src/index.ts:384](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L384)

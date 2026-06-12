@@ -12,7 +12,7 @@ import {
   juniorIdentities,
 } from "@/chat/sql/schema";
 import { and, eq } from "drizzle-orm";
-import { listRecentConversationMetadataSummaries } from "@/reporting/conversations";
+import { listRecentConversationSummaries } from "@/reporting/conversations";
 import { CONVERSATION_ID, inboundMessage } from "../fixtures/conversation-work";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
@@ -608,7 +608,7 @@ describe("conversation metadata SQL store", () => {
       });
 
       await expect(
-        listRecentConversationMetadataSummaries({
+        listRecentConversationSummaries({
           limit: 1,
           metadataStore: store,
         }),

@@ -20,7 +20,6 @@ import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { recordConversationActivity } from "@/chat/task-execution/store";
 import type { ConversationMetadataStore } from "@/chat/metadata/store";
-import { logException } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -312,8 +311,8 @@ async function appendAgentTurnSessionSummary(
   ]);
 }
 
-/** Mirror run summaries into the conversation feed without owning reply success. */
-async function recordConversationActivityBestEffort(args: {
+/** Mirror run summaries into the conversation feed through the configured metadata store. */
+async function recordConversationActivityMirror(args: {
   metadataStore?: ConversationMetadataStore;
   nowMs: number;
   summary: AgentTurnSessionSummary;
@@ -322,26 +321,16 @@ async function recordConversationActivityBestEffort(args: {
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  try {
-    await recordConversationActivity({
-      activityAtMs: args.summary.updatedAtMs,
-      channelName: args.summary.channelName,
-      conversationId: args.summary.conversationId,
-      destination: args.summary.destination,
-      metadataStore: args.metadataStore,
-      nowMs: args.nowMs,
-      requester: args.summary.requester,
-      source,
-    });
-  } catch (error) {
-    logException(
-      error,
-      "conversation_activity_record_failed",
-      { conversationId: args.summary.conversationId },
-      {},
-      "Failed to mirror turn session summary into conversation activity",
-    );
-  }
+  await recordConversationActivity({
+    activityAtMs: args.summary.updatedAtMs,
+    channelName: args.summary.channelName,
+    conversationId: args.summary.conversationId,
+    destination: args.summary.destination,
+    metadataStore: args.metadataStore,
+    nowMs: args.nowMs,
+    requester: args.summary.requester,
+    source,
+  });
 }
 
 /**
@@ -519,6 +508,7 @@ function buildStoredRecord(args: {
 }
 
 async function setStoredRecord(args: {
+  metadataStore?: ConversationMetadataStore;
   piMessages: PiMessage[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
@@ -539,6 +529,11 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
+  await recordConversationActivityMirror({
+    metadataStore: args.metadataStore,
+    nowMs: Date.now(),
+    summary,
+  });
   return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
 }
 
@@ -613,6 +608,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
+  metadataStore?: ConversationMetadataStore;
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
@@ -639,6 +635,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   });
 
   return await setStoredRecord({
+    metadataStore: args.metadataStore,
     piMessages: args.piMessages,
     ttlMs,
     record: buildStoredRecord({
@@ -766,7 +763,7 @@ export async function recordAgentTurnSessionSummary(args: {
       : {}),
   };
   await appendAgentTurnSessionSummary(summary, ttlMs);
-  await recordConversationActivityBestEffort({
+  await recordConversationActivityMirror({
     metadataStore: args.metadataStore,
     nowMs,
     summary,

@@ -5,6 +5,10 @@ import {
   migrateSchema,
 } from "@/chat/metadata/sql/migrations";
 import { schema } from "@/chat/metadata/sql/schema";
+import { createSqlStore } from "@/chat/metadata/sql/store";
+import type { PiMessage } from "@/chat/pi/messages";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -46,6 +50,69 @@ ORDER BY table_name ASC, ordinal_position ASC
       expect(actual).toEqual(expected);
       expect(actual.get("junior_conversation_inbound_messages")).toContain(
         "input_json",
+      );
+
+      const indexRows = await fixture.executor.query<{ indexname: string }>(
+        `
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND indexname LIKE 'junior_%'
+ORDER BY indexname ASC
+`,
+      );
+      const indexNames = indexRows.map((row) => row.indexname);
+      expect(indexNames).toEqual(
+        expect.arrayContaining([
+          "junior_conversation_inbound_messages_pkey",
+          "junior_conversation_inbound_pending_idx",
+          "junior_conversations_active_idx",
+          "junior_conversations_actor_activity_idx",
+          "junior_conversations_destination_activity_idx",
+          "junior_conversations_last_activity_idx",
+          "junior_conversations_origin_idx",
+          "junior_conversations_pkey",
+          "junior_conversations_requester_activity_idx",
+          "junior_destinations_pkey",
+          "junior_destinations_provider_destination_uidx",
+          "junior_identities_pkey",
+          "junior_identities_provider_subject_uidx",
+          "junior_schema_migrations_pkey",
+        ]),
+      );
+
+      const constraintRows = await fixture.executor.query<{
+        constraint_name: string;
+        constraint_type: string;
+        table_name: string;
+      }>(
+        `
+SELECT table_name, constraint_name, constraint_type
+FROM information_schema.table_constraints
+WHERE table_schema = 'public'
+  AND table_name LIKE 'junior_%'
+ORDER BY table_name ASC, constraint_name ASC
+`,
+      );
+      expect(constraintRows).toEqual(
+        expect.arrayContaining([
+          {
+            table_name: "junior_conversation_inbound_messages",
+            constraint_name: "junior_conversation_inbound_messages_pkey",
+            constraint_type: "PRIMARY KEY",
+          },
+          {
+            table_name: "junior_conversation_inbound_messages",
+            constraint_name:
+              "junior_conversation_inbound_messages_conversation_id_fkey",
+            constraint_type: "FOREIGN KEY",
+          },
+          {
+            table_name: "junior_conversations",
+            constraint_name: "junior_conversations_pkey",
+            constraint_type: "PRIMARY KEY",
+          },
+        ]),
       );
     } finally {
       await fixture.close();
@@ -134,6 +201,64 @@ WHERE conversation_id = $1
         },
       });
     } finally {
+      await fixture.close();
+    }
+  });
+
+  it("mirrors completed scheduler turns into SQL conversation metadata", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.executor);
+      const store = createSqlStore(fixture.executor);
+
+      await persistCompletedSessionRecord({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        currentDurationMs: 2400,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        sessionId: "dispatch:scheduler-run",
+        sliceId: 1,
+        allMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "Run the scheduled task." }],
+            timestamp: 1,
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Done." }],
+            timestamp: 2,
+          },
+        ] as PiMessage[],
+        logContext: {
+          modelId: "test-model",
+        },
+        metadataStore: store,
+        surface: "scheduler",
+      });
+
+      await expect(
+        store.getConversation({
+          conversationId: "agent-dispatch:dispatch_scheduler_run",
+        }),
+      ).resolves.toMatchObject({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        execution: {
+          status: "idle",
+        },
+        source: "scheduler",
+      });
+    } finally {
+      await disconnectStateAdapter();
       await fixture.close();
     }
   });

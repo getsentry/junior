@@ -187,19 +187,18 @@ a single blocking request and not through long-lived read fallbacks.
    migration uses `backfillToSql` to copy retained
    conversation metadata from the state-backed metadata store into the SQL
    store.
-3. The retained activity index is bounded, so the migration should finish in
-   one run. If the source exceeds that bound, the upgrade command must fail
-   clearly instead of enabling SQL metadata from a partial copy.
+3. The retained activity index is bounded, and the migration scans it in
+   bounded, idempotent batches until the retained source is copied. If a batch
+   fails, the upgrade command fails clearly and the next run repeats the scan
+   without corrupting already copied rows.
 4. The runtime and dashboard use the canonical metadata store interface. Junior
    points that interface at Neon-backed SQL when it can resolve a SQL database
    URL from `JUNIOR_DATABASE_URL` or `DATABASE_URL`, in that order. The explicit
    Junior variable remains the override for projects where the default
    application database is not the Junior SQL database. Leaving both database
    URL variables unset keeps the state-backed local/default store. During the
-   migration deployment, enable the
-   SQL metadata store once required schema and migration completion checks pass.
-5. A cleanup deployment removes obsolete metadata-only Redis writes after
-   production observation.
+   migration deployment, enable the SQL metadata store once required schema and
+   migration completion checks pass.
 
 Transcript keys are excluded from this backfill unless a separate transcript
 storage spec changes their authority.

@@ -367,27 +367,27 @@ export interface AgentPluginReadState {
   get<T = unknown>(key: string): Promise<T | undefined>;
 }
 
-export type AgentPluginConversationMetadataStatus =
+export type AgentPluginConversationStatus =
   | "active"
   | "completed"
   | "failed"
   | "hung"
   | "superseded";
 
-export interface AgentPluginConversationMetadataSummary {
+export interface AgentPluginConversationSummary {
   channelName?: string;
   conversationId: string;
   displayTitle: string;
   lastActivityAt: string;
   lastUpdatedAt: string;
   source?: "api" | "internal" | "local" | "plugin" | "scheduler" | "slack";
-  status: AgentPluginConversationMetadataStatus;
+  status: AgentPluginConversationStatus;
 }
 
-export interface AgentPluginConversationMetadataReader {
+export interface AgentPluginConversations {
   listRecent(options?: {
     limit?: number;
-  }): Promise<AgentPluginConversationMetadataSummary[]>;
+  }): Promise<AgentPluginConversationSummary[]>;
 }
 
 export interface HeartbeatHookContext extends AgentPluginContext {
@@ -441,7 +441,7 @@ export interface PluginOperationalReport extends PluginOperationalReportContent 
 }
 
 export interface OperationalReportHookContext extends AgentPluginContext {
-  conversations: AgentPluginConversationMetadataReader;
+  conversations: AgentPluginConversations;
   nowMs: number;
   state: AgentPluginReadState;
 }

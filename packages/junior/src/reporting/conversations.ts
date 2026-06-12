@@ -13,9 +13,9 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
 import type {
-  AgentPluginConversationMetadataStatus,
-  AgentPluginConversationMetadataReader,
-  AgentPluginConversationMetadataSummary,
+  AgentPluginConversationStatus,
+  AgentPluginConversations,
+  AgentPluginConversationSummary,
   Destination,
 } from "@sentry/junior-plugin-api";
 import {
@@ -47,9 +47,9 @@ import { getConfiguredConversationMetadataStore } from "@/chat/metadata/configur
 import type { ConversationMetadataStore } from "@/chat/metadata/store";
 
 export type {
-  AgentPluginConversationMetadataReader,
-  AgentPluginConversationMetadataStatus,
-  AgentPluginConversationMetadataSummary,
+  AgentPluginConversationStatus,
+  AgentPluginConversations,
+  AgentPluginConversationSummary,
 };
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
@@ -457,8 +457,7 @@ function applyConversationIndexMetadata(args: {
       : args.report.surface);
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName =
-    args.details?.channelName ??
-    args.conversation.channelName ??
+    channelNameFromConversation(args.conversation, args.details) ??
     args.report.channelName;
   const requesterIdentity =
     requesterIdentityReport(args.details?.originRequester) ??
@@ -1279,12 +1278,12 @@ export async function readConversationStatsReport(
   });
 }
 
-/** List recent conversation metadata summaries for plugin operational reports. */
-export async function listRecentConversationMetadataSummaries(
+/** List recent conversation summaries for plugin operational reports. */
+export async function listRecentConversationSummaries(
   options: {
     limit?: number;
   } & ConversationMetadataReaderOptions = {},
-): Promise<AgentPluginConversationMetadataSummary[]> {
+): Promise<AgentPluginConversationSummary[]> {
   const metadata = conversationMetadataStore(options);
   const nowMs = Date.now();
   const limit = Math.max(0, Math.min(100, Math.floor(options.limit ?? 25)));

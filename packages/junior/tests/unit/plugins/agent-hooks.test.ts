@@ -1,6 +1,6 @@
 import {
   defineJuniorPlugin,
-  type AgentPluginConversationMetadataReader,
+  type AgentPluginConversations,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:agent-hooks",
 } as const;
 
-const EMPTY_CONVERSATIONS: AgentPluginConversationMetadataReader = {
+const EMPTY_CONVERSATIONS: AgentPluginConversations = {
   async listRecent() {
     return [];
   },

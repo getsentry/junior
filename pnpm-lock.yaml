@@ -213,7 +213,7 @@ importers:
         version: link:../junior-scheduler
       "@sentry/junior-test-fixtures":
         specifier: workspace:*
-        version: link:../junior-test-fixtures
+        version: file:packages/junior-test-fixtures(@neondatabase/serverless@1.1.0)
       "@types/node":
         specifier: ^25.9.1
         version: 25.9.1
@@ -407,16 +407,17 @@ importers:
   packages/junior-sentry: {}
 
   packages/junior-test-fixtures:
-    devDependencies:
+    dependencies:
       "@electric-sql/pglite":
         specifier: ^0.4.6
         version: 0.4.6
-      "@types/node":
-        specifier: ^25.9.1
-        version: 25.9.1
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@electric-sql/pglite@0.4.6)
+    devDependencies:
+      "@types/node":
+        specifier: ^25.9.1
+        version: 25.9.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -3855,6 +3856,9 @@ packages:
 
   "@sentry/junior-plugin-api@file:packages/junior-plugin-api":
     resolution: { directory: packages/junior-plugin-api, type: directory }
+
+  "@sentry/junior-test-fixtures@file:packages/junior-test-fixtures":
+    resolution: { directory: packages/junior-test-fixtures, type: directory }
 
   "@sentry/junior@file:packages/junior":
     resolution: { directory: packages/junior, type: directory }
@@ -13882,6 +13886,40 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
+  "@sentry/junior-test-fixtures@file:packages/junior-test-fixtures(@neondatabase/serverless@1.1.0)":
+    dependencies:
+      "@electric-sql/pglite": 0.4.6
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)
+    transitivePeerDependencies:
+      - "@aws-sdk/client-rds-data"
+      - "@cloudflare/workers-types"
+      - "@libsql/client"
+      - "@libsql/client-wasm"
+      - "@neondatabase/serverless"
+      - "@op-engineering/op-sqlite"
+      - "@opentelemetry/api"
+      - "@planetscale/database"
+      - "@prisma/client"
+      - "@tidbcloud/serverless"
+      - "@types/better-sqlite3"
+      - "@types/pg"
+      - "@types/sql.js"
+      - "@upstash/redis"
+      - "@vercel/postgres"
+      - "@xata.io/client"
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   "@sentry/junior@file:packages/junior":
     dependencies:
       "@ai-sdk/gateway": 3.0.119(zod@4.4.3)
@@ -15624,6 +15662,11 @@ snapshots:
   drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6):
     optionalDependencies:
       "@electric-sql/pglite": 0.4.6
+
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0):
+    optionalDependencies:
+      "@electric-sql/pglite": 0.4.6
+      "@neondatabase/serverless": 1.1.0
 
   drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0):
     optionalDependencies:

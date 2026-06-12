@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -532,6 +533,69 @@ describe("persistAuthPauseSessionRecord", () => {
       expect.objectContaining({
         "app.ai.resume_conversation_id": "conversation-1",
         "app.ai.resume_session_id": "turn-1",
+        "app.ai.resume_slice_id": 1,
+      }),
+      "Failed to persist completed turn session record",
+    );
+  });
+
+  it("surfaces configured metadata store failures through completed turn persistence", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return {
+        ...actual,
+        logException,
+      };
+    });
+    const { persistCompletedSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const metadataStore = {
+      recordConversationActivity: vi.fn(async () => {
+        throw new Error("sql unavailable");
+      }),
+    } as unknown as ConversationMetadataStore;
+
+    await expect(
+      persistCompletedSessionRecord({
+        conversationId: "conversation-metadata-failure",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        sessionId: "turn-metadata-failure",
+        sliceId: 1,
+        allMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "help me" }],
+            timestamp: 1,
+          },
+        ],
+        logContext: {
+          modelId: "test-model",
+        },
+        metadataStore,
+        surface: "scheduler",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(metadataStore.recordConversationActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conversation-metadata-failure",
+        source: "scheduler",
+      }),
+    );
+    expect(logException).toHaveBeenCalledWith(
+      expect.any(Error),
+      "agent_turn_completed_session_record_failed",
+      expect.objectContaining({
+        modelId: "test-model",
+      }),
+      expect.objectContaining({
+        "app.ai.resume_conversation_id": "conversation-metadata-failure",
+        "app.ai.resume_session_id": "turn-metadata-failure",
         "app.ai.resume_slice_id": 1,
       }),
       "Failed to persist completed turn session record",

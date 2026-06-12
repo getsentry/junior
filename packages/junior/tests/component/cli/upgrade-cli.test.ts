@@ -314,8 +314,8 @@ describe("upgrade CLI migrations", () => {
 
     expect(results).toEqual([
       {
-        existing: 0,
-        migrated: 1,
+        existing: 1,
+        migrated: 0,
         missing: 0,
         scanned: 1,
       },

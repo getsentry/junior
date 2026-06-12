@@ -13,6 +13,8 @@ import {
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { migrateSchema } from "@/chat/metadata/sql/migrations";
+import { createSqlStore } from "@/chat/metadata/sql/store";
 import type { AssistantReply } from "@/chat/respond";
 import {
   bindSlackDirectCredentialSubject,
@@ -23,6 +25,7 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -82,6 +85,9 @@ describe("agent dispatch runner", () => {
   });
 
   it("runs a system dispatch and persists Slack delivery", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.executor);
+    const metadataStore = createSqlStore(fixture.executor);
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
         channel: "C123",
@@ -106,6 +112,7 @@ describe("agent dispatch runner", () => {
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
+      expect(context.metadataStore).toBe(metadataStore);
       expect(context.correlation).toMatchObject({
         conversationId: dispatchConversationId,
         threadId: dispatchConversationId,
@@ -128,6 +135,7 @@ describe("agent dispatch runner", () => {
       },
       {
         generateAssistantReply,
+        metadataStore,
         tracePropagation: { domains: ["*.sentry.io"] },
       },
     );
@@ -169,6 +177,7 @@ describe("agent dispatch runner", () => {
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},
     );
+    await fixture.close();
   });
 
   it("starts dispatches without inherited destination conversation memory", async () => {
