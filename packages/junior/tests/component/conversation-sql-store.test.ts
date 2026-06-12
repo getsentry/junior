@@ -102,20 +102,21 @@ describe("conversation SQL store", () => {
         nowMs: 3_000,
       });
 
-      await expect(
-        store.listConversationsByActivity({ limit: 5 }),
-      ).resolves.toMatchObject([
+      const conversations = await store.listConversationsByActivity({
+        limit: 5,
+      });
+      expect(conversations).toMatchObject([
         {
           conversationId: CONVERSATION_ID,
           channelName: "eng-runtime",
           title: "SQL conversation store",
           execution: {
             status: "idle",
-            pendingCount: 0,
-            pendingMessages: [],
           },
         },
       ]);
+      expect(conversations[0]?.execution).not.toHaveProperty("pendingCount");
+      expect(conversations[0]?.execution).not.toHaveProperty("pendingMessages");
 
       const linkedRows = await fixture.executor
         .db()
@@ -193,18 +194,19 @@ describe("conversation SQL store", () => {
       });
 
       expect(result).toEqual({ copiedCount: 1, hasMore: false });
-      await expect(
-        target.getConversation({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({
+      const conversation = await target.getConversation({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(conversation).toMatchObject({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
         title: "Backfilled conversation",
         execution: {
           status: "pending",
-          pendingCount: 0,
-          pendingMessages: [],
         },
       });
+      expect(conversation?.execution).not.toHaveProperty("pendingCount");
+      expect(conversation?.execution).not.toHaveProperty("pendingMessages");
     } finally {
       await disconnectStateAdapter();
       await fixture.close();

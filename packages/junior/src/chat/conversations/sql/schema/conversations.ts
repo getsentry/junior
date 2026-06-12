@@ -5,14 +5,17 @@ import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackRequester } from "@/chat/requester";
-import type { ExecutionStatus, Source } from "@/chat/task-execution/state";
+import type {
+  ConversationSource,
+  ConversationStatus,
+} from "@/chat/conversations/store";
 
 export const juniorConversations = pgTable(
   "junior_conversations",
   {
     conversationId: text("conversation_id").primaryKey(),
     schemaVersion: integer("schema_version").notNull().default(1),
-    source: text("source").$type<Source>(),
+    source: text("source").$type<ConversationSource>(),
     originType: text("origin_type"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),
@@ -40,7 +43,7 @@ export const juniorConversations = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")
-      .$type<ExecutionStatus>()
+      .$type<ConversationStatus>()
       .notNull(),
     runId: text("run_id"),
     lastCheckpointAt: timestamptz("last_checkpoint_at"),

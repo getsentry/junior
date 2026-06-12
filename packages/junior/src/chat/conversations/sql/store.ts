@@ -6,18 +6,18 @@ import {
   parseStoredSlackRequester,
   type StoredSlackRequester,
 } from "@/chat/requester";
-import {
-  type Conversation,
-  type ConversationExecution,
-  type ExecutionStatus,
-  type Source,
-} from "@/chat/task-execution/state";
 import { migrateSchema } from "./migrations";
 import type {
   JuniorSqlDatabase,
   JuniorSqlMigrationExecutor,
 } from "@/chat/sql/db";
-import type { ConversationStore } from "../store";
+import type {
+  Conversation,
+  ConversationExecution,
+  ConversationSource,
+  ConversationStatus,
+  ConversationStore,
+} from "../store";
 import {
   juniorConversations,
   juniorDestinations,
@@ -84,7 +84,7 @@ function requiredMsFromDate(value: Date | string): number {
   return ms;
 }
 
-function sourceFromValue(value: unknown): Source | undefined {
+function sourceFromValue(value: unknown): ConversationSource | undefined {
   if (
     value === "api" ||
     value === "internal" ||
@@ -117,7 +117,7 @@ function identityFromRequester(
 }
 
 function systemIdentityFromSource(
-  source: Source | undefined,
+  source: ConversationSource | undefined,
 ): IdentityUpsert | undefined {
   if (source === "scheduler") {
     return {
@@ -147,7 +147,9 @@ function actorIdentityForConversation(
   );
 }
 
-function originTypeFromSource(source: Source | undefined): string | undefined {
+function originTypeFromSource(
+  source: ConversationSource | undefined,
+): string | undefined {
   return source;
 }
 
@@ -201,7 +203,7 @@ function destinationUpsertFromDestination(args: {
   };
 }
 
-function executionStatusFromValue(value: unknown): ExecutionStatus {
+function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "awaiting_resume" ||
     value === "idle" ||
@@ -231,9 +233,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
   }
   const execution: ConversationExecution = {
     status: executionStatusFromValue(row.executionStatus),
-    inboundMessageIds: [],
-    pendingCount: 0,
-    pendingMessages: [],
     lastCheckpointAtMs: msFromDate(row.lastCheckpointAt),
     lastEnqueuedAtMs: msFromDate(row.lastEnqueuedAt),
     ...(row.runId ? { runId: row.runId } : {}),
@@ -260,7 +259,7 @@ function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
   nowMs: number;
-  source?: Source;
+  source?: ConversationSource;
 }): Conversation {
   return {
     schemaVersion: 1,
@@ -272,9 +271,6 @@ function emptyConversation(args: {
     ...(args.source ? { source: args.source } : {}),
     execution: {
       status: "idle",
-      inboundMessageIds: [],
-      pendingCount: 0,
-      pendingMessages: [],
       updatedAtMs: args.nowMs,
     },
   };
@@ -334,7 +330,7 @@ export class SqlStore implements ConversationStore {
     destination?: Destination;
     nowMs?: number;
     requester?: StoredSlackRequester;
-    source?: Source;
+    source?: ConversationSource;
     title?: string;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
@@ -382,17 +378,10 @@ export class SqlStore implements ConversationStore {
     conversationId: string;
     createdAtMs: number;
     destination?: Destination;
-    execution: Pick<
-      ConversationExecution,
-      | "lastCheckpointAtMs"
-      | "lastEnqueuedAtMs"
-      | "runId"
-      | "status"
-      | "updatedAtMs"
-    >;
+    execution: ConversationExecution;
     lastActivityAtMs: number;
     requester?: StoredSlackRequester;
-    source?: Source;
+    source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
   }): Promise<void> {
@@ -409,12 +398,7 @@ export class SqlStore implements ConversationStore {
           ...(args.requester ? { requester: args.requester } : {}),
           ...(args.source ? { source: args.source } : {}),
           ...(args.title ? { title: args.title } : {}),
-          execution: {
-            inboundMessageIds: [],
-            pendingCount: 0,
-            pendingMessages: [],
-            ...args.execution,
-          },
+          execution: args.execution,
         },
       });
     });

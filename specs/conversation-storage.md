@@ -31,7 +31,7 @@ deploy-safe schema evolution.
 - Moving Pi/model execution transcript entries to SQL.
 - Moving pending inbound mailbox payloads to SQL.
 - Moving lease ownership and worker wake-up state to SQL.
-- Reconstructing model context from SQL metadata.
+- Reconstructing model context from SQL records.
 - Replacing Redis/blob transcript storage in this project.
 - Adding a general workflow engine or durable task database.
 

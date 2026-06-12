@@ -1,5 +1,4 @@
-import type { ConversationStore } from "../store";
-import type { Conversation } from "@/chat/task-execution/state";
+import type { Conversation, ConversationStore } from "../store";
 
 export interface BackfillResult {
   copiedCount: number;

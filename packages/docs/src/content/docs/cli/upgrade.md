@@ -28,9 +28,9 @@ The command takes no extra arguments.
 `junior upgrade` runs registered migrations sequentially. Current migrations:
 
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.
-- Backfill retained conversation execution metadata into the shared Junior SQL database when a SQL database URL is configured. Junior uses `JUNIOR_DATABASE_URL` when set, then falls back to Neon/Vercel's standard `DATABASE_URL`.
+- Backfill retained conversation records into the shared Junior SQL database when a SQL database URL is configured. Junior uses `JUNIOR_DATABASE_URL` when set, then falls back to Neon/Vercel's standard `DATABASE_URL`.
 
-The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL metadata rows.
+The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows.
 
 ## Vercel deploys
 

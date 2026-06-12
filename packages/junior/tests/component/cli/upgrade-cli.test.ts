@@ -230,16 +230,17 @@ describe("upgrade CLI migrations", () => {
           status: "pending",
         },
       });
-      await expect(
-        sqlStore.getConversation({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({
+      const sqlConversation = await sqlStore.getConversation({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(sqlConversation).toMatchObject({
         conversationId: CONVERSATION_ID,
         execution: {
-          pendingCount: 0,
-          pendingMessages: [],
           status: "pending",
         },
       });
+      expect(sqlConversation?.execution).not.toHaveProperty("pendingCount");
+      expect(sqlConversation?.execution).not.toHaveProperty("pendingMessages");
     } finally {
       await fixture.close();
     }
@@ -553,16 +554,17 @@ describe("upgrade CLI migrations", () => {
           scanned: 1,
         },
       ]);
-      await expect(
-        sqlStore.getConversation({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({
+      const sqlConversation = await sqlStore.getConversation({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(sqlConversation).toMatchObject({
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
         execution: {
-          pendingCount: 0,
           status: "pending",
         },
       });
+      expect(sqlConversation?.execution).not.toHaveProperty("pendingCount");
     } finally {
       await fixture.close();
     }

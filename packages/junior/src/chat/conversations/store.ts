@@ -1,9 +1,41 @@
-import type {
-  Conversation,
-  ConversationExecution,
-} from "@/chat/task-execution/state";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackRequester } from "@/chat/requester";
+
+export type ConversationSource =
+  | "api"
+  | "internal"
+  | "local"
+  | "plugin"
+  | "scheduler"
+  | "slack";
+
+export type ConversationStatus =
+  | "awaiting_resume"
+  | "idle"
+  | "pending"
+  | "running";
+
+export interface ConversationExecution {
+  lastCheckpointAtMs?: number;
+  lastEnqueuedAtMs?: number;
+  runId?: string;
+  status: ConversationStatus;
+  updatedAtMs?: number;
+}
+
+export interface Conversation {
+  channelName?: string;
+  conversationId: string;
+  createdAtMs: number;
+  destination?: Destination;
+  execution: ConversationExecution;
+  lastActivityAtMs: number;
+  requester?: StoredSlackRequester;
+  schemaVersion: 1;
+  source?: ConversationSource;
+  title?: string;
+  updatedAtMs: number;
+}
 
 /** Persist and read queryable conversation records for reporting surfaces. */
 export interface ConversationStore {
@@ -17,7 +49,7 @@ export interface ConversationStore {
     destination?: Destination;
     nowMs?: number;
     requester?: StoredSlackRequester;
-    source?: Conversation["source"];
+    source?: ConversationSource;
     title?: string;
   }): Promise<void>;
   recordConversationStatus(args: {
@@ -25,17 +57,10 @@ export interface ConversationStore {
     conversationId: string;
     createdAtMs: number;
     destination?: Destination;
-    execution: Pick<
-      ConversationExecution,
-      | "lastCheckpointAtMs"
-      | "lastEnqueuedAtMs"
-      | "runId"
-      | "status"
-      | "updatedAtMs"
-    >;
+    execution: ConversationExecution;
     lastActivityAtMs: number;
     requester?: StoredSlackRequester;
-    source?: Conversation["source"];
+    source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
   }): Promise<void>;

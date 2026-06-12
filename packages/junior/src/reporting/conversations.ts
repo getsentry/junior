@@ -1,7 +1,7 @@
 /**
  * Conversation reporting joins the activity index with turn-session summaries.
  *
- * The conversation record is the live execution source of truth; turn-session
+ * The conversation record is the queryable activity source; turn-session
  * records add run/transcript detail, and privacy rules decide whether raw
  * transcript payloads can leave this module.
  */
@@ -38,13 +38,13 @@ import {
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import type { StoredSlackRequester } from "@/chat/requester";
-import type {
-  Conversation as StoredConversation,
-  Source,
-} from "@/chat/task-execution/store";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getConfiguredConversationStore } from "@/chat/conversations/configured";
-import type { ConversationStore } from "@/chat/conversations/store";
+import type {
+  Conversation as StoredConversation,
+  ConversationSource,
+  ConversationStore,
+} from "@/chat/conversations/store";
 
 export type {
   AgentPluginConversationStatus,
@@ -245,7 +245,7 @@ function surfaceFromSummary(
 }
 
 function surfaceFromSource(
-  source: Source | undefined,
+  source: ConversationSource | undefined,
   conversationId: string,
 ): ConversationSurface {
   if (source === "slack" || source === "api" || source === "scheduler") {

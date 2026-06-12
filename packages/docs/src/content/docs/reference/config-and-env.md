@@ -17,7 +17,7 @@ related:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                    |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                            |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                      |
-| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL. When set, Junior uses SQL for queryable metadata.                                                                  |
+| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL. When set, Junior uses SQL for queryable records and reporting.                                                     |
 | `JUNIOR_DATABASE_URL`                       | No          | Optional override for the Junior SQL database when it should differ from `DATABASE_URL`.                                                              |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress requester context.                                                                          |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |

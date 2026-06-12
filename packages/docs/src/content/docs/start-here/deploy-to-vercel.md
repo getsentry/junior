@@ -79,7 +79,7 @@ Set the core runtime variables in Vercel:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                       |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                            |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
-| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL for Junior SQL metadata.                     |
+| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
 | `JUNIOR_DATABASE_URL`                       | No          | Override when Junior should use a different SQL database than `DATABASE_URL`.  |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox requester context.                        |
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
