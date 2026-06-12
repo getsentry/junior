@@ -1087,6 +1087,7 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
   async listConversationsByActivity(
     args: {
       limit?: number;
+      offset?: number;
     } = {},
   ): Promise<Conversation[]> {
     await this.ensureSchema();
@@ -1098,7 +1099,8 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
         desc(juniorConversations.lastActivityAt),
         asc(juniorConversations.conversationId),
       )
-      .limit(Math.max(0, args.limit ?? 10_000));
+      .limit(Math.max(0, args.limit ?? 10_000))
+      .offset(Math.max(0, args.offset ?? 0));
     const conversations: Conversation[] = [];
     for (const row of rows) {
       conversations.push(
@@ -1254,7 +1256,7 @@ export class SqlConversationMetadataStore implements ConversationMetadataStore {
           requester: sql`coalesce(excluded.requester_json, ${juniorConversations.requester})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
-          lastActivityAt: sql`excluded.last_activity_at`,
+          lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
           updatedAt: sql`excluded.updated_at`,
           executionUpdatedAt: sql`excluded.execution_updated_at`,
           executionStatus: sql`excluded.execution_status`,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
+  appendInboundMessage,
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   requestConversationWork,
@@ -242,6 +243,49 @@ describe("upgrade CLI migrations", () => {
           status: "pending",
         },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("pages SQL metadata backfill until all retained conversations are copied", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+
+    try {
+      for (let index = 0; index < 3; index++) {
+        const conversationId = `slack:C123:page-${index}`;
+        await appendInboundMessage({
+          message: inboundMessage(`page-${index}`, { conversationId }),
+          nowMs: 1_000 + index,
+          state: stateAdapter,
+        });
+      }
+
+      await expect(
+        migrateConversationMetadataToSql(
+          {
+            io: { info: () => {} },
+            sqlDatabaseUrl: "postgres://configured.example.test/neon",
+            stateAdapter,
+          },
+          { batchSize: 2, target: sqlStore },
+        ),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 3,
+        missing: 0,
+        scanned: 3,
+      });
+      await expect(
+        sqlStore.listConversationsByActivity({ limit: 10 }),
+      ).resolves.toEqual([
+        expect.objectContaining({ conversationId: "slack:C123:page-2" }),
+        expect.objectContaining({ conversationId: "slack:C123:page-1" }),
+        expect.objectContaining({ conversationId: "slack:C123:page-0" }),
+      ]);
     } finally {
       await fixture.close();
     }

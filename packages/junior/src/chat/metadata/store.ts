@@ -84,6 +84,7 @@ export interface ConversationMetadataStore {
   removeActiveConversation(args: { conversationId: string }): Promise<void>;
   listConversationsByActivity(args?: {
     limit?: number;
+    offset?: number;
   }): Promise<Conversation[]>;
   listActiveConversationIds(args?: {
     limit?: number;

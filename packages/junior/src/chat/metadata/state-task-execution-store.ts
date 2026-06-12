@@ -165,6 +165,7 @@ interface ConversationIndexStore {
   list(args: {
     indexKey: string;
     limit?: number;
+    offset?: number;
     order: "asc" | "desc";
     scoreMax?: number;
   }): Promise<ConversationIndexEntry[]>;
@@ -671,6 +672,7 @@ function redisConversationIndexStore(
     async list(args) {
       const key = redisIndexKey(args.indexKey);
       const limit = args.limit;
+      const offset = Math.max(0, args.offset ?? 0);
       if (limit === 0) {
         return [];
       }
@@ -682,13 +684,17 @@ function redisConversationIndexStore(
               "-inf",
               String(args.scoreMax),
               "WITHSCORES",
-              ...(limit !== undefined ? ["LIMIT", "0", String(limit)] : []),
+              ...(limit !== undefined || offset > 0
+                ? ["LIMIT", String(offset), String(limit ?? 1_000_000_000)]
+                : []),
             ])
           : await client.sendCommand<unknown[]>([
               args.order === "asc" ? "ZRANGE" : "ZREVRANGE",
               key,
-              "0",
-              String(limit === undefined ? -1 : Math.max(0, limit - 1)),
+              String(offset),
+              String(
+                limit === undefined ? -1 : offset + Math.max(0, limit - 1),
+              ),
               "WITHSCORES",
             ]);
       return parseRedisIndexEntries(values);
@@ -758,7 +764,11 @@ function emulatedConversationIndexStore(
         .sort(
           args.order === "asc" ? compareIndexAscending : compareIndexDescending,
         );
-      return entries.slice(0, args.limit ?? entries.length);
+      const offset = Math.max(0, args.offset ?? 0);
+      return entries.slice(
+        offset,
+        args.limit === undefined ? entries.length : offset + args.limit,
+      );
     },
     async remove(args) {
       await withIndexLock(state, args.indexKey, async () => {
@@ -1550,6 +1560,7 @@ export async function listActiveConversationIds(
 export async function listConversationsByActivity(
   args: {
     limit?: number;
+    offset?: number;
     state?: StateAdapter;
   } = {},
 ): Promise<Conversation[]> {
@@ -1558,6 +1569,7 @@ export async function listConversationsByActivity(
   const entries = await index.list({
     indexKey: CONVERSATION_BY_ACTIVITY_INDEX_KEY,
     limit: args.limit ?? CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH,
+    offset: args.offset,
     order: "desc",
   });
   const conversations: Conversation[] = [];

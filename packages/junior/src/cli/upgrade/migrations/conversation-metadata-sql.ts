@@ -16,6 +16,7 @@ const CONVERSATION_METADATA_BACKFILL_LIMIT = 10_000;
 export async function migrateConversationMetadataToSql(
   context: MigrationContext,
   options: {
+    batchSize?: number;
     target?: ConversationMetadataSqlBackfillTarget;
   } = {},
 ): Promise<MigrationResult> {
@@ -41,22 +42,28 @@ export async function migrateConversationMetadataToSql(
         connectionString: databaseUrl!,
       }),
     );
-  const result = await backfillConversationMetadataToSql({
-    limit: CONVERSATION_METADATA_BACKFILL_LIMIT,
-    source,
-    target,
-  });
-  if (result.hasMore) {
-    throw new Error(
-      `Conversation metadata SQL backfill exceeded ${CONVERSATION_METADATA_BACKFILL_LIMIT} retained conversations`,
-    );
-  }
+  const limit = Math.max(
+    1,
+    options.batchSize ?? CONVERSATION_METADATA_BACKFILL_LIMIT,
+  );
+  let copiedCount = 0;
+  let hasMore = false;
+  do {
+    const result = await backfillConversationMetadataToSql({
+      limit,
+      offset: copiedCount,
+      source,
+      target,
+    });
+    copiedCount += result.copiedCount;
+    hasMore = result.hasMore;
+  } while (hasMore);
 
   return {
     existing: 0,
-    migrated: result.copiedCount,
+    migrated: copiedCount,
     missing: 0,
-    scanned: result.copiedCount,
+    scanned: copiedCount,
   };
 }
 

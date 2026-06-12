@@ -490,4 +490,39 @@ describe("conversation metadata SQL store", () => {
       await fixture.close();
     }
   });
+
+  it("preserves newer activity timestamp during older inbound upsert", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlConversationMetadataStore(fixture.executor);
+      await store.requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("activity-target").destination,
+        nowMs: 1_000,
+      });
+      await store.recordConversationActivity({
+        conversationId: CONVERSATION_ID,
+        nowMs: 5_000,
+      });
+
+      await store.appendInboundMessage({
+        message: inboundMessage("older-activity"),
+        nowMs: 2_000,
+      });
+
+      await expect(
+        store.getConversationWorkState({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        lastActivityAtMs: 5_000,
+        messages: [
+          expect.objectContaining({
+            inboundMessageId: "older-activity",
+          }),
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });

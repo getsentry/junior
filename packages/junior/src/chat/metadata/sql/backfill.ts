@@ -14,12 +14,15 @@ export interface ConversationMetadataSqlBackfillTarget {
 /** Copy bounded conversation metadata from an existing store into SQL. */
 export async function backfillConversationMetadataToSql(args: {
   limit?: number;
+  offset?: number;
   source: ConversationMetadataStore;
   target: ConversationMetadataSqlBackfillTarget;
 }): Promise<ConversationMetadataBackfillResult> {
   const limit = Math.max(0, args.limit ?? 500);
+  const offset = Math.max(0, args.offset ?? 0);
   const conversations = await args.source.listConversationsByActivity({
     limit: limit + 1,
+    offset,
   });
   const batch = conversations.slice(0, limit);
   await args.target.ensureSchema();
