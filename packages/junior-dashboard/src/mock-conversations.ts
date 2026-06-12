@@ -974,6 +974,7 @@ export function createMockConversationReporting(
     getRuntimeInfo: reporting.getRuntimeInfo,
     getPlugins: reporting.getPlugins,
     getSkills: reporting.getSkills,
+    listRecentConversationMetadata: reporting.listRecentConversationMetadata,
     async getSessions() {
       const mockFeed = mockSessionFeed(Date.now());
       try {

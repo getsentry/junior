@@ -67,6 +67,37 @@ describe("chat config", () => {
     );
   });
 
+  it("reads the optional Junior SQL database URL override", async () => {
+    process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL =
+      "postgres://user:pass@example.test/neon";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.databaseUrl).toBe(
+      "postgres://user:pass@example.test/neon",
+    );
+  });
+
+  it("uses the standard Neon database URL by default", async () => {
+    delete process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.databaseUrl).toBe(
+      "postgres://user:pass@pooled.example.test/neon",
+    );
+  });
+
+  it("prefers the explicit Junior SQL URL over standard database URLs", async () => {
+    process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL =
+      "postgres://user:pass@metadata.example.test/neon";
+    process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.databaseUrl).toBe(
+      "postgres://user:pass@metadata.example.test/neon",
+    );
+  });
+
   it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
@@ -180,7 +211,9 @@ describe("chat config", () => {
   it("uses default reaction emojis", async () => {
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().slack.processingReactionEmoji).toBe("eyes");
-    expect(getChatConfig().slack.completedReactionEmoji).toBe("white_check_mark");
+    expect(getChatConfig().slack.completedReactionEmoji).toBe(
+      "white_check_mark",
+    );
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

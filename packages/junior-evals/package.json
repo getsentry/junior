@@ -17,6 +17,7 @@
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "chat": "4.29.0",
+    "tinyrainbow": "^3.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "vitest-evals": "0.11.0"

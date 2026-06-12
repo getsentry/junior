@@ -5,7 +5,7 @@ prev: false
 title: "ConversationUsage"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:60](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L60)
+Defined in: [junior/src/reporting/conversations.ts:81](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L81)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:60](https://github.com/getsen
 
 > `optional` **cacheCreationTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L64)
+Defined in: [junior/src/reporting/conversations.ts:85](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L85)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:64](https://github.com/getsen
 
 > `optional` **cachedInputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L63)
+Defined in: [junior/src/reporting/conversations.ts:84](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L84)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:63](https://github.com/getsen
 
 > `optional` **inputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:61](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L61)
+Defined in: [junior/src/reporting/conversations.ts:82](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L82)
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:61](https://github.com/getsen
 
 > `optional` **outputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:62](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L62)
+Defined in: [junior/src/reporting/conversations.ts:83](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L83)
 
 ---
 
@@ -45,4 +45,4 @@ Defined in: [junior/src/reporting/conversations.ts:62](https://github.com/getsen
 
 > `optional` **totalTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:65](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L65)
+Defined in: [junior/src/reporting/conversations.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L86)

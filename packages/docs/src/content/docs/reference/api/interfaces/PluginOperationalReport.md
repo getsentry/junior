@@ -5,7 +5,7 @@ prev: false
 title: "PluginOperationalReport"
 ---
 
-Defined in: [junior-plugin-api/src/index.ts:385](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L385)
+Defined in: [junior-plugin-api/src/index.ts:439](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L439)
 
 ## Extends
 
@@ -17,7 +17,7 @@ Defined in: [junior-plugin-api/src/index.ts:385](https://github.com/getsentry/ju
 
 > `optional` **generatedAt?**: `string`
 
-Defined in: [junior-plugin-api/src/index.ts:379](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L379)
+Defined in: [junior-plugin-api/src/index.ts:433](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L433)
 
 #### Inherited from
 
@@ -29,7 +29,7 @@ Defined in: [junior-plugin-api/src/index.ts:379](https://github.com/getsentry/ju
 
 > `optional` **metrics?**: `PluginOperationalMetric`[]
 
-Defined in: [junior-plugin-api/src/index.ts:380](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L380)
+Defined in: [junior-plugin-api/src/index.ts:434](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L434)
 
 #### Inherited from
 
@@ -41,7 +41,7 @@ Defined in: [junior-plugin-api/src/index.ts:380](https://github.com/getsentry/ju
 
 > **pluginName**: `string`
 
-Defined in: [junior-plugin-api/src/index.ts:386](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L386)
+Defined in: [junior-plugin-api/src/index.ts:440](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L440)
 
 ---
 
@@ -49,7 +49,7 @@ Defined in: [junior-plugin-api/src/index.ts:386](https://github.com/getsentry/ju
 
 > `optional` **recordSets?**: `PluginOperationalRecordSet`[]
 
-Defined in: [junior-plugin-api/src/index.ts:381](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L381)
+Defined in: [junior-plugin-api/src/index.ts:435](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L435)
 
 #### Inherited from
 
@@ -61,7 +61,7 @@ Defined in: [junior-plugin-api/src/index.ts:381](https://github.com/getsentry/ju
 
 > `optional` **title?**: `string`
 
-Defined in: [junior-plugin-api/src/index.ts:382](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L382)
+Defined in: [junior-plugin-api/src/index.ts:436](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/index.ts#L436)
 
 #### Inherited from
 

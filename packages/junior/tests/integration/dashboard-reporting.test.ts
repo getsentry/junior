@@ -20,6 +20,8 @@ describe("dashboard reporting", () => {
     process.env = {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
+      DATABASE_URL: undefined,
+      JUNIOR_CONVERSATION_METADATA_DATABASE_URL: undefined,
     };
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
@@ -106,6 +108,88 @@ describe("dashboard reporting", () => {
         titleSourceMessageId: "msg-1",
       },
     );
+  });
+
+  it("lists recent conversation metadata through reporting", async () => {
+    const { getConfiguredConversationMetadataStore } =
+      await import("@/chat/metadata/configured-store");
+    const { createJuniorReporting } = await import("@/reporting");
+    const metadata = getConfiguredConversationMetadataStore();
+
+    await metadata.recordConversationActivity({
+      conversationId: "slack:C1:111",
+      channelName: "incidents",
+      nowMs: 1_000,
+      source: "slack",
+      title: "Incident follow-up",
+    });
+
+    const reporting = createJuniorReporting();
+
+    await expect(reporting.listRecentConversationMetadata()).resolves.toEqual([
+      expect.objectContaining({
+        channelName: "incidents",
+        conversationId: "slack:C1:111",
+        displayTitle: expect.any(String),
+        source: "slack",
+        status: "completed",
+      }),
+    ]);
+  });
+
+  it("mirrors local turn sessions as local conversation metadata", async () => {
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { getConfiguredConversationMetadataStore } =
+      await import("@/chat/metadata/configured-store");
+    const conversationId = "local:workspace:run-123";
+
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      destination: {
+        platform: "local",
+        conversationId,
+      },
+      sessionId: "local-turn-1",
+      sliceId: 1,
+      state: "completed",
+      surface: "internal",
+      ttlMs: 60_000,
+    });
+
+    await expect(
+      getConfiguredConversationMetadataStore().getConversation({
+        conversationId,
+      }),
+    ).resolves.toMatchObject({
+      conversationId,
+      source: "local",
+    });
+  });
+
+  it("redacts private conversation metadata summaries", async () => {
+    const { getConfiguredConversationMetadataStore } =
+      await import("@/chat/metadata/configured-store");
+    const { createJuniorReporting } = await import("@/reporting");
+    const metadata = getConfiguredConversationMetadataStore();
+
+    await metadata.recordConversationActivity({
+      conversationId: "slack:G1:222",
+      channelName: "private-incident-room",
+      nowMs: 1_000,
+      source: "slack",
+      title: "Sensitive escalation",
+    });
+
+    const summaries =
+      await createJuniorReporting().listRecentConversationMetadata();
+
+    expect(JSON.stringify(summaries)).not.toContain("private-incident-room");
+    expect(JSON.stringify(summaries)).not.toContain("Sensitive escalation");
+    expect(summaries[0]).toMatchObject({
+      conversationId: "slack:G1:222",
+      status: "completed",
+    });
   });
 
   it("refreshes conversation context ttl without replacing origin context", async () => {

@@ -5,7 +5,7 @@ prev: false
 title: "PluginPackageContentItemReport"
 ---
 
-Defined in: [junior/src/reporting.ts:62](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L62)
+Defined in: [junior/src/reporting.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L68)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:62](https://github.com/getsentry/junior/blo
 
 > **dir**: `string`
 
-Defined in: [junior/src/reporting.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L63)
+Defined in: [junior/src/reporting.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L69)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:63](https://github.com/getsentry/junior/blo
 
 > **hasSkillsDir**: `boolean`
 
-Defined in: [junior/src/reporting.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L64)
+Defined in: [junior/src/reporting.ts:70](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L70)
 
 ---
 
@@ -29,4 +29,4 @@ Defined in: [junior/src/reporting.ts:64](https://github.com/getsentry/junior/blo
 
 > **name**: `string`
 
-Defined in: [junior/src/reporting.ts:65](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L65)
+Defined in: [junior/src/reporting.ts:71](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L71)

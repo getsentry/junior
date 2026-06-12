@@ -1,4 +1,5 @@
 import type {
+  AgentPluginConversationMetadataReader,
   AgentPluginReadState,
   AgentPluginRoute,
   AgentPluginRouteMethod,
@@ -551,7 +552,8 @@ function failedOperationalReport(args: {
 
 /** Collect read-only operational summaries exposed by plugins. */
 export async function getAgentPluginOperationalReports(
-  nowMs = Date.now(),
+  nowMs: number,
+  conversations: AgentPluginConversationMetadataReader,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
   for (const plugin of getAgentPlugins()) {
@@ -567,6 +569,7 @@ export async function getAgentPluginOperationalReports(
       const report = await hook({
         plugin: { name: plugin.name },
         log,
+        conversations,
         nowMs,
         state: pluginReadState(state),
       });

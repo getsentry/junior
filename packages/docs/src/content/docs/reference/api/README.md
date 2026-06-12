@@ -7,6 +7,8 @@ title: "@sentry/junior"
 
 ## Interfaces
 
+- [AgentPluginConversationMetadataReader](/reference/api/interfaces/agentpluginconversationmetadatareader/)
+- [AgentPluginConversationMetadataSummary](/reference/api/interfaces/agentpluginconversationmetadatasummary/)
 - [ConversationFeed](/reference/api/interfaces/conversationfeed/)
 - [ConversationReport](/reference/api/interfaces/conversationreport/)
 - [ConversationRunReport](/reference/api/interfaces/conversationrunreport/)
@@ -34,6 +36,7 @@ title: "@sentry/junior"
 
 ## Type Aliases
 
+- [AgentPluginConversationMetadataStatus](/reference/api/type-aliases/agentpluginconversationmetadatastatus/)
 - [ConversationReportStatus](/reference/api/type-aliases/conversationreportstatus/)
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
 - [JuniorPluginInput](/reference/api/type-aliases/juniorplugininput/)

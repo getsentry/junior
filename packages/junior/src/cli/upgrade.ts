@@ -2,6 +2,7 @@ import {
   disconnectStateAdapter,
   getConnectedStateContext,
 } from "@/chat/state/adapter";
+import { conversationMetadataSqlMigration } from "./upgrade/migrations/conversation-metadata-sql";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import type {
   MigrationContext,
@@ -14,15 +15,22 @@ const DEFAULT_IO: UpgradeIo = {
   info: console.log,
 };
 
-const MIGRATIONS: UpgradeMigration[] = [redisConversationStateMigration];
+const MIGRATIONS: UpgradeMigration[] = [
+  redisConversationStateMigration,
+  conversationMetadataSqlMigration,
+];
 
 function formatMigrationResult(result: MigrationResult): string {
-  return [
+  const fields = [
     `scanned=${result.scanned}`,
     `migrated=${result.migrated}`,
     `existing=${result.existing}`,
     `missing=${result.missing}`,
-  ].join(" ");
+  ];
+  if (result.skipped !== undefined) {
+    fields.push(`skipped=${result.skipped}`);
+  }
+  return fields.join(" ");
 }
 
 /** Run all registered upgrade migrations in order. */

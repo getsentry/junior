@@ -5,7 +5,7 @@ prev: false
 title: "JuniorReporting"
 ---
 
-Defined in: [junior/src/reporting.ts:84](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L84)
+Defined in: [junior/src/reporting.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L90)
 
 ## Methods
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:84](https://github.com/getsentry/junior/blo
 
 > **getConversation**(`conversationId`): `Promise`\<[`ConversationReport`](/reference/api/interfaces/conversationreport/)\>
 
-Defined in: [junior/src/reporting.ts:106](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L106)
+Defined in: [junior/src/reporting.ts:116](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L116)
 
 Read one conversation transcript for reporting consumers.
 
@@ -37,7 +37,7 @@ source. Avoid adding fields that require Redis-only transcript internals.
 
 > `optional` **getConversationStats**(): `Promise`\<[`ConversationStatsReport`](/reference/api/interfaces/conversationstatsreport/)\>
 
-Defined in: [junior/src/reporting.ts:96](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L96)
+Defined in: [junior/src/reporting.ts:102](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L102)
 
 Read aggregate conversation stats for reporting consumers.
 
@@ -51,7 +51,7 @@ Read aggregate conversation stats for reporting consumers.
 
 > **getHealth**(): `Promise`\<[`HealthReport`](/reference/api/interfaces/healthreport/)\>
 
-Defined in: [junior/src/reporting.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L86)
+Defined in: [junior/src/reporting.ts:92](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L92)
 
 Read the public runtime health snapshot without exposing discovery data.
 
@@ -65,7 +65,7 @@ Read the public runtime health snapshot without exposing discovery data.
 
 > `optional` **getPluginOperationalReports**(): `Promise`\<[`PluginOperationalReportFeed`](/reference/api/interfaces/pluginoperationalreportfeed/)\>
 
-Defined in: [junior/src/reporting.ts:98](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L98)
+Defined in: [junior/src/reporting.ts:108](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L108)
 
 Read sanitized operational summaries contributed by plugins.
 
@@ -79,7 +79,7 @@ Read sanitized operational summaries contributed by plugins.
 
 > **getPlugins**(): `Promise`\<[`PluginReport`](/reference/api/interfaces/pluginreport/)[]\>
 
-Defined in: [junior/src/reporting.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L90)
+Defined in: [junior/src/reporting.ts:96](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L96)
 
 Read configured plugin names for reporting consumers.
 
@@ -93,7 +93,7 @@ Read configured plugin names for reporting consumers.
 
 > **getRuntimeInfo**(): `Promise`\<[`RuntimeInfoReport`](/reference/api/interfaces/runtimeinforeport/)\>
 
-Defined in: [junior/src/reporting.ts:88](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L88)
+Defined in: [junior/src/reporting.ts:94](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L94)
 
 Read authenticated runtime discovery data for reporting consumers.
 
@@ -107,7 +107,7 @@ Read authenticated runtime discovery data for reporting consumers.
 
 > **getSessions**(): `Promise`\<[`ConversationFeed`](/reference/api/interfaces/conversationfeed/)\>
 
-Defined in: [junior/src/reporting.ts:94](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L94)
+Defined in: [junior/src/reporting.ts:100](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L100)
 
 Read recent conversation summaries for reporting consumers.
 
@@ -121,10 +121,32 @@ Read recent conversation summaries for reporting consumers.
 
 > **getSkills**(): `Promise`\<[`SkillReport`](/reference/api/interfaces/skillreport/)[]\>
 
-Defined in: [junior/src/reporting.ts:92](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L92)
+Defined in: [junior/src/reporting.ts:98](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L98)
 
 Read discovered skill names for reporting consumers.
 
 #### Returns
 
 `Promise`\<[`SkillReport`](/reference/api/interfaces/skillreport/)[]\>
+
+---
+
+### listRecentConversationMetadata()?
+
+> `optional` **listRecentConversationMetadata**(`options?`): `Promise`\<[`AgentPluginConversationMetadataSummary`](/reference/api/interfaces/agentpluginconversationmetadatasummary/)[]\>
+
+Defined in: [junior/src/reporting.ts:104](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L104)
+
+Read recent conversation metadata summaries without transcript payloads.
+
+#### Parameters
+
+##### options?
+
+###### limit?
+
+`number`
+
+#### Returns
+
+`Promise`\<[`AgentPluginConversationMetadataSummary`](/reference/api/interfaces/agentpluginconversationmetadatasummary/)[]\>

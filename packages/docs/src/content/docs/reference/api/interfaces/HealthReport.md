@@ -5,7 +5,7 @@ prev: false
 title: "HealthReport"
 ---
 
-Defined in: [junior/src/reporting.ts:38](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L38)
+Defined in: [junior/src/reporting.ts:44](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L44)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:38](https://github.com/getsentry/junior/blo
 
 > **service**: `string`
 
-Defined in: [junior/src/reporting.ts:40](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L40)
+Defined in: [junior/src/reporting.ts:46](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L46)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:40](https://github.com/getsentry/junior/blo
 
 > **status**: `"ok"`
 
-Defined in: [junior/src/reporting.ts:39](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L39)
+Defined in: [junior/src/reporting.ts:45](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L45)
 
 ---
 
@@ -29,4 +29,4 @@ Defined in: [junior/src/reporting.ts:39](https://github.com/getsentry/junior/blo
 
 > **timestamp**: `string`
 
-Defined in: [junior/src/reporting.ts:41](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L41)
+Defined in: [junior/src/reporting.ts:47](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L47)

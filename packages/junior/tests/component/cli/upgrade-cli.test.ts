@@ -5,23 +5,37 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   requestConversationWork,
 } from "@/chat/task-execution/store";
+import { createSqlConversationMetadataStore } from "@/chat/metadata/sql/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { runUpgradeMigrations } from "@/cli/upgrade";
+import { migrateConversationMetadataToSql } from "@/cli/upgrade/migrations/conversation-metadata-sql";
+import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
   inboundMessage,
 } from "../../fixtures/conversation-work";
+import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
+    JUNIOR_CONVERSATION_METADATA_DATABASE_URL:
+      process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL,
     JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
   };
   process.env.JUNIOR_STATE_ADAPTER = "memory";
+  delete process.env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL;
   return original;
 });
+const SQL_METADATA_SKIPPED_RESULT = {
+  existing: 0,
+  migrated: 0,
+  missing: 0,
+  scanned: 0,
+  skipped: 1,
+};
 const OTHER_SLACK_DESTINATION = {
   ...SLACK_DESTINATION,
   channelId: "C999",
@@ -70,6 +84,10 @@ describe("upgrade CLI migrations", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
+    restoreEnv(
+      "JUNIOR_CONVERSATION_METADATA_DATABASE_URL",
+      ORIGINAL_ENV.JUNIOR_CONVERSATION_METADATA_DATABASE_URL,
+    );
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
     vi.restoreAllMocks();
   });
@@ -109,6 +127,7 @@ describe("upgrade CLI migrations", () => {
         missing: 1,
         scanned: 2,
       },
+      SQL_METADATA_SKIPPED_RESULT,
     ]);
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
@@ -154,7 +173,78 @@ describe("upgrade CLI migrations", () => {
     expect(logs).toEqual([
       "Running migration migrate-redis-conversation-state...",
       "Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1",
+      "Running migration backfill-conversation-metadata-sql...",
+      "Skipping SQL conversation metadata backfill: no Junior SQL database URL is configured.",
+      "Finished migration backfill-conversation-metadata-sql: scanned=0 migrated=0 existing=0 missing=0 skipped=1",
     ]);
+  });
+
+  it("migrates legacy conversation work before SQL metadata backfill", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const legacyMessage = inboundMessage("legacy-sql");
+    await stateAdapter.set(
+      `junior:conversation-work:state:${CONVERSATION_ID}`,
+      {
+        schemaVersion: 1,
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        messages: [legacyMessage],
+        needsRun: true,
+        updatedAtMs: 2_000,
+      },
+    );
+    await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+
+    try {
+      const context = {
+        io: { info: () => {} },
+        sqlDatabaseUrl: "postgres://configured.example.test/neon",
+        stateAdapter,
+      };
+      const results = [
+        await redisConversationStateMigration.run(context),
+        await migrateConversationMetadataToSql(context, { target: sqlStore }),
+      ];
+
+      expect(results).toEqual([
+        {
+          existing: 0,
+          migrated: 1,
+          missing: 0,
+          scanned: 1,
+        },
+        {
+          existing: 0,
+          migrated: 1,
+          missing: 0,
+          scanned: 1,
+        },
+      ]);
+      await expect(
+        stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
+      ).resolves.toMatchObject({
+        conversationId: CONVERSATION_ID,
+        execution: {
+          inboundMessageIds: ["legacy-sql"],
+          pendingCount: 1,
+          status: "pending",
+        },
+      });
+      await expect(
+        sqlStore.getConversationWorkState({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        conversationId: CONVERSATION_ID,
+        execution: {
+          pendingCount: 1,
+          status: "pending",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
   });
 
   it("seeds active awaiting continuations into conversation work", async () => {
@@ -189,6 +279,7 @@ describe("upgrade CLI migrations", () => {
         missing: 0,
         scanned: 1,
       },
+      SQL_METADATA_SKIPPED_RESULT,
     ]);
     await expect(
       stateAdapter.get(`junior:conversation:${CONVERSATION_ID}`),
@@ -247,6 +338,7 @@ describe("upgrade CLI migrations", () => {
         missing: 0,
         scanned: 1,
       },
+      SQL_METADATA_SKIPPED_RESULT,
     ]);
     await expect(
       stateAdapter.get(`junior:conversation-work:state:${CONVERSATION_ID}`),
@@ -379,6 +471,59 @@ describe("upgrade CLI migrations", () => {
         missing: 0,
         scanned: 0,
       },
+      SQL_METADATA_SKIPPED_RESULT,
     ]);
+  });
+
+  it("backfills retained conversation metadata into SQL when configured", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 2_000,
+      state: stateAdapter,
+    });
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlConversationMetadataStore(fixture.executor);
+
+    try {
+      const context = {
+        io: { info: () => {} },
+        sqlDatabaseUrl: "postgres://configured.example.test/neon",
+        stateAdapter,
+      };
+      const results = [
+        await redisConversationStateMigration.run(context),
+        await migrateConversationMetadataToSql(context, { target: sqlStore }),
+      ];
+
+      expect(results).toEqual([
+        {
+          existing: 0,
+          migrated: 0,
+          missing: 0,
+          scanned: 0,
+        },
+        {
+          existing: 0,
+          migrated: 1,
+          missing: 0,
+          scanned: 1,
+        },
+      ]);
+      await expect(
+        sqlStore.getConversation({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        execution: {
+          pendingCount: 0,
+          status: "pending",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
   });
 });

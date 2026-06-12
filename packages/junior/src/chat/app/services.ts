@@ -27,6 +27,7 @@ import {
   type SubscribedReplyPolicyDeps,
 } from "@/chat/services/subscribed-reply-policy";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import { getConfiguredConversationMetadataStore } from "@/chat/metadata/configured-store";
 import {
   createVisionContextService,
   type VisionContextDeps,
@@ -104,6 +105,9 @@ export function createJuniorRuntimeServices(
         getAwaitingAgentContinueRequest,
       lookupSlackUser:
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
+      metadataStore:
+        overrides.replyExecutor?.metadataStore ??
+        getConfiguredConversationMetadataStore(),
       scheduleAgentContinue:
         overrides.replyExecutor?.scheduleAgentContinue ?? scheduleAgentContinue,
       generateThreadTitle: conversationMemory.generateThreadTitle,

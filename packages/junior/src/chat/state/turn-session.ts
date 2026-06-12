@@ -19,6 +19,7 @@ import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { recordConversationActivity } from "@/chat/task-execution/store";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 import { logException } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -313,18 +314,24 @@ async function appendAgentTurnSessionSummary(
 
 /** Mirror run summaries into the conversation feed without owning reply success. */
 async function recordConversationActivityBestEffort(args: {
+  metadataStore?: ConversationMetadataStore;
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
+  const source =
+    args.summary.destination?.platform === "local"
+      ? "local"
+      : args.summary.surface;
   try {
     await recordConversationActivity({
       activityAtMs: args.summary.updatedAtMs,
       channelName: args.summary.channelName,
       conversationId: args.summary.conversationId,
       destination: args.summary.destination,
+      metadataStore: args.metadataStore,
       nowMs: args.nowMs,
       requester: args.summary.requester,
-      source: args.summary.surface,
+      source,
     });
   } catch (error) {
     logException(
@@ -699,6 +706,7 @@ export async function recordAgentTurnSessionSummary(args: {
   destination?: Destination;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
+  metadataStore?: ConversationMetadataStore;
   requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   sessionId: string;
@@ -759,6 +767,7 @@ export async function recordAgentTurnSessionSummary(args: {
   };
   await appendAgentTurnSessionSummary(summary, ttlMs);
   await recordConversationActivityBestEffort({
+    metadataStore: args.metadataStore,
     nowMs,
     summary,
   });

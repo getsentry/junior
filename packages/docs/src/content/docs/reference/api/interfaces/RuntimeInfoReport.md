@@ -5,7 +5,7 @@ prev: false
 title: "RuntimeInfoReport"
 ---
 
-Defined in: [junior/src/reporting.ts:53](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L53)
+Defined in: [junior/src/reporting.ts:59](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L59)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:53](https://github.com/getsentry/junior/blo
 
 > **cwd**: `string`
 
-Defined in: [junior/src/reporting.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L54)
+Defined in: [junior/src/reporting.ts:60](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L60)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:54](https://github.com/getsentry/junior/blo
 
 > `optional` **descriptionText?**: `string`
 
-Defined in: [junior/src/reporting.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L56)
+Defined in: [junior/src/reporting.ts:62](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L62)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting.ts:56](https://github.com/getsentry/junior/blo
 
 > **homeDir**: `string`
 
-Defined in: [junior/src/reporting.ts:55](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L55)
+Defined in: [junior/src/reporting.ts:61](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L61)
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting.ts:55](https://github.com/getsentry/junior/blo
 
 > **packagedContent**: [`PluginPackageContentReport`](/reference/api/interfaces/pluginpackagecontentreport/)
 
-Defined in: [junior/src/reporting.ts:59](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L59)
+Defined in: [junior/src/reporting.ts:65](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L65)
 
 ---
 
@@ -45,7 +45,7 @@ Defined in: [junior/src/reporting.ts:59](https://github.com/getsentry/junior/blo
 
 > **providers**: `string`[]
 
-Defined in: [junior/src/reporting.ts:57](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L57)
+Defined in: [junior/src/reporting.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L63)
 
 ---
 
@@ -53,4 +53,4 @@ Defined in: [junior/src/reporting.ts:57](https://github.com/getsentry/junior/blo
 
 > **skills**: [`SkillReport`](/reference/api/interfaces/skillreport/)[]
 
-Defined in: [junior/src/reporting.ts:58](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L58)
+Defined in: [junior/src/reporting.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L64)

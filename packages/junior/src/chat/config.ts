@@ -59,6 +59,9 @@ export interface AdvisorConfig {
 export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
+  sql: {
+    databaseUrl?: string;
+  };
   slack: {
     botToken?: string;
     clientId?: string;
@@ -243,6 +246,13 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   };
 }
 
+function readJuniorDatabaseUrl(env: NodeJS.ProcessEnv): string | undefined {
+  return (
+    toOptionalTrimmed(env.JUNIOR_CONVERSATION_METADATA_DATABASE_URL) ??
+    toOptionalTrimmed(env.DATABASE_URL)
+  );
+}
+
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -250,6 +260,9 @@ export function readChatConfig(
   return {
     bot: readBotConfig(env),
     functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
+    sql: {
+      databaseUrl: readJuniorDatabaseUrl(env),
+    },
     slack: {
       botToken:
         toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??

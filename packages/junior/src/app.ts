@@ -45,6 +45,7 @@ import {
 } from "@/chat/task-execution/vercel-callback";
 import {
   createProductionConversationWorkOptions,
+  getProductionConversationMetadataStore,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
 import { withSandboxTracePropagation } from "@/chat/app/services";
@@ -376,7 +377,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
+  const conversationMetadataStore = getProductionConversationMetadataStore();
   const runtimeServiceOverrides = {
+    replyExecutor: {
+      metadataStore: conversationMetadataStore,
+    },
     sandbox: {
       tracePropagation: { domains: sandboxEgressTracePropagationDomains },
     },

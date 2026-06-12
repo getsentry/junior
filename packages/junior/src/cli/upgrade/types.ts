@@ -7,6 +7,7 @@ export interface UpgradeIo {
 
 export interface MigrationContext {
   io: UpgradeIo;
+  sqlDatabaseUrl?: string;
   redisStateAdapter?: RedisStateAdapter;
   stateAdapter: StateAdapter;
 }
@@ -16,6 +17,7 @@ export interface MigrationResult {
   migrated: number;
   missing: number;
   scanned: number;
+  skipped?: number;
 }
 
 export interface UpgradeMigration {

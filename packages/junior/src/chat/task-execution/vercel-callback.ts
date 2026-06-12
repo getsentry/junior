@@ -9,6 +9,7 @@ import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination } from "@/chat/destination";
 import { logWarn } from "@/chat/logging";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
@@ -34,6 +35,7 @@ export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
 
 export interface ProcessConversationQueueMessageOptions {
   checkInIntervalMs?: number;
+  metadataStore?: ConversationMetadataStore;
   nowMs?: () => number;
   queue?: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
@@ -88,6 +90,7 @@ export async function processConversationQueueMessage(
   const parsed = parseConversationQueueMessage(message);
   return await processConversationWork(parsed, {
     checkInIntervalMs: options.checkInIntervalMs,
+    metadataStore: options.metadataStore,
     nowMs: options.nowMs,
     queue: options.queue ?? getVercelConversationWorkQueue(),
     run: options.run,

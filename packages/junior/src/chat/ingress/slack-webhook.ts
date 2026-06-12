@@ -7,6 +7,7 @@ import {
   type StateAdapter,
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
@@ -94,6 +95,7 @@ export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
+  metadataStore?: ConversationMetadataStore;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -188,6 +190,7 @@ async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
   message: Message;
+  metadataStore?: ConversationMetadataStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   route: SlackConversationRoute;
@@ -204,6 +207,7 @@ async function persistSlackMessage(args: {
   });
   await appendAndEnqueueInboundMessage({
     message: inbound,
+    metadataStore: args.metadataStore,
     queue: args.queue,
     state: args.state,
   });
@@ -214,6 +218,7 @@ async function routeParsedMessage(args: {
   event: SlackMessageEvent;
   installation: SlackInstallationContext;
   message: Message;
+  metadataStore?: ConversationMetadataStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   state: StateAdapter;
@@ -244,6 +249,7 @@ async function routeParsedMessage(args: {
     adapter: args.adapter,
     installation: args.installation,
     message: args.message,
+    metadataStore: args.metadataStore,
     queue: args.queue,
     receivedAtMs: args.receivedAtMs,
     route,
@@ -256,6 +262,7 @@ async function handleMessageChanged(args: {
   body: unknown;
   installation: SlackInstallationContext;
   queue: ConversationWorkQueue;
+  metadataStore?: ConversationMetadataStore;
   receivedAtMs: number;
   state: StateAdapter;
 }): Promise<boolean> {
@@ -280,6 +287,7 @@ async function handleMessageChanged(args: {
     adapter: args.adapter,
     installation: args.installation,
     message: result.message,
+    metadataStore: args.metadataStore,
     queue: args.queue,
     receivedAtMs: args.receivedAtMs,
     route: "mention",
@@ -328,6 +336,7 @@ async function handleSlackEvent(args: {
             adapter,
             body: args.body,
             installation,
+            metadataStore: args.services.metadataStore,
             queue: args.services.queue,
             receivedAtMs,
             state,
@@ -403,6 +412,7 @@ async function handleSlackEvent(args: {
             event,
             installation,
             message,
+            metadataStore: args.services.metadataStore,
             queue: args.services.queue,
             receivedAtMs,
             state,

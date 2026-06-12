@@ -17,6 +17,8 @@ import type { VercelConversationWorkCallbackOptions } from "@/chat/task-executio
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { generateAssistantReply } from "@/chat/respond";
+import { getConfiguredConversationMetadataStore } from "@/chat/metadata/configured-store";
+import type { ConversationMetadataStore } from "@/chat/metadata/store";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -56,17 +58,32 @@ export function getProductionSlackRuntime(): ReturnType<
   return productionSlackRuntime;
 }
 
+/** Return the production conversation metadata store for current config. */
+export function getProductionConversationMetadataStore(): ConversationMetadataStore {
+  return getConfiguredConversationMetadataStore();
+}
+
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options?: {
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
+  const metadataStore =
+    options?.services?.replyExecutor?.metadataStore ??
+    getProductionConversationMetadataStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: options?.services,
+    services: {
+      ...options?.services,
+      replyExecutor: {
+        ...options?.services?.replyExecutor,
+        metadataStore,
+      },
+    },
   });
   return {
     getSlackAdapter: getProductionSlackAdapter,
     getUserTokenStore: createUserTokenStore,
+    metadataStore,
     queue: getVercelConversationWorkQueue(),
     runtime,
   };
@@ -74,9 +91,11 @@ export function createProductionSlackWebhookServices(options?: {
 
 /** Return production services for Slack webhook ingress. */
 export function getProductionSlackWebhookServices(): SlackWebhookServices {
+  const metadataStore = getProductionConversationMetadataStore();
   return {
     getSlackAdapter: getProductionSlackAdapter,
     getUserTokenStore: createUserTokenStore,
+    metadataStore,
     queue: getVercelConversationWorkQueue(),
     runtime: getProductionSlackRuntime(),
   };
@@ -86,14 +105,25 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 export function createProductionConversationWorkOptions(options?: {
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
+  const metadataStore =
+    options?.services?.replyExecutor?.metadataStore ??
+    getProductionConversationMetadataStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: options?.services,
+    services: {
+      ...options?.services,
+      replyExecutor: {
+        ...options?.services?.replyExecutor,
+        metadataStore,
+      },
+    },
   });
   return {
+    metadataStore,
     queue: getVercelConversationWorkQueue(),
     run: createSlackConversationWorker({
       getSlackAdapter: getProductionSlackAdapter,
+      metadataStore,
       resumeAwaitingContinuation: async (conversationId) =>
         await resumeAwaitingSlackContinuation(conversationId, {
           generateReply: withSandboxTracePropagation(
