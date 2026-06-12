@@ -191,9 +191,19 @@ function clearExampleVercelOutput() {
 }
 
 function startNitroDev() {
-  nitroChild = spawnChild("pnpm", ["exec", "nitro", "dev"], {
-    cwd: exampleDir,
-  });
+  nitroChild = spawnChild("pnpm", [
+    "exec",
+    "spotlight",
+    "run",
+    "--port",
+    "8969",
+    "pnpm",
+    "--dir",
+    exampleDir,
+    "exec",
+    "nitro",
+    "dev",
+  ]);
 
   nitroChild.on("exit", (code, signal) => {
     if (restartingNitro) {

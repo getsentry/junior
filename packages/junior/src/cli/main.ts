@@ -1,5 +1,9 @@
+import { flush } from "@/chat/sentry";
+import { initSentry } from "@/instrumentation";
 import { loadCliEnvFiles } from "./env";
 import { runCli } from "./run";
+
+const SENTRY_FLUSH_TIMEOUT_MS = 2_000;
 
 async function runInit(dir: string): Promise<void> {
   const mod = await import("./init");
@@ -28,6 +32,7 @@ async function runChat(argv: string[]): Promise<number> {
 
 async function main(argv: string[]): Promise<void> {
   loadCliEnvFiles();
+  initSentry();
   const exitCode = await runCli(argv, {
     runChat,
     runInit,
@@ -35,11 +40,15 @@ async function main(argv: string[]): Promise<void> {
     runCheck,
     runUpgrade,
   });
+  await flush(SENTRY_FLUSH_TIMEOUT_MS);
   process.exit(exitCode);
 }
 
 main(process.argv.slice(2)).catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`junior command failed: ${message}`);
-  process.exit(1);
+  void (async () => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`junior command failed: ${message}`);
+    await flush(SENTRY_FLUSH_TIMEOUT_MS);
+    process.exit(1);
+  })();
 });

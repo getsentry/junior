@@ -38,7 +38,6 @@ export function initSentry(): void {
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
     sendDefaultPii: true,
-    enabled: Boolean(dsn),
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
