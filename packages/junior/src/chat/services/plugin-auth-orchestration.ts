@@ -2,7 +2,7 @@
  * Plugin authorization pause orchestration.
  *
  * This module detects plugin credential failures from the sandbox egress layer
- * and maps them onto the same paused-turn contract used by MCP auth. It owns
+ * and maps them onto the same paused-run contract used by MCP auth. It owns
  * provider attribution, private-link delivery/reuse, session-log recording,
  * and credential cleanup.
  *
@@ -68,7 +68,7 @@ export interface PluginAuthOrchestration {
   /**
    * Inspect a sandbox tool result for an `auth_required` signal from the
    * egress proxy. If one is present and an OAuth flow is available, parks the
-   * current turn and sends the user an authorization link. No-ops when the
+   * current run and sends the user an authorization link. No-ops when the
    * result carries no auth signal.
    */
   maybeHandleAuthSignal: (details: unknown) => Promise<void>;
@@ -121,7 +121,7 @@ function authorizationId(args: {
 }
 
 /**
- * Start plugin OAuth from a sandbox egress auth signal and park the turn.
+ * Start plugin OAuth from a sandbox egress auth signal and park the run.
  */
 export function createPluginAuthOrchestration(
   deps: PluginAuthOrchestrationDeps,
@@ -147,13 +147,16 @@ export function createPluginAuthOrchestration(
     }
 
     const providerLabel = formatProviderLabel(provider);
-    const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: deps.currentPendingAuth,
-      kind: "plugin",
-      provider,
-      requesterId: deps.requesterId,
-      ...(options?.scope ? { scope: options.scope } : {}),
-    });
+    const reusingPendingLink = deps.sessionId
+      ? canReusePendingAuthLink({
+          pendingAuth: deps.currentPendingAuth,
+          kind: "plugin",
+          provider,
+          requesterId: deps.requesterId,
+          sessionId: deps.sessionId,
+          ...(options?.scope ? { scope: options.scope } : {}),
+        })
+      : false;
 
     if (!reusingPendingLink) {
       const oauthResult = await startOAuthFlow(provider, {

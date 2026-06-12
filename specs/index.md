@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-10
+- Last Edited: 2026-06-12
 
 ## Purpose
 
@@ -31,6 +31,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/security-policy.md`
 - `specs/data-redaction-policy.md`
 - `specs/chat-architecture.md`
+- `specs/terminology.md`
 - `specs/task-execution.md`
 - `specs/local-agent.md`
 - `specs/agent-turn-handling.md`
@@ -67,14 +68,15 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 
 ## Ownership Map
 
-For chat/agent/Slack turn behavior:
+For chat/agent/Slack execution and response behavior:
 
+- `specs/terminology.md` owns canonical execution vocabulary and historical `turn` naming rules.
 - `specs/chat-architecture.md` owns the end-to-end platform-event-to-agent-run data flow, platform adapter boundary, data authority map, and module boundaries.
 - `specs/task-execution.md` owns durable conversation mailbox execution, queue wake-up semantics, conversation leases, cooperative yield, and heartbeat repair.
 - `specs/local-agent.md` owns local CLI/local adapter user flows, identity, state, delivery, and verification contracts.
 - `specs/agent-turn-handling.md` owns user-message response policy: when Junior answers, stays silent, asks, uses tools, satisfies Slack side effects, handles resumed turns, and considers a turn complete.
 - `specs/agent-execution.md` owns coding-agent execution discipline and the repository-wide model-repairable tool failure contract.
-- `specs/harness-agent.md` owns the Pi agent turn runtime contract, final output resolution, and turn diagnostics.
+- `specs/harness-agent.md` owns the Pi agent run runtime contract, final output resolution, and diagnostics.
 - `specs/harness-tool-context.md` owns context-bound tool targeting and missing-context failure behavior.
 - `specs/agent-session-resumability.md` owns session record schema, Pi session continuation, timeout callbacks, and slice lifecycle.
 - `specs/context-compaction.md` owns reusable Pi history compaction, internal context forks, and visible-thread compaction bounds.

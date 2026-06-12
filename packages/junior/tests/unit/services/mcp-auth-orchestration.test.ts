@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import type { PluginDefinition } from "@/chat/plugins/types";
 
 const {
   createMcpOAuthClientProvider,
@@ -33,6 +34,19 @@ vi.mock("@/chat/oauth-flow", () => ({
   formatProviderLabel,
 }));
 
+function plugin(name: string): PluginDefinition {
+  return {
+    dir: `/plugins/${name}`,
+    manifest: {
+      name,
+      displayName: name,
+      description: `${name} plugin`,
+      capabilities: [],
+      configKeys: [],
+    },
+  };
+}
+
 describe("createMcpAuthOrchestration", () => {
   beforeEach(() => {
     createMcpOAuthClientProvider.mockReset();
@@ -64,11 +78,7 @@ describe("createMcpAuthOrchestration", () => {
       abortAgent,
     );
 
-    await orchestration.authProviderFactory({
-      manifest: {
-        name: "github",
-      },
-    } as any);
+    await orchestration.authProviderFactory(plugin("github"));
 
     await expect(
       orchestration.onAuthorizationRequired("github"),
@@ -79,5 +89,62 @@ describe("createMcpAuthOrchestration", () => {
     expect(getMcpAuthSession).not.toHaveBeenCalled();
     expect(deliverPrivateMessage).not.toHaveBeenCalled();
     expect(abortAgent).not.toHaveBeenCalled();
+  });
+
+  it("sends a fresh link when the pending auth belongs to a previous session", async () => {
+    const abortAgent = vi.fn();
+    const onPendingAuth = vi.fn();
+    getMcpAuthSession.mockResolvedValue({
+      authorizationUrl: "https://mcp.example/authorize",
+      channelId: "C123",
+      threadTs: "1700000000.000000",
+      userId: "U123",
+    });
+    deliverPrivateMessage.mockResolvedValue({ channelId: "D123" });
+
+    const orchestration = createMcpAuthOrchestration(
+      {
+        conversationId: "slack:C123:1700000000.000000",
+        sessionId: "run_new",
+        requesterId: "U123",
+        channelId: "C123",
+        threadTs: "1700000000.000000",
+        userMessage: "use MCP",
+        currentPendingAuth: {
+          kind: "mcp",
+          provider: "github",
+          requesterId: "U123",
+          sessionId: "run_old",
+          linkSentAtMs: Date.now(),
+        },
+        getConfiguration: () => ({}),
+        getArtifactState: () => undefined,
+        getMergedArtifactState: () => ({}),
+        onPendingAuth,
+      },
+      abortAgent,
+    );
+
+    await orchestration.authProviderFactory(plugin("github"));
+
+    await expect(orchestration.onAuthorizationRequired("github")).resolves.toBe(
+      true,
+    );
+
+    expect(deliverPrivateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "U123",
+      }),
+    );
+    expect(deleteMcpAuthSession).not.toHaveBeenCalled();
+    expect(onPendingAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "mcp",
+        provider: "github",
+        requesterId: "U123",
+        sessionId: "run_new",
+      }),
+    );
+    expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 });

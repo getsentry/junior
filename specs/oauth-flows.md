@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-19
+- Last Edited: 2026-06-12
 
 ## Related
 
@@ -18,16 +18,16 @@ Define how Junior handles per-user OAuth for third-party providers while keeping
 
 ### Components
 
-| Component                            | Role                                                                                                                                                                   |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `startOAuthFlow(provider, ...)`      | Internal runtime helper that creates state and privately delivers the authorization link                                                                               |
-| `/api/oauth/callback/[provider]`     | Exchanges code for tokens, stores them server-side, and resumes the latest still-relevant blocked thread request                                                       |
-| `/api/oauth/callback/mcp/[provider]` | Completes MCP SDK authorization and resumes the latest still-relevant MCP-blocked thread request                                                                       |
-| `StateAdapterTokenStore`             | Persistent per-user token storage                                                                                                                                      |
-| MCP auth session store               | Stores MCP auth session context and SDK-managed OAuth state across the browser redirect                                                                                |
-| `OAuthBearerBroker`                  | Issues short-lived turn leases from stored user tokens                                                                                                                 |
-| Thread `pendingAuth` state           | Stores the current auth-blocked request for one Slack thread independently from `activeTurnId`                                                                         |
-| `PluginAuthOrchestration`            | Consumes structured egress credential signals, starts OAuth privately for OAuth-backed `auth_required` signals, and turns the current turn into a resumable auth block |
+| Component                            | Role                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startOAuthFlow(provider, ...)`      | Internal runtime helper that creates state and privately delivers the authorization link                                                                                  |
+| `/api/oauth/callback/[provider]`     | Exchanges code for tokens, stores them server-side, and resumes the latest still-relevant blocked thread request                                                          |
+| `/api/oauth/callback/mcp/[provider]` | Completes MCP SDK authorization and resumes the latest still-relevant MCP-blocked thread request                                                                          |
+| `StateAdapterTokenStore`             | Persistent per-user token storage                                                                                                                                         |
+| MCP auth session store               | Stores MCP auth session context and SDK-managed OAuth state across the browser redirect                                                                                   |
+| `OAuthBearerBroker`                  | Issues short-lived run-scoped leases from stored user tokens                                                                                                              |
+| Thread `pendingAuth` state           | Stores the current auth-blocked request for one Slack thread independently from `activeTurnId`                                                                            |
+| `PluginAuthOrchestration`            | Consumes structured egress credential signals, starts OAuth privately for OAuth-backed `auth_required` signals, and parks the current agent run as a resumable auth block |
 
 ### Why authorization code grant
 
@@ -56,12 +56,12 @@ Agent: loads the matching plugin skill and runs the real provider command
   │    • runtime privately delivers the authorization link
   │    • runtime posts a brief visible thread note that authorization is needed
   │    • runtime appends `authorization_requested` to the agent session log
-  │    • runtime writes the turn session record as awaiting auth resume
+  │    • runtime writes the historical turn-session record as awaiting auth resume
   │    • runtime records thread-local `pendingAuth`
   ├─ If credential setup is unavailable or no OAuth authorization metadata is present:
   │    • runtime surfaces the host-provided credential failure message
   │    • runtime does not start a user OAuth flow
-  └─ OAuth-paused turns end cleanly; they are not kept as the active in-flight turn
+  └─ OAuth-paused runs end cleanly; they are not kept as the active in-flight run
   │
   ▼
 User: opens private link and approves
@@ -93,9 +93,9 @@ Agent: calls an MCP tool from the same plugin
   ├─ Runtime privately delivers the authorization link to the requesting user
   ├─ Runtime posts a brief visible thread note that authorization is needed
   ├─ Runtime appends `authorization_requested` to the agent session log
-  ├─ Turn session record is written as awaiting auth resume
+  ├─ Historical turn-session record is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
-  └─ Current turn ends cleanly; it is not kept as the active in-flight turn
+  └─ Current run ends cleanly; it is not kept as the active in-flight run
   │
   ▼
 User: opens the private link and approves
@@ -134,15 +134,16 @@ Purpose:
 
 - binds the authorization link to the requesting user
 - carries enough context to resume the blocked Slack thread
-- snapshots configuration relevant to the resumed turn
+- snapshots configuration relevant to the resumed run
 
 ### Thread-local pending auth
 
 - Stored in persisted thread conversation state, not in `activeTurnId`
-- Value: `{ kind, provider, requesterId, sessionId, linkSentAtMs }`
+- Value: `{ kind, provider, requesterId, sessionId, scope?, linkSentAtMs }`
 - Purpose:
   - remembers which blocked request is eligible for auto-resume
-  - deduplicates repeated prompts while a fresh private link is already pending
+  - deduplicates repeated prompts only when `kind`, `provider`, `requesterId`,
+    `scope`, and `sessionId` all match a fresh already-sent private link
   - lets callbacks suppress stale resumes after newer thread activity
 - This state is callback routing and dedupe state only. It must not be rendered
   into the prompt as an auth-completion hint. Model-visible authorization

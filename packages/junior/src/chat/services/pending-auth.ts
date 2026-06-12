@@ -13,6 +13,7 @@ import { abandonAgentTurnSessionRecord } from "@/chat/state/turn-session";
 // so the old link is usually still honorable when we reuse it.
 const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
 
+/** Decide whether the same agent-run session can reuse its fresh auth link. */
 export function canReusePendingAuthLink(args: {
   kind: AuthorizationPauseKind;
   nowMs?: number;
@@ -20,6 +21,7 @@ export function canReusePendingAuthLink(args: {
   provider: string;
   requesterId: string;
   scope?: string;
+  sessionId: string;
 }): boolean {
   const { pendingAuth } = args;
   if (!pendingAuth) {
@@ -31,6 +33,7 @@ export function canReusePendingAuthLink(args: {
     pendingAuth.provider === args.provider &&
     pendingAuth.requesterId === args.requesterId &&
     pendingAuth.scope === args.scope &&
+    pendingAuth.sessionId === args.sessionId &&
     pendingAuth.linkSentAtMs + AUTH_LINK_REUSE_WINDOW_MS >
       (args.nowMs ?? Date.now())
   );

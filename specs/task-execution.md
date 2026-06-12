@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-11
+- Last Edited: 2026-06-12
 
 ## Purpose
 
@@ -43,7 +43,8 @@ invocations without turning every tool call into a queue round trip.
 
 ### Terminology
 
-The durable execution model uses these terms precisely:
+The durable execution model uses the canonical terms from
+[`terminology.md`](./terminology.md). In this spec:
 
 - **Conversation**: the thread-level or session-level container identified by
   `conversationId`. For Slack, this is a normalized thread identity such as

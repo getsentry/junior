@@ -263,6 +263,52 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).toHaveBeenCalledWith("U123", "github", tokens);
   });
 
+  it("sends a fresh link when the pending auth belongs to a previous session", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+    const onPendingAuth = vi.fn();
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        conversationId: "slack:C123:1700000000.000000",
+        sessionId: "run_new",
+        requesterId: "U123",
+        userMessage: "check Sentry",
+        userTokenStore: tokenStore(),
+        currentPendingAuth: {
+          kind: "plugin",
+          provider: "sentry",
+          requesterId: "U123",
+          sessionId: "run_old",
+          linkSentAtMs: Date.now(),
+        },
+        onPendingAuth,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "sentry",
+      expect.objectContaining({
+        resumeSessionId: "run_new",
+      }),
+    );
+    expect(onPendingAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "plugin",
+        provider: "sentry",
+        requesterId: "U123",
+        sessionId: "run_new",
+      }),
+    );
+  });
+
   it("throws PluginCredentialFailureError for signals without oauth authorization", async () => {
     // Installation-read grant has no authorization field — not user-OAuth-able.
     const orchestration = createPluginAuthOrchestration(

@@ -17,7 +17,7 @@ function pendingAuth(
     kind: "mcp" as const,
     provider: "eval-auth",
     requesterId: "U123",
-    sessionId: "turn_1",
+    sessionId: "run_1",
     linkSentAtMs: NOW - 60_000,
     ...overrides,
   };
@@ -30,6 +30,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "eval-auth",
         requesterId: "U123",
+        sessionId: "run_1",
         pendingAuth: pendingAuth({ linkSentAtMs: NOW - 60_000 }),
         nowMs: NOW,
       }),
@@ -42,6 +43,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "eval-auth",
         requesterId: "U123",
+        sessionId: "run_1",
         pendingAuth: pendingAuth({
           linkSentAtMs: NOW - REUSE_WINDOW_MS + 1,
         }),
@@ -56,6 +58,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "eval-auth",
         requesterId: "U123",
+        sessionId: "run_1",
         pendingAuth: pendingAuth({ linkSentAtMs: NOW - REUSE_WINDOW_MS }),
         nowMs: NOW,
       }),
@@ -68,6 +71,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "eval-auth",
         requesterId: "U999",
+        sessionId: "run_1",
         pendingAuth: pendingAuth(),
         nowMs: NOW,
       }),
@@ -78,6 +82,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "other-provider",
         requesterId: "U123",
+        sessionId: "run_1",
         pendingAuth: pendingAuth(),
         nowMs: NOW,
       }),
@@ -90,7 +95,21 @@ describe("canReusePendingAuthLink", () => {
         kind: "plugin",
         provider: "eval-auth",
         requesterId: "U123",
+        sessionId: "run_1",
         pendingAuth: pendingAuth({ kind: "mcp" }),
+        nowMs: NOW,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not reuse a link from a different session", () => {
+    expect(
+      canReusePendingAuthLink({
+        kind: "mcp",
+        provider: "eval-auth",
+        requesterId: "U123",
+        sessionId: "run_2",
+        pendingAuth: pendingAuth(),
         nowMs: NOW,
       }),
     ).toBe(false);
@@ -102,6 +121,7 @@ describe("canReusePendingAuthLink", () => {
         kind: "mcp",
         provider: "eval-auth",
         requesterId: "U123",
+        sessionId: "run_1",
         nowMs: NOW,
       }),
     ).toBe(false);

@@ -114,6 +114,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/data-redaction-policy.md` (conversation privacy classification and raw payload redaction policy)
 - `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
+- `specs/terminology.md` (canonical execution vocabulary and historical turn naming rules)
 - `specs/task-execution.md` (durable conversation mailbox, queue wake-up, lease, and heartbeat execution contract)
 - `specs/local-agent.md` (local CLI/local adapter user flows, identity, state, and delivery contract)
 - `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed runs, and completion)
