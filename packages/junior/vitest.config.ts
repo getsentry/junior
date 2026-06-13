@@ -48,6 +48,8 @@ export default defineConfig({
       "tests/integration/workflow/**/*.test.ts",
     ],
     setupFiles: ["tests/msw/setup.ts"],
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
     unstubEnvs: true,
     coverage: {
       provider: "v8",

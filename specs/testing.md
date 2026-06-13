@@ -64,6 +64,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 19. Keep shared test fixtures and production helper modules named by the concern they own. Split catch-all helpers once they start mixing prompt input, Pi message history, runtime context, Slack transport, or adapter setup.
 20. Eval harness overrides must be grouped by contract area (`auth`, `plugins`, `replyGeneration`, subscribed reply decisions) so fixtures that bypass real generation or routing are visually obvious at the call site.
 21. Eval artifact helpers may expose user-visible Slack outputs such as posts, reactions, canvases, and files. Eval files must not inspect raw Slack Web API captures directly.
+22. Keep ordinary test and hook timeouts in shared Vitest configuration. Use explicit per-test or per-hook timeouts only for known long-running build, sandbox, or external-control-plane checks, and prefer simplifying shared setup before raising local timeouts.
 
 ## Coverage Budget (Avoid Over-Testing)
 

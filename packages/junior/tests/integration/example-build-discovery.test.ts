@@ -105,7 +105,7 @@ function clearVercelEnv(): void {
 describe.sequential("example build discovery integration", () => {
   beforeAll(() => {
     buildJuniorPackage();
-  }, 60_000);
+  }, 120_000);
 
   afterEach(() => {
     process.chdir(originalCwd);
