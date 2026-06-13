@@ -351,9 +351,12 @@ importers:
       "@sentry/junior-testing":
         specifier: workspace:*
         version: link:../junior-testing
+      ai:
+        specifier: ^6.0.190
+        version: 6.0.190(zod@4.4.3)
       chat:
         specifier: 4.29.0
-        version: 4.29.0
+        version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       tinyrainbow:
         specifier: ^3.1.0
         version: 3.1.0
@@ -365,7 +368,10 @@ importers:
         version: 4.1.7(tsx@4.22.3)
       vitest-evals:
         specifier: 0.11.0
-        version: 0.11.0(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))
+        version: 0.11.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/junior-github:
     dependencies:
@@ -19618,10 +19624,13 @@ snapshots:
     optionalDependencies:
       vite: 7.3.3(tsx@4.22.3)
 
-  vitest-evals@0.11.0(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3)):
+  vitest-evals@0.11.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3):
     dependencies:
       tinyrainbow: 3.1.0
       vitest: 4.1.7(tsx@4.22.3)
+    optionalDependencies:
+      ai: 6.0.190(zod@4.4.3)
+      zod: 4.4.3
 
   vitest@4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
