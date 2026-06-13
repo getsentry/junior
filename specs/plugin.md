@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-06-12
+- Last Edited: 2026-06-13
 
 ## Purpose
 
@@ -13,7 +13,8 @@ Define the plugin model for provider integrations. Plugins package declarative r
 
 - Plugin package/directory shape.
 - Ownership boundaries between manifests, skills, runtime loading, credentials, and runtime hooks.
-- Links to detailed contracts for manifests, runtime loading, credential injection, and plugin heartbeat/dispatch behavior.
+- Links to detailed contracts for manifests, runtime loading, credential
+  injection, plugin CLI, and plugin heartbeat/dispatch behavior.
 
 ## Non-Goals
 
@@ -51,8 +52,10 @@ plugins/sentry/
 - [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and agent continuation behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
-- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): prompt contribution, turn observation, and plugin session append state hooks.
+- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): prompt contribution, turn observation, plugin background tasks, and plugin session append state hooks.
 - [Plugin Database Spec](./plugin-database.md): packaged SQL migrations and `ctx.db` access for trusted runtime hook plugins.
+- [Plugin CLI Spec](./plugin-cli.md): future plugin-contributed host CLI commands for operator/admin workflows.
+- [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, observation, background task, database, and tool hooks.
 - [Plugin Heartbeat Spec](./plugin-heartbeat.md): heartbeat and tool hooks.
 - [Plugin Dispatch Spec](./plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
 
@@ -85,6 +88,8 @@ plugins/sentry/
 - `./credential-injection.md`
 - `./plugin-prompt-hooks.md`
 - `./plugin-database.md`
+- `./plugin-cli.md`
+- `./memory-plugin/index.md`
 - `./plugin-heartbeat.md`
 - `./plugin-dispatch.md`
 - `./sandbox-snapshots.md`

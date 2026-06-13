@@ -132,6 +132,8 @@ Co-Authored-By: (agent model name) <email>
 - `specs/plugin-dispatch.md` (durable plugin agent dispatch contract)
 - `specs/plugin-prompt-hooks.md` (plugin prompt contribution, turn observation, and session append state contract)
 - `specs/plugin-database.md` (plugin packaged SQL migrations and ctx.db contract)
+- `specs/plugin-cli.md` (future plugin-contributed host CLI command contract)
+- `specs/memory-plugin/index.md` (long-term memory plugin storage, recall, passive learning, tools, visibility, and lifecycle contract)
 - `specs/harness-agent.md` (agent loop and output contract)
 - `specs/agent-session-resumability.md` (multi-slice agent-run resumability and timeout recovery contract)
 - `specs/agent-execution.md` (agent execution rubric and completion gates)

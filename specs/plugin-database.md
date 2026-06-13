@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-06-12
+- Last Edited: 2026-06-13
 
 ## Purpose
 
@@ -302,5 +302,6 @@ No evals are required for the database extension mechanism itself.
 - `./plugin.md`
 - `./plugin-runtime.md`
 - `./plugin-prompt-hooks.md`
+- `./memory-plugin/index.md`
 - `./plugin-heartbeat.md`
 - `./testing.md`
