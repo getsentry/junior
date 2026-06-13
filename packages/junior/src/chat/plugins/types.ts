@@ -173,6 +173,7 @@ export interface PluginBrokerDeps {
 export interface PluginDefinition {
   manifest: PluginManifest;
   dir: string;
+  migrationsDir?: string;
   skillsDir?: string;
 }
 

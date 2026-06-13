@@ -16,6 +16,8 @@ import type {
   RouteRegistrationHookContext,
   SlackConversationLink,
   SlackConversationLinkHookContext,
+  StorageMigrationContext,
+  StorageMigrationResult,
 } from "./operations";
 import type {
   PluginTaskHandler,
@@ -64,6 +66,12 @@ export interface PluginHooks {
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;
+  migrateStorage?(
+    ctx: StorageMigrationContext,
+  ):
+    | Promise<StorageMigrationResult | undefined>
+    | StorageMigrationResult
+    | undefined;
   userPrompt?(
     ctx: UserPromptHookContext,
   ):

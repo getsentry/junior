@@ -34,6 +34,10 @@ export default defineConfig({
         __dirname,
         "../junior-plugin-api/src/index.ts",
       ),
+      "@sentry/junior-scheduler": path.resolve(
+        __dirname,
+        "../junior-scheduler/src/index.ts",
+      ),
     },
   },
   test: {

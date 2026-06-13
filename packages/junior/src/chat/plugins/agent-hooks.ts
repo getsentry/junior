@@ -12,6 +12,7 @@ import type {
   SlackToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
+import { getPluginDbForRegistration } from "@/chat/plugins/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
@@ -77,31 +78,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function validateLegacyStatePrefixes(plugin: PluginRegistration): void {
-  const prefixes = plugin.legacyStatePrefixes;
-  if (prefixes === undefined) {
-    return;
-  }
-  if (!Array.isArray(prefixes)) {
-    throw new Error(
-      `Plugin "${plugin.name}" legacyStatePrefixes must be an array`,
-    );
-  }
-
-  const allowedPrefix = `junior:${plugin.name}`;
-  for (const rawPrefix of prefixes) {
-    const prefix = typeof rawPrefix === "string" ? rawPrefix.trim() : "";
-    if (!prefix) {
-      throw new Error(
-        `Plugin "${plugin.name}" legacy state prefixes must be non-empty strings`,
-      );
-    }
-    if (prefix !== allowedPrefix && !prefix.startsWith(`${allowedPrefix}:`)) {
-      throw new Error(
-        `Plugin "${plugin.name}" legacy state prefix "${prefix}" must stay under "${allowedPrefix}"`,
-      );
-    }
-  }
+function basePluginContext(plugin: PluginRegistration) {
+  const db = getPluginDbForRegistration(plugin);
+  return {
+    plugin: { name: plugin.name },
+    log: createPluginLogger(plugin.name),
+    ...(db ? { db } : {}),
+  };
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
@@ -117,7 +100,6 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       throw new Error(`Duplicate plugin name "${plugin.name}"`);
     }
     seen.add(plugin.name);
-    validateLegacyStatePrefixes(plugin);
   }
 }
 
@@ -148,7 +130,6 @@ export function getPluginTools(
     if (!hook) {
       continue;
     }
-    const log = createPluginLogger(plugin.name);
     const destination = context.destination;
     const slackToolContext = getSlackToolContext(context);
     const credentialSubject = slackToolContext
@@ -170,8 +151,7 @@ export function getPluginTools(
     const pluginContext =
       context.source.platform === "slack"
         ? {
-            plugin: { name: plugin.name },
-            log,
+            ...basePluginContext(plugin),
             requester:
               context.requester?.platform === "slack"
                 ? context.requester
@@ -182,13 +162,10 @@ export function getPluginTools(
             slack: slackContext!,
             source: context.source,
             userText: context.userText,
-            state: createPluginState(plugin.name, {
-              legacyStatePrefixes: plugin.legacyStatePrefixes,
-            }),
+            state: createPluginState(plugin.name),
           }
         : {
-            plugin: { name: plugin.name },
-            log,
+            ...basePluginContext(plugin),
             requester:
               context.requester?.platform === "local"
                 ? context.requester
@@ -198,9 +175,7 @@ export function getPluginTools(
               destination?.platform === "local" ? destination : undefined,
             source: context.source,
             userText: context.userText,
-            state: createPluginState(plugin.name, {
-              legacyStatePrefixes: plugin.legacyStatePrefixes,
-            }),
+            state: createPluginState(plugin.name),
           };
     const pluginTools = hook(pluginContext);
     for (const [name, tool] of Object.entries(pluginTools)) {
@@ -260,10 +235,8 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
     if (!hook) {
       continue;
     }
-    const log = createPluginLogger(plugin.name);
     const pluginRoutes = hook({
-      plugin: { name: plugin.name },
-      log,
+      ...basePluginContext(plugin),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
@@ -352,10 +325,8 @@ export function getPluginSlackConversationLink(
     if (!hook) {
       continue;
     }
-    const log = createPluginLogger(plugin.name);
     const link = hook({
-      plugin: { name: plugin.name },
-      log,
+      ...basePluginContext(plugin),
       conversationId,
     });
     const url = trustedSlackConversationUrl(plugin.name, link);
@@ -559,14 +530,10 @@ export async function getPluginOperationalReports(
     if (!hook) {
       continue;
     }
-    const log = createPluginLogger(plugin.name);
     try {
-      const state = createPluginState(plugin.name, {
-        legacyStatePrefixes: plugin.legacyStatePrefixes,
-      });
+      const state = createPluginState(plugin.name);
       const report = await hook({
-        plugin: { name: plugin.name },
-        log,
+        ...basePluginContext(plugin),
         conversations,
         nowMs,
         state: pluginReadState(state),
@@ -581,6 +548,7 @@ export async function getPluginOperationalReports(
         }),
       );
     } catch (error) {
+      const log = createPluginLogger(plugin.name);
       log.error("Plugin operational report failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -657,8 +625,7 @@ export function createPluginHookRunner(
           "Running agent plugin sandbox prepare hook",
         );
         await hook({
-          plugin: { name: plugin.name },
-          log: createPluginLogger(plugin.name),
+          ...basePluginContext(plugin),
           requester: input.requester,
           sandbox: sandboxCapability,
         });
@@ -676,8 +643,7 @@ export function createPluginHookRunner(
         let replacement: Record<string, unknown> | undefined;
         let denied: string | undefined;
         await hook({
-          plugin: { name: plugin.name },
-          log: createPluginLogger(plugin.name),
+          ...basePluginContext(plugin),
           requester: input.requester,
           tool: {
             name: tool.name,

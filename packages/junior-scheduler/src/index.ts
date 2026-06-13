@@ -8,7 +8,12 @@ export {
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
 } from "./schedule-tools";
-export { createSchedulerStore } from "./store";
+export {
+  createSchedulerOperationalSqlStore,
+  createSchedulerSqlStore,
+  createSchedulerStore,
+  migrateSchedulerStateToSql,
+} from "./store";
 export type {
   ScheduledCalendarFrequency,
   ScheduledLocalTime,

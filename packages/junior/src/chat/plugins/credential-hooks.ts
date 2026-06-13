@@ -13,6 +13,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPluginDbForRegistration } from "@/chat/plugins/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 interface SafeSchema<T> {
@@ -70,6 +71,15 @@ function pluginFor(provider: string) {
   return getPlugins().find((candidate) => candidate.name === provider);
 }
 
+function basePluginContext(plugin: NonNullable<ReturnType<typeof pluginFor>>) {
+  const db = getPluginDbForRegistration(plugin);
+  return {
+    plugin: { name: plugin.name },
+    log: createPluginLogger(plugin.name),
+    ...(db ? { db } : {}),
+  };
+}
+
 function parseCredentialResult(
   value: unknown,
   pluginName: string,
@@ -107,8 +117,7 @@ export async function selectPluginGrant(
     return undefined;
   }
   const result = await hook({
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    ...basePluginContext(plugin),
     request: {
       ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
       method: input.method,
@@ -147,8 +156,7 @@ export async function onPluginEgressResponse(
   }
   let permissionDenied: { message: string } | undefined;
   await hook({
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    ...basePluginContext(plugin),
     grant: input.grant,
     permissionDenied(message) {
       const trimmed = message.trim();
@@ -204,8 +212,7 @@ export async function resolvePluginOAuthAccount(input: {
     return undefined;
   }
   const account = await hook({
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    ...basePluginContext(plugin),
     tokens: input.tokens,
   });
   return account === undefined
@@ -230,8 +237,7 @@ export async function issuePluginCredential(
     input.actor.type === "user" ? input.actor.userId : undefined;
   const credentialSubjectUserId = input.credentialSubject?.userId;
   const result = await hook({
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    ...basePluginContext(plugin),
     actor: input.actor,
     grant: input.grant,
     ...(input.credentialSubject

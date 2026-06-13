@@ -18,6 +18,7 @@ import {
   setPlugins,
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
+import { validatePluginDatabaseRequirements } from "@/chat/plugins/db";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type {
   PluginRouteMethod,
@@ -336,6 +337,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   validateBuildIncludesPluginHookRegistrations(plugins, virtualConfig);
   validatePlugins(plugins);
+  validatePluginDatabaseRequirements(plugins);
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||

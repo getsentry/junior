@@ -5,7 +5,6 @@ import type { PluginManifest } from "./manifest";
 export type PluginRegistrationInput = {
   database?: PluginDatabaseConfig;
   hooks?: PluginHooks;
-  legacyStatePrefixes?: string[];
   manifest: PluginManifest;
   name?: string;
   packageName?: string;
@@ -23,7 +22,7 @@ export function defineJuniorPlugin(
 ): PluginRegistration {
   if ("pluginConfig" in plugin) {
     throw new Error(
-      "pluginConfig is no longer supported. Put runtime metadata in manifest and state prefixes on the plugin registration.",
+      "pluginConfig is no longer supported. Put runtime metadata in manifest or plugin registration fields.",
     );
   }
   const manifest = plugin.manifest;

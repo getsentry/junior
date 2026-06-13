@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.6",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

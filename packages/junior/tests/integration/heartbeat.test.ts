@@ -484,19 +484,15 @@ describe("plugin heartbeat", () => {
     await expect(second.state.get("1")).resolves.toBe("second");
   });
 
-  it("claims scheduled tasks from the scheduler legacy state namespace", async () => {
-    const task = createTask({ id: "sched_legacy" });
+  it("claims scheduled tasks from the scheduler state namespace", async () => {
+    const task = createTask({ id: "sched_existing" });
     const state = getStateAdapter();
     await state.connect();
     await state.set("junior:scheduler:tasks", [task.id]);
     await state.set("junior:scheduler:team:T123:tasks", [task.id]);
-    await state.set("junior:scheduler:task:sched_legacy", task);
+    await state.set("junior:scheduler:task:sched_existing", task);
 
-    const store = createSchedulerStore(
-      createPluginState("scheduler", {
-        legacyStatePrefixes: ["junior:scheduler"],
-      }),
-    );
+    const store = createSchedulerStore(createPluginState("scheduler"));
 
     await expect(store.listTasksForTeam("T123")).resolves.toMatchObject([
       { id: task.id },

@@ -154,7 +154,7 @@ export function pluginHookRegistrationsFromPluginSet(
 ): PluginRegistration[] {
   return (
     pluginSet?.registrations.filter(
-      (plugin) => plugin.hooks || plugin.legacyStatePrefixes,
+      (plugin) => plugin.database || plugin.hooks,
     ) ?? []
   );
 }

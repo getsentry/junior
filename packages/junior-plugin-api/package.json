@@ -22,6 +22,7 @@
     "src"
   ],
   "dependencies": {
+    "drizzle-orm": "catalog:",
     "zod": "^4.4.3"
   },
   "scripts": {

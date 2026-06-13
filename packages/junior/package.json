@@ -76,7 +76,7 @@
     "ai": "^6.0.190",
     "bash-tool": "^1.3.16",
     "chat": "4.29.0",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "catalog:",
     "hono": "^4.12.22",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",

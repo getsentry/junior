@@ -64,7 +64,6 @@ function bindDispatchCredentialSubject(
 
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
-  legacyStatePrefixes?: string[];
   nowMs: number;
   plugin: string;
 }): HeartbeatHookContext {
@@ -72,9 +71,7 @@ export function createHeartbeatContext(args: {
   return {
     plugin: { name: args.plugin },
     nowMs: args.nowMs,
-    state: createPluginState(args.plugin, {
-      legacyStatePrefixes: args.legacyStatePrefixes,
-    }),
+    state: createPluginState(args.plugin),
     log: createPluginLogger(args.plugin),
     agent: {
       async dispatch(options) {

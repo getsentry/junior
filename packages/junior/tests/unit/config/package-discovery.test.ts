@@ -51,6 +51,7 @@ describe("plugin package discovery", () => {
     const discovered = discoverInstalledPluginPackageContent(tempRoot);
     expect(discovered.packageNames).toEqual([]);
     expect(discovered.manifestRoots).toEqual([]);
+    expect(discovered.migrationRoots).toEqual([]);
     expect(discovered.skillRoots).toEqual([]);
   });
 
@@ -63,6 +64,12 @@ describe("plugin package discovery", () => {
       nodeModulesRoot,
       "@acme/junior-plugin-demo",
     );
+    await fs.mkdir(path.join(packageRoot, "migrations"));
+    await fs.writeFile(
+      path.join(packageRoot, "migrations", "0001_init.sql"),
+      "CREATE TABLE plugin_demo (id TEXT PRIMARY KEY);\n",
+      "utf8",
+    );
     await fs.writeFile(
       path.join(tempRoot, "package.json"),
       JSON.stringify({ name: "temp", private: true }),
@@ -74,9 +81,15 @@ describe("plugin package discovery", () => {
     });
     expect(discovered.packageNames).toContain("@acme/junior-plugin-demo");
     expect(discovered.manifestRoots).toContain(packageRoot);
+    expect(discovered.migrationRoots).toContain(
+      path.join(packageRoot, "migrations"),
+    );
     expect(discovered.skillRoots).toContain(path.join(packageRoot, "skills"));
     expect(discovered.tracingIncludes).toContain(
       "./node_modules/@acme/junior-plugin-demo/plugin.yaml",
+    );
+    expect(discovered.tracingIncludes).toContain(
+      "./node_modules/@acme/junior-plugin-demo/migrations/**/*",
     );
     expect(discovered.tracingIncludes).toContain(
       "./node_modules/@acme/junior-plugin-demo/skills/**/*",

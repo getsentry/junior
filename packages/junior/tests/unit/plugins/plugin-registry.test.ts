@@ -27,6 +27,7 @@ describe("plugin registry", () => {
         packageNames: [],
         packages: [],
         manifestRoots: [],
+        migrationRoots: [],
         skillRoots: [],
         tracingIncludes: [],
       }),
@@ -57,10 +58,12 @@ describe("plugin registry", () => {
       packageNames: [] as string[],
       packages: [] as {
         dir: string;
+        hasMigrationsDir: boolean;
         hasSkillsDir: boolean;
         name: string;
       }[],
       manifestRoots: [] as string[],
+      migrationRoots: [] as string[],
       skillRoots: [] as string[],
       tracingIncludes: [] as string[],
     };

@@ -653,30 +653,4 @@ describe("createApp plugin config", () => {
     expect(getPlugins().map((plugin) => plugin.name)).toEqual([]);
     expect(getPluginProviders()).toEqual([]);
   });
-
-  it("rejects legacy state prefixes outside the plugin namespace", async () => {
-    await createApp({
-      plugins: defineJuniorPlugins([]),
-    });
-
-    await expect(
-      createApp({
-        plugins: defineJuniorPlugins([
-          defineJuniorPlugin({
-            manifest: {
-              name: "hooked",
-              displayName: "Hooked",
-              description: "Runtime plugin",
-            },
-            legacyStatePrefixes: ["junior:scheduler"],
-          }),
-        ]),
-      }),
-    ).rejects.toThrow(
-      'Plugin "hooked" legacy state prefix "junior:scheduler" must stay under "junior:hooked"',
-    );
-
-    expect(getPlugins().map((plugin) => plugin.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
-  });
 });

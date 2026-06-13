@@ -68,6 +68,7 @@ describe("discoverSkills plugin ownership", () => {
         packageNames: [],
         packages: [],
         manifestRoots: [],
+        migrationRoots: [],
         skillRoots: [],
         tracingIncludes: [],
       }),

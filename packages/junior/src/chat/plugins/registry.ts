@@ -28,6 +28,7 @@ interface LoadedPluginState {
   packageSkillRoots: Set<string>;
   pluginConfigKeys: Set<string>;
   pluginDefinitions: PluginDefinition[];
+  pluginMigrationRoots: Map<string, string>;
   pluginsByName: Map<string, PluginDefinition>;
   signature: string;
 }
@@ -35,6 +36,7 @@ interface LoadedPluginState {
 interface PluginCatalogSource {
   inlineManifests: InlinePluginManifestDefinition[];
   manifestRoots: string[];
+  migrationRoots: string[];
   packagedSkillRoots: string[];
   packagedContent: InstalledPluginPackageContent;
   signature: string;
@@ -55,6 +57,7 @@ function createLoadedPluginState(signature: string): LoadedPluginState {
   return {
     signature,
     pluginDefinitions: [],
+    pluginMigrationRoots: new Map(),
     capabilityToPlugin: new Map(),
     domainToPlugin: new Map(),
     pluginConfigKeys: new Set(),
@@ -77,6 +80,7 @@ function registerPluginManifest(
   manifest: PluginDefinition["manifest"],
   pluginDir: string,
   skillsDir?: string,
+  options: { discoverMigrations?: boolean } = {},
 ): void {
   if (state.pluginsByName.has(manifest.name)) {
     throw new Error(`Duplicate plugin name "${manifest.name}"`);
@@ -102,11 +106,20 @@ function registerPluginManifest(
   const definition: PluginDefinition = {
     manifest,
     dir: pluginDir,
+    ...(options.discoverMigrations &&
+    statSync(path.join(pluginDir, "migrations"), {
+      throwIfNoEntry: false,
+    })?.isDirectory()
+      ? { migrationsDir: path.join(pluginDir, "migrations") }
+      : {}),
     ...(skillsDir ? { skillsDir } : {}),
   };
 
   state.pluginDefinitions.push(definition);
   state.pluginsByName.set(manifest.name, definition);
+  if (definition.migrationsDir) {
+    state.pluginMigrationRoots.set(manifest.name, definition.migrationsDir);
+  }
 
   for (const cap of manifest.capabilities) {
     state.capabilityToPlugin.set(cap, definition);
@@ -130,6 +143,7 @@ function registerYamlPluginManifest(
     manifest,
     pluginDir,
     path.join(pluginDir, "skills"),
+    { discoverMigrations: true },
   );
 }
 
@@ -157,16 +171,19 @@ function getPluginCatalogSource(): PluginCatalogSource {
     ...packagedContent.manifestRoots,
   ]);
   const packagedSkillRoots = normalizePluginRoots(packagedContent.skillRoots);
+  const migrationRoots = normalizePluginRoots(packagedContent.migrationRoots);
 
   const inlineManifests = pluginConfig?.inlineManifests ?? [];
   return {
     inlineManifests,
     manifestRoots,
+    migrationRoots,
     packagedSkillRoots,
     packagedContent,
     signature: JSON.stringify({
       inlineManifests,
       manifestRoots,
+      migrationRoots,
       packagedSkillRoots,
       packageNames: [...packagedContent.packageNames].sort(),
       pluginConfig: pluginConfig ?? {},
@@ -213,7 +230,9 @@ function clonePluginCatalogConfig(
 function packageContentByName(
   packagedContent: InstalledPluginPackageContent,
   packageName: string,
-): { dir: string; hasSkillsDir: boolean } | undefined {
+):
+  | { dir: string; hasMigrationsDir: boolean; hasSkillsDir: boolean }
+  | undefined {
   return packagedContent.packages.find((pkg) => pkg.name === packageName);
 }
 
@@ -234,7 +253,9 @@ function registerInlineManifests(
       dir,
       pluginConfig,
     );
-    registerPluginManifest(state, manifest, dir, skillsDir);
+    registerPluginManifest(state, manifest, dir, skillsDir, {
+      discoverMigrations: Boolean(pkg?.hasMigrationsDir),
+    });
   }
 }
 
@@ -417,6 +438,16 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 
 export function getPluginProviders(): PluginDefinition[] {
   return [...ensurePluginsLoaded().pluginDefinitions];
+}
+
+export function getPluginMigrationRoots(): {
+  dir: string;
+  pluginName: string;
+}[] {
+  const state = ensurePluginsLoaded();
+  return [...state.pluginMigrationRoots.entries()]
+    .map(([pluginName, dir]) => ({ pluginName, dir }))
+    .sort((left, right) => left.pluginName.localeCompare(right.pluginName));
 }
 
 export function getPluginMcpProviders(): PluginDefinition[] {

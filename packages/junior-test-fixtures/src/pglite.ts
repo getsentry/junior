@@ -35,6 +35,10 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
     statement: string,
     params: readonly unknown[] = [],
   ): Promise<void> {
+    if (params.length === 0) {
+      await this.queryClient().exec(statement);
+      return;
+    }
     await this.queryClient().query(statement, [...params]);
   }
 

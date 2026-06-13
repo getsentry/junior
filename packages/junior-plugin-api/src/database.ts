@@ -1,14 +1,22 @@
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
+
+export type PluginDrizzleDatabase = PgDatabase<
+  PgQueryResultHKT,
+  Record<string, never>
+>;
+
 export interface PluginDb {
-  delete: unknown;
+  delete: PluginDrizzleDatabase["delete"];
   execute(statement: string, params?: readonly unknown[]): Promise<void>;
-  insert: unknown;
+  insert: PluginDrizzleDatabase["insert"];
   query<T = unknown>(
     statement: string,
     params?: readonly unknown[],
   ): Promise<T[]>;
-  select: unknown;
+  select: PluginDrizzleDatabase["select"];
   transaction<T>(callback: (tx: PluginDb) => Promise<T>): Promise<T>;
-  update: unknown;
+  update: PluginDrizzleDatabase["update"];
 }
 
 export interface PluginDatabaseConfig {
