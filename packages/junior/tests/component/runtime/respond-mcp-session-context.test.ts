@@ -8,7 +8,7 @@ import {
   restoreRespondMcpProgressiveLoadingEnv,
   setupRespondMcpProgressiveLoadingTest,
   type PiMessage,
-} from "../../fixtures/respond-mcp-progressive-loading";
+} from "../../fixtures/respond/mcp-progressive-loading";
 
 // Component-style runtime coverage: real respond orchestration with explicit
 // fake ports for the agent, MCP client, and sandbox executor.

@@ -1,5 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { AssistantReplyRequestContext } from "@/chat/respond";
+import type { ReplyRequestContext } from "@/chat/respond";
 import type { Requester } from "@/chat/requester";
 
 export const TEST_SLACK_DESTINATION = {
@@ -22,7 +22,7 @@ type LegacyRequester = {
 };
 
 export type TestReplyRequestContext = Omit<
-  Partial<AssistantReplyRequestContext>,
+  Partial<ReplyRequestContext>,
   "destination" | "requester"
 > & {
   destination?: Destination;
@@ -58,11 +58,11 @@ function requesterForDestination(
 /** Build a complete reply request context for runtime component tests. */
 export function makeTestReplyContext(
   options: TestReplyRequestContext = {},
-): AssistantReplyRequestContext {
+): ReplyRequestContext {
   const destination = options.destination ?? TEST_SLACK_DESTINATION;
   return {
     ...options,
     destination,
     requester: requesterForDestination(options.requester, destination),
-  } as AssistantReplyRequestContext;
+  } as ReplyRequestContext;
 }

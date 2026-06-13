@@ -3,12 +3,12 @@ import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
   createSlackBehaviorRuntime,
   postedText,
-} from "../../fixtures/slack-behavior";
+} from "../../fixtures/slack/behavior";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: thread continuity", () => {
   it("keeps same-thread replies in arrival order for rapid follow-up messages", async () => {

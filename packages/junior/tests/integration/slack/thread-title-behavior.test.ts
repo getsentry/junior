@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeScenarioAdapters } from "@/chat/app/services";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   FakeSlackAdapter,
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
-import { conversationMessages } from "../../fixtures/slack-behavior";
+import { conversationMessages } from "../../fixtures/slack/behavior";
 
 const emptyThreadReplies = async () => [];
 
@@ -29,7 +29,7 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
 }
 
 function createRuntime(args: {
-  adapters?: JuniorRuntimeAdapterOverrides;
+  adapters?: JuniorRuntimeScenarioAdapters;
   slackAdapter: FakeSlackAdapter;
 }) {
   const adapters = args.adapters ?? {};

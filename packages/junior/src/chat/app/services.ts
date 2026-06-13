@@ -1,7 +1,7 @@
 import { completeObject, completeText } from "@/chat/pi/client";
 import {
   generateAssistantReply as generateAssistantReplyImpl,
-  type AssistantReplyRequestContext,
+  type ReplyRequestContext,
 } from "@/chat/respond";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import {
@@ -41,8 +41,10 @@ export interface JuniorRuntimeServices {
   visionContext: VisionContextService;
 }
 
-/** Scenario adapters for runtime tests and evals that need deterministic external boundaries. */
-export interface JuniorRuntimeAdapterOverrides {
+/** Scenario adapters for deterministic runtime tests and evals. */
+export interface JuniorRuntimeScenarioAdapters {
+  autoCompactionTriggerTokens?: ContextCompactorDeps["autoCompactionTriggerTokens"];
+  classifySubscribedReply?: SubscribedReplyPolicyDeps["completeObject"];
   compactConversationText?: ContextCompactorDeps["completeText"];
   describeImagesText?: VisionContextDeps["completeText"];
   downloadSlackFile?: VisionContextDeps["downloadFile"];
@@ -51,14 +53,28 @@ export interface JuniorRuntimeAdapterOverrides {
   getAwaitingAgentContinueRequest?: ReplyExecutorServices["getAwaitingAgentContinueRequest"];
   listThreadReplies?: VisionContextDeps["listThreadReplies"];
   lookupSlackUser?: ReplyExecutorServices["lookupSlackUser"];
+  sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
   scheduleAgentContinue?: ReplyExecutorServices["scheduleAgentContinue"];
-  classifySubscribedReply?: SubscribedReplyPolicyDeps["completeObject"];
-  autoCompactionTriggerTokens?: ContextCompactorDeps["autoCompactionTriggerTokens"];
+}
+
+/** Apply app-owned sandbox egress trace config unless a turn overrides it. */
+export function withSandboxTracePropagation(
+  generateReply: typeof generateAssistantReplyImpl,
+  tracePropagation?: SandboxEgressTracePropagationConfig,
+): typeof generateAssistantReplyImpl {
+  return async (messageText: string, context: ReplyRequestContext) =>
+    await generateReply(messageText, {
+      ...context,
+      sandbox: {
+        ...context.sandbox,
+        tracePropagation: context.sandbox?.tracePropagation ?? tracePropagation,
+      },
+    });
 }
 
 /** Compose the concrete service set used by the Slack runtime. */
 export function createJuniorRuntimeServices(
-  adapters: JuniorRuntimeAdapterOverrides = {},
+  adapters: JuniorRuntimeScenarioAdapters = {},
 ): JuniorRuntimeServices {
   const conversationMemory = createConversationMemoryService({
     completeText: adapters.generateThreadTitleText ?? completeText,
@@ -79,7 +95,11 @@ export function createJuniorRuntimeServices(
     replyExecutor: {
       contextCompactor,
       generateAssistantReply:
-        adapters.generateAssistantReply ?? generateAssistantReplyImpl,
+        adapters.generateAssistantReply ??
+        withSandboxTracePropagation(
+          generateAssistantReplyImpl,
+          adapters.sandboxTracePropagation,
+        ),
       getAwaitingAgentContinueRequest:
         adapters.getAwaitingAgentContinueRequest ??
         getAwaitingAgentContinueRequest,

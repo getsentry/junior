@@ -11,7 +11,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/respond/pi-messages";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
 export const AGENT_TURN_TIMEOUT_RESUME_MAX_SLICES = 48;

@@ -4,7 +4,7 @@ import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: assistant context channel routing", () => {
   it("prefers assistantContextChannelId over DM channel for tool execution context", async () => {

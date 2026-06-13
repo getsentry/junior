@@ -11,10 +11,8 @@ import {
   type AssistantReply,
 } from "@/chat/respond";
 import { THREAD_STATE_TTL_MS } from "chat";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+import { stripRuntimeTurnContext } from "@/chat/respond/runtime-turn-context";
+import { trimTrailingAssistantMessages } from "@/chat/respond/pi-messages";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,

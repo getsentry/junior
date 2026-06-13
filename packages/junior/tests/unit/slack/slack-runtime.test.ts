@@ -8,7 +8,7 @@ import {
   createTestThread,
   createTestMessage,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 import { useMockedTestClock } from "../../fixtures/vitest";
 
 interface TestState {

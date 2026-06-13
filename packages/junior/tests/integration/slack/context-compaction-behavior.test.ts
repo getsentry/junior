@@ -11,7 +11,7 @@ import {
   createTestDestination,
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 interface RuntimeCall {
   piMessages?: PiMessage[];

@@ -14,7 +14,7 @@ import {
   sandboxGetMock,
   setupSandboxExecutorTest,
   cleanupSandboxExecutorTest,
-} from "../../fixtures/sandbox-executor";
+} from "../../fixtures/sandbox/executor";
 
 describe("sandbox executor tool execution", () => {
   beforeEach(setupSandboxExecutorTest);

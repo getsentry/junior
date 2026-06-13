@@ -12,7 +12,7 @@ import {
   resolveSandboxCommandEnvironment,
   setupSandboxEgressProxyTest,
   sentryPlugin,
-} from "../../fixtures/sandbox-egress-proxy";
+} from "../../fixtures/sandbox/egress-proxy";
 
 describe("sandbox egress policy", () => {
   beforeEach(async () => {
@@ -43,14 +43,12 @@ describe("sandbox egress policy", () => {
       allow: {
         "sentry.io": [
           {
-            forwardURL:
-              `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
           },
         ],
         "us.sentry.io": [
           {
-            forwardURL:
-              `https://junior.example.com/api/internal/sandbox-egress/${token}`,
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${token}`,
           },
         ],
       },
@@ -124,9 +122,7 @@ describe("sandbox egress policy", () => {
 
     expect(() =>
       buildSandboxEgressNetworkPolicy({ credentialToken: "token" }),
-    ).toThrow(
-      "Cannot determine base URL for sandbox credential egress",
-    );
+    ).toThrow("Cannot determine base URL for sandbox credential egress");
   });
 
   it("does not reuse Slack signing secret for sandbox egress tokens", () => {

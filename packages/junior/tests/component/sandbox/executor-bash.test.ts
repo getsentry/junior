@@ -14,7 +14,7 @@ import {
   sentryForwardURLFromPolicy,
   setupSandboxExecutorTest,
   cleanupSandboxExecutorTest,
-} from "../../fixtures/sandbox-executor";
+} from "../../fixtures/sandbox/executor";
 import { mockTestClock } from "../../fixtures/vitest";
 
 describe("sandbox executor bash execution", () => {

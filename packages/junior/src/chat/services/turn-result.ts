@@ -17,13 +17,15 @@ import {
   extractAssistantText,
   getTerminalAssistantMessages,
   isAssistantMessage,
-  isExecutionEscapeResponse,
-  isRawToolPayloadResponse,
   isToolResultError,
   isToolResultMessage,
   normalizeToolNameFromResult,
+} from "@/chat/respond/pi-messages";
+import {
+  isExecutionEscapeResponse,
+  isRawToolPayloadResponse,
   summarizeMessageText,
-} from "@/chat/respond-helpers";
+} from "@/chat/respond/reply-output-guards";
 
 const POST_CANVAS_REPLY_MAX_CHARS = 700;
 const POST_CANVAS_REPLY_MAX_LINES = 8;

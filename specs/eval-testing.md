@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-13
 
 ## Intent
 
@@ -42,6 +42,8 @@ In scope:
 12. Prefer extending the rubric for an existing realistic scenario when that scenario already exercises the behavior under test. Add a new eval case only for a distinct user journey, failure mode, or product contract.
 13. Use structured harness observations for stable runtime metadata such as selected thinking level. Do not scrape logs, spans, prompt text, or incidental tool sequences to prove agent-facing behavior.
 14. Treat reply/result fixtures as downstream delivery fixtures only. They bypass real reply generation, so they cannot validate prompt interpretation, model routing, thinking-level routing, or other upstream generation behavior.
+15. Group harness overrides by contract area: `auth`, `plugins`, `replyGeneration`, and `subscribedReplyDecisions`. Do not add flat miscellaneous override keys.
+16. Keep fixture names honest about bypassing behavior. Names such as `replyGeneration.cannedTexts` are acceptable because they make the bypass visible; names that imply real model behavior are not.
 
 ## Boundaries
 
@@ -49,6 +51,7 @@ Do not in eval files:
 
 - Import Slack action internals for direct contract assertions.
 - Use MSW queue/capture helpers intended for integration contract tests.
+- Import or inspect raw Slack Web API capture wrappers. Use fixture-owned eval artifact collectors when an eval needs Slack-visible posts, reactions, canvases, or files.
 - Rely on implementation-only identifiers (exact internal tool names, opaque IDs) unless the case intentionally evaluates that surface.
 - Encode exact internal commands or tool choices in user prompts when the contract under test is higher-level conversational behavior.
 - Use canned assistant reply fixtures to claim coverage of behavior that happens inside real reply generation.

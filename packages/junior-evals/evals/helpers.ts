@@ -255,10 +255,10 @@ function assertStatusCleared(input: SlackEvalInput, result: EvalResult): void {
 }
 
 function assertTimeoutBudget(input: SlackEvalInput): void {
-  const replyTimeout = input.overrides?.reply_timeout_ms;
+  const replyTimeout = input.overrides?.replyGeneration?.timeoutMs;
   if (replyTimeout !== undefined && replyTimeout > MAX_EVAL_TIMEOUT_MS) {
     throw new Error(
-      `Eval reply_timeout_ms ${replyTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
+      `Eval replyGeneration.timeoutMs ${replyTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
     );
   }
   if (

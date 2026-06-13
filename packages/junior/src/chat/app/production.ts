@@ -15,7 +15,7 @@ import { createSlackConversationWorker } from "@/chat/task-execution/slack-work"
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeScenarioAdapters } from "@/chat/app/services";
 import { generateAssistantReply } from "@/chat/respond";
 import { getConfiguredConversationStore } from "@/chat/conversations/configured";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -65,12 +65,12 @@ export function getProductionConversationStore(): ConversationStore {
 
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options?: {
-  services?: JuniorRuntimeServiceOverrides;
+  adapters?: JuniorRuntimeScenarioAdapters;
 }): SlackWebhookServices {
   const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
+    adapters: options?.adapters,
     getSlackAdapter: getProductionSlackAdapter,
-    services: options?.services,
   });
   return {
     getSlackAdapter: getProductionSlackAdapter,
@@ -95,12 +95,12 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 
 /** Return the production queue callback options for conversation work. */
 export function createProductionConversationWorkOptions(options?: {
-  services?: JuniorRuntimeServiceOverrides;
+  adapters?: JuniorRuntimeScenarioAdapters;
 }): VercelConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
+    adapters: options?.adapters,
     getSlackAdapter: getProductionSlackAdapter,
-    services: options?.services,
   });
   return {
     conversationStore,
@@ -112,7 +112,7 @@ export function createProductionConversationWorkOptions(options?: {
         await resumeAwaitingSlackContinuation(conversationId, {
           generateReply: withSandboxTracePropagation(
             generateAssistantReply,
-            options?.services?.sandbox?.tracePropagation,
+            options?.adapters?.sandboxTracePropagation,
           ),
         }),
       runtime,

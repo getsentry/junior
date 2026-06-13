@@ -8,7 +8,7 @@ import {
 import {
   createEchoMcpTestServer,
   type EchoMcpTestServer,
-} from "../fixtures/mcp-test-server";
+} from "../fixtures/mcp/test-server";
 import { DEFAULT_TEST_NOW_MS } from "../fixtures/vitest";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;

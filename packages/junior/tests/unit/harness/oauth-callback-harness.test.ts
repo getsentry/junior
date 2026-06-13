@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runOauthCallbackRoute } from "../../fixtures/oauth-callback-harness";
-import { runMcpOauthCallbackRoute } from "../../fixtures/mcp-oauth-callback-harness";
+import { runOauthCallbackRoute } from "../../fixtures/oauth/callback-harness";
+import { runMcpOauthCallbackRoute } from "../../fixtures/mcp/oauth-callback-harness";
 
 describe("oauth callback harnesses", () => {
   const oauthCallbackGet = vi.fn();

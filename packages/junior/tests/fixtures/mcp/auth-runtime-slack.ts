@@ -6,18 +6,18 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
-} from "../msw/handlers/eval-mcp-auth";
+} from "../../msw/handlers/eval-mcp-auth";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
-} from "../msw/handlers/slack-api";
-import { type TestThread } from "./slack-harness";
-import { createPluginAppFixture, type PluginAppFixture } from "./plugin-app";
-import { piTextResponse, piToolCallResponse } from "./pi-stream";
+} from "../../msw/handlers/slack-api";
+import { type TestThread } from "../slack/harness";
+import { createPluginAppFixture, type PluginAppFixture } from "../plugin-app";
+import { piTextResponse, piToolCallResponse } from "../pi-stream";
 import {
   makeTestReplyContext,
   type TestReplyRequestContext,
-} from "./reply-context";
+} from "../reply-context";
 
 export const MCP_TOOL_NAME = "mcp__eval-auth__budget-echo";
 export const SKILL_NAME = "eval-auth";
@@ -33,13 +33,12 @@ const testThinkingSelection: TurnThinkingSelection = {
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
-  "plugins/eval-auth",
+  "../plugins/eval-auth",
 );
 
-type ChatRuntimeModule = typeof import("./chat-runtime");
+type ChatRuntimeModule = typeof import("../chat-runtime");
 type McpAuthStoreModule = typeof import("@/chat/mcp/auth-store");
-type McpOauthCallbackHarnessModule =
-  typeof import("./mcp-oauth-callback-harness");
+type McpOauthCallbackHarnessModule = typeof import("./oauth-callback-harness");
 type RespondModule = typeof import("@/chat/respond");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
@@ -231,11 +230,11 @@ export async function createMcpAuthRuntimeSlackFixture() {
   ]);
 
   vi.resetModules();
-  const chatRuntime: ChatRuntimeModule = await import("./chat-runtime");
+  const chatRuntime: ChatRuntimeModule = await import("../chat-runtime");
   const mcpAuthStore: McpAuthStoreModule =
     await import("@/chat/mcp/auth-store");
   const mcpOauthCallbackHarness: McpOauthCallbackHarnessModule =
-    await import("./mcp-oauth-callback-harness");
+    await import("./oauth-callback-harness");
   const respond: RespondModule = await import("@/chat/respond");
   const stateAdapter: StateAdapterModule = await import("@/chat/state/adapter");
   const threadState: ThreadStateModule =

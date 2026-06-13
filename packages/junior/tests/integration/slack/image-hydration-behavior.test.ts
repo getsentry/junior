@@ -4,11 +4,11 @@ import {
   createSlackImageConversationState,
   createSlackImageRuntime,
   resetSlackImageRuntimeEnv,
-} from "../../fixtures/slack-image-runtime";
+} from "../../fixtures/slack/image-runtime";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 const listThreadRepliesMock = vi.fn();
 

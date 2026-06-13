@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createOauthResumeSlackFixture } from "../../fixtures/oauth-resume-slack";
+import { createOauthResumeSlackFixture } from "../../fixtures/oauth/resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";

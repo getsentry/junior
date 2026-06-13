@@ -12,7 +12,7 @@ import {
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressUserActor,
   setupSandboxEgressProxyTest,
-} from "../../fixtures/sandbox-egress-proxy";
+} from "../../fixtures/sandbox/egress-proxy";
 
 describe("sandbox egress forwarding", () => {
   beforeEach(async () => {

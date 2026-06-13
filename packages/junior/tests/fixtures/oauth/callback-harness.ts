@@ -1,7 +1,4 @@
-import {
-  waitUntilCallbacks,
-  testWaitUntil,
-} from "./oauth-callback-after-harness";
+import { waitUntilCallbacks, testWaitUntil } from "./callback-after-harness";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 type OAuthCallbackHandler = typeof import("@/handlers/oauth-callback").GET;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBashTool as createRealBashTool } from "bash-tool";
 
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
-import { makeSandbox, sandboxGetMock } from "../../fixtures/sandbox-executor";
+import { makeSandbox, sandboxGetMock } from "../../fixtures/sandbox/executor";
 
 const createSandboxMock = vi.fn();
 const resolveRuntimeDependencySnapshotMock = vi.fn();

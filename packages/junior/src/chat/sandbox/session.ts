@@ -207,7 +207,10 @@ export function createSandboxSessionManager(
     timeoutMs?: number;
     traceContext?: LogContext;
     commandEnv?: () => Promise<Record<string, string>>;
-    createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
+    createNetworkPolicy?: (
+      egressId: string,
+      traceHeaders?: TracePropagationHeaders,
+    ) => NetworkPolicy | undefined;
     onSandboxPrepare?: (sandbox: SandboxInstance) => void | Promise<void>;
     onSandboxAcquired?: (sandbox: {
       sandboxId: string;

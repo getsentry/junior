@@ -12,7 +12,7 @@ import {
   type AgentTool,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -34,9 +34,11 @@ import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-comma
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
 import {
   discoverSkills,
   findSkillByName,
+  loadSkillsByName,
   parseSkillInvocation,
   type Skill,
 } from "@/chat/skills";
@@ -102,16 +104,18 @@ import {
   buildSteeringPiMessage,
   buildUserTurnText,
   buildUserTurnInput,
-  getSessionIdentifiers,
-  hasRuntimeTurnContext,
-  isAssistantMessage,
-  prependMissingRuntimeTurnContext,
   type ReplyRequestAttachment,
-  summarizeMessageText,
   toObservablePromptPart,
   type UserTurnContentPart,
-  upsertActiveSkill,
-} from "@/chat/respond-helpers";
+} from "@/chat/respond/user-turn-input";
+import { getSessionIdentifiers } from "@/chat/respond/session-identifiers";
+import {
+  hasRuntimeTurnContext,
+  prependMissingRuntimeTurnContext,
+} from "@/chat/respond/runtime-turn-context";
+import { isAssistantMessage } from "@/chat/respond/pi-messages";
+import { summarizeMessageText } from "@/chat/respond/reply-output-guards";
+import { upsertActiveSkill } from "@/chat/respond/active-skills";
 import {
   buildTurnResult,
   type AssistantReply,
@@ -215,6 +219,7 @@ export interface ReplyRuntimeServices {
   getConfigDefaults: typeof getConfigDefaults;
   getPluginMcpProviders: typeof getPluginMcpProviders;
   getPluginProviders: typeof getPluginProviders;
+  loadSkillsByName: typeof loadSkillsByName;
   parseSkillInvocation: typeof parseSkillInvocation;
 }
 
@@ -241,6 +246,7 @@ const defaultReplyRuntimeServices: ReplyRuntimeServices = {
   getConfigDefaults,
   getPluginMcpProviders,
   getPluginProviders,
+  loadSkillsByName,
   parseSkillInvocation,
 };
 
@@ -503,7 +509,7 @@ function surfaceFromContext(
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
-  context: AssistantReplyRequestContext,
+  context: ReplyRequestContext,
 ): Promise<AssistantReply> {
   if (!context.destination) {
     throw new TypeError("Assistant reply generation requires a destination");

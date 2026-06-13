@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { createSlackBehaviorRuntime } from "../../fixtures/slack-behavior";
+import { createSlackBehaviorRuntime } from "../../fixtures/slack/behavior";
 import {
   createAwaitingSlackTurnState,
   createPiUserTurn,
-} from "../../fixtures/slack-turn-state";
+} from "../../fixtures/slack/turn-state";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 interface AuthPauseConversationState {
   processing?: { activeTurnId?: string };

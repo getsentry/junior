@@ -6,7 +6,7 @@ import {
   executeTool,
   schedulerStore,
   setupSlackScheduleToolTest,
-} from "../fixtures/slack-schedule-tools";
+} from "../fixtures/slack/schedule-tools";
 
 describe("Slack schedule plugin wiring", () => {
   beforeEach(setupSlackScheduleToolTest);

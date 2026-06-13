@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { conversationMessages } from "../../fixtures/slack-behavior";
+import { conversationMessages } from "../../fixtures/slack/behavior";
 import {
   createTestDestination,
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: message normalization", () => {
   afterEach(async () => {

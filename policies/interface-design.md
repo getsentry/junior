@@ -27,6 +27,10 @@ Interfaces should expose the smallest useful capability while keeping ownership,
   `Conversation`.
 - Let folders and file names carry domain context. Prefer `state/session-log.ts` over `state/agent-session-log-store.ts`, and avoid names that repeat parent directories, suffix every file with its technical role, or encode the whole call path.
 - Name modules by the concern they own, not by the adapter or mechanism they happen to use. `session-log` is better than `redis-session-log` when Redis is only one backing implementation.
+- Avoid catch-all helper or utility modules once they contain more than one
+  domain concern. Split by role, such as `respond/user-turn-input`,
+  `respond/runtime-turn-context`, or `slack/eval-artifacts`, so import paths
+  explain why a function exists.
 - Name indexes, queues, and storage keys by their membership and ordering when
   they serve multiple consumers. `conversation:active` and
   `conversation:by-activity` describe the data contract better than

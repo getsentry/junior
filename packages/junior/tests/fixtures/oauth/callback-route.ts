@@ -1,8 +1,8 @@
 import path from "node:path";
 import { vi } from "vitest";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { createPluginAppFixture, type PluginAppFixture } from "./plugin-app";
-import { successfulAssistantReply } from "./assistant-reply";
+import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { createPluginAppFixture, type PluginAppFixture } from "../plugin-app";
+import { successfulAssistantReply } from "../assistant-reply";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 export const EVAL_OAUTH_PROVIDER = "eval-oauth";
@@ -16,11 +16,11 @@ export const SLACK_DESTINATION = {
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
-  "plugins/eval-oauth",
+  "../plugins/eval-oauth",
 );
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
-type OAuthCallbackHarnessModule = typeof import("./oauth-callback-harness");
+type OAuthCallbackHarnessModule = typeof import("./callback-harness");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 type UserTokenStoreModule = typeof import("@/chat/capabilities/factory");
 
@@ -43,7 +43,7 @@ export async function createOauthCallbackRouteFixture() {
   vi.resetModules();
   const stateAdapter: StateAdapterModule = await import("@/chat/state/adapter");
   const oauthCallbackHarness: OAuthCallbackHarnessModule =
-    await import("./oauth-callback-harness");
+    await import("./callback-harness");
   const turnSessionStore: TurnSessionStoreModule =
     await import("@/chat/state/turn-session");
   const userTokenStore: UserTokenStoreModule =

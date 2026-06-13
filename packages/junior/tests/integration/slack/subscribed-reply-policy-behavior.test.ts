@@ -4,11 +4,11 @@ import {
   conversationMessages,
   createSlackBehaviorRuntime,
   postedText,
-} from "../../fixtures/slack-behavior";
+} from "../../fixtures/slack/behavior";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: subscribed reply policy", () => {
   it("routes acknowledgment text with attachments through the classifier", async () => {

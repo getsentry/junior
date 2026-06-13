@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { Thread } from "chat";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { postedText } from "../../fixtures/slack-behavior";
+import { postedText } from "../../fixtures/slack/behavior";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 function findFilePost(calls: unknown[][]): unknown[] | undefined {
   return calls.find(

@@ -12,8 +12,8 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import {
   configureRespondRuntimeEnv,
   restoreRespondRuntimeEnv,
-} from "../../fixtures/respond-env";
-import { createScriptedReplyAgentFactory } from "../../fixtures/respond-agent";
+} from "../../fixtures/respond/env";
+import { createScriptedReplyAgentFactory } from "../../fixtures/respond/agent";
 import { mockTestClock } from "../../fixtures/vitest";
 
 const originalEnv = configureRespondRuntimeEnv();

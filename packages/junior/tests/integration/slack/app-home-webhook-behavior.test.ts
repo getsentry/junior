@@ -14,7 +14,7 @@ import {
   createNoopSlackWebhookRuntime,
   deferred,
 } from "../../fixtures/conversation-work";
-import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackApiOutbox } from "../../fixtures/slack/api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 
 const SIGNING_SECRET = "test-signing-secret";

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildUserTurnInput, buildUserTurnText } from "@/chat/respond-helpers";
+import {
+  buildUserTurnInput,
+  buildUserTurnText,
+} from "@/chat/respond/user-turn-input";
 
 describe("buildUserTurnText", () => {
   it("returns raw input when no context or metadata is provided", () => {

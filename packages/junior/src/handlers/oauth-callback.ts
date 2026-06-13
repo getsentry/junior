@@ -66,12 +66,8 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
+import type { AssistantReply } from "@/chat/respond";
 import { requireSlackDestination } from "@/chat/destination";
-
-interface OAuthCallbackOptions {
-  generateReply?: typeof generateAssistantReply;
-}
 
 interface OAuthCallbackHandlerOptions {
   generateReply?: ResumeReplyGenerator;
@@ -526,7 +522,6 @@ async function resumePendingOAuthMessage(
       piMessages: conversation.piMessages,
       configuration: stored.configuration,
     },
-    generateReply: options.generateReply,
     onSuccess: async (reply) => {
       logInfo(
         "oauth_callback_resume_complete",

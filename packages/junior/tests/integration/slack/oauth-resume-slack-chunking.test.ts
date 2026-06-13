@@ -3,7 +3,7 @@ import { getSlackContinuationMarker } from "@/chat/slack/output";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../../fixtures/oauth-resume-slack";
+} from "../../fixtures/oauth/resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";

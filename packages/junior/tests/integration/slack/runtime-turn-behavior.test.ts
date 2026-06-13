@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
-import { createSlackBehaviorRuntime } from "../../fixtures/slack-behavior";
+import { createSlackBehaviorRuntime } from "../../fixtures/slack/behavior";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: runtime turns", () => {
   beforeEach(async () => {

@@ -29,7 +29,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   extractAssistantText,
   isAssistantMessage,
-} from "@/chat/respond-helpers";
+} from "@/chat/respond/pi-messages";
 import {
   createStateAdvisorSessionStore,
   getAdvisorSessionKey,

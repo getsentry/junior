@@ -1,11 +1,11 @@
-import { createTestDestination } from "../../fixtures/slack-harness";
+import { createTestDestination } from "../../fixtures/slack/harness";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
-import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackApiOutbox } from "../../fixtures/slack/api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
 import { createSlackRuntime } from "@/chat/app/factory";

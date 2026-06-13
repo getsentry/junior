@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTestMessage } from "../../fixtures/slack-harness";
+import { createTestMessage } from "../../fixtures/slack/harness";
 import { mockTestClock } from "../../fixtures/vitest";
 
 const ORIGINAL_ENV = { ...process.env };

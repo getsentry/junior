@@ -6,7 +6,7 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { FakeSlackAdapter } from "../../fixtures/slack-harness";
+import { FakeSlackAdapter } from "../../fixtures/slack/harness";
 
 describe("Slack behavior: assistant lifecycle", () => {
   afterEach(async () => {

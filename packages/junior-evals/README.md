@@ -65,18 +65,22 @@ For each `it()` case inside a `describeEval()` suite:
 
 Harness override knobs (in `EvalOverrides`):
 
-- `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
-- `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
-- `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
-- `fail_reply_call`: force a non-retryable reply failure on a specific call.
-- `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
-- `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
-- `reply_texts`: override returned reply text per call.
-- `reply_timeout_ms`: lower or set the per-reply harness timeout for a specific scenario. It cannot exceed 30 seconds.
-- `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
+- `auth.autoCompleteMcpOAuth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
+- `auth.autoCompleteOAuth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
+- `auth.credentialProviders`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
+- `plugins.pluginDirs`: load plugin fixtures from eval-local directories without adding workspace packages.
+- `plugins.pluginPackages`: load named workspace plugin packages for plugin-specific behavior evals.
+- `plugins.skillDirs`: load skill fixture directories into the real reply-generation path.
+- `replyGeneration.cannedResults`: return structured reply results for downstream delivery or resilience scenarios.
+- `replyGeneration.cannedTexts`: return reply text per successful call for downstream delivery scenarios.
+- `replyGeneration.failCall`: force a non-retryable reply failure on a specific call.
+- `replyGeneration.mockImageGeneration`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
+- `replyGeneration.timeoutMs`: lower or set the per-reply harness timeout for a specific scenario. It cannot exceed 30 seconds.
+- `replyGeneration.unsetGatewayCredentials`: remove gateway credentials for the duration of real reply generation when the scenario explicitly covers missing credential behavior.
+- `subscribedReplyDecisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
-These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
-`reply_texts` and `reply_results` bypass real reply generation, so use them only for downstream delivery behavior, not prompt, model-routing, or thinking-level coverage.
+These knobs configure role-named scenario adapters on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams or nested production service override bags.
+`replyGeneration.cannedTexts` and `replyGeneration.cannedResults` bypass real reply generation, so use them only for downstream delivery behavior, not prompt, model-routing, or thinking-level coverage.
 
 Tool replay:
 
@@ -108,7 +112,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 - Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `describeEval()` with `slackEvals`.
 - Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
-- Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
+- Use `auth.autoCompleteMcpOAuth` or `auth.autoCompleteOAuth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
 - Encode all expectations in `criteria`; do not add deterministic inline assertions.
@@ -129,6 +133,7 @@ Do not do these in eval files:
 
 - Do not import `@/chat/slack/*` directly.
 - Do not use MSW Slack helpers (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, `queueSlackApiError`, `queueSlackRateLimit`).
+- Do not import raw Slack capture wrappers. Use eval artifact helpers that expose Slack-visible posts, reactions, canvases, or files instead.
 - Do not validate raw Slack Web API request payload shapes from evals.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.
 

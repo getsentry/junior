@@ -3,7 +3,7 @@ import type { ResumeSlackTurnServices } from "@/chat/runtime/slack-resume";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../../fixtures/oauth-resume-slack";
+} from "../../fixtures/oauth/resume-slack";
 import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import { mockTestClock } from "../../fixtures/vitest";
 

@@ -31,6 +31,14 @@ Tests should be easy to write because the repo provides faithful test adapters f
   `listThreadReplies`, or `downloadSlackFile`. Do not expose nested production
   service names such as `replyExecutor` or `visionContext` as the preferred
   test API.
+- Eval fixtures should expose user-visible artifacts, not raw captured transport
+  calls. For example, evals may consume Slack posts, reactions, canvases, and
+  files through a fixture-owned artifact collector; raw Slack Web API captures
+  belong in Slack transport-contract integration tests.
+- When a shared fixture file starts serving multiple unrelated domains, split it
+  by feature before adding more behavior. Prefer small modules such as
+  `slack/eval-artifacts`, `respond/user-turn-input`, or `respond/pi-messages`
+  over catch-all `helpers` files.
 - Do not mock logging, Sentry capture, span capture, or tracing helpers to quiet tests or avoid setup. Real telemetry should run through ordinary behavior tests.
 - If telemetry output must be inspected, keep it rare, put it in a dedicated logging contract test under `tests/unit/logging/**`, and mock only the minimal Sentry/span primitive needed to observe stable semantic behavior.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.

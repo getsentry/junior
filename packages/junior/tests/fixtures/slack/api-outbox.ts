@@ -4,7 +4,7 @@ import {
   type CapturedSlackApiCall,
   type CapturedSlackFileUploadCall,
   type SlackApiMethod,
-} from "../msw/handlers/slack-api";
+} from "../../msw/handlers/slack-api";
 
 /** Read-only outbox for Slack MSW calls captured during a test. */
 export class SlackApiOutbox {

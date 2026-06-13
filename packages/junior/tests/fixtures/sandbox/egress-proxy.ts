@@ -58,7 +58,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError as CredentialUnavailableErrorImpl } from "@/chat/credentials/broker";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { ALL as sandboxEgressHandler } from "@/handlers/sandbox-egress-proxy";
-import { DEFAULT_TEST_EXPIRES_AT_ISO } from "./vitest";
+import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../vitest";
 
 export const CredentialUnavailableError = CredentialUnavailableErrorImpl;
 export const SANDBOX_EGRESS_PROXY_PATH = SANDBOX_EGRESS_PROXY_PATH_IMPL;

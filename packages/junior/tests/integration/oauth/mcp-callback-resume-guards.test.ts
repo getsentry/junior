@@ -4,7 +4,7 @@ import {
   EVAL_MCP_AUTH_PROVIDER,
   SLACK_DESTINATION,
   createMcpOauthCallbackRouteFixture,
-} from "../../fixtures/mcp-oauth-callback-route";
+} from "../../fixtures/mcp/oauth-callback-route";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createMcpOauthCallbackRouteFixture>>;

@@ -4,13 +4,13 @@ import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
   createSlackImageRuntime,
   resetSlackImageRuntimeEnv,
-} from "../../fixtures/slack-image-runtime";
-import { toPostedText } from "../../fixtures/slack-posts";
+} from "../../fixtures/slack/image-runtime";
+import { toPostedText } from "../../fixtures/slack/posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: mixed attachment media", () => {
   afterEach(() => {

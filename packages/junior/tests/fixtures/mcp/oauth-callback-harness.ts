@@ -1,7 +1,7 @@
 import {
   waitUntilCallbacks,
   testWaitUntil,
-} from "./oauth-callback-after-harness";
+} from "../oauth/callback-after-harness";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 type McpOauthCallbackHandler =

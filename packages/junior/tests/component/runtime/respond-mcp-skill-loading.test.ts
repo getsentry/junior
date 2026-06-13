@@ -9,7 +9,7 @@ import {
   respondMcpProgressiveLoadingHarness,
   restoreRespondMcpProgressiveLoadingEnv,
   setupRespondMcpProgressiveLoadingTest,
-} from "../../fixtures/respond-mcp-progressive-loading";
+} from "../../fixtures/respond/mcp-progressive-loading";
 
 const {
   agentInitialToolNames,

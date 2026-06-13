@@ -13,9 +13,11 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: [
-          "The deploy changed the billing worker and the API auth flow.",
-        ],
+        replyGeneration: {
+          cannedTexts: [
+            "The deploy changed the billing worker and the API auth flow.",
+          ],
+        },
       },
       events: [
         mention(
@@ -52,7 +54,9 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: ["You need the budget by Friday."],
+        replyGeneration: {
+          cannedTexts: ["You need the budget by Friday."],
+        },
       },
       events: [
         mention("I need the budget by Friday.", {
@@ -84,9 +88,11 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: [
-          "The deploy changed the billing worker and the API auth flow.",
-        ],
+        replyGeneration: {
+          cannedTexts: [
+            "The deploy changed the billing worker and the API auth flow.",
+          ],
+        },
       },
       events: [
         mention(
@@ -121,9 +127,11 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: [
-          "The billing worker handles invoice processing and payment retries.",
-        ],
+        replyGeneration: {
+          cannedTexts: [
+            "The billing worker handles invoice processing and payment retries.",
+          ],
+        },
       },
       events: [
         mention("What does the billing worker do?", {
@@ -157,7 +165,9 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: ["Here's the deployment status."],
+        replyGeneration: {
+          cannedTexts: ["Here's the deployment status."],
+        },
       },
       events: [
         mention("Show me the deployment status.", { thread: canYouThread }),
@@ -185,7 +195,9 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: ["The deploy changed three services."],
+        replyGeneration: {
+          cannedTexts: ["The deploy changed three services."],
+        },
       },
       events: [
         mention(
@@ -220,10 +232,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: [
-          "The deploy changed billing, auth, and the API gateway.",
-          "The three services were billing, auth, and the API gateway.",
-        ],
+        replyGeneration: {
+          cannedTexts: [
+            "The deploy changed billing, auth, and the API gateway.",
+            "The three services were billing, auth, and the API gateway.",
+          ],
+        },
       },
       events: [
         mention("What changed in the deploy?", {
@@ -255,7 +269,11 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: ["The deploy changed billing, auth, and the API gateway."],
+        replyGeneration: {
+          cannedTexts: [
+            "The deploy changed billing, auth, and the API gateway.",
+          ],
+        },
       },
       events: [
         mention("What changed in the deploy?", {
@@ -290,10 +308,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_texts: [
-          "I can help in this thread.",
-          "I'm back because you mentioned me again.",
-        ],
+        replyGeneration: {
+          cannedTexts: [
+            "I can help in this thread.",
+            "I'm back because you mentioned me again.",
+          ],
+        },
       },
       events: [
         mention("Can you help in this thread?", { thread: optOutThread }),

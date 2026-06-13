@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-13
 
 ## Purpose
 
@@ -61,6 +61,9 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 16. Prefer the shared default test clock helpers over ad-hoc `Date.now()` or inline `vi.setSystemTime(...)` setup when stable timestamps are part of the fixture contract.
 17. Do not add production dependency parameters merely to replace basic runtime behavior in tests. Use temp files for filesystem reads/writes, Vitest fake timers for `Date.now()`, env stubs for `process.env`, MSW for HTTP, and memory adapters for persistence.
 18. Prefer module-owned adapter registries or selection modules for app-wide backends. Use explicit runtime fixture adapter overrides only for real per-scenario boundaries such as model reply generation, Slack thread reads/files, queue wakeups, sandbox execution, or HTTP.
+19. Keep shared test fixtures and production helper modules named by the concern they own. Split catch-all helpers once they start mixing prompt input, Pi message history, runtime context, Slack transport, or adapter setup.
+20. Eval harness overrides must be grouped by contract area (`auth`, `plugins`, `replyGeneration`, subscribed reply decisions) so fixtures that bypass real generation or routing are visually obvious at the call site.
+21. Eval artifact helpers may expose user-visible Slack outputs such as posts, reactions, canvases, and files. Eval files must not inspect raw Slack Web API captures directly.
 
 ## Coverage Budget (Avoid Over-Testing)
 
@@ -112,12 +115,14 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 10. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
 11. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
 12. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.
+13. Runtime scenario adapters should be flat and role-named. Avoid nested service override bags that expose production implementation structure as the test API.
 
 ## Enforcement
 
 `pnpm --filter @sentry/junior run test:boundaries` enforces major Slack and observability boundary rules:
 
 - Eval files cannot import Slack contract internals.
+- Eval files cannot use raw Slack API capture helpers; they must go through fixture-owned artifact collectors.
 - Integration tests cannot use module mocks.
 - Behavior tests cannot mock logging, Sentry capture, span capture, or tracing helpers.
 - Behavior tests cannot assert internal telemetry emissions; rare telemetry contract tests live under `tests/unit/logging/**`.

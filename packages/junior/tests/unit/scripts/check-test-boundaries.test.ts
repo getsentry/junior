@@ -78,6 +78,44 @@ describe("check-test-boundaries", () => {
     ]);
   });
 
+  it("rejects eval imports of raw Slack capture wrappers", async () => {
+    await writeFixtureFile(
+      "packages/junior-evals/evals/bad-capture.eval.ts",
+      [
+        'import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";',
+        "readCapturedSlackApiCalls();",
+        "",
+      ].join("\n"),
+    );
+
+    await expect(checkTempRepo()).resolves.toEqual([
+      expect.stringContaining("readCapturedSlackApiCalls"),
+      expect.stringContaining("captured-slack-api-calls"),
+    ]);
+  });
+
+  it("rejects legacy flat eval override keys", async () => {
+    await writeFixtureFile(
+      "packages/junior-evals/evals/bad-overrides.eval.ts",
+      [
+        "await run({",
+        "  overrides: {",
+        "    reply_texts: ['ok'],",
+        "    plugin_dirs: ['evals/fixtures/plugins'],",
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const violations = await checkTempRepo();
+    expect(violations).toHaveLength(2);
+    expect(violations).toEqual([
+      expect.stringContaining("plugin_dirs"),
+      expect.stringContaining("reply_texts"),
+    ]);
+  });
+
   it("detects multiline integration module mocks", async () => {
     await writeFixtureFile(
       "packages/junior/tests/integration/slack/bad.test.ts",

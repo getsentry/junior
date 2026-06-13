@@ -23,7 +23,7 @@ import {
   setSandboxEgressSystemActor,
   setSandboxEgressUserActor,
   setupSandboxEgressProxyTest,
-} from "../../fixtures/sandbox-egress-proxy";
+} from "../../fixtures/sandbox/egress-proxy";
 import { DEFAULT_TEST_EXPIRES_AT_ISO } from "../../fixtures/vitest";
 
 function mockSequentialSentryLeases(...tokens: string[]): void {

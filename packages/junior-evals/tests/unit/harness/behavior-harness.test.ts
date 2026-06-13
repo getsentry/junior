@@ -1,9 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import {
-  collectSlackArtifactsFromCapturedCalls,
-  runEvalScenario,
-} from "../../../evals/behavior-harness";
+import { collectEvalSlackArtifactsFromSlackApiCalls } from "@junior-tests/fixtures/slack/eval-artifacts";
+import { runEvalScenario } from "../../../evals/behavior-harness";
 
 const { originalStateAdapterEnv } = vi.hoisted(() => {
   const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
@@ -23,7 +21,9 @@ describe("behavior harness", () => {
   it("routes eval thread fixtures through the real Slack runtime", async () => {
     const result = await runEvalScenario({
       overrides: {
-        reply_texts: ["observed"],
+        replyGeneration: {
+          cannedTexts: ["observed"],
+        },
       },
       events: [
         {
@@ -64,7 +64,9 @@ describe("behavior harness", () => {
       await expect(
         runEvalScenario({
           overrides: {
-            credential_providers: ["github"],
+            auth: {
+              credentialProviders: ["github"],
+            },
           },
           events: [],
         }),
@@ -92,7 +94,9 @@ describe("behavior harness", () => {
       await expect(
         runEvalScenario({
           overrides: {
-            credential_providers: ["github"],
+            auth: {
+              credentialProviders: ["github"],
+            },
           },
           events: [],
         }),
@@ -117,8 +121,10 @@ describe("behavior harness", () => {
 
     const result = await runEvalScenario({
       overrides: {
-        reply_texts: ["observed first", "observed second"],
-        subscribed_decisions: [{ should_reply: true, reason: "mentioned" }],
+        replyGeneration: {
+          cannedTexts: ["observed first", "observed second"],
+        },
+        subscribedReplyDecisions: [{ should_reply: true, reason: "mentioned" }],
       },
       events: [
         {
@@ -171,8 +177,10 @@ describe("behavior harness", () => {
       runEvalScenario({
         events: [],
         overrides: {
-          plugin_dirs: ["evals/fixtures/plugins"],
-          plugin_packages: ["../bad-package"],
+          plugins: {
+            pluginDirs: ["evals/fixtures/plugins"],
+            pluginPackages: ["../bad-package"],
+          },
         },
       }),
     ).rejects.toThrow("Plugin package names must be valid npm package names");
@@ -181,11 +189,9 @@ describe("behavior harness", () => {
   });
 
   it("collects created canvas metadata from captured Slack API calls", () => {
-    const artifacts = collectSlackArtifactsFromCapturedCalls([
+    const artifacts = collectEvalSlackArtifactsFromSlackApiCalls([
       {
         method: "canvases.create",
-        url: "https://slack.test/api/canvases.create",
-        headers: {},
         params: {
           title: "Slack Streaming Timeline",
           document_content: {
@@ -196,8 +202,6 @@ describe("behavior harness", () => {
       },
       {
         method: "chat.postMessage",
-        url: "https://slack.test/api/chat.postMessage",
-        headers: {},
         params: {
           channel: "CTEST",
           text: "Created a canvas with the full notes.",

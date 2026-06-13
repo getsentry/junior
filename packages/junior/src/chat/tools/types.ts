@@ -14,6 +14,11 @@ import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 import type { completeText } from "@/chat/pi/client";
+import type {
+  LocalRequester,
+  Requester,
+  SlackRequester,
+} from "@/chat/requester";
 
 export interface ImageGenerateToolDeps {
   completeText?: typeof completeText;

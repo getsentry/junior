@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   configureRespondRuntimeEnv,
   restoreRespondRuntimeEnv,
-} from "../../fixtures/respond-env";
+} from "../../fixtures/respond/env";
 
 const originalEnv = configureRespondRuntimeEnv();
 

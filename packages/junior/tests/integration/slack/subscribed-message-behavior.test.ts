@@ -5,11 +5,11 @@ import {
   conversationMessages,
   createSlackBehaviorRuntime,
   postedText,
-} from "../../fixtures/slack-behavior";
+} from "../../fixtures/slack/behavior";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: subscribed messages", () => {
   it("skips reply when classifier says not to reply", async () => {

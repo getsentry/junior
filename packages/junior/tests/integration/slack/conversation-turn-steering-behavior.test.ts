@@ -9,10 +9,10 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
-import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackApiOutbox } from "../../fixtures/slack/api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeScenarioAdapters } from "@/chat/app/services";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import type { ReplySteeringMessage } from "@/chat/respond";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -78,8 +78,8 @@ function reactionTargetsByName(name: string) {
 }
 
 type CompleteObjectOverride = NonNullable<
-  JuniorRuntimeServiceOverrides["subscribedReplyPolicy"]
->["completeObject"];
+  JuniorRuntimeScenarioAdapters["classifySubscribedReply"]
+>;
 
 interface RouterDecision {
   confidence: number;
@@ -103,7 +103,6 @@ function completeObjectWithDecision(
 function createTurnHarness(args: {
   completeObject?: CompleteObjectOverride;
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
-  services?: Parameters<typeof createSlackRuntime>[0]["services"];
   state: StateAdapter;
 }) {
   const queue = createConversationWorkQueueTestAdapter();

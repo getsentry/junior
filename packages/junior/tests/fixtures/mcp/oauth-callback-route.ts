@@ -3,16 +3,16 @@ import { expect, vi } from "vitest";
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
-} from "../msw/handlers/eval-mcp-auth";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { createPluginAppFixture, type PluginAppFixture } from "./plugin-app";
-import { successfulAssistantReply } from "./assistant-reply";
+} from "../../msw/handlers/eval-mcp-auth";
+import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { createPluginAppFixture, type PluginAppFixture } from "../plugin-app";
+import { successfulAssistantReply } from "../assistant-reply";
 import type { ResumeReplyGenerator } from "@/chat/runtime/slack-resume";
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
-  "plugins/eval-auth",
+  "../plugins/eval-auth",
 );
 
 export const SLACK_DESTINATION = {
@@ -26,8 +26,7 @@ type ConversationStateModule = typeof import("@/chat/state/conversation");
 type McpAuthStoreModule = typeof import("@/chat/mcp/auth-store");
 type McpClientModule = typeof import("@/chat/mcp/client");
 type McpOauthModule = typeof import("@/chat/mcp/oauth");
-type McpOauthCallbackHarnessModule =
-  typeof import("./mcp-oauth-callback-harness");
+type McpOauthCallbackHarnessModule = typeof import("./oauth-callback-harness");
 type PluginRegistryModule = typeof import("@/chat/plugins/registry");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
@@ -67,7 +66,7 @@ export async function createMcpOauthCallbackRouteFixture() {
   const mcpClient: McpClientModule = await import("@/chat/mcp/client");
   const mcpOauth: McpOauthModule = await import("@/chat/mcp/oauth");
   const mcpOauthCallbackHarness: McpOauthCallbackHarnessModule =
-    await import("./mcp-oauth-callback-harness");
+    await import("./oauth-callback-harness");
   const pluginRegistry: PluginRegistryModule =
     await import("@/chat/plugins/registry");
   const stateAdapter: StateAdapterModule = await import("@/chat/state/adapter");

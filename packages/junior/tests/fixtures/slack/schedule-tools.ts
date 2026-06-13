@@ -26,8 +26,8 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
-} from "./sql";
-import { DEFAULT_TEST_NOW_MS, mockTestClock } from "./vitest";
+} from "../sql";
+import { DEFAULT_TEST_NOW_MS, mockTestClock } from "../vitest";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";

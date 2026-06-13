@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestThread } from "../../fixtures/slack-harness";
+import { createTestThread } from "../../fixtures/slack/harness";
 
 describe("slack harness fixture", () => {
   it("uses explicit channelId when provided", () => {

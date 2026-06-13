@@ -8,7 +8,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: skillDirs },
+      overrides: { plugins: { skillDirs } },
       events: [mention("What's the weather like in San Francisco today?")],
       criteria: rubric({
         contract:
@@ -31,7 +31,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: skillDirs },
+      overrides: { plugins: { skillDirs } },
       events: [
         mention(
           "Use the weather-lookup skill to check the weather in San Francisco.",
@@ -55,7 +55,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: skillDirs },
+      overrides: { plugins: { skillDirs } },
       events: [
         mention(
           "Can you double-check what the source handbook says about capability support verification?",

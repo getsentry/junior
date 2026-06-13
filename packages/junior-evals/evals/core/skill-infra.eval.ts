@@ -6,7 +6,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { plugins: { skillDirs: ["evals/fixtures/skills"] } },
       events: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
         contract:
@@ -30,7 +30,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { plugins: { skillDirs: ["evals/fixtures/skills"] } },
       events: [
         mention("/candidate-brief Alice Example", {
           thread: candidateBriefThread,
@@ -57,7 +57,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { plugins: { skillDirs: ["evals/fixtures/skills"] } },
       events: [mention("/list-working-directory")],
       criteria: rubric({
         contract:
@@ -75,7 +75,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { plugins: { skillDirs: ["evals/fixtures/skills"] } },
       events: [
         mention(
           "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
@@ -103,7 +103,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_dirs: ["evals/fixtures/plugins"],
+        plugins: { pluginDirs: ["evals/fixtures/plugins"] },
       },
       events: [
         mention(

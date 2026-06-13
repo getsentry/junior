@@ -10,7 +10,7 @@ import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,

@@ -18,7 +18,7 @@ import {
 } from "@junior-tests/fixtures/plugin-app";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
-import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeScenarioAdapters } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { EmittedLogRecord } from "@/chat/logging";
 import {
@@ -63,7 +63,7 @@ import {
   FakeSlackAdapter,
   createTestThread,
   type TestThread,
-} from "@junior-tests/fixtures/slack-harness";
+} from "@junior-tests/fixtures/slack/harness";
 import {
   EVAL_OAUTH_CODE,
   EVAL_OAUTH_PROVIDER,
@@ -72,16 +72,16 @@ import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
 } from "@junior-tests/msw/handlers/eval-mcp-auth";
-import { runMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp-oauth-callback-harness";
-import { runOauthCallbackRoute } from "@junior-tests/fixtures/oauth-callback-harness";
-import {
-  readCapturedSlackApiCalls,
-  type CapturedSlackApiCall,
-} from "@junior-tests/msw/captured-slack-api-calls";
+import { runMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp/oauth-callback-harness";
+import { runOauthCallbackRoute } from "@junior-tests/fixtures/oauth/callback-harness";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-test-fixtures/pglite";
+import {
+  collectEvalSlackArtifacts,
+  findLatestOAuthStateFromEvalSlackArtifacts,
+} from "@junior-tests/fixtures/slack/eval-artifacts";
 import { createSlackDestination } from "@/chat/destination";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
@@ -160,20 +160,32 @@ interface EvalReplyResultFixture {
   used_primary_text?: boolean;
 }
 
+interface EvalAuthOverrides {
+  autoCompleteMcpOAuth?: string[];
+  autoCompleteOAuth?: string[];
+  credentialProviders?: Array<"github" | "sentry">;
+}
+
+interface EvalPluginOverrides {
+  pluginDirs?: string[];
+  pluginPackages?: string[];
+  skillDirs?: string[];
+}
+
+interface EvalReplyGenerationFixture {
+  cannedResults?: EvalReplyResultFixture[];
+  cannedTexts?: string[];
+  failCall?: number;
+  mockImageGeneration?: boolean;
+  timeoutMs?: number;
+  unsetGatewayCredentials?: boolean;
+}
+
 export interface EvalOverrides {
-  auto_complete_mcp_oauth?: string[];
-  auto_complete_oauth?: string[];
-  credential_providers?: Array<"github" | "sentry">;
-  fail_reply_call?: number;
-  mock_image_generation?: boolean;
-  plugin_dirs?: string[];
-  plugin_packages?: string[];
-  reply_results?: EvalReplyResultFixture[];
-  reply_timeout_ms?: number;
-  reply_texts?: string[];
-  skill_dirs?: string[];
-  subscribed_decisions?: SubscribedDecisionFixture[];
-  unset_gateway_api_key?: boolean;
+  auth?: EvalAuthOverrides;
+  plugins?: EvalPluginOverrides;
+  replyGeneration?: EvalReplyGenerationFixture;
+  subscribedReplyDecisions?: SubscribedDecisionFixture[];
 }
 
 export interface EvalScenario {
@@ -446,20 +458,6 @@ function resolveEvalRelativePath(entry: string): string {
     : path.resolve(EVAL_PACKAGE_ROOT, entry);
 }
 
-function toFirstString(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const resolved = toFirstString(entry);
-      if (resolved) return resolved;
-    }
-  }
-  return undefined;
-}
-
 function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
   if (fixture.channel_id && fixture.thread_ts) {
     return `slack:${fixture.channel_id}:${fixture.thread_ts}`;
@@ -563,8 +561,8 @@ function isSandboxReachableBaseUrl(value: string): boolean {
 
 function scenarioNeedsEvalEgress(scenario: EvalScenario): boolean {
   return Boolean(
-    scenario.overrides?.credential_providers?.length ||
-    scenario.overrides?.auto_complete_oauth?.length,
+    scenario.overrides?.auth?.credentialProviders?.length ||
+    scenario.overrides?.auth?.autoCompleteOAuth?.length,
   );
 }
 
@@ -855,14 +853,6 @@ function createEvalThread(args: {
   return thread;
 }
 
-function buildReactionKey(input: {
-  channel: string;
-  emoji: string;
-  timestamp: string;
-}): string {
-  return `${input.channel}:${input.timestamp}:${input.emoji}`;
-}
-
 function toEvalFiles(value: unknown): EvalAttachedFile[] {
   if (!value || typeof value !== "object") {
     return [];
@@ -905,89 +895,6 @@ function toEvalFiles(value: unknown): EvalAttachedFile[] {
       ...(data ? { sizeBytes: data.byteLength } : {}),
     };
   });
-}
-
-export function collectSlackArtifactsFromCapturedCalls(
-  calls: CapturedSlackApiCall[],
-): Pick<EvalResult, "canvases" | "channelPosts" | "reactions"> {
-  const canvases: EvalResult["canvases"] = [];
-  const channelPosts: EvalResult["channelPosts"] = [];
-  const reactions = new Map<string, EvalResult["reactions"][number]>();
-
-  for (const call of calls) {
-    if (call.method === "canvases.create") {
-      const title = toFirstString(call.params.title) ?? "";
-      const documentContent =
-        call.params.document_content &&
-        typeof call.params.document_content === "object"
-          ? (call.params.document_content as Record<string, unknown>)
-          : undefined;
-      const markdown = documentContent
-        ? (toFirstString(documentContent.markdown) ?? "")
-        : "";
-      if (!title && markdown.length === 0) {
-        continue;
-      }
-      canvases.push({
-        title,
-        markdown,
-      });
-      continue;
-    }
-
-    if (call.method === "chat.postMessage") {
-      const channel = toFirstString(call.params.channel);
-      const text = toFirstString(call.params.text);
-      if (!channel || text === undefined) {
-        continue;
-      }
-      const threadTs = toFirstString(call.params.thread_ts);
-      channelPosts.push({
-        channel,
-        text,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
-      });
-      continue;
-    }
-
-    if (call.method === "reactions.add") {
-      const channel = toFirstString(call.params.channel);
-      const emoji = toFirstString(call.params.name);
-      const timestamp = toFirstString(call.params.timestamp);
-      if (!channel || !emoji || !timestamp) {
-        continue;
-      }
-      const reaction = {
-        channel,
-        emoji,
-        timestamp,
-      };
-      reactions.set(buildReactionKey(reaction), reaction);
-      continue;
-    }
-
-    if (call.method === "reactions.remove") {
-      const channel = toFirstString(call.params.channel);
-      const emoji = toFirstString(call.params.name);
-      const timestamp = toFirstString(call.params.timestamp);
-      if (!channel || !emoji || !timestamp) {
-        continue;
-      }
-      reactions.delete(
-        buildReactionKey({
-          channel,
-          emoji,
-          timestamp,
-        }),
-      );
-    }
-  }
-
-  return {
-    canvases,
-    channelPosts,
-    reactions: [...reactions.values()],
-  };
 }
 
 function toEvalAssistantPost(value: unknown): EvalAssistantPost {
@@ -1150,55 +1057,6 @@ function getDefaultAuthCode(
   );
 }
 
-function extractSlackLinkUrl(text: string): URL | undefined {
-  const match = text.match(/<([^|>]+)\|/);
-  if (!match?.[1]) {
-    return undefined;
-  }
-  try {
-    return new URL(match[1]);
-  } catch {
-    return undefined;
-  }
-}
-
-function findLatestOAuthStateFromSlackCalls(args: {
-  authorizeEndpoint: string;
-  consumedStates: Set<string>;
-}): string | undefined {
-  const expectedUrl = new URL(args.authorizeEndpoint);
-  const calls = readCapturedSlackApiCalls();
-
-  for (let index = calls.length - 1; index >= 0; index -= 1) {
-    const call = calls[index];
-    if (
-      call.method !== "chat.postEphemeral" &&
-      call.method !== "chat.postMessage"
-    ) {
-      continue;
-    }
-    const text = toFirstString(call.params.text);
-    if (!text) {
-      continue;
-    }
-    const authLink = extractSlackLinkUrl(text);
-    if (!authLink) {
-      continue;
-    }
-    if (
-      authLink.origin !== expectedUrl.origin ||
-      authLink.pathname !== expectedUrl.pathname
-    ) {
-      continue;
-    }
-    const state = authLink.searchParams.get("state")?.trim();
-    if (state && !args.consumedStates.has(state)) {
-      return state;
-    }
-  }
-  return undefined;
-}
-
 async function autoCompleteMcpOauth(args: {
   provider: string;
   requesterUserId: string;
@@ -1237,7 +1095,7 @@ async function autoCompleteOauth(args: {
     throw new Error(`Unknown OAuth provider "${provider}" in eval harness`);
   }
 
-  const state = findLatestOAuthStateFromSlackCalls({
+  const state = findLatestOAuthStateFromEvalSlackArtifacts({
     authorizeEndpoint: providerConfig.authorizeEndpoint,
     consumedStates: args.consumedStates,
   });
@@ -1288,17 +1146,20 @@ async function setupHarnessEnvironment(
 
   try {
     const configuredSkillDirs =
-      scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
+      scenario.overrides?.plugins?.skillDirs?.map(resolveEvalRelativePath) ??
+      [];
     const configuredPluginDirs =
-      scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
+      scenario.overrides?.plugins?.pluginDirs?.map(resolveEvalRelativePath) ??
+      [];
     const autoCompleteMcpOauthProviders = new Set(
-      scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
+      scenario.overrides?.auth?.autoCompleteMcpOAuth?.map((p) => p.trim()) ??
+        [],
     );
     const autoCompleteOauthProviders = new Set(
-      scenario.overrides?.auto_complete_oauth?.map((p) => p.trim()) ?? [],
+      scenario.overrides?.auth?.autoCompleteOAuth?.map((p) => p.trim()) ?? [],
     );
     const credentialProviders = new Set(
-      scenario.overrides?.credential_providers ?? [],
+      scenario.overrides?.auth?.credentialProviders ?? [],
     );
     const authRequesterUsers = new Set(
       scenario.events.flatMap((event) =>
@@ -1321,12 +1182,12 @@ async function setupHarnessEnvironment(
       configuredPluginDirs.length > 0
         ? await createPluginAppFixture(configuredPluginDirs, {
             linkNodeModules: Boolean(
-              scenario.overrides?.plugin_packages?.length,
+              scenario.overrides?.plugins?.pluginPackages?.length,
             ),
           })
         : undefined;
     setPluginCatalogConfig({
-      packages: scenario.overrides?.plugin_packages ?? [],
+      packages: scenario.overrides?.plugins?.pluginPackages ?? [],
     });
 
     const stateAdapter = getStateAdapter();
@@ -1400,14 +1261,15 @@ function buildRuntimeServices(
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
   observations: RuntimeObservations,
-): JuniorRuntimeAdapterOverrides {
-  const replyResults = scenario.overrides?.reply_results ?? [];
-  const replyTexts = scenario.overrides?.reply_texts ?? [];
-  const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
+): JuniorRuntimeScenarioAdapters {
+  const replyResults = scenario.overrides?.replyGeneration?.cannedResults ?? [];
+  const replyTexts = scenario.overrides?.replyGeneration?.cannedTexts ?? [];
+  const subscribedDecisions =
+    scenario.overrides?.subscribedReplyDecisions ?? [];
   const replyTimeoutMs =
-    scenario.overrides?.reply_timeout_ms &&
-    scenario.overrides.reply_timeout_ms > 0
-      ? scenario.overrides.reply_timeout_ms
+    scenario.overrides?.replyGeneration?.timeoutMs &&
+    scenario.overrides.replyGeneration.timeoutMs > 0
+      ? scenario.overrides.replyGeneration.timeoutMs
       : Number.parseInt(
           process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ??
             (scenarioNeedsEvalEgress(scenario) ? "60000" : "30000"),
@@ -1417,7 +1279,7 @@ function buildRuntimeServices(
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
 
-  const adapters: JuniorRuntimeAdapterOverrides = {
+  const adapters: JuniorRuntimeScenarioAdapters = {
     ...(subscribedDecisions.length > 0
       ? {
           classifySubscribedReply: async (params) => {
@@ -1440,8 +1302,9 @@ function buildRuntimeServices(
       : {}),
     generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
-      const mockImageGeneration = scenario.overrides?.mock_image_generation;
-      if (scenario.overrides?.fail_reply_call === replyCallCount) {
+      const mockImageGeneration =
+        scenario.overrides?.replyGeneration?.mockImageGeneration;
+      if (scenario.overrides?.replyGeneration?.failCall === replyCallCount) {
         throw new Error(`forced reply failure on call ${replyCallCount}`);
       }
       const replyResult = replyResults[replyCallCount - 1];
@@ -1525,7 +1388,7 @@ function buildRuntimeServices(
           ? { imageGenerate: createMockImageGenerateDeps() }
           : {}),
       };
-      if (scenario.overrides?.unset_gateway_api_key) {
+      if (scenario.overrides?.replyGeneration?.unsetGatewayCredentials) {
         delete process.env.AI_GATEWAY_API_KEY;
         delete process.env.VERCEL_OIDC_TOKEN;
       }
@@ -1557,7 +1420,7 @@ function buildRuntimeServices(
           ),
         ]);
       } finally {
-        if (scenario.overrides?.unset_gateway_api_key) {
+        if (scenario.overrides?.replyGeneration?.unsetGatewayCredentials) {
           gatewaySnapshot.restore();
         }
       }
@@ -1714,8 +1577,7 @@ function collectResults(
       .filter((record) => record.thread.threadTs)
       .map((record) => `${record.thread.channelId}:${record.thread.threadTs}`),
   );
-  const { canvases, channelPosts, reactions } =
-    collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
+  const { canvases, channelPosts, reactions } = collectEvalSlackArtifacts();
   const threadPosts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map((post) => ({
       ...toEvalAssistantPost(post),
@@ -1863,7 +1725,7 @@ export async function runEvalScenario(
   }
 }
 
-// Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
+// Compile-time guards for Thread and Message fakes are in tests/fixtures/slack/harness.ts.
 // The toIncomingMessage function below still needs a local check since it maps from eval-specific fixtures.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
 type _MessageCheck = AssertAssignable<

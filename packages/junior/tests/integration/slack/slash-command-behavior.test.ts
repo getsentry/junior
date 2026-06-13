@@ -8,7 +8,7 @@ import {
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
 } from "../../fixtures/conversation-work";
-import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackApiOutbox } from "../../fixtures/slack/api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 

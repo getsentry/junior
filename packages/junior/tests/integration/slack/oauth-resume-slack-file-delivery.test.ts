@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createOauthResumeSlackFixture,
   makeResumeDiagnostics,
-} from "../../fixtures/oauth-resume-slack";
+} from "../../fixtures/oauth/resume-slack";
 import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import { TEST_SLACK_DESTINATION } from "../../fixtures/reply-context";
 import {

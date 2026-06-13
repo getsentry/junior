@@ -17,10 +17,25 @@ const EVAL_SOURCE_EXTENSIONS = new Set([
 
 const FORBIDDEN_EVAL_PATTERNS = [
   /queueSlackApiResponse/,
+  /readCapturedSlackApiCalls/,
+  /captured-slack-api-calls/,
   /getCapturedSlackApiCalls/,
   /queueSlackApiError/,
   /queueSlackRateLimit/,
   /@\/chat\/slack-actions\//,
+  /auto_complete_mcp_oauth/,
+  /auto_complete_oauth/,
+  /credential_providers/,
+  /fail_reply_call/,
+  /mock_image_generation/,
+  /plugin_dirs/,
+  /plugin_packages/,
+  /reply_results/,
+  /reply_timeout_ms/,
+  /reply_texts/,
+  /skill_dirs/,
+  /subscribed_decisions/,
+  /unset_gateway_api_key/,
 ];
 
 const VI_MODULE_MOCK_PATTERN = /\bvi\.(?:mock|doMock)\(\s*["']([^"']+)["']/g;

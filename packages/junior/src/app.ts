@@ -344,17 +344,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
-  const runtimeServiceOverrides = {
-    sandbox: {
-      tracePropagation: { domains: sandboxEgressTracePropagationDomains },
+  const runtimeScenarioAdapters = {
+    sandboxTracePropagation: {
+      domains: sandboxEgressTracePropagationDomains,
     },
   };
   const slackWebhookServices = createProductionSlackWebhookServices({
-    services: runtimeServiceOverrides,
+    adapters: runtimeScenarioAdapters,
   });
   const generateReplyWithTracePropagation = withSandboxTracePropagation(
     generateAssistantReply,
-    runtimeServiceOverrides.sandbox.tracePropagation,
+    runtimeScenarioAdapters.sandboxTracePropagation,
   );
 
   const app = new Hono();
@@ -410,7 +410,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     conversationWorkOptions ??=
       options?.conversationWork ??
       createProductionConversationWorkOptions({
-        services: runtimeServiceOverrides,
+        adapters: runtimeScenarioAdapters,
       });
     return conversationWorkOptions;
   };

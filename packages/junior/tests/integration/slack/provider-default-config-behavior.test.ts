@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { toPostedText } from "../../fixtures/slack-posts";
+import { toPostedText } from "../../fixtures/slack/posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {

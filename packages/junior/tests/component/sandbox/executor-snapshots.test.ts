@@ -10,7 +10,7 @@ import {
   sandboxCreateMock,
   setupSandboxExecutorTest,
   cleanupSandboxExecutorTest,
-} from "../../fixtures/sandbox-executor";
+} from "../../fixtures/sandbox/executor";
 
 describe("sandbox executor dependency snapshots", () => {
   beforeEach(setupSandboxExecutorTest);

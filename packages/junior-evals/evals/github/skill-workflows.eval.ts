@@ -7,8 +7,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_packages: ["@sentry/junior-github"],
-        skill_dirs: ["../junior/skills"],
+        plugins: {
+          pluginPackages: ["@sentry/junior-github"],
+          skillDirs: ["../junior/skills"],
+        },
       },
       events: [
         mention(
@@ -51,8 +53,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_packages: ["@sentry/junior-github"],
-        skill_dirs: ["../junior/skills"],
+        plugins: {
+          pluginPackages: ["@sentry/junior-github"],
+          skillDirs: ["../junior/skills"],
+        },
       },
       events: [
         mention("Set the default repo to getsentry/junior for this channel.", {
@@ -88,8 +92,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_packages: ["@sentry/junior-github"],
-        skill_dirs: ["../junior/skills"],
+        plugins: {
+          pluginPackages: ["@sentry/junior-github"],
+          skillDirs: ["../junior/skills"],
+        },
       },
       events: [
         threadMessage(
@@ -129,8 +135,10 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_packages: ["@sentry/junior-github"],
-        skill_dirs: ["../junior/skills"],
+        plugins: {
+          pluginPackages: ["@sentry/junior-github"],
+          skillDirs: ["../junior/skills"],
+        },
       },
       events: [
         threadMessage(

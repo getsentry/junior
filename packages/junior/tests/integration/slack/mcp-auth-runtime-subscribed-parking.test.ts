@@ -3,11 +3,11 @@ import {
   EVAL_MCP_AUTH_PROVIDER,
   createMcpAuthRuntimeSlackFixture,
   priorBudgetContext,
-} from "../../fixtures/mcp-auth-runtime-slack";
+} from "../../fixtures/mcp/auth-runtime-slack";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 let testbed: Awaited<ReturnType<typeof createMcpAuthRuntimeSlackFixture>>;
 

@@ -71,8 +71,8 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
-        auto_complete_mcp_oauth: ["eval-auth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        auth: { autoCompleteMcpOAuth: ["eval-auth"] },
+        plugins: { pluginDirs: ["evals/fixtures/plugins"] },
       },
       events: [
         threadMessage(
@@ -125,8 +125,8 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
-        auto_complete_oauth: ["eval-oauth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        auth: { autoCompleteOAuth: ["eval-oauth"] },
+        plugins: { pluginDirs: ["evals/fixtures/plugins"] },
       },
       events: [
         threadMessage(
@@ -179,8 +179,8 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
-        auto_complete_oauth: ["eval-oauth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        auth: { autoCompleteOAuth: ["eval-oauth"] },
+        plugins: { pluginDirs: ["evals/fixtures/plugins"] },
       },
       events: [
         threadMessage(

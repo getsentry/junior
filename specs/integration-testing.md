@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-05
+- Last Edited: 2026-06-13
 
 ## Intent
 
@@ -39,10 +39,12 @@ Allowed:
 - Fake agent or service substitution at the composition boundary only (`createSlackRuntime(...)`, `createTestChatRuntime(...)`, or approved thin wrapper helpers over them).
 - Fake Pi model transport through `ReplyRequestContext.harness.streamFn` when the test needs the real Pi `Agent` loop, tool execution, durable checkpoints, or auth-pause behavior.
 - Precomputed deterministic runtime decisions through explicit `ReplyRequestContext.harness` ports when the decision is not the behavior under test.
+- Role-named runtime scenario adapters such as `generateAssistantReply`, `classifySubscribedReply`, `listThreadReplies`, and `downloadSlackFile` when a behavior test needs deterministic data at a real boundary.
 
 Disallowed in integration behavior tests:
 
 - Mutable runtime-global behavior seams or singleton patching for core chat behavior.
+- Nested production service override bags that expose implementation ownership, such as `replyExecutor` or `visionContext`, as the test API.
 - `vi.mock` or `vi.doMock` for any module.
 - Ad-hoc stubbing of Slack HTTP fetch/webclient internals in test files.
 - Ad-hoc fake persistence or fake Slack delivery layers when the shared memory adapter + MSW harness can prove the same contract.

@@ -10,7 +10,7 @@ import {
   schedulerStore,
   setupSlackScheduleToolTest,
   TEST_TEAM_ID,
-} from "../../fixtures/slack-schedule-tools";
+} from "../../fixtures/slack/schedule-tools";
 
 describe("Slack schedule create validation", () => {
   beforeEach(setupSlackScheduleToolTest);

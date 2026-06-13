@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EVAL_OAUTH_PROVIDER,
   createOauthCallbackRouteFixture,
-} from "../../fixtures/oauth-callback-route";
+} from "../../fixtures/oauth/callback-route";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 let testbed: Awaited<ReturnType<typeof createOauthCallbackRouteFixture>>;

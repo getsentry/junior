@@ -1,5 +1,4 @@
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import {
@@ -79,6 +78,7 @@ interface ProxyDeps {
   interceptHttp?: SandboxEgressHttpInterceptor;
   issueProviderCredentialLease?: typeof issueProviderCredentialLease;
   resolveProviderForHost?: typeof resolveSandboxEgressProviderForHost;
+  tracePropagation?: SandboxEgressTracePropagationConfig;
   verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 

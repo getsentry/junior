@@ -13,20 +13,17 @@ import type {
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
-import { createScriptedReplyAgentFactory } from "./respond-agent";
-import {
-  configureRespondRuntimeEnv,
-  restoreRespondRuntimeEnv,
-} from "./respond-env";
+import { createScriptedReplyAgentFactory } from "./agent";
+import { configureRespondRuntimeEnv, restoreRespondRuntimeEnv } from "./env";
 import {
   createScriptedSandboxExecutorFactory,
   createScriptedSandboxExecutorState,
-} from "./respond-sandbox";
+} from "./sandbox";
 import {
   makeTestReplyContext,
   type TestReplyRequestContext,
-} from "./reply-context";
-import { DEFAULT_TEST_NOW_MS } from "./vitest";
+} from "../reply-context";
+import { DEFAULT_TEST_NOW_MS } from "../vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
 const originalCwd = process.cwd();

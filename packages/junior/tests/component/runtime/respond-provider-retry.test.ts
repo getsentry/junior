@@ -14,7 +14,7 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import {
   createScriptedReplyAgentFactory,
   type ScriptedReplyAgent,
-} from "../../fixtures/respond-agent";
+} from "../../fixtures/respond/agent";
 import {
   configureRespondRuntimeEnv,
   restoreRespondRuntimeEnv,

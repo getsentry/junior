@@ -4,8 +4,8 @@ import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
-import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+} from "../../fixtures/slack/harness";
+import { slackApiOutbox } from "../../fixtures/slack/api-outbox";
 
 function successDiagnostics(toolCalls: string[] = []) {
   return {

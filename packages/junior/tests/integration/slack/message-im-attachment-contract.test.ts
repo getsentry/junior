@@ -1,4 +1,4 @@
-import { createTestDestination } from "../../fixtures/slack-harness";
+import { createTestDestination } from "../../fixtures/slack/harness";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";

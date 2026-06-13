@@ -9,7 +9,7 @@ import {
   schedulerStore,
   setupSlackScheduleToolTest,
   TEST_TEAM_ID,
-} from "../../fixtures/slack-schedule-tools";
+} from "../../fixtures/slack/schedule-tools";
 import { mockTestClock } from "../../fixtures/vitest";
 
 describe("Slack schedule create tools", () => {

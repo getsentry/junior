@@ -11,7 +11,7 @@ import {
   setupRespondMcpProgressiveLoadingTest,
   upsertAgentTurnSessionRecord,
   type PiMessage,
-} from "../../fixtures/respond-mcp-progressive-loading";
+} from "../../fixtures/respond/mcp-progressive-loading";
 
 const {
   DEMO_SKILL,

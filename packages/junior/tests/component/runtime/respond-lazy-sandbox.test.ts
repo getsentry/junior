@@ -15,16 +15,16 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import {
   configureRespondRuntimeEnv,
   restoreRespondRuntimeEnv,
-} from "../../fixtures/respond-env";
+} from "../../fixtures/respond/env";
 import {
   createScriptedReplyAgentFactory,
   type ScriptedReplyAgent,
-} from "../../fixtures/respond-agent";
+} from "../../fixtures/respond/agent";
 import {
   createScriptedSandboxExecutorFactory,
   createScriptedSandboxExecutorState,
   type ScriptedSandboxExecutorState,
-} from "../../fixtures/respond-sandbox";
+} from "../../fixtures/respond/sandbox";
 import {
   makeTestReplyContext,
   type TestReplyRequestContext,

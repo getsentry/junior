@@ -10,8 +10,8 @@ import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
-import { toPostedText } from "../../fixtures/slack-posts";
+} from "../../fixtures/slack/harness";
+import { toPostedText } from "../../fixtures/slack/posts";
 
 function toPostedFiles(value: unknown): Array<{ filename: string }> {
   if (

@@ -3,7 +3,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   generateAssistantReply,
   type AssistantReply,
-  type AssistantReplyRequestContext,
+  type ReplyRequestContext,
 } from "@/chat/respond";
 import {
   buildTurnFailureResponse,
@@ -117,7 +117,7 @@ export interface ResumeSlackTurnArgs {
   channelId: string;
   threadTs: string;
   messageTs?: string;
-  replyContext?: AssistantReplyRequestContext;
+  replyContext?: ReplyRequestContext;
   lockKey?: string;
   initialText?: string;
   generateReply?: ResumeReplyGenerator;
@@ -234,7 +234,7 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-): AssistantReplyRequestContext {
+): ReplyRequestContext {
   const replyContext = args.replyContext;
   if (!replyContext) {
     throw new TypeError("Slack resume requires a reply context");
@@ -476,7 +476,10 @@ export async function resumeSlackTurn(
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
-          buildAuthPauseResponse(),
+          buildAuthPauseResponse(
+            deferredAuthInfo.requesterId,
+            deferredAuthInfo.providerDisplayName,
+          ),
           services,
         );
       }
@@ -508,7 +511,7 @@ export async function resumeAuthorizedRequest(args: {
   threadTs: string;
   messageTs?: string;
   connectedText: string;
-  replyContext?: AssistantReplyRequestContext;
+  replyContext?: ReplyRequestContext;
   lockKey?: string;
   generateReply?: ResumeReplyGenerator;
   onSuccess?: (reply: AssistantReply) => Promise<void>;

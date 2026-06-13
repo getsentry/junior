@@ -12,7 +12,7 @@ interface SlackImageConversationStateArgs {
 
 /** Create a Slack runtime after applying image-hydration environment flags. */
 export async function createSlackImageRuntime(
-  args: Parameters<typeof import("./chat-runtime").createTestChatRuntime>[0],
+  args: Parameters<typeof import("../chat-runtime").createTestChatRuntime>[0],
   env: NodeJS.ProcessEnv = {},
 ) {
   process.env = {
@@ -23,7 +23,7 @@ export async function createSlackImageRuntime(
     ...env,
   };
   vi.resetModules();
-  const { createTestChatRuntime } = await import("./chat-runtime");
+  const { createTestChatRuntime } = await import("../chat-runtime");
   return createTestChatRuntime(args);
 }
 

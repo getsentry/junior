@@ -7,7 +7,7 @@ import {
   jwtVerifyMock,
   setupSandboxEgressProxyTest,
   verifyVercelSandboxOidcToken,
-} from "../../fixtures/sandbox-egress-proxy";
+} from "../../fixtures/sandbox/egress-proxy";
 
 describe("sandbox egress OIDC verification", () => {
   beforeEach(async () => {

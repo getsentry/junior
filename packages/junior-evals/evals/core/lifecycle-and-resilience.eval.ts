@@ -23,7 +23,9 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { fail_reply_call: 1 },
+      overrides: {
+        replyGeneration: { failCall: 1 },
+      },
       events: [mention("What's the status of the deploy?")],
       criteria: rubric({
         contract:
@@ -44,13 +46,15 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        reply_results: [
-          {
-            stream_text: "Budget is still on track for Friday.",
-            text: "Budget is still on track for Friday.",
-            outcome: "provider_error",
-          },
-        ],
+        replyGeneration: {
+          cannedResults: [
+            {
+              stream_text: "Budget is still on track for Friday.",
+              text: "Budget is still on track for Friday.",
+              outcome: "provider_error",
+            },
+          ],
+        },
       },
       events: [mention("Quick budget update?")],
       criteria: rubric({

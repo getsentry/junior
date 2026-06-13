@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ReplyRequestContext } from "@/chat/respond";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { toPostedText } from "../../fixtures/slack-posts";
+import { toPostedText } from "../../fixtures/slack/posts";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: canvas failure recovery", () => {
   it("points to a created canvas when reply generation fails before final text", async () => {

@@ -1,12 +1,12 @@
 import type { Message } from "chat";
 import { describe, expect, it } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { conversationMessages } from "../../fixtures/slack-behavior";
-import { toPostedText } from "../../fixtures/slack-posts";
+import { conversationMessages } from "../../fixtures/slack/behavior";
+import { toPostedText } from "../../fixtures/slack/posts";
 import {
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: new mention", () => {
   it("handles a mention with real runtime wiring and fake agent response", async () => {

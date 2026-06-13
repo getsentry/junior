@@ -116,10 +116,8 @@ import {
   setConversationTitle,
 } from "@/chat/state/conversation-details";
 import { loadProjection } from "@/chat/state/session-log";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+import { stripRuntimeTurnContext } from "@/chat/respond/runtime-turn-context";
+import { trimTrailingAssistantMessages } from "@/chat/respond/pi-messages";
 import { requireSlackDestination } from "@/chat/destination";
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {

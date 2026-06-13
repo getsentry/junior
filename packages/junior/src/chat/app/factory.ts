@@ -6,7 +6,7 @@ import {
   type SlackTurnRuntime,
 } from "@/chat/runtime/slack-runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
-import type { JuniorRuntimeAdapterOverrides } from "@/chat/app/services";
+import type { JuniorRuntimeScenarioAdapters } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { logException, logWarn, withSpan } from "@/chat/logging";
@@ -43,7 +43,7 @@ import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-p
 import { botConfig } from "@/chat/config";
 
 export interface CreateSlackRuntimeOptions {
-  adapters?: JuniorRuntimeAdapterOverrides;
+  adapters?: JuniorRuntimeScenarioAdapters;
   getSlackAdapter: () => SlackAdapter;
 }
 

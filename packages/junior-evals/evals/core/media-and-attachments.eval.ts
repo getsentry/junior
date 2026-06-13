@@ -45,7 +45,9 @@ describeEval("Media and Attachments", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { mock_image_generation: true },
+      overrides: {
+        replyGeneration: { mockImageGeneration: true },
+      },
       events: [mention("show me how you feel")],
       criteria: rubric({
         contract:

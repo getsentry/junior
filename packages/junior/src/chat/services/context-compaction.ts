@@ -21,10 +21,8 @@ import {
 import { commitMessages } from "@/chat/state/session-log";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+import { stripRuntimeTurnContext } from "@/chat/respond/runtime-turn-context";
+import { trimTrailingAssistantMessages } from "@/chat/respond/pi-messages";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;

@@ -10,7 +10,7 @@ import {
   sandboxCreateMock,
   sandboxGetMock,
   setupSandboxExecutorTest,
-} from "../../fixtures/sandbox-executor";
+} from "../../fixtures/sandbox/executor";
 
 describe("sandbox executor lifecycle", () => {
   beforeEach(setupSandboxExecutorTest);

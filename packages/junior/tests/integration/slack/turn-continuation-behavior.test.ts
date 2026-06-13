@@ -9,16 +9,16 @@ import { successfulAssistantReply } from "../../fixtures/assistant-reply";
 import {
   createSlackBehaviorRuntime,
   threadHasPostText,
-} from "../../fixtures/slack-behavior";
+} from "../../fixtures/slack/behavior";
 import {
   createAwaitingSlackTurnState,
   createPiUserTurn,
-} from "../../fixtures/slack-turn-state";
+} from "../../fixtures/slack/turn-state";
 import {
   createTestDestination,
   createTestMessage,
   createTestThread,
-} from "../../fixtures/slack-harness";
+} from "../../fixtures/slack/harness";
 
 describe("Slack behavior: turn continuation", () => {
   beforeEach(async () => {

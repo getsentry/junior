@@ -14,8 +14,12 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
-        credential_providers: ["sentry"],
-        plugin_packages: ["@sentry/junior-sentry"],
+        auth: {
+          credentialProviders: ["sentry"],
+        },
+        plugins: {
+          pluginPackages: ["@sentry/junior-sentry"],
+        },
       },
       events: [
         mention("are you working", { thread: followUpThread }),
