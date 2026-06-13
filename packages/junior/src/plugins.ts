@@ -148,6 +148,43 @@ export function pluginCatalogConfigFromPluginSet(
   };
 }
 
+function readEnvPluginPackages(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] | undefined {
+  const value = env.JUNIOR_PLUGIN_PACKAGES;
+  if (!value) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new Error("JUNIOR_PLUGIN_PACKAGES must be valid JSON", {
+      cause: error,
+    });
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((item) => typeof item !== "string" || !item.trim())
+  ) {
+    throw new Error(
+      "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",
+    );
+  }
+
+  return parsed;
+}
+
+/** Build the manifest catalog config implied by plugin package env. */
+export function pluginCatalogConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): PluginCatalogConfig | undefined {
+  const packages = readEnvPluginPackages(env);
+  return packages ? { packages } : undefined;
+}
+
 /** Return registrations that expose in-process runtime hooks. */
 export function pluginHookRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,

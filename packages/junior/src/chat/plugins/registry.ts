@@ -36,7 +36,6 @@ interface LoadedPluginState {
 interface PluginCatalogSource {
   inlineManifests: InlinePluginManifestDefinition[];
   manifestRoots: string[];
-  migrationRoots: string[];
   packagedSkillRoots: string[];
   packagedContent: InstalledPluginPackageContent;
   signature: string;
@@ -171,19 +170,17 @@ function getPluginCatalogSource(): PluginCatalogSource {
     ...packagedContent.manifestRoots,
   ]);
   const packagedSkillRoots = normalizePluginRoots(packagedContent.skillRoots);
-  const migrationRoots = normalizePluginRoots(packagedContent.migrationRoots);
 
   const inlineManifests = pluginConfig?.inlineManifests ?? [];
   return {
     inlineManifests,
     manifestRoots,
-    migrationRoots,
     packagedSkillRoots,
     packagedContent,
     signature: JSON.stringify({
       inlineManifests,
       manifestRoots,
-      migrationRoots,
+      migrationRoots: normalizePluginRoots(packagedContent.migrationRoots),
       packagedSkillRoots,
       packageNames: [...packagedContent.packageNames].sort(),
       pluginConfig: pluginConfig ?? {},

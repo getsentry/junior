@@ -16,6 +16,7 @@ import type {
   UpgradeMigration,
 } from "./upgrade/types";
 import {
+  pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
@@ -35,10 +36,12 @@ function isMissingVirtualConfig(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
+  const code = (error as { code?: string }).code;
   return (
-    error.message.includes("#junior/config") ||
-    error.message.includes("Cannot find module") ||
-    error.message.includes("Failed to resolve import")
+    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
+      code === "ERR_MODULE_NOT_FOUND" ||
+      code === "MODULE_NOT_FOUND") &&
+    error.message.includes("#junior/config")
   );
 }
 
@@ -73,15 +76,14 @@ function formatMigrationResult(result: MigrationResult): string {
 export async function runUpgradeMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult[]> {
-  const migrationContext =
-    context.pluginSet && !context.pluginCatalogConfig
-      ? {
-          ...context,
-          pluginCatalogConfig: pluginCatalogConfigFromPluginSet(
-            context.pluginSet,
-          ),
-        }
-      : context;
+  const pluginCatalogConfig =
+    context.pluginCatalogConfig ??
+    (context.pluginSet
+      ? pluginCatalogConfigFromPluginSet(context.pluginSet)
+      : pluginCatalogConfigFromEnv());
+  const migrationContext = pluginCatalogConfig
+    ? { ...context, pluginCatalogConfig }
+    : context;
   requireConversationSqlDatabaseUrl(migrationContext);
   const results: MigrationResult[] = [];
   for (const migration of MIGRATIONS) {

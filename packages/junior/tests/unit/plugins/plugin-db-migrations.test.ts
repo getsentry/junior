@@ -145,4 +145,25 @@ describe("plugin DB migrations", () => {
       rmSync(root, { force: true, recursive: true });
     }
   });
+
+  it("rejects migration filenames outside the committed SQL pattern", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
+    const migrationsDir = path.join(root, "migrations");
+    mkdirSync(migrationsDir);
+    writeFileSync(
+      path.join(migrationsDir, "init.sql"),
+      "CREATE TABLE junior_memory_test (id TEXT PRIMARY KEY);",
+    );
+
+    try {
+      expect(() =>
+        readPluginMigrations({
+          dir: migrationsDir,
+          pluginName: "memory",
+        }),
+      ).toThrow('Plugin migration filename "init.sql" is invalid');
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
 });

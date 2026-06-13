@@ -25,6 +25,7 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
+  pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
   pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
@@ -130,15 +131,6 @@ async function resolveVirtualConfig(): Promise<
   }
 }
 
-/** Resolve plugin configuration from the env fallback. */
-function resolveEnvPluginCatalogConfig(): PluginCatalogConfig | undefined {
-  const packages = readEnvPluginPackages();
-  if (packages) {
-    return { packages };
-  }
-  return undefined;
-}
-
 function isMissingVirtualConfig(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -150,33 +142,6 @@ function isMissingVirtualConfig(error: unknown): boolean {
       code === "MODULE_NOT_FOUND") &&
     error.message.includes("#junior/config")
   );
-}
-
-function readEnvPluginPackages(): string[] | undefined {
-  const env = process.env.JUNIOR_PLUGIN_PACKAGES;
-  if (!env) {
-    return undefined;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(env);
-  } catch (error) {
-    throw new Error("JUNIOR_PLUGIN_PACKAGES must be valid JSON", {
-      cause: error,
-    });
-  }
-
-  if (
-    !Array.isArray(parsed) ||
-    parsed.some((value) => typeof value !== "string" || !value.trim())
-  ) {
-    throw new Error(
-      "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",
-    );
-  }
-
-  return parsed;
 }
 
 function hasConfiguredPluginCatalog(
@@ -331,7 +296,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const plugins = pluginHookRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
-    : (virtualConfig?.plugins ?? resolveEnvPluginCatalogConfig());
+    : (virtualConfig?.plugins ?? pluginCatalogConfigFromEnv());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }
