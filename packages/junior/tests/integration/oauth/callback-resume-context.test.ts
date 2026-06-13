@@ -86,7 +86,7 @@ describe("oauth callback resume context", () => {
         }),
       ]),
     );
-  }, 20_000);
+  });
 
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
     const conversationId = "slack:C123:1700000000.009";

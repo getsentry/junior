@@ -86,5 +86,5 @@ describe("oauth resume slack delivery", () => {
         }),
       }),
     ]);
-  }, 10_000);
+  });
 });

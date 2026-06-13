@@ -48,6 +48,7 @@ export default defineConfig({
       "tests/integration/workflow/**/*.test.ts",
     ],
     setupFiles: ["tests/msw/setup.ts"],
+    // Ordinary test and hook timeouts live here; local overrides are for known slow external boundaries.
     testTimeout: 30_000,
     hookTimeout: 60_000,
     unstubEnvs: true,

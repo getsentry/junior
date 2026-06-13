@@ -201,7 +201,7 @@ describe.sequential("example build discovery integration", () => {
     );
     expect(oauth.status).toBe(400);
     expect(await oauth.text()).toContain("missing required parameters");
-  }, 15_000);
+  });
 
   it("routes the queue consumer endpoint through the app", async () => {
     process.chdir(exampleRoot);
@@ -222,7 +222,7 @@ describe.sequential("example build discovery integration", () => {
 
     expect(response.status).toBe(400);
     expect(await response.text()).toContain("Invalid content type");
-  }, 15_000);
+  });
 
   it("does not expose discovery state from the public example app", async () => {
     const packageNames = await getExamplePluginPackages();
@@ -233,5 +233,5 @@ describe.sequential("example build discovery integration", () => {
     const response = await app.fetch(new Request("http://localhost/api/info"));
 
     expect(response.status).toBe(404);
-  }, 15_000);
+  });
 });

@@ -151,5 +151,5 @@ describe("Slack contract: message.im attachment ingress", () => {
 
     expect(capturedAttachmentMediaTypes).toEqual([["image/png"]]);
     expect(capturedAttachmentNames).toEqual([["current.png"]]);
-  }, 20_000);
+  });
 });

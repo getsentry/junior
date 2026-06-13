@@ -96,7 +96,7 @@ describe("Slack behavior: image hydration", () => {
         slackTs: "1700000001.200",
       },
     });
-  }, 20_000);
+  });
 
   it("backfills older image messages after vision is enabled later", async () => {
     const firstRuntime = await createSlackImageRuntime({

@@ -76,7 +76,7 @@ describe("Slack behavior: attachment handling", () => {
     expect(capturedAttachmentMediaTypes).toEqual(["image/png"]);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("chart trend is upward");
-  }, 10_000);
+  });
 
   it("posts a fallback error reply when required image analysis fails", async () => {
     const attachmentFetch = vi.fn(async () => Buffer.from("image-bytes"));

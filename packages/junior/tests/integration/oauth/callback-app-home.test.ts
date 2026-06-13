@@ -35,5 +35,5 @@ describe("oauth callback app home", () => {
         }),
       }),
     ]);
-  }, 20_000);
+  });
 });
