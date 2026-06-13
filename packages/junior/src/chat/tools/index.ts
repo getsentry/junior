@@ -38,7 +38,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
-import { getAgentPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -162,9 +162,7 @@ export function createTools(
     }
   }
 
-  for (const [name, pluginTool] of Object.entries(
-    getAgentPluginTools(context),
-  )) {
+  for (const [name, pluginTool] of Object.entries(getPluginTools(context))) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

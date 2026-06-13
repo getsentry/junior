@@ -163,7 +163,7 @@ Trusted runtime hook contexts may expose `ctx.db` when all of these are true:
 The V1 surface is a shared database connection/query capability:
 
 ```ts
-interface AgentPluginDb {
+interface PluginDb {
   select: JuniorDrizzleConnection["select"];
   insert: JuniorDrizzleConnection["insert"];
   update: JuniorDrizzleConnection["update"];
@@ -173,11 +173,12 @@ interface AgentPluginDb {
     statement: string,
     params?: readonly unknown[],
   ): Promise<T[]>;
-  transaction<T>(callback: (tx: AgentPluginDb) => Promise<T>): Promise<T>;
+  transaction<T>(callback: (tx: PluginDb) => Promise<T>): Promise<T>;
 }
 ```
 
-Hook contexts should expose this as `ctx.db`, not `ctx.database` or `ctx.db.db`.
+Hook contexts should expose this as `ctx.db`, not `ctx.database` or a nested
+`ctx.db.db`.
 
 `ctx.db` is not model-visible and must not be exposed to sandbox tools, skill
 text, MCP tools, or tool input schemas.

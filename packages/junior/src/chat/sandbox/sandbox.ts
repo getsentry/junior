@@ -27,7 +27,7 @@ import {
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
-import type { AgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   isHostFileMissingError,
   resolveHostDataPath,
@@ -140,7 +140,7 @@ export function createSandboxExecutor(options?: {
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
-  agentHooks?: AgentPluginHookRunner;
+  agentHooks?: PluginHookRunner;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -306,8 +306,10 @@ export function createSandboxExecutor(options?: {
     // side-channel from the network layer — not a property of shell exit status —
     // and `clearSandboxEgressSignals` runs before each execution to prevent
     // cross-command leakage.
-    const authRequired = await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
-    const permissionDenied = await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
+    const authRequired =
+      await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
+    const permissionDenied =
+      await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
 
     return {
       result: {

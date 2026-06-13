@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AgentPluginToolInputError,
-  type AgentPluginToolDefinition,
+  PluginToolInputError,
+  type PluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import {
   createSchedulerStore,
@@ -14,10 +14,7 @@ import {
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import {
-  getAgentPluginTools,
-  setAgentPlugins,
-} from "@/chat/plugins/agent-hooks";
+import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
@@ -70,7 +67,7 @@ function createContext(
 }
 
 async function executeTool<TInput>(
-  tool: AgentPluginToolDefinition<TInput>,
+  tool: PluginToolDefinition<TInput>,
   input: TInput,
 ) {
   if (typeof tool?.execute !== "function") {
@@ -224,7 +221,7 @@ describe("Slack schedule tools", () => {
       }),
     );
 
-    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(PluginToolInputError);
     await expect(rejected).rejects.toThrow(
       "No active Slack requester context is available.",
     );
@@ -243,7 +240,7 @@ describe("Slack schedule tools", () => {
       },
     );
 
-    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(PluginToolInputError);
     await expect(rejected).rejects.toThrow(
       "Active Slack conversation workspace is invalid.",
     );
@@ -264,7 +261,7 @@ describe("Slack schedule tools", () => {
       }),
     );
 
-    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(PluginToolInputError);
     await expect(rejected).rejects.toThrow(
       "Active Slack conversation must not include unknown fields.",
     );
@@ -291,7 +288,7 @@ describe("Slack schedule tools", () => {
       }),
     );
 
-    await expect(rejected).rejects.toThrow(AgentPluginToolInputError);
+    await expect(rejected).rejects.toThrow(PluginToolInputError);
     await expect(rejected).rejects.toThrow(
       "Active Slack credential subject is invalid.",
     );
@@ -642,7 +639,7 @@ describe("Slack schedule tools", () => {
     // same source conversation.
     //
     // In practice: a DM opened via Slack’s “Ask Junior” panel from #js-alerts
-    // has getAgentPluginTools build source.channelId = DDM rather than using
+    // has getPluginTools build source.channelId = DDM rather than using
     // the outbound assistant-context channel. Both creation and management
     // from that DM use DDM, so the stored task destination never drifts.
     const dmCtx = createContext({ channelId: "DDM" });
@@ -1091,7 +1088,7 @@ describe("Slack schedule tools", () => {
   });
 });
 
-describe("Slack schedule tool wiring via getAgentPluginTools", () => {
+describe("Slack schedule tool wiring via getPluginTools", () => {
   // These tests exercise the real agent-hooks.ts path where the runtime-owned
   // Destination is passed through to the scheduler plugin.
 
@@ -1104,12 +1101,12 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
   });
 
   it("scheduler tools bind to the runtime-owned source", async () => {
-    // Verifies that real getAgentPluginTools wiring passes Source through to
+    // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
-    const previous = setAgentPlugins([schedulerPlugin()]);
+    const previous = setPlugins([schedulerPlugin()]);
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
-      const tools = getAgentPluginTools({
+      const tools = getPluginTools({
         source: {
           platform: "slack",
           teamId: TEAM_ID,
@@ -1127,7 +1124,7 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
           userName: "alice",
           fullName: "Alice",
         },
-        sandbox: {} as Parameters<typeof getAgentPluginTools>[0]["sandbox"],
+        sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
       });
 
       expect(tools).toHaveProperty("slackScheduleCreateTask");
@@ -1159,7 +1156,7 @@ describe("Slack schedule tool wiring via getAgentPluginTools", () => {
         allowedWhen: "private-direct-conversation",
       });
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 });

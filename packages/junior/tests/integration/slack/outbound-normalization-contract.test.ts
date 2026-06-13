@@ -4,7 +4,7 @@ import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
-import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   addReactionToMessage,
   postSlackEphemeralMessage,
@@ -25,7 +25,7 @@ describe("Slack contract: outbound normalization", () => {
   beforeEach(() => {
     process.env.SLACK_BOT_TOKEN =
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
-    setAgentPlugins([]);
+    setPlugins([]);
     resetSlackApiMockState();
   });
 
@@ -82,7 +82,7 @@ describe("Slack contract: outbound normalization", () => {
   });
 
   it("lets plugins replace the footer conversation link", async () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "dashboard",
         manifest: {
@@ -132,7 +132,7 @@ describe("Slack contract: outbound normalization", () => {
         }),
       ]);
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 

@@ -1,0 +1,112 @@
+import type { PluginContext } from "./context";
+import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import type { PluginReadState, PluginState } from "./state";
+
+export type PluginConversationStatus =
+  | "active"
+  | "completed"
+  | "failed"
+  | "hung"
+  | "superseded";
+
+export interface PluginConversationSummary {
+  channelName?: string;
+  conversationId: string;
+  displayTitle: string;
+  lastActivityAt: string;
+  lastUpdatedAt: string;
+  source?: "api" | "internal" | "local" | "plugin" | "scheduler" | "slack";
+  status: PluginConversationStatus;
+}
+
+export interface PluginConversations {
+  listRecent(options?: {
+    limit?: number;
+  }): Promise<PluginConversationSummary[]>;
+}
+
+export interface HeartbeatHookContext extends PluginContext {
+  agent: {
+    dispatch(options: DispatchOptions): Promise<DispatchResult>;
+    get(id: string): Promise<Dispatch | undefined>;
+  };
+  nowMs: number;
+  state: PluginState;
+}
+
+export interface HeartbeatResult {
+  dispatchCount?: number;
+}
+
+export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";
+
+export interface PluginOperationalMetric {
+  label: string;
+  tone?: PluginOperationalTone;
+  value: string;
+}
+
+export interface PluginOperationalField {
+  key: string;
+  label: string;
+}
+
+export interface PluginOperationalRecord {
+  id: string;
+  tone?: PluginOperationalTone;
+  values: Record<string, string>;
+}
+
+export interface PluginOperationalRecordSet {
+  fields?: PluginOperationalField[];
+  emptyText?: string;
+  records?: PluginOperationalRecord[];
+  title: string;
+}
+
+export interface PluginOperationalReportContent {
+  generatedAt?: string;
+  metrics?: PluginOperationalMetric[];
+  recordSets?: PluginOperationalRecordSet[];
+  title?: string;
+}
+
+export interface PluginOperationalReport extends PluginOperationalReportContent {
+  pluginName: string;
+}
+
+export interface OperationalReportHookContext extends PluginContext {
+  conversations: PluginConversations;
+  nowMs: number;
+  state: PluginReadState;
+}
+
+export type PluginRouteMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS"
+  | "ALL";
+
+export type PluginRouteHandler = {
+  bivarianceHack(request: Request): Promise<Response> | Response;
+}["bivarianceHack"];
+
+export interface PluginRoute {
+  handler: PluginRouteHandler;
+  method?: PluginRouteMethod | PluginRouteMethod[];
+  path: string;
+}
+
+export interface RouteRegistrationHookContext extends PluginContext {}
+
+export interface SlackConversationLink {
+  url: string;
+}
+
+export interface SlackConversationLinkHookContext extends PluginContext {
+  conversationId: string;
+}

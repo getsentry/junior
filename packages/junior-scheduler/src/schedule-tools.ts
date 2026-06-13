@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import {
-  AgentPluginToolInputError,
-  agentPluginCredentialSubjectSchema,
+  PluginToolInputError,
+  pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
-  type AgentPluginCredentialSubject,
-  type AgentPluginState,
-  type AgentPluginToolDefinition,
+  type PluginCredentialSubject,
+  type PluginState,
+  type PluginToolDefinition,
   type SlackDestination,
   type SlackRequester,
 } from "@sentry/junior-plugin-api";
@@ -25,10 +25,10 @@ import type {
 } from "./types";
 
 export interface SchedulerToolContext {
-  credentialSubject?: AgentPluginCredentialSubject;
+  credentialSubject?: PluginCredentialSubject;
   requester?: SlackRequester;
   source?: SlackDestination;
-  state: AgentPluginState;
+  state: PluginState;
   userText?: string;
 }
 
@@ -42,7 +42,7 @@ type SchemaIssue = {
 };
 
 function throwToolInputError(error: string): never {
-  throw new AgentPluginToolInputError(error);
+  throw new PluginToolInputError(error);
 }
 
 function requireActiveConversation(
@@ -99,8 +99,8 @@ function requireRequester(
 }
 
 function tool<TInput = any>(
-  definition: AgentPluginToolDefinition<TInput>,
-): AgentPluginToolDefinition<TInput> {
+  definition: PluginToolDefinition<TInput>,
+): PluginToolDefinition<TInput> {
   return definition;
 }
 
@@ -125,8 +125,8 @@ function getConversationAccess(
 
 function getCredentialSubject(args: {
   access: ScheduledTaskConversationAccess;
-  subject: AgentPluginCredentialSubject | undefined;
-}): AgentPluginCredentialSubject | undefined {
+  subject: PluginCredentialSubject | undefined;
+}): PluginCredentialSubject | undefined {
   if (
     args.access.audience !== "direct" ||
     args.access.visibility !== "private"
@@ -136,7 +136,7 @@ function getCredentialSubject(args: {
   if (!args.subject) {
     return undefined;
   }
-  const subject = agentPluginCredentialSubjectSchema.safeParse(args.subject);
+  const subject = pluginCredentialSubjectSchema.safeParse(args.subject);
   if (!subject.success) {
     throwToolInputError("Active Slack credential subject is invalid.");
   }

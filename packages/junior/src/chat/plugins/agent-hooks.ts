@@ -1,18 +1,18 @@
 import type {
-  AgentPluginConversations,
-  AgentPluginReadState,
-  AgentPluginRoute,
-  AgentPluginRouteMethod,
-  AgentPluginSandbox,
+  PluginConversations,
+  PluginReadState,
+  PluginRoute,
+  PluginRouteMethod,
+  PluginSandbox,
   PluginOperationalReport,
   PluginOperationalReportContent,
   PluginOperationalTone,
   SlackConversationLink,
-  JuniorPluginRegistration,
+  PluginRegistration,
   SlackToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { logInfo } from "@/chat/logging";
-import { createAgentPluginLogger } from "@/chat/plugins/logging";
+import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -27,10 +27,10 @@ import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { Requester } from "@/chat/requester";
 
 /** Signal that a plugin intentionally denied a tool execution. */
-export class AgentPluginHookDeniedError extends Error {
+export class PluginHookDeniedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "AgentPluginHookDeniedError";
+    this.name = "PluginHookDeniedError";
   }
 }
 
@@ -44,25 +44,25 @@ export interface ToolHookResult {
   input: Record<string, unknown>;
 }
 
-export interface AgentPluginRouteRegistration extends AgentPluginRoute {
+export interface PluginRouteRegistration extends PluginRoute {
   pluginName: string;
 }
 
-export interface AgentPluginHookRunner {
+export interface PluginHookRunner {
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(sandbox: SandboxInstance): Promise<void>;
 }
 
-let agentPlugins: JuniorPluginRegistration[] = [];
-const AGENT_PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
-const AGENT_PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+let registeredPlugins: PluginRegistration[] = [];
+const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 const OPERATIONAL_REPORT_MAX_METRICS = 8;
 const OPERATIONAL_REPORT_MAX_RECORD_SETS = 8;
 const OPERATIONAL_REPORT_MAX_FIELDS = 8;
 const OPERATIONAL_REPORT_MAX_RECORDS = 25;
 const OPERATIONAL_REPORT_MAX_LABEL_LENGTH = 80;
 const OPERATIONAL_REPORT_MAX_VALUE_LENGTH = 160;
-const AGENT_PLUGIN_ROUTE_METHODS = new Set<AgentPluginRouteMethod>([
+const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "GET",
   "POST",
   "PUT",
@@ -77,7 +77,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
+function validateLegacyStatePrefixes(plugin: PluginRegistration): void {
   const prefixes = plugin.legacyStatePrefixes;
   if (prefixes === undefined) {
     return;
@@ -105,12 +105,10 @@ function validateLegacyStatePrefixes(plugin: JuniorPluginRegistration): void {
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
-export function validateAgentPlugins(
-  plugins: JuniorPluginRegistration[],
-): void {
+export function validatePlugins(plugins: PluginRegistration[]): void {
   const seen = new Set<string>();
   for (const plugin of plugins) {
-    if (!AGENT_PLUGIN_NAME_RE.test(plugin.name)) {
+    if (!PLUGIN_NAME_RE.test(plugin.name)) {
       throw new Error(
         `Plugin name "${plugin.name}" must be a lowercase plugin identifier`,
       );
@@ -124,33 +122,33 @@ export function validateAgentPlugins(
 }
 
 /** Replace runtime hook plugins and return the previous list for rollback. */
-export function setAgentPlugins(
-  plugins: JuniorPluginRegistration[],
-): JuniorPluginRegistration[] {
-  validateAgentPlugins(plugins);
-  const previous = agentPlugins;
-  agentPlugins = [...plugins].sort((left, right) =>
+export function setPlugins(
+  nextPlugins: PluginRegistration[],
+): PluginRegistration[] {
+  validatePlugins(nextPlugins);
+  const previous = registeredPlugins;
+  registeredPlugins = [...nextPlugins].sort((left, right) =>
     left.name.localeCompare(right.name),
   );
   return previous;
 }
 
 /** Return the current runtime hook plugins without exposing mutable state. */
-export function getAgentPlugins(): JuniorPluginRegistration[] {
-  return [...agentPlugins];
+export function getPlugins(): PluginRegistration[] {
+  return [...registeredPlugins];
 }
 
 /** Collect turn-scoped tools exposed by plugins. */
-export function getAgentPluginTools(
+export function getPluginTools(
   context: ToolRuntimeContext,
 ): Record<string, ToolDefinition<any>> {
   const tools: Record<string, ToolDefinition<any>> = {};
-  for (const plugin of getAgentPlugins()) {
+  for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.tools;
     if (!hook) {
       continue;
     }
-    const log = createAgentPluginLogger(plugin.name);
+    const log = createPluginLogger(plugin.name);
     const destination = context.destination;
     const slackToolContext = getSlackToolContext(context);
     const credentialSubject = slackToolContext
@@ -206,7 +204,7 @@ export function getAgentPluginTools(
           };
     const pluginTools = hook(pluginContext);
     for (const [name, tool] of Object.entries(pluginTools)) {
-      if (!AGENT_PLUGIN_TOOL_NAME_RE.test(name)) {
+      if (!PLUGIN_TOOL_NAME_RE.test(name)) {
         throw new Error(
           `Plugin tool "${name}" from plugin "${plugin.name}" must be a camelCase identifier`,
         );
@@ -224,9 +222,9 @@ export function getAgentPluginTools(
 
 /** Normalize route methods so JS plugins cannot register invalid verbs. */
 function routeMethods(
-  route: AgentPluginRoute,
+  route: PluginRoute,
   pluginName: string,
-): AgentPluginRouteMethod[] {
+): PluginRouteMethod[] {
   const methods = Array.isArray(route.method)
     ? route.method
     : [route.method ?? "ALL"];
@@ -237,7 +235,7 @@ function routeMethods(
   }
 
   for (const method of methods) {
-    if (!AGENT_PLUGIN_ROUTE_METHODS.has(method)) {
+    if (!PLUGIN_ROUTE_METHODS.has(method)) {
       throw new Error(
         `Plugin route "${route.path}" from plugin "${pluginName}" has invalid method "${String(method)}"`,
       );
@@ -252,17 +250,17 @@ function routeMethods(
 }
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
-export function getAgentPluginRoutes(): AgentPluginRouteRegistration[] {
-  const routes: AgentPluginRouteRegistration[] = [];
+export function getPluginRoutes(): PluginRouteRegistration[] {
+  const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
-  const methodsByPath = new Map<string, Set<AgentPluginRouteMethod>>();
+  const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
 
-  for (const plugin of getAgentPlugins()) {
+  for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.routes;
     if (!hook) {
       continue;
     }
-    const log = createAgentPluginLogger(plugin.name);
+    const log = createPluginLogger(plugin.name);
     const pluginRoutes = hook({
       plugin: { name: plugin.name },
       log,
@@ -346,15 +344,15 @@ function trustedSlackConversationUrl(
 }
 
 /** Resolve the first plugin conversation URL for finalized Slack footers. */
-export function getAgentPluginSlackConversationLink(
+export function getPluginSlackConversationLink(
   conversationId: string,
 ): SlackConversationLink | undefined {
-  for (const plugin of getAgentPlugins()) {
+  for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.slackConversationLink;
     if (!hook) {
       continue;
     }
-    const log = createAgentPluginLogger(plugin.name);
+    const log = createPluginLogger(plugin.name);
     const link = hook({
       plugin: { name: plugin.name },
       log,
@@ -368,10 +366,10 @@ export function getAgentPluginSlackConversationLink(
   return undefined;
 }
 
-function pluginReadState(state: { get: AgentPluginReadState["get"] }) {
+function pluginReadState(state: { get: PluginReadState["get"] }) {
   return {
     get: state.get,
-  } satisfies AgentPluginReadState;
+  } satisfies PluginReadState;
 }
 
 function operationalReportText(
@@ -551,17 +549,17 @@ function failedOperationalReport(args: {
 }
 
 /** Collect read-only operational summaries exposed by plugins. */
-export async function getAgentPluginOperationalReports(
+export async function getPluginOperationalReports(
   nowMs: number,
-  conversations: AgentPluginConversations,
+  conversations: PluginConversations,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of getAgentPlugins()) {
+  for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {
       continue;
     }
-    const log = createAgentPluginLogger(plugin.name);
+    const log = createPluginLogger(plugin.name);
     try {
       const state = createPluginState(plugin.name, {
         legacyStatePrefixes: plugin.legacyStatePrefixes,
@@ -605,7 +603,7 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function createSandboxCapability(sandbox: SandboxInstance): AgentPluginSandbox {
+function createSandboxCapability(sandbox: SandboxInstance): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
     juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
@@ -637,12 +635,12 @@ function createSandboxCapability(sandbox: SandboxInstance): AgentPluginSandbox {
 }
 
 /** Create one runner over runtime hook plugins registered by the app. */
-export function createAgentPluginHookRunner(
+export function createPluginHookRunner(
   input: {
     requester?: Requester;
   } = {},
-): AgentPluginHookRunner {
-  const loaded = getAgentPlugins();
+): PluginHookRunner {
+  const loaded = getPlugins();
 
   return {
     async prepareSandbox(sandbox) {
@@ -660,7 +658,7 @@ export function createAgentPluginHookRunner(
         );
         await hook({
           plugin: { name: plugin.name },
-          log: createAgentPluginLogger(plugin.name),
+          log: createPluginLogger(plugin.name),
           requester: input.requester,
           sandbox: sandboxCapability,
         });
@@ -679,7 +677,7 @@ export function createAgentPluginHookRunner(
         let denied: string | undefined;
         await hook({
           plugin: { name: plugin.name },
-          log: createAgentPluginLogger(plugin.name),
+          log: createPluginLogger(plugin.name),
           requester: input.requester,
           tool: {
             name: tool.name,
@@ -704,7 +702,7 @@ export function createAgentPluginHookRunner(
         });
 
         if (denied) {
-          throw new AgentPluginHookDeniedError(denied);
+          throw new PluginHookDeniedError(denied);
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {

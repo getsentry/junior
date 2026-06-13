@@ -4,7 +4,7 @@ import {
   getPluginPackageContent,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { getAgentPluginOperationalReports } from "@/chat/plugins/agent-hooks";
+import { getPluginOperationalReports } from "@/chat/plugins/agent-hooks";
 import { discoverSkills } from "@/chat/skills";
 import { homeDir } from "@/chat/discovery";
 import { GET as healthGET } from "@/handlers/health";
@@ -16,15 +16,15 @@ import {
   readConversationStatsReport,
   listRecentConversationSummaries,
   type ConversationFeed,
-  type AgentPluginConversationSummary,
+  type PluginConversationSummary,
   type ConversationReport,
   type ConversationStatsReport,
 } from "./reporting/conversations";
 
 export type {
-  AgentPluginConversationStatus,
-  AgentPluginConversations,
-  AgentPluginConversationSummary,
+  PluginConversationStatus,
+  PluginConversations,
+  PluginConversationSummary,
   ConversationFeed,
   ConversationReport,
   ConversationReportStatus,
@@ -103,7 +103,7 @@ export interface JuniorReporting {
   /** Read recent conversation summaries without transcript payloads. */
   listRecentConversations?(options?: {
     limit?: number;
-  }): Promise<AgentPluginConversationSummary[]>;
+  }): Promise<PluginConversationSummary[]>;
   /** Read sanitized operational summaries contributed by plugins. */
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   /**
@@ -152,7 +152,7 @@ export function createJuniorReporting(): JuniorReporting & {
   getConversationStats(): Promise<ConversationStatsReport>;
   listRecentConversations(options?: {
     limit?: number;
-  }): Promise<AgentPluginConversationSummary[]>;
+  }): Promise<PluginConversationSummary[]>;
   getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
   const conversationStore = getConfiguredConversationStore();
@@ -189,7 +189,7 @@ export function createJuniorReporting(): JuniorReporting & {
       return {
         source: "plugins",
         generatedAt: new Date(nowMs).toISOString(),
-        reports: await getAgentPluginOperationalReports(nowMs, {
+        reports: await getPluginOperationalReports(nowMs, {
           listRecent,
         }),
       };

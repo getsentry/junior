@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { AgentPluginCredentialSubject } from "@sentry/junior-plugin-api";
+import type { PluginCredentialSubject } from "@sentry/junior-plugin-api";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { isActorUserId, parseActorUserId } from "@/chat/requester";
@@ -12,7 +12,7 @@ function getCredentialSubjectSecret(): string | undefined {
 }
 
 function buildPayload(input: {
-  allowedWhen: AgentPluginCredentialSubject["allowedWhen"];
+  allowedWhen: PluginCredentialSubject["allowedWhen"];
   channelId: string;
   teamId: string;
   userId: string;
@@ -45,7 +45,7 @@ export function createSlackDirectCredentialSubject(input: {
   channelId: string | undefined;
   teamId: string | undefined;
   userId: string | undefined;
-}): AgentPluginCredentialSubject | undefined {
+}): PluginCredentialSubject | undefined {
   const channelId = normalizeSlackConversationId(input.channelId);
   const teamId = input.teamId?.trim();
   const userId = parseActorUserId(input.userId);
@@ -63,7 +63,7 @@ export function createSlackDirectCredentialSubject(input: {
 /** Bind a delegated user subject to the Slack DM destination being dispatched. */
 export function bindSlackDirectCredentialSubject(input: {
   channelId: string;
-  subject: AgentPluginCredentialSubject;
+  subject: PluginCredentialSubject;
   teamId: string;
 }): CredentialSubject | undefined {
   const channelId = normalizeSlackConversationId(input.channelId);

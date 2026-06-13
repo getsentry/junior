@@ -13,15 +13,15 @@ import {
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
 import {
-  type AgentPluginRouteRegistration,
-  getAgentPluginRoutes,
-  setAgentPlugins,
-  validateAgentPlugins,
+  type PluginRouteRegistration,
+  getPluginRoutes,
+  setPlugins,
+  validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type {
-  AgentPluginRouteMethod,
-  JuniorPluginRegistration,
+  PluginRouteMethod,
+  PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -216,7 +216,7 @@ function validateBuildIncludesPluginPackages(
 }
 
 function validateBuildIncludesPluginHookRegistrations(
-  hookRegistrations: JuniorPluginRegistration[],
+  hookRegistrations: PluginRegistration[],
   virtualConfig: JuniorVirtualConfig | undefined,
 ): void {
   const bundledHookRegistrations = virtualConfig?.pluginHookRegistrations ?? [];
@@ -238,7 +238,7 @@ function validateBuildIncludesPluginHookRegistrations(
 }
 
 function validatePluginRegistrations(
-  registrations: JuniorPluginRegistration[],
+  registrations: PluginRegistration[],
 ): void {
   const loadedPlugins = getPluginProviders();
   const loadedNames = new Set(
@@ -255,7 +255,7 @@ function validatePluginRegistrations(
 }
 
 function validatePluginEgressCredentialHooks(
-  registrations: JuniorPluginRegistration[],
+  registrations: PluginRegistration[],
 ): void {
   const plugins = new Map(
     registrations.map((registration) => [registration.name, registration]),
@@ -305,18 +305,14 @@ function validatePluginEgressCredentialHooks(
 }
 
 /** Mount plugin HTTP handlers before core routes claim those paths. */
-function mountAgentPluginRoutes(
-  app: Hono,
-  routes: AgentPluginRouteRegistration[],
-): void {
+function mountPluginRoutes(app: Hono, routes: PluginRouteRegistration[]): void {
   for (const route of routes) {
     const handler = (c: Context) => route.handler(c.req.raw);
     const methods = Array.isArray(route.method)
       ? route.method
       : [route.method ?? "ALL"];
     const explicitMethods = methods.filter(
-      (method): method is Exclude<AgentPluginRouteMethod, "ALL"> =>
-        method !== "ALL",
+      (method): method is Exclude<PluginRouteMethod, "ALL"> => method !== "ALL",
     );
 
     if (methods.includes("ALL")) {
@@ -331,24 +327,24 @@ function mountAgentPluginRoutes(
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
-  const agentPlugins = pluginHookRegistrationsFromPluginSet(configuredPlugins);
+  const plugins = pluginHookRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
     : (virtualConfig?.plugins ?? resolveEnvPluginCatalogConfig());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }
-  validateBuildIncludesPluginHookRegistrations(agentPlugins, virtualConfig);
-  validateAgentPlugins(agentPlugins);
+  validateBuildIncludesPluginHookRegistrations(plugins, virtualConfig);
+  validatePlugins(plugins);
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
-  const previousAgentPlugins = setAgentPlugins(agentPlugins);
+  const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
-  let agentPluginRoutes: AgentPluginRouteRegistration[] = [];
+  let pluginRoutes: PluginRouteRegistration[] = [];
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
@@ -366,10 +362,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         configuredPlugins?.registrations ?? [],
       );
     }
-    agentPluginRoutes = getAgentPluginRoutes();
+    pluginRoutes = getPluginRoutes();
   } catch (error) {
     setPluginCatalogConfig(previousPluginCatalogConfig);
-    setAgentPlugins(previousAgentPlugins);
+    setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     setSlackReactionConfig(previousSlackReactionConfig);
     throw error;
@@ -407,7 +403,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     await next();
   });
 
-  mountAgentPluginRoutes(app, agentPluginRoutes);
+  mountPluginRoutes(app, pluginRoutes);
 
   app.get("/", () => healthGET());
   app.get("/health", () => healthGET());

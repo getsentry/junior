@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import {
-  agentPluginAuthorizationSchema,
-  agentPluginCredentialHeaderTransformSchema,
-  agentPluginGrantSchema,
-  agentPluginProviderAccountSchema,
+  pluginAuthorizationSchema,
+  pluginCredentialHeaderTransformSchema,
+  pluginGrantSchema,
+  pluginProviderAccountSchema,
 } from "@sentry/junior-plugin-api";
 
 const finiteNumberSchema = z.number().refine(Number.isFinite);
@@ -12,7 +12,7 @@ const httpStatusSchema = z.number().int().min(100).max(599);
 const providerNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 const credentialSignalKindSchema = z.enum(["auth_required", "unavailable"]);
 
-export const sandboxEgressGrantSchema = agentPluginGrantSchema;
+export const sandboxEgressGrantSchema = pluginGrantSchema;
 
 export const sandboxEgressCredentialContextSchema = z
   .object({
@@ -25,20 +25,18 @@ export const sandboxEgressCredentialContextSchema = z
 
 export const sandboxEgressCredentialLeaseSchema = z
   .object({
-    account: agentPluginProviderAccountSchema.optional(),
-    authorization: agentPluginAuthorizationSchema.optional(),
+    account: pluginProviderAccountSchema.optional(),
+    authorization: pluginAuthorizationSchema.optional(),
     grant: sandboxEgressGrantSchema,
     provider: providerNameSchema,
     expiresAt: z.string().min(1),
-    headerTransforms: z
-      .array(agentPluginCredentialHeaderTransformSchema)
-      .min(1),
+    headerTransforms: z.array(pluginCredentialHeaderTransformSchema).min(1),
   })
   .strict();
 
 export const sandboxEgressAuthRequiredSignalSchema = z
   .object({
-    authorization: agentPluginAuthorizationSchema.optional(),
+    authorization: pluginAuthorizationSchema.optional(),
     grant: sandboxEgressGrantSchema,
     kind: credentialSignalKindSchema.default("auth_required"),
     provider: providerNameSchema,
@@ -61,7 +59,7 @@ export const sandboxEgressAuthRequiredSignalSchema = z
 
 export const sandboxEgressPermissionDeniedSignalSchema = z
   .object({
-    account: agentPluginProviderAccountSchema.optional(),
+    account: pluginProviderAccountSchema.optional(),
     acceptedPermissions: z.string().optional(),
     grant: sandboxEgressGrantSchema,
     message: z.string().min(1),

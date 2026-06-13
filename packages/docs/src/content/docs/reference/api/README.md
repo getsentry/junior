@@ -7,8 +7,6 @@ title: "@sentry/junior"
 
 ## Interfaces
 
-- [AgentPluginConversations](/reference/api/interfaces/agentpluginconversations/)
-- [AgentPluginConversationSummary](/reference/api/interfaces/agentpluginconversationsummary/)
 - [ConversationFeed](/reference/api/interfaces/conversationfeed/)
 - [ConversationReport](/reference/api/interfaces/conversationreport/)
 - [ConversationRunReport](/reference/api/interfaces/conversationrunreport/)
@@ -23,6 +21,8 @@ title: "@sentry/junior"
 - [JuniorPluginSetOptions](/reference/api/interfaces/juniorpluginsetoptions/)
 - [JuniorReporting](/reference/api/interfaces/juniorreporting/)
 - [JuniorVercelConfigOptions](/reference/api/interfaces/juniorvercelconfigoptions/)
+- [PluginConversations](/reference/api/interfaces/pluginconversations/)
+- [PluginConversationSummary](/reference/api/interfaces/pluginconversationsummary/)
 - [PluginOperationalReport](/reference/api/interfaces/pluginoperationalreport/)
 - [PluginOperationalReportFeed](/reference/api/interfaces/pluginoperationalreportfeed/)
 - [PluginPackageContentItemReport](/reference/api/interfaces/pluginpackagecontentitemreport/)
@@ -36,10 +36,10 @@ title: "@sentry/junior"
 
 ## Type Aliases
 
-- [AgentPluginConversationStatus](/reference/api/type-aliases/agentpluginconversationstatus/)
 - [ConversationReportStatus](/reference/api/type-aliases/conversationreportstatus/)
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
 - [JuniorPluginInput](/reference/api/type-aliases/juniorplugininput/)
+- [PluginConversationStatus](/reference/api/type-aliases/pluginconversationstatus/)
 - [TranscriptPartType](/reference/api/type-aliases/transcriptparttype/)
 - [TranscriptRole](/reference/api/type-aliases/transcriptrole/)
 

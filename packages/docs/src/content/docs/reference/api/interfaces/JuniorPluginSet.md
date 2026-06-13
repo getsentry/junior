@@ -33,7 +33,7 @@ Manifest-only plugin packages included by package name.
 
 ### registrations
 
-> **registrations**: `JuniorPluginRegistration`[]
+> **registrations**: `PluginRegistration`[]
 
 Defined in: [junior/src/plugins.ts:22](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L22)
 

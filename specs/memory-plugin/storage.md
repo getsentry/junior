@@ -159,7 +159,7 @@ Core must keep provider credentials and expose only a narrow host capability to
 trusted plugin hooks and tasks:
 
 ```ts
-interface AgentPluginEmbeddingProvider {
+interface PluginEmbeddingProvider {
   embed(input: {
     texts: string[];
     purpose: "memory";

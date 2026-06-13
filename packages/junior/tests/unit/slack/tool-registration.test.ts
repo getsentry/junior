@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
-import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
@@ -41,11 +41,11 @@ function ctx(channelId?: string): ToolRuntimeContext {
 
 describe("Slack tool registration", () => {
   beforeEach(() => {
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
   });
 
   afterEach(() => {
-    setAgentPlugins([]);
+    setPlugins([]);
   });
 
   it("does not register channel-scope tools in DM context", () => {

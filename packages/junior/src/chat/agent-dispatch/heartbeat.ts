@@ -1,4 +1,4 @@
-import { getAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -147,7 +147,7 @@ export async function runPluginHeartbeats(args: {
   nowMs: number;
 }): Promise<void> {
   let count = 0;
-  for (const plugin of getAgentPlugins()) {
+  for (const plugin of getPlugins()) {
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
       break;
     }

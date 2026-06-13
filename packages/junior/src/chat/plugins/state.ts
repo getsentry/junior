@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AgentPluginState } from "@sentry/junior-plugin-api";
+import type { PluginState } from "@sentry/junior-plugin-api";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const MAX_PLUGIN_STATE_KEY_LENGTH = 512;
@@ -45,7 +45,7 @@ function legacyStateKey(
 export function createPluginState(
   plugin: string,
   options?: PluginStateOptions,
-): AgentPluginState {
+): PluginState {
   return {
     async delete(key) {
       validatePluginStateKey(key);

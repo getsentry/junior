@@ -13,9 +13,9 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
 import type {
-  AgentPluginConversationStatus,
-  AgentPluginConversations,
-  AgentPluginConversationSummary,
+  PluginConversationStatus,
+  PluginConversations,
+  PluginConversationSummary,
   Destination,
 } from "@sentry/junior-plugin-api";
 import {
@@ -47,9 +47,9 @@ import type {
 } from "@/chat/conversations/store";
 
 export type {
-  AgentPluginConversationStatus,
-  AgentPluginConversations,
-  AgentPluginConversationSummary,
+  PluginConversationStatus,
+  PluginConversations,
+  PluginConversationSummary,
 };
 
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
@@ -1277,7 +1277,7 @@ export async function listRecentConversationSummaries(
   options: {
     limit?: number;
   } & ConversationReaderOptions = {},
-): Promise<AgentPluginConversationSummary[]> {
+): Promise<PluginConversationSummary[]> {
   const store = conversationStore(options);
   const nowMs = Date.now();
   const limit = Math.max(0, Math.min(100, Math.floor(options.limit ?? 25)));

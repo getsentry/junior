@@ -1,0 +1,130 @@
+import type {
+  PluginContext,
+  LocalInvocationContext,
+  Requester,
+  SlackInvocationContext,
+} from "./context";
+import type { PluginCredentialSubject } from "./credentials";
+import type { PluginState } from "./state";
+
+export interface PluginEnv {
+  get(key: string): string | undefined;
+  set(key: string, value: string): void;
+}
+
+export interface PluginDecision {
+  deny(message: string): void;
+  replaceInput(input: Record<string, unknown>): void;
+}
+
+/** Thrown when a plugin tool rejects invalid model or user input. */
+export class PluginToolInputError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PluginToolInputError";
+  }
+}
+
+export interface PluginSandbox {
+  juniorRoot: string;
+  root: string;
+  readFile(path: string): Promise<Uint8Array | null>;
+  run(input: {
+    args?: string[];
+    cmd: string;
+    cwd?: string;
+    env?: Record<string, string>;
+    sudo?: boolean;
+  }): Promise<{
+    exitCode: number;
+    stderr: string;
+    stdout: string;
+  }>;
+  writeFile(input: {
+    content: string | Uint8Array;
+    mode?: number;
+    path: string;
+  }): Promise<void>;
+}
+
+export interface SandboxPrepareHookContext extends PluginContext {
+  requester?: Requester;
+  sandbox: PluginSandbox;
+}
+
+export interface BeforeToolExecuteHookContext extends PluginContext {
+  decision: PluginDecision;
+  env: PluginEnv;
+  requester?: Requester;
+  tool: {
+    input: Record<string, unknown>;
+    name: string;
+  };
+}
+
+export type PluginToolExecute<TInput = unknown> = {
+  bivarianceHack(
+    input: TInput,
+    options: { experimental_context?: unknown },
+  ): Promise<unknown> | unknown;
+}["bivarianceHack"];
+
+export interface PluginToolDefinition<TInput = unknown> {
+  annotations?: unknown;
+  description: string;
+  executionMode?: unknown;
+  inputSchema: unknown;
+  prepareArguments?: (args: unknown) => unknown;
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for compatibility; may be removed in a
+   * future major version.
+   */
+  promptGuidelines?: string[];
+  /**
+   * @deprecated Put tool-selection and usage guidance directly in `description`
+   * and parameter descriptions. Retained for compatibility; may be removed in a
+   * future major version.
+   */
+  promptSnippet?: string;
+  execute?: PluginToolExecute<TInput>;
+}
+
+export interface SlackToolRegistrationHookContext {
+  /**
+   * Capabilities of the source Slack conversation exposed to this plugin.
+   * Recomputed from `source.channelId`, not from `destination`.
+   */
+  channelCapabilities: {
+    canAddReactions: boolean;
+    canCreateCanvas: boolean;
+    canPostToChannel: boolean;
+  };
+  credentialSubject?: PluginCredentialSubject;
+}
+
+interface BaseToolRegistrationHookContext extends PluginContext {
+  /**
+   * Opaque Junior conversation/session identity for this turn.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   * Scheduled/API turns use an internal id such as `agent-dispatch:{id}`.
+   * Do not parse as Slack unless the value starts with `slack:`.
+   */
+  conversationId?: string;
+  state: PluginState;
+  userText?: string;
+}
+
+interface SlackToolRegistrationContext
+  extends BaseToolRegistrationHookContext, SlackInvocationContext {
+  slack: SlackToolRegistrationHookContext;
+}
+
+interface LocalToolRegistrationContext
+  extends BaseToolRegistrationHookContext, LocalInvocationContext {
+  slack?: never;
+}
+
+export type ToolRegistrationHookContext =
+  | LocalToolRegistrationContext
+  | SlackToolRegistrationContext;

@@ -21,7 +21,7 @@ import type { ToolDefinition } from "@/chat/tools/definition";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
-import type { AgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
@@ -32,7 +32,7 @@ export function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
-  agentHooks?: AgentPluginHookRunner,
+  agentHooks?: PluginHookRunner,
   conversationPrivacy?: ConversationPrivacy,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
@@ -123,7 +123,9 @@ export function createAgentTools(
 
             const normalized = normalizeToolResult(result, isSandbox);
             if (isSandbox && pluginAuthOrchestration) {
-              await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
+              await pluginAuthOrchestration.maybeHandleAuthSignal(
+                normalized.details,
+              );
             }
             const resultAttributeValue =
               normalized.details &&

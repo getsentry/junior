@@ -1,16 +1,16 @@
 import {
   defineJuniorPlugin,
-  type AgentPluginConversations,
+  type PluginConversations,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
-  createAgentPluginHookRunner,
-  getAgentPluginOperationalReports,
-  getAgentPluginRoutes,
-  getAgentPluginSlackConversationLink,
-  getAgentPluginTools,
-  setAgentPlugins,
+  createPluginHookRunner,
+  getPluginOperationalReports,
+  getPluginRoutes,
+  getPluginSlackConversationLink,
+  getPluginTools,
+  setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import { tool } from "@/chat/tools/definition";
@@ -29,7 +29,7 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:agent-hooks",
 } as const;
 
-const EMPTY_CONVERSATIONS: AgentPluginConversations = {
+const EMPTY_CONVERSATIONS: PluginConversations = {
   async listRecent() {
     return [];
   },
@@ -93,7 +93,7 @@ function fakeSandbox(
 
 describe("agent plugin hooks", () => {
   it("collects turn-scoped tools from configured plugins", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -115,7 +115,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const tools = getAgentPluginTools({
+      const tools = getPluginTools({
         destination: SLACK_DESTINATION,
         requester: TEST_REQUESTER,
         source: SLACK_DESTINATION,
@@ -124,12 +124,12 @@ describe("agent plugin hooks", () => {
 
       expect(tools).toHaveProperty("demoTool");
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects plugin tools with invalid names", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -151,19 +151,19 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       expect(() =>
-        getAgentPluginTools({
+        getPluginTools({
           destination: LOCAL_DESTINATION,
           source: LOCAL_DESTINATION,
           sandbox: {} as any,
         }),
       ).toThrow("must be a camelCase identifier");
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects plugin tools that conflict with core tools", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -196,12 +196,12 @@ describe("agent plugin hooks", () => {
         ),
       ).toThrow('Plugin tool "loadSkill" conflicts with a core tool');
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("collects route handlers from configured plugins", async () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -222,7 +222,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const routes = getAgentPluginRoutes();
+      const routes = getPluginRoutes();
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -232,12 +232,12 @@ describe("agent plugin hooks", () => {
       );
       await expect(response.text()).resolves.toBe("demo");
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects invalid route methods from configured plugins", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -259,16 +259,16 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getAgentPluginRoutes()).toThrow(
+      expect(() => getPluginRoutes()).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
       );
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects routes that combine ALL with explicit methods", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -290,16 +290,16 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getAgentPluginRoutes()).toThrow(
+      expect(() => getPluginRoutes()).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
       );
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects route paths that mix ALL and explicit method registrations", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -326,16 +326,16 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getAgentPluginRoutes()).toThrow(
+      expect(() => getPluginRoutes()).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',
       );
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("rejects unsafe Slack conversation links from configured plugins", () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -351,16 +351,16 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getAgentPluginSlackConversationLink("slack:C1:123")).toThrow(
+      expect(() => getPluginSlackConversationLink("slack:C1:123")).toThrow(
         'Plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
       );
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("collects operational reports from configured plugins", async () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -386,7 +386,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getAgentPluginOperationalReports(123, EMPTY_CONVERSATIONS),
+        getPluginOperationalReports(123, EMPTY_CONVERSATIONS),
       ).resolves.toEqual([
         {
           pluginName: "agent-demo",
@@ -395,12 +395,12 @@ describe("agent plugin hooks", () => {
         },
       ]);
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("passes conversation reader to operational reports", async () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -428,7 +428,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getAgentPluginOperationalReports(123, {
+        getPluginOperationalReports(123, {
           async listRecent() {
             return [
               {
@@ -449,12 +449,12 @@ describe("agent plugin hooks", () => {
         },
       ]);
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("contains failed operational reports per plugin", async () => {
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         name: "agent-demo",
         manifest: {
@@ -487,7 +487,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getAgentPluginOperationalReports(123, EMPTY_CONVERSATIONS),
+        getPluginOperationalReports(123, EMPTY_CONVERSATIONS),
       ).resolves.toEqual([
         {
           pluginName: "agent-demo",
@@ -508,13 +508,13 @@ describe("agent plugin hooks", () => {
         },
       ]);
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 
   it("runs sandbox and tool lifecycle hooks from configured plugins", async () => {
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -556,7 +556,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const runner = createAgentPluginHookRunner({
+      const runner = createPluginHookRunner({
         requester: TEST_REQUESTER,
       });
 
@@ -585,12 +585,12 @@ describe("agent plugin hooks", () => {
       });
       expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 });
 
-describe("getAgentPluginTools channel resolution", () => {
+describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
       destination: LOCAL_DESTINATION,
@@ -599,7 +599,7 @@ describe("getAgentPluginTools channel resolution", () => {
     },
   ) {
     let captured: ToolRegistrationHookContext | undefined;
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "capture",
@@ -614,8 +614,8 @@ describe("getAgentPluginTools channel resolution", () => {
         },
       }),
     ]);
-    getAgentPluginTools(context);
-    setAgentPlugins(previous);
+    getPluginTools(context);
+    setPlugins(previous);
     if (!captured) {
       throw new Error("capture plugin tools hook was not called");
     }

@@ -40,7 +40,7 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { createAgentPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   inferActiveMcpProvidersFromPiMessages,
@@ -769,7 +769,7 @@ export async function generateAssistantReply(
         ? context.credentialContext.actor.userId
         : undefined;
     const userTokenStore = createUserTokenStore();
-    const agentPluginHooks = createAgentPluginHookRunner({
+    const pluginHooks = createPluginHookRunner({
       requester: actorRequester,
     });
     sandboxExecutor = createSandboxExecutor({
@@ -779,7 +779,7 @@ export async function generateAssistantReply(
       traceContext: spanContext,
       tracePropagation: context.sandbox?.tracePropagation,
       credentialEgress: context.credentialContext,
-      agentHooks: agentPluginHooks,
+      agentHooks: pluginHooks,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -1233,7 +1233,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      agentPluginHooks,
+      pluginHooks,
       conversationPrivacy,
     );
     advisorTools = createAgentTools(
@@ -1244,7 +1244,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      agentPluginHooks,
+      pluginHooks,
       conversationPrivacy,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this

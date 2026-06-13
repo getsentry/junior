@@ -105,7 +105,7 @@ export interface JuniorDashboardPluginOptions {
 
 export function juniorDashboardPlugin(
   options?: JuniorDashboardPluginOptions,
-): JuniorPluginRegistration;
+): PluginRegistration;
 ```
 
 The plugin factory is the normal dashboard integration path. When registered

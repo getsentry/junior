@@ -1,7 +1,7 @@
 import {
   defineJuniorPlugin,
   type Dispatch,
-  type AgentPluginToolDefinition,
+  type PluginToolDefinition,
   type PluginOperationalReportContent,
   type SlackDestination,
   type ToolRegistrationHookContext,
@@ -374,7 +374,7 @@ export function createSchedulerPlugin() {
           ctx.source.platform !== "slack" ||
           ctx.requester?.platform !== "slack"
         ) {
-          return {} as Record<string, AgentPluginToolDefinition<any>>;
+          return {} as Record<string, PluginToolDefinition<any>>;
         }
         const context = createSchedulerToolContext(ctx);
         return {
@@ -383,7 +383,7 @@ export function createSchedulerPlugin() {
           slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(context),
           slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(context),
           slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(context),
-        } satisfies Record<string, AgentPluginToolDefinition<any>>;
+        } satisfies Record<string, PluginToolDefinition<any>>;
       },
       async heartbeat(ctx) {
         const store = createSchedulerStore(ctx.state);

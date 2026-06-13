@@ -53,7 +53,7 @@ Plugins own only their domain logic: tools, heartbeat work discovery, durable pl
 Plugins may register turn-scoped tools:
 
 ```ts
-interface AgentPluginHooks {
+interface PluginHooks {
   tools?(ctx: ToolRegistrationContext): Record<string, ToolDefinition>;
 }
 ```
@@ -101,7 +101,7 @@ The endpoint is a pulse, not a job runner.
 Plugins may implement:
 
 ```ts
-interface AgentPluginHooks {
+interface PluginHooks {
   heartbeat?(ctx: HeartbeatContext): Promise<HeartbeatResult | void>;
 }
 ```

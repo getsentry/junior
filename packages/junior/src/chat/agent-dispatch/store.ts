@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
-  agentPluginCredentialSubjectSchema,
+  pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
   type SlackDestination,
@@ -52,7 +52,7 @@ const credentialSubjectBindingSchema = z
     signature: z.string().min(1),
   })
   .strict();
-const boundCredentialSubjectSchema = agentPluginCredentialSubjectSchema
+const boundCredentialSubjectSchema = pluginCredentialSubjectSchema
   .extend({
     binding: credentialSubjectBindingSchema,
   })

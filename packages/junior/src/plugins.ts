@@ -1,11 +1,11 @@
-import type { JuniorPluginRegistration } from "@sentry/junior-plugin-api";
+import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import type {
   InlinePluginManifestDefinition,
   PluginCatalogConfig,
   PluginManifestConfig,
 } from "./chat/plugins/types";
 
-export type JuniorPluginInput = JuniorPluginRegistration | string;
+export type JuniorPluginInput = PluginRegistration | string;
 
 export interface JuniorPluginSetOptions {
   /** Install-level manifest overrides applied before validation. */
@@ -19,7 +19,7 @@ export interface JuniorPluginSet {
   /** Manifest-only plugin packages included by package name. */
   packageNames: string[];
   /** JavaScript plugin definitions included by package factories. */
-  registrations: JuniorPluginRegistration[];
+  registrations: PluginRegistration[];
 }
 
 function cloneManifests(
@@ -29,7 +29,7 @@ function cloneManifests(
 }
 
 function cloneInlineManifests(
-  registrations: JuniorPluginRegistration[],
+  registrations: PluginRegistration[],
 ): InlinePluginManifestDefinition[] | undefined {
   const inlineManifests = registrations.flatMap((plugin) =>
     plugin.manifest
@@ -66,9 +66,7 @@ function cloneInlineManifests(
   return inlineManifests.length > 0 ? inlineManifests : undefined;
 }
 
-function assertUniquePluginNames(
-  registrations: JuniorPluginRegistration[],
-): void {
+function assertUniquePluginNames(registrations: PluginRegistration[]): void {
   const seen = new Set<string>();
   for (const plugin of registrations) {
     if (seen.has(plugin.name)) {
@@ -90,7 +88,7 @@ function assertUniquePackageNames(packageNames: string[]): void {
 
 function normalizePluginInput(input: JuniorPluginInput): {
   packageName?: string;
-  registration?: JuniorPluginRegistration;
+  registration?: PluginRegistration;
 } {
   if (typeof input === "string") {
     return { packageName: input };
@@ -153,7 +151,7 @@ export function pluginCatalogConfigFromPluginSet(
 /** Return registrations that expose in-process runtime hooks. */
 export function pluginHookRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,
-): JuniorPluginRegistration[] {
+): PluginRegistration[] {
   return (
     pluginSet?.registrations.filter(
       (plugin) => plugin.hooks || plugin.legacyStatePrefixes,

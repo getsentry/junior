@@ -1,4 +1,4 @@
-import type { JuniorPluginRegistration } from "@sentry/junior-plugin-api";
+import type { PluginRegistration } from "@sentry/junior-plugin-api";
 
 export type GitHubAppPermissionLevel = "read" | "write" | "admin";
 
@@ -46,6 +46,4 @@ export interface GitHubPluginOptions {
 }
 
 /** Register GitHub manifest content and runtime hooks. */
-export function githubPlugin(
-  options?: GitHubPluginOptions,
-): JuniorPluginRegistration;
+export function githubPlugin(options?: GitHubPluginOptions): PluginRegistration;

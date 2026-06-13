@@ -1,7 +1,7 @@
 import {
-  type AgentPluginRoute,
+  type PluginRoute,
   defineJuniorPlugin,
-  type JuniorPluginRegistration,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { buildDashboardConversationURL, normalizeDashboardPath } from "./url";
 import { createDashboardApp, type JuniorDashboardOptions } from "./app";
@@ -36,9 +36,7 @@ function dashboardRoutePaths(options: JuniorDashboardPluginOptions): string[] {
   ];
 }
 
-function dashboardRoutes(
-  options: JuniorDashboardPluginOptions,
-): AgentPluginRoute[] {
+function dashboardRoutes(options: JuniorDashboardPluginOptions): PluginRoute[] {
   let app: ReturnType<typeof createDashboardApp> | undefined;
   const fetch = (request: Request) => {
     app ??= createDashboardApp(options);
@@ -54,7 +52,7 @@ function dashboardRoutes(
 /** Register dashboard routes and Slack footer links through plugin hooks. */
 export function juniorDashboardPlugin(
   options: JuniorDashboardPluginOptions = {},
-): JuniorPluginRegistration {
+): PluginRegistration {
   return defineJuniorPlugin({
     name: "dashboard",
     manifest: {

@@ -39,7 +39,7 @@ creating memory-specific plugin APIs.
 Runtime hook plugins may provide prompt and observation hooks:
 
 ```ts
-interface AgentPluginHooks {
+interface PluginHooks {
   systemPrompt?(
     ctx: SystemPromptHookContext,
   ): PromptContribution[] | Promise<PromptContribution[]>;
@@ -50,7 +50,7 @@ interface AgentPluginHooks {
 
   observeTurn?(ctx: TurnObservationContext): void | Promise<void>;
 
-  tasks?: Record<string, AgentPluginTaskHandler>;
+  tasks?: Record<string, PluginTaskHandler>;
 }
 ```
 
@@ -134,12 +134,12 @@ interface UserPromptHookContext {
   conversationId?: string;
   destination?: Destination;
   isFirstPrompt: boolean;
-  log: AgentPluginLogger;
-  plugin: AgentPluginMetadata;
+  log: PluginLogger;
+  plugin: PluginMetadata;
   requester?: Requester;
-  session: AgentPluginSessionState;
+  session: PluginSessionState;
   source: Source;
-  state: AgentPluginState;
+  state: PluginState;
   userText: string;
 }
 ```
@@ -168,7 +168,7 @@ interface PluginSessionStateAppend {
   value: unknown;
 }
 
-interface AgentPluginSessionState {
+interface PluginSessionState {
   list<T = unknown>(
     key: string,
   ): Promise<Array<{ createdAtMs: number; value: T }>>;
@@ -220,7 +220,7 @@ Observation context should include:
 
 The bounded observation payload is a runtime-owned projection, not a raw
 transcript. Core may expose the same projection directly to `observeTurn(ctx)`
-and later through `AgentPluginTaskContext.observation.load()` for
+and later through `PluginTaskContext.observation.load()` for
 observation-backed tasks.
 
 Observation hooks must not receive provider credentials, raw authorization URLs,
@@ -249,11 +249,11 @@ interface PluginTaskEnqueueResult {
   status: "created" | "already_exists";
 }
 
-interface AgentPluginTaskQueue {
+interface PluginTaskQueue {
   enqueue(options: PluginTaskEnqueueOptions): Promise<PluginTaskEnqueueResult>;
 }
 
-interface AgentPluginTaskContext extends AgentPluginContext {
+interface PluginTaskContext extends PluginContext {
   id: string;
   name: string;
   payload?: unknown;
@@ -262,9 +262,7 @@ interface AgentPluginTaskContext extends AgentPluginContext {
   };
 }
 
-type AgentPluginTaskHandler = (
-  ctx: AgentPluginTaskContext,
-) => Promise<void> | void;
+type PluginTaskHandler = (ctx: PluginTaskContext) => Promise<void> | void;
 ```
 
 The exact host implementation is not part of the plugin API. Core may run

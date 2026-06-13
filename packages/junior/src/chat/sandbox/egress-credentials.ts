@@ -4,8 +4,8 @@ import {
 } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type {
-  AgentPluginAuthorization,
-  AgentPluginGrant,
+  PluginAuthorization,
+  PluginGrant,
 } from "@sentry/junior-plugin-api";
 import {
   hasEgressCredentialHooks,
@@ -28,11 +28,11 @@ const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export type SandboxEgressGrantSelection =
   | {
-      grant: AgentPluginGrant;
+      grant: PluginGrant;
       source: "plugin";
     }
   | {
-      grant: AgentPluginGrant;
+      grant: PluginGrant;
       source: "broker";
     };
 
@@ -40,14 +40,14 @@ export type SandboxEgressCredentialErrorKind = "auth_required" | "unavailable";
 
 /** Signals that egress selected a grant but could not issue credential headers. */
 export class SandboxEgressCredentialError extends Error {
-  readonly authorization?: AgentPluginAuthorization;
-  readonly grant: AgentPluginGrant;
+  readonly authorization?: PluginAuthorization;
+  readonly grant: PluginGrant;
   readonly kind: SandboxEgressCredentialErrorKind;
   readonly provider: string;
 
   constructor(input: {
-    authorization?: AgentPluginAuthorization;
-    grant: AgentPluginGrant;
+    authorization?: PluginAuthorization;
+    grant: PluginGrant;
     kind: SandboxEgressCredentialErrorKind;
     message: string;
     provider: string;
@@ -65,7 +65,7 @@ function defaultGrantForProvider(input: {
   method: string;
   provider: string;
 }): SandboxEgressGrantSelection {
-  const access: AgentPluginGrant["access"] = HTTP_READ_METHODS.has(
+  const access: PluginGrant["access"] = HTTP_READ_METHODS.has(
     input.method.toUpperCase(),
   )
     ? "read"
@@ -82,7 +82,7 @@ function defaultGrantForProvider(input: {
 
 function oauthAuthorizationForProvider(
   provider: string,
-): AgentPluginAuthorization | undefined {
+): PluginAuthorization | undefined {
   const oauth = getPluginOAuthConfig(provider);
   return oauth
     ? {
@@ -143,7 +143,7 @@ export async function selectSandboxEgressGrant(input: {
 export function authorizationForSandboxEgressGrant(
   provider: string,
   selection: SandboxEgressGrantSelection,
-): AgentPluginAuthorization | undefined {
+): PluginAuthorization | undefined {
   return selection.source === "broker"
     ? oauthAuthorizationForProvider(provider)
     : undefined;
@@ -175,7 +175,7 @@ export async function sandboxEgressCredentialLease(
 
   let lease: {
     account?: SandboxEgressCredentialLease["account"];
-    authorization?: AgentPluginAuthorization;
+    authorization?: PluginAuthorization;
     expiresAt: string;
     headerTransforms?: SandboxEgressCredentialLease["headerTransforms"];
   };

@@ -72,7 +72,7 @@ import {
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
@@ -941,7 +941,7 @@ describe("sandbox egress proxy", () => {
         },
       };
     });
-    const previous = setAgentPlugins([
+    const previous = setPlugins([
       defineJuniorPlugin({
         manifest: githubPlugin().manifest,
         hooks: {
@@ -1031,7 +1031,7 @@ describe("sandbox egress proxy", () => {
         sso: "required; url=https://github.com/orgs/getsentry/sso",
       });
     } finally {
-      setAgentPlugins(previous);
+      setPlugins(previous);
     }
   });
 

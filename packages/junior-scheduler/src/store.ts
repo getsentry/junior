@@ -1,9 +1,9 @@
 import {
-  agentPluginCredentialSubjectSchema,
+  pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
-  type AgentPluginReadState,
-  type AgentPluginState,
+  type PluginReadState,
+  type PluginState,
 } from "@sentry/junior-plugin-api";
 import { getNextRunAtMs } from "./cadence";
 import type { ScheduledRun, ScheduledTask } from "./types";
@@ -107,7 +107,7 @@ function unique(values: string[]): string[] {
 }
 
 async function withLock<T>(
-  state: AgentPluginState,
+  state: PluginState,
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
@@ -115,7 +115,7 @@ async function withLock<T>(
 }
 
 async function addToIndex(
-  state: AgentPluginState,
+  state: PluginState,
   key: string,
   taskId: string,
 ): Promise<void> {
@@ -128,7 +128,7 @@ async function addToIndex(
 }
 
 async function removeFromIndex(
-  state: AgentPluginState,
+  state: PluginState,
   key: string,
   taskId: string,
 ): Promise<void> {
@@ -151,7 +151,7 @@ async function removeFromIndex(
 }
 
 async function getIndex(
-  state: AgentPluginReadState,
+  state: PluginReadState,
   key: string,
 ): Promise<string[]> {
   const values = (await state.get<string[]>(key)) ?? [];
@@ -161,7 +161,7 @@ async function getIndex(
 }
 
 async function clearActiveRun(
-  state: AgentPluginState,
+  state: PluginState,
   taskId: string,
   runId: string,
 ): Promise<void> {
@@ -174,7 +174,7 @@ async function clearActiveRun(
 }
 
 async function clearStaleActiveRun(
-  state: AgentPluginState,
+  state: PluginState,
   taskId: string,
   nowMs: number,
 ): Promise<boolean> {
@@ -370,7 +370,7 @@ function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const credentialSubject =
     record.credentialSubject === undefined
       ? undefined
-      : agentPluginCredentialSubjectSchema.safeParse(record.credentialSubject);
+      : pluginCredentialSubjectSchema.safeParse(record.credentialSubject);
   if (credentialSubject && !credentialSubject.success) {
     return undefined;
   }
@@ -390,14 +390,14 @@ function requireStoredTask(task: ScheduledTask): ScheduledTask {
 }
 
 async function getTaskFromState(
-  state: AgentPluginReadState,
+  state: PluginReadState,
   taskId: string,
 ): Promise<ScheduledTask | undefined> {
   return parseStoredTask(await state.get(taskKey(taskId)));
 }
 
 async function listTasksFromState(
-  state: AgentPluginReadState,
+  state: PluginReadState,
   indexKey: string,
 ): Promise<ScheduledTask[]> {
   const ids = await getIndex(state, indexKey);
@@ -409,14 +409,14 @@ async function listTasksFromState(
 }
 
 async function getRunFromState(
-  state: AgentPluginReadState,
+  state: PluginReadState,
   runId: string,
 ): Promise<ScheduledRun | undefined> {
   return (await state.get<ScheduledRun>(runKey(runId))) ?? undefined;
 }
 
 async function listIncompleteRunsForTasksFromState(
-  state: AgentPluginReadState,
+  state: PluginReadState,
   tasks: ScheduledTask[],
 ): Promise<ScheduledRun[]> {
   const runs: ScheduledRun[] = [];
@@ -434,9 +434,9 @@ async function listIncompleteRunsForTasksFromState(
 }
 
 class PluginStateSchedulerOperationalStore implements SchedulerOperationalStore {
-  private readonly state: AgentPluginReadState;
+  private readonly state: PluginReadState;
 
-  constructor(state: AgentPluginReadState) {
+  constructor(state: PluginReadState) {
     this.state = state;
   }
 
@@ -452,9 +452,9 @@ class PluginStateSchedulerOperationalStore implements SchedulerOperationalStore 
 }
 
 class PluginStateSchedulerStore implements SchedulerStore {
-  private readonly state: AgentPluginState;
+  private readonly state: PluginState;
 
-  constructor(state: AgentPluginState) {
+  constructor(state: PluginState) {
     this.state = state;
   }
 
@@ -903,13 +903,13 @@ class PluginStateSchedulerStore implements SchedulerStore {
 }
 
 /** Create a scheduler store backed by this plugin's durable state namespace. */
-export function createSchedulerStore(state: AgentPluginState): SchedulerStore {
+export function createSchedulerStore(state: PluginState): SchedulerStore {
   return new PluginStateSchedulerStore(state);
 }
 
 /** Create a read-only scheduler store for operational reporting. */
 export function createSchedulerOperationalStore(
-  state: AgentPluginReadState,
+  state: PluginReadState,
 ): SchedulerOperationalStore {
   return new PluginStateSchedulerOperationalStore(state);
 }

@@ -133,7 +133,7 @@ Read discovered skill names for reporting consumers.
 
 ### listRecentConversations()?
 
-> `optional` **listRecentConversations**(`options?`): `Promise`\<[`AgentPluginConversationSummary`](/reference/api/interfaces/agentpluginconversationsummary/)[]\>
+> `optional` **listRecentConversations**(`options?`): `Promise`\<[`PluginConversationSummary`](/reference/api/interfaces/pluginconversationsummary/)[]\>
 
 Defined in: [junior/src/reporting.ts:104](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L104)
 
@@ -149,4 +149,4 @@ Read recent conversation summaries without transcript payloads.
 
 #### Returns
 
-`Promise`\<[`AgentPluginConversationSummary`](/reference/api/interfaces/agentpluginconversationsummary/)[]\>
+`Promise`\<[`PluginConversationSummary`](/reference/api/interfaces/pluginconversationsummary/)[]\>

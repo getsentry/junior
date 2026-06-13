@@ -1,6 +1,6 @@
 import type { HeartbeatHookContext } from "@sentry/junior-plugin-api";
 import { bindSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import { createAgentPluginLogger } from "@/chat/plugins/logging";
+import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import {
   createOrGetDispatch,
@@ -75,7 +75,7 @@ export function createHeartbeatContext(args: {
     state: createPluginState(args.plugin, {
       legacyStatePrefixes: args.legacyStatePrefixes,
     }),
-    log: createAgentPluginLogger(args.plugin),
+    log: createPluginLogger(args.plugin),
     agent: {
       async dispatch(options) {
         validateDispatchOptions(options);

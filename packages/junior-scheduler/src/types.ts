@@ -1,5 +1,5 @@
 import type {
-  AgentPluginCredentialSubject,
+  PluginCredentialSubject,
   SlackDestination,
 } from "@sentry/junior-plugin-api";
 
@@ -71,7 +71,7 @@ export interface ScheduledTask {
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
-  credentialSubject?: AgentPluginCredentialSubject;
+  credentialSubject?: PluginCredentialSubject;
   destination: SlackDestination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;

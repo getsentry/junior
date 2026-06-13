@@ -3,7 +3,7 @@ import path from "node:path";
 import {
   defineJuniorPlugin,
   EgressAuthRequired,
-  type AgentPluginHooks,
+  type PluginHooks,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -112,8 +112,8 @@ function proxiedRequest(input: {
 
 async function registerManagedEgressPlugin(input?: {
   egressTracePropagationDomains?: string[];
-  issueCredential?: NonNullable<AgentPluginHooks["issueCredential"]>;
-  onEgressResponse?: NonNullable<AgentPluginHooks["onEgressResponse"]>;
+  issueCredential?: NonNullable<PluginHooks["issueCredential"]>;
+  onEgressResponse?: NonNullable<PluginHooks["onEgressResponse"]>;
 }) {
   const { createApp, defineJuniorPlugins } = await import("@/app");
   await createApp({

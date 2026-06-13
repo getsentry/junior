@@ -1,8 +1,8 @@
-import type { AgentPluginLogger } from "@sentry/junior-plugin-api";
+import type { PluginLogger } from "@sentry/junior-plugin-api";
 import { logException, logInfo, logWarn } from "@/chat/logging";
 
 /** Create the host logger exposed to plugin hooks. */
-export function createAgentPluginLogger(plugin: string): AgentPluginLogger {
+export function createPluginLogger(plugin: string): PluginLogger {
   return {
     info(message, metadata) {
       logInfo(

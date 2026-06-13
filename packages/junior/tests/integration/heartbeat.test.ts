@@ -26,7 +26,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -170,13 +170,13 @@ describe("plugin heartbeat", () => {
     process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "dispatch-secret";
-    setAgentPlugins([]);
+    setPlugins([]);
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     global.fetch = originalFetch;
-    setAgentPlugins([]);
+    setPlugins([]);
     await disconnectStateAdapter();
     delete process.env.JUNIOR_SCHEDULER_SECRET;
     delete process.env.CRON_SECRET;
@@ -199,7 +199,7 @@ describe("plugin heartbeat", () => {
 
   it("runs plugin heartbeat hooks", async () => {
     const seen: number[] = [];
-    setAgentPlugins([
+    setPlugins([
       defineJuniorPlugin({
         manifest: {
           name: "scheduler",
@@ -834,7 +834,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(
       createTask({
@@ -904,7 +904,7 @@ describe("plugin heartbeat", () => {
   });
 
   it("exposes sanitized scheduler operational reports through Junior reporting", async () => {
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(
       createTask({
@@ -999,7 +999,7 @@ describe("plugin heartbeat", () => {
   });
 
   it("counts all running scheduler runs in operational summaries", async () => {
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     for (let index = 0; index < 6; index += 1) {
       await store.saveTask(
@@ -1034,7 +1034,7 @@ describe("plugin heartbeat", () => {
 
   it("carries scheduled task credential subjects into dispatch records", async () => {
     mockDispatchCallbackFetch(originalFetch);
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(
       createTask({
@@ -1086,7 +1086,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask(createTask());
 
@@ -1133,7 +1133,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     await store.saveTask({
       ...createTask(),
@@ -1177,7 +1177,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     const task = createDailyTask();
     await store.saveTask(task);
@@ -1210,7 +1210,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    setAgentPlugins([schedulerPlugin()]);
+    setPlugins([schedulerPlugin()]);
     const store = schedulerStore();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",

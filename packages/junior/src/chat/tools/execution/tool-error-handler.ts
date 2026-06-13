@@ -5,7 +5,7 @@ import {
   setSpanAttributes,
   type LogContext,
 } from "@/chat/logging";
-import { AgentPluginToolInputError } from "@sentry/junior-plugin-api";
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { getMcpAwareTelemetryMessage, McpToolError } from "@/chat/mcp/errors";
@@ -15,8 +15,8 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function isPluginToolInputError(error: unknown): boolean {
   return (
-    error instanceof AgentPluginToolInputError ||
-    (error instanceof Error && error.name === "AgentPluginToolInputError")
+    error instanceof PluginToolInputError ||
+    (error instanceof Error && error.name === "PluginToolInputError")
   );
 }
 
