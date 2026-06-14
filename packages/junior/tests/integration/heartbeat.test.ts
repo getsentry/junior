@@ -11,6 +11,7 @@ import {
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
 import { createPluginState } from "@/chat/plugins/state";
+import * as pluginDbModule from "@/chat/plugins/db";
 import {
   createOrGetDispatch,
   getDispatchRecord,
@@ -465,6 +466,29 @@ describe("plugin heartbeat", () => {
       destination: { channelId: "C123" },
       metadata: { runId: "run-1" },
     });
+  });
+
+  it("exposes plugin DB access to heartbeat contexts for database plugins", () => {
+    const db = {} as any;
+    const spy = vi
+      .spyOn(pluginDbModule, "getPluginDbForRegistration")
+      .mockReturnValue(db);
+    const plugin = defineJuniorPlugin({
+      database: { required: true },
+      manifest: {
+        name: "database-plugin",
+        displayName: "Database Plugin",
+        description: "Heartbeat database context test",
+      },
+    });
+
+    const ctx = createHeartbeatContext({
+      plugin,
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    });
+
+    expect(spy).toHaveBeenCalledWith(plugin);
+    expect(ctx.db).toBe(db);
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {

@@ -1,5 +1,7 @@
 import path from "node:path";
+import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
   createSchedulerStore,
@@ -125,14 +127,16 @@ describe("scheduler SQL plugin storage", () => {
   }, 15_000);
 
   it("migrates existing scheduler plugin state into SQL idempotently", async () => {
-    const stateAdapter = getStateAdapter();
+    const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchedulerSchema(fixture);
       const db = createPluginDbForExecutor(fixture.executor);
-      const stateStore = createSchedulerStore(createPluginState("scheduler"));
+      const stateStore = createSchedulerStore(
+        createPluginState("scheduler", stateAdapter),
+      );
       const task = createTask({ id: "sched_state_sql" });
       await stateStore.saveTask(task);
       const run = await stateStore.claimDueRun({ nowMs: TEST_NOW_MS });
@@ -165,6 +169,51 @@ describe("scheduler SQL plugin storage", () => {
       await expect(sqlStore.getRun(run!.id)).resolves.toMatchObject({
         id: run!.id,
         taskId: task.id,
+      });
+    } finally {
+      await stateAdapter.disconnect();
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not expose a migration DB to plugins that did not declare database access", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const db = createPluginDbForExecutor(fixture.executor);
+      const plugin = defineJuniorPlugin({
+        manifest: {
+          name: "stateless",
+          displayName: "Stateless",
+          description: "Storage migration without database access",
+        },
+        hooks: {
+          migrateStorage(ctx) {
+            expect(ctx.db).toBeUndefined();
+            return {
+              existing: 0,
+              migrated: 0,
+              missing: 0,
+              scanned: 1,
+            };
+          },
+        },
+      });
+
+      await expect(
+        runPluginStorageMigrations({
+          io: { info: () => {} },
+          pluginDb: db,
+          pluginSet: defineJuniorPlugins([plugin]),
+          stateAdapter,
+        }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 0,
+        missing: 0,
+        scanned: 1,
       });
     } finally {
       await fixture.close();

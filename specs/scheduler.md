@@ -20,7 +20,6 @@ Define the first scheduler contract for Junior: users can create durable tasks t
 ## Non-Goals
 
 - A generic event-rule engine for GitHub, Slack, Sentry, or webhook events.
-- SQL-backed storage as a V1 requirement.
 - A full durable workflow runtime such as Temporal or Vercel Workflow.
 - Reusing agent continuation callbacks as the product scheduler.
 - Slack `chat.scheduleMessage` as the execution mechanism.
@@ -132,16 +131,26 @@ This follows the router and turn-context pattern: background and state live in d
 
 ### Storage
 
-V1 must not require SQL. The scheduler store should use the existing durable state dependency already required by Junior deployments.
+The scheduler is a trusted runtime plugin and requires plugin SQL storage. Its
+plugin package owns the scheduler migration files under `migrations/`, and
+`junior upgrade` applies those migrations before scheduler storage hooks run.
 
-The initial implementation may use the Chat SDK state adapter and a global task index:
+The SQL store keeps task and run records in scheduler-owned tables:
 
-- `junior:scheduler:task:{task_id}` stores the task record.
-- `junior:scheduler:tasks` stores task ids for due scans.
-- `junior:scheduler:team:{team_id}:tasks` stores task ids for workspace management.
-- `junior:scheduler:run:{run_id}` stores run history.
-- `junior:scheduler:active:{task_id}` stores the currently active run marker for task-level overlap prevention.
-- `junior:scheduler:claim:{task_id}:{scheduled_for_ms}` is the idempotency claim.
+- `junior_scheduler_tasks` stores current task state, destination fields, due
+  timestamps, schedule metadata, and the full task JSON record.
+- `junior_scheduler_runs` stores run claims, dispatch ids, terminal status,
+  attempt metadata, and the full run JSON record.
+
+The scheduler store interface remains the stable boundary for tools, heartbeat,
+and operational reporting. Hook bodies choose the SQL implementation when
+`ctx.db` is present; state-backed storage remains an internal compatibility
+path for tests and for the one-time storage migration.
+
+Existing state-backed scheduler records are migrated by the scheduler plugin's
+`migrateStorage(ctx)` hook. The hook reads retained `junior:scheduler:*` plugin
+state through `ctx.state`, writes scheduler-owned SQL rows through `ctx.db`, and
+is idempotent across repeated `junior upgrade` runs.
 
 ### Run Idempotency
 
@@ -165,7 +174,8 @@ The scheduler plugin uses two runtime hooks:
 
 Heartbeat flow:
 
-1. Load due tasks from the scheduler plugin's namespaced state.
+1. Load due tasks from the scheduler store, using plugin SQL when `ctx.db` is
+   available.
 2. Reconcile previously dispatched runs with `ctx.agent.get(dispatchId)`.
 3. Claim up to a small limit of due runs.
 4. Mark each claimed run as pending dispatch.

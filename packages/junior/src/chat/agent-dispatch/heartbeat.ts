@@ -161,7 +161,7 @@ export async function runPluginHeartbeats(args: {
         Promise.resolve(
           heartbeat(
             createHeartbeatContext({
-              plugin: plugin.name,
+              plugin,
               nowMs: args.nowMs,
             }),
           ),

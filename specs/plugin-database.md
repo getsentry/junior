@@ -238,9 +238,14 @@ Trusted runtime hook contexts may expose `ctx.db` when all of these are true:
 
 1. A Junior SQL database URL is configured.
 2. The plugin is explicitly enabled.
-3. The plugin's migrations, when present, have been applied successfully.
+3. The plugin declared database access through code registration.
 4. The hook is running in host runtime code, not sandboxed model-controlled
    code.
+
+Runtime does not validate plugin migration state before creating `ctx.db`.
+`junior upgrade` is the only command that applies plugin migrations and checks
+stored migration checksums. Deployments must run `junior upgrade` before serving
+traffic for a build that enables or changes database-backed plugins.
 
 The V1 surface is a shared database connection/query capability:
 
@@ -309,7 +314,8 @@ defineJuniorPlugin({
 Rules:
 
 1. `required: true` means startup and `junior upgrade` fail when Junior cannot
-   resolve a SQL database URL or apply the plugin's migrations.
+   resolve a SQL database URL. Migration application and checksum validation
+   happen only in `junior upgrade`.
 2. `required: false` or omitted means hooks may run without `ctx.db`; the plugin
    must disable database-backed behavior or surface an operational report
    explaining that storage is unavailable.
@@ -337,9 +343,7 @@ validation for data read from the database.
    traffic.
 6. Plugin storage migration hook failure: upgrade fails after schema migration and
    before the new runtime serves traffic.
-7. Runtime observes unapplied required plugin migrations: startup fails or the
-   plugin is disabled before hooks execute.
-8. Plugin database query failure during a hook: the hook fails according to its
+7. Plugin database query failure during a hook: the hook fails according to its
    owning hook spec; prompt and observation hooks must fail closed with safe
    logging.
 

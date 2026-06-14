@@ -7,10 +7,14 @@ import {
   pluginCatalogConfigFromPluginSet,
   pluginHookRegistrationsFromPluginSet,
 } from "@/plugins";
-import { getPluginDbForRegistration } from "@/chat/plugins/db";
+import {
+  createPluginDbForExecutor,
+  getPluginDbForRegistration,
+} from "@/chat/plugins/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 import type { MigrationContext, MigrationResult } from "../types";
 
 function emptyResult(): MigrationResult {
@@ -40,8 +44,12 @@ function addResult(
 function dbForPlugin(
   context: MigrationContext,
   plugin: PluginRegistration,
+  sqlUrlDb: PluginDb | undefined,
 ): PluginDb | undefined {
-  return context.pluginDb ?? getPluginDbForRegistration(plugin);
+  if (!plugin.database) {
+    return undefined;
+  }
+  return context.pluginDb ?? sqlUrlDb ?? getPluginDbForRegistration(plugin);
 }
 
 /** Run plugin-owned storage migrations after plugin SQL schemas are available. */
@@ -56,6 +64,15 @@ export async function runPluginStorageMigrations(
   const previousConfig = setPluginCatalogConfig(
     context.pluginCatalogConfig ?? pluginCatalogConfigFromPluginSet(pluginSet),
   );
+  const ownedExecutor =
+    context.pluginDb || !context.sqlDatabaseUrl
+      ? undefined
+      : createNeonJuniorSqlExecutor({
+          connectionString: context.sqlDatabaseUrl,
+        });
+  const sqlUrlDb = ownedExecutor
+    ? createPluginDbForExecutor(ownedExecutor)
+    : undefined;
   try {
     let result = emptyResult();
     const plugins = pluginHookRegistrationsFromPluginSet(pluginSet)
@@ -67,10 +84,10 @@ export async function runPluginStorageMigrations(
         continue;
       }
       const pluginResult = await hook({
-        db: dbForPlugin(context, plugin),
+        db: dbForPlugin(context, plugin, sqlUrlDb),
         log: createPluginLogger(plugin.name),
         plugin: { name: plugin.name },
-        state: createPluginState(plugin.name),
+        state: createPluginState(plugin.name, context.stateAdapter),
       });
       if (pluginResult) {
         result = addResult(result, pluginResult);
@@ -79,6 +96,7 @@ export async function runPluginStorageMigrations(
     return result;
   } finally {
     setPluginCatalogConfig(previousConfig);
+    await ownedExecutor?.close();
   }
 }
 
