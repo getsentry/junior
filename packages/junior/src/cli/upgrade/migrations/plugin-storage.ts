@@ -4,8 +4,10 @@ import type {
   StorageMigrationResult,
 } from "@sentry/junior-plugin-api";
 import {
+  defineJuniorPlugins,
   pluginCatalogConfigFromPluginSet,
   pluginHookRegistrationsFromPluginSet,
+  type JuniorPluginSet,
 } from "@/plugins";
 import {
   createPluginDbForExecutor,
@@ -16,6 +18,8 @@ import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 import type { MigrationContext, MigrationResult } from "../types";
+
+const SCHEDULER_PACKAGE_NAME = "@sentry/junior-scheduler";
 
 function emptyResult(): MigrationResult {
   return {
@@ -52,11 +56,27 @@ function dbForPlugin(
   return context.pluginDb ?? sqlUrlDb ?? getPluginDbForRegistration(plugin);
 }
 
+async function resolveStorageMigrationPluginSet(
+  context: MigrationContext,
+): Promise<JuniorPluginSet | undefined> {
+  if (context.pluginSet) {
+    return context.pluginSet;
+  }
+  if (
+    !context.pluginCatalogConfig?.packages?.includes(SCHEDULER_PACKAGE_NAME)
+  ) {
+    return undefined;
+  }
+
+  const { schedulerPlugin } = await import("@sentry/junior-scheduler");
+  return defineJuniorPlugins([schedulerPlugin()]);
+}
+
 /** Run plugin-owned storage migrations after plugin SQL schemas are available. */
 export async function runPluginStorageMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult> {
-  const pluginSet = context.pluginSet;
+  const pluginSet = await resolveStorageMigrationPluginSet(context);
   if (!pluginSet) {
     return emptyResult();
   }

@@ -218,6 +218,50 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
+  it("loads the scheduler storage migration from package-only config", async () => {
+    const stateAdapter = createMemoryState();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const db = createPluginDbForExecutor(fixture.executor);
+      const stateStore = createSchedulerStore(
+        createPluginState("scheduler", stateAdapter),
+      );
+      const task = createTask({ id: "sched_package_config" });
+      await stateStore.saveTask(task);
+      const run = await stateStore.claimDueRun({ nowMs: TEST_NOW_MS });
+      expect(run).toBeDefined();
+
+      await expect(
+        runPluginStorageMigrations({
+          io: { info: () => {} },
+          pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
+          pluginDb: db,
+          stateAdapter,
+        }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 2,
+        missing: 0,
+        scanned: 2,
+      });
+
+      const sqlStore = createSchedulerSqlStore(db);
+      await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
+        id: task.id,
+      });
+      await expect(sqlStore.getRun(run!.id)).resolves.toMatchObject({
+        id: run!.id,
+        taskId: task.id,
+      });
+    } finally {
+      await stateAdapter.disconnect();
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("requires database access for plugin storage migrations", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
