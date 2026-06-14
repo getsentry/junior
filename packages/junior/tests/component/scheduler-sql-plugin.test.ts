@@ -126,6 +126,48 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
+  it("claims later due runs when an older pending run is stale", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const db = createPluginDbForExecutor(fixture.executor);
+      const store = createSchedulerSqlStore(db);
+      const taskId = "sched_sql_stale_pending";
+      const staleRunAtMs = TEST_NOW_MS - 2 * 60 * 1000;
+      const nextRunAtMs = TEST_NOW_MS - 30 * 1000;
+      const task = createTask({
+        id: taskId,
+        nextRunAtMs: staleRunAtMs,
+      });
+
+      await store.saveTask(task);
+      const staleRun = await store.claimDueRun({ nowMs: staleRunAtMs });
+      expect(staleRun).toMatchObject({
+        id: `${taskId}:${staleRunAtMs}`,
+        status: "pending",
+      });
+
+      await store.saveTask({
+        ...task,
+        nextRunAtMs,
+        updatedAtMs: TEST_NOW_MS,
+      });
+      const nextRun = await store.claimDueRun({ nowMs: TEST_NOW_MS });
+
+      expect(nextRun).toMatchObject({
+        id: `${taskId}:${nextRunAtMs}`,
+        scheduledForMs: nextRunAtMs,
+        status: "pending",
+      });
+      await expect(store.getRun(staleRun!.id)).resolves.toMatchObject({
+        status: "pending",
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("migrates existing scheduler plugin state into SQL idempotently", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();

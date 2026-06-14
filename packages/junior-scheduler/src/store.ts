@@ -1226,7 +1226,10 @@ ORDER BY created_at_ms ASC, id ASC
           task,
         ]);
         const incompleteRun = incompleteRuns.find((run) => run.id === runId);
-        if (incompleteRuns.length > 0 && !incompleteRun) {
+        const blockingRun = incompleteRuns.find(
+          (run) => run.id !== runId && !isStalePendingRun(run, args.nowMs),
+        );
+        if (blockingRun) {
           continue;
         }
         if (incompleteRun) {
