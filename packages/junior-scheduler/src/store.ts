@@ -50,6 +50,14 @@ const taskScheduleSchema = z
     timezone: z.string(),
   })
   .strict();
+const taskSpecSchema = z
+  .object({
+    text: z.preprocess(
+      (value) => (typeof value === "string" ? value : ""),
+      z.string(),
+    ),
+  })
+  .strict();
 const taskRecordSchema = z
   .object({
     id: z.string(),
@@ -78,11 +86,7 @@ const taskRecordSchema = z
     schedule: taskScheduleSchema,
     status: z.enum(["active", "paused", "blocked", "deleted"]),
     statusReason: z.string().optional(),
-    task: z
-      .object({
-        text: z.string(),
-      })
-      .strict(),
+    task: taskSpecSchema,
     updatedAtMs: z.number(),
     version: z.number(),
   })
