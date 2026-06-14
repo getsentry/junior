@@ -6,6 +6,7 @@ catalog:
   "@sentry/starlight-theme": ^0.7.0
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.2
+  zod: ^4.4.3
 syncInjectedDepsAfterScripts:
   - build
 minimumReleaseAge: 1440

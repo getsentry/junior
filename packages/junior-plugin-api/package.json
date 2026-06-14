@@ -23,7 +23,7 @@
   ],
   "dependencies": {
     "drizzle-orm": "catalog:",
-    "zod": "^4.4.3"
+    "zod": "catalog:"
   },
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",

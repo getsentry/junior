@@ -5,6 +5,7 @@ import {
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const REQUIRED_SQL_DATABASE_URL_MESSAGE =
@@ -23,7 +24,8 @@ export async function migratePluginsToSql(
   context: MigrationContext,
 ): Promise<MigrationResult> {
   const databaseUrl = requirePluginSqlDatabaseUrl(context);
-  const previousConfig = setPluginCatalogConfig(context.pluginCatalogConfig);
+  const { pluginCatalogConfig } = await resolveUpgradePlugins(context);
+  const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
   const executor = createNeonJuniorSqlExecutor({
     connectionString: databaseUrl,
   });

@@ -17,11 +17,34 @@ import {
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { runPluginStorageMigrations } from "@/cli/upgrade/migrations/plugin-storage";
+import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+
+const NEON = vi.hoisted(() => ({
+  executor: undefined as
+    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["executor"]
+    | undefined,
+}));
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
+
+vi.mock("@/chat/sql/neon", () => ({
+  createNeonJuniorSqlExecutor: vi.fn(() => {
+    if (!NEON.executor) {
+      throw new Error("Missing test SQL executor");
+    }
+    return {
+      db: NEON.executor.db.bind(NEON.executor),
+      execute: NEON.executor.execute.bind(NEON.executor),
+      query: NEON.executor.query.bind(NEON.executor),
+      transaction: NEON.executor.transaction.bind(NEON.executor),
+      withLock: NEON.executor.withLock.bind(NEON.executor),
+      close: async () => {},
+    };
+  }),
+}));
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -70,6 +93,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
 
 describe("scheduler SQL plugin storage", () => {
   afterEach(async () => {
+    NEON.executor = undefined;
     await disconnectStateAdapter();
   });
 
@@ -218,7 +242,7 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
-  it("loads the scheduler storage migration from package-only config", async () => {
+  it("loads the scheduler storage migration from package-only plugin set", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -237,8 +261,8 @@ describe("scheduler SQL plugin storage", () => {
       await expect(
         runPluginStorageMigrations({
           io: { info: () => {} },
-          pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
           pluginDb: db,
+          pluginSet: defineJuniorPlugins(["@sentry/junior-scheduler"]),
           stateAdapter,
         }),
       ).resolves.toEqual({
@@ -258,6 +282,155 @@ describe("scheduler SQL plugin storage", () => {
       });
     } finally {
       await stateAdapter.disconnect();
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("applies scheduler SQL migrations from package-only config", async () => {
+    const stateAdapter = createMemoryState();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    NEON.executor = fixture.executor;
+
+    try {
+      await expect(
+        migratePluginsToSql({
+          io: { info: () => {} },
+          pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
+          sqlDatabaseUrl: "postgres://configured.example.test/neon",
+          stateAdapter,
+        }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 1,
+        missing: 0,
+        scanned: 1,
+      });
+
+      const db = createPluginDbForExecutor(fixture.executor);
+      const store = createSchedulerSqlStore(db);
+      const task = createTask({ id: "sched_schema_package_config" });
+      await store.saveTask(task);
+      await expect(store.getTask(task.id)).resolves.toMatchObject({
+        id: task.id,
+      });
+    } finally {
+      await stateAdapter.disconnect();
+      await fixture.close();
+    }
+  });
+
+  it("does not duplicate scheduler SQL migrations for explicit registrations", async () => {
+    const stateAdapter = createMemoryState();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    NEON.executor = fixture.executor;
+
+    try {
+      await expect(
+        migratePluginsToSql({
+          io: { info: () => {} },
+          pluginSet: defineJuniorPlugins([
+            "@sentry/junior-scheduler",
+            schedulerPlugin(),
+          ]),
+          sqlDatabaseUrl: "postgres://configured.example.test/neon",
+          stateAdapter,
+        }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 1,
+        missing: 0,
+        scanned: 1,
+      });
+    } finally {
+      await stateAdapter.disconnect();
+      await fixture.close();
+    }
+  });
+
+  it("skips malformed SQL records while claiming due runs", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const db = createPluginDbForExecutor(fixture.executor);
+      const store = createSchedulerSqlStore(db);
+      const task = createTask({ id: "sched_valid_after_bad_record" });
+
+      await db.execute(
+        `
+INSERT INTO junior_scheduler_tasks (
+  id,
+  team_id,
+  status,
+  next_run_at_ms,
+  created_at_ms,
+  updated_at_ms,
+  version,
+  destination,
+  created_by,
+  schedule,
+  task,
+  record
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+`,
+        [
+          "sched_bad_record",
+          task.destination.teamId,
+          "active",
+          TEST_RUN_AT_MS,
+          TEST_RUN_AT_MS - 1,
+          TEST_RUN_AT_MS - 1,
+          1,
+          JSON.stringify(task.destination),
+          JSON.stringify(task.createdBy),
+          JSON.stringify(task.schedule),
+          JSON.stringify(task.task),
+          JSON.stringify({ id: "sched_bad_record" }),
+        ],
+      );
+      await store.saveTask(task);
+      await expect(store.getTask("sched_bad_record")).rejects.toThrow(
+        "Stored scheduler SQL task is invalid",
+      );
+      await db.execute(
+        `
+INSERT INTO junior_scheduler_runs (
+  id,
+  task_id,
+  status,
+  claimed_at_ms,
+  scheduled_for_ms,
+  idempotency_key,
+  task_version,
+  attempt,
+  record
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`,
+        [
+          "sched_bad_run",
+          task.id,
+          "pending",
+          TEST_NOW_MS - 120_000,
+          TEST_RUN_AT_MS - 60_000,
+          "sched_bad_run",
+          1,
+          1,
+          JSON.stringify({ id: "sched_bad_run" }),
+        ],
+      );
+      await expect(store.getRun("sched_bad_run")).rejects.toThrow(
+        "Stored scheduler SQL run is invalid",
+      );
+
+      await expect(
+        store.claimDueRun({ nowMs: TEST_NOW_MS }),
+      ).resolves.toMatchObject({
+        id: `${task.id}:${TEST_RUN_AT_MS}`,
+        taskId: task.id,
+      });
+    } finally {
       await fixture.close();
     }
   }, 15_000);

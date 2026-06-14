@@ -3,12 +3,7 @@ import type {
   PluginRegistration,
   StorageMigrationResult,
 } from "@sentry/junior-plugin-api";
-import {
-  defineJuniorPlugins,
-  pluginCatalogConfigFromPluginSet,
-  pluginHookRegistrationsFromPluginSet,
-  type JuniorPluginSet,
-} from "@/plugins";
+import { pluginHookRegistrationsFromPluginSet } from "@/plugins";
 import {
   createPluginDbForExecutor,
   getPluginDbForRegistration,
@@ -17,9 +12,8 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
-
-const SCHEDULER_PACKAGE_NAME = "@sentry/junior-scheduler";
 
 function emptyResult(): MigrationResult {
   return {
@@ -56,34 +50,17 @@ function dbForPlugin(
   return context.pluginDb ?? sqlUrlDb ?? getPluginDbForRegistration(plugin);
 }
 
-async function resolveStorageMigrationPluginSet(
-  context: MigrationContext,
-): Promise<JuniorPluginSet | undefined> {
-  if (context.pluginSet) {
-    return context.pluginSet;
-  }
-  if (
-    !context.pluginCatalogConfig?.packages?.includes(SCHEDULER_PACKAGE_NAME)
-  ) {
-    return undefined;
-  }
-
-  const { schedulerPlugin } = await import("@sentry/junior-scheduler");
-  return defineJuniorPlugins([schedulerPlugin()]);
-}
-
 /** Run plugin-owned storage migrations after plugin SQL schemas are available. */
 export async function runPluginStorageMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult> {
-  const pluginSet = await resolveStorageMigrationPluginSet(context);
+  const { pluginCatalogConfig, pluginSet } =
+    await resolveUpgradePlugins(context);
   if (!pluginSet) {
     return emptyResult();
   }
 
-  const previousConfig = setPluginCatalogConfig(
-    context.pluginCatalogConfig ?? pluginCatalogConfigFromPluginSet(pluginSet),
-  );
+  const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
   const ownedExecutor =
     context.pluginDb || !context.sqlDatabaseUrl
       ? undefined

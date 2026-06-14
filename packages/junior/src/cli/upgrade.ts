@@ -8,6 +8,7 @@ import {
 } from "./upgrade/migrations/conversations-sql";
 import { pluginStorageMigration } from "./upgrade/migrations/plugin-storage";
 import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
+import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import type {
   MigrationContext,
@@ -15,11 +16,7 @@ import type {
   UpgradeIo,
   UpgradeMigration,
 } from "./upgrade/types";
-import {
-  pluginCatalogConfigFromEnv,
-  pluginCatalogConfigFromPluginSet,
-  type JuniorPluginSet,
-} from "@/plugins";
+import { type JuniorPluginSet } from "@/plugins";
 
 const DEFAULT_IO: UpgradeIo = {
   info: console.log,
@@ -76,14 +73,8 @@ function formatMigrationResult(result: MigrationResult): string {
 export async function runUpgradeMigrations(
   context: MigrationContext,
 ): Promise<MigrationResult[]> {
-  const pluginCatalogConfig =
-    context.pluginCatalogConfig ??
-    (context.pluginSet
-      ? pluginCatalogConfigFromPluginSet(context.pluginSet)
-      : pluginCatalogConfigFromEnv());
-  const migrationContext = pluginCatalogConfig
-    ? { ...context, pluginCatalogConfig }
-    : context;
+  const plugins = await resolveUpgradePlugins(context);
+  const migrationContext = { ...context, ...plugins };
   requireConversationSqlDatabaseUrl(migrationContext);
   const results: MigrationResult[] = [];
   for (const migration of MIGRATIONS) {

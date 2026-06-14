@@ -6,6 +6,7 @@ import {
   type PluginReadState,
   type PluginState,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
 import type { ScheduledRun, ScheduledTask } from "./types";
 
@@ -17,6 +18,99 @@ const PENDING_CLAIM_STALE_MS = 60_000;
 const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const LOCK_TTL_MS = 10_000;
 const SQL_INCOMPLETE_RUN_STATUSES = ["pending", "running"] as const;
+const slackDestinationSchema = destinationSchema.refine(isSlackDestination);
+const taskPrincipalSchema = z
+  .object({
+    slackUserId: z.string(),
+    fullName: z.string().optional(),
+    userName: z.string().optional(),
+  })
+  .strict();
+const recurrenceSchema = z
+  .object({
+    dayOfMonth: z.number().optional(),
+    frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+    interval: z.number(),
+    month: z.number().optional(),
+    startDate: z.string(),
+    time: z
+      .object({
+        hour: z.number(),
+        minute: z.number(),
+      })
+      .strict(),
+    weekdays: z.array(z.number()).optional(),
+  })
+  .strict();
+const taskScheduleSchema = z
+  .object({
+    description: z.string(),
+    kind: z.enum(["one_off", "recurring"]),
+    recurrence: recurrenceSchema.optional(),
+    timezone: z.string(),
+  })
+  .strict();
+const taskRecordSchema = z
+  .object({
+    id: z.string(),
+    conversationAccess: z
+      .object({
+        audience: z.enum(["direct", "group", "channel"]),
+        visibility: z.enum(["private", "public", "unknown"]),
+      })
+      .strict()
+      .optional(),
+    createdAtMs: z.number(),
+    createdBy: taskPrincipalSchema,
+    credentialSubject: pluginCredentialSubjectSchema.optional(),
+    destination: slackDestinationSchema,
+    executionActor: z
+      .object({
+        type: z.literal("system"),
+        id: z.string(),
+      })
+      .strict()
+      .optional(),
+    lastRunAtMs: z.number().optional(),
+    nextRunAtMs: z.number().optional(),
+    originalRequest: z.string().optional(),
+    runNowAtMs: z.number().optional(),
+    schedule: taskScheduleSchema,
+    status: z.enum(["active", "paused", "blocked", "deleted"]),
+    statusReason: z.string().optional(),
+    task: z
+      .object({
+        text: z.string(),
+      })
+      .strict(),
+    updatedAtMs: z.number(),
+    version: z.number(),
+  })
+  .strict();
+const runRecordSchema = z
+  .object({
+    id: z.string(),
+    attempt: z.number(),
+    claimedAtMs: z.number(),
+    completedAtMs: z.number().optional(),
+    dispatchId: z.string().optional(),
+    errorMessage: z.string().optional(),
+    idempotencyKey: z.string(),
+    resultMessageTs: z.string().optional(),
+    scheduledForMs: z.number(),
+    startedAtMs: z.number().optional(),
+    status: z.enum([
+      "pending",
+      "running",
+      "completed",
+      "failed",
+      "blocked",
+      "skipped",
+    ]),
+    taskId: z.string(),
+    taskVersion: z.number(),
+  })
+  .strict();
 
 export interface SchedulerStore {
   claimDueRun(args: { nowMs: number }): Promise<ScheduledRun | undefined>;
@@ -385,12 +479,20 @@ function parseStoredTask(value: unknown): ScheduledTask | undefined {
 
 function parseJsonRecord<T>(value: unknown): T | undefined {
   if (typeof value === "string") {
-    return JSON.parse(value) as T;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return undefined;
+    }
   }
   if (value && typeof value === "object") {
     return value as T;
   }
   return undefined;
+}
+
+function present<T>(value: T | undefined): value is T {
+  return value !== undefined;
 }
 
 function requireStoredTask(task: ScheduledTask): ScheduledTask {
@@ -934,24 +1036,36 @@ type SchedulerRunRow = {
   record: unknown;
 };
 
-function requireSqlTaskRecord(value: unknown): ScheduledTask {
-  const parsed = parseStoredTask(parseJsonRecord(value));
-  if (!parsed) {
+/** Decode scheduler SQL task records and reject rows unsafe for scan paths. */
+function parseSqlTaskRecord(value: unknown): ScheduledTask | undefined {
+  const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
+  return parseSqlTaskRecord(row.record);
+}
+
+function requireSqlTaskRow(row: SchedulerTaskRow): ScheduledTask {
+  const task = parseSqlTaskRow(row);
+  if (!task) {
     throw new Error("Stored scheduler SQL task is invalid");
   }
-  return parsed;
+  return task;
 }
 
-function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask {
-  return requireSqlTaskRecord(row.record);
+/** Decode scheduler SQL run records and reject rows unsafe for scan paths. */
+function parseSqlRunRow(row: SchedulerRunRow): ScheduledRun | undefined {
+  const parsed = runRecordSchema.safeParse(parseJsonRecord(row.record));
+  return parsed.success ? parsed.data : undefined;
 }
 
-function parseSqlRunRow(row: SchedulerRunRow): ScheduledRun {
-  const record = parseJsonRecord<ScheduledRun>(row.record);
-  if (!record || typeof record.id !== "string") {
+function requireSqlRunRow(row: SchedulerRunRow): ScheduledRun {
+  const run = parseSqlRunRow(row);
+  if (!run) {
     throw new Error("Stored scheduler SQL run is invalid");
   }
-  return record;
+  return run;
 }
 
 function json(value: unknown): string {
@@ -1105,7 +1219,7 @@ async function getTaskFromSql(
     "SELECT record FROM junior_scheduler_tasks WHERE id = $1",
     [taskId],
   );
-  return rows[0] ? parseSqlTaskRow(rows[0]) : undefined;
+  return rows[0] ? requireSqlTaskRow(rows[0]) : undefined;
 }
 
 async function getRunFromSql(
@@ -1116,7 +1230,7 @@ async function getRunFromSql(
     "SELECT record FROM junior_scheduler_runs WHERE id = $1",
     [runId],
   );
-  return rows[0] ? parseSqlRunRow(rows[0]) : undefined;
+  return rows[0] ? requireSqlRunRow(rows[0]) : undefined;
 }
 
 async function listTasksFromSql(db: PluginDb): Promise<ScheduledTask[]> {
@@ -1128,7 +1242,7 @@ WHERE status <> 'deleted'
 ORDER BY created_at_ms ASC, id ASC
 `,
   );
-  return rows.map(parseSqlTaskRow);
+  return rows.map(parseSqlTaskRow).filter(present);
 }
 
 async function listTasksForTeamFromSql(
@@ -1145,7 +1259,7 @@ ORDER BY created_at_ms ASC, id ASC
 `,
     [teamId],
   );
-  return rows.map(parseSqlTaskRow);
+  return rows.map(parseSqlTaskRow).filter(present);
 }
 
 async function listIncompleteRunsForTasksFromSql(
@@ -1165,7 +1279,7 @@ ORDER BY scheduled_for_ms ASC, id ASC
 `,
     [tasks.map((task) => task.id), [...SQL_INCOMPLETE_RUN_STATUSES]],
   );
-  return rows.map(parseSqlRunRow);
+  return rows.map(parseSqlRunRow).filter(present);
 }
 
 class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
@@ -1217,6 +1331,9 @@ ORDER BY created_at_ms ASC, id ASC
 
       for (const row of rows) {
         const task = parseSqlTaskRow(row);
+        if (!task) {
+          continue;
+        }
         const scheduledForMs = getDueRunAtMs(task, args.nowMs);
         if (scheduledForMs === undefined) {
           continue;
