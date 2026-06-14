@@ -19,6 +19,4 @@ export interface PluginDb {
   update: PluginDrizzleDatabase["update"];
 }
 
-export interface PluginDatabaseConfig {
-  required?: boolean;
-}
+export type PluginDatabaseConfig = Record<string, never>;

@@ -102,9 +102,7 @@ The V1 runtime plugin interface is:
 ```ts
 defineJuniorPlugin({
   manifest,
-  database: {
-    required: true,
-  },
+  database: {},
   hooks: {
     userPrompt,
     observeTurn,

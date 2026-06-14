@@ -1,9 +1,12 @@
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PluginToolInputError,
+  type PluginDb,
   type PluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import {
+  createSchedulerSqlStore,
   createSchedulerStore,
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
@@ -14,16 +17,46 @@ import {
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import {
+  createPluginDbForExecutor,
+  migratePluginSchemas,
+  readPluginMigrations,
+} from "@/chat/plugins/db";
+import * as pluginDbModule from "@/chat/plugins/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
+import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
+
+function schedulerMigrationsDir(): string {
+  return path.resolve(process.cwd(), "../junior-scheduler/migrations");
+}
+
+async function useSchedulerSqlPlugin() {
+  const fixture = await createLocalJuniorSqlFixture();
+  await migratePluginSchemas(
+    fixture.executor,
+    readPluginMigrations({
+      dir: schedulerMigrationsDir(),
+      pluginName: "scheduler",
+    }),
+  );
+  const db: PluginDb = createPluginDbForExecutor(fixture.executor);
+  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockImplementation(
+    (plugin) => (plugin.database ? db : undefined),
+  );
+  return {
+    fixture,
+    store: createSchedulerSqlStore(db),
+  };
+}
 
 function createContext(
   overrides: Partial<SchedulerToolContext> & {
@@ -1104,6 +1137,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
     // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
     const previous = setPlugins([schedulerPlugin()]);
+    const { fixture, store } = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getPluginTools({
@@ -1142,9 +1176,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
       const taskId = (result as { task: { id: string } }).task.id;
 
       // Task destination must be the raw DM channel, NOT the assistant context.
-      const stored = await createSchedulerStore(
-        createPluginState("scheduler"),
-      ).getTask(taskId);
+      const stored = await store.getTask(taskId);
       expect(stored).toMatchObject({
         destination: { channelId: "DDM", teamId: TEAM_ID },
         conversationAccess: { audience: "direct", visibility: "private" },
@@ -1156,6 +1188,8 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         allowedWhen: "private-direct-conversation",
       });
     } finally {
+      await fixture.close();
+      vi.restoreAllMocks();
       setPlugins(previous);
     }
   });

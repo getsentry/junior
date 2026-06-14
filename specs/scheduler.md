@@ -143,9 +143,9 @@ The SQL store keeps task and run records in scheduler-owned tables:
   attempt metadata, and the full run JSON record.
 
 The scheduler store interface remains the stable boundary for tools, heartbeat,
-and operational reporting. Hook bodies choose the SQL implementation when
-`ctx.db` is present; state-backed storage remains an internal compatibility
-path for tests and for the one-time storage migration.
+and operational reporting. Runtime hook bodies use plugin SQL through `ctx.db`;
+state-backed storage remains an internal compatibility path for tests and for
+the one-time storage migration.
 
 Existing state-backed scheduler records are migrated by the scheduler plugin's
 `migrateStorage(ctx)` hook. The hook reads retained `junior:scheduler:*` plugin
@@ -174,8 +174,7 @@ The scheduler plugin uses two runtime hooks:
 
 Heartbeat flow:
 
-1. Load due tasks from the scheduler store, using plugin SQL when `ctx.db` is
-   available.
+1. Load due tasks from the scheduler SQL store through `ctx.db`.
 2. Reconcile previously dispatched runs with `ctx.agent.get(dispatchId)`.
 3. Claim up to a small limit of due runs.
 4. Mark each claimed run as pending dispatch.

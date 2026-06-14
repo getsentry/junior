@@ -22,12 +22,22 @@ async function loadValidator() {
   return await import("@/chat/plugins/db");
 }
 
-function dbPlugin(required: boolean) {
+function dbPlugin() {
   return defineJuniorPlugin({
-    database: { required },
+    database: {},
     manifest: {
-      name: required ? "required-db" : "optional-db",
-      displayName: required ? "Required DB" : "Optional DB",
+      name: "database-plugin",
+      displayName: "Database Plugin",
+      description: "Plugin database config test",
+    },
+  });
+}
+
+function statelessPlugin() {
+  return defineJuniorPlugin({
+    manifest: {
+      name: "stateless-plugin",
+      displayName: "Stateless Plugin",
       description: "Plugin database config test",
     },
   });
@@ -39,23 +49,23 @@ afterEach(() => {
 });
 
 describe("plugin database config", () => {
-  it("fails required database plugins when no SQL URL is configured", async () => {
+  it("fails database plugins when no SQL URL is configured", async () => {
     delete process.env.DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_URL;
     const { validatePluginDatabaseRequirements } = await loadValidator();
 
-    expect(() => validatePluginDatabaseRequirements([dbPlugin(true)])).toThrow(
-      "Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: required-db",
+    expect(() => validatePluginDatabaseRequirements([dbPlugin()])).toThrow(
+      "Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: database-plugin",
     );
   });
 
-  it("allows optional database plugins without a SQL URL", async () => {
+  it("allows plugins without database declarations when no SQL URL is configured", async () => {
     delete process.env.DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_URL;
     const { validatePluginDatabaseRequirements } = await loadValidator();
 
     expect(() =>
-      validatePluginDatabaseRequirements([dbPlugin(false)]),
+      validatePluginDatabaseRequirements([statelessPlugin()]),
     ).not.toThrow();
   });
 
@@ -65,7 +75,7 @@ describe("plugin database config", () => {
     const { validatePluginDatabaseRequirements } = await loadValidator();
 
     expect(() =>
-      validatePluginDatabaseRequirements([dbPlugin(true)]),
+      validatePluginDatabaseRequirements([dbPlugin()]),
     ).not.toThrow();
   });
 });

@@ -176,7 +176,7 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
-  it("does not expose a migration DB to plugins that did not declare database access", async () => {
+  it("requires database access for plugin storage migrations", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -190,8 +190,7 @@ describe("scheduler SQL plugin storage", () => {
           description: "Storage migration without database access",
         },
         hooks: {
-          migrateStorage(ctx) {
-            expect(ctx.db).toBeUndefined();
+          migrateStorage() {
             return {
               existing: 0,
               migrated: 0,
@@ -209,12 +208,9 @@ describe("scheduler SQL plugin storage", () => {
           pluginSet: defineJuniorPlugins([plugin]),
           stateAdapter,
         }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 1,
-      });
+      ).rejects.toThrow(
+        'Plugin "stateless" storage migration requires database access',
+      );
     } finally {
       await fixture.close();
     }

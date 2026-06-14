@@ -83,8 +83,14 @@ export async function runPluginStorageMigrations(
       if (!hook) {
         continue;
       }
+      const db = dbForPlugin(context, plugin, sqlUrlDb);
+      if (!db) {
+        throw new Error(
+          `Plugin "${plugin.name}" storage migration requires database access`,
+        );
+      }
       const pluginResult = await hook({
-        db: dbForPlugin(context, plugin, sqlUrlDb),
+        db,
         log: createPluginLogger(plugin.name),
         plugin: { name: plugin.name },
         state: createPluginState(plugin.name, context.stateAdapter),

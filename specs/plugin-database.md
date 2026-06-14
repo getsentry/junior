@@ -20,7 +20,7 @@ requiring a memory-specific storage API or a globally merged plugin schema type.
   plugin SQL tables.
 - The `ctx.db` surface exposed to trusted plugin hooks.
 - Drizzle table ownership and typing boundaries for plugin code.
-- Required/optional database behavior for plugins.
+- Database behavior for plugins.
 
 ## Non-Goals
 
@@ -127,7 +127,7 @@ non-SQL store. A trusted runtime plugin may provide a storage migration hook:
 ```ts
 defineJuniorPlugin({
   manifest,
-  database: { required: true },
+  database: {},
   hooks: {
     async migrateStorage(ctx) {
       // Read old plugin-owned state through ctx.state.
@@ -160,7 +160,7 @@ The hook context is intentionally narrow:
 
 ```ts
 interface StorageMigrationContext extends PluginContext {
-  db?: PluginDb;
+  db: PluginDb;
   state: PluginState;
 }
 ```
@@ -175,9 +175,9 @@ Rules:
    duplicate rows, corrupt state, or require deleting old state first.
 4. `migrateStorage` hooks may read and write only plugin-owned state and plugin-owned
    SQL tables. They must not mutate core tables or another plugin's tables.
-5. `migrateStorage` hooks must use `ctx.db` for SQL writes. A plugin with
-   `database.required: true` must fail upgrade before the hook runs if no SQL
-   database is configured.
+5. `migrateStorage` hooks must use `ctx.db` for SQL writes. A plugin with a
+   `migrateStorage` hook must declare database access and must fail upgrade
+   before the hook runs if no SQL database is configured.
 6. `migrateStorage` hooks may read existing plugin state through `ctx.state`. This is
    the only V1 bridge from pre-SQL plugin state into SQL.
 7. `migrateStorage` hooks must return migration counters using the same result shape
@@ -186,8 +186,7 @@ Rules:
 8. Core must run hooks sequentially in deterministic plugin-name order. V1 does
    not provide dependency ordering between plugin storage migrations.
 9. A thrown upgrade hook error fails `junior upgrade`. The new deployment should
-   not serve traffic until the failing plugin is fixed, disabled, or explicitly
-   made optional.
+   not serve traffic until the failing plugin is fixed or disabled.
 10. Storage migration hooks are not heartbeat hooks, background tasks, or admin commands.
     They must not enqueue model work, dispatch agents, call provider APIs, or
     depend on request-time context.
@@ -296,30 +295,29 @@ If a future plugin needs globally composed Drizzle schema typing, that must be
 added through an explicit code registration contract, not filesystem
 auto-discovery.
 
-### Required And Optional Database Plugins
+### Database Plugins
 
-Plugins that depend on SQL should declare whether database access is required
-through code registration:
+Junior deployments require a SQL database. Plugins that use SQL still declare
+database access through code registration so runtime contexts know whether to
+expose `ctx.db`:
 
 ```ts
 defineJuniorPlugin({
   manifest,
-  database: {
-    required: true,
-  },
+  database: {},
   hooks,
 });
 ```
 
 Rules:
 
-1. `required: true` means startup and `junior upgrade` fail when Junior cannot
-   resolve a SQL database URL. Migration application and checksum validation
-   happen only in `junior upgrade`.
-2. `required: false` or omitted means hooks may run without `ctx.db`; the plugin
-   must disable database-backed behavior or surface an operational report
-   explaining that storage is unavailable.
-3. Declarative `plugin.yaml` cannot declare executable database behavior.
+1. Runtime and `junior upgrade` fail when Junior cannot resolve a SQL database
+   URL.
+2. A plugin receives `ctx.db` only when it declares database access through code
+   registration.
+3. Migration application and checksum validation happen only in `junior
+upgrade`.
+4. Declarative `plugin.yaml` cannot declare executable database behavior.
 
 ### Store Boundaries
 
@@ -333,17 +331,14 @@ validation for data read from the database.
 
 ## Failure Model
 
-1. Missing required database URL: `junior upgrade` and startup fail for required
-   database plugins.
-2. Missing optional database URL: plugin hooks receive no `ctx.db`; plugin
-   database-backed behavior is disabled.
-3. Migration discovery failure for an enabled plugin: upgrade fails.
-4. Migration checksum mismatch: upgrade fails.
-5. Plugin migration SQL failure: upgrade fails before the new runtime serves
+1. Missing database URL: `junior upgrade` and startup fail.
+2. Migration discovery failure for an enabled plugin: upgrade fails.
+3. Migration checksum mismatch: upgrade fails.
+4. Plugin migration SQL failure: upgrade fails before the new runtime serves
    traffic.
-6. Plugin storage migration hook failure: upgrade fails after schema migration and
+5. Plugin storage migration hook failure: upgrade fails after schema migration and
    before the new runtime serves traffic.
-7. Plugin database query failure during a hook: the hook fails according to its
+6. Plugin database query failure during a hook: the hook fails according to its
    owning hook spec; prompt and observation hooks must fail closed with safe
    logging.
 
@@ -373,8 +368,8 @@ Use integration tests with the local Postgres-compatible PGlite fixture for:
 - migration id/checksum recording in `junior_schema_migrations`
 - deterministic plugin migration order
 - checksum mismatch failure
-- required database plugin failure when no SQL URL is configured
-- optional database plugin behavior without `ctx.db`
+- missing database URL failure
+- plugins without database declarations do not receive `ctx.db`
 - typed plugin table queries using plugin-owned Drizzle table objects
 - plugin storage migration hooks run after plugin schema migrations
 - plugin storage migration hooks are idempotent across repeated upgrade runs

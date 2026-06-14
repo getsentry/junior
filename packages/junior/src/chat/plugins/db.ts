@@ -162,19 +162,19 @@ export function getPluginDbForRegistration(
   return getConfiguredPluginDb();
 }
 
-/** Fail early when a plugin declares required DB access without SQL config. */
+/** Fail early when a plugin declares DB access without SQL config. */
 export function validatePluginDatabaseRequirements(
   registrations: PluginRegistration[],
 ): void {
   if (getChatConfig().sql.databaseUrl) {
     return;
   }
-  const required = registrations
-    .filter((registration) => registration.database?.required)
+  const databasePlugins = registrations
+    .filter((registration) => registration.database)
     .map((registration) => registration.name);
-  if (required.length > 0) {
+  if (databasePlugins.length > 0) {
     throw new Error(
-      `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${required.join(", ")}`,
+      `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${databasePlugins.join(", ")}`,
     );
   }
 }

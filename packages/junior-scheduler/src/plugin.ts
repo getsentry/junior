@@ -11,10 +11,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { buildScheduledTaskRunPrompt } from "./prompt";
 import {
-  createSchedulerOperationalStore,
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
-  createSchedulerStore,
   migrateSchedulerStateToSql,
   type SchedulerOperationalStore,
   type SchedulerStore,
@@ -37,22 +35,20 @@ import {
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 const DASHBOARD_TABLE_LIMIT = 5;
 
-function schedulerStore(ctx: {
-  db?: PluginDb;
-  state: PluginState;
-}): SchedulerStore {
-  return ctx.db
-    ? createSchedulerSqlStore(ctx.db)
-    : createSchedulerStore(ctx.state);
+function schedulerStore(ctx: { db?: PluginDb }): SchedulerStore {
+  if (!ctx.db) {
+    throw new Error("Scheduler plugin requires ctx.db");
+  }
+  return createSchedulerSqlStore(ctx.db);
 }
 
 function schedulerOperationalStore(ctx: {
   db?: PluginDb;
-  state: PluginReadState;
 }): SchedulerOperationalStore {
-  return ctx.db
-    ? createSchedulerOperationalSqlStore(ctx.db)
-    : createSchedulerOperationalStore(ctx.state);
+  if (!ctx.db) {
+    throw new Error("Scheduler plugin requires ctx.db");
+  }
+  return createSchedulerOperationalSqlStore(ctx.db);
 }
 
 function shouldSkipRun(
@@ -98,7 +94,7 @@ async function applyDispatchResult(args: {
   dispatch: Dispatch;
   nowMs: number;
   run: ScheduledRun;
-  store: ReturnType<typeof createSchedulerStore>;
+  store: SchedulerStore;
 }): Promise<boolean> {
   if (args.dispatch.status === "completed") {
     const completed = await args.store.markRunCompleted({
@@ -387,7 +383,7 @@ async function buildSchedulerOperationalReport(args: {
 /** Create Junior's built-in trusted scheduler plugin. */
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
-    database: { required: true },
+    database: {},
     manifest: {
       name: "scheduler",
       displayName: "Scheduler",

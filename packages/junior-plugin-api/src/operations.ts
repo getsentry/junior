@@ -1,4 +1,5 @@
 import type { PluginContext } from "./context";
+import type { PluginDb } from "./database";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import type { PluginReadState, PluginState } from "./state";
 
@@ -47,6 +48,7 @@ export interface StorageMigrationResult {
 }
 
 export interface StorageMigrationContext extends PluginContext {
+  db: PluginDb;
   state: PluginState;
 }
 
