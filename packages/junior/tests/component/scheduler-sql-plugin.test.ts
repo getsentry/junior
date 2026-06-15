@@ -237,6 +237,70 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
+  it("reclaims blocked SQL run slots after reactivation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const db = createPluginDbForExecutor(fixture.executor);
+      const store = createSchedulerSqlStore(db);
+      const task = createTask({ id: "sched_sql_blocked_slot" });
+
+      await store.saveTask(task);
+      const run = await store.claimDueRun({ nowMs: TEST_NOW_MS });
+      expect(run).toMatchObject({
+        id: `${task.id}:${TEST_RUN_AT_MS}`,
+        status: "pending",
+      });
+
+      await expect(
+        store.markRunBlocked({
+          completedAtMs: TEST_NOW_MS + 1,
+          errorMessage: "Missing provider authorization.",
+          runId: run!.id,
+        }),
+      ).resolves.toMatchObject({
+        id: run!.id,
+        status: "blocked",
+      });
+
+      await store.updateTaskAfterRun({
+        errorMessage: "Missing provider authorization.",
+        nowMs: TEST_NOW_MS + 2,
+        run: {
+          ...run!,
+          completedAtMs: TEST_NOW_MS + 1,
+          errorMessage: "Missing provider authorization.",
+          status: "blocked",
+        },
+        status: "blocked",
+      });
+      await expect(store.getTask(task.id)).resolves.toMatchObject({
+        id: task.id,
+        status: "blocked",
+      });
+
+      await store.saveTask({
+        ...task,
+        nextRunAtMs: TEST_RUN_AT_MS,
+        status: "active",
+        statusReason: undefined,
+        updatedAtMs: TEST_NOW_MS + 3,
+        version: task.version + 2,
+      });
+
+      await expect(
+        store.claimDueRun({ nowMs: TEST_NOW_MS + 4 }),
+      ).resolves.toMatchObject({
+        id: `${task.id}:${TEST_RUN_AT_MS}`,
+        scheduledForMs: TEST_RUN_AT_MS,
+        status: "pending",
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("migrates existing scheduler plugin state into SQL idempotently", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();

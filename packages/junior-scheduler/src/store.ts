@@ -1272,14 +1272,29 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   async saveTask(task: ScheduledTask): Promise<void> {
     const next = requireStoredTask(task);
     await withSqlLock(this.db, taskLockKey(task.id), async (db) => {
-      await this.saveTaskRecord(db, next);
+      const current = await getTaskFromSql(db, task.id);
+      await this.saveTaskRecord(db, next, current);
     });
   }
 
   private async saveTaskRecord(
     db: PluginDb,
     task: ScheduledTask,
+    current: ScheduledTask | undefined,
   ): Promise<void> {
+    // Reactivation intentionally forgets the blocked slot so authorization or
+    // configuration fixes can dispatch the same scheduled occurrence again.
+    if (
+      current?.status === "blocked" &&
+      task.status === "active" &&
+      typeof task.nextRunAtMs === "number" &&
+      Number.isFinite(task.nextRunAtMs)
+    ) {
+      await db.execute(
+        "DELETE FROM junior_scheduler_runs WHERE id = $1 AND status = 'blocked'",
+        [buildRunId(task.id, task.nextRunAtMs)],
+      );
+    }
     await upsertSqlTask(db, task);
   }
 
@@ -1415,15 +1430,19 @@ ORDER BY created_at_ms ASC, id ASC
     }
     const nextStatus = nextRunAtMs ? "active" : "paused";
 
-    await this.saveTaskRecord(db, {
-      ...current,
-      nextRunAtMs,
-      runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
-      status: nextStatus,
-      statusReason: nextStatus === "paused" ? errorMessage : undefined,
-      updatedAtMs: args.nowMs,
-      version: current.version + 1,
-    });
+    await this.saveTaskRecord(
+      db,
+      {
+        ...current,
+        nextRunAtMs,
+        runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
+        status: nextStatus,
+        statusReason: nextStatus === "paused" ? errorMessage : undefined,
+        updatedAtMs: args.nowMs,
+        version: current.version + 1,
+      },
+      current,
+    );
   }
 
   private async findStaleRecoveryCanonicalTask(
@@ -1577,22 +1596,26 @@ ORDER BY created_at_ms ASC, id ASC
             args.nowMs,
           );
         }
-        await this.saveTaskRecord(db, {
-          ...current,
-          lastRunAtMs: args.run.scheduledForMs,
-          nextRunAtMs,
-          runNowAtMs: undefined,
-          status:
-            args.status === "blocked"
-              ? "blocked"
-              : nextRunAtMs
-                ? current.status
-                : "paused",
-          statusReason:
-            args.status === "blocked" ? args.errorMessage : undefined,
-          updatedAtMs: args.nowMs,
-          version: current.version + 1,
-        });
+        await this.saveTaskRecord(
+          db,
+          {
+            ...current,
+            lastRunAtMs: args.run.scheduledForMs,
+            nextRunAtMs,
+            runNowAtMs: undefined,
+            status:
+              args.status === "blocked"
+                ? "blocked"
+                : nextRunAtMs
+                  ? current.status
+                  : "paused",
+            statusReason:
+              args.status === "blocked" ? args.errorMessage : undefined,
+            updatedAtMs: args.nowMs,
+            version: current.version + 1,
+          },
+          current,
+        );
         return;
       }
 
@@ -1600,12 +1623,16 @@ ORDER BY created_at_ms ASC, id ASC
         current.status !== "active" ||
         current.nextRunAtMs !== args.run.scheduledForMs
       ) {
-        await this.saveTaskRecord(db, {
-          ...current,
-          lastRunAtMs: args.run.scheduledForMs,
-          updatedAtMs: args.nowMs,
-          version: current.version + 1,
-        });
+        await this.saveTaskRecord(
+          db,
+          {
+            ...current,
+            lastRunAtMs: args.run.scheduledForMs,
+            updatedAtMs: args.nowMs,
+            version: current.version + 1,
+          },
+          current,
+        );
         return;
       }
 
@@ -1614,20 +1641,25 @@ ORDER BY created_at_ms ASC, id ASC
           ? undefined
           : getNextRunAtMs(current, args.run.scheduledForMs, args.nowMs);
 
-      await this.saveTaskRecord(db, {
-        ...current,
-        lastRunAtMs: args.run.scheduledForMs,
-        nextRunAtMs,
-        status:
-          args.status === "blocked"
-            ? "blocked"
-            : nextRunAtMs
-              ? "active"
-              : "paused",
-        statusReason: args.status === "blocked" ? args.errorMessage : undefined,
-        updatedAtMs: args.nowMs,
-        version: current.version + 1,
-      });
+      await this.saveTaskRecord(
+        db,
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          nextRunAtMs,
+          status:
+            args.status === "blocked"
+              ? "blocked"
+              : nextRunAtMs
+                ? "active"
+                : "paused",
+          statusReason:
+            args.status === "blocked" ? args.errorMessage : undefined,
+          updatedAtMs: args.nowMs,
+          version: current.version + 1,
+        },
+        current,
+      );
     });
   }
 
