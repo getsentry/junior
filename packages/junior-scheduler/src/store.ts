@@ -85,7 +85,7 @@ const taskRecordSchema = z
     statusReason: z.string().optional(),
     task: taskSpecSchema,
     updatedAtMs: z.number(),
-    version: z.number(),
+    version: z.number().optional(),
   })
   .strict();
 const runRecordSchema = z
@@ -96,7 +96,7 @@ const runRecordSchema = z
     completedAtMs: z.number().optional(),
     dispatchId: z.string().optional(),
     errorMessage: z.string().optional(),
-    idempotencyKey: z.string(),
+    idempotencyKey: z.string().optional(),
     resultMessageTs: z.string().optional(),
     scheduledForMs: z.number(),
     startedAtMs: z.number().optional(),
@@ -109,7 +109,7 @@ const runRecordSchema = z
       "skipped",
     ]),
     taskId: z.string(),
-    taskVersion: z.number(),
+    taskVersion: z.number().optional(),
   })
   .strict();
 
@@ -372,16 +372,13 @@ function buildScheduledRun(args: {
   scheduledForMs: number;
   task: ScheduledTask;
 }): ScheduledRun {
-  const idempotencyKey = `${args.task.id}:${args.scheduledForMs}`;
   return {
     id: buildRunId(args.task.id, args.scheduledForMs),
     attempt: 1,
     claimedAtMs: args.claimedAtMs,
-    idempotencyKey,
     scheduledForMs: args.scheduledForMs,
     status: "pending",
     taskId: args.task.id,
-    taskVersion: args.task.version,
   };
 }
 
@@ -457,13 +454,34 @@ function canFinishRun(
 /** Decode retained scheduler task state, skipping invalid legacy records. */
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */
 function parseStoredRun(value: unknown): ScheduledRun | undefined {
   const parsed = runRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? stripLegacyRunFields(parsed.data) : undefined;
+}
+
+function stripLegacyTaskFields(
+  task: ScheduledTask & { version?: number },
+): ScheduledTask {
+  const { version: _version, ...current } = task;
+  return current;
+}
+
+function stripLegacyRunFields(
+  run: ScheduledRun & {
+    idempotencyKey?: string;
+    taskVersion?: number;
+  },
+): ScheduledRun {
+  const {
+    idempotencyKey: _idempotencyKey,
+    taskVersion: _taskVersion,
+    ...current
+  } = run;
+  return current;
 }
 
 function parseJsonRecord<T>(value: unknown): T | undefined {
@@ -751,7 +769,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
           status: nextStatus,
           statusReason: nextStatus === "paused" ? errorMessage : undefined,
           updatedAtMs: args.nowMs,
-          version: current.version + 1,
         },
         current,
       );
@@ -937,7 +954,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
             statusReason:
               args.status === "blocked" ? args.errorMessage : undefined,
             updatedAtMs: args.nowMs,
-            version: current.version + 1,
           },
           current,
         );
@@ -953,7 +969,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
             ...current,
             lastRunAtMs: args.run.scheduledForMs,
             updatedAtMs: args.nowMs,
-            version: current.version + 1,
           },
           current,
         );
@@ -979,7 +994,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,
           updatedAtMs: args.nowMs,
-          version: current.version + 1,
         },
         current,
       );
@@ -1028,7 +1042,7 @@ type SchedulerRunRow = {
 /** Decode scheduler SQL task records and reject rows unsafe for scan paths. */
 function parseSqlTaskRecord(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
 }
 
 function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
@@ -1038,7 +1052,7 @@ function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
 /** Decode scheduler SQL run records and reject rows unsafe for scan paths. */
 function parseSqlRunRow(row: SchedulerRunRow): ScheduledRun | undefined {
   const parsed = runRecordSchema.safeParse(parseJsonRecord(row.record));
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? stripLegacyRunFields(parsed.data) : undefined;
 }
 
 function json(value: unknown): string {
@@ -1066,23 +1080,9 @@ INSERT INTO junior_scheduler_tasks (
   next_run_at_ms,
   run_now_at_ms,
   created_at_ms,
-  updated_at_ms,
-  version,
-  destination,
-  created_by,
-  conversation_access,
-  credential_subject,
-  execution_actor,
-  last_run_at_ms,
-  original_request,
-  schedule,
-  status_reason,
-  task,
   record
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8,
-  $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb,
-  $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb
+  $1, $2, $3, $4, $5, $6, $7::jsonb
 )
 ON CONFLICT (id) DO UPDATE SET
   team_id = EXCLUDED.team_id,
@@ -1090,18 +1090,6 @@ ON CONFLICT (id) DO UPDATE SET
   next_run_at_ms = EXCLUDED.next_run_at_ms,
   run_now_at_ms = EXCLUDED.run_now_at_ms,
   created_at_ms = EXCLUDED.created_at_ms,
-  updated_at_ms = EXCLUDED.updated_at_ms,
-  version = EXCLUDED.version,
-  destination = EXCLUDED.destination,
-  created_by = EXCLUDED.created_by,
-  conversation_access = EXCLUDED.conversation_access,
-  credential_subject = EXCLUDED.credential_subject,
-  execution_actor = EXCLUDED.execution_actor,
-  last_run_at_ms = EXCLUDED.last_run_at_ms,
-  original_request = EXCLUDED.original_request,
-  schedule = EXCLUDED.schedule,
-  status_reason = EXCLUDED.status_reason,
-  task = EXCLUDED.task,
   record = EXCLUDED.record
 `,
     [
@@ -1111,18 +1099,6 @@ ON CONFLICT (id) DO UPDATE SET
       task.nextRunAtMs ?? null,
       task.runNowAtMs ?? null,
       task.createdAtMs,
-      task.updatedAtMs,
-      task.version,
-      json(task.destination),
-      json(task.createdBy),
-      task.conversationAccess ? json(task.conversationAccess) : null,
-      task.credentialSubject ? json(task.credentialSubject) : null,
-      task.executionActor ? json(task.executionActor) : null,
-      task.lastRunAtMs ?? null,
-      task.originalRequest ?? null,
-      json(task.schedule),
-      task.statusReason ?? null,
-      json(task.task),
       json(task),
     ],
   );
@@ -1135,52 +1111,18 @@ INSERT INTO junior_scheduler_runs (
   id,
   task_id,
   status,
-  claimed_at_ms,
   scheduled_for_ms,
-  started_at_ms,
-  completed_at_ms,
-  dispatch_id,
-  error_message,
-  idempotency_key,
-  result_message_ts,
-  task_version,
-  attempt,
   record
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8,
-  $9, $10, $11, $12, $13, $14::jsonb
+  $1, $2, $3, $4, $5::jsonb
 )
 ON CONFLICT (id) DO UPDATE SET
   task_id = EXCLUDED.task_id,
   status = EXCLUDED.status,
-  claimed_at_ms = EXCLUDED.claimed_at_ms,
   scheduled_for_ms = EXCLUDED.scheduled_for_ms,
-  started_at_ms = EXCLUDED.started_at_ms,
-  completed_at_ms = EXCLUDED.completed_at_ms,
-  dispatch_id = EXCLUDED.dispatch_id,
-  error_message = EXCLUDED.error_message,
-  idempotency_key = EXCLUDED.idempotency_key,
-  result_message_ts = EXCLUDED.result_message_ts,
-  task_version = EXCLUDED.task_version,
-  attempt = EXCLUDED.attempt,
   record = EXCLUDED.record
 `,
-    [
-      run.id,
-      run.taskId,
-      run.status,
-      run.claimedAtMs,
-      run.scheduledForMs,
-      run.startedAtMs ?? null,
-      run.completedAtMs ?? null,
-      run.dispatchId ?? null,
-      run.errorMessage ?? null,
-      run.idempotencyKey,
-      run.resultMessageTs ?? null,
-      run.taskVersion,
-      run.attempt,
-      json(run),
-    ],
+    [run.id, run.taskId, run.status, run.scheduledForMs, json(run)],
   );
 }
 
@@ -1439,7 +1381,6 @@ ORDER BY created_at_ms ASC, id ASC
         status: nextStatus,
         statusReason: nextStatus === "paused" ? errorMessage : undefined,
         updatedAtMs: args.nowMs,
-        version: current.version + 1,
       },
       current,
     );
@@ -1612,7 +1553,6 @@ ORDER BY created_at_ms ASC, id ASC
             statusReason:
               args.status === "blocked" ? args.errorMessage : undefined,
             updatedAtMs: args.nowMs,
-            version: current.version + 1,
           },
           current,
         );
@@ -1629,7 +1569,6 @@ ORDER BY created_at_ms ASC, id ASC
             ...current,
             lastRunAtMs: args.run.scheduledForMs,
             updatedAtMs: args.nowMs,
-            version: current.version + 1,
           },
           current,
         );
@@ -1656,7 +1595,6 @@ ORDER BY created_at_ms ASC, id ASC
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,
           updatedAtMs: args.nowMs,
-          version: current.version + 1,
         },
         current,
       );

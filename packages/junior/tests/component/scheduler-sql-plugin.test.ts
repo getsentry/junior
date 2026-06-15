@@ -86,7 +86,6 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
       text: "Post a digest.",
     },
     updatedAtMs: TEST_RUN_AT_MS,
-    version: 1,
     ...overrides,
   };
 }
@@ -286,7 +285,6 @@ describe("scheduler SQL plugin storage", () => {
         status: "active",
         statusReason: undefined,
         updatedAtMs: TEST_NOW_MS + 3,
-        version: task.version + 2,
       });
 
       await expect(
@@ -566,14 +564,8 @@ INSERT INTO junior_scheduler_tasks (
   status,
   next_run_at_ms,
   created_at_ms,
-  updated_at_ms,
-  version,
-  destination,
-  created_by,
-  schedule,
-  task,
   record
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+) VALUES ($1, $2, $3, $4, $5, $6)
 `,
         [
           "sched_bad_record",
@@ -581,12 +573,6 @@ INSERT INTO junior_scheduler_tasks (
           "active",
           TEST_RUN_AT_MS,
           TEST_RUN_AT_MS - 1,
-          TEST_RUN_AT_MS - 1,
-          1,
-          JSON.stringify(task.destination),
-          JSON.stringify(task.createdBy),
-          JSON.stringify(task.schedule),
-          JSON.stringify(task.task),
           JSON.stringify({ id: "sched_bad_record" }),
         ],
       );
@@ -600,14 +586,8 @@ INSERT INTO junior_scheduler_tasks (
   status,
   next_run_at_ms,
   created_at_ms,
-  updated_at_ms,
-  version,
-  destination,
-  created_by,
-  schedule,
-  task,
   record
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+) VALUES ($1, $2, $3, $4, $5, $6)
 `,
         [
           "sched_bad_string_record",
@@ -615,12 +595,6 @@ INSERT INTO junior_scheduler_tasks (
           "active",
           TEST_RUN_AT_MS,
           TEST_RUN_AT_MS - 1,
-          TEST_RUN_AT_MS - 1,
-          1,
-          JSON.stringify(task.destination),
-          JSON.stringify(task.createdBy),
-          JSON.stringify(task.schedule),
-          JSON.stringify(task.task),
           JSON.stringify("not-json"),
         ],
       );
@@ -633,23 +607,15 @@ INSERT INTO junior_scheduler_runs (
   id,
   task_id,
   status,
-  claimed_at_ms,
   scheduled_for_ms,
-  idempotency_key,
-  task_version,
-  attempt,
   record
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5)
 `,
         [
           "sched_bad_run",
           task.id,
           "pending",
-          TEST_NOW_MS - 120_000,
           TEST_RUN_AT_MS - 60_000,
-          "sched_bad_run",
-          1,
-          1,
           JSON.stringify({ id: "sched_bad_run" }),
         ],
       );
@@ -660,23 +626,15 @@ INSERT INTO junior_scheduler_runs (
   id,
   task_id,
   status,
-  claimed_at_ms,
   scheduled_for_ms,
-  idempotency_key,
-  task_version,
-  attempt,
   record
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5)
 `,
         [
           "sched_bad_string_run",
           task.id,
           "pending",
-          TEST_NOW_MS - 120_000,
           TEST_RUN_AT_MS - 60_000,
-          "sched_bad_string_run",
-          1,
-          1,
           JSON.stringify("not-json"),
         ],
       );

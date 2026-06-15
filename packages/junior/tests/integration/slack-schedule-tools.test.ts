@@ -582,7 +582,6 @@ describe("Slack schedule tools", () => {
         id: taskId,
         task: "Daily scheduler digest: Summarize open scheduler issues.",
         schedule: "Every day at 9am",
-        version: 2,
       },
     });
 
@@ -628,7 +627,6 @@ describe("Slack schedule tools", () => {
       schedule: {
         description: "Every Monday at 9am",
       },
-      version: 1,
     });
   });
 
@@ -773,7 +771,6 @@ describe("Slack schedule tools", () => {
       task: {
         id: created.task.id,
         task: "Team-owned digest: Summarize open scheduler issues.",
-        version: 2,
       },
     });
     expect(deleted).toMatchObject({
@@ -794,7 +791,6 @@ describe("Slack schedule tools", () => {
       task: {
         text: "Team-owned digest: Summarize open scheduler issues.",
       },
-      version: 3,
     });
   });
 
@@ -946,7 +942,6 @@ describe("Slack schedule tools", () => {
       ...task!,
       nextRunAtMs: Date.parse("2026-06-08T16:00:00.000Z"),
       updatedAtMs: Date.parse("2026-05-26T16:00:00.000Z"),
-      version: task!.version + 1,
     });
 
     const updated = await executeTool(
@@ -987,7 +982,6 @@ describe("Slack schedule tools", () => {
       status: "blocked",
       statusReason: "Missing GitHub credentials.",
       updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
-      version: task!.version + 1,
     });
 
     const updated = await executeTool(
@@ -1025,7 +1019,6 @@ describe("Slack schedule tools", () => {
       ...task!,
       nextRunAtMs: scheduledNextRunAtMs,
       updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
-      version: task!.version + 1,
     });
 
     const beforeMs = Date.now();
@@ -1081,7 +1074,6 @@ describe("Slack schedule tools", () => {
       status: "paused",
       statusReason: "Paused by user.",
       updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
-      version: task!.version + 1,
     });
 
     await expect(

@@ -83,7 +83,6 @@ export interface ScheduledTask {
   statusReason?: string;
   task: ScheduledTaskSpec;
   updatedAtMs: number;
-  version: number;
 }
 
 export interface ScheduledRun {
@@ -93,11 +92,9 @@ export interface ScheduledRun {
   completedAtMs?: number;
   dispatchId?: string;
   errorMessage?: string;
-  idempotencyKey: string;
   resultMessageTs?: string;
   scheduledForMs: number;
   startedAtMs?: number;
   status: ScheduledRunStatus;
   taskId: string;
-  taskVersion: number;
 }

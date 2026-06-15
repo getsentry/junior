@@ -135,12 +135,16 @@ The scheduler is a trusted runtime plugin and requires plugin SQL storage. Its
 plugin package owns the scheduler migration files under `migrations/`, and
 `junior upgrade` applies those migrations before scheduler storage hooks run.
 
-The SQL store keeps task and run records in scheduler-owned tables:
+The SQL store keeps task and run records in scheduler-owned tables. The JSON
+`record` column is the canonical durable scheduler record; scalar columns are
+minimal query projections, not duplicate source-of-truth fields.
 
-- `junior_scheduler_tasks` stores current task state, destination fields, due
-  timestamps, schedule metadata, and the full task JSON record.
-- `junior_scheduler_runs` stores run claims, dispatch ids, terminal status,
-  attempt metadata, and the full run JSON record.
+- `junior_scheduler_tasks` stores task identity, team/status/due-time
+  projections for lookup and heartbeat scans, and the full task JSON record.
+- `junior_scheduler_runs` stores run identity, task/status/scheduled-time
+  projections for idempotency and recovery scans, and the full compact run JSON
+  record. Run records are execution-control state, not rich result or log
+  storage.
 
 The scheduler store interface remains the stable boundary for tools, heartbeat,
 and operational reporting. Runtime hook bodies use plugin SQL through `ctx.db`;

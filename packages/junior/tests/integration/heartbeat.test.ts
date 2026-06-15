@@ -102,7 +102,6 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
       text: "Post a digest. Summarize the latest state.",
     },
     updatedAtMs: nextRunAtMs,
-    version: 1,
     ...overrides,
   };
 }

@@ -213,7 +213,6 @@ function compactTask(task: ScheduledTask): Record<string, unknown> {
     run_now_at: task.runNowAtMs
       ? new Date(task.runNowAtMs).toISOString()
       : null,
-    version: task.version,
   };
 }
 
@@ -425,7 +424,6 @@ export function createSlackScheduleCreateTaskTool(
         task: {
           text: input.task,
         },
-        version: 1,
       };
 
       await schedulerStore(context).saveTask(task);
@@ -572,7 +570,6 @@ export function createSlackScheduleUpdateTaskTool(
           recurrence,
         },
         task: input.task ? { text: input.task } : lookup.task,
-        version: lookup.version + 1,
       };
 
       await schedulerStore(context).saveTask(next);
@@ -608,7 +605,6 @@ export function createSlackScheduleDeleteTaskTool(
         status: "deleted",
         nextRunAtMs: undefined,
         runNowAtMs: undefined,
-        version: lookup.version + 1,
       };
 
       await schedulerStore(context).saveTask(next);
@@ -648,7 +644,6 @@ export function createSlackScheduleRunTaskNowTool(
         ...lookup,
         updatedAtMs: nowMs,
         runNowAtMs: nowMs,
-        version: lookup.version + 1,
       };
 
       await schedulerStore(context).saveTask(next);

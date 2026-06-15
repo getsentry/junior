@@ -37,6 +37,8 @@ export function buildScheduledTaskRunPrompt(args: {
   const { run, task } = args;
   const destination = task.destination;
   const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
+  // Older retained scheduler state predated executionActor; new tasks always
+  // store it explicitly as part of the task contract.
   const executionActor = task.executionActor ?? SCHEDULED_TASK_SYSTEM_ACTOR;
   if (!task.task.text?.trim()) {
     throw new Error("Scheduled task text is required");
@@ -55,7 +57,6 @@ export function buildScheduledTaskRunPrompt(args: {
     "",
     "<run-context>",
     `- run_id: ${escapeXml(run.id)}`,
-    `- task_version: ${run.taskVersion}`,
     `- scheduled_for: ${new Date(run.scheduledForMs).toISOString()}`,
     `- running_at: ${new Date(args.nowMs).toISOString()}`,
     `- schedule: ${escapeXml(task.schedule.description)}`,
