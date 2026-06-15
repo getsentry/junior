@@ -198,6 +198,9 @@ importers:
       hono:
         specifier: ^4.12.22
         version: 4.12.22
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
       jose:
         specifier: ^6.2.3
         version: 6.2.3

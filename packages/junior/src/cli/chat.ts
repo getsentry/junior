@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import path from "node:path";
 import * as readline from "node:readline/promises";
-import { pathToFileURL } from "node:url";
+import { createJiti } from "jiti";
 import {
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
@@ -45,6 +45,7 @@ const DEFAULT_IO: ChatIo = {
   output: defaultStdout,
   write: (text) => writeStream(defaultStdout, text),
 };
+const localPluginLoader = createJiti(import.meta.url, { moduleCache: false });
 
 class ChatOutputError extends Error {
   constructor(error: unknown) {
@@ -133,10 +134,8 @@ function localPluginModuleCandidates(cwd = process.cwd()): string[] {
 
 async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
   for (const pluginModulePath of localPluginModuleCandidates()) {
-    const mod = (await import(pathToFileURL(pluginModulePath).href)) as Record<
-      string,
-      unknown
-    >;
+    const mod =
+      await localPluginLoader.import<Record<string, unknown>>(pluginModulePath);
     const pluginSet = mod.plugins ?? mod.default;
     if (!isPluginSet(pluginSet)) {
       throw new Error(

@@ -79,6 +79,7 @@
     "chat": "4.29.0",
     "drizzle-orm": "catalog:",
     "hono": "^4.12.22",
+    "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
     "node-html-markdown": "^2.0.0",

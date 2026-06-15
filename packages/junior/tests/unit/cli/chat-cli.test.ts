@@ -160,6 +160,41 @@ describe("chat cli", () => {
     }
   });
 
+  it("loads TypeScript local plugin modules before prompt local chat", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
+    writeFileSync(
+      path.join(tempDir, "plugins.ts"),
+      `const packageNames: string[] = ["@sentry/test-plugin"];
+
+export const plugins = {
+  packageNames,
+  registrations: [],
+};
+`,
+    );
+    process.chdir(tempDir);
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    try {
+      const io = {
+        error: vi.fn(),
+        input: process.stdin,
+        output: process.stdout,
+        write: vi.fn(),
+      };
+
+      expect(await runChat(["-p", "hello"], io)).toBe(0);
+      expect(runner.runLocalAgentTurn).toHaveBeenCalledOnce();
+    } finally {
+      process.chdir(ORIGINAL_CWD);
+      rmSync(tempDir, { force: true, recursive: true });
+    }
+  });
+
   it("preserves an explicit prompt local chat state adapter", async () => {
     process.env.JUNIOR_STATE_ADAPTER = "redis";
     process.env.REDIS_URL = "redis://localhost:6379";
