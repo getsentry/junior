@@ -1222,6 +1222,17 @@ async function getRunFromSql(
   return rows[0] ? requireSqlRunRow(rows[0]) : undefined;
 }
 
+async function getClaimedRunSlotFromSql(
+  db: PluginDb,
+  runId: string,
+): Promise<ScheduledRun | undefined> {
+  const rows = await db.query<SchedulerRunRow>(
+    "SELECT record FROM junior_scheduler_runs WHERE id = $1",
+    [runId],
+  );
+  return rows[0] ? parseSqlRunRow(rows[0]) : undefined;
+}
+
 async function listTasksFromSql(db: PluginDb): Promise<ScheduledTask[]> {
   const rows = await db.query<SchedulerTaskRow>(
     `
@@ -1349,6 +1360,10 @@ ORDER BY created_at_ms ASC, id ASC
           };
           await upsertSqlRun(db, reclaimed);
           return reclaimed;
+        }
+        const existingRun = await getClaimedRunSlotFromSql(db, runId);
+        if (existingRun) {
+          continue;
         }
 
         if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {

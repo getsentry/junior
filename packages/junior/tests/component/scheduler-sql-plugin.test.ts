@@ -192,6 +192,51 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
+  it("does not reclaim completed SQL run slots", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const db = createPluginDbForExecutor(fixture.executor);
+      const store = createSchedulerSqlStore(db);
+      const task = createTask({ id: "sched_sql_completed_slot" });
+
+      await store.saveTask(task);
+      const run = await store.claimDueRun({ nowMs: TEST_NOW_MS });
+      expect(run).toMatchObject({
+        id: `${task.id}:${TEST_RUN_AT_MS}`,
+        status: "pending",
+      });
+
+      const dispatched = await store.markRunDispatched({
+        claimedAtMs: run!.claimedAtMs,
+        dispatchId: "dispatch_completed_slot",
+        nowMs: TEST_NOW_MS + 1,
+        runId: run!.id,
+      });
+      await expect(
+        store.markRunCompleted({
+          completedAtMs: TEST_NOW_MS + 2,
+          runId: run!.id,
+          startedAtMs: dispatched!.startedAtMs!,
+        }),
+      ).resolves.toMatchObject({
+        id: run!.id,
+        status: "completed",
+      });
+
+      await expect(store.claimDueRun({ nowMs: TEST_NOW_MS + 3 })).resolves.toBe(
+        undefined,
+      );
+      await expect(store.getRun(run!.id)).resolves.toMatchObject({
+        id: run!.id,
+        status: "completed",
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("migrates existing scheduler plugin state into SQL idempotently", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
