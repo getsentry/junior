@@ -150,12 +150,16 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
 
 async function configureLocalChatPlugins(): Promise<void> {
   const pluginSet = await loadLocalPluginSet();
+  const plugins = pluginHookRegistrationsFromPluginSet(pluginSet);
+  const { validatePluginDatabaseRequirements } =
+    await import("@/chat/plugins/db");
+  validatePluginDatabaseRequirements(plugins);
   setPluginCatalogConfig(
     pluginSet
       ? pluginCatalogConfigFromPluginSet(pluginSet)
       : pluginCatalogConfigFromEnv(),
   );
-  setPlugins(pluginHookRegistrationsFromPluginSet(pluginSet));
+  setPlugins(plugins);
 }
 
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
