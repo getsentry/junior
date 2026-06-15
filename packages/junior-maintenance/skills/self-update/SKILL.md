@@ -179,9 +179,9 @@ After updating deps, compare this app's configuration files against `apps/exampl
    git diff <old_ref>..<target_ref> -- apps/example/vercel.json
    ```
 
-   If `old_ref` cannot be found, inspect the target example app's `apps/example/vercel.json` directly and mark the `vercel.json` review as approximate in the PR body.
+   If `old_ref` cannot be found, inspect the target example app's `apps/example/vercel.json` directly only as supporting context for release-window PRs or docs that explicitly identify a new Junior deployment requirement. Do not treat target-only entries as newly required just because they exist in the example app. Mark the `vercel.json` review as approximate in the PR body and add a manual review item when no diff-backed or release-window-backed requirement can be proven.
 
-   Identify entries added or changed upstream that are Junior-owned or Junior-documented deployment requirements. Check especially:
+   Identify entries added or changed upstream by the diff, or explicitly documented in release-window PRs or docs, that are Junior-owned deployment requirements. Check especially:
    - `buildCommand` / `installCommand` changes such as adding `pnpm exec junior upgrade`
    - `framework` requirements
    - Junior queue or function wiring
