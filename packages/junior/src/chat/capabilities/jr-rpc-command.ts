@@ -1,6 +1,7 @@
 import { Bash, defineCommand } from "just-bash";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logInfo } from "@/chat/logging";
+import { getPluginProviders } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
@@ -256,6 +257,42 @@ async function handleConfigCommand(
   });
 }
 
+async function handlePluginsCommand(
+  args: string[],
+): Promise<ReturnType<typeof commandResult>> {
+  const usage = "jr-rpc plugins list";
+  const subverb = (args[0] ?? "").trim();
+  if (subverb !== "list" || args.length !== 1) {
+    return commandResult({
+      stderr: `Usage:\n${usage}\n`,
+      exitCode: 2,
+    });
+  }
+
+  const plugins = getPluginProviders()
+    .map((plugin) => ({
+      name: plugin.manifest.name,
+      displayName: plugin.manifest.displayName,
+      description: plugin.manifest.description,
+      capabilities: [...plugin.manifest.capabilities],
+      configKeys: [...plugin.manifest.configKeys],
+      hasCredentials: Boolean(plugin.manifest.credentials),
+      hasMcp: Boolean(plugin.manifest.mcp),
+      hasOAuth: Boolean(plugin.manifest.oauth),
+      hasSkills: Boolean(plugin.skillsDir),
+      hasMigrations: Boolean(plugin.migrationsDir),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  return commandResult({
+    stdout: {
+      ok: true,
+      plugins,
+    },
+    exitCode: 0,
+  });
+}
+
 function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
     const usage = [
@@ -263,10 +300,14 @@ function createJrRpcCommand(deps: JrRpcDeps) {
       "jr-rpc config set <key> <value> [--json]",
       "jr-rpc config unset <key>",
       "jr-rpc config list [--prefix <value>]",
+      "jr-rpc plugins list",
     ].join("\n");
     const verb = (args[0] ?? "").trim();
     if (verb === "config") {
       return handleConfigCommand(args.slice(1), deps);
+    }
+    if (verb === "plugins") {
+      return handlePluginsCommand(args.slice(1));
     }
     return commandResult({
       stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,

@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build",
+    "predev": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior-scheduler build",
     "dev": "nitro dev",
-    "prebuild": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build",
+    "prebuild": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior-scheduler build",
     "build": "junior snapshot create && nitro build",
     "postbuild": "node scripts/check-vercel-output.mjs",
     "preview": "nitro preview",
@@ -20,6 +20,7 @@
     "@sentry/junior-hex": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
+    "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
     "hono": "^4.12.22"

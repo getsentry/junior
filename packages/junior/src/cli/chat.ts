@@ -11,8 +11,19 @@ import {
   stdout as defaultStdout,
 } from "node:process";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import path from "node:path";
 import * as readline from "node:readline/promises";
+import { pathToFileURL } from "node:url";
+import {
+  pluginCatalogConfigFromEnv,
+  pluginCatalogConfigFromPluginSet,
+  pluginHookRegistrationsFromPluginSet,
+  type JuniorPluginSet,
+} from "@/plugins";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import type { LocalAgentReply } from "@/chat/local/runner";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
@@ -97,6 +108,56 @@ function defaultStateAdapterForLocalChat(): void {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 }
 
+function isFile(targetPath: string): boolean {
+  try {
+    return statSync(targetPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isPluginSet(value: unknown): value is JuniorPluginSet {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    Array.isArray((value as Partial<JuniorPluginSet>).packageNames) &&
+    Array.isArray((value as Partial<JuniorPluginSet>).registrations)
+  );
+}
+
+function localPluginModuleCandidates(cwd = process.cwd()): string[] {
+  return ["plugins.js", "plugins.mjs", "plugins.ts"]
+    .map((fileName) => path.resolve(cwd, fileName))
+    .filter(isFile);
+}
+
+async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
+  for (const pluginModulePath of localPluginModuleCandidates()) {
+    const mod = (await import(pathToFileURL(pluginModulePath).href)) as Record<
+      string,
+      unknown
+    >;
+    const pluginSet = mod.plugins ?? mod.default;
+    if (!isPluginSet(pluginSet)) {
+      throw new Error(
+        `${pluginModulePath} must export a defineJuniorPlugins(...) set as "plugins" or default`,
+      );
+    }
+    return pluginSet;
+  }
+  return undefined;
+}
+
+async function configureLocalChatPlugins(): Promise<void> {
+  const pluginSet = await loadLocalPluginSet();
+  setPluginCatalogConfig(
+    pluginSet
+      ? pluginCatalogConfigFromPluginSet(pluginSet)
+      : pluginCatalogConfigFromEnv(),
+  );
+  setPlugins(pluginHookRegistrationsFromPluginSet(pluginSet));
+}
+
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
   if (argv.length === 0) {
     return { mode: "interactive" };
@@ -140,6 +201,7 @@ async function runPrompt(
   io: ChatIo,
 ): Promise<number> {
   defaultStateAdapterForLocalChat();
+  await configureLocalChatPlugins();
   const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
@@ -162,6 +224,7 @@ async function runPrompt(
 
 async function runInteractive(io: ChatIo): Promise<void> {
   defaultStateAdapterForLocalChat();
+  await configureLocalChatPlugins();
   const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");

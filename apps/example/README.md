@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-datadog`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-datadog`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-scheduler`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
 
 ## Run
 
@@ -28,6 +28,7 @@ Copy `.env.example` and set:
 
 - `SLACK_BOT_TOKEN`
 - `SLACK_SIGNING_SECRET`
+- `DATABASE_URL` or `JUNIOR_DATABASE_URL`
 - `REDIS_URL`
 - `AI_MODEL` (optional)
 - `AI_FAST_MODEL` (optional)

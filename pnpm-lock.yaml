@@ -80,6 +80,9 @@ importers:
       "@sentry/junior-notion":
         specifier: workspace:*
         version: link:../../packages/junior-notion
+      "@sentry/junior-scheduler":
+        specifier: workspace:*
+        version: file:packages/junior-scheduler(@neondatabase/serverless@1.1.0)
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../../packages/junior-sentry

@@ -1,12 +1,20 @@
 ---
 name: jr-rpc
-description: Manage low-level config flows via jr-rpc bash commands, including setting a default GitHub repo. Use only when the user explicitly asks to read or update provider defaults/config. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
+description: Manage low-level config and plugin introspection flows via jr-rpc bash commands. Use only when the user explicitly asks to read or update provider defaults/config or list installed plugins. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
 allowed-tools: bash
 ---
 
 # jr-rpc
 
-Manage low-level config flows for the current agent turn.
+Manage low-level config and plugin introspection flows for the current agent turn.
+
+## Plugins
+
+`jr-rpc plugins list` — list installed plugins visible to the current Junior runtime.
+
+Command syntax:
+
+- `jr-rpc plugins list`
 
 ## Configuration
 

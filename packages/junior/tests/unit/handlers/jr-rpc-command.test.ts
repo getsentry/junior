@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
+import { setPluginCatalogConfig } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
 const activeSkill: Skill = {
@@ -132,6 +133,52 @@ describe("jr-rpc custom command", () => {
         }),
       ],
     });
+  });
+
+  it("lists installed plugins", async () => {
+    const previousConfig = setPluginCatalogConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "example",
+            displayName: "Example",
+            description: "Example plugin",
+            capabilities: ["example.search"],
+            configKeys: ["example.repo"],
+          },
+        },
+      ],
+    });
+    try {
+      const result = await maybeExecuteJrRpcCustomCommand(
+        "jr-rpc plugins list",
+        {
+          activeSkill,
+        },
+      );
+      const handled = expectHandled(result);
+      expect(handled.result.exit_code).toBe(0);
+      const output = JSON.parse(handled.result.stdout);
+      expect(output.ok).toBe(true);
+      expect(output.plugins).toEqual(
+        expect.arrayContaining([
+          {
+            name: "example",
+            displayName: "Example",
+            description: "Example plugin",
+            capabilities: ["example.search"],
+            configKeys: ["example.repo"],
+            hasCredentials: false,
+            hasMcp: false,
+            hasOAuth: false,
+            hasSkills: false,
+            hasMigrations: false,
+          },
+        ]),
+      );
+    } finally {
+      setPluginCatalogConfig(previousConfig);
+    }
   });
 
   it("unsets configuration values", async () => {
