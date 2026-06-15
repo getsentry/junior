@@ -150,6 +150,44 @@ describe("plugin registry", () => {
     expect(registry.getPluginMigrationRoots()).toEqual([]);
   });
 
+  it("rejects migration-only packages without inline code registrations", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-unowned-migrations-"),
+    );
+    const pluginRoot = path.join(tempRoot, "code-plugin");
+    await fs.mkdir(path.join(pluginRoot, "migrations"), { recursive: true });
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: ["@acme/code-plugin"],
+        packages: [
+          {
+            dir: pluginRoot,
+            hasMigrationsDir: true,
+            hasSkillsDir: false,
+            packageName: "@acme/code-plugin",
+          },
+        ],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    registry.setPluginCatalogConfig({
+      packages: ["@acme/code-plugin"],
+    });
+
+    expect(() => registry.getPluginMigrationRoots()).toThrow(
+      "Plugin package(s) contain migrations but no code plugin registration owns them: @acme/code-plugin",
+    );
+  });
+
   it("registers named migrations from inline code plugin packages", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-code-migrations-"),

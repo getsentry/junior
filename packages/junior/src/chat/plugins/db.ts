@@ -9,21 +9,6 @@ import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
 
 const PLUGIN_SCHEMA_LOCK_NAME = "junior_plugin_schema";
 const MIGRATION_FILENAME_RE = /^[0-9]{4}_[a-z0-9_]+\.sql$/;
-const SQL_IDENTIFIER_SOURCE = String.raw`(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*))?`;
-const SQL_IDENTIFIER_RE = new RegExp(SQL_IDENTIFIER_SOURCE, "y");
-const CREATE_TABLE_RE = new RegExp(
-  String.raw`\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(${SQL_IDENTIFIER_SOURCE})`,
-  "gi",
-);
-const ALTER_TABLE_RE = new RegExp(
-  String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(${SQL_IDENTIFIER_SOURCE})`,
-  "gi",
-);
-const CREATE_INDEX_RE = new RegExp(
-  String.raw`\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(${SQL_IDENTIFIER_SOURCE})\s+ON\s+(?:ONLY\s+)?(${SQL_IDENTIFIER_SOURCE})`,
-  "gi",
-);
-const FORBIDDEN_MIGRATION_SQL_RE = /\b(?:DROP|TRUNCATE)\s+(?:TABLE|INDEX)\b/i;
 
 const migrationRecordSchema = z
   .object({
@@ -80,70 +65,6 @@ function assertMigrationFilename(filename: string): void {
     !MIGRATION_FILENAME_RE.test(filename)
   ) {
     throw new Error(`Plugin migration filename "${filename}" is invalid`);
-  }
-}
-
-function pluginSqlIdentifierPrefix(pluginName: string): string {
-  return `junior_${pluginName.replaceAll("-", "_")}_`;
-}
-
-function stripSqlComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--.*$/gm, " ");
-}
-
-function unquoteIdentifierPart(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1).replaceAll('""', '"');
-  }
-  return trimmed;
-}
-
-function sqlIdentifierName(identifier: string): string {
-  return identifier.split(".").map(unquoteIdentifierPart).at(-1)!;
-}
-
-function assertSqlIdentifier(
-  identifier: string,
-  pluginName: string,
-  filename: string,
-): void {
-  SQL_IDENTIFIER_RE.lastIndex = 0;
-  if (!SQL_IDENTIFIER_RE.test(identifier.trim())) {
-    throw new Error(
-      `Plugin "${pluginName}" migration "${filename}" references invalid SQL identifier "${identifier}"`,
-    );
-  }
-
-  const prefix = pluginSqlIdentifierPrefix(pluginName);
-  const name = sqlIdentifierName(identifier);
-  if (!name.startsWith(prefix)) {
-    throw new Error(
-      `Plugin "${pluginName}" migration "${filename}" references SQL identifier "${name}" outside owned prefix "${prefix}"`,
-    );
-  }
-}
-
-function assertPluginMigrationSql(
-  pluginName: string,
-  filename: string,
-  sql: string,
-): void {
-  const uncommented = stripSqlComments(sql);
-  if (FORBIDDEN_MIGRATION_SQL_RE.test(uncommented)) {
-    throw new Error(
-      `Plugin "${pluginName}" migration "${filename}" uses destructive SQL outside the V1 migration contract`,
-    );
-  }
-  for (const match of uncommented.matchAll(CREATE_TABLE_RE)) {
-    assertSqlIdentifier(match[1]!, pluginName, filename);
-  }
-  for (const match of uncommented.matchAll(ALTER_TABLE_RE)) {
-    assertSqlIdentifier(match[1]!, pluginName, filename);
-  }
-  for (const match of uncommented.matchAll(CREATE_INDEX_RE)) {
-    assertSqlIdentifier(match[1]!, pluginName, filename);
-    assertSqlIdentifier(match[2]!, pluginName, filename);
   }
 }
 
@@ -298,7 +219,6 @@ export function readPluginMigrations(
           `Plugin "${root.pluginName}" migration "${filename}" is empty`,
         );
       }
-      assertPluginMigrationSql(root.pluginName, filename, sql);
       return {
         checksum: checksumSql(sql),
         filename,

@@ -146,55 +146,7 @@ describe("plugin DB migrations", () => {
     }
   });
 
-  it("accepts SQL identifiers under the plugin-owned table prefix", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
-    const migrationsDir = path.join(root, "migrations");
-    mkdirSync(migrationsDir);
-    writeFileSync(
-      path.join(migrationsDir, "0001_init.sql"),
-      [
-        "CREATE TABLE junior_long_memory_entries (id TEXT PRIMARY KEY);",
-        "CREATE INDEX junior_long_memory_entries_created_idx",
-        "  ON junior_long_memory_entries (id);",
-      ].join("\n"),
-    );
-
-    try {
-      expect(
-        readPluginMigrations({
-          dir: migrationsDir,
-          pluginName: "long-memory",
-        }),
-      ).toHaveLength(1);
-    } finally {
-      rmSync(root, { force: true, recursive: true });
-    }
-  });
-
-  it("rejects plugin SQL that creates tables outside the plugin prefix", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
-    const migrationsDir = path.join(root, "migrations");
-    mkdirSync(migrationsDir);
-    writeFileSync(
-      path.join(migrationsDir, "0001_init.sql"),
-      "CREATE TABLE junior_other_entries (id TEXT PRIMARY KEY);",
-    );
-
-    try {
-      expect(() =>
-        readPluginMigrations({
-          dir: migrationsDir,
-          pluginName: "memory",
-        }),
-      ).toThrow(
-        'Plugin "memory" migration "0001_init.sql" references SQL identifier "junior_other_entries" outside owned prefix "junior_memory_"',
-      );
-    } finally {
-      rmSync(root, { force: true, recursive: true });
-    }
-  });
-
-  it("rejects plugin SQL that creates indexes outside the plugin prefix", () => {
+  it("accepts trusted plugin SQL without inspecting object ownership", () => {
     const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
     const migrationsDir = path.join(root, "migrations");
     mkdirSync(migrationsDir);
@@ -202,43 +154,20 @@ describe("plugin DB migrations", () => {
       path.join(migrationsDir, "0001_init.sql"),
       [
         "CREATE TABLE junior_memory_entries (id TEXT PRIMARY KEY);",
-        "CREATE INDEX junior_other_entries_idx",
+        "CREATE INDEX junior_memory_entries_created_idx",
         "  ON junior_memory_entries (id);",
+        "INSERT INTO junior_memory_entries (id) VALUES ('seed');",
       ].join("\n"),
     );
 
     try {
-      expect(() =>
-        readPluginMigrations({
-          dir: migrationsDir,
-          pluginName: "memory",
-        }),
-      ).toThrow(
-        'Plugin "memory" migration "0001_init.sql" references SQL identifier "junior_other_entries_idx" outside owned prefix "junior_memory_"',
-      );
-    } finally {
-      rmSync(root, { force: true, recursive: true });
-    }
-  });
+      const migrations = readPluginMigrations({
+        dir: migrationsDir,
+        pluginName: "memory",
+      });
 
-  it("rejects destructive plugin SQL migrations", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
-    const migrationsDir = path.join(root, "migrations");
-    mkdirSync(migrationsDir);
-    writeFileSync(
-      path.join(migrationsDir, "0001_init.sql"),
-      "DROP TABLE junior_memory_entries;",
-    );
-
-    try {
-      expect(() =>
-        readPluginMigrations({
-          dir: migrationsDir,
-          pluginName: "memory",
-        }),
-      ).toThrow(
-        'Plugin "memory" migration "0001_init.sql" uses destructive SQL outside the V1 migration contract',
-      );
+      expect(migrations).toHaveLength(1);
+      expect(migrations[0]?.sql).toContain("INSERT INTO");
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

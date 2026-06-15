@@ -20,12 +20,6 @@ import type {
   StorageMigrationResult,
 } from "./operations";
 import type {
-  PluginTaskHandler,
-  TurnObservationHookContext,
-  UserPromptContributionResult,
-  UserPromptHookContext,
-} from "./prompt";
-import type {
   BeforeToolExecuteHookContext,
   PluginToolDefinition,
   SandboxPrepareHookContext,
@@ -43,7 +37,6 @@ export interface PluginHooks {
   issueCredential?(
     ctx: IssueCredentialHookContext,
   ): Promise<PluginCredentialResult> | PluginCredentialResult;
-  observeTurn?(ctx: TurnObservationHookContext): Promise<void> | void;
   onEgressResponse?(ctx: EgressResponseHookContext): Promise<void> | void;
   operationalReport?(
     ctx: OperationalReportHookContext,
@@ -62,7 +55,6 @@ export interface PluginHooks {
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
-  tasks?: Record<string, PluginTaskHandler>;
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;
@@ -71,11 +63,5 @@ export interface PluginHooks {
   ):
     | Promise<StorageMigrationResult | undefined>
     | StorageMigrationResult
-    | undefined;
-  userPrompt?(
-    ctx: UserPromptHookContext,
-  ):
-    | Promise<UserPromptContributionResult | undefined>
-    | UserPromptContributionResult
     | undefined;
 }

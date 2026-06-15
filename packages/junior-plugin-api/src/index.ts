@@ -3,7 +3,6 @@ export * from "./context";
 export * from "./state";
 export * from "./dispatch";
 export * from "./database";
-export * from "./prompt";
 export * from "./tools";
 export * from "./operations";
 export * from "./credentials";

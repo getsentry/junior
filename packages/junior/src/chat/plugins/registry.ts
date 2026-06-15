@@ -277,6 +277,44 @@ function registerInlineManifests(
   }
 }
 
+function assertMigrationPackagesHaveCodeOwners(
+  source: PluginCatalogSource,
+): void {
+  const isUnderPackage = (root: string, packageDir: string): boolean => {
+    const relative = path.relative(packageDir, root);
+    return (
+      Boolean(relative) &&
+      !path.isAbsolute(relative) &&
+      relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`)
+    );
+  };
+  const hasDeclarativeContent = (packageDir: string): boolean =>
+    source.manifestRoots.some(
+      (root) => root === packageDir || isUnderPackage(root, packageDir),
+    ) ||
+    source.packagedSkillRoots.some(
+      (root) => root === packageDir || isUnderPackage(root, packageDir),
+    );
+  const ownedPackages = new Set(
+    source.inlineManifests.flatMap((definition) =>
+      definition.packageName ? [definition.packageName] : [],
+    ),
+  );
+  const unownedMigrationPackages = source.packagedContent.packages
+    .filter((pkg) => pkg.hasMigrationsDir)
+    .filter((pkg) => !hasDeclarativeContent(pkg.dir))
+    .filter((pkg) => !ownedPackages.has(pkg.packageName))
+    .map((pkg) => pkg.packageName);
+  if (unownedMigrationPackages.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    `Plugin package(s) contain migrations but no code plugin registration owns them: ${unownedMigrationPackages.join(", ")}. Pass the plugin registration to defineJuniorPlugins(...) instead of configuring the package name alone.`,
+  );
+}
+
 function discoverConfiguredPluginPackageContent(): InstalledPluginPackageContent {
   return discoverInstalledPluginPackageContent(process.cwd(), {
     packageNames: pluginConfig?.packages,
@@ -293,6 +331,7 @@ function buildLoadedPluginState(
   }
 
   registerInlineManifests(state, source);
+  assertMigrationPackagesHaveCodeOwners(source);
 
   const roots = source.manifestRoots;
   for (const pluginsRoot of roots) {

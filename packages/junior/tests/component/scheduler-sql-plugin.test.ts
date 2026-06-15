@@ -396,7 +396,7 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
-  it("does not apply scheduler SQL migrations from package-only config", async () => {
+  it("rejects package-only scheduler SQL migration config", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -410,12 +410,9 @@ describe("scheduler SQL plugin storage", () => {
           sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 0,
-      });
+      ).rejects.toThrow(
+        "Plugin package(s) contain migrations but no code plugin registration owns them: @sentry/junior-scheduler",
+      );
     } finally {
       await stateAdapter.disconnect();
       await fixture.close();
