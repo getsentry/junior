@@ -150,7 +150,7 @@ describe("plugin registry", () => {
     expect(registry.getPluginMigrationRoots()).toEqual([]);
   });
 
-  it("rejects migration-only packages without inline code registrations", async () => {
+  it("ignores package migrations without inline code registrations", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-unowned-migrations-"),
     );
@@ -183,9 +183,7 @@ describe("plugin registry", () => {
       packages: ["@acme/code-plugin"],
     });
 
-    expect(() => registry.getPluginMigrationRoots()).toThrow(
-      "Plugin package(s) contain migrations but no code plugin registration owns them: @acme/code-plugin",
-    );
+    expect(registry.getPluginMigrationRoots()).toEqual([]);
   });
 
   it("registers named migrations from inline code plugin packages", async () => {

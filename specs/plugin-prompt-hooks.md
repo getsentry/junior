@@ -12,6 +12,13 @@ text, observe completed turns, enqueue plugin background work, and keep
 per-session append-only bookkeeping without exposing raw Junior internals or
 creating memory-specific plugin APIs.
 
+## Implementation Status
+
+This is a target design for future plugin prompt, observation, session-state,
+and background-task hooks. The current `@sentry/junior-plugin-api` package does
+not export `userPrompt`, `observeTurn`, plugin prompt session state, or plugin
+background task handlers, and Junior core does not invoke those hooks yet.
+
 ## Scope
 
 - Plugin-provided system prompt and user prompt contributions.

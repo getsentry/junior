@@ -84,7 +84,6 @@ function createSchedulerToolContext(
           }
         : undefined,
     requester: ctx.requester?.platform === "slack" ? ctx.requester : undefined,
-    state: ctx.state,
     store: schedulerStore(ctx),
     userText: ctx.userText,
   };

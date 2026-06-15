@@ -144,8 +144,8 @@ The SQL store keeps task and run records in scheduler-owned tables:
 
 The scheduler store interface remains the stable boundary for tools, heartbeat,
 and operational reporting. Runtime hook bodies use plugin SQL through `ctx.db`;
-state-backed storage remains an internal compatibility path for tests and for
-the one-time storage migration.
+state-backed storage remains an internal compatibility path only for the
+one-time storage migration.
 
 Existing state-backed scheduler records are migrated by the scheduler plugin's
 `migrateStorage(ctx)` hook. The hook reads retained `junior:scheduler:*` plugin

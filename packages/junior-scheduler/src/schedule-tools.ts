@@ -6,14 +6,13 @@ import {
   destinationSchema,
   isSlackDestination,
   type PluginCredentialSubject,
-  type PluginState,
   type PluginToolDefinition,
   type SlackDestination,
   type SlackRequester,
 } from "@sentry/junior-plugin-api";
 import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
-import { createSchedulerStore, type SchedulerStore } from "./store";
+import { type SchedulerStore } from "./store";
 import { SCHEDULED_TASK_SYSTEM_ACTOR } from "./types";
 import type {
   ScheduledCalendarFrequency,
@@ -28,8 +27,7 @@ export interface SchedulerToolContext {
   credentialSubject?: PluginCredentialSubject;
   requester?: SlackRequester;
   source?: SlackDestination;
-  state: PluginState;
-  store?: SchedulerStore;
+  store: SchedulerStore;
   userText?: string;
 }
 
@@ -224,7 +222,7 @@ function buildTaskId(): string {
 }
 
 function schedulerStore(context: SchedulerToolContext): SchedulerStore {
-  return context.store ?? createSchedulerStore(context.state);
+  return context.store;
 }
 
 function normalizeStatus(

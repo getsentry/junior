@@ -185,8 +185,9 @@ Rules:
    was not explicitly enabled in the active plugin set.
 3. `migrateStorage` hooks must be idempotent. Re-running `junior upgrade` must not
    duplicate rows, corrupt state, or require deleting old state first.
-4. `migrateStorage` hooks may read and write only plugin-owned state and plugin-owned
-   SQL tables. They must not mutate core tables or another plugin's tables.
+4. `migrateStorage` hooks should read and write plugin-owned state and
+   plugin-owned SQL tables. Plugins are trusted host code; core does not
+   enforce this ownership boundary.
 5. `migrateStorage` hooks must use `ctx.db` for SQL writes. A plugin with a
    `migrateStorage` hook must declare database access and must fail upgrade
    before the hook runs if no SQL database is configured.
@@ -221,7 +222,7 @@ V1 plugin migrations must be expand-only:
 - add indexes to plugin-owned tables
 - add compatible constraints after existing data is clean
 
-V1 plugin migrations must not:
+Trusted plugin migrations should not:
 
 - drop tables or columns
 - rewrite large tables synchronously
@@ -240,8 +241,9 @@ For plugin names containing hyphens, the SQL table prefix replaces hyphens with
 underscores. For example, plugin `long-memory` owns
 `junior_long_memory_*`.
 
-Core may perform best-effort validation that migration SQL only references the
-plugin-owned prefix, but validation is not a security boundary.
+Core does not parse or validate plugin migration SQL for ownership. The prefix
+is a convention for plugin authors and reviewers, not a runtime security
+boundary.
 
 ### Runtime DB Access
 

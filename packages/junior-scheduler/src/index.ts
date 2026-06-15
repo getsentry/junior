@@ -11,7 +11,6 @@ export {
 export {
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
-  createSchedulerStore,
   migrateSchedulerStateToSql,
 } from "./store";
 export type {

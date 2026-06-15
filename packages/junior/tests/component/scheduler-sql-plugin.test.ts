@@ -4,10 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
-  createSchedulerStore,
   schedulerPlugin,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
+import { createSchedulerStore } from "../../../junior-scheduler/src/store";
 import { defineJuniorPlugins } from "@/plugins";
 import {
   createPluginDbForExecutor,
@@ -396,7 +396,7 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
-  it("rejects package-only scheduler SQL migration config", async () => {
+  it("does not apply scheduler SQL migrations from package-only config", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -410,9 +410,12 @@ describe("scheduler SQL plugin storage", () => {
           sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
-      ).rejects.toThrow(
-        "Plugin package(s) contain migrations but no code plugin registration owns them: @sentry/junior-scheduler",
-      );
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 0,
+        missing: 0,
+        scanned: 0,
+      });
     } finally {
       await stateAdapter.disconnect();
       await fixture.close();

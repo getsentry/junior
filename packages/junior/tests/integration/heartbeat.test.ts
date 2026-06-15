@@ -9,11 +9,9 @@ import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
 import {
   createSchedulerSqlStore,
-  createSchedulerStore,
   schedulerPlugin,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
-import { createPluginState } from "@/chat/plugins/state";
 import * as pluginDbModule from "@/chat/plugins/db";
 import {
   createPluginDbForExecutor,
@@ -545,26 +543,6 @@ describe("plugin heartbeat", () => {
 
     await expect(first.state.get("run:1")).resolves.toBe("first");
     await expect(second.state.get("1")).resolves.toBe("second");
-  });
-
-  it("claims scheduled tasks from the scheduler state namespace", async () => {
-    const task = createTask({ id: "sched_existing" });
-    const state = getStateAdapter();
-    await state.connect();
-    await state.set("junior:scheduler:tasks", [task.id]);
-    await state.set("junior:scheduler:team:T123:tasks", [task.id]);
-    await state.set("junior:scheduler:task:sched_existing", task);
-
-    const store = createSchedulerStore(createPluginState("scheduler"));
-
-    await expect(store.listTasksForTeam("T123")).resolves.toMatchObject([
-      { id: task.id },
-    ]);
-    await expect(
-      store.claimDueRun({ nowMs: TEST_NOW_MS }),
-    ).resolves.toMatchObject({
-      taskId: task.id,
-    });
   });
 
   it("bounds dispatch fanout from one heartbeat context", async () => {

@@ -7,7 +7,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
-  createSchedulerStore,
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
@@ -24,16 +23,20 @@ import {
 } from "@/chat/plugins/db";
 import * as pluginDbModule from "@/chat/plugins/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import {
+  createLocalJuniorSqlFixture,
+  type LocalJuniorSqlFixture,
+} from "../fixtures/sql";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
+let currentFixture: LocalJuniorSqlFixture | undefined;
+let currentSchedulerStore: SchedulerToolContext["store"] | undefined;
 
 function schedulerMigrationsDir(): string {
   return path.resolve(process.cwd(), "../junior-scheduler/migrations");
@@ -83,7 +86,7 @@ function createContext(
       fullName: "David Cramer",
     },
     userText: "schedule this weekly",
-    state: createPluginState("scheduler"),
+    store: schedulerStore(),
     ...contextOverrides,
   };
   const credentialSubject =
@@ -110,7 +113,22 @@ async function executeTool<TInput>(
 }
 
 function schedulerStore() {
-  return createSchedulerStore(createPluginState("scheduler"));
+  if (!currentSchedulerStore) {
+    throw new Error("Scheduler SQL store is not initialized");
+  }
+  return currentSchedulerStore;
+}
+
+async function initializeSchedulerSqlStore(): Promise<void> {
+  const plugin = await useSchedulerSqlPlugin();
+  currentFixture = plugin.fixture;
+  currentSchedulerStore = plugin.store;
+}
+
+async function cleanupSchedulerSqlStore(): Promise<void> {
+  await currentFixture?.close();
+  currentFixture = undefined;
+  currentSchedulerStore = undefined;
 }
 
 async function createTask(
@@ -131,11 +149,14 @@ async function createTask(
 describe("Slack schedule tools", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
+    await initializeSchedulerSqlStore();
   });
 
   afterEach(async () => {
     vi.useRealTimers();
     delete process.env.JUNIOR_TIMEZONE;
+    await cleanupSchedulerSqlStore();
+    vi.restoreAllMocks();
     await disconnectStateAdapter();
   });
 
@@ -497,7 +518,6 @@ describe("Slack schedule tools", () => {
         nextRunAtMs: Date.parse("2026-05-28T02:18:48.005Z"),
         schedule: {
           kind: "one_off",
-          recurrence: undefined,
         },
         status: "active",
       },
@@ -642,7 +662,6 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       schedule: {
         kind: "one_off",
-        recurrence: undefined,
       },
     });
   });
@@ -1196,6 +1215,15 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
 });
 
 describe("Slack schedule tool execution modes", () => {
+  beforeEach(async () => {
+    await initializeSchedulerSqlStore();
+  });
+
+  afterEach(async () => {
+    await cleanupSchedulerSqlStore();
+    vi.restoreAllMocks();
+  });
+
   it("all write tools have executionMode sequential", () => {
     const context = createContext();
 
