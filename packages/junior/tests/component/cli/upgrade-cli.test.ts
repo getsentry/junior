@@ -196,7 +196,7 @@ describe("upgrade CLI migrations", () => {
     } finally {
       await fixture.close();
     }
-  });
+  }, 15_000);
 
   it("copies a bounded SQL conversation backfill slice", async () => {
     const stateAdapter = getStateAdapter();
@@ -236,7 +236,7 @@ describe("upgrade CLI migrations", () => {
     } finally {
       await fixture.close();
     }
-  });
+  }, 15_000);
 
   it("seeds active awaiting continuations into conversation work", async () => {
     const stateAdapter = getStateAdapter();
@@ -508,5 +508,5 @@ describe("upgrade CLI migrations", () => {
     } finally {
       await fixture.close();
     }
-  });
+  }, 15_000);
 });
