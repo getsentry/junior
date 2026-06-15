@@ -1035,26 +1035,10 @@ function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
   return parseSqlTaskRecord(row.record);
 }
 
-function requireSqlTaskRow(row: SchedulerTaskRow): ScheduledTask {
-  const task = parseSqlTaskRow(row);
-  if (!task) {
-    throw new Error("Stored scheduler SQL task is invalid");
-  }
-  return task;
-}
-
 /** Decode scheduler SQL run records and reject rows unsafe for scan paths. */
 function parseSqlRunRow(row: SchedulerRunRow): ScheduledRun | undefined {
   const parsed = runRecordSchema.safeParse(parseJsonRecord(row.record));
   return parsed.success ? parsed.data : undefined;
-}
-
-function requireSqlRunRow(row: SchedulerRunRow): ScheduledRun {
-  const run = parseSqlRunRow(row);
-  if (!run) {
-    throw new Error("Stored scheduler SQL run is invalid");
-  }
-  return run;
 }
 
 function json(value: unknown): string {
@@ -1208,7 +1192,7 @@ async function getTaskFromSql(
     "SELECT record FROM junior_scheduler_tasks WHERE id = $1",
     [taskId],
   );
-  return rows[0] ? requireSqlTaskRow(rows[0]) : undefined;
+  return rows[0] ? parseSqlTaskRow(rows[0]) : undefined;
 }
 
 async function getRunFromSql(
@@ -1219,7 +1203,7 @@ async function getRunFromSql(
     "SELECT record FROM junior_scheduler_runs WHERE id = $1",
     [runId],
   );
-  return rows[0] ? requireSqlRunRow(rows[0]) : undefined;
+  return rows[0] ? parseSqlRunRow(rows[0]) : undefined;
 }
 
 async function getClaimedRunSlotFromSql(

@@ -527,9 +527,7 @@ INSERT INTO junior_scheduler_tasks (
         ],
       );
       await store.saveTask(task);
-      await expect(store.getTask("sched_bad_record")).rejects.toThrow(
-        "Stored scheduler SQL task is invalid",
-      );
+      await expect(store.getTask("sched_bad_record")).resolves.toBe(undefined);
       await db.execute(
         `
 INSERT INTO junior_scheduler_tasks (
@@ -562,8 +560,8 @@ INSERT INTO junior_scheduler_tasks (
           JSON.stringify("not-json"),
         ],
       );
-      await expect(store.getTask("sched_bad_string_record")).rejects.toThrow(
-        "Stored scheduler SQL task is invalid",
+      await expect(store.getTask("sched_bad_string_record")).resolves.toBe(
+        undefined,
       );
       await db.execute(
         `
@@ -591,9 +589,7 @@ INSERT INTO junior_scheduler_runs (
           JSON.stringify({ id: "sched_bad_run" }),
         ],
       );
-      await expect(store.getRun("sched_bad_run")).rejects.toThrow(
-        "Stored scheduler SQL run is invalid",
-      );
+      await expect(store.getRun("sched_bad_run")).resolves.toBe(undefined);
       await db.execute(
         `
 INSERT INTO junior_scheduler_runs (
@@ -620,8 +616,8 @@ INSERT INTO junior_scheduler_runs (
           JSON.stringify("not-json"),
         ],
       );
-      await expect(store.getRun("sched_bad_string_run")).rejects.toThrow(
-        "Stored scheduler SQL run is invalid",
+      await expect(store.getRun("sched_bad_string_run")).resolves.toBe(
+        undefined,
       );
 
       await expect(
