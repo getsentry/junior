@@ -4,7 +4,7 @@ import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-di
 import { globToRegex } from "@/build/glob-to-regex";
 import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
-/** Copy app directory and plugin manifests into the server output. */
+/** Copy app and declared plugin package content into the server output. */
 export function copyAppAndPluginContent(
   cwd: string,
   serverRoot: string,
@@ -30,6 +30,16 @@ export function copyAppAndPluginContent(
 
   for (const root of packagedContent.skillRoots) {
     copyRootIntoServerOutput(cwd, serverRoot, root);
+  }
+
+  for (const pkg of packagedContent.packages) {
+    if (pkg.hasMigrationsDir) {
+      copyRootIntoServerOutput(
+        cwd,
+        serverRoot,
+        path.join(pkg.dir, "migrations"),
+      );
+    }
   }
 }
 

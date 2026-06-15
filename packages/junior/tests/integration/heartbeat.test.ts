@@ -1198,8 +1198,8 @@ describe("plugin heartbeat", () => {
       ...createTask(),
       id: "sched_plugin_malformed",
       task: {
-        text: undefined,
-      } as unknown as ScheduledTask["task"],
+        text: "",
+      },
     });
 
     const waitUntil = createWaitUntilCollector();

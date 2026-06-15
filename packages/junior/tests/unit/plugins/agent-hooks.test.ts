@@ -203,7 +203,6 @@ describe("agent plugin hooks", () => {
   it("collects route handlers from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -239,7 +238,6 @@ describe("agent plugin hooks", () => {
   it("rejects invalid route methods from configured plugins", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -270,7 +268,6 @@ describe("agent plugin hooks", () => {
   it("rejects routes that combine ALL with explicit methods", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -301,7 +298,6 @@ describe("agent plugin hooks", () => {
   it("rejects route paths that mix ALL and explicit method registrations", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -337,7 +333,6 @@ describe("agent plugin hooks", () => {
   it("rejects unsafe Slack conversation links from configured plugins", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -362,7 +357,6 @@ describe("agent plugin hooks", () => {
   it("collects operational reports from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -402,7 +396,6 @@ describe("agent plugin hooks", () => {
   it("passes conversation reader to operational reports", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -456,7 +449,6 @@ describe("agent plugin hooks", () => {
   it("contains failed operational reports per plugin", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "agent-demo",
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -472,7 +464,6 @@ describe("agent plugin hooks", () => {
         },
       }),
       defineJuniorPlugin({
-        name: "broken-demo",
         manifest: {
           name: "broken-demo",
           displayName: "Broken Demo",

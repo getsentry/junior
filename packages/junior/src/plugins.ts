@@ -41,11 +41,11 @@ function cloneInlineManifests(
                 plugin.manifest.capabilities?.map((capability) =>
                   capability.includes(".")
                     ? capability
-                    : `${plugin.manifest!.name}.${capability}`,
+                    : `${plugin.manifest.name}.${capability}`,
                 ) ?? [],
               configKeys:
                 plugin.manifest.configKeys?.map((key) =>
-                  key.includes(".") ? key : `${plugin.manifest!.name}.${key}`,
+                  key.includes(".") ? key : `${plugin.manifest.name}.${key}`,
                 ) ?? [],
               ...(plugin.manifest.target
                 ? {
@@ -69,10 +69,11 @@ function cloneInlineManifests(
 function assertUniquePluginNames(registrations: PluginRegistration[]): void {
   const seen = new Set<string>();
   for (const plugin of registrations) {
-    if (seen.has(plugin.name)) {
-      throw new Error(`Duplicate plugin registration name "${plugin.name}"`);
+    const name = plugin.manifest.name;
+    if (seen.has(name)) {
+      throw new Error(`Duplicate plugin registration name "${name}"`);
     }
-    seen.add(plugin.name);
+    seen.add(name);
   }
 }
 

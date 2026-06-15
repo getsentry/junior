@@ -27,10 +27,10 @@ describe("plugin registry", () => {
         packageNames: [],
         packages: [],
         manifestRoots: [],
-        migrationRoots: [],
         skillRoots: [],
         tracingIncludes: [],
       }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
     }));
 
     const registry = await import("@/chat/plugins/registry");
@@ -60,10 +60,9 @@ describe("plugin registry", () => {
         dir: string;
         hasMigrationsDir: boolean;
         hasSkillsDir: boolean;
-        name: string;
+        packageName: string;
       }[],
       manifestRoots: [] as string[],
-      migrationRoots: [] as string[],
       skillRoots: [] as string[],
       tracingIncludes: [] as string[],
     };
@@ -73,6 +72,7 @@ describe("plugin registry", () => {
     }));
     vi.doMock("@/chat/plugins/package-discovery", () => ({
       discoverInstalledPluginPackageContent: () => packagedContent,
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
     }));
 
     const registry = await import("@/chat/plugins/registry");
@@ -100,5 +100,227 @@ describe("plugin registry", () => {
     expect(registry.getPluginProviders()[0]?.manifest.name).toBe("demo");
     expect(registry.getPluginSkillRoots()).toContain(skillsRoot);
     expect(registry.isPluginProvider("demo")).toBe(true);
+  });
+
+  it("does not register migrations from plugin yaml packages", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-yaml-migrations-"),
+    );
+    const pluginRoot = path.join(tempRoot, "demo-plugin");
+    const migrationsRoot = path.join(pluginRoot, "migrations");
+    await fs.mkdir(migrationsRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginRoot, "plugin.yaml"),
+      ["name: demo", "display-name: Demo", "description: Demo plugin"].join(
+        "\n",
+      ),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(migrationsRoot, "0001_init.sql"),
+      "CREATE TABLE junior_demo_records (id text PRIMARY KEY);",
+      "utf8",
+    );
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: ["@acme/demo-plugin"],
+        packages: [
+          {
+            dir: pluginRoot,
+            hasMigrationsDir: true,
+            hasSkillsDir: false,
+            packageName: "@acme/demo-plugin",
+          },
+        ],
+        manifestRoots: [pluginRoot],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+
+    expect(registry.getPluginProviders()).toHaveLength(1);
+    expect(registry.getPluginProviders()[0]?.manifest.name).toBe("demo");
+    expect(registry.getPluginMigrationRoots()).toEqual([]);
+  });
+
+  it("registers named migrations from inline code plugin packages", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-code-migrations-"),
+    );
+    const pluginRoot = path.join(tempRoot, "code-plugin");
+    const migrationsRoot = path.join(pluginRoot, "migrations");
+    await fs.mkdir(migrationsRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(migrationsRoot, "0001_init.sql"),
+      "CREATE TABLE junior_code_plugin_records (id text PRIMARY KEY);",
+      "utf8",
+    );
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: ["@acme/code-plugin"],
+        packages: [
+          {
+            dir: pluginRoot,
+            hasMigrationsDir: true,
+            hasSkillsDir: false,
+            packageName: "@acme/code-plugin",
+          },
+        ],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    registry.setPluginCatalogConfig({
+      packages: ["@acme/code-plugin"],
+      inlineManifests: [
+        {
+          packageName: "@acme/code-plugin",
+          manifest: {
+            name: "code-plugin",
+            displayName: "Code Plugin",
+            description: "Code plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+
+    expect(registry.getPluginMigrationRoots()).toEqual([
+      { pluginName: "code-plugin", dir: migrationsRoot },
+    ]);
+  });
+
+  it("reloads inline migration roots when package metadata changes", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-migration-reload-"),
+    );
+    const pluginRoot = path.join(tempRoot, "code-plugin");
+    const migrationsRoot = path.join(pluginRoot, "migrations");
+    await fs.mkdir(pluginRoot, { recursive: true });
+
+    const packagedContent = {
+      packageNames: ["@acme/code-plugin"],
+      packages: [
+        {
+          dir: pluginRoot,
+          hasMigrationsDir: false,
+          hasSkillsDir: false,
+          packageName: "@acme/code-plugin",
+        },
+      ],
+      manifestRoots: [] as string[],
+      skillRoots: [] as string[],
+      tracingIncludes: [] as string[],
+    };
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => packagedContent,
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    registry.setPluginCatalogConfig({
+      packages: ["@acme/code-plugin"],
+      inlineManifests: [
+        {
+          packageName: "@acme/code-plugin",
+          manifest: {
+            name: "code-plugin",
+            displayName: "Code Plugin",
+            description: "Code plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+
+    expect(registry.getPluginMigrationRoots()).toEqual([]);
+
+    await fs.mkdir(migrationsRoot);
+    packagedContent.packages[0]!.hasMigrationsDir = true;
+
+    expect(registry.getPluginMigrationRoots()).toEqual([
+      { pluginName: "code-plugin", dir: migrationsRoot },
+    ]);
+  });
+
+  it("rejects shared package migrations across inline registrations", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-shared-migrations-"),
+    );
+    const pluginRoot = path.join(tempRoot, "code-plugin");
+    await fs.mkdir(path.join(pluginRoot, "migrations"), { recursive: true });
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: ["@acme/code-plugin"],
+        packages: [
+          {
+            dir: pluginRoot,
+            hasMigrationsDir: true,
+            hasSkillsDir: false,
+            packageName: "@acme/code-plugin",
+          },
+        ],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    registry.setPluginCatalogConfig({
+      packages: ["@acme/code-plugin"],
+      inlineManifests: [
+        {
+          packageName: "@acme/code-plugin",
+          manifest: {
+            name: "code-plugin",
+            displayName: "Code Plugin",
+            description: "Code plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+        {
+          packageName: "@acme/code-plugin",
+          manifest: {
+            name: "other-plugin",
+            displayName: "Other Plugin",
+            description: "Other plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+
+    expect(() => registry.getPluginMigrationRoots()).toThrow(
+      'Plugin "other-plugin" cannot share migrations directory with plugin "code-plugin"',
+    );
   });
 });

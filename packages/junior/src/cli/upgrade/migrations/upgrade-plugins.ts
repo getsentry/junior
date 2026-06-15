@@ -13,7 +13,6 @@ import type { MigrationContext } from "../types";
 
 interface TrustedUpgradePlugin {
   load(): Promise<PluginRegistration>;
-  name: string;
   packageName: string;
 }
 
@@ -24,7 +23,6 @@ interface ResolvedUpgradePlugins {
 
 const TRUSTED_UPGRADE_PLUGINS: TrustedUpgradePlugin[] = [
   {
-    name: "scheduler",
     packageName: "@sentry/junior-scheduler",
     async load() {
       const { schedulerPlugin } = await import("@sentry/junior-scheduler");
@@ -106,7 +104,9 @@ function hasRegistration(
   registrations: PluginRegistration[],
   pluginName: string,
 ): boolean {
-  return registrations.some((registration) => registration.name === pluginName);
+  return registrations.some(
+    (registration) => registration.manifest.name === pluginName,
+  );
 }
 
 async function trustedRegistrationsForPackages(args: {
@@ -115,13 +115,17 @@ async function trustedRegistrationsForPackages(args: {
 }): Promise<PluginRegistration[]> {
   const registrations: PluginRegistration[] = [];
   for (const plugin of TRUSTED_UPGRADE_PLUGINS) {
+    if (!args.packageNames.includes(plugin.packageName)) {
+      continue;
+    }
+    const registration = await plugin.load();
     if (
-      !args.packageNames.includes(plugin.packageName) ||
-      hasRegistration(args.registrations, plugin.name)
+      hasRegistration(args.registrations, registration.manifest.name) ||
+      hasRegistration(registrations, registration.manifest.name)
     ) {
       continue;
     }
-    registrations.push(await plugin.load());
+    registrations.push(registration);
   }
   return registrations;
 }

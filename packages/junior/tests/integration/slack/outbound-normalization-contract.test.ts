@@ -84,7 +84,6 @@ describe("Slack contract: outbound normalization", () => {
   it("lets plugins replace the footer conversation link", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        name: "dashboard",
         manifest: {
           name: "dashboard",
           displayName: "Dashboard",

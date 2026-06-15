@@ -171,7 +171,7 @@ export function validatePluginDatabaseRequirements(
   }
   const databasePlugins = registrations
     .filter((registration) => registration.database)
-    .map((registration) => registration.name);
+    .map((registration) => registration.manifest.name);
   if (databasePlugins.length > 0) {
     throw new Error(
       `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${databasePlugins.join(", ")}`,

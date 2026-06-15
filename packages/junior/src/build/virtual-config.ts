@@ -61,7 +61,7 @@ export function injectVirtualConfig(
       plugins: pluginCatalogConfigFromPluginSet(pluginSet),
       pluginHookRegistrations: pluginHookRegistrationsFromPluginSet(
         pluginSet,
-      ).map((plugin) => plugin.name),
+      ).map((plugin) => plugin.manifest.name),
     });
   };
 }

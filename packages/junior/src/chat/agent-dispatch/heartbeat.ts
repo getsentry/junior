@@ -148,6 +148,7 @@ export async function runPluginHeartbeats(args: {
 }): Promise<void> {
   let count = 0;
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
       break;
     }
@@ -177,7 +178,7 @@ export async function runPluginHeartbeats(args: {
           {},
           {
             "app.dispatch.count": result.dispatchCount,
-            "app.plugin.name": plugin.name,
+            "app.plugin.name": pluginName,
           },
           "Plugin heartbeat dispatched agent work",
         );
@@ -187,7 +188,7 @@ export async function runPluginHeartbeats(args: {
         error,
         "plugin_heartbeat_failed",
         {},
-        { "app.plugin.name": plugin.name },
+        { "app.plugin.name": pluginName },
         "Plugin heartbeat failed",
       );
     }

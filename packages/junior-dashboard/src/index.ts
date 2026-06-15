@@ -54,7 +54,6 @@ export function juniorDashboardPlugin(
   options: JuniorDashboardPluginOptions = {},
 ): PluginRegistration {
   return defineJuniorPlugin({
-    name: "dashboard",
     manifest: {
       name: "dashboard",
       displayName: "Dashboard",

@@ -183,7 +183,7 @@ async function loadPluginSetFromModule(
 
 function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   const pluginHookNames = pluginHookRegistrationsFromPluginSet(pluginSet).map(
-    (plugin) => plugin.name,
+    (plugin) => plugin.manifest.name,
   );
   if (pluginHookNames.length === 0) {
     return;
@@ -311,7 +311,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           pluginCatalogConfigFromPluginSet(directPluginSet);
         const pluginHookRegistrations = pluginHookRegistrationsFromPluginSet(
           directPluginSet,
-        ).map((plugin) => plugin.name);
+        ).map((plugin) => plugin.manifest.name);
         injectVirtualConfig(nitro, {
           ...(pluginModule
             ? {

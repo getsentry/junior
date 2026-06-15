@@ -6,13 +6,10 @@ export type PluginRegistrationInput = {
   database?: PluginDatabaseConfig;
   hooks?: PluginHooks;
   manifest: PluginManifest;
-  name?: string;
   packageName?: string;
 };
 
-export interface PluginRegistration extends PluginRegistrationInput {
-  name: string;
-}
+export interface PluginRegistration extends PluginRegistrationInput {}
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 
@@ -25,17 +22,18 @@ export function defineJuniorPlugin(
       "pluginConfig is no longer supported. Put runtime metadata in manifest or plugin registration fields.",
     );
   }
+  if ("name" in plugin) {
+    throw new Error("defineJuniorPlugin() uses manifest.name for identity.");
+  }
   const manifest = plugin.manifest;
   if (!manifest) {
     throw new Error(
       "defineJuniorPlugin() requires a manifest. Use a package name string in defineJuniorPlugins([...]) for plugin.yaml packages.",
     );
   }
-  const name = plugin.name ?? manifest.name;
+  const name = manifest.name;
   if (!name) {
-    throw new Error(
-      "Junior plugin registrations must include name or manifest.name.",
-    );
+    throw new Error("Junior plugin manifest.name is required.");
   }
   if (!PLUGIN_NAME_RE.test(name)) {
     throw new Error(
@@ -58,13 +56,7 @@ export function defineJuniorPlugin(
       `Junior plugin "${name}" manifest.description is required.`,
     );
   }
-  if (plugin.name && manifest.name && plugin.name !== manifest.name) {
-    throw new Error(
-      `Junior plugin registration name "${plugin.name}" must match manifest.name "${manifest.name}".`,
-    );
-  }
   return {
     ...plugin,
-    name,
   };
 }

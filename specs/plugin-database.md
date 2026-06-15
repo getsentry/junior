@@ -36,11 +36,10 @@ requiring a memory-specific storage API or a globally merged plugin schema type.
 
 ### Package Shape
 
-Plugins may include SQL migrations by convention:
+Code plugin packages may include SQL migrations by convention:
 
 ```txt
 plugin-package/
-├── plugin.yaml
 ├── migrations/
 │   ├── 0001_init.sql
 │   └── 0002_add_indexes.sql
@@ -53,23 +52,30 @@ plugin-package/
 plugin-owned authoring and typing convention, not a file Junior auto-discovers
 at runtime.
 
-Local app plugins may use the same shape under `plugins/<name>/migrations/`.
-Package plugins must include migration files in their published package.
+Declarative `plugin.yaml` packages are a separate manifest-only shape. If they
+are packaged next to `migrations/`, Junior treats those migration files as
+inert. A database-backed code plugin package should expose JavaScript
+registration and `migrations/` package content, not a same-plugin `plugin.yaml`
+manifest that would also be loaded as a declarative plugin. Local `plugin.yaml`
+roots do not contribute SQL migrations in V1.
 
 ### Migration Discovery
 
-Junior discovers migrations only for explicitly enabled plugins:
+Junior applies migrations only for explicitly enabled code plugin registrations
+that include a plugin `manifest.name` and an associated `packageName`.
 
-1. Local plugin roots declared by the app.
-2. Plugin packages listed in `defineJuniorPlugins([...])`.
-3. Code plugin registrations with an associated `packageName`.
+Package-name plugins and local `plugin.yaml` roots have an empty applied
+migration list. This keeps the migration identity tied to the JavaScript
+registration name that owns database access and storage migration hooks.
 
 Junior must never scan arbitrary `node_modules`, package dependencies, or
 undeclared directories for migrations.
 
-Build packaging must copy or trace declared plugin `migrations/` directories
-alongside plugin manifests and skills so `junior upgrade` can read the same
-migration files in production output.
+Build packaging may copy or trace declared plugin-package `migrations/`
+directories alongside plugin manifests and skills so `junior upgrade` can read
+the same files in production output when a named code registration applies
+them. Copying a migration directory does not make a declarative package apply
+schema migrations by itself.
 
 ### Migration Generation
 
@@ -152,9 +158,11 @@ the tables created by its own `migrations/*.sql`.
 plugin set that runtime uses when that set is available. In deployed Nitro
 output this means reading the virtual `#junior/config` plugin set; in tests or
 programmatic callers this may be passed explicitly in the migration context.
-Package-only declarative plugins may contribute SQL schema migrations, but they
-cannot contribute storage migration hooks because hooks require JavaScript
-registration.
+Package-only declarative plugins do not contribute SQL schema migrations or
+storage migration hooks. A core-maintained trusted package adapter may resolve a
+package name to a JavaScript registration during `junior upgrade` when the
+runtime plugin is built into Junior, such as the scheduler migration from
+retained plugin state into SQL.
 
 The hook context is intentionally narrow:
 
@@ -363,8 +371,10 @@ may contain private user data, or raw query result payloads.
 
 Use integration tests with the local Postgres-compatible PGlite fixture for:
 
-- discovery of `migrations/*.sql` from explicitly configured plugin packages
+- migration application from named code plugin registrations with package
+  `migrations/*.sql`
 - no discovery from undeclared packages
+- no migration application from package-name or local `plugin.yaml` plugins
 - migration id/checksum recording in `junior_schema_migrations`
 - deterministic plugin migration order
 - checksum mismatch failure
@@ -378,7 +388,7 @@ Use unit tests for:
 
 - migration filename validation
 - table-prefix derivation from plugin names
-- build/package discovery including `migrations/`
+- build/package bundling including `migrations/`
 - `ctx.db` presence checks in hook context construction
 
 No evals are required for the database extension mechanism itself.

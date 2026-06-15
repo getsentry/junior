@@ -33,7 +33,6 @@ describe("juniorDashboardPlugin", () => {
   it("registers an inline dashboard manifest", () => {
     const plugin = juniorDashboardPlugin();
 
-    expect(plugin.name).toBe("dashboard");
     expect(plugin.manifest).toMatchObject({
       name: "dashboard",
       description: "Junior dashboard routes and Slack footer links",

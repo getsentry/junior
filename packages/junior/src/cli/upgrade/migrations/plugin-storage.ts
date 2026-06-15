@@ -74,8 +74,11 @@ export async function runPluginStorageMigrations(
     let result = emptyResult();
     const plugins = pluginHookRegistrationsFromPluginSet(pluginSet)
       .filter((plugin) => plugin.hooks?.migrateStorage)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) =>
+        left.manifest.name.localeCompare(right.manifest.name),
+      );
     for (const plugin of plugins) {
+      const pluginName = plugin.manifest.name;
       const hook = plugin.hooks?.migrateStorage;
       if (!hook) {
         continue;
@@ -83,14 +86,14 @@ export async function runPluginStorageMigrations(
       const db = dbForPlugin(context, plugin, sqlUrlDb);
       if (!db) {
         throw new Error(
-          `Plugin "${plugin.name}" storage migration requires database access`,
+          `Plugin "${pluginName}" storage migration requires database access`,
         );
       }
       const pluginResult = await hook({
         db,
-        log: createPluginLogger(plugin.name),
-        plugin: { name: plugin.name },
-        state: createPluginState(plugin.name, context.stateAdapter),
+        log: createPluginLogger(pluginName),
+        plugin: { name: pluginName },
+        state: createPluginState(pluginName, context.stateAdapter),
       });
       if (pluginResult) {
         result = addResult(result, pluginResult);

@@ -6,9 +6,9 @@ import {
 } from "@/package-resolution";
 
 interface InstalledJuniorContentPackage {
-  name: string;
   dir: string;
   nodeModulesDir?: string;
+  packageName: string;
   hasRootPluginManifest: boolean;
   hasMigrationsDir: boolean;
   hasPluginsDir: boolean;
@@ -21,10 +21,9 @@ export interface InstalledPluginPackageContent {
     dir: string;
     hasMigrationsDir: boolean;
     hasSkillsDir: boolean;
-    name: string;
+    packageName: string;
   }[];
   manifestRoots: string[];
-  migrationRoots: string[];
   skillRoots: string[];
   tracingIncludes: string[];
 }
@@ -166,9 +165,9 @@ function discoverDeclaredPackages(
 
     seenPackageDirs.add(resolved.dir);
     discovered.push({
-      name: packageName,
       dir: resolved.dir,
       nodeModulesDir: resolved.nodeModulesDir,
+      packageName,
       ...pluginFlags,
     });
   }
@@ -198,7 +197,6 @@ export function discoverInstalledPluginPackageContent(
   );
 
   const manifestRoots: string[] = [];
-  const migrationRoots: string[] = [];
   const skillRoots: string[] = [];
   const tracingIncludes: string[] = [];
 
@@ -206,7 +204,7 @@ export function discoverInstalledPluginPackageContent(
     const tracingBasePath = pkg.nodeModulesDir
       ? pathForTracingInclude(
           resolvedCwd,
-          path.join(pkg.nodeModulesDir, ...pkg.name.split("/")),
+          path.join(pkg.nodeModulesDir, ...pkg.packageName.split("/")),
         )
       : pathForTracingInclude(resolvedCwd, pkg.dir);
     if (pkg.hasRootPluginManifest) {
@@ -216,7 +214,6 @@ export function discoverInstalledPluginPackageContent(
       }
     }
     if (pkg.hasMigrationsDir) {
-      migrationRoots.push(path.join(pkg.dir, "migrations"));
       if (tracingBasePath) {
         tracingIncludes.push(`${tracingBasePath}/migrations/**/*`);
       }
@@ -237,16 +234,15 @@ export function discoverInstalledPluginPackageContent(
 
   return {
     packageNames: uniqueStringsInOrder(
-      discoveredPackages.map((pkg) => pkg.name),
+      discoveredPackages.map((pkg) => pkg.packageName),
     ),
     packages: discoveredPackages.map((pkg) => ({
       dir: pkg.dir,
       hasMigrationsDir: pkg.hasMigrationsDir,
       hasSkillsDir: pkg.hasSkillsDir,
-      name: pkg.name,
+      packageName: pkg.packageName,
     })),
     manifestRoots: uniqueStringsInOrder(manifestRoots),
-    migrationRoots: uniqueStringsInOrder(migrationRoots),
     skillRoots: uniqueStringsInOrder(skillRoots),
     tracingIncludes: uniqueStringsInOrder(tracingIncludes),
   };

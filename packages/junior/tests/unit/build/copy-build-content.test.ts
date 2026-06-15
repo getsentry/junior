@@ -226,6 +226,7 @@ describe("copyAppAndPluginContent", () => {
     });
 
     fs.mkdirSync(path.join(packageDir, "skills", "demo"), { recursive: true });
+    fs.mkdirSync(path.join(packageDir, "migrations"), { recursive: true });
     fs.writeFileSync(
       path.join(packageDir, "plugin.yaml"),
       "name: ancestor\ndescription: Ancestor plugin\n",
@@ -234,6 +235,11 @@ describe("copyAppAndPluginContent", () => {
     fs.writeFileSync(
       path.join(packageDir, "skills", "demo", "SKILL.md"),
       "---\nname: demo\ndescription: Demo\n---\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(packageDir, "migrations", "0001_init.sql"),
+      "CREATE TABLE junior_ancestor_items (id TEXT PRIMARY KEY);\n",
       "utf8",
     );
     fs.mkdirSync(cwd, { recursive: true });
@@ -276,6 +282,18 @@ describe("copyAppAndPluginContent", () => {
           "skills",
           "demo",
           "SKILL.md",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(
+          serverRoot,
+          "node_modules",
+          "@acme",
+          "ancestor-plugin",
+          "migrations",
+          "0001_init.sql",
         ),
       ),
     ).toBe(true);

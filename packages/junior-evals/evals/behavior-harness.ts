@@ -30,7 +30,7 @@ import {
   deleteMcpStoredOAuthCredentials,
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
-import { getAgentPlugins, setAgentPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   getPluginOAuthConfig,
   setPluginCatalogConfig,
@@ -1694,13 +1694,15 @@ export async function runEvalScenario(
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
   const env = await setupHarnessEnvironment(scenario);
-  let previousAgentPlugins: ReturnType<typeof setAgentPlugins> | undefined;
+  let previousPlugins: ReturnType<typeof setPlugins> | undefined;
 
   try {
-    const currentAgentPlugins = getAgentPlugins();
-    previousAgentPlugins = setAgentPlugins([
+    const currentPlugins = getPlugins();
+    previousPlugins = setPlugins([
       schedulerPlugin(),
-      ...currentAgentPlugins.filter((plugin) => plugin.name !== "scheduler"),
+      ...currentPlugins.filter(
+        (plugin) => plugin.manifest.name !== "scheduler",
+      ),
     ]);
 
     const slackAdapter = new FakeSlackAdapter();
@@ -1771,8 +1773,8 @@ export async function runEvalScenario(
       observations,
     );
   } finally {
-    if (previousAgentPlugins) {
-      setAgentPlugins(previousAgentPlugins);
+    if (previousPlugins) {
+      setPlugins(previousPlugins);
     }
     await teardownHarnessEnvironment(scenario, env);
   }

@@ -190,7 +190,9 @@ function validateBuildIncludesPluginHookRegistrations(
     return;
   }
 
-  const registered = new Set(hookRegistrations.map((plugin) => plugin.name));
+  const registered = new Set(
+    hookRegistrations.map((plugin) => plugin.manifest.name),
+  );
   const missing = bundledHookRegistrations.filter(
     (pluginName) => !registered.has(pluginName),
   );
@@ -212,9 +214,9 @@ function validatePluginRegistrations(
   );
 
   for (const registration of registrations) {
-    if (!loadedNames.has(registration.name)) {
+    if (!loadedNames.has(registration.manifest.name)) {
       throw new Error(
-        `Plugin registration "${registration.name}" does not have a matching plugin manifest. Add an inline manifest, packageName, or app-local plugin.yaml with the same name.`,
+        `Plugin registration "${registration.manifest.name}" does not have a matching plugin manifest. Add an inline manifest, packageName, or app-local plugin.yaml with the same name.`,
       );
     }
   }
@@ -224,7 +226,10 @@ function validatePluginEgressCredentialHooks(
   registrations: PluginRegistration[],
 ): void {
   const plugins = new Map(
-    registrations.map((registration) => [registration.name, registration]),
+    registrations.map((registration) => [
+      registration.manifest.name,
+      registration,
+    ]),
   );
 
   for (const provider of getPluginProviders()) {

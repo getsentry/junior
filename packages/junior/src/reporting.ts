@@ -67,8 +67,9 @@ export interface RuntimeInfoReport {
 
 export interface PluginPackageContentItemReport {
   dir: string;
+  hasMigrationsDir: boolean;
   hasSkillsDir: boolean;
-  name: string;
+  packageName: string;
 }
 
 export interface PluginPackageContentReport {

@@ -14015,6 +14015,7 @@ snapshots:
       "@sentry/junior-plugin-api": file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)
       "@sinclair/typebox": 0.34.49
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)
+      zod: 4.4.3
     transitivePeerDependencies:
       - "@aws-sdk/client-rds-data"
       - "@cloudflare/workers-types"

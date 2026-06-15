@@ -79,10 +79,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function basePluginContext(plugin: PluginRegistration) {
+  const name = plugin.manifest.name;
   const db = getPluginDbForRegistration(plugin);
   return {
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    plugin: { name },
+    log: createPluginLogger(name),
     ...(db ? { db } : {}),
   };
 }
@@ -91,15 +92,16 @@ function basePluginContext(plugin: PluginRegistration) {
 export function validatePlugins(plugins: PluginRegistration[]): void {
   const seen = new Set<string>();
   for (const plugin of plugins) {
-    if (!PLUGIN_NAME_RE.test(plugin.name)) {
+    const name = plugin.manifest.name;
+    if (!PLUGIN_NAME_RE.test(name)) {
       throw new Error(
-        `Plugin name "${plugin.name}" must be a lowercase plugin identifier`,
+        `Plugin name "${name}" must be a lowercase plugin identifier`,
       );
     }
-    if (seen.has(plugin.name)) {
-      throw new Error(`Duplicate plugin name "${plugin.name}"`);
+    if (seen.has(name)) {
+      throw new Error(`Duplicate plugin name "${name}"`);
     }
-    seen.add(plugin.name);
+    seen.add(name);
   }
 }
 
@@ -110,7 +112,7 @@ export function setPlugins(
   validatePlugins(nextPlugins);
   const previous = registeredPlugins;
   registeredPlugins = [...nextPlugins].sort((left, right) =>
-    left.name.localeCompare(right.name),
+    left.manifest.name.localeCompare(right.manifest.name),
   );
   return previous;
 }
@@ -126,6 +128,7 @@ export function getPluginTools(
 ): Record<string, ToolDefinition<any>> {
   const tools: Record<string, ToolDefinition<any>> = {};
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
     if (!hook) {
       continue;
@@ -162,7 +165,7 @@ export function getPluginTools(
             slack: slackContext!,
             source: context.source,
             userText: context.userText,
-            state: createPluginState(plugin.name),
+            state: createPluginState(pluginName),
           }
         : {
             ...basePluginContext(plugin),
@@ -175,18 +178,18 @@ export function getPluginTools(
               destination?.platform === "local" ? destination : undefined,
             source: context.source,
             userText: context.userText,
-            state: createPluginState(plugin.name),
+            state: createPluginState(pluginName),
           };
     const pluginTools = hook(pluginContext);
     for (const [name, tool] of Object.entries(pluginTools)) {
       if (!PLUGIN_TOOL_NAME_RE.test(name)) {
         throw new Error(
-          `Plugin tool "${name}" from plugin "${plugin.name}" must be a camelCase identifier`,
+          `Plugin tool "${name}" from plugin "${pluginName}" must be a camelCase identifier`,
         );
       }
       if (tools[name]) {
         throw new Error(
-          `Duplicate plugin tool "${name}" from plugin "${plugin.name}"`,
+          `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
       tools[name] = tool as unknown as ToolDefinition<any>;
@@ -231,6 +234,7 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
 
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.routes;
     if (!hook) {
       continue;
@@ -240,26 +244,26 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
-        `Plugin routes hook from plugin "${plugin.name}" must return an array`,
+        `Plugin routes hook from plugin "${pluginName}" must return an array`,
       );
     }
     for (const route of pluginRoutes) {
       if (!isRecord(route)) {
         throw new Error(
-          `Plugin route from plugin "${plugin.name}" must be an object`,
+          `Plugin route from plugin "${pluginName}" must be an object`,
         );
       }
       if (typeof route.path !== "string" || !route.path.startsWith("/")) {
         throw new Error(
-          `Plugin route "${route.path}" from plugin "${plugin.name}" must start with /`,
+          `Plugin route "${route.path}" from plugin "${pluginName}" must start with /`,
         );
       }
       if (typeof route.handler !== "function") {
         throw new Error(
-          `Plugin route "${route.path}" from plugin "${plugin.name}" must provide a handler`,
+          `Plugin route "${route.path}" from plugin "${pluginName}" must provide a handler`,
         );
       }
-      const methods = routeMethods(route, plugin.name);
+      const methods = routeMethods(route, pluginName);
       const pathMethods = methodsByPath.get(route.path) ?? new Set();
       if (
         pathMethods.has("ALL") ||
@@ -280,7 +284,7 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
       methodsByPath.set(route.path, pathMethods);
       routes.push({
         ...route,
-        pluginName: plugin.name,
+        pluginName,
       });
     }
   }
@@ -321,6 +325,7 @@ export function getPluginSlackConversationLink(
   conversationId: string,
 ): SlackConversationLink | undefined {
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.slackConversationLink;
     if (!hook) {
       continue;
@@ -329,7 +334,7 @@ export function getPluginSlackConversationLink(
       ...basePluginContext(plugin),
       conversationId,
     });
-    const url = trustedSlackConversationUrl(plugin.name, link);
+    const url = trustedSlackConversationUrl(pluginName, link);
     if (url) {
       return { url };
     }
@@ -526,12 +531,13 @@ export async function getPluginOperationalReports(
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {
       continue;
     }
     try {
-      const state = createPluginState(plugin.name);
+      const state = createPluginState(pluginName);
       const report = await hook({
         ...basePluginContext(plugin),
         conversations,
@@ -543,16 +549,16 @@ export async function getPluginOperationalReports(
       }
       reports.push(
         sanitizeOperationalReport({
-          pluginName: plugin.name,
+          pluginName,
           report,
         }),
       );
     } catch (error) {
-      const log = createPluginLogger(plugin.name);
+      const log = createPluginLogger(pluginName);
       log.error("Plugin operational report failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      reports.push(failedOperationalReport({ nowMs, pluginName: plugin.name }));
+      reports.push(failedOperationalReport({ nowMs, pluginName }));
     }
   }
   return reports;
@@ -614,6 +620,7 @@ export function createPluginHookRunner(
     async prepareSandbox(sandbox) {
       const sandboxCapability = createSandboxCapability(sandbox);
       for (const plugin of loaded) {
+        const pluginName = plugin.manifest.name;
         const hook = plugin.hooks?.sandboxPrepare;
         if (!hook) {
           continue;
@@ -621,7 +628,7 @@ export function createPluginHookRunner(
         logInfo(
           "agent_plugin_hook_sandbox_prepare",
           {},
-          { "app.plugin.name": plugin.name },
+          { "app.plugin.name": pluginName },
           "Running agent plugin sandbox prepare hook",
         );
         await hook({
@@ -636,6 +643,7 @@ export function createPluginHookRunner(
       const env = normalizeEnv(nextInput.env);
 
       for (const plugin of loaded) {
+        const pluginName = plugin.manifest.name;
         const hook = plugin.hooks?.beforeToolExecute;
         if (!hook) {
           continue;
@@ -673,7 +681,7 @@ export function createPluginHookRunner(
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {
             throw new Error(
-              `Plugin "${plugin.name}" replaced tool input with a non-object value`,
+              `Plugin "${pluginName}" replaced tool input with a non-object value`,
             );
           }
           nextInput = { ...replacement };

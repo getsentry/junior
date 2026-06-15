@@ -349,7 +349,6 @@ describe("juniorNitro plugin modules", () => {
       juniorNitro({
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
-            name: "hooked",
             manifest: {
               name: "hooked",
               displayName: "Hooked",

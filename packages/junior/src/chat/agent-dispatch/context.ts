@@ -72,7 +72,7 @@ export function createHeartbeatContext(args: {
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
   const pluginName =
-    typeof args.plugin === "string" ? args.plugin : args.plugin.name;
+    typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
   const db =
     typeof args.plugin === "string"
       ? undefined

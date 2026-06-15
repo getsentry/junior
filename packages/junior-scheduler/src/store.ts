@@ -52,10 +52,7 @@ const taskScheduleSchema = z
   .strict();
 const taskSpecSchema = z
   .object({
-    text: z.preprocess(
-      (value) => (typeof value === "string" ? value : ""),
-      z.string(),
-    ),
+    text: z.string(),
   })
   .strict();
 const taskRecordSchema = z
@@ -288,8 +285,7 @@ async function clearStaleActiveRun(
     return true;
   }
 
-  const activeRun =
-    (await state.get<ScheduledRun>(runKey(active.runId))) ?? undefined;
+  const activeRun = parseStoredRun(await state.get(runKey(active.runId)));
   if (!isStaleActiveRun(active, activeRun, nowMs)) {
     return false;
   }
@@ -458,27 +454,16 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
+/** Decode retained scheduler task state, skipping invalid legacy records. */
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const record = value as Partial<ScheduledTask>;
-  const destination = destinationSchema.safeParse(record.destination);
-  if (!destination.success || !isSlackDestination(destination.data)) {
-    return undefined;
-  }
-  const credentialSubject =
-    record.credentialSubject === undefined
-      ? undefined
-      : pluginCredentialSubjectSchema.safeParse(record.credentialSubject);
-  if (credentialSubject && !credentialSubject.success) {
-    return undefined;
-  }
-  return {
-    ...(record as ScheduledTask),
-    destination: destination.data,
-    ...(credentialSubject ? { credentialSubject: credentialSubject.data } : {}),
-  };
+  const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** Decode retained scheduler run state, skipping invalid legacy records. */
+function parseStoredRun(value: unknown): ScheduledRun | undefined {
+  const parsed = runRecordSchema.safeParse(parseJsonRecord(value));
+  return parsed.success ? parsed.data : undefined;
 }
 
 function parseJsonRecord<T>(value: unknown): T | undefined {
@@ -530,7 +515,7 @@ async function getRunFromState(
   state: PluginReadState,
   runId: string,
 ): Promise<ScheduledRun | undefined> {
-  return (await state.get<ScheduledRun>(runKey(runId))) ?? undefined;
+  return parseStoredRun(await state.get(runKey(runId)));
 }
 
 async function listIncompleteRunsForTasksFromState(

@@ -68,14 +68,15 @@ function parseGrant(value: unknown, pluginName: string): PluginGrant {
 }
 
 function pluginFor(provider: string) {
-  return getPlugins().find((candidate) => candidate.name === provider);
+  return getPlugins().find((candidate) => candidate.manifest.name === provider);
 }
 
 function basePluginContext(plugin: NonNullable<ReturnType<typeof pluginFor>>) {
+  const pluginName = plugin.manifest.name;
   const db = getPluginDbForRegistration(plugin);
   return {
-    plugin: { name: plugin.name },
-    log: createPluginLogger(plugin.name),
+    plugin: { name: pluginName },
+    log: createPluginLogger(pluginName),
     ...(db ? { db } : {}),
   };
 }
@@ -124,7 +125,9 @@ export async function selectPluginGrant(
       url: input.upstreamUrl.toString(),
     },
   });
-  return result === undefined ? undefined : parseGrant(result, plugin.name);
+  return result === undefined
+    ? undefined
+    : parseGrant(result, plugin.manifest.name);
 }
 
 export interface EgressResponseInput {
@@ -162,7 +165,7 @@ export async function onPluginEgressResponse(
       const trimmed = message.trim();
       if (!trimmed) {
         throw new Error(
-          `Plugin "${plugin.name}" onEgressResponse permissionDenied message is empty`,
+          `Plugin "${plugin.manifest.name}" onEgressResponse permissionDenied message is empty`,
         );
       }
       permissionDenied = { message: trimmed };
@@ -220,7 +223,7 @@ export async function resolvePluginOAuthAccount(input: {
     : parseSchema(
         pluginProviderAccountSchema,
         account,
-        `Plugin "${plugin.name}" resolveOAuthAccount returned an invalid account`,
+        `Plugin "${plugin.manifest.name}" resolveOAuthAccount returned an invalid account`,
       );
 }
 
@@ -249,11 +252,14 @@ export async function issuePluginCredential(
             currentUser: {
               userId: currentUserId,
               get: async () =>
-                await input.userTokenStore.get(currentUserId, plugin.name),
+                await input.userTokenStore.get(
+                  currentUserId,
+                  plugin.manifest.name,
+                ),
               set: async (tokens) => {
                 await input.userTokenStore.set(
                   currentUserId,
-                  plugin.name,
+                  plugin.manifest.name,
                   tokens,
                 );
               },
@@ -267,12 +273,12 @@ export async function issuePluginCredential(
               get: async () =>
                 await input.userTokenStore.get(
                   credentialSubjectUserId,
-                  plugin.name,
+                  plugin.manifest.name,
                 ),
               set: async (tokens) => {
                 await input.userTokenStore.set(
                   credentialSubjectUserId,
-                  plugin.name,
+                  plugin.manifest.name,
                   tokens,
                 );
               },
@@ -281,5 +287,5 @@ export async function issuePluginCredential(
         : {}),
     },
   });
-  return parseCredentialResult(result, plugin.name);
+  return parseCredentialResult(result, plugin.manifest.name);
 }
