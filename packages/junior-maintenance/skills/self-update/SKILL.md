@@ -77,10 +77,10 @@ If `pnpm-workspace.yaml` has a `minimumReleaseAgeExclude` list, ensure every Jun
 
 Group `pnpm add` by dependency section:
 
-| Section | Flag |
-|---------|------|
-| `dependencies` | `-E` |
-| `devDependencies` | `-D -E` |
+| Section                | Flag    |
+| ---------------------- | ------- |
+| `dependencies`         | `-E`    |
+| `devDependencies`      | `-D -E` |
 | `optionalDependencies` | `-O -E` |
 
 ```bash
@@ -96,6 +96,7 @@ Do not manually edit versions in `package.json`. Do not use local `../junior` li
 After updating deps, check whether any **new** `@sentry/junior-*` packages were added (i.e. present in the new `package.json` but absent before the update). For each newly added package, ensure it is also listed in the `plugins.packages` array inside `juniorNitro({...})` in `nitro.config.ts`.
 
 **Packages that are NOT standalone plugins and do NOT need a `plugins.packages` entry:**
+
 - `@sentry/junior` (the base runtime)
 - `@sentry/junior-plugin-api` (plugin development utilities)
 - `@sentry/junior-testing` (test utilities)
@@ -105,11 +106,13 @@ For every other newly added `@sentry/junior-*` package, add it to `nitro.config.
 ```typescript
 // nitro.config.ts — append the new package to plugins.packages
 juniorNitro({
-  plugins: { packages: [
-    // ... existing entries ...
-    "@sentry/junior-<new-package>",  // ← add here
-  ] },
-})
+  plugins: {
+    packages: [
+      // ... existing entries ...
+      "@sentry/junior-<new-package>", // ← add here
+    ],
+  },
+});
 ```
 
 Verify by running:
@@ -131,23 +134,27 @@ After updating deps, compare this app's configuration files against `apps/exampl
    cd /tmp/junior-upstream
    ```
 
-2. Select the best source ref for `target_version`:
+2. Select the best source ref for `target_version` and record it as `target_ref`:
 
-   a. Try to find the version-bump commit:
-      ```bash
-      git log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
-      ```
-      If found, check out that commit.
+   First try to find the version-bump commit:
 
-   b. If not found, find the commit just before the npm publish timestamp:
-      ```bash
-      git rev-list -n 1 --before="<target_published_at>" origin/main
-      ```
-      If found, check out that commit.
+   ```bash
+   git log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
+   ```
 
-   c. If neither works, use `origin/main` — mark the comparison as approximate in the PR body.
+   If found, record that commit as `target_ref` and check it out.
 
-3. Run focused diffs between example app and consumer app:
+   If not found, find the commit just before the npm publish timestamp:
+
+   ```bash
+   git rev-list -n 1 --before="<target_published_at>" origin/main
+   ```
+
+   If found, record that commit as `target_ref` and check it out.
+
+   If neither works, record `origin/main` as `target_ref`, check it out, and mark the comparison as approximate in the PR body.
+
+3. Run focused diffs between example app and consumer app for TypeScript config surfaces:
 
    ```bash
    git diff --no-index -- /tmp/junior-upstream/apps/example/nitro.config.ts nitro.config.ts
@@ -155,7 +162,7 @@ After updating deps, compare this app's configuration files against `apps/exampl
    git diff --no-index -- /tmp/junior-upstream/apps/example/server.ts server.ts
    ```
 
-4. Interpret the diffs structurally. Look for changes in:
+4. Interpret the TypeScript config diffs structurally. Look for changes in:
    - `juniorNitro()` option shape (new/removed/renamed options)
    - `defineJuniorPlugins([...])` usage or call convention
    - Plugin factory call signatures (e.g. `githubPlugin({ ... })`)
@@ -164,19 +171,42 @@ After updating deps, compare this app's configuration files against `apps/exampl
 
    **Ignore** app-local differences: env var names, local plugin/skill registrations, custom config defaults, SOUL/WORLD content, Slack personality settings.
 
-5. Apply only obvious, low-risk fixes automatically — e.g. updating a renamed option key or adding a required new argument when the value is inferrable. For everything else, add a PR-body action item.
+5. Inspect `vercel.json` for newly required Junior deployment config. Do not normalize the consumer app's whole Vercel config against the example app.
 
-6. For `package.json`, compare only the build tooling (`nitro`, `jiti`, `typescript`) — do not copy the example's plugin dep list or version pins.
+   If possible, resolve an upstream example-app source ref for `old_version` using the same version-bump commit or publish-timestamp strategy from step 2. Compare upstream `apps/example/vercel.json` between `old_version` and `target_version`:
 
-7. Save findings and any actions taken for the PR body.
+   ```bash
+   git diff <old_ref>..<target_ref> -- apps/example/vercel.json
+   ```
+
+   If `old_ref` cannot be found, inspect the target example app's `apps/example/vercel.json` directly and mark the `vercel.json` review as approximate in the PR body.
+
+   Identify entries added or changed upstream that are Junior-owned or Junior-documented deployment requirements. Check especially:
+   - `buildCommand` / `installCommand` changes such as adding `pnpm exec junior upgrade`
+   - `framework` requirements
+   - Junior queue or function wiring
+   - Junior heartbeat or scheduler cron wiring
+   - other entries that release-window PRs or docs describe as required for Junior runtime behavior
+
+   Compare only those Junior-owned entries against the consumer app's `vercel.json`. Ignore app-local deployment choices: env vars, regions, unrelated rewrites/headers, non-Junior functions, non-Junior crons, and project-specific build customization.
+
+   Apply an entry automatically only when it is clearly required, absent locally, and can be added or minimally merged without overwriting app-owned config. Otherwise, add a PR-body action item explaining the missing or changed entry.
+
+6. Apply only obvious, low-risk fixes automatically — e.g. updating a renamed option key, adding a required new argument when the value is inferrable, or adding a missing Junior-owned `vercel.json` entry. For everything else, add a PR-body action item.
+
+7. For `package.json`, compare only the build tooling (`nitro`, `jiti`, `typescript`) — do not copy the example's plugin dep list or version pins.
+
+8. Save findings and any actions taken for the PR body. Include a distinct `vercel.json` note that says whether new Junior-owned deployment entries were found, added, skipped as app-owned, or left for manual review.
 
 ### 7. Verify lockfile correctness
 
 1. Check changed files:
+
    ```bash
    git diff --name-only
    ```
-   Expected: `package.json`, `pnpm-lock.yaml`, optionally `pnpm-workspace.yaml`, and optionally `nitro.config.ts` if plugin registration changed in step 6b. Flag anything else.
+
+   Expected: `package.json`, `pnpm-lock.yaml`, optionally `pnpm-workspace.yaml`, optionally `nitro.config.ts` if plugin registration changed in step 6b, and optionally `vercel.json` if step 6c added or adjusted Junior-owned deployment config. Flag anything else.
 
 2. Confirm every Junior dep in `package.json` shows exact `<target>` — no old versions remain.
 
@@ -212,11 +242,11 @@ PR body sections (in order):
 
 1. **Version change** — old → new, package list with sections.
 2. **Junior release window** — total PR count, breaking PRs (title + URL), config-relevant PRs. Sourced from step 3b. Include the disclaimer: _Junior does not publish GitHub releases, tags, or a changelog. This summary is derived from npm publish timestamps and merged PRs._
-3. **Example app config comparison** — source ref used (commit SHA or approximate), files compared, findings, actions taken. Sourced from step 6c.
+3. **Example app config comparison** — source ref used (commit SHA or approximate), files compared, findings, actions taken, and the `vercel.json` Junior-owned deployment-entry review. Sourced from step 6c.
 4. **`minimumReleaseAgeExclude` changes** (if any).
 5. **`nitro.config.ts` plugin registration changes** (if any).
 6. **Check results** — pass/fail per check, pre-existing failures noted.
-7. **Unexpected diffs** — any changed files beyond `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `nitro.config.ts`.
+7. **Unexpected diffs** — any changed files beyond `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `nitro.config.ts`, and `vercel.json`.
 
 If breaking PRs were found in step 3b, or config comparison found unresolved drift, or checks failed — keep the PR as draft and add a "Manual review required" section at the top summarizing blockers.
 
