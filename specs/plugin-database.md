@@ -80,6 +80,8 @@ schema migrations by itself.
 ### Migration Generation
 
 Plugin packages own their own schema authoring and migration generation.
+Core owns migration application. Plugins publish committed SQL artifacts; Junior
+does not let plugins run their own migration runner.
 
 A plugin that uses Drizzle should keep its table objects and Drizzle config in
 the plugin package and generate SQL into that plugin's `migrations/` directory.
@@ -122,8 +124,10 @@ plugin:<pluginName>/<filename>
 Core computes the checksum from the exact SQL file contents. If a migration id
 already exists with a different checksum, upgrade must fail.
 
-Migration filenames must be stable, non-empty basenames ending in `.sql`.
-Subdirectories are not part of V1 migration discovery.
+Migration filenames must be stable, non-empty basenames matching
+`NNNN_name.sql`, where `NNNN` is a zero-padded numeric prefix. This keeps
+lexical filename ordering identical to migration order. Subdirectories are not
+part of V1 migration discovery.
 
 ### Storage Migration Hooks
 
@@ -159,10 +163,10 @@ plugin set that runtime uses when that set is available. In deployed Nitro
 output this means reading the virtual `#junior/config` plugin set; in tests or
 programmatic callers this may be passed explicitly in the migration context.
 Package-only declarative plugins do not contribute SQL schema migrations or
-storage migration hooks. A core-maintained trusted package adapter may resolve a
-package name to a JavaScript registration during `junior upgrade` when the
-runtime plugin is built into Junior, such as the scheduler migration from
-retained plugin state into SQL.
+storage migration hooks. `@sentry/junior` core must not import plugin packages
+to synthesize runtime registrations; database-backed plugins such as the
+scheduler must be enabled through the same JavaScript registration module used
+by runtime.
 
 The hook context is intentionally narrow:
 

@@ -123,11 +123,11 @@ describe("plugin DB migrations", () => {
     mkdirSync(migrationsDir);
     writeFileSync(
       path.join(migrationsDir, "0002_second.sql"),
-      "CREATE TABLE second_plugin_table (id TEXT PRIMARY KEY);",
+      "CREATE TABLE junior_memory_second_plugin_table (id TEXT PRIMARY KEY);",
     );
     writeFileSync(
       path.join(migrationsDir, "0001_first.sql"),
-      "CREATE TABLE first_plugin_table (id TEXT PRIMARY KEY);",
+      "CREATE TABLE junior_memory_first_plugin_table (id TEXT PRIMARY KEY);",
     );
 
     try {
@@ -141,6 +141,104 @@ describe("plugin DB migrations", () => {
         "plugin:memory/0002_second.sql",
       ]);
       expect(migrations[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("accepts SQL identifiers under the plugin-owned table prefix", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
+    const migrationsDir = path.join(root, "migrations");
+    mkdirSync(migrationsDir);
+    writeFileSync(
+      path.join(migrationsDir, "0001_init.sql"),
+      [
+        "CREATE TABLE junior_long_memory_entries (id TEXT PRIMARY KEY);",
+        "CREATE INDEX junior_long_memory_entries_created_idx",
+        "  ON junior_long_memory_entries (id);",
+      ].join("\n"),
+    );
+
+    try {
+      expect(
+        readPluginMigrations({
+          dir: migrationsDir,
+          pluginName: "long-memory",
+        }),
+      ).toHaveLength(1);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects plugin SQL that creates tables outside the plugin prefix", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
+    const migrationsDir = path.join(root, "migrations");
+    mkdirSync(migrationsDir);
+    writeFileSync(
+      path.join(migrationsDir, "0001_init.sql"),
+      "CREATE TABLE junior_other_entries (id TEXT PRIMARY KEY);",
+    );
+
+    try {
+      expect(() =>
+        readPluginMigrations({
+          dir: migrationsDir,
+          pluginName: "memory",
+        }),
+      ).toThrow(
+        'Plugin "memory" migration "0001_init.sql" references SQL identifier "junior_other_entries" outside owned prefix "junior_memory_"',
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects plugin SQL that creates indexes outside the plugin prefix", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
+    const migrationsDir = path.join(root, "migrations");
+    mkdirSync(migrationsDir);
+    writeFileSync(
+      path.join(migrationsDir, "0001_init.sql"),
+      [
+        "CREATE TABLE junior_memory_entries (id TEXT PRIMARY KEY);",
+        "CREATE INDEX junior_other_entries_idx",
+        "  ON junior_memory_entries (id);",
+      ].join("\n"),
+    );
+
+    try {
+      expect(() =>
+        readPluginMigrations({
+          dir: migrationsDir,
+          pluginName: "memory",
+        }),
+      ).toThrow(
+        'Plugin "memory" migration "0001_init.sql" references SQL identifier "junior_other_entries_idx" outside owned prefix "junior_memory_"',
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects destructive plugin SQL migrations", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
+    const migrationsDir = path.join(root, "migrations");
+    mkdirSync(migrationsDir);
+    writeFileSync(
+      path.join(migrationsDir, "0001_init.sql"),
+      "DROP TABLE junior_memory_entries;",
+    );
+
+    try {
+      expect(() =>
+        readPluginMigrations({
+          dir: migrationsDir,
+          pluginName: "memory",
+        }),
+      ).toThrow(
+        'Plugin "memory" migration "0001_init.sql" uses destructive SQL outside the V1 migration contract',
+      );
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
@@ -165,5 +263,20 @@ describe("plugin DB migrations", () => {
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
+  });
+
+  it("rejects duplicate plugin migration ids before applying SQL", async () => {
+    const executor = new FakeSqlExecutor();
+    const pending = migration();
+
+    await expect(
+      migratePluginSchemas(executor, [
+        pending,
+        migration({ checksum: "checksum-2" }),
+      ]),
+    ).rejects.toThrow(
+      "Duplicate plugin migration id plugin:memory/0001_init.sql",
+    );
+    expect(executor.statements).toEqual([]);
   });
 });

@@ -1,4 +1,3 @@
-import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import type {
   InlinePluginManifestDefinition,
   PluginCatalogConfig,
@@ -11,25 +10,10 @@ import {
 } from "@/plugins";
 import type { MigrationContext } from "../types";
 
-interface TrustedUpgradePlugin {
-  load(): Promise<PluginRegistration>;
-  packageName: string;
-}
-
 interface ResolvedUpgradePlugins {
   pluginCatalogConfig?: PluginCatalogConfig;
   pluginSet?: JuniorPluginSet;
 }
-
-const TRUSTED_UPGRADE_PLUGINS: TrustedUpgradePlugin[] = [
-  {
-    packageName: "@sentry/junior-scheduler",
-    async load() {
-      const { schedulerPlugin } = await import("@sentry/junior-scheduler");
-      return schedulerPlugin();
-    },
-  },
-];
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
@@ -81,7 +65,7 @@ function mergeCatalogConfig(
   ]);
   const manifests =
     base.manifests || added.manifests
-      ? { ...added.manifests, ...base.manifests }
+      ? { ...base.manifests, ...added.manifests }
       : undefined;
   return {
     ...(inlineManifests ? { inlineManifests } : {}),
@@ -100,48 +84,13 @@ function packageNamesFromContext(
   ]);
 }
 
-function hasRegistration(
-  registrations: PluginRegistration[],
-  pluginName: string,
-): boolean {
-  return registrations.some(
-    (registration) => registration.manifest.name === pluginName,
-  );
-}
-
-async function trustedRegistrationsForPackages(args: {
-  packageNames: string[];
-  registrations: PluginRegistration[];
-}): Promise<PluginRegistration[]> {
-  const registrations: PluginRegistration[] = [];
-  for (const plugin of TRUSTED_UPGRADE_PLUGINS) {
-    if (!args.packageNames.includes(plugin.packageName)) {
-      continue;
-    }
-    const registration = await plugin.load();
-    if (
-      hasRegistration(args.registrations, registration.manifest.name) ||
-      hasRegistration(registrations, registration.manifest.name)
-    ) {
-      continue;
-    }
-    registrations.push(registration);
-  }
-  return registrations;
-}
-
 /** Resolve one effective plugin set and catalog for all upgrade migrations. */
 export async function resolveUpgradePlugins(
   context: MigrationContext,
 ): Promise<ResolvedUpgradePlugins> {
   const catalog = baseCatalogConfig(context);
   const packageNames = packageNamesFromContext(context, catalog);
-  const baseRegistrations = context.pluginSet?.registrations ?? [];
-  const trustedRegistrations = await trustedRegistrationsForPackages({
-    packageNames,
-    registrations: baseRegistrations,
-  });
-  const registrations = [...baseRegistrations, ...trustedRegistrations];
+  const registrations = context.pluginSet?.registrations ?? [];
   const manifests =
     context.pluginSet?.manifests || catalog?.manifests
       ? {

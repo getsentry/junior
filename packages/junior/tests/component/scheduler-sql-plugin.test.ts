@@ -312,7 +312,7 @@ describe("scheduler SQL plugin storage", () => {
     }
   }, 15_000);
 
-  it("loads the scheduler storage migration from package-only plugin set", async () => {
+  it("does not load scheduler storage migration from package-only plugin set", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -337,26 +337,21 @@ describe("scheduler SQL plugin storage", () => {
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 2,
+        migrated: 0,
         missing: 0,
-        scanned: 2,
+        scanned: 0,
       });
 
       const sqlStore = createSchedulerSqlStore(db);
-      await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
-        id: task.id,
-      });
-      await expect(sqlStore.getRun(run!.id)).resolves.toMatchObject({
-        id: run!.id,
-        taskId: task.id,
-      });
+      await expect(sqlStore.getTask(task.id)).resolves.toBe(undefined);
+      await expect(sqlStore.getRun(run!.id)).resolves.toBe(undefined);
     } finally {
       await stateAdapter.disconnect();
       await fixture.close();
     }
   }, 15_000);
 
-  it("applies scheduler SQL migrations from package-only config", async () => {
+  it("does not apply scheduler SQL migrations from package-only config", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
@@ -372,17 +367,9 @@ describe("scheduler SQL plugin storage", () => {
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 1,
+        migrated: 0,
         missing: 0,
-        scanned: 1,
-      });
-
-      const db = createPluginDbForExecutor(fixture.executor);
-      const store = createSchedulerSqlStore(db);
-      const task = createTask({ id: "sched_schema_package_config" });
-      await store.saveTask(task);
-      await expect(store.getTask(task.id)).resolves.toMatchObject({
-        id: task.id,
+        scanned: 0,
       });
     } finally {
       await stateAdapter.disconnect();
