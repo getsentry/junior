@@ -15,6 +15,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
+    "@sentry/junior-test-fixtures": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "chat": "4.29.0",
     "tinyrainbow": "^3.1.0",

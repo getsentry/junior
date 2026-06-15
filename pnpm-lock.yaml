@@ -348,6 +348,9 @@ importers:
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../junior-sentry
+      "@sentry/junior-test-fixtures":
+        specifier: workspace:*
+        version: link:../junior-test-fixtures
       "@sentry/junior-testing":
         specifier: workspace:*
         version: link:../junior-testing
