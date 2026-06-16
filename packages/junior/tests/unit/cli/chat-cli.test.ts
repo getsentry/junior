@@ -160,15 +160,56 @@ describe("chat cli", () => {
     }
   });
 
+  it("fails local chat for unresolved plugin packages", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
+    writeFileSync(
+      path.join(tempDir, "plugins.mjs"),
+      `export const plugins = {
+  packageNames: ["@sentry/junior-missing-plugin"],
+  registrations: [],
+};
+`,
+    );
+    process.chdir(tempDir);
+
+    try {
+      const io = {
+        error: vi.fn(),
+        input: process.stdin,
+        output: process.stdout,
+        write: vi.fn(),
+      };
+
+      expect(await runChat(["-p", "hello"], io)).toBe(1);
+      expect(io.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Plugin package "@sentry/junior-missing-plugin" was configured but could not be resolved',
+        ),
+      );
+      expect(runner.runLocalAgentTurn).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(ORIGINAL_CWD);
+      rmSync(tempDir, { force: true, recursive: true });
+    }
+  });
+
   it("loads TypeScript local plugin modules before prompt local chat", async () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
     writeFileSync(
       path.join(tempDir, "plugins.ts"),
-      `const packageNames: string[] = ["@sentry/test-plugin"];
+      `const packageNames: string[] = [];
 
 export const plugins = {
   packageNames,
-  registrations: [],
+  registrations: [
+    {
+      manifest: {
+        name: "typescript-plugin",
+        displayName: "TypeScript Plugin",
+        description: "TypeScript local plugin module test",
+      },
+    },
+  ],
 };
 `,
     );

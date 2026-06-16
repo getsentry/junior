@@ -22,8 +22,15 @@ import {
   type JuniorPluginSet,
 } from "@/plugins";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import { setPlugins, validatePlugins } from "@/chat/plugins/agent-hooks";
+import {
+  getPluginCatalogSignature,
+  setPluginCatalogConfig,
+} from "@/chat/plugins/registry";
+import {
+  validatePluginEgressCredentialHooks,
+  validatePluginRegistrations,
+} from "@/chat/plugins/validation";
 import type { LocalAgentReply } from "@/chat/local/runner";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
@@ -150,15 +157,27 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
 async function configureLocalChatPlugins(): Promise<void> {
   const pluginSet = await loadLocalPluginSet();
   const plugins = pluginHookRegistrationsFromPluginSet(pluginSet);
+  const pluginConfig = pluginSet
+    ? pluginCatalogConfigFromPluginSet(pluginSet)
+    : pluginCatalogConfigFromEnv();
+  const shouldValidatePluginCatalog =
+    Boolean(pluginConfig) || Boolean(pluginSet?.registrations.length);
   const { validatePluginDatabaseRequirements } =
     await import("@/chat/plugins/db");
-  validatePluginDatabaseRequirements(plugins);
-  setPluginCatalogConfig(
-    pluginSet
-      ? pluginCatalogConfigFromPluginSet(pluginSet)
-      : pluginCatalogConfigFromEnv(),
-  );
-  setPlugins(plugins);
+  validatePlugins(plugins);
+  const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
+  try {
+    if (shouldValidatePluginCatalog) {
+      getPluginCatalogSignature();
+      validatePluginRegistrations(pluginSet?.registrations ?? []);
+      validatePluginEgressCredentialHooks(pluginSet?.registrations ?? []);
+    }
+    validatePluginDatabaseRequirements(plugins);
+    setPlugins(plugins);
+  } catch (error) {
+    setPluginCatalogConfig(previousPluginCatalogConfig);
+    throw error;
+  }
 }
 
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
