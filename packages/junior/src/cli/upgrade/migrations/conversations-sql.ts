@@ -5,7 +5,7 @@ import {
 } from "@/chat/conversations/sql/backfill";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
-import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const CONVERSATION_BACKFILL_LIMIT = 10_000;
@@ -36,7 +36,7 @@ export async function migrateConversationsToSql(
   let closeTarget: (() => Promise<void>) | undefined;
   if (!target) {
     const databaseUrl = requireConversationSqlDatabaseUrl(context);
-    const executor = createNeonJuniorSqlExecutor({
+    const executor = createJuniorSqlExecutor({
       connectionString: databaseUrl,
     });
     target = createSqlStore(executor);

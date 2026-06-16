@@ -11,7 +11,7 @@ import {
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
-import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
 
@@ -64,7 +64,7 @@ export async function runPluginStorageMigrations(
   const ownedExecutor =
     context.pluginDb || !context.sqlDatabaseUrl
       ? undefined
-      : createNeonJuniorSqlExecutor({
+      : createJuniorSqlExecutor({
           connectionString: context.sqlDatabaseUrl,
         });
   const sqlUrlDb = ownedExecutor

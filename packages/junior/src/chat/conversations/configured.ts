@@ -1,5 +1,5 @@
 import { getChatConfig } from "@/chat/config";
-import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import { createStateConversationStore } from "./state";
 import { createSqlStore } from "./sql/store";
 import type { ConversationStore } from "./store";
@@ -21,7 +21,7 @@ export function getConfiguredConversationStore(): ConversationStore {
     configuredStore = {
       databaseUrl,
       store: createSqlStore(
-        createNeonJuniorSqlExecutor({ connectionString: databaseUrl }),
+        createJuniorSqlExecutor({ connectionString: databaseUrl }),
       ),
     };
   }

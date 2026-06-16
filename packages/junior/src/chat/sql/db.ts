@@ -27,3 +27,7 @@ export interface JuniorSqlMigrationExecutor extends JuniorSqlDatabase {
     params?: readonly unknown[],
   ): Promise<T[]>;
 }
+
+export interface JuniorSqlExecutor extends JuniorSqlMigrationExecutor {
+  close(): Promise<void>;
+}

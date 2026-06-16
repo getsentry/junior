@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { parseEnv } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -38,14 +39,30 @@ const envCandidates = [
   ".env",
 ].filter(Boolean);
 
-for (const relativePath of envCandidates) {
-  const absolutePath = path.join(workspaceRoot, relativePath);
-  if (!fs.existsSync(absolutePath)) {
-    continue;
-  }
+function loadEnvFiles(roots) {
+  const protectedKeys = new Set(Object.keys(process.env));
+  const loadedKeys = new Set();
 
-  process.loadEnvFile(absolutePath);
+  for (const root of roots) {
+    for (const relativePath of envCandidates) {
+      const absolutePath = path.join(root, relativePath);
+      if (!fs.existsSync(absolutePath)) {
+        continue;
+      }
+
+      const values = parseEnv(fs.readFileSync(absolutePath, "utf8"));
+      for (const [name, value] of Object.entries(values)) {
+        if (protectedKeys.has(name) && !loadedKeys.has(name)) {
+          continue;
+        }
+        process.env[name] = value;
+        loadedKeys.add(name);
+      }
+    }
+  }
 }
+
+loadEnvFiles([workspaceRoot, exampleDir]);
 
 const children = new Set();
 

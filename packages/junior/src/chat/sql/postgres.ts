@@ -1,23 +1,21 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  Pool,
-  type Client,
+import pg, {
+  type Pool as PgPool,
   type PoolClient,
   type QueryResultRow,
-} from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
+} from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
 
-type QueryClient = Pool | PoolClient | Client;
+const { Pool } = pg;
 
-/** Neon-backed SQL executor with an owned connection pool lifecycle. */
-export type NeonJuniorSqlExecutor = JuniorSqlExecutor;
+type QueryClient = PgPool | PoolClient;
 
-class NeonExecutor implements NeonJuniorSqlExecutor {
+class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
 
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: PgPool) {}
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -104,11 +102,11 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 }
 
-/** Create the shared Neon-backed Junior SQL executor. */
-export function createNeonJuniorSqlExecutor(args: {
+/** Create the shared Node Postgres-backed Junior SQL executor. */
+export function createPostgresJuniorSqlExecutor(args: {
   connectionString: string;
-}): NeonJuniorSqlExecutor {
-  return new NeonExecutor(
+}): JuniorSqlExecutor {
+  return new PostgresExecutor(
     new Pool({
       connectionString: args.connectionString,
       max: 3,

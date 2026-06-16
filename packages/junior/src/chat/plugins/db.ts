@@ -5,7 +5,7 @@ import type { PluginDb, PluginRegistration } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
 import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
-import { createNeonJuniorSqlExecutor } from "@/chat/sql/neon";
+import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 
 const PLUGIN_SCHEMA_LOCK_NAME = "junior_plugin_schema";
 const MIGRATION_FILENAME_RE = /^[0-9]{4}_[a-z0-9_]+\.sql$/;
@@ -118,7 +118,7 @@ function getConfiguredPluginDb(): PluginDb | undefined {
     return undefined;
   }
   if (configuredPluginDb?.databaseUrl !== databaseUrl) {
-    const executor = createNeonJuniorSqlExecutor({
+    const executor = createJuniorSqlExecutor({
       connectionString: databaseUrl,
     });
     configuredPluginDb = {
