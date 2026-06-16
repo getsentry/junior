@@ -28,7 +28,7 @@ Copy `.env.example` and set:
 
 - `SLACK_BOT_TOKEN`
 - `SLACK_SIGNING_SECRET`
-- `DATABASE_URL` or `JUNIOR_DATABASE_URL`
+- `DATABASE_URL`
 - `REDIS_URL`
 - `AI_MODEL` (optional)
 - `AI_FAST_MODEL` (optional)

@@ -1,17 +1,11 @@
 import path from "node:path";
-import { statSync } from "node:fs";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
   copyAppAndPluginContent,
   copyIncludedFiles,
 } from "@/build/copy-build-content";
-import {
-  injectVirtualConfig,
-  type RuntimePluginModule,
-} from "@/build/virtual-config";
+import { injectVirtualConfig } from "@/build/virtual-config";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -23,6 +17,7 @@ import {
   pluginHookRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "./plugins";
+import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 
 export interface JuniorPluginModuleReference {
   /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */
@@ -52,28 +47,12 @@ export interface JuniorNitroOptions {
   includeFiles?: string[];
 }
 
-interface ResolvedPluginModuleReference {
-  exportName: string;
-  importUrl: string;
-  runtimeModule: RuntimePluginModule;
-}
-
 type RollupLikeConfig = {
   plugins?: unknown[];
 };
 
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
-
-const PLUGIN_MODULE_EXTENSIONS = [
-  "",
-  ".ts",
-  ".tsx",
-  ".mts",
-  ".mjs",
-  ".js",
-  ".cjs",
-];
 
 function isPluginModuleReference(
   value: JuniorNitroPluginSource | undefined,
@@ -89,96 +68,6 @@ function isPluginSet(
   }
 
   return "packageNames" in value && "registrations" in value;
-}
-
-function resolveRelativePluginModule(cwd: string, specifier: string): string {
-  const basePath = path.resolve(cwd, specifier);
-  for (const extension of PLUGIN_MODULE_EXTENSIONS) {
-    const candidate = `${basePath}${extension}`;
-    try {
-      if (statSync(candidate).isFile()) {
-        return candidate;
-      }
-    } catch {
-      // Try the next extension.
-    }
-  }
-  for (const extension of PLUGIN_MODULE_EXTENSIONS) {
-    const candidate = path.join(basePath, `index${extension}`);
-    try {
-      if (statSync(candidate).isFile()) {
-        return candidate;
-      }
-    } catch {
-      // Try the next extension.
-    }
-  }
-
-  throw new Error(`Plugin module "${specifier}" could not be resolved`);
-}
-
-function resolvePluginModule(
-  cwd: string,
-  input: JuniorPluginModuleReference | string,
-): ResolvedPluginModuleReference {
-  const moduleSpecifier = typeof input === "string" ? input : input.module;
-  const exportName =
-    typeof input === "string" ? "plugins" : (input.exportName ?? "plugins");
-  if (!moduleSpecifier.trim()) {
-    throw new Error("Plugin module specifier must not be empty");
-  }
-
-  if (moduleSpecifier.startsWith(".") || path.isAbsolute(moduleSpecifier)) {
-    const resolvedPath = resolveRelativePluginModule(cwd, moduleSpecifier);
-    return {
-      exportName,
-      importUrl: pathToFileURL(resolvedPath).href,
-      runtimeModule: {
-        exportName,
-        specifier: resolvedPath.split(path.sep).join("/"),
-      },
-    };
-  }
-
-  const requireFromApp = createRequire(path.join(cwd, "package.json"));
-  const resolvedPath = requireFromApp.resolve(moduleSpecifier);
-  return {
-    exportName,
-    importUrl: pathToFileURL(resolvedPath).href,
-    runtimeModule: {
-      exportName,
-      specifier: moduleSpecifier,
-    },
-  };
-}
-
-function assertPluginSet(value: unknown, source: string): JuniorPluginSet {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    !Array.isArray((value as Partial<JuniorPluginSet>).packageNames) ||
-    !Array.isArray((value as Partial<JuniorPluginSet>).registrations)
-  ) {
-    throw new Error(
-      `Plugin module ${source} must export a defineJuniorPlugins(...) set`,
-    );
-  }
-
-  return value as JuniorPluginSet;
-}
-
-async function loadPluginSetFromModule(
-  moduleRef: ResolvedPluginModuleReference,
-): Promise<JuniorPluginSet> {
-  const mod = (await import(moduleRef.importUrl)) as Record<string, unknown>;
-  const value =
-    moduleRef.exportName === "default"
-      ? (mod.default as unknown)
-      : mod[moduleRef.exportName];
-  return assertPluginSet(
-    value,
-    `${moduleRef.importUrl}#${moduleRef.exportName}`,
-  );
 }
 
 function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {

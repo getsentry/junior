@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -10,7 +13,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { runUpgradeMigrations } from "@/cli/upgrade";
+import { resolveUpgradePluginSet, runUpgradeMigrations } from "@/cli/upgrade";
 import { migrateConversationsToSql } from "@/cli/upgrade/migrations/conversations-sql";
 import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
 import {
@@ -29,6 +32,7 @@ const ORIGINAL_ENV = vi.hoisted(() => {
   delete process.env.JUNIOR_DATABASE_URL;
   return original;
 });
+const ORIGINAL_CWD = process.cwd();
 const OTHER_SLACK_DESTINATION = {
   ...SLACK_DESTINATION,
   channelId: "C999",
@@ -76,10 +80,36 @@ describe("upgrade CLI migrations", () => {
   });
 
   afterEach(async () => {
+    process.chdir(ORIGINAL_CWD);
     await disconnectStateAdapter();
     restoreEnv("JUNIOR_DATABASE_URL", ORIGINAL_ENV.JUNIOR_DATABASE_URL);
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
     vi.restoreAllMocks();
+  });
+
+  it("loads source app plugins for upgrade when virtual config is unavailable", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "junior-upgrade-plugins-"));
+    writeFileSync(
+      path.join(tempDir, "plugins.ts"),
+      `const packageNames: string[] = ["@acme/junior-upgrade"];
+
+export const plugins = {
+  packageNames,
+  registrations: [],
+};
+`,
+    );
+    process.chdir(tempDir);
+
+    try {
+      await expect(resolveUpgradePluginSet()).resolves.toMatchObject({
+        packageNames: ["@acme/junior-upgrade"],
+        registrations: [],
+      });
+    } finally {
+      process.chdir(ORIGINAL_CWD);
+      rmSync(tempDir, { force: true, recursive: true });
+    }
   });
 
   it("requires SQL before running upgrade migrations", async () => {

@@ -1,0 +1,113 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AssistantReply } from "@/chat/respond";
+
+const generateAssistantReplyMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/chat/respond", () => ({
+  generateAssistantReply: generateAssistantReplyMock,
+}));
+
+const ORIGINAL_CWD = process.cwd();
+const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_REDIS_URL = process.env.REDIS_URL;
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+function successReply(text: string): AssistantReply {
+  return {
+    text,
+    diagnostics: {
+      assistantMessageCount: 1,
+      modelId: "fake-local-chat-cli",
+      outcome: "success",
+      toolCalls: [],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: true,
+    },
+  };
+}
+
+describe("local chat CLI integration", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    generateAssistantReplyMock.mockReset();
+  });
+
+  afterEach(async () => {
+    process.chdir(ORIGINAL_CWD);
+    restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_STATE_ADAPTER);
+    restoreEnv("REDIS_URL", ORIGINAL_REDIS_URL);
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+    await disconnectStateAdapter();
+    vi.resetModules();
+  });
+
+  it("loads app plugins and applies the local memory default before runtime config", async () => {
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    process.env.REDIS_URL = "redis://localhost:6379";
+    const tempDir = mkdtempSync(path.join(tmpdir(), "junior-local-chat-"));
+    writeFileSync(
+      path.join(tempDir, "plugins.ts"),
+      `const packageNames: string[] = [];
+
+export const plugins = {
+  packageNames,
+  registrations: [
+    {
+      manifest: {
+        name: "local-chat-plugin",
+        displayName: "Local Chat Plugin",
+        description: "Local chat integration plugin",
+      },
+    },
+  ],
+};
+`,
+    );
+    process.chdir(tempDir);
+    generateAssistantReplyMock.mockResolvedValue(successReply("hello local"));
+    const output: string[] = [];
+
+    try {
+      const { runChat } = await import("@/cli/chat");
+      await expect(
+        runChat(["-p", "hello"], {
+          error: vi.fn(),
+          input: process.stdin,
+          output: process.stdout,
+          write: (text) => {
+            output.push(text);
+          },
+        }),
+      ).resolves.toBe(0);
+
+      const { getChatConfig } = await import("@/chat/config");
+      expect(getChatConfig().state.adapter).toBe("memory");
+      const { getPluginProviders } = await import("@/chat/plugins/registry");
+      expect(
+        getPluginProviders().map((plugin) => plugin.manifest.name),
+      ).toContain("local-chat-plugin");
+      expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+        "hello",
+        expect.objectContaining({
+          authorizationFlowMode: "disabled",
+          destination: expect.objectContaining({ platform: "local" }),
+        }),
+      );
+      expect(output).toEqual(["hello local\n"]);
+    } finally {
+      process.chdir(ORIGINAL_CWD);
+      rmSync(tempDir, { force: true, recursive: true });
+    }
+  });
+});

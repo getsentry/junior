@@ -116,6 +116,8 @@ describe("chat cli", () => {
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
+    const { getChatConfig } = await import("@/chat/config");
+    expect(getChatConfig().state.adapter).toBe("memory");
   });
 
   it("fails local chat for database plugins without SQL configuration", async () => {
@@ -196,6 +198,22 @@ describe("chat cli", () => {
   it("loads TypeScript local plugin modules before prompt local chat", async () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
     writeFileSync(
+      path.join(tempDir, "plugins.js"),
+      `export const plugins = {
+  packageNames: [],
+  registrations: [
+    {
+      manifest: {
+        name: "javascript-plugin",
+        displayName: "JavaScript Plugin",
+        description: "JavaScript local plugin module test",
+      },
+    },
+  ],
+};
+`,
+    );
+    writeFileSync(
       path.join(tempDir, "plugins.ts"),
       `const packageNames: string[] = [];
 
@@ -230,6 +248,12 @@ export const plugins = {
 
       expect(await runChat(["-p", "hello"], io)).toBe(0);
       expect(runner.runLocalAgentTurn).toHaveBeenCalledOnce();
+      const { getPluginProviders } = await import("@/chat/plugins/registry");
+      const pluginNames = getPluginProviders().map(
+        (plugin) => plugin.manifest.name,
+      );
+      expect(pluginNames).toContain("typescript-plugin");
+      expect(pluginNames).not.toContain("javascript-plugin");
     } finally {
       process.chdir(ORIGINAL_CWD);
       rmSync(tempDir, { force: true, recursive: true });
@@ -254,6 +278,8 @@ export const plugins = {
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(process.env.JUNIOR_STATE_ADAPTER).toBe("redis");
+    const { getChatConfig } = await import("@/chat/config");
+    expect(getChatConfig().state.adapter).toBe("redis");
   });
 
   it("defaults interactive local chat to memory even when REDIS_URL is present", async () => {
@@ -277,6 +303,8 @@ export const plugins = {
 
     expect(await pending).toBe(0);
     expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
+    const { getChatConfig } = await import("@/chat/config");
+    expect(getChatConfig().state.adapter).toBe("memory");
   });
 
   it("uses a fresh local conversation for each prompt invocation", async () => {

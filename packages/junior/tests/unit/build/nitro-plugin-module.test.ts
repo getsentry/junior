@@ -412,6 +412,116 @@ describe("juniorNitro plugin modules", () => {
     expect(rollupBeforeHooks).toHaveLength(1);
   });
 
+  it("resolves package plugin modules with custom exports", async () => {
+    const tempRoot = await makeTempDir();
+    const packageDir = path.join(
+      tempRoot,
+      "node_modules",
+      "@acme",
+      "junior-runtime",
+    );
+    await fs.mkdir(packageDir, { recursive: true });
+    await fs.writeFile(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@acme/junior-runtime",
+        type: "module",
+        exports: "./index.mjs",
+      }),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(packageDir, "index.mjs"),
+      [
+        "export const runtimePlugins = {",
+        '  packageNames: ["@acme/junior-demo"],',
+        "  registrations: [],",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: path.join(tempRoot, ".output", "server"),
+        },
+        rootDir: tempRoot,
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({
+      plugins: {
+        module: "@acme/junior-runtime",
+        exportName: "runtimePlugins",
+      },
+    }).nitro.setup(nitro);
+
+    const template = virtual["#junior/config"];
+    expect(typeof template).toBe("function");
+    const code = await (template as () => Promise<string>)();
+    expect(code).toContain(
+      'import { runtimePlugins as juniorRuntimePluginSet } from "@acme/junior-runtime";',
+    );
+    expect(code).toContain(
+      'export const plugins = {"packages":["@acme/junior-demo"]};',
+    );
+  });
+
+  it("resolves default plugin module exports", async () => {
+    const tempRoot = await makeTempDir();
+    await fs.writeFile(
+      path.join(tempRoot, "plugins.mjs"),
+      [
+        "export default {",
+        '  packageNames: ["@acme/junior-default"],',
+        "  registrations: [],",
+        "};",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: path.join(tempRoot, ".output", "server"),
+        },
+        rootDir: tempRoot,
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({
+      plugins: {
+        module: "./plugins",
+        exportName: "default",
+      },
+    }).nitro.setup(nitro);
+
+    const template = virtual["#junior/config"];
+    expect(typeof template).toBe("function");
+    const code = await (template as () => Promise<string>)();
+    expect(code).toContain(
+      `import juniorRuntimePluginSet from ${JSON.stringify(path.join(tempRoot, "plugins.mjs").split(path.sep).join("/"))};`,
+    );
+    expect(code).toContain(
+      'export const plugins = {"packages":["@acme/junior-default"]};',
+    );
+  });
+
   it("copies app and plugin content before Vercel route functions are cloned", async () => {
     const tempRoot = await makeTempDir();
     const serverDir = path.join(

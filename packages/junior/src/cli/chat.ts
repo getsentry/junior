@@ -11,27 +11,12 @@ import {
   stdout as defaultStdout,
 } from "node:process";
 import { randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
-import path from "node:path";
 import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
-import {
-  pluginCatalogConfigFromEnv,
-  pluginCatalogConfigFromPluginSet,
-  pluginHookRegistrationsFromPluginSet,
-  type JuniorPluginSet,
-} from "@/plugins";
+import { loadPluginSetFromModule, resolvePluginModule } from "@/plugin-module";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
-import { setPlugins, validatePlugins } from "@/chat/plugins/agent-hooks";
-import {
-  getPluginCatalogSignature,
-  setPluginCatalogConfig,
-} from "@/chat/plugins/registry";
-import {
-  validatePluginEgressCredentialHooks,
-  validatePluginRegistrations,
-} from "@/chat/plugins/validation";
 import type { LocalAgentReply } from "@/chat/local/runner";
+import type { JuniorPluginSet } from "@/plugins";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
 
@@ -116,66 +101,63 @@ function defaultStateAdapterForLocalChat(): void {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 }
 
-function isFile(targetPath: string): boolean {
+async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
+  let pluginModule: ReturnType<typeof resolvePluginModule>;
   try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
+    pluginModule = resolvePluginModule(process.cwd(), "./plugins");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'Plugin module "./plugins" could not be resolved'
+    ) {
+      return undefined;
+    }
+    throw error;
   }
-}
 
-function isPluginSet(value: unknown): value is JuniorPluginSet {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    Array.isArray((value as Partial<JuniorPluginSet>).packageNames) &&
-    Array.isArray((value as Partial<JuniorPluginSet>).registrations)
+  return await loadPluginSetFromModule(pluginModule, async (moduleRef) =>
+    localPluginLoader.import<Record<string, unknown>>(moduleRef.importPath),
   );
 }
 
-function localPluginModuleCandidates(cwd = process.cwd()): string[] {
-  return ["plugins.js", "plugins.mjs", "plugins.ts"]
-    .map((fileName) => path.resolve(cwd, fileName))
-    .filter(isFile);
-}
-
-async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
-  for (const pluginModulePath of localPluginModuleCandidates()) {
-    const mod =
-      await localPluginLoader.import<Record<string, unknown>>(pluginModulePath);
-    const pluginSet = mod.plugins ?? mod.default;
-    if (!isPluginSet(pluginSet)) {
-      throw new Error(
-        `${pluginModulePath} must export a defineJuniorPlugins(...) set as "plugins" or default`,
-      );
-    }
-    return pluginSet;
-  }
-  return undefined;
-}
-
 async function configureLocalChatPlugins(): Promise<void> {
+  const [
+    pluginsModule,
+    agentHooksModule,
+    registryModule,
+    validationModule,
+    databaseModule,
+  ] = await Promise.all([
+    import("@/plugins"),
+    import("@/chat/plugins/agent-hooks"),
+    import("@/chat/plugins/registry"),
+    import("@/chat/plugins/validation"),
+    import("@/chat/plugins/db"),
+  ]);
   const pluginSet = await loadLocalPluginSet();
-  const plugins = pluginHookRegistrationsFromPluginSet(pluginSet);
+  const plugins = pluginsModule.pluginHookRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginSet
-    ? pluginCatalogConfigFromPluginSet(pluginSet)
-    : pluginCatalogConfigFromEnv();
+    ? pluginsModule.pluginCatalogConfigFromPluginSet(pluginSet)
+    : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
     Boolean(pluginConfig) || Boolean(pluginSet?.registrations.length);
-  const { validatePluginDatabaseRequirements } =
-    await import("@/chat/plugins/db");
-  validatePlugins(plugins);
-  const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
+  agentHooksModule.validatePlugins(plugins);
+  const previousPluginCatalogConfig =
+    registryModule.setPluginCatalogConfig(pluginConfig);
   try {
     if (shouldValidatePluginCatalog) {
-      getPluginCatalogSignature();
-      validatePluginRegistrations(pluginSet?.registrations ?? []);
-      validatePluginEgressCredentialHooks(pluginSet?.registrations ?? []);
+      registryModule.getPluginCatalogSignature();
+      validationModule.validatePluginRegistrations(
+        pluginSet?.registrations ?? [],
+      );
+      validationModule.validatePluginEgressCredentialHooks(
+        pluginSet?.registrations ?? [],
+      );
     }
-    validatePluginDatabaseRequirements(plugins);
-    setPlugins(plugins);
+    databaseModule.validatePluginDatabaseRequirements(plugins);
+    agentHooksModule.setPlugins(plugins);
   } catch (error) {
-    setPluginCatalogConfig(previousPluginCatalogConfig);
+    registryModule.setPluginCatalogConfig(previousPluginCatalogConfig);
     throw error;
   }
 }

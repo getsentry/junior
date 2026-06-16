@@ -2,6 +2,8 @@ import {
   disconnectStateAdapter,
   getConnectedStateContext,
 } from "@/chat/state/adapter";
+import { createJiti } from "jiti";
+import { loadPluginSetFromModule, resolvePluginModule } from "@/plugin-module";
 import {
   requireConversationSqlDatabaseUrl,
   sqlConversationMigration,
@@ -21,6 +23,7 @@ import { type JuniorPluginSet } from "@/plugins";
 const DEFAULT_IO: UpgradeIo = {
   info: console.log,
 };
+const localPluginLoader = createJiti(import.meta.url, { moduleCache: false });
 
 const MIGRATIONS: UpgradeMigration[] = [
   redisConversationStateMigration,
@@ -42,7 +45,10 @@ function isMissingVirtualConfig(error: unknown): boolean {
   );
 }
 
-async function resolveUpgradePluginSet(): Promise<JuniorPluginSet | undefined> {
+/** Resolve the plugin set available to upgrade migrations in source and built CLI runs. */
+export async function resolveUpgradePluginSet(): Promise<
+  JuniorPluginSet | undefined
+> {
   try {
     const mod: {
       pluginSet?: JuniorPluginSet;
@@ -52,8 +58,24 @@ async function resolveUpgradePluginSet(): Promise<JuniorPluginSet | undefined> {
     if (!isMissingVirtualConfig(error)) {
       throw error;
     }
-    return undefined;
   }
+
+  let pluginModule: ReturnType<typeof resolvePluginModule>;
+  try {
+    pluginModule = resolvePluginModule(process.cwd(), "./plugins");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'Plugin module "./plugins" could not be resolved'
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+
+  return await loadPluginSetFromModule(pluginModule, async (moduleRef) =>
+    localPluginLoader.import<Record<string, unknown>>(moduleRef.importPath),
+  );
 }
 
 function formatMigrationResult(result: MigrationResult): string {
