@@ -142,8 +142,9 @@ describe("Slack contract: message.im attachment ingress", () => {
       },
     };
 
-    const { handlePlatformWebhook } = await import("@/handlers/webhooks");
-    const response = await handlePlatformWebhook(
+    const { handleChatSdkPlatformWebhook } =
+      await import("@/handlers/webhooks");
+    const response = await handleChatSdkPlatformWebhook(
       slackWebhookClient.event(payload),
       "slack",
       waitUntil.fn,

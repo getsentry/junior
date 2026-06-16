@@ -14,6 +14,7 @@ import {
   getPluginProviders,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
+import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
 
 const originalCwd = process.cwd();
 const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
@@ -73,6 +74,26 @@ afterEach(async () => {
 });
 
 describe("createApp plugin config", () => {
+  it("routes Slack webhooks through the production Slack handler", async () => {
+    const app = await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+    const slackWebhookClient = createSlackWebhookTestClient({
+      signingSecret: "test-signing-secret",
+    });
+
+    const response = await app.fetch(
+      slackWebhookClient.event({
+        type: "url_verification",
+        challenge: "route-ok",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      challenge: "route-ok",
+    });
+  });
+
   it("fails loudly when the env plugin package fallback is malformed", async () => {
     process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
 

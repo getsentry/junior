@@ -9,7 +9,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import { handlePlatformWebhook } from "@/handlers/webhooks";
+import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -109,7 +109,7 @@ describe("Slack contract: edited-message reply delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createEditedMentionRequest({
         messageTs: "1700000100.000100",
         newText: `<@${BOT_USER_ID}> hello there`,
@@ -163,7 +163,7 @@ describe("Slack contract: edited-message reply delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createEditedMentionRequest({
         messageTs: "1700000100.000101",
         newText: `<@${BOT_USER_ID}> hello there`,

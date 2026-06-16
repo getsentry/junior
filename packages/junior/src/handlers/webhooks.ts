@@ -1,8 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import {
-  handleSlackWebhook,
-  type SlackWebhookServices,
-} from "@/chat/ingress/slack-webhook";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import {
   extractMessageChangedMention,
@@ -35,7 +31,9 @@ interface SlackWebhookAuthAdapter {
   ) => boolean;
 }
 
-type LegacyChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
+type ChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
+
+type WebhookRunner = () => Promise<Response>;
 
 function getSlackPayloadTeamId(body: unknown): string | undefined {
   if (!body || typeof body !== "object") {
@@ -48,7 +46,7 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
 
 async function handleAuthenticatedSlackMessageChangedMention(args: {
   body: unknown;
-  bot: LegacyChatSdkBot;
+  bot: ChatSdkBot;
   rawBody: string;
   request: Request;
   waitUntil: WaitUntilFn;
@@ -114,8 +112,8 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   authAdapter.requestContext.run(context, dispatch);
 }
 
-async function handleLegacyChatSdkWebhook(args: {
-  bot: LegacyChatSdkBot;
+async function handleChatSdkWebhook(args: {
+  bot: ChatSdkBot;
   platform: string;
   request: Request;
   waitUntil: WaitUntilFn;
@@ -167,26 +165,11 @@ function parseJson(body: string): unknown {
   }
 }
 
-async function getDefaultSlackWebhookServices(): Promise<SlackWebhookServices> {
-  const { getProductionSlackWebhookServices } =
-    await import("@/chat/app/production");
-  return getProductionSlackWebhookServices();
-}
-
-/**
- * Handles `POST /api/webhooks/:platform`.
- *
- * Slack production ingress persists messages into the durable conversation
- * mailbox and wakes the queue worker. The optional `legacyBot` parameter is
- * kept for integration tests that still exercise Chat SDK fixtures directly.
- * The optional `services` parameter carries app-scoped runtime services.
- */
-export async function handlePlatformWebhook(
+/** Run a platform webhook with shared request tracing and error logging. */
+export async function handleWebhookRequest(
   request: Request,
   platform: string,
-  waitUntil: WaitUntilFn,
-  legacyBot?: LegacyChatSdkBot,
-  services?: SlackWebhookServices,
+  run: WebhookRunner,
 ): Promise<Response> {
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
@@ -199,25 +182,7 @@ export async function handlePlatformWebhook(
         requestContext,
         async () => {
           try {
-            let response: Response;
-            if (legacyBot) {
-              response = await handleLegacyChatSdkWebhook({
-                bot: legacyBot,
-                platform,
-                request,
-                waitUntil,
-              });
-            } else if (platform === "slack") {
-              response = await handleSlackWebhook({
-                request,
-                services: services ?? (await getDefaultSlackWebhookServices()),
-                waitUntil,
-              });
-            } else {
-              response = new Response(`Unknown platform: ${platform}`, {
-                status: 404,
-              });
-            }
+            const response = await run();
 
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
@@ -269,18 +234,19 @@ export async function handlePlatformWebhook(
   });
 }
 
-/** Handle a platform webhook request from the app route. */
-export async function POST(
+/** Handle a Chat SDK webhook fixture through the shared webhook wrapper. */
+export async function handleChatSdkPlatformWebhook(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
-  services?: SlackWebhookServices,
+  chat: ChatSdkBot,
 ): Promise<Response> {
-  return handlePlatformWebhook(
-    request,
-    platform,
-    waitUntil,
-    undefined,
-    services,
+  return handleWebhookRequest(request, platform, () =>
+    handleChatSdkWebhook({
+      bot: chat,
+      platform,
+      request,
+      waitUntil,
+    }),
   );
 }

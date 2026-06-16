@@ -14,7 +14,7 @@ import { mswServer } from "../../msw/server";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import { handlePlatformWebhook } from "@/handlers/webhooks";
+import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -66,7 +66,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       });
     });
 
-    const originalResponse = await handlePlatformWebhook(
+    const originalResponse = await handleChatSdkPlatformWebhook(
       slackWebhookClient.event(
         slackEventsApiEnvelope({
           eventType: "message",
@@ -108,7 +108,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       },
     };
 
-    const editedResponse = await handlePlatformWebhook(
+    const editedResponse = await handleChatSdkPlatformWebhook(
       slackWebhookClient.event(editedPayload),
       "slack",
       waitUntil.fn,
@@ -211,7 +211,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       },
     };
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       slackWebhookClient.event(editedPayload),
       "slack",
       waitUntil.fn,
@@ -315,7 +315,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       },
     };
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       slackWebhookClient.event(editedPayload),
       "slack",
       waitUntil.fn,
@@ -378,7 +378,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       },
     };
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       slackWebhookClient.invalidSignature(payload),
       "slack",
       () => undefined,

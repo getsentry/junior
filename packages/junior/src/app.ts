@@ -39,7 +39,7 @@ import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
-import { POST as webhooksPOST } from "@/handlers/webhooks";
+import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
@@ -355,13 +355,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return heartbeatGET(c.req.raw, waitUntil);
   });
 
+  app.post("/api/webhooks/slack", (c) => {
+    return slackWebhookPOST(c.req.raw, waitUntil, slackWebhookServices);
+  });
+
   app.post("/api/webhooks/:platform", (c) => {
-    return webhooksPOST(
-      c.req.raw,
-      c.req.param("platform"),
-      waitUntil,
-      slackWebhookServices,
-    );
+    return new Response(`Unknown platform: ${c.req.param("platform")}`, {
+      status: 404,
+    });
   });
 
   return app;

@@ -12,7 +12,7 @@ import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";
-import { handlePlatformWebhook } from "@/handlers/webhooks";
+import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -160,7 +160,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createDirectMessageRequest("run a command"),
       "slack",
       waitUntil.fn,
@@ -185,7 +185,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createDirectMessageRequest("run a command", {
         threadTs: DM_THREAD_TS,
       }),
@@ -229,7 +229,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createChannelMentionRequest("<@U_BOT> run a command"),
       "slack",
       waitUntil.fn,
@@ -273,7 +273,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?", {
         threadTs: DM_THREAD_TS,
       }),
@@ -315,7 +315,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?", {
         threadTs: DM_THREAD_TS,
       }),
@@ -356,7 +356,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
-    const response = await handlePlatformWebhook(
+    const response = await handleChatSdkPlatformWebhook(
       createDirectMessageRequest("How do I debug memory leaks in Node?"),
       "slack",
       waitUntil.fn,
