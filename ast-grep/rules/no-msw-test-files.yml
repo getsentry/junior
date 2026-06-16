@@ -1,0 +1,15 @@
+id: no-msw-test-files
+language: TypeScript
+severity: error
+message: Do not place test files under tests/msw. Put behavior coverage under the appropriate test layer.
+files:
+  - packages/junior/tests/msw/**/*.test.ts
+  - packages/junior/tests/msw/**/*.test.tsx
+  - packages/junior/tests/msw/**/*.test.js
+  - packages/junior/tests/msw/**/*.test.jsx
+  - packages/junior/tests/msw/**/*.test.mts
+  - packages/junior/tests/msw/**/*.test.cts
+  - packages/junior/tests/msw/**/*.test.mjs
+  - packages/junior/tests/msw/**/*.test.cjs
+rule:
+  kind: program

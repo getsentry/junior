@@ -1,0 +1,14 @@
+id: no-eval-slack-actions-imports
+language: TypeScript
+severity: error
+message: Evals must not import Slack action internals. Use eval harness boundaries instead.
+files:
+  - packages/junior-evals/evals/**/*.ts
+  - packages/junior-evals/evals/**/*.tsx
+  - packages/junior-evals/evals/**/*.js
+  - packages/junior-evals/evals/**/*.jsx
+  - packages/junior-evals/evals/**/*.mjs
+  - packages/junior-evals/evals/**/*.cjs
+rule:
+  kind: string
+  regex: '^["@'']@/chat/slack-actions/.+["@'']$'

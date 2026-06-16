@@ -1,0 +1,17 @@
+id: no-slack-integration-vi-mock
+language: TypeScript
+severity: error
+message: Slack integration behavior tests must not use vi.mock. Exercise real wiring at the integration boundary.
+files:
+  - packages/junior/tests/integration/slack/**/*.test.ts
+  - packages/junior/tests/integration/slack/**/*.test.tsx
+  - packages/junior/tests/integration/slack/**/*.test.js
+  - packages/junior/tests/integration/slack/**/*.test.jsx
+  - packages/junior/tests/integration/slack/**/*.test.mts
+  - packages/junior/tests/integration/slack/**/*.test.cts
+  - packages/junior/tests/integration/slack/**/*.test.mjs
+  - packages/junior/tests/integration/slack/**/*.test.cjs
+rule:
+  any:
+    - pattern: vi.mock($$$)
+    - pattern: $OBJ.vi.mock($$$)

@@ -1,0 +1,17 @@
+id: no-eval-slack-msw-helpers
+language: TypeScript
+severity: error
+message: Evals must not use Slack MSW helpers. Use eval harness evidence instead.
+files:
+  - packages/junior-evals/evals/**/*.ts
+  - packages/junior-evals/evals/**/*.tsx
+  - packages/junior-evals/evals/**/*.js
+  - packages/junior-evals/evals/**/*.jsx
+  - packages/junior-evals/evals/**/*.mjs
+  - packages/junior-evals/evals/**/*.cjs
+rule:
+  any:
+    - kind: identifier
+      regex: "^(queueSlackApiResponse|getCapturedSlackApiCalls|queueSlackApiError|queueSlackRateLimit)$"
+    - kind: property_identifier
+      regex: "^(queueSlackApiResponse|getCapturedSlackApiCalls|queueSlackApiError|queueSlackRateLimit)$"

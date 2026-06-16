@@ -144,7 +144,7 @@ Related contract ownership:
 - `state/` must not depend on `runtime/` or service modules.
 - `ingress/` may route into queue/runtime entrypoints, but must not own business logic that belongs in `runtime/` or `services/`.
 
-**Verification:** `pnpm run test:arch-boundary` enforces these rules via static import analysis.
+**Verification:** `pnpm lint` enforces these rules via dependency-cruiser static import analysis.
 
 ### Service Interface Rules
 

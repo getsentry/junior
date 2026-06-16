@@ -23,7 +23,7 @@ Quick mapping:
 - `evals/*`: Integration-style coverage for conversation-level agent behavior and quality scoring through the runtime harness.
 - `tests/unit/*` (or non-integration tests): isolated logic/invariant tests.
 
-This separation is enforced by `pnpm --filter @sentry/junior run test:slack-boundary`.
+This separation is enforced by `pnpm lint`.
 
 ## What Is In Scope
 

@@ -32,6 +32,9 @@ overrides:
 importers:
   .:
     devDependencies:
+      "@ast-grep/cli":
+        specifier: ^0.43.0
+        version: 0.43.0
       "@playwright/test":
         specifier: ^1.60.0
         version: 1.60.0
@@ -47,6 +50,9 @@ importers:
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
+      publint:
+        specifier: ^0.3.21
+        version: 0.3.21
       simple-git-hooks:
         specifier: ^2.13.1
         version: 2.13.1
@@ -500,6 +506,79 @@ packages:
     peerDependenciesMeta:
       zod:
         optional: true
+
+  "@ast-grep/cli-darwin-arm64@0.43.0":
+    resolution:
+      {
+        integrity: sha512-0i63gSBbgriPaRpFsbP3yETxolHPK2JAZbpcGbFOytB7QTnKAguwhlKmIOkUGKfsCzYiEq1awY0EBmvjMONXOg==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [arm64]
+    os: [darwin]
+
+  "@ast-grep/cli-darwin-x64@0.43.0":
+    resolution:
+      {
+        integrity: sha512-SPkj00HGKpYdqReUmso2ftG5Xgd+bWNFH4i9fubLxsWzn4ey2G6sotPruaOtcrzxb9xH+8kmhN7KJfm1k8Atzg==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [x64]
+    os: [darwin]
+
+  "@ast-grep/cli-linux-arm64-gnu@0.43.0":
+    resolution:
+      {
+        integrity: sha512-U8+2fkcY8sBxNHHBYZ33vTa7C97GFAB+Kj6gFzVMSqK8Ve1Aw+DxhVWD4i/PBryDdmWb4/erjGSkTQtdhVa2vg==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  "@ast-grep/cli-linux-x64-gnu@0.43.0":
+    resolution:
+      {
+        integrity: sha512-r/o9Mag6OZmGevY9OJjatuUKDOX1rSvgo29qSfxpMbIciiH3hkzEW/2w1xTPZI8xnM7iC+k+CkGoknmoXVTYGg==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  "@ast-grep/cli-win32-arm64-msvc@0.43.0":
+    resolution:
+      {
+        integrity: sha512-oHa4ruD87xccnqFuR+Pmx6F/suHV0YtibuyZ6SxUqgpNJAFZiUNAiFblzhEgQ5gp03e8B012P/Yy/7GYOvxOLg==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [arm64]
+    os: [win32]
+
+  "@ast-grep/cli-win32-ia32-msvc@0.43.0":
+    resolution:
+      {
+        integrity: sha512-RSzz9bKzSEutWgX7/g84guudEp75Q990CYpG/TBasdJP+U27zX8aA9d5p1+o/lF0hw3UoTYuFCGG8PU/QelfNQ==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [ia32]
+    os: [win32]
+
+  "@ast-grep/cli-win32-x64-msvc@0.43.0":
+    resolution:
+      {
+        integrity: sha512-/5dDD9B65vVuHCdVHN5+tIDquhE5s43S5CgEn88w1BgQaoayf+nRnUO4ZFez6SqyCGqAfa/yZdoaOQ9N2ySa1w==,
+      }
+    engines: { node: ">= 10" }
+    cpu: [x64]
+    os: [win32]
+
+  "@ast-grep/cli@0.43.0":
+    resolution:
+      {
+        integrity: sha512-DGi6xXAOBJubGg9QWqTeW8PzKSGHWEOa3uxXspEfYf532yb3lHmNJAcKMl1d+O9Xs9bTcNeDLC8se+O+tirEFQ==,
+      }
+    engines: { node: ">= 12.0.0" }
+    hasBin: true
 
   "@astrojs/check@0.9.9":
     resolution:
@@ -3315,6 +3394,13 @@ packages:
       {
         integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==,
       }
+
+  "@publint/pack@0.1.4":
+    resolution:
+      {
+        integrity: sha512-HDVTWq3H0uTXiU0eeSQntcVUTPP3GamzeXI41+x7uU9J65JgWQh3qWZHblR1i0npXfFtF+mxBiU2nJH8znxWnQ==,
+      }
+    engines: { node: ">=18" }
 
   "@redis/bloom@5.12.1":
     resolution:
@@ -9518,6 +9604,14 @@ packages:
     engines: { node: ">=14" }
     hasBin: true
 
+  publint@0.3.21:
+    resolution:
+      {
+        integrity: sha512-OqejcnMV6E9zel2oCrUOJEiiFkGiAAni0A6ibfQNh1k9Gu5z4F+Yso8lllam7AzmV6Do0vp7u3UpZNRBwuXaHQ==,
+      }
+    engines: { node: ">=18" }
+    hasBin: true
+
   pretty-ms@7.0.1:
     resolution:
       {
@@ -10094,6 +10188,13 @@ packages:
       {
         integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==,
       }
+
+  sade@1.8.1:
+    resolution:
+      {
+        integrity: sha512-xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==,
+      }
+    engines: { node: ">=6" }
 
   safe-buffer@5.2.1:
     resolution:
@@ -12011,6 +12112,39 @@ snapshots:
     optionalDependencies:
       zod: 4.4.3
 
+  "@ast-grep/cli-darwin-arm64@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-darwin-x64@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-linux-arm64-gnu@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-linux-x64-gnu@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-win32-arm64-msvc@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-win32-ia32-msvc@0.43.0":
+    optional: true
+
+  "@ast-grep/cli-win32-x64-msvc@0.43.0":
+    optional: true
+
+  "@ast-grep/cli@0.43.0":
+    dependencies:
+      detect-libc: 2.1.2
+    optionalDependencies:
+      "@ast-grep/cli-darwin-arm64": 0.43.0
+      "@ast-grep/cli-darwin-x64": 0.43.0
+      "@ast-grep/cli-linux-arm64-gnu": 0.43.0
+      "@ast-grep/cli-linux-x64-gnu": 0.43.0
+      "@ast-grep/cli-win32-arm64-msvc": 0.43.0
+      "@ast-grep/cli-win32-ia32-msvc": 0.43.0
+      "@ast-grep/cli-win32-x64-msvc": 0.43.0
+
   "@astrojs/check@0.9.9(prettier@3.8.3)(typescript@6.0.3)":
     dependencies:
       "@astrojs/language-server": 2.16.9(prettier@3.8.3)(typescript@6.0.3)
@@ -13674,6 +13808,8 @@ snapshots:
   "@protobufjs/pool@1.1.0": {}
 
   "@protobufjs/utf8@1.1.1": {}
+
+  "@publint/pack@0.1.4": {}
 
   "@redis/bloom@5.12.1(@redis/client@5.12.1)":
     dependencies:
@@ -18360,6 +18496,13 @@ snapshots:
 
   prettier@3.8.3: {}
 
+  publint@0.3.21:
+    dependencies:
+      "@publint/pack": 0.1.4
+      package-manager-detector: 1.6.0
+      picocolors: 1.1.1
+      sade: 1.8.1
+
   pretty-ms@7.0.1:
     dependencies:
       parse-ms: 2.1.0
@@ -18871,6 +19014,10 @@ snapshots:
   run-parallel@1.2.0:
     dependencies:
       queue-microtask: 1.2.3
+
+  sade@1.8.1:
+    dependencies:
+      mri: 1.2.0
 
   safe-buffer@5.2.1: {}
 

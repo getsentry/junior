@@ -104,9 +104,9 @@ These rules are mandatory whenever mocks or fakes appear in a test.
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces major Slack boundary rules for designated integration behavior tests:
+`pnpm lint` enforces major Slack boundary rules for designated integration behavior tests:
 
 - Eval files cannot import Slack contract internals.
 - Integration behavior tests cannot use runtime module mocks.
 
-See `scripts/check-slack-test-boundary.mjs`.
+See the ast-grep rules under `ast-grep/rules/`.

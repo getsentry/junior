@@ -118,4 +118,4 @@ Avoid:
 
 ## Enforcement
 
-`pnpm --filter @sentry/junior run test:slack-boundary` enforces integration boundary policy for designated behavior integration tests.
+`pnpm lint` enforces integration boundary policy for designated behavior integration tests.

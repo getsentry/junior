@@ -45,7 +45,10 @@ function collectPublishablePackages() {
         return null;
       }
 
-      if (typeof packageJson.name !== "string" || packageJson.name.length === 0) {
+      if (
+        typeof packageJson.name !== "string" ||
+        packageJson.name.length === 0
+      ) {
         throw new Error(
           `${relativePath} is publishable but missing a package name.`,
         );
@@ -79,6 +82,24 @@ function collectCiPackages() {
   );
 }
 
+function collectPackageLintPackages() {
+  const packageJson = JSON.parse(readFile("package.json"));
+  const packageLintScript = packageJson.scripts?.["package:lint"];
+
+  if (typeof packageLintScript !== "string") {
+    throw new Error("Missing package.json script: package:lint");
+  }
+
+  const packageFiles = collectMatches(
+    packageLintScript,
+    /\b(packages\/[^\s";]+)/g,
+  ).map((relativePath) => `${relativePath}/package.json`);
+
+  return packageFiles
+    .map((relativePath) => JSON.parse(readFile(relativePath)).name)
+    .sort();
+}
+
 function describeMismatch(expected, actual) {
   const missing = expected.filter((entry) => !actual.includes(entry));
   const extra = actual.filter((entry) => !expected.includes(entry));
@@ -106,6 +127,10 @@ const sources = [
   {
     label: ".github/workflows/ci.yml",
     packages: collectCiPackages(),
+  },
+  {
+    label: "package.json package:lint",
+    packages: collectPackageLintPackages(),
   },
   {
     label: "README.md",
