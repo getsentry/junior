@@ -1,0 +1,23 @@
+id: no-unit-test-timeout-arguments
+language: TypeScript
+severity: error
+message: Unit tests must not set per-test timeout arguments. Keep unit tests fast or move cross-module coverage to component tests.
+files:
+  - packages/junior/tests/unit/**/*.ts
+  - packages/junior/tests/unit/**/*.tsx
+  - packages/junior/tests/unit/**/*.js
+  - packages/junior/tests/unit/**/*.jsx
+  - packages/junior/tests/unit/**/*.mts
+  - packages/junior/tests/unit/**/*.cts
+  - packages/junior/tests/unit/**/*.mjs
+  - packages/junior/tests/unit/**/*.cjs
+rule:
+  any:
+    - pattern: it($NAME, $FN, $TIMEOUT)
+    - pattern: test($NAME, $FN, $TIMEOUT)
+    - pattern: describe($NAME, $FN, $TIMEOUT)
+    - pattern: it.each($CASES)($NAME, $FN, $TIMEOUT)
+    - pattern: test.each($CASES)($NAME, $FN, $TIMEOUT)
+    - pattern: describe.each($CASES)($NAME, $FN, $TIMEOUT)
+    - pattern: it.concurrent($NAME, $FN, $TIMEOUT)
+    - pattern: test.concurrent($NAME, $FN, $TIMEOUT)

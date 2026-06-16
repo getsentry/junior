@@ -26,6 +26,33 @@ process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
 
+const testProjects = [
+  {
+    extends: true,
+    test: {
+      name: "unit",
+      include: ["tests/unit/**/*.test.ts"],
+      testTimeout: 1_000,
+    },
+  },
+  {
+    extends: true,
+    test: {
+      name: "component",
+      include: ["tests/component/**/*.test.ts"],
+      testTimeout: 5_000,
+    },
+  },
+  {
+    extends: true,
+    test: {
+      name: "integration",
+      include: ["tests/integration/**/*.test.ts"],
+      testTimeout: 5_000,
+    },
+  },
+];
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -42,11 +69,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",
       "tests/integration/workflow/**/*.test.ts",
     ],
+    projects: testProjects,
     setupFiles: ["tests/msw/setup.ts"],
     coverage: {
       provider: "v8",

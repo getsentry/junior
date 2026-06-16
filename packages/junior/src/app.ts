@@ -38,10 +38,7 @@ import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
-import {
-  ALL as sandboxEgressProxyALL,
-  isSandboxEgressRequest,
-} from "@/handlers/sandbox-egress-proxy";
+import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import {
   createVercelConversationWorkCallback,
@@ -298,14 +295,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.use("*", async (c, next) => {
-    // Vercel Sandbox proxying preserves the original upstream path, so detect
-    // authenticated proxy traffic before ordinary application routes claim it.
-    if (isSandboxEgressRequest(c.req.raw)) {
-      return await sandboxEgressProxyALL(c.req.raw, {
-        tracePropagation: { domains: sandboxEgressTracePropagationDomains },
-      });
-    }
-    await next();
+    return await handleSandboxEgressRoute(
+      c.req.raw,
+      sandboxEgressTracePropagationDomains,
+      next,
+    );
   });
 
   mountPluginRoutes(app, pluginRoutes);

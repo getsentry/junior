@@ -14,22 +14,20 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("createApp sandbox trace config", () => {
+describe("sandbox egress route trace config", () => {
   it("passes configured egress trace domains to sandbox egress routes", async () => {
-    const { createApp, defineJuniorPlugins } = await import("@/app");
+    const { normalizeSandboxEgressTracePropagationDomains } =
+      await import("@/chat/sandbox/egress-tracing");
+    const { handleSandboxEgressRoute } =
+      await import("@/handlers/sandbox-egress-route");
 
-    const app = await createApp({
-      plugins: defineJuniorPlugins([]),
-      sandbox: {
-        egressTracePropagationDomains: ["*.SENTRY.IO"],
-      },
-    });
-
-    const response = await app.fetch(
+    const response = await handleSandboxEgressRoute(
       new Request("https://junior.example.com/proxied"),
+      normalizeSandboxEgressTracePropagationDomains(["*.SENTRY.IO"]),
+      vi.fn(async () => undefined),
     );
 
-    expect(response.status).toBe(200);
+    expect(response?.status).toBe(200);
     expect(sandboxEgressProxyMock).toHaveBeenCalledWith(expect.any(Request), {
       tracePropagation: { domains: ["*.sentry.io"] },
     });

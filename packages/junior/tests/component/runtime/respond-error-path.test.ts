@@ -43,7 +43,7 @@ describe("generateAssistantReply error path", () => {
     expect(reply.diagnostics.outcome).toBe("provider_error");
     expect(reply.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(reply.diagnostics.thinkingLevel).toBeUndefined();
-  }, 10_000);
+  });
 
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
@@ -54,7 +54,7 @@ describe("generateAssistantReply error path", () => {
         },
       }),
     ).rejects.toThrow("discover failed");
-  }, 10_000);
+  });
 
   it("hard-fails missing destinations", async () => {
     await expect(

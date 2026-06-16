@@ -1,5 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { getProductionSlackWebhookServices } from "@/chat/app/production";
 import {
   handleSlackWebhook,
   type SlackWebhookServices,
@@ -168,6 +167,12 @@ function parseJson(body: string): unknown {
   }
 }
 
+async function getDefaultSlackWebhookServices(): Promise<SlackWebhookServices> {
+  const { getProductionSlackWebhookServices } =
+    await import("@/chat/app/production");
+  return getProductionSlackWebhookServices();
+}
+
 /**
  * Handles `POST /api/webhooks/:platform`.
  *
@@ -205,7 +210,7 @@ export async function handlePlatformWebhook(
             } else if (platform === "slack") {
               response = await handleSlackWebhook({
                 request,
-                services: services ?? getProductionSlackWebhookServices(),
+                services: services ?? (await getDefaultSlackWebhookServices()),
                 waitUntil,
               });
             } else {
