@@ -35,6 +35,9 @@ describe("dashboard reporting", () => {
 
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+    const { closeConfiguredConversationStore } =
+      await import("@/chat/conversations/configured");
+    await closeConfiguredConversationStore();
     await disconnectStateAdapter();
     vi.useRealTimers();
     vi.resetModules();

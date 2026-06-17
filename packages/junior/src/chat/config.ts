@@ -56,11 +56,14 @@ export interface AdvisorConfig {
   thinkingLevel: AdvisorThinkingLevel;
 }
 
+export type SqlDriver = "neon" | "postgres";
+
 export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
   sql: {
     databaseUrl?: string;
+    driver: SqlDriver;
   };
   slack: {
     botToken?: string;
@@ -253,6 +256,17 @@ function readJuniorDatabaseUrl(env: NodeJS.ProcessEnv): string | undefined {
   );
 }
 
+function readSqlDriver(env: NodeJS.ProcessEnv): SqlDriver {
+  const value = toOptionalTrimmed(env.JUNIOR_DATABASE_DRIVER);
+  if (value === undefined) {
+    return "neon";
+  }
+  if (value === "neon" || value === "postgres") {
+    return value;
+  }
+  throw new Error("JUNIOR_DATABASE_DRIVER must be postgres or neon");
+}
+
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -262,6 +276,7 @@ export function readChatConfig(
     functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
     sql: {
       databaseUrl: readJuniorDatabaseUrl(env),
+      driver: readSqlDriver(env),
     },
     slack: {
       botToken:

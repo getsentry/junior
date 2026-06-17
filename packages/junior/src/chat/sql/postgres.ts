@@ -14,6 +14,7 @@ type QueryClient = PgPool | PoolClient;
 
 class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
+  private savepointId = 0;
 
   constructor(private readonly pool: PgPool) {}
 
@@ -43,7 +44,17 @@ class PostgresExecutor implements JuniorSqlExecutor {
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
     const existingClient = this.transactionClient.getStore();
     if (existingClient) {
-      return await callback();
+      const savepoint = `junior_savepoint_${++this.savepointId}`;
+      await existingClient.query(`SAVEPOINT ${savepoint}`);
+      try {
+        const result = await callback();
+        await existingClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        await existingClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await existingClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        throw error;
+      }
     }
 
     const client = await this.pool.connect();

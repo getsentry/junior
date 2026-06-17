@@ -19,6 +19,7 @@ related:
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                      |
 | `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL. When set, Junior uses SQL for queryable records and reporting.                                                     |
 | `JUNIOR_DATABASE_URL`                       | No          | Optional override for the Junior SQL database when it should differ from `DATABASE_URL`.                                                              |
+| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.       |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress requester context.                                                                          |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                     |

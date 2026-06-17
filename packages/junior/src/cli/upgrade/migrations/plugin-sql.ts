@@ -28,6 +28,7 @@ export async function migratePluginsToSql(
   const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
   const executor = createJuniorSqlExecutor({
     connectionString: databaseUrl,
+    driver: context.sqlDriver ?? getChatConfig().sql.driver,
   });
   try {
     const migrations = getPluginMigrationRoots().flatMap((root) =>

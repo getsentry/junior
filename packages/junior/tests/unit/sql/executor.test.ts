@@ -28,35 +28,36 @@ vi.mock("@/chat/sql/postgres", () => ({
 }));
 
 describe("createJuniorSqlExecutor", () => {
-  it("uses node-postgres for localhost URLs", () => {
+  it("uses node-postgres for the postgres driver", () => {
     expect(
       createJuniorSqlExecutor({
         connectionString: "postgres://junior:junior@localhost:5432/junior",
+        driver: "postgres",
       }),
     ).toBe(EXECUTORS.postgres);
   });
 
-  it("uses Neon for remote PostgreSQL URLs", () => {
+  it("uses Neon for the neon driver", () => {
     expect(
       createJuniorSqlExecutor({
         connectionString: "postgres://junior:junior@example.test/junior",
+        driver: "neon",
       }),
     ).toBe(EXECUTORS.neon);
   });
 
-  it("passes non-URL connection strings to node-postgres", () => {
+  it("passes non-URL connection strings to the configured driver", () => {
     expect(
       createJuniorSqlExecutor({
         connectionString: "host=localhost dbname=junior user=junior",
+        driver: "postgres",
       }),
     ).toBe(EXECUTORS.postgres);
-  });
-
-  it("passes URL-parser rejected connection strings to node-postgres", () => {
     expect(
       createJuniorSqlExecutor({
         connectionString: "postgres://junior:pa#ss@localhost:5432/junior",
+        driver: "neon",
       }),
-    ).toBe(EXECUTORS.postgres);
+    ).toBe(EXECUTORS.neon);
   });
 });

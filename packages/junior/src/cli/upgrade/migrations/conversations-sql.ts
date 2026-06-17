@@ -38,6 +38,7 @@ export async function migrateConversationsToSql(
     const databaseUrl = requireConversationSqlDatabaseUrl(context);
     const executor = createJuniorSqlExecutor({
       connectionString: databaseUrl,
+      driver: context.sqlDriver ?? getChatConfig().sql.driver,
     });
     target = createSqlStore(executor);
     closeTarget = () => executor.close();

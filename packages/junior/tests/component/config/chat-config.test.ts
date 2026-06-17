@@ -97,6 +97,28 @@ describe("chat config", () => {
     );
   });
 
+  it("uses Neon as the default SQL driver", async () => {
+    delete process.env.JUNIOR_DATABASE_DRIVER;
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.driver).toBe("neon");
+  });
+
+  it("reads the optional node-postgres SQL driver override", async () => {
+    process.env.JUNIOR_DATABASE_DRIVER = " postgres ";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.driver).toBe("postgres");
+  });
+
+  it("throws when the SQL driver is invalid", async () => {
+    process.env.JUNIOR_DATABASE_DRIVER = "sqlite";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_DATABASE_DRIVER must be postgres or neon",
+    );
+  });
+
   it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";

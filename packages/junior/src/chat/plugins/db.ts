@@ -3,8 +3,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { PluginDb, PluginRegistration } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { getChatConfig } from "@/chat/config";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import { getChatConfig, type SqlDriver } from "@/chat/config";
+import type {
+  JuniorSqlExecutor,
+  JuniorSqlMigrationExecutor,
+} from "@/chat/sql/db";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 
 const PLUGIN_SCHEMA_LOCK_NAME = "junior_plugin_schema";
@@ -45,8 +48,9 @@ interface StoredMigrationRecord {
 let configuredPluginDb:
   | {
       databaseUrl: string;
+      driver: SqlDriver;
       db: PluginDb;
-      executor: JuniorSqlMigrationExecutor;
+      executor: JuniorSqlExecutor;
     }
   | undefined;
 
@@ -114,20 +118,34 @@ function createPluginDb(executor: JuniorSqlMigrationExecutor): PluginDb {
 
 function getConfiguredPluginDb(): PluginDb | undefined {
   const databaseUrl = getChatConfig().sql.databaseUrl;
+  const driver = getChatConfig().sql.driver;
   if (!databaseUrl) {
     return undefined;
   }
-  if (configuredPluginDb?.databaseUrl !== databaseUrl) {
+  if (
+    configuredPluginDb?.databaseUrl !== databaseUrl ||
+    configuredPluginDb.driver !== driver
+  ) {
+    void configuredPluginDb?.executor.close().catch(() => undefined);
     const executor = createJuniorSqlExecutor({
       connectionString: databaseUrl,
+      driver,
     });
     configuredPluginDb = {
       databaseUrl,
+      driver,
       executor,
       db: createPluginDb(executor),
     };
   }
   return configuredPluginDb.db;
+}
+
+/** Close the configured plugin DB executor if one has been created. */
+export async function closeConfiguredPluginDb(): Promise<void> {
+  const current = configuredPluginDb;
+  configuredPluginDb = undefined;
+  await current?.executor.close();
 }
 
 async function listAppliedMigrations(

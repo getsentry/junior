@@ -60,6 +60,10 @@ configured conversation stores, plugin DB resolution, or `createJuniorSqlExecuto
 must therefore use the test database without changing import paths, injecting a
 special executor, or mocking database factories.
 
+Worker setup also sets `JUNIOR_DATABASE_DRIVER=postgres` while the harness is
+active so local Postgres tests cannot inherit a Neon driver override from the
+developer shell or CI environment.
+
 The worker database URL must include the harness application name so production
 code-created pools remain visible to harness cleanup.
 

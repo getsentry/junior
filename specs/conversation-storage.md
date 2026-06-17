@@ -169,9 +169,13 @@ applied by `junior upgrade`, not by request handlers.
 
 Vercel projects using Neon normally receive a standard `DATABASE_URL` from the
 integration. Projects that need a Junior-specific database set
-`JUNIOR_DATABASE_URL`; otherwise Junior uses `DATABASE_URL`. Vercel build
-commands can run `junior upgrade` before the app build so schema changes are
-applied before the new deployment starts serving traffic:
+`JUNIOR_DATABASE_URL`; otherwise Junior uses `DATABASE_URL`. Junior deployments
+use the Neon serverless client by default. Set
+`JUNIOR_DATABASE_DRIVER=postgres` for local Postgres, node-postgres deployments,
+or test harnesses that need pooled Postgres semantics. Driver selection must
+come from configuration, not hostname inference from the database URL. Vercel
+build commands can run `junior upgrade` before the app build so schema changes
+are applied before the new deployment starts serving traffic:
 
 ```bash
 pnpm exec junior upgrade && pnpm build

@@ -16,6 +16,7 @@ export type NeonJuniorSqlExecutor = JuniorSqlExecutor;
 
 class NeonExecutor implements NeonJuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
+  private savepointId = 0;
 
   constructor(private readonly pool: Pool) {}
 
@@ -45,7 +46,17 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
     const existingClient = this.transactionClient.getStore();
     if (existingClient) {
-      return await callback();
+      const savepoint = `junior_savepoint_${++this.savepointId}`;
+      await existingClient.query(`SAVEPOINT ${savepoint}`);
+      try {
+        const result = await callback();
+        await existingClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        await existingClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await existingClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        throw error;
+      }
     }
 
     const client = await this.pool.connect();

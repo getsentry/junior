@@ -11,6 +11,7 @@ import {
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import { getChatConfig } from "@/chat/config";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
@@ -66,6 +67,7 @@ export async function runPluginStorageMigrations(
       ? undefined
       : createJuniorSqlExecutor({
           connectionString: context.sqlDatabaseUrl,
+          driver: context.sqlDriver ?? getChatConfig().sql.driver,
         });
   const sqlUrlDb = ownedExecutor
     ? createPluginDbForExecutor(ownedExecutor)
