@@ -28,6 +28,7 @@ import {
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { closeConfiguredConversationStore } from "@/chat/conversations/configured";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   signConversationQueueMessage,
@@ -84,6 +85,7 @@ describe("conversation work execution", () => {
   });
 
   afterEach(async () => {
+    await closeConfiguredConversationStore();
     await disconnectStateAdapter();
     if (originalJuniorSecret === undefined) {
       delete process.env.JUNIOR_SECRET;

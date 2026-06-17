@@ -114,7 +114,9 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const memoryConfig = original.readChatConfig({
     ...process.env,
     AGENT_TURN_TIMEOUT_MS: "10000",
+    DATABASE_URL: undefined,
     FUNCTION_MAX_DURATION_SECONDS: "60",
+    JUNIOR_DATABASE_URL: undefined,
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
