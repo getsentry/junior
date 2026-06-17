@@ -78,6 +78,14 @@ async function getPostgresWorkerDatabase(
   return await promise;
 }
 
+/** Return the current Vitest worker's migrated database connection string. */
+export async function getPostgresWorkerDatabaseUrl(
+  config: PostgresHarnessConfig,
+): Promise<string> {
+  const workerDatabase = await getPostgresWorkerDatabase(config);
+  return workerDatabase.connectionString;
+}
+
 /** Start a rollback-only transaction in the current worker database. */
 export async function createPostgresTransactionFixture<TResource>(
   config: PostgresHarnessConfig,

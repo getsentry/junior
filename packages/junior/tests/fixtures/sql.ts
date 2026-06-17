@@ -5,12 +5,16 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-test-fixtures/pglite";
+import {
+  createEmptyJuniorSqlFixture,
+  hasJuniorPostgresTestDatabase,
+} from "./postgres/fixture";
 
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
 
 export interface LocalJuniorSqlFixture {
-  client: LocalPgliteFixture<JuniorDatabase>["client"];
+  client?: LocalPgliteFixture<JuniorDatabase>["client"];
   executor: JuniorSqlMigrationExecutor;
   close(): Promise<void>;
 }
@@ -19,6 +23,14 @@ export interface LocalJuniorSqlFixture {
  * Create a local Postgres-compatible Junior SQL fixture for integration tests.
  */
 export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
+  if (hasJuniorPostgresTestDatabase()) {
+    const fixture = await createEmptyJuniorSqlFixture();
+    return {
+      executor: fixture.executor,
+      close: () => fixture.close(),
+    };
+  }
+
   const fixture =
     await createLocalPgliteFixture<JuniorDatabase>(juniorSqlSchema);
 

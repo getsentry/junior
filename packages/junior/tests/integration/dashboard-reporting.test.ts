@@ -14,14 +14,19 @@ const SYSTEM_MESSAGE = {
 };
 
 const ORIGINAL_ENV = { ...process.env };
+const USE_POSTGRES_HARNESS = Boolean(process.env.JUNIOR_TEST_DATABASE_URL);
 
 describe("dashboard reporting", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
-      DATABASE_URL: undefined,
-      JUNIOR_DATABASE_URL: undefined,
+      DATABASE_URL: USE_POSTGRES_HARNESS
+        ? ORIGINAL_ENV.DATABASE_URL
+        : undefined,
+      JUNIOR_DATABASE_URL: USE_POSTGRES_HARNESS
+        ? ORIGINAL_ENV.JUNIOR_DATABASE_URL
+        : undefined,
     };
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");

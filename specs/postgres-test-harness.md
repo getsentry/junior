@@ -8,8 +8,9 @@
 ## Purpose
 
 Junior SQL tests should exercise real Postgres behavior without paying schema
-setup cost in every test. The harness provides a reusable migrated database
-template plus per-test transaction rollback.
+setup cost in every test. The harness provides a migrated test database for
+normal production-style imports plus explicit isolated fixtures for migration
+contract tests.
 
 ## Scope
 
@@ -22,7 +23,6 @@ contract tests, or tests whose contract is independent of Postgres behavior.
 - Do not replace PGlite fixtures where Postgres-compatible in-memory behavior is
   sufficient.
 - Do not require a local Postgres service for ordinary package test runs.
-- Do not disable Vitest file parallelism as the default isolation strategy.
 - Do not put Junior schema or Drizzle ownership into the generic
   `@sentry/junior-testing/postgres` package.
 
@@ -54,11 +54,31 @@ database name derived from `VITEST_POOL_ID` so test files can remain parallel.
 The harness must terminate only connections with the configured test
 application name before dropping or recreating test databases.
 
+Worker setup sets `JUNIOR_DATABASE_URL` to the worker database URL before test
+files import product modules. Tests that use normal Junior imports such as
+configured conversation stores, plugin DB resolution, or `createJuniorSqlExecutor`
+must therefore use the test database without changing import paths, injecting a
+special executor, or mocking database factories.
+
+The worker database URL must include the harness application name so production
+code-created pools remain visible to harness cleanup.
+
+Before each test, the worker setup resets product data in the worker database
+under a Postgres advisory lock. Reset truncates public tables except
+`junior_schema_migrations`, restarts identity/serial sequences, and removes
+plugin migration records from `junior_schema_migrations`. Core Junior migration
+records remain because global setup already migrated the worker template.
+
 ## Fixture Modes
 
-`createMigratedJuniorSqlFixture()` is the default SQL fixture. It uses a
-worker-scoped database cloned from the migrated template, checks out one client,
-starts `BEGIN`, and rolls back in `close()`.
+Normal integration and component tests should not need a SQL fixture to use the
+test database. They should import product code normally and rely on
+`JUNIOR_DATABASE_URL` being pointed at the worker database by setup.
+
+`createMigratedJuniorSqlFixture()` is for tests that specifically need a pinned
+rollback-only transaction. It uses a worker-scoped database cloned from the
+migrated template, checks out one client, starts `BEGIN`, and rolls back in
+`close()`.
 
 `createEmptyJuniorSqlFixture()` is for migration contract tests. It creates an
 empty isolated database and does not apply Junior migrations implicitly.
@@ -76,8 +96,9 @@ fixture's stack before rethrowing.
 transaction. Empty lock names are invalid.
 
 Tests that use transactional fixtures must inject the returned executor or a
-store built from it. Production singleton database construction is not eligible
-for rollback isolation.
+store built from it. Production singleton database construction uses the
+worker-scoped global test database and before-each reset; it is not eligible for
+transaction rollback isolation.
 
 Calling `executor.close()` on a transactional fixture must be equivalent to
 calling the fixture's `close()`: rollback happens once, the client is released
@@ -90,6 +111,10 @@ fixtures must not assert first-run migration side effects.
 
 Migration tests must use empty fixtures and explicitly call the migration
 function under test.
+
+Plugin migrations in normal tests run against the worker database. Before-each
+reset must remove plugin migration records so a plugin migration can be applied
+fresh in a later test even if a previous test applied it.
 
 Plugin migrations may run inside the per-test transaction unless a test
 explicitly needs committed plugin schema state across clients.
@@ -110,7 +135,11 @@ and Drizzle database objects are created inside worker/test processes.
   name.
 - Empty or isolated fixtures that open pooled connections must use the same
   harness application name as global cleanup.
+- Product code-created test database pools must use the same harness application
+  name through the generated worker database URL.
 - Transactional fixture state must never commit to the worker database.
+- Normal production-style imports must use the worker test database when
+  `JUNIOR_TEST_DATABASE_URL` is configured.
 
 ## Observability
 
@@ -121,11 +150,14 @@ Vitest failures from setup, fixture creation, migration, rollback, or cleanup.
 
 Harness changes should include:
 
-- one isolation test proving data from one transactional fixture is rolled back
-  before the next fixture;
-- one migrated fixture test proving core schema is already present;
-- one empty fixture test proving migrations are explicit;
-- targeted converted SQL store tests;
+- representative product SQL suites run with `JUNIOR_TEST_DATABASE_URL` enabled,
+  using normal product imports and existing test fixtures;
+- at least one suite that exercises configured product database construction
+  rather than an injected SQL executor;
+- at least one suite that applies plugin migrations more than once across tests,
+  proving before-each reset clears plugin migration state;
+- migration contract tests that use empty fixtures and explicitly call the
+  migration function under test;
 - `pnpm --filter @sentry/junior-testing typecheck`;
 - `pnpm --filter @sentry/junior typecheck`.
 

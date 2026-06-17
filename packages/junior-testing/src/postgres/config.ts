@@ -30,9 +30,16 @@ function safeToken(value: string): string {
     .replace(/^_+/, "");
 }
 
-function databaseUrl(connectionString: string, databaseName: string): string {
+function databaseUrl(
+  connectionString: string,
+  databaseName: string,
+  applicationName?: string,
+): string {
   const parsed = new URL(connectionString);
   parsed.pathname = `/${databaseName}`;
+  if (applicationName) {
+    parsed.searchParams.set("application_name", applicationName);
+  }
   return parsed.toString();
 }
 
@@ -50,13 +57,18 @@ export function createPostgresHarnessConfig(
   }
   const templateDatabaseName = `${databasePrefix}_template`;
   return {
-    adminConnectionString: databaseUrl(options.connectionString, "postgres"),
+    adminConnectionString: databaseUrl(
+      options.connectionString,
+      "postgres",
+      applicationName,
+    ),
     applicationName,
     databasePrefix,
     templateDatabaseName,
     templateConnectionString: databaseUrl(
       options.connectionString,
       templateDatabaseName,
+      applicationName,
     ),
   };
 }
