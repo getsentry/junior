@@ -20,6 +20,7 @@ import {
   serializeGenAiAttribute,
   setSpanAttributes,
   setTags,
+  withLogContext,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
@@ -924,19 +925,21 @@ export async function generateAssistantReply(
         } as PiMessage,
       ];
 
-    thinkingSelection = await selectTurnThinkingLevel({
-      completeObject,
-      conversationContext: context.conversationContext,
-      context: {
-        threadId: context.correlation?.threadId,
-        channelId: context.correlation?.channelId,
-        requesterId: context.correlation?.requesterId,
-        runId: context.correlation?.runId,
-      },
-      currentTurnBlocks: routerBlocks,
-      fastModelId: botConfig.fastModelId,
-      messageText: userInput,
-    });
+    thinkingSelection = await withLogContext(spanContext, () =>
+      selectTurnThinkingLevel({
+        completeObject,
+        conversationContext: context.conversationContext,
+        context: {
+          threadId: context.correlation?.threadId,
+          channelId: context.correlation?.channelId,
+          requesterId: context.correlation?.requesterId,
+          runId: context.correlation?.runId,
+        },
+        currentTurnBlocks: routerBlocks,
+        fastModelId: botConfig.fastModelId,
+        messageText: userInput,
+      }),
+    );
     setSpanAttributes({
       "gen_ai.request.model": botConfig.modelId,
       "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
