@@ -1,5 +1,5 @@
 import pg from "pg";
-import { afterAll, beforeEach, inject } from "vitest";
+import { afterAll, afterEach, beforeEach, inject } from "vitest";
 import {
   cleanupPostgresWorkerDatabases,
   getPostgresWorkerDatabaseUrl,
@@ -78,6 +78,17 @@ beforeEach(async () => {
   } finally {
     client.release();
   }
+});
+
+afterEach(async () => {
+  if (!resetPool) {
+    return;
+  }
+  const { closeConfiguredConversationStore } =
+    await import("@/chat/conversations/configured");
+  const { closeConfiguredPluginDb } = await import("@/chat/plugins/db");
+  await closeConfiguredConversationStore();
+  await closeConfiguredPluginDb();
 });
 
 afterAll(async () => {

@@ -36,8 +36,6 @@ describe("persistAuthPauseSessionRecord", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     };
     vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
   });
 
   afterEach(async () => {
