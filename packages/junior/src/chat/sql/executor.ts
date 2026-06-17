@@ -3,11 +3,17 @@ import { createNeonJuniorSqlExecutor } from "./neon";
 import { createPostgresJuniorSqlExecutor } from "./postgres";
 
 function isLocalPostgresUrl(connectionString: string): boolean {
-  const parsed = new URL(connectionString);
+  let parsed: URL;
+  try {
+    parsed = new URL(connectionString);
+  } catch {
+    // Non-URL connection strings are accepted by node-postgres; let it validate them.
+    return true;
+  }
   return (
     parsed.hostname === "localhost" ||
     parsed.hostname === "127.0.0.1" ||
-    parsed.hostname === "::1"
+    parsed.hostname === "[::1]"
   );
 }
 

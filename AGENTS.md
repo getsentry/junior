@@ -143,4 +143,5 @@ Co-Authored-By: (agent model name) <email>
 - `specs/plugin-runtime.md` (plugin discovery, loading, skills, and MCP runtime contract)
 - `specs/dashboard.md` (authenticated dashboard, stateless Better Auth, and reporting boundary contract)
 - `specs/testing.md` (testing taxonomy and layer boundaries: unit/integration/eval)
+- `specs/postgres-test-harness.md` (real Postgres test database lifecycle, migrated templates, fixture isolation, and rollback semantics)
 - Historical evaluations and superseded trackers live under `specs/archive/`.

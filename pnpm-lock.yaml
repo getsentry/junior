@@ -238,6 +238,9 @@ importers:
       "@sentry/junior-test-fixtures":
         specifier: workspace:*
         version: file:packages/junior-test-fixtures(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      "@sentry/junior-testing":
+        specifier: workspace:*
+        version: link:../junior-testing
       "@types/node":
         specifier: ^25.9.1
         version: 25.9.1
@@ -462,7 +465,20 @@ importers:
         version: 6.0.3
 
   packages/junior-testing:
+    dependencies:
+      pg:
+        specifier: ^8.16.3
+        version: 8.21.0
+      zod:
+        specifier: "catalog:"
+        version: 4.4.3
     devDependencies:
+      "@types/node":
+        specifier: ^25.9.1
+        version: 25.9.1
+      "@types/pg":
+        specifier: ^8.15.6
+        version: 8.15.6
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

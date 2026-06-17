@@ -104,10 +104,12 @@ class PostgresExecutor implements JuniorSqlExecutor {
 
 /** Create the shared Node Postgres-backed Junior SQL executor. */
 export function createPostgresJuniorSqlExecutor(args: {
+  applicationName?: string;
   connectionString: string;
 }): JuniorSqlExecutor {
   return new PostgresExecutor(
     new Pool({
+      application_name: args.applicationName,
       connectionString: args.connectionString,
       max: 3,
     }),

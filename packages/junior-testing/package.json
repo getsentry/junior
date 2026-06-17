@@ -4,12 +4,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./http": "./src/http/index.ts"
+    "./http": "./src/http/index.ts",
+    "./postgres": "./src/postgres/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "zod": "catalog:"
+  },
   "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/pg": "^8.15.6",
     "typescript": "^6.0.3"
   }
 }
