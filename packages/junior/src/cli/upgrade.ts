@@ -3,7 +3,7 @@ import {
   getConnectedStateContext,
 } from "@/chat/state/adapter";
 import { createJiti } from "jiti";
-import { loadPluginSetFromModule, resolvePluginModule } from "@/plugin-module";
+import { loadAppPluginSet } from "@/plugin-module";
 import {
   requireConversationSqlDatabaseUrl,
   sqlConversationMigration,
@@ -60,20 +60,7 @@ export async function resolveUpgradePluginSet(): Promise<
     }
   }
 
-  let pluginModule: ReturnType<typeof resolvePluginModule>;
-  try {
-    pluginModule = resolvePluginModule(process.cwd(), "./plugins");
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === 'Plugin module "./plugins" could not be resolved'
-    ) {
-      return undefined;
-    }
-    throw error;
-  }
-
-  return await loadPluginSetFromModule(pluginModule, async (moduleRef) =>
+  return await loadAppPluginSet(process.cwd(), async (moduleRef) =>
     localPluginLoader.import<Record<string, unknown>>(moduleRef.importPath),
   );
 }
@@ -97,7 +84,8 @@ export async function runUpgradeMigrations(
 ): Promise<MigrationResult[]> {
   const plugins = await resolveUpgradePlugins(context);
   const migrationContext = { ...context, ...plugins };
-  requireConversationSqlDatabaseUrl(migrationContext);
+  migrationContext.sqlDatabaseUrl ??=
+    requireConversationSqlDatabaseUrl(migrationContext);
   const results: MigrationResult[] = [];
   for (const migration of MIGRATIONS) {
     migrationContext.io.info(`Running migration ${migration.name}...`);

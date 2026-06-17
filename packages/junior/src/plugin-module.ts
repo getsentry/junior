@@ -2,24 +2,24 @@ import { statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { RuntimePluginModule } from "./build/virtual-config";
 import type { JuniorPluginSet } from "./plugins";
 
-export interface JuniorPluginModuleReference {
+interface JuniorPluginModuleReference {
   /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */
   module: string;
   /** Named export to import from `module`. Defaults to `plugins`. */
   exportName?: string;
 }
 
-export interface ResolvedPluginModuleReference {
+interface ResolvedPluginModuleReference {
   exportName: string;
   importPath: string;
   importUrl: string;
-  runtimeModule: RuntimePluginModule;
+  kind: "file" | "package";
+  sourceSpecifier: string;
 }
 
-export const PLUGIN_MODULE_EXTENSIONS = [
+const PLUGIN_MODULE_EXTENSIONS = [
   "",
   ".ts",
   ".tsx",
@@ -30,10 +30,7 @@ export const PLUGIN_MODULE_EXTENSIONS = [
 ];
 
 /** Resolve a relative plugin module path using Junior's supported extension order. */
-export function resolveRelativePluginModule(
-  cwd: string,
-  specifier: string,
-): string {
+function resolveRelativePluginModule(cwd: string, specifier: string): string {
   const basePath = path.resolve(cwd, specifier);
   for (const extension of PLUGIN_MODULE_EXTENSIONS) {
     const candidate = `${basePath}${extension}`;
@@ -77,10 +74,8 @@ export function resolvePluginModule(
       exportName,
       importPath: resolvedPath,
       importUrl: pathToFileURL(resolvedPath).href,
-      runtimeModule: {
-        exportName,
-        specifier: resolvedPath.split(path.sep).join("/"),
-      },
+      kind: "file",
+      sourceSpecifier: moduleSpecifier,
     };
   }
 
@@ -90,18 +85,13 @@ export function resolvePluginModule(
     exportName,
     importPath: resolvedPath,
     importUrl: pathToFileURL(resolvedPath).href,
-    runtimeModule: {
-      exportName,
-      specifier: moduleSpecifier,
-    },
+    kind: "package",
+    sourceSpecifier: moduleSpecifier,
   };
 }
 
 /** Assert that a module export is a Junior plugin set. */
-export function assertPluginSet(
-  value: unknown,
-  source: string,
-): JuniorPluginSet {
+function assertPluginSet(value: unknown, source: string): JuniorPluginSet {
   if (
     !value ||
     typeof value !== "object" ||
@@ -110,6 +100,30 @@ export function assertPluginSet(
   ) {
     throw new Error(
       `Plugin module ${source} must export a defineJuniorPlugins(...) set`,
+    );
+  }
+
+  const pluginSet = value as Partial<JuniorPluginSet>;
+  const invalidPackageName = pluginSet.packageNames?.find(
+    (packageName) => typeof packageName !== "string",
+  );
+  if (invalidPackageName !== undefined) {
+    throw new Error(`Plugin module ${source} must export string package names`);
+  }
+
+  const invalidRegistration = pluginSet.registrations?.find(
+    (registration) =>
+      !registration ||
+      typeof registration !== "object" ||
+      !("manifest" in registration) ||
+      !registration.manifest ||
+      typeof registration.manifest !== "object" ||
+      !("name" in registration.manifest) ||
+      typeof registration.manifest.name !== "string",
+  );
+  if (invalidRegistration) {
+    throw new Error(
+      `Plugin module ${source} must export plugin registrations with manifest names`,
     );
   }
 
@@ -133,4 +147,27 @@ export async function loadPluginSetFromModule(
     value,
     `${moduleRef.importUrl}#${moduleRef.exportName}`,
   );
+}
+
+/** Load an app-local `./plugins` module when one exists. */
+export async function loadAppPluginSet(
+  cwd: string,
+  importModule?: (
+    moduleRef: ResolvedPluginModuleReference,
+  ) => Promise<Record<string, unknown>>,
+): Promise<JuniorPluginSet | undefined> {
+  let pluginModule: ResolvedPluginModuleReference;
+  try {
+    pluginModule = resolvePluginModule(cwd, "./plugins");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'Plugin module "./plugins" could not be resolved'
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+
+  return await loadPluginSetFromModule(pluginModule, importModule);
 }

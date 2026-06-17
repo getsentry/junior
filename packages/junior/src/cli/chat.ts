@@ -13,7 +13,7 @@ import {
 import { randomUUID } from "node:crypto";
 import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
-import { loadPluginSetFromModule, resolvePluginModule } from "@/plugin-module";
+import { loadAppPluginSet } from "@/plugin-module";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type { LocalAgentReply } from "@/chat/local/runner";
 import type { JuniorPluginSet } from "@/plugins";
@@ -101,25 +101,14 @@ function defaultStateAdapterForLocalChat(): void {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 }
 
+/** Load the app plugin module so source-mode local chat matches server wiring. */
 async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
-  let pluginModule: ReturnType<typeof resolvePluginModule>;
-  try {
-    pluginModule = resolvePluginModule(process.cwd(), "./plugins");
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === 'Plugin module "./plugins" could not be resolved'
-    ) {
-      return undefined;
-    }
-    throw error;
-  }
-
-  return await loadPluginSetFromModule(pluginModule, async (moduleRef) =>
+  return await loadAppPluginSet(process.cwd(), async (moduleRef) =>
     localPluginLoader.import<Record<string, unknown>>(moduleRef.importPath),
   );
 }
 
+/** Configure plugin hooks after local chat has selected its state adapter. */
 async function configureLocalChatPlugins(): Promise<void> {
   const [
     pluginsModule,

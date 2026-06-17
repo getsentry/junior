@@ -257,6 +257,7 @@ async function handleConfigCommand(
   });
 }
 
+/** List installed plugin metadata that is useful to agent tool selection. */
 async function handlePluginsCommand(
   args: string[],
 ): Promise<ReturnType<typeof commandResult>> {
@@ -276,11 +277,6 @@ async function handlePluginsCommand(
       description: plugin.manifest.description,
       capabilities: [...plugin.manifest.capabilities],
       configKeys: [...plugin.manifest.configKeys],
-      hasCredentials: Boolean(plugin.manifest.credentials),
-      hasMcp: Boolean(plugin.manifest.mcp),
-      hasOAuth: Boolean(plugin.manifest.oauth),
-      hasSkills: Boolean(plugin.skillsDir),
-      hasMigrations: Boolean(plugin.migrationsDir),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 

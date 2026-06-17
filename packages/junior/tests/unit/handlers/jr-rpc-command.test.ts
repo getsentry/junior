@@ -168,11 +168,6 @@ describe("jr-rpc custom command", () => {
             description: "Example plugin",
             capabilities: ["example.search"],
             configKeys: ["example.repo"],
-            hasCredentials: false,
-            hasMcp: false,
-            hasOAuth: false,
-            hasSkills: false,
-            hasMigrations: false,
           },
         ]),
       );

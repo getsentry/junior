@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import { parseEnv } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { loadEnvFiles } from "./lib/load-env-files.mjs";
 import {
   linkDirectory,
   resolveInjectedPackageDir,
@@ -29,36 +29,6 @@ if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
     Boolean(process.stdout?.isTTY) || Boolean(process.stderr?.isTTY);
   if (hasTty) {
     process.env.FORCE_COLOR = "1";
-  }
-}
-
-const envCandidates = [
-  `.env.${nodeEnv}.local`,
-  nodeEnv === "test" ? null : ".env.local",
-  `.env.${nodeEnv}`,
-  ".env",
-].filter(Boolean);
-
-function loadEnvFiles(roots) {
-  const protectedKeys = new Set(Object.keys(process.env));
-  const loadedKeys = new Set();
-
-  for (const root of roots) {
-    for (const relativePath of envCandidates) {
-      const absolutePath = path.join(root, relativePath);
-      if (!fs.existsSync(absolutePath)) {
-        continue;
-      }
-
-      const values = parseEnv(fs.readFileSync(absolutePath, "utf8"));
-      for (const [name, value] of Object.entries(values)) {
-        if (protectedKeys.has(name) && !loadedKeys.has(name)) {
-          continue;
-        }
-        process.env[name] = value;
-        loadedKeys.add(name);
-      }
-    }
   }
 }
 

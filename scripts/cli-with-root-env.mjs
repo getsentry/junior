@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
-import fs from "node:fs";
-import { parseEnv } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { loadEnvFiles } from "./lib/load-env-files.mjs";
 
 const workspaceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -15,39 +14,8 @@ const juniorTsconfigPath = path.join(
   "junior",
   "tsconfig.json",
 );
-const nodeEnv = process.env.NODE_ENV ?? "development";
 const rawCliArgs = process.argv.slice(2);
 const cliArgs = rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
-
-const envCandidates = [
-  `.env.${nodeEnv}.local`,
-  nodeEnv === "test" ? null : ".env.local",
-  `.env.${nodeEnv}`,
-  ".env",
-].filter(Boolean);
-
-function loadEnvFiles(roots) {
-  const protectedKeys = new Set(Object.keys(process.env));
-  const loadedKeys = new Set();
-
-  for (const root of roots) {
-    for (const relativePath of envCandidates) {
-      const absolutePath = path.join(root, relativePath);
-      if (!fs.existsSync(absolutePath)) {
-        continue;
-      }
-
-      const values = parseEnv(fs.readFileSync(absolutePath, "utf8"));
-      for (const [name, value] of Object.entries(values)) {
-        if (protectedKeys.has(name) && !loadedKeys.has(name)) {
-          continue;
-        }
-        process.env[name] = value;
-        loadedKeys.add(name);
-      }
-    }
-  }
-}
 
 loadEnvFiles([workspaceRoot, exampleRoot]);
 

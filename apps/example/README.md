@@ -14,7 +14,7 @@ It demonstrates:
 ```bash
 pnpm install
 cp apps/example/.env.example apps/example/.env
-docker compose up -d postgres redis
+docker compose up -d --wait postgres redis
 pnpm cli -- upgrade
 pnpm dev
 ```

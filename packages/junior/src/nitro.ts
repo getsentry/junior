@@ -5,7 +5,10 @@ import {
   copyAppAndPluginContent,
   copyIncludedFiles,
 } from "@/build/copy-build-content";
-import { injectVirtualConfig } from "@/build/virtual-config";
+import {
+  injectVirtualConfig,
+  type RuntimePluginModule,
+} from "@/build/virtual-config";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -81,6 +84,18 @@ function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   throw new Error(
     `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime hook registration(s): ${pluginHookNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.`,
   );
+}
+
+function runtimeModuleForResolvedPluginModule(
+  moduleRef: ReturnType<typeof resolvePluginModule>,
+): RuntimePluginModule {
+  return {
+    exportName: moduleRef.exportName,
+    specifier:
+      moduleRef.kind === "file"
+        ? moduleRef.importPath.split(path.sep).join("/")
+        : moduleRef.sourceSpecifier,
+  };
 }
 
 /**
@@ -205,7 +220,8 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           ...(pluginModule
             ? {
                 loadPluginSet: loadConfiguredPluginSet,
-                pluginModule: pluginModule.runtimeModule,
+                pluginModule:
+                  runtimeModuleForResolvedPluginModule(pluginModule),
               }
             : {}),
           plugins: pluginCatalogConfig,
