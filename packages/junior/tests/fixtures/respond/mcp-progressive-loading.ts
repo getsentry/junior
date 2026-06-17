@@ -427,6 +427,7 @@ const {
 const {
   discoverSkills: discoverSkillsImpl,
   findSkillByName: findSkillByNameImpl,
+  loadSkillsByName: loadSkillsByNameImpl,
   parseSkillInvocation: parseSkillInvocationImpl,
 } = await import("@/chat/skills");
 const { recordAuthorizationRequested: recordAuthorizationRequestedImpl } =
@@ -492,20 +493,21 @@ const mcpAuthServices = {
   getMcpAuthSession: getMcpAuthSessionImpl,
   patchMcpAuthSession: patchMcpAuthSessionImpl,
   recordAuthorizationRequested: recordAuthorizationRequestedImpl,
-} satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[1]>;
+} satisfies NonNullable<Parameters<typeof createMcpAuthOrchestrationImpl>[2]>;
 
 type ReplyContext = NonNullable<
   Parameters<typeof generateAssistantReplyImpl>[1]
 >;
 
 const respondRuntimeServices = {
-  createMcpAuthOrchestration: (input) =>
-    createMcpAuthOrchestrationImpl(input, mcpAuthServices),
+  createMcpAuthOrchestration: (input, abortAgent) =>
+    createMcpAuthOrchestrationImpl(input, abortAgent, mcpAuthServices),
   discoverSkills: discoverSkillsImpl,
   findSkillByName: findSkillByNameImpl,
   getConfigDefaults: getConfigDefaultsImpl,
   getPluginMcpProviders: () => [demoPlugin],
   getPluginProviders: () => [demoPlugin],
+  loadSkillsByName: loadSkillsByNameImpl,
   parseSkillInvocation: parseSkillInvocationImpl,
 } satisfies NonNullable<
   NonNullable<ReplyContext["harness"]>["runtimeServices"]

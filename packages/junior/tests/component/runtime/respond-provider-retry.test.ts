@@ -18,7 +18,7 @@ import {
 import {
   configureRespondRuntimeEnv,
   restoreRespondRuntimeEnv,
-} from "../../fixtures/respond-env";
+} from "../../fixtures/respond/env";
 import { mockTestClock } from "../../fixtures/vitest";
 
 const originalEnv = configureRespondRuntimeEnv();
