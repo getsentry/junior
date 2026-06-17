@@ -370,7 +370,12 @@ describe("Slack behavior: durable turn steering", () => {
         steeringTexts: [],
       },
     ]);
-    expect(slackApiOutbox.messages()).toHaveLength(2);
+    const deliveredMessages = slackApiOutbox.messages();
+    expect(deliveredMessages).toHaveLength(2);
+    expect(deliveredMessages.map((message) => message.params.text)).toEqual([
+      "Handled initial: start the incident summary\n\nSteered: include the rollback owner",
+      `Handled initial: ${agentCalls[1]?.prompt}\n\nSteered:`,
+    ]);
     const work = await getConversationWorkState({
       conversationId,
       state,

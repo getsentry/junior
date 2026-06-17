@@ -1293,10 +1293,15 @@ export async function checkInConversationWork(args: {
   });
 }
 
-/** Drain pending mailbox entries after the caller has durably injected them. */
+/**
+ * Drain pending mailbox entries after the caller acknowledges durable handling.
+ *
+ * Returning ids acknowledges only that subset; returning nothing acknowledges
+ * every offered pending entry.
+ */
 export async function drainConversationMailbox(args: {
   conversationId: string;
-  inject: (messages: InboundMessage[]) => Promise<InboundMessage[] | void>;
+  inject: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1315,7 +1320,20 @@ export async function drainConversationMailbox(args: {
     return [];
   }
 
-  const acknowledged = await args.inject(pending);
+  const acknowledgedIds = await args.inject(pending);
+  const offeredIds = new Set(
+    pending.map((message) => message.inboundMessageId),
+  );
+  for (const inboundMessageId of acknowledgedIds ?? []) {
+    if (!offeredIds.has(inboundMessageId)) {
+      throw new Error(
+        `Conversation mailbox acknowledgement is not pending for ${args.conversationId}`,
+      );
+    }
+  }
+  const drainedIds = new Set(
+    acknowledgedIds ?? pending.map((message) => message.inboundMessageId),
+  );
 
   await withConversationMutation(args, async (state) => {
     const current = await readConversation(state, args.conversationId);
@@ -1324,9 +1342,6 @@ export async function drainConversationMailbox(args: {
         `Conversation lease is not held for ${args.conversationId}`,
       );
     }
-    const drainedIds = new Set(
-      (acknowledged ?? pending).map((message) => message.inboundMessageId),
-    );
     const pendingMessages = current.execution.pendingMessages.filter(
       (message) => !drainedIds.has(message.inboundMessageId),
     );
@@ -1347,7 +1362,7 @@ export async function drainConversationMailbox(args: {
       ),
     );
   });
-  return acknowledged ?? pending;
+  return pending.filter((message) => drainedIds.has(message.inboundMessageId));
 }
 
 /** Mark selected leased mailbox entries after their session-log injection succeeds. */

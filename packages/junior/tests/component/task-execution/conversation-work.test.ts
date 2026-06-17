@@ -685,9 +685,9 @@ describe("conversation work execution", () => {
         run: async (context) => {
           await context.drainMailbox(async (messages) => {
             injected.push(messages.map((message) => message.inboundMessageId));
-            return messages.filter(
-              (message) => message.inboundMessageId === "m1",
-            );
+            return messages
+              .filter((message) => message.inboundMessageId === "m1")
+              .map((message) => message.inboundMessageId);
           });
           return { status: "completed" };
         },
@@ -701,6 +701,30 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(true);
     expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
       "m2",
+    ]);
+  });
+
+  it("rejects mailbox acknowledgements outside the offered pending set", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => ["different-message"]);
+          return { status: "completed" };
+        },
+      }),
+    ).rejects.toThrow(
+      "Conversation mailbox acknowledgement is not pending for",
+    );
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
+      "m1",
     ]);
   });
 

@@ -104,7 +104,13 @@ function compareInboundMessages(
 }
 
 function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
-  return records.some((record) => record.input.metadata?.route === "mention")
+  return records.some((record) => {
+    const metadata = record.input.metadata;
+    if (!isSlackMetadata(metadata)) {
+      throw new Error("Conversation mailbox record is not Slack metadata");
+    }
+    return metadata.route === "mention";
+  })
     ? "mention"
     : "subscribed";
 }
@@ -299,38 +305,29 @@ export function createSlackConversationWorker(
             );
           }
         };
+        // Restore stored mailbox entries as Slack steering candidates; the
+        // runtime returns only the inbound ids it handled durably.
         const drainSteeringMessages = async (
           inject: (
             messages: SteeringCandidateMessage[],
-          ) => Promise<SteeringCandidateMessage[] | void>,
-        ): Promise<SteeringCandidateMessage[]> => {
-          let restoredMessages: SteeringCandidateMessage[] | undefined;
-          const drained = await context.drainMailbox(async (pendingRecords) => {
-            const messages = pendingRecords.map((record) => ({
-              activeRequest: record.input.metadata?.route === "mention",
-              inboundMessageId: record.inboundMessageId,
-              message: restoreMessage({ adapter, record }),
-            }));
-            restoredMessages = messages;
-            const acknowledged = await inject(messages);
-            if (!acknowledged) {
-              return undefined;
-            }
-            const acknowledgedIds = new Set(
-              acknowledged.map((candidate) => candidate.inboundMessageId),
-            );
-            return pendingRecords.filter((record) => {
-              return acknowledgedIds.has(record.inboundMessageId);
+          ) => Promise<readonly string[] | void>,
+        ): Promise<void> => {
+          await context.drainMailbox(async (pendingRecords) => {
+            const messages = pendingRecords.map((record) => {
+              const metadata = record.input.metadata;
+              if (!isSlackMetadata(metadata)) {
+                throw new Error(
+                  "Conversation mailbox record is not Slack metadata",
+                );
+              }
+              return {
+                activeRequest: metadata.route === "mention",
+                inboundMessageId: record.inboundMessageId,
+                message: restoreMessage({ adapter, record }),
+              };
             });
+            return await inject(messages);
           });
-          return (
-            restoredMessages ??
-            drained.map((record) => ({
-              activeRequest: record.input.metadata?.route === "mention",
-              inboundMessageId: record.inboundMessageId,
-              message: restoreMessage({ adapter, record }),
-            }))
-          );
         };
 
         try {

@@ -447,22 +447,28 @@ metadata.
 A worker that owns the lease advances the conversation:
 
 1. Start the lease check-in timer.
-2. Drain pending mailbox messages into the agent session log.
+2. Offer pending mailbox messages to the runtime and acknowledge the entries it
+   durably handled.
 3. Restore Pi state from the reduced session log.
 4. Call `continue()`.
-5. At each safe boundary, drain newly pending mailbox messages into the same
-   active conversation before another model call starts.
+5. At each safe boundary, offer newly pending mailbox messages before another
+   model call starts. The runtime may acknowledge a subset when only some
+   messages should be injected into the active run.
 6. If cooperative yield is due, enqueue `{ conversationId, destination }`, release the lease,
    acknowledge the queue delivery, and exit.
-7. If the agent is final, drain the mailbox one last time before delivery. If new
-   messages were pending, continue instead of posting a stale answer.
+7. If the agent is final, offer the mailbox one last time before delivery. If
+   the runtime acknowledged active work for the current run, continue instead of
+   posting a stale answer. If unacknowledged passive work remains pending, the
+   current answer may be delivered and the pending work is requeued for a later
+   slice.
 8. Deliver the finalized reply through the destination delivery port.
 9. Persist completion state, release the lease, and acknowledge the queue
    delivery.
 
-Inbound messages that arrive during an active run are part of the active
-conversation. They are injected at the next safe boundary, not treated as a
-separate concurrent agent run.
+Inbound messages that arrive during an active run are conversation mailbox
+entries, not separate concurrent agent runs. Runtime-specific routing decides
+whether each entry interrupts the active run, is consumed without agent
+injection, or remains pending for a later slice.
 
 ### Cooperative Yield Contract
 
@@ -731,8 +737,9 @@ Required invariants, using the lowest layer that proves the contract:
 16. Component: the all-conversation index is sorted by `lastActivityAtMs`; the
     active-conversation index contains only non-idle conversations and is sorted
     by `execution.updatedAtMs`.
-17. Evals: realistic multi-message Slack follow-ups during long work are folded
-    into the active answer without losing user intent.
+17. Integration: realistic multi-message Slack follow-ups during long work
+    preserve user intent by interrupting active requests and deferring passive
+    reply-eligible messages according to the Slack delivery contract.
 
 ## Related Specs
 

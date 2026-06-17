@@ -31,7 +31,7 @@ export interface ConversationWorkerContext {
   conversationId: string;
   destination: Destination;
   drainMailbox(
-    inject: (messages: InboundMessage[]) => Promise<InboundMessage[] | void>,
+    inject: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
   ): Promise<InboundMessage[]>;
   leaseToken: string;
   shouldYield(): boolean;

@@ -64,8 +64,8 @@ export interface ReplyHooks {
   drainSteeringMessages?: (
     inject: (
       messages: SteeringCandidateMessage[],
-    ) => Promise<SteeringCandidateMessage[] | void>,
-  ) => Promise<SteeringCandidateMessage[]>;
+    ) => Promise<readonly string[] | void>,
+  ) => Promise<void>;
   messageContext?: MessageContext;
   onInputCommitted?: () => Promise<void>;
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
@@ -258,7 +258,7 @@ interface SteeringMessageDecision {
   context: TurnContext;
   decision: SubscribedReplyDecision;
   inboundMessageId: string;
-  mode?: SteeringMode;
+  mode: SteeringMode;
   message: Message;
   text: TurnMessageText;
 }
@@ -272,7 +272,7 @@ interface SteeringMessageSelection {
   skipped: SteeringMessageDecision[];
 }
 
-/** Drain mailbox steering messages only after selecting work Junior will process. */
+/** Drain mailbox steering messages after classifying interrupt, defer, and skip. */
 function createAcceptedSteeringDrain(
   hooks: ReplyHooks,
   options: {
@@ -300,21 +300,20 @@ function createAcceptedSteeringDrain(
     await hooks.drainSteeringMessages!(async (messages) => {
       const selection = await options.selectMessages(messages, context);
       await options.onSkipped?.(selection.skipped);
+      // Deferred accepted messages stay pending so a later worker slice handles
+      // them after the active answer is delivered.
       const interrupted = selection.accepted
         .filter((accepted) => accepted.mode === "interrupt")
         .map((accepted) => accepted.message);
       await inject(getQueuedMessagesFromSlackMessages(interrupted, options));
       interruptedMessages = interrupted;
       await options.onAcceptedForProcessing?.(interrupted);
-      const acknowledged = new Set([
+      return [
         ...selection.accepted
           .filter((accepted) => accepted.mode === "interrupt")
           .map((accepted) => accepted.inboundMessageId),
         ...selection.skipped.map((skipped) => skipped.inboundMessageId),
-      ]);
-      return messages.filter((message) =>
-        acknowledged.has(message.inboundMessageId),
-      );
+      ];
     });
     return getQueuedMessagesFromSlackMessages(
       interruptedMessages ?? [],
@@ -483,7 +482,7 @@ export function createSlackTurnRuntime<
   ): Promise<{
     context: TurnContext;
     decision: SubscribedReplyDecision;
-    mode?: SteeringMode;
+    mode: SteeringMode;
     text: TurnMessageText;
   }> => {
     const { message } = candidate;
@@ -516,11 +515,7 @@ export function createSlackTurnRuntime<
     return {
       context,
       decision,
-      mode: decision.shouldReply
-        ? isActiveRequest
-          ? "interrupt"
-          : "defer"
-        : undefined,
+      mode: isActiveRequest ? "interrupt" : "defer",
       text,
     };
   };
@@ -624,7 +619,7 @@ export function createSlackTurnRuntime<
         .map((message) => ({
           inboundMessageId: message.inboundMessageId,
           message: message.message,
-          mode: message.mode ?? "defer",
+          mode: message.mode,
         })),
       skipped: selected.filter((message) => !message.decision.shouldReply),
     };

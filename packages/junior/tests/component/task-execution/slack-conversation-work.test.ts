@@ -603,7 +603,6 @@ describe("Slack conversation work execution", () => {
     });
 
     const injected: string[][] = [];
-    const drained: string[][] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.onInputCommitted?.();
@@ -617,11 +616,10 @@ describe("Slack conversation work execution", () => {
           ),
           services: ingressServices,
         });
-        const messages =
-          (await hooks.drainSteeringMessages?.(async (steering) => {
-            injected.push(steering.map((candidate) => candidate.message.id));
-          })) ?? [];
-        drained.push(messages.map((candidate) => candidate.message.id));
+        await hooks.drainSteeringMessages?.(async (steering) => {
+          injected.push(steering.map((candidate) => candidate.message.id));
+          return steering.map((candidate) => candidate.inboundMessageId);
+        });
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");
@@ -637,7 +635,6 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(injected).toEqual([["1712345.0002"]]);
-    expect(drained).toEqual([["1712345.0002"]]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
