@@ -564,14 +564,15 @@ INSERT INTO junior_conversations (
       await entered.promise;
 
       await vi.advanceTimersByTimeAsync(15_000);
-
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({
-        execution: {
-          status: "running",
-          updatedAtMs: 16_000,
-        },
+      await vi.waitFor(async () => {
+        await expect(
+          store.get({ conversationId: CONVERSATION_ID }),
+        ).resolves.toMatchObject({
+          execution: {
+            status: "running",
+            updatedAtMs: 16_000,
+          },
+        });
       });
 
       finish.resolve();
