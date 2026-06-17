@@ -299,6 +299,30 @@ function validateRecurringFrequencyLimit(input: { recurrence?: unknown }) {
   }
 }
 
+function validateCreateScheduleKind(input: {
+  recurrence?: unknown;
+  schedule_kind?: unknown;
+}) {
+  if (input.schedule_kind === undefined) {
+    throwToolInputError("Provide schedule_kind as one_off or recurring.");
+  }
+  if (
+    input.schedule_kind !== "one_off" &&
+    input.schedule_kind !== "recurring"
+  ) {
+    throwToolInputError("schedule_kind must be one_off or recurring.");
+  }
+  if (input.schedule_kind === "one_off" && input.recurrence !== undefined) {
+    throwToolInputError("Omit recurrence when schedule_kind is one_off.");
+  }
+  if (
+    input.schedule_kind === "recurring" &&
+    (input.recurrence === undefined || input.recurrence === null)
+  ) {
+    throwToolInputError("Provide recurrence when schedule_kind is recurring.");
+  }
+}
+
 function shouldRebuildRecurrence(input: {
   next_run_at?: string;
   recurrence?: unknown;
@@ -343,11 +367,18 @@ export function createSlackScheduleCreateTaskTool(
 ) {
   return tool({
     description:
-      "Create a future or recurring Junior task in the active Slack conversation. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
+      "Create a one-time or recurring Junior task in the active Slack conversation. For one-time reminders or one-time scheduled work, omit recurrence entirely; never choose a default recurrence. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
     executionMode: "sequential",
     inputSchema: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 4000 }),
       schedule: Type.String({ minLength: 1, maxLength: 300 }),
+      schedule_kind: Type.Union(
+        [Type.Literal("one_off"), Type.Literal("recurring")],
+        {
+          description:
+            "Required schedule classification. Use one_off for one-time reminders or one-time scheduled work. Use recurring only when the user explicitly asks for a repeating schedule.",
+        },
+      ),
       timezone: Type.Optional(
         Type.String({
           minLength: 1,
@@ -373,7 +404,7 @@ export function createSlackScheduleCreateTaskTool(
           ],
           {
             description:
-              "Provide only for explicitly repeating schedules; omit for one-time requests like 'in 1 minute', 'tomorrow', or a specific date. Recurring tasks run at most once per day: use daily, weekly, monthly, or yearly only.",
+              "Required when schedule_kind is recurring. Omit when schedule_kind is one_off. Recurring tasks run at most once per day: use daily, weekly, monthly, or yearly only.",
           },
         ),
       ),
@@ -384,6 +415,7 @@ export function createSlackScheduleCreateTaskTool(
 
       const nowMs = Date.now();
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
+      validateCreateScheduleKind(input);
       validateRecurringFrequencyLimit(input);
       if (!isValidTimeZone(timezone)) {
         throwToolInputError("timezone must be a valid IANA time zone.");

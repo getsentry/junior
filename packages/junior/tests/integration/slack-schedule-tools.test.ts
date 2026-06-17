@@ -139,6 +139,7 @@ async function createTask(
   return await executeTool(tool, {
     task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
     schedule: "Every Monday at 9am",
+    schedule_kind: "recurring",
     timezone: "America/Los_Angeles",
     next_run_at: "2026-05-25T16:00:00.000Z",
     recurrence: "weekly",
@@ -158,6 +159,27 @@ describe("Slack schedule tools", () => {
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
+  });
+
+  it("exposes schedule kind as a required create schema field", async () => {
+    const schema = createSlackScheduleCreateTaskTool(createContext())
+      .inputSchema as {
+      properties?: Record<
+        string,
+        {
+          anyOf?: Array<{ const?: unknown }>;
+          oneOf?: Array<{ const?: unknown }>;
+        }
+      >;
+      required?: string[];
+    };
+    const scheduleKind = schema.properties?.schedule_kind;
+    const options = (scheduleKind?.anyOf ?? scheduleKind?.oneOf ?? [])
+      .map((option) => option.const)
+      .sort();
+
+    expect(schema.required).toContain("schedule_kind");
+    expect(options).toEqual(["one_off", "recurring"]);
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -216,6 +238,7 @@ describe("Slack schedule tools", () => {
       {
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         schedule: "Every Monday at 9am",
+        schedule_kind: "recurring",
         timezone: "America/Los_Angeles",
         next_run_at: "2026-05-25T16:00:00.000Z",
         recurrence: "weekly",
@@ -290,6 +313,7 @@ describe("Slack schedule tools", () => {
       {
         task: "Reminder: Remind David to wash his hands.",
         schedule: "In 1 minute",
+        schedule_kind: "one_off",
         next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
@@ -414,6 +438,7 @@ describe("Slack schedule tools", () => {
       {
         task: "Wash hands reminder: Remind David to wash his hands.",
         schedule: "In 1 minute",
+        schedule_kind: "one_off",
         next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
@@ -460,6 +485,7 @@ describe("Slack schedule tools", () => {
       {
         task: "Drink water reminder: Remind David to drink water.",
         schedule: "In 1 minute",
+        schedule_kind: "one_off",
         next_run_at: "2026-05-27T00:25:23.000Z",
       },
     );
@@ -497,6 +523,7 @@ describe("Slack schedule tools", () => {
       {
         task: "Remind Greg to drink water.",
         schedule: "In 1 minute",
+        schedule_kind: "one_off",
         next_run_at: "2026-05-28T02:18:48.005Z",
       },
     );
@@ -555,6 +582,42 @@ describe("Slack schedule tools", () => {
     ).rejects.toThrow(
       "Recurring scheduled tasks can run at most once per day.",
     );
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects create calls that omit schedule kind", async () => {
+    await expect(
+      createTask(createContext(), {
+        schedule_kind: undefined,
+      }),
+    ).rejects.toThrow("Provide schedule_kind as one_off or recurring.");
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects one-off create calls that include recurrence", async () => {
+    await expect(
+      createTask(createContext(), {
+        schedule: "In 30 seconds",
+        schedule_kind: "one_off",
+        recurrence: "daily",
+      }),
+    ).rejects.toThrow("Omit recurrence when schedule_kind is one_off.");
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects recurring create calls that omit recurrence", async () => {
+    await expect(
+      createTask(createContext(), {
+        schedule_kind: "recurring",
+        recurrence: undefined,
+      }),
+    ).rejects.toThrow("Provide recurrence when schedule_kind is recurring.");
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
@@ -834,6 +897,7 @@ describe("Slack schedule tools", () => {
         },
         {
           schedule: "In 1 minute",
+          schedule_kind: "one_off",
           next_run_at: "2026-05-27T00:25:23.000Z",
           recurrence: undefined,
         },
@@ -847,6 +911,7 @@ describe("Slack schedule tools", () => {
   it("stores canonical Slack destinations directly", async () => {
     const result = await createTask(createContext({ channelId: "D123" }), {
       schedule: "In 1 minute",
+      schedule_kind: "one_off",
       next_run_at: "2026-05-27T00:25:23.000Z",
       recurrence: undefined,
     });
@@ -875,6 +940,7 @@ describe("Slack schedule tools", () => {
 
     const created = await createTask(createContext(), {
       schedule: "On May 26 at 9am",
+      schedule_kind: "one_off",
       next_run_at: "2026-05-26T16:00:00.000Z",
       recurrence: undefined,
       timezone: undefined,
@@ -897,6 +963,7 @@ describe("Slack schedule tools", () => {
 
     const created = await createTask(createContext(), {
       schedule: "On May 26 at 9am",
+      schedule_kind: "one_off",
       next_run_at: "2026-05-26T13:00:00.000Z",
       recurrence: undefined,
       timezone: undefined,
@@ -1178,6 +1245,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
       const result = await executeTool(tools.slackScheduleCreateTask, {
         task: "Wiring test: post a weekly digest.",
         schedule: "Every Monday at 9am",
+        schedule_kind: "recurring",
         timezone: "America/Los_Angeles",
         next_run_at: "2026-06-09T16:00:00.000Z",
         recurrence: "weekly",

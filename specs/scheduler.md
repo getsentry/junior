@@ -64,7 +64,7 @@ Every active task must have an exact `nextRunAtMs` instant. For one-off tasks, t
 Slack authoring may accept supported relative one-off phrases such as "tomorrow at 9am"; these must be resolved to an exact `nextRunAtMs` before storage. When a user does not provide a timezone, scheduler authoring defaults to `America/Los_Angeles` unless `JUNIOR_TIMEZONE` overrides it.
 Scheduler tools accept exact ISO run timestamps only. Natural-language or relative time belongs in the agent's interpretation step before it calls the tool, not in the storage tool contract.
 
-Model-facing scheduler tools use a small recurrence input: omit recurrence for one-off tasks, pass `daily`, `weekly`, `monthly`, or `yearly` for recurring tasks, and pass `null` only when updating an existing task to one-off. The scheduler derives stored calendar fields such as local start date, local time, weekday, month, and day-of-month from `nextRunAtMs` and timezone.
+Model-facing scheduler create tools use an explicit `schedule_kind`: pass `one_off` for one-off tasks and `recurring` only when the user explicitly asks for a repeating task. For recurring create calls, also pass `daily`, `weekly`, `monthly`, or `yearly` as `recurrence`; for one-off create calls, omit `recurrence`. Model-facing update tools use the same small recurrence input for schedule edits, and pass `null` only when updating an existing task to one-off. The scheduler derives stored calendar fields such as local start date, local time, weekday, month, and day-of-month from `nextRunAtMs` and timezone.
 
 Recurring tasks must also store a small calendar recurrence rule:
 
