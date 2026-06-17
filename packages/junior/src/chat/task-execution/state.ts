@@ -1296,7 +1296,7 @@ export async function checkInConversationWork(args: {
 /** Drain pending mailbox entries after the caller has durably injected them. */
 export async function drainConversationMailbox(args: {
   conversationId: string;
-  inject: (messages: InboundMessage[]) => Promise<void>;
+  inject: (messages: InboundMessage[]) => Promise<InboundMessage[] | void>;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1315,7 +1315,7 @@ export async function drainConversationMailbox(args: {
     return [];
   }
 
-  await args.inject(pending);
+  const acknowledged = await args.inject(pending);
 
   await withConversationMutation(args, async (state) => {
     const current = await readConversation(state, args.conversationId);
@@ -1325,7 +1325,7 @@ export async function drainConversationMailbox(args: {
       );
     }
     const drainedIds = new Set(
-      pending.map((message) => message.inboundMessageId),
+      (acknowledged ?? pending).map((message) => message.inboundMessageId),
     );
     const pendingMessages = current.execution.pendingMessages.filter(
       (message) => !drainedIds.has(message.inboundMessageId),
@@ -1347,7 +1347,7 @@ export async function drainConversationMailbox(args: {
       ),
     );
   });
-  return pending;
+  return acknowledged ?? pending;
 }
 
 /** Mark selected leased mailbox entries after their session-log injection succeeds. */

@@ -233,9 +233,10 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
   });
 
-  it("steers rapid Slack webhook follow-ups into one active worker turn", async () => {
+  it("interrupts explicit follow-ups and defers passive follow-ups during an active turn", async () => {
     const agentEntered = deferred();
     const releaseAgent = deferred();
+    let blockingCallReleased = false;
     const agentCalls: Array<{
       prompt: string;
       steeringTexts: string[];
@@ -244,8 +245,11 @@ describe("Slack behavior: durable turn steering", () => {
     const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
       async (prompt, context) => {
         await context?.onInputCommitted?.();
-        agentEntered.resolve();
-        await releaseAgent.promise;
+        if (!blockingCallReleased) {
+          agentEntered.resolve();
+          await releaseAgent.promise;
+          blockingCallReleased = true;
+        }
 
         const steeringMessages: ReplySteeringMessage[] = [];
         const drained = await context?.drainSteeringMessages?.(
@@ -270,7 +274,7 @@ describe("Slack behavior: durable turn steering", () => {
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
         completeObject: completeObjectWithDecision((prompt) =>
-          prompt.includes("thanks folks")
+          prompt.includes("<latest-message>thanks folks</latest-message>")
             ? {
                 should_reply: false,
                 confidence: 1,
@@ -305,13 +309,17 @@ describe("Slack behavior: durable turn steering", () => {
     for (const followUp of [
       { text: "add customer impact", ts: "1712345.000200" },
       { text: "thanks folks", ts: "1712345.000250" },
-      { text: "include the rollback owner", ts: "1712345.000300" },
+      {
+        eventType: "app_mention" as const,
+        text: `<@${SLACK_BOT_USER_ID}> include the rollback owner`,
+        ts: "1712345.000300",
+      },
       { text: "finish with the next action", ts: "1712345.000400" },
     ]) {
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           makeMessageEvent({
-            eventType: "message",
+            eventType: followUp.eventType ?? "message",
             text: followUp.text,
             ts: followUp.ts,
           }),
@@ -322,17 +330,13 @@ describe("Slack behavior: durable turn steering", () => {
     }
 
     releaseAgent.resolve();
-    await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(queue.sentRecords()).toHaveLength(5);
+    await expect(activeTurn).resolves.toEqual({ status: "pending_requeued" });
+    expect(queue.sentRecords()).toHaveLength(6);
 
     expect(agentCalls).toEqual([
       {
         prompt: "start the incident summary",
-        steeringTexts: [
-          "add customer impact",
-          "include the rollback owner",
-          "finish with the next action",
-        ],
+        steeringTexts: ["include the rollback owner"],
       },
     ]);
 
@@ -342,16 +346,31 @@ describe("Slack behavior: durable turn steering", () => {
       expect.objectContaining({
         channel: CHANNEL_ID,
         thread_ts: THREAD_TS,
-        text: expect.stringContaining("Steered: add customer impact"),
+        text: expect.stringContaining("Steered: include the rollback owner"),
       }),
     );
 
+    const queuedResults: string[] = [];
     while (queue.hasQueuedMessages()) {
-      await expect(runNextQueuedWork()).resolves.toEqual({ status: "no_work" });
+      queuedResults.push((await runNextQueuedWork()).status);
     }
+    expect(
+      queuedResults.filter((status) => status === "completed"),
+    ).toHaveLength(1);
 
-    expect(agentCalls).toHaveLength(1);
-    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(agentCalls).toEqual([
+      {
+        prompt: "start the incident summary",
+        steeringTexts: ["include the rollback owner"],
+      },
+      {
+        prompt: expect.stringMatching(
+          /add customer impact\s+finish with the next action/,
+        ),
+        steeringTexts: [],
+      },
+    ]);
+    expect(slackApiOutbox.messages()).toHaveLength(2);
     const work = await getConversationWorkState({
       conversationId,
       state,

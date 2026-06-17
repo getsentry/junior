@@ -667,6 +667,43 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
   });
 
+  it("keeps unacknowledged drained messages pending for a later slice", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 2_000,
+        receivedAtMs: 2_100,
+      }),
+      nowMs: 2_100,
+    });
+    const injected: string[][] = [];
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async (messages) => {
+            injected.push(messages.map((message) => message.inboundMessageId));
+            return messages.filter(
+              (message) => message.inboundMessageId === "m1",
+            );
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    expect(injected).toEqual([["m1", "m2"]]);
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.needsRun).toBe(true);
+    expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
+      "m2",
+    ]);
+  });
+
   it("does not block new mailbox appends while injection is in progress", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const observed = observeConversationMutationLock({

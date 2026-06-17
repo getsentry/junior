@@ -619,9 +619,9 @@ describe("Slack conversation work execution", () => {
         });
         const messages =
           (await hooks.drainSteeringMessages?.(async (steering) => {
-            injected.push(steering.map((message) => message.id));
+            injected.push(steering.map((candidate) => candidate.message.id));
           })) ?? [];
-        drained.push(messages.map((message) => message.id));
+        drained.push(messages.map((candidate) => candidate.message.id));
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");

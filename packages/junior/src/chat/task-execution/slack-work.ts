@@ -7,7 +7,10 @@ import {
   type SerializedThread,
   type StateAdapter,
 } from "chat";
-import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
+import type {
+  SlackTurnRuntime,
+  SteeringCandidateMessage,
+} from "@/chat/runtime/slack-runtime";
 import {
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
@@ -297,19 +300,36 @@ export function createSlackConversationWorker(
           }
         };
         const drainSteeringMessages = async (
-          inject: (messages: Message[]) => Promise<void>,
-        ): Promise<Message[]> => {
-          let restoredMessages: Message[] | undefined;
+          inject: (
+            messages: SteeringCandidateMessage[],
+          ) => Promise<SteeringCandidateMessage[] | void>,
+        ): Promise<SteeringCandidateMessage[]> => {
+          let restoredMessages: SteeringCandidateMessage[] | undefined;
           const drained = await context.drainMailbox(async (pendingRecords) => {
-            const messages = pendingRecords.map((record) =>
-              restoreMessage({ adapter, record }),
-            );
+            const messages = pendingRecords.map((record) => ({
+              activeRequest: record.input.metadata?.route === "mention",
+              inboundMessageId: record.inboundMessageId,
+              message: restoreMessage({ adapter, record }),
+            }));
             restoredMessages = messages;
-            await inject(messages);
+            const acknowledged = await inject(messages);
+            if (!acknowledged) {
+              return undefined;
+            }
+            const acknowledgedIds = new Set(
+              acknowledged.map((candidate) => candidate.inboundMessageId),
+            );
+            return pendingRecords.filter((record) => {
+              return acknowledgedIds.has(record.inboundMessageId);
+            });
           });
           return (
             restoredMessages ??
-            drained.map((record) => restoreMessage({ adapter, record }))
+            drained.map((record) => ({
+              activeRequest: record.input.metadata?.route === "mention",
+              inboundMessageId: record.inboundMessageId,
+              message: restoreMessage({ adapter, record }),
+            }))
           );
         };
 
