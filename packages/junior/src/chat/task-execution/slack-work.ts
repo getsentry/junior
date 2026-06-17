@@ -115,6 +115,18 @@ function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
     : "subscribed";
 }
 
+function isSlackAssistantThreadUserMessage(message: Message): boolean {
+  const raw =
+    message.raw && typeof message.raw === "object"
+      ? (message.raw as Record<string, unknown>)
+      : undefined;
+  return (
+    raw?.channel_type === "im" &&
+    typeof raw.thread_ts === "string" &&
+    raw.thread_ts.trim().length > 0
+  );
+}
+
 /** Rehydrate the Slack message payload before handing it back to runtime code. */
 function restoreMessage(args: {
   adapter: SlackAdapter;
@@ -320,10 +332,13 @@ export function createSlackConversationWorker(
                   "Conversation mailbox record is not Slack metadata",
                 );
               }
+              const message = restoreMessage({ adapter, record });
               return {
-                activeRequest: metadata.route === "mention",
+                activeRequest:
+                  metadata.route === "mention" ||
+                  isSlackAssistantThreadUserMessage(message),
                 inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({ adapter, record }),
+                message,
               };
             });
             return await inject(messages);
