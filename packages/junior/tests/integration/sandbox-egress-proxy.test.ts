@@ -7,6 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -382,6 +383,69 @@ describe("sandbox egress proxy integration", () => {
     await expect(response.text()).resolves.toContain(
       "junior-auth-required provider=oauth-broker grant=default access=read",
     );
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "oauth-broker",
+      grant: {
+        name: "default",
+        access: "read",
+      },
+      authorization: {
+        type: "oauth",
+        provider: "oauth-broker",
+        scope: "broker.read",
+      },
+    });
+  });
+
+  it("normalizes malformed OAuth refresh responses into auth-required egress responses", async () => {
+    delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
+    process.env.OAUTH_BROKER_CLIENT_ID = "client-id";
+    process.env.OAUTH_BROKER_CLIENT_SECRET = "client-secret";
+    await registerOAuthBrokerPlugin();
+
+    const tokenStore = new StateAdapterTokenStore(modules.state.getStateAdapter());
+    await tokenStore.set(REQUESTER_ID, "oauth-broker", {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: Date.now() + 60_000,
+      scope: "broker.read",
+    });
+
+    mswServer.use(
+      http.post("https://oauth-broker.example.test/token", () =>
+        HttpResponse.json({ error: "bad_refresh_token" }, { status: 200 }),
+      ),
+    );
+
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, OAUTH_BROKER_PROVIDER_HOST);
+    const upstreamFetch = vi.fn(async () => new Response("unexpected"));
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        upstreamHost: OAUTH_BROKER_PROVIDER_HOST,
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toContain(
+      "junior-auth-required provider=oauth-broker grant=default access=read",
+    );
+    expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
       modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
     ).resolves.toMatchObject({

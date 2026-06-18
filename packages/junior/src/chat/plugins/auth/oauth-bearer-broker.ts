@@ -13,6 +13,7 @@ import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import {
   buildOAuthTokenRequest,
+  OAuthTokenResponseError,
   parseOAuthTokenResponse,
 } from "./oauth-request";
 import type { OAuthBearerCredentials, PluginManifest } from "../types";
@@ -24,6 +25,13 @@ class OAuthRefreshRejectedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "OAuthRefreshRejectedError";
+  }
+}
+
+class OAuthRefreshInvalidResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthRefreshInvalidResponseError";
   }
 }
 
@@ -90,10 +98,30 @@ async function refreshAccessToken(
     );
   }
 
-  const data = (await response.json()) as Record<string, unknown>;
-  return parseOAuthTokenResponse(data, requestedScope, {
-    treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
-  });
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new OAuthRefreshInvalidResponseError(
+      "Token refresh returned invalid JSON",
+    );
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new OAuthRefreshInvalidResponseError(
+      "Token refresh returned invalid token response",
+    );
+  }
+  const tokenResponse = data as Record<string, unknown>;
+  try {
+    return parseOAuthTokenResponse(tokenResponse, requestedScope, {
+      treatEmptyScopeAsUnreported: oauth.treatEmptyScopeAsUnreported,
+    });
+  } catch (error) {
+    if (error instanceof OAuthTokenResponseError) {
+      throw new OAuthRefreshInvalidResponseError(error.message);
+    }
+    throw error;
+  }
 }
 
 function getLeaseExpiry(expiresAt?: number): number {
@@ -197,7 +225,10 @@ export function createOAuthBearerBroker(
               if (error instanceof CredentialUnavailableError) {
                 throw error;
               }
-              if (error instanceof OAuthRefreshRejectedError) {
+              if (
+                error instanceof OAuthRefreshRejectedError ||
+                error instanceof OAuthRefreshInvalidResponseError
+              ) {
                 throw new CredentialUnavailableError(
                   provider,
                   `Your ${provider} connection has expired.`,

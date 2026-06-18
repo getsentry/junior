@@ -2,6 +2,13 @@ import { normalizeOAuthScope } from "@/chat/credentials/oauth-scope";
 
 const DEFAULT_TOKEN_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
+export class OAuthTokenResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthTokenResponseError";
+  }
+}
+
 type OAuthTokenRequestInput = {
   clientId: string;
   clientSecret: string;
@@ -16,7 +23,9 @@ function requireNonEmptyTokenField(
 ): string {
   const value = data[field];
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`OAuth token response missing ${field}`);
+    throw new OAuthTokenResponseError(
+      `OAuth token response missing ${field}`,
+    );
   }
   return value;
 }
@@ -32,7 +41,9 @@ function contentTypeToBody(
   if (mediaType === "application/json" || mediaType.endsWith("+json")) {
     return JSON.stringify(payload);
   }
-  throw new Error(`Unsupported OAuth token Content-Type: ${contentType}`);
+  throw new OAuthTokenResponseError(
+    `Unsupported OAuth token Content-Type: ${contentType}`,
+  );
 }
 
 export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
@@ -87,7 +98,9 @@ export function parseOAuthTokenResponse(
 
   if (responseScope !== undefined) {
     if (typeof responseScope !== "string") {
-      throw new Error("OAuth token response returned invalid scope");
+      throw new OAuthTokenResponseError(
+        "OAuth token response returned invalid scope",
+      );
     }
     const normalized = normalizeOAuthScope(responseScope);
     if (normalized !== undefined) {
@@ -95,7 +108,9 @@ export function parseOAuthTokenResponse(
     } else if (options?.treatEmptyScopeAsUnreported) {
       scope = normalizeOAuthScope(requestedScope);
     } else {
-      throw new Error("OAuth token response returned empty scope");
+      throw new OAuthTokenResponseError(
+        "OAuth token response returned empty scope",
+      );
     }
   } else {
     scope = normalizeOAuthScope(requestedScope);
@@ -109,7 +124,9 @@ export function parseOAuthTokenResponse(
     !Number.isFinite(expiresIn) ||
     expiresIn <= 0
   ) {
-    throw new Error("OAuth token response returned invalid expires_in");
+    throw new OAuthTokenResponseError(
+      "OAuth token response returned invalid expires_in",
+    );
   }
 
   return {
