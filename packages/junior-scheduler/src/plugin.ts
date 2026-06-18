@@ -38,6 +38,13 @@ import {
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 const DASHBOARD_TABLE_LIMIT = 5;
 
+function singleLineMetadataValue(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildScheduledTaskDispatchMetadata(args: {
   nowMs: number;
   run: ScheduledRun;
@@ -52,7 +59,7 @@ function buildScheduledTaskDispatchMetadata(args: {
   return {
     creatorSlackUserId: creator.slackUserId,
     runId: run.id,
-    schedule: task.schedule.description,
+    schedule: singleLineMetadataValue(task.schedule.description),
     scheduleKind: task.schedule.kind,
     scheduledFor: new Date(run.scheduledForMs).toISOString(),
     runningAt: new Date(args.nowMs).toISOString(),

@@ -873,6 +873,11 @@ describe("plugin heartbeat", () => {
           userName: "U039RR91S",
           fullName: "W039RR91S",
         },
+        schedule: {
+          description: "Once\nat noon",
+          kind: "one_off",
+          timezone: "UTC",
+        },
       }),
     );
 
