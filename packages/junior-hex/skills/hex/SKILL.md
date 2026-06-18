@@ -5,7 +5,9 @@ description: >
   Internal data access primitive. Executes a Hex query and returns structured
   results. Called by core skills — not intended for direct use. Invoke when you
   need to run a Hex query on behalf of a core skill that has provided a query
-  and pattern.
+  and pattern. Do not use for Sentry product telemetry, Sentry feature-usage
+  questions, or explicit requests to use Sentry telemetry when the Sentry skill
+  is available.
 ---
 
 # Query Hex (Atomic)

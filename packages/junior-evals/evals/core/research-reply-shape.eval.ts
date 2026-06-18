@@ -13,8 +13,6 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
       ],
       requireSandboxReady: false,
       criteria: rubric({
-        contract:
-          "A multi-source research request returns a concise Slack-style answer without process chatter.",
         pass: [
           "The thread reply is a concise researched answer, not a status update or process note.",
           "The answer coherently summarizes Slack agent streaming across the provided sources.",
@@ -38,15 +36,13 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
       ],
       requireSandboxReady: false,
       criteria: rubric({
-        contract:
-          "A long-form reference deliverable becomes a Slack canvas, with the thread reserved for a short summary and pointer.",
         pass: [
           "The assistant creates a single useful canvas for the requested Slack streaming reference.",
           "The canvas is a structured artifact that covers the supplied Slack streaming notes.",
           "The thread reply stays brief and points to the canvas instead of pasting the full document inline.",
         ],
         fail: [
-          "Do not paste the entire long-form reference artifact directly into assistant_posts.",
+          "Do not paste the entire long-form reference artifact directly into the assistant thread reply.",
           "Do not create multiple canvases for this one research request.",
           "Do not add process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",
           "Do not use web discovery when the prompt supplies the material to organize.",

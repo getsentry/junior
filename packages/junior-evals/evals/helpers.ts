@@ -1,5 +1,6 @@
 import {
   createJudge,
+  createJudgeHarness,
   type DescribeEvalOptions,
   type JudgeContext,
 } from "vitest-evals";
@@ -7,9 +8,11 @@ import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import {
   toJsonValue,
   type Harness,
+  type HarnessMetadata,
   type HarnessRun,
   type JsonValue,
   type NormalizedMessage,
+  type NormalizedSession,
   type ToolCallRecord,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
@@ -45,23 +48,12 @@ function toJsonRecord(
   return record;
 }
 
-function buildEvalOutput(result: EvalResult): Record<string, JsonValue> {
+function slackMetadata(result: EvalResult): Record<string, JsonValue> {
   return {
-    assistant_posts: toJson(result.posts),
-    observed_tool_invocations: toJson(result.toolInvocations),
-    canvases: toJson(result.canvases),
-    channel_posts: toJson(result.channelPosts),
-    reactions: toJson(result.reactions),
-    slack_metadata: {
-      thread_title_set: result.slackAdapter.titleCalls.length > 0,
-      suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
-      assistant_status_pending: hasAssistantStatusPending(result),
-    },
+    thread_title_set: result.slackAdapter.titleCalls.length > 0,
+    suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
+    assistant_status_pending: hasAssistantStatusPending(result),
   };
-}
-
-function serializeEvalOutput(output: Record<string, JsonValue>): string {
-  return JSON.stringify(output, null, 2);
 }
 
 function toToolCallRecord(
@@ -69,7 +61,16 @@ function toToolCallRecord(
 ): ToolCallRecord {
   const args: Record<string, JsonValue> = {};
   if (invocation.arguments) {
-    args.arguments = toJson(invocation.arguments);
+    const genericArgs = toJson(invocation.arguments);
+    if (
+      genericArgs &&
+      typeof genericArgs === "object" &&
+      !Array.isArray(genericArgs)
+    ) {
+      Object.assign(args, genericArgs);
+    } else {
+      args.value = genericArgs;
+    }
   }
   if (invocation.bash_command) {
     args.command = invocation.bash_command;
@@ -99,19 +100,87 @@ function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
   });
 }
 
-function toHarnessRun(result: EvalResult): HarnessRun {
-  const output = buildEvalOutput(result);
-  const toolCalls = result.toolInvocations.map(toToolCallRecord);
-  const messages: NormalizedMessage[] = [
-    ...result.posts.map(
-      (post): NormalizedMessage => ({
-        role: "assistant",
-        content: post.text,
-        metadata: toJsonRecord({
-          ...(post.channel ? { channel: post.channel } : {}),
-          ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
-          files: post.files,
+function serializeSession(session: NormalizedSession): string {
+  const metadata = { ...(session.metadata ?? {}) };
+  delete metadata.log_records;
+  return JSON.stringify(
+    {
+      messages: session.messages,
+      metadata,
+    },
+    null,
+    2,
+  );
+}
+
+function toAssistantPostMessage(
+  post: EvalResult["posts"][number],
+): NormalizedMessage {
+  return {
+    role: "assistant",
+    content: post.text,
+    metadata: toJsonRecord({
+      event_type: "thread_post",
+      ...(post.channel ? { channel: post.channel } : {}),
+      ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
+      files: post.files,
+    }),
+  };
+}
+
+function buildPostKey(post: {
+  channel?: string;
+  text: string;
+  thread_ts?: string;
+}): string {
+  return `${post.channel ?? ""}\u0000${post.thread_ts ?? ""}\u0000${post.text}`;
+}
+
+function toSessionMessages(
+  result: EvalResult,
+  toolCalls: ToolCallRecord[],
+): NormalizedMessage[] {
+  const threadPostKeys = new Set(result.posts.map(buildPostKey));
+  return [
+    ...result.posts.map(toAssistantPostMessage),
+    ...result.channelPosts
+      .filter((post) => !threadPostKeys.has(buildPostKey(post)))
+      .map(
+        (post): NormalizedMessage => ({
+          role: "assistant",
+          content: post.text,
+          metadata: toJsonRecord({
+            event_type: post.thread_ts ? "thread_post" : "channel_post",
+            channel: post.channel,
+            ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
+          }),
         }),
+      ),
+    ...result.reactions.map(
+      (reaction): NormalizedMessage => ({
+        role: "assistant",
+        content: {
+          type: "reaction_added",
+          emoji: reaction.emoji,
+        },
+        metadata: toJsonRecord({
+          event_type: "reaction_added",
+          channel: reaction.channel,
+          timestamp: reaction.timestamp,
+        }),
+      }),
+    ),
+    ...result.canvases.map(
+      (canvas): NormalizedMessage => ({
+        role: "assistant",
+        content: {
+          type: "canvas_created",
+          title: canvas.title,
+          markdown: canvas.markdown,
+        },
+        metadata: {
+          event_type: "canvas_created",
+        },
       }),
     ),
     ...(toolCalls.length > 0
@@ -123,14 +192,17 @@ function toHarnessRun(result: EvalResult): HarnessRun {
         ]
       : []),
   ];
+}
+
+function toHarnessRun(result: EvalResult): HarnessRun {
+  const toolCalls = result.toolInvocations.map(toToolCallRecord);
+  const messages = toSessionMessages(result, toolCalls);
 
   return {
-    output,
     session: {
       messages,
-      outputText: serializeEvalOutput(output),
       metadata: toJsonRecord({
-        slack_metadata: output.slack_metadata,
+        slack_metadata: slackMetadata(result),
         log_records: result.logRecords.map(toLogMetadata),
       }),
     },
@@ -144,9 +216,7 @@ function toHarnessRun(result: EvalResult): HarnessRun {
 // ── Core eval wrapper ──────────────────────────────────────
 
 interface EvalRubric {
-  contract: string;
   pass: readonly string[];
-  allow?: readonly string[];
   fail?: readonly string[];
 }
 
@@ -180,20 +250,14 @@ function formatBulletSection(
 
 function formatRubric(criteria: EvalRubric): string {
   return [
-    `Contract:\n${criteria.contract}`,
     formatBulletSection("Pass", criteria.pass),
-    formatBulletSection("Allow", criteria.allow),
     formatBulletSection("Fail", criteria.fail),
   ]
     .filter((section): section is string => section !== null)
     .join("\n\n");
 }
 
-function getEvalLabel(input: SlackEvalInput): string {
-  return input.criteria.contract;
-}
-
-function assertGatewayReady(input: SlackEvalInput, result: EvalResult): void {
+function assertGatewayReady(result: EvalResult): void {
   const failure = result.logRecords.find((record) => {
     if (record.eventName !== "ai_completion_failed") {
       return false;
@@ -212,12 +276,12 @@ function assertGatewayReady(input: SlackEvalInput, result: EvalResult): void {
     failure.body ||
     "AI Gateway authentication failed";
   throw new Error(
-    `Eval gateway bootstrap failed for "${getEvalLabel(input)}". Received "${message}". ` +
+    `Eval gateway bootstrap failed. Received "${message}". ` +
       "Refresh AI Gateway auth first (for example via `vercel env pull`) and retry.",
   );
 }
 
-function assertSandboxReady(input: SlackEvalInput, result: EvalResult): void {
+function assertSandboxReady(result: EvalResult): void {
   const failingPosts = result.posts.filter((post) =>
     post.text.includes(SANDBOX_SETUP_FAILED_TEXT),
   );
@@ -227,12 +291,12 @@ function assertSandboxReady(input: SlackEvalInput, result: EvalResult): void {
 
   const sample = failingPosts[0]?.text ?? SANDBOX_SETUP_FAILED_TEXT;
   throw new Error(
-    `Eval sandbox bootstrap failed for "${getEvalLabel(input)}". Received "${sample}". ` +
+    `Eval sandbox bootstrap failed. Received "${sample}". ` +
       "Evals require a working Vercel Sandbox and do not permit local fallback.",
   );
 }
 
-function assertStatusCleared(input: SlackEvalInput, result: EvalResult): void {
+function assertStatusCleared(result: EvalResult): void {
   const lastByThread = new Map<string, string>();
   for (const call of result.slackAdapter.statusCalls) {
     const key = `${call.channelId}:${call.threadTs}`;
@@ -241,7 +305,7 @@ function assertStatusCleared(input: SlackEvalInput, result: EvalResult): void {
   for (const [thread, text] of lastByThread) {
     if (text !== "") {
       throw new Error(
-        `Eval "${getEvalLabel(input)}" left assistant status pending on thread ${thread}: "${text}". ` +
+        `Eval left assistant status pending on thread ${thread}: "${text}". ` +
           "Every turn must clear the assistant status indicator before completing.",
       );
     }
@@ -267,9 +331,6 @@ function assertTimeoutBudget(input: SlackEvalInput): void {
 
 /** Builds a structured, maintainer-readable judge rubric for an eval case. */
 export function rubric(criteria: EvalRubric): EvalRubric {
-  if (criteria.contract.trim() === "") {
-    throw new Error("Eval rubric contract must be a non-empty sentence.");
-  }
   if (criteria.pass.length === 0) {
     throw new Error("Eval rubric must include at least one pass condition.");
   }
@@ -294,6 +355,26 @@ const CHOICE_SCORES: Record<JudgeAnswer, number> = {
 const EVAL_SYSTEM =
   'You are assessing a submitted output based on a given criterion. Ignore differences in style, grammar, punctuation, or length. Focus only on whether the criterion is met. Return only raw JSON matching {"answer":"A","rationale":"..."}.';
 const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
+
+const judgeHarness = createJudgeHarness({
+  name: "slack-rubric-judge-model",
+  run: async ({ prompt, system }, { metadata }) => {
+    const { text } = await completeText({
+      modelId: EVAL_JUDGE_MODEL_ID,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+          timestamp: Date.now(),
+        },
+      ],
+      temperature: 0,
+      metadata,
+    });
+    return text;
+  },
+});
 
 function formatJudgePrompt(output: string, criteria: string): string {
   return `<submission>
@@ -339,22 +420,6 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 /** Replays Slack events through the real runtime and returns normalized artifacts. */
 export const slackHarness: Harness<SlackEvalInput> = {
   name: "slack",
-  prompt: async (input, options) => {
-    const { text } = await completeText({
-      modelId: EVAL_JUDGE_MODEL_ID,
-      system: options?.system,
-      messages: [
-        {
-          role: "user",
-          content: input,
-          timestamp: Date.now(),
-        },
-      ],
-      temperature: 0,
-      metadata: options?.metadata,
-    });
-    return text;
-  },
   run: async (input) => {
     const logRecords: EmittedLogRecord[] = [];
     const unregisterLogSink = registerLogRecordSink((record) => {
@@ -387,12 +452,12 @@ export const slackHarness: Harness<SlackEvalInput> = {
             ])
           : await taskPromise;
       if (input.requireGatewayReady ?? true) {
-        assertGatewayReady(input, result);
+        assertGatewayReady(result);
       }
       if (input.requireSandboxReady ?? true) {
-        assertSandboxReady(input, result);
+        assertSandboxReady(result);
       }
-      assertStatusCleared(input, result);
+      assertStatusCleared(result);
       return toHarnessRun(result);
     } finally {
       unregisterLogSink();
@@ -405,25 +470,31 @@ export const RubricJudge = createJudge(
   "RubricJudge",
   async ({
     input,
-    output,
-    harness,
+    session,
+    runJudge,
   }: JudgeContext<
     SlackEvalInput,
-    Record<string, unknown>,
+    JsonValue | undefined,
+    HarnessMetadata,
     typeof slackHarness
   >) => {
+    if (!runJudge) {
+      throw new Error("RubricJudge requires a configured judgeHarness.");
+    }
     const object = parseJudgeResult(
-      await harness.prompt(
-        formatJudgePrompt(
-          serializeEvalOutput(output as Record<string, JsonValue>),
-          formatRubric(input.criteria),
-        ),
-        {
-          system: EVAL_SYSTEM,
-          metadata: {
-            judge: "RubricJudge",
+      String(
+        await runJudge(
+          {
+            prompt: formatJudgePrompt(
+              serializeSession(session),
+              formatRubric(input.criteria),
+            ),
+            system: EVAL_SYSTEM,
           },
-        },
+          {
+            metadata: { judge: "RubricJudge" },
+          },
+        ),
       ),
     );
     const answer = object.answer as keyof typeof CHOICE_SCORES;
@@ -441,6 +512,7 @@ export const RubricJudge = createJudge(
 /** Shared vitest-evals suite options for Slack conversation evals. */
 export const slackEvals = {
   harness: slackHarness,
+  judgeHarness,
   judges: [RubricJudge],
   judgeThreshold: 0.75,
 } satisfies DescribeEvalOptions<SlackEvalInput>;

@@ -14,11 +14,12 @@ Co-Authored-By: (agent model name) <email>
 
 ## File-Scoped Commands
 
-| Task                  | Command                                                             |
-| --------------------- | ------------------------------------------------------------------- |
-| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
-| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
-| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts`     |
+| Task                  | Command                                                                        |
+| --------------------- | ------------------------------------------------------------------------------ |
+| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
+| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
+| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
+| Eval case filter      | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
 
 ## Key Conventions
 
@@ -27,8 +28,11 @@ Co-Authored-By: (agent model name) <email>
 - Use `/skill-writer` skill when creating or updating skills.
 - Prefer integration tests for most product/runtime changes that need real wiring.
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
+- In evals, use the normalized `vitest-evals` session and `toolCalls(result.session)` as the primary assertion surfaces; do not invent local transcript/tool-call schemas.
 - For any non-Slack-specific product/runtime/prompt/tool/plugin behavior change, use the local agent as the first manual behavior check. Follow `packages/docs/src/content/docs/contribute/local-agent-validation.md`; from this monorepo, run it with `pnpm cli -- chat ...`, which uses `apps/example` as the canonical local validation app.
-- Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
+- Run evals through the package scripts only: `pnpm evals` for the full suite or `pnpm --filter @sentry/junior-evals evals ...` for focused runs. Do not use `pnpm exec vitest` directly for evals.
+- Pass eval file paths and `-t` filters directly after `evals`; do not insert `--` before eval args.
+- Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access.
 - If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
 - Use instrumentation conventions from `specs/instrumentation.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.

@@ -10,6 +10,7 @@ It should produce useful read-only investigation results or Sentry web links wit
 In scope:
 
 - Listing and viewing Sentry issues, issue events, logs, traces, organizations, and related read-only data.
+- Investigating Sentry's own product telemetry and product feature usage through Sentry CLI/API data surfaces.
 - Using `sentry api <endpoint>` for authenticated read-only requests when no high-level command exists.
 - Generating Sentry deep links for user-scoped or entity-specific views.
 - Diagnosing auth, scope, and access failures without guessing missing scopes.
@@ -23,7 +24,7 @@ Out of scope:
 ## Users And Trigger Context
 
 - Primary users: Junior users asking Slack or harness agents to investigate Sentry data.
-- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry".
+- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry", "use Sentry telemetry", and "how much is this Sentry feature used".
 - Should not trigger for: source-code tasks, GitHub PRs, repository searches, or generic questions about Sentry SDK implementation.
 
 ## Runtime Contract

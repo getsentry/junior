@@ -9,8 +9,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
-        contract:
-          "A skill command can return a single candidate brief in one reply.",
         pass: [
           "The assistant posts exactly one reply for David Cramer.",
           "The reply is a candidate brief with role, team, and location-style details.",
@@ -41,8 +39,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "The same skill can be invoked twice in one thread without losing ordering or context.",
         pass: [
           "Across two turns in one thread, the assistant posts exactly two replies in order: Alice first, then Bob.",
           "Each reply addresses the requested candidate by name.",
@@ -60,8 +56,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [mention("/list-working-directory")],
       criteria: rubric({
-        contract:
-          "A simple infrastructure skill can list the working directory in one reply.",
         pass: [
           "The assistant posts exactly one working-directory listing reply.",
           "That reply includes a file-list section such as 'Working directory files:'.",
@@ -82,8 +76,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "A verification request uses the available source-backed skill and returns the checked answer instead of offering to check later.",
         pass: [
           "The assistant posts exactly one final answer.",
           "The answer says closed tracking issues alone do not prove capability support.",
@@ -111,15 +103,10 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "An MCP-backed skill can complete a natural lookup by using the provider result instead of surfacing tool validation errors.",
         pass: [
           "The visible thread output includes a final answer based on the demo MCP provider result.",
           "The visible thread output refers to the handbook or US holidays request.",
           "The visible thread output does not claim the MCP lookup was blocked by missing arguments.",
-        ],
-        allow: [
-          "The final answer may be a concise paraphrase of the eval handbook result.",
         ],
         fail: [
           'Do not include `expected string, received undefined` or `"query"` argument validation errors.',

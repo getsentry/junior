@@ -8,8 +8,6 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     await run({
       events: [threadStart()],
       criteria: rubric({
-        contract:
-          "The assistant initializes Slack thread metadata without posting a visible reply.",
         pass: [
           "No assistant reply is posted.",
           "The thread title is set exactly once.",
@@ -26,10 +24,8 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       overrides: { fail_reply_call: 1 },
       events: [mention("What's the status of the deploy?")],
       criteria: rubric({
-        contract:
-          "When reply generation fails before any answer is posted, the user still gets one clear failure reply.",
         pass: [
-          "assistant_posts contains exactly one reply.",
+          "The normalized transcript contains exactly one assistant thread reply.",
           "That reply clearly tells the user the request failed in user-facing language.",
         ],
         fail: [
@@ -54,10 +50,8 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       },
       events: [mention("Quick budget update?")],
       criteria: rubric({
-        contract:
-          "A provider interruption preserves the partial answer and marks that same reply as interrupted.",
         pass: [
-          "assistant_posts contains exactly one reply because this answer fits in a single Slack post.",
+          "The normalized transcript contains exactly one assistant thread reply because this answer fits in a single Slack post.",
           "That reply includes the budget update that it is still on track for Friday.",
           "That same reply clearly says the response was interrupted before completion.",
         ],

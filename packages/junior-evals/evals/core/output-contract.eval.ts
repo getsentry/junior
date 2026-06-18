@@ -13,14 +13,9 @@ describeEval("Output Contract", slackEvals, (it) => {
       ],
       requireSandboxReady: false,
       criteria: rubric({
-        contract:
-          "Structured multi-section replies do not use hash-prefixed markdown heading markers.",
         pass: [
           "The assistant posts one reply that covers the authorization request, token exchange, and refresh.",
           "No section label line starts with `#`, `##`, or `###`.",
-        ],
-        allow: [
-          "Bolded title lines, bolded section labels, and numbered bold labels are acceptable.",
         ],
         fail: [
           "Do not use lines beginning with `#`, `##`, or `###` for section labels.",
@@ -41,8 +36,6 @@ describeEval("Output Contract", slackEvals, (it) => {
       ],
       requireSandboxReady: false,
       criteria: rubric({
-        contract:
-          "URLs in Slack replies render as plain URLs, not markdown hyperlinks.",
         pass: [
           "The assistant posts one reply that names the three documentation starting points.",
           "Each URL appears as a bare URL in the reply text, not wrapped in markdown link syntax.",
@@ -66,8 +59,6 @@ describeEval("Output Contract", slackEvals, (it) => {
       ],
       requireSandboxReady: false,
       criteria: rubric({
-        contract:
-          "Comparative Slack replies present structured data with bullets or bolded labels rather than markdown tables.",
         pass: [
           "The assistant posts one reply that compares REST and GraphQL across caching, over-fetching, and tooling maturity.",
           "The comparison is expressed through bullets or bolded labels with short explanations, not a table.",

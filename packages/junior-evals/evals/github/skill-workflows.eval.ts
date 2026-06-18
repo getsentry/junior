@@ -16,8 +16,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "The assistant explains the GitHub PR auth order without omitting the push step.",
         pass: [
           "The answer explicitly says the branch push happens before `gh pr create` for the PR step.",
           "The answer says the push step needs GitHub write access for the remote.",
@@ -67,13 +65,8 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "Stored repo context is reused in a later turn without asking the user to restate the repo.",
         pass: [
           "The assistant confirms default repo setup and later says issue commands without an explicit repo would use getsentry/junior.",
-        ],
-        allow: [
-          "A concise answer is acceptable; no live GitHub issue lookup is required for this continuity check.",
         ],
         fail: [
           "Do not ask the user to provide the repo again.",
@@ -108,8 +101,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "Draft a fake issue against the default repo while keeping the fake foreign issue reference as context.",
         pass: [
           "The assistant confirms default repo setup and drafts the requested issue against getsentry/junior-eval-bot-never-exists.",
           "The foreign issue reference is treated only as context if it appears in the answer.",
@@ -149,8 +140,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "Confirm the explicitly referenced issue as target even when a default repo is set.",
         pass: [
           "After confirming default repo setup, the assistant recognizes the explicitly referenced issue as the action target.",
           "No GitHub issue create/comment/view command is run for this confirmation-only request.",

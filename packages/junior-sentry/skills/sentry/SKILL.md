@@ -1,6 +1,6 @@
 ---
 name: sentry
-description: Query live Sentry telemetry with the Sentry CLI and generate Sentry deep links. Use when users ask to investigate Sentry issues, events, logs, traces, organizations, projects, replays, or authenticated Sentry API data. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
+description: Query live Sentry telemetry with the Sentry CLI and generate Sentry deep links. Use when users ask to investigate Sentry issues, events, logs, traces, organizations, projects, replays, product feature usage, Sentry's own product telemetry, or authenticated Sentry API data. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
 allowed-tools: bash
 ---
 
@@ -18,7 +18,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 
 1. Confirm operation and target:
 
-- Determine operation: issue, event, log, trace, org, project, replay/deep-link, or API query.
+- Determine operation: issue, event, log, trace, org, project, replay/deep-link, Sentry product feature usage, or API query.
 - Resolve org from channel config: `jr-rpc config get sentry.org`
 - Resolve project from channel config: `jr-rpc config get sentry.project` (optional — many queries span multiple projects).
 - If org is missing and needed, ask the user.

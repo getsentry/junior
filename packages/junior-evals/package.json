@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "evals": "pnpm exec vitest run -c vitest.evals.config.ts",
-    "evals:record": "VITEST_EVALS_REPLAY_MODE=record pnpm exec vitest run -c vitest.evals.config.ts"
+    "evals": "vitest run -c vitest.evals.config.ts",
+    "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.config.ts"
   },
   "devDependencies": {
     "@sentry/junior": "workspace:*",

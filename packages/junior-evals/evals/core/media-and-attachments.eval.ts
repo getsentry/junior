@@ -9,8 +9,6 @@ describeEval("Media and Attachments", slackEvals, (it) => {
       overrides: { mock_image_generation: true },
       events: [mention("show me how you feel")],
       criteria: rubric({
-        contract:
-          "An image-generation prompt returns an actual image attachment in the thread.",
         pass: ["The assistant responds by attaching an image in the thread."],
         fail: [
           "Do not respond with text that merely describes an image.",

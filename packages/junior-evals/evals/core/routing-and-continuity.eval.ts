@@ -8,8 +8,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     await run({
       events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
       criteria: rubric({
-        contract:
-          "An explicit @mention in a thread always gets a direct reply.",
         pass: [
           "The assistant posts exactly one reply.",
           "The reply answers with 4.",
@@ -25,14 +23,9 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     await run({
       events: [mention("@bot say hello to the channel!")],
       criteria: rubric({
-        contract:
-          "A user request to post in-channel is delivered as a channel post, not as a thread reply.",
         pass: [
-          "channel_posts contains exactly one hello-style message with no thread_ts.",
-          "assistant_posts does not contain that hello-style message as a thread reply.",
-        ],
-        allow: [
-          "A lightweight acknowledgement reaction in reactions is acceptable.",
+          "The normalized transcript contains exactly one hello-style channel_post assistant message with no thread_ts.",
+          "The normalized transcript does not contain that hello-style message as a thread reply.",
         ],
       }),
     });
@@ -48,11 +41,9 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "A request for another named channel does not get silently redirected to the current channel.",
         pass: [
-          "channel_posts is empty.",
-          "assistant_posts contains exactly one reply.",
+          "The normalized transcript contains no channel_post assistant message.",
+          "The normalized transcript contains exactly one assistant thread reply.",
           "That reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
         ],
         fail: [
@@ -96,8 +87,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "When explicitly asked to do work in a multi-participant thread, the assistant treats itself as the requested actor.",
         pass: [
           "The assistant posts exactly two replies in order.",
           "The second reply drafts a one-sentence status update about the paused billing rollout and retry queue.",
@@ -117,9 +106,9 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     await run({
       events: [mention("react to this")],
       criteria: rubric({
-        contract:
-          "A reaction-only request is satisfied with reactions instead of reply clutter.",
-        pass: ["reactions contains at least one added reaction."],
+        pass: [
+          "The normalized transcript contains at least one reaction_added assistant message.",
+        ],
         fail: [
           "Do not add a redundant thread reply that echoes the emoji.",
           "Do not add a short acknowledgement reply such as 'Done'.",
@@ -146,8 +135,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "A later question in the same thread can reference earlier context without restating it.",
         pass: [
           "The assistant posts exactly two replies in order.",
           "The second reply explicitly references the earlier budget context, including budget and/or Friday.",

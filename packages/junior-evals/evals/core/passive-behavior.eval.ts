@@ -29,8 +29,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "A later human-to-human question is ignored even when it is phrased like something Junior could answer.",
         pass: [
           "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
         ],
@@ -63,8 +61,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "A follow-up that clearly refers to Junior's prior answer gets a reply even without another @mention.",
         pass: [
           "The assistant posts exactly two replies in order.",
           "The second reply plainly restates that the budget is needed by Friday.",
@@ -98,8 +94,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "A casual pronoun-based question stays ignored when it reads like human-to-human discussion rather than a turn back to Junior.",
         pass: [
           "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
         ],
@@ -134,8 +128,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "Shared domain vocabulary alone does not make a later human discussion message directed at Junior.",
         pass: [
           "The assistant posts exactly one reply: the initial answer about the billing worker.",
         ],
@@ -164,8 +156,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         threadMessage("Can you check on this?", { thread: canYouThread }),
       ],
       criteria: rubric({
-        contract:
-          "A casual 'can you' request is ignored when it is directed at a coworker, not at Junior.",
         pass: [
           "The assistant posts exactly one reply: the initial answer about deployment status.",
         ],
@@ -199,8 +189,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "An explicit request to expand Junior's prior answer gets a second reply.",
         pass: [
           "The assistant posts exactly two replies in order.",
           "The second reply provides more detail about the deploy changes.",
@@ -234,8 +222,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "A terse clarification right after Junior's reply is treated as directed back to Junior.",
         pass: [
           "The assistant posts exactly two replies in order.",
           "The second reply clarifies which services changed.",
@@ -269,8 +255,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        contract:
-          "Once humans resume the conversation, a later same-topic question stays ignored unless it clearly turns back to Junior.",
         pass: [
           "The assistant posts exactly one reply: the initial deploy summary.",
         ],
@@ -307,8 +291,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         mention("Actually jump back in.", { thread: optOutThread }),
       ],
       criteria: rubric({
-        contract:
-          "An explicit stop request pauses thread participation until the assistant is mentioned again.",
         pass: [
           "The assistant posts exactly three visible replies in order.",
           "The first reply is a normal helpful reply to the initial mention.",

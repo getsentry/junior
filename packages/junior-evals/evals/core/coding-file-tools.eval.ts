@@ -17,8 +17,6 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "A small source edit in the sandbox fixture updates the requested value and reports the changed file.",
         pass: [
           "The final reply identifies the changed config file and says the default retry count is now 3.",
         ],
@@ -41,8 +39,6 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ),
       ],
       criteria: rubric({
-        contract:
-          "A sandbox fixture comparison returns grounded file-path evidence without claiming to modify files.",
         pass: [
           "The reply cites the alert source file and the operations doc using recognizable fixture-relative paths.",
           "The reply accurately summarizes that source code handles emergency alerts while the operations doc describes escalation or operator behavior.",

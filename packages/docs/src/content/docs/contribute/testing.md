@@ -35,7 +35,7 @@ pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts
 Run one eval file:
 
 ```bash
-pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts
+pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts
 ```
 
 ## Notes

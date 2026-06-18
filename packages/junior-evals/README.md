@@ -6,7 +6,7 @@ Evals are end-to-end Slack conversation evaluations. They are the integration-st
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes with a `vitest-evals` judge that reuses the Slack harness prompt seam, backed by Junior's Pi client and the Vercel AI Gateway model `openai/gpt-5.4`.
+- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client and the Vercel AI Gateway model `openai/gpt-5.4`.
 
 ## Layer Boundaries
 
@@ -58,9 +58,17 @@ For each `it()` case inside a `describeEval()` suite:
 1. Replay events through the harness via `runEvalScenario()`.
 2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
 3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
-4. Return observed artifacts as JSON for LLM judgment, including structured `assistant_posts` with text plus actual attached-file metadata, and Slack-visible metadata.
-   The helper pretty-prints this JSON so failure output stays readable in local runs and CI.
-5. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
+4. Return a standard `vitest-evals` `HarnessRun`; `result.session` is the canonical normalized surface for judge scoring and deterministic assertions.
+5. Do not create a second repo-local transcript, event-log, or assertion schema when `vitest-evals` already has `session`, `toolCalls(result.session)`, `artifacts`, or `traces`.
+6. `vitest-evals` scores the normalized session against `criteria` (A–E -> 1.0-0.0).
+
+## Harness Boundaries
+
+- Use the Slack eval harness for Slack/runtime behavior: mentions, thread/channel delivery, OAuth privacy, lifecycle/resume behavior, reactions, and Slack-visible side effects.
+- Use an agent-level harness for prompt, skill routing, tool choice, provider/tool calls, and reply quality when Slack transport is not the behavior under test.
+- The Slack eval harness session is an observed Slack output/tool/artifact projection. Do not add a repo-local sequencing layer to make it look like a full ordered conversation transcript.
+- When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
+- Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
 
 Harness override knobs (in `EvalOverrides`):
 
@@ -85,7 +93,10 @@ Tool replay:
 
 - `pnpm evals`: Run all eval cases (from workspace root)
 - `pnpm --filter @sentry/junior-evals evals`: Run from any directory
-- `pnpm --filter @sentry/junior-evals evals -- -t "subscribed"`: Filter by test name pattern
+- `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts`: Run one eval file
+- `pnpm --filter @sentry/junior-evals evals evals/sentry/skill-workflows.eval.ts -t "subscribed"`: Run one eval case by name
+
+Pass eval file paths and `-t` filters directly after the `evals` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
 
 ## Optional CI Runs
 
@@ -109,11 +120,11 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 - Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
-- Encode all expectations in `criteria`; do not add deterministic inline assertions.
-- New and edited evals must express `criteria` with `rubric({ contract, pass, allow, fail })`.
-- `contract` should name the user-visible behavior being proven.
+- Put semantic, model-dependent expectations in `criteria`.
+- Put deterministic boundary expectations in normal Vitest assertions against `result.session`, `toolCalls(result.session)`, or `result.artifacts`. Prefer `vitest-evals` primitives over local helper-specific output shapes.
+- New and edited evals must express `criteria` with `rubric({ pass, fail })`.
+- Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.
-- `allow` should list acceptable optional variations.
 - `fail` should list forbidden outputs or failure conditions.
 - Do not write judge criteria as one dense paragraph.
 - Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope.
@@ -128,6 +139,7 @@ Do not do these in eval files:
 - Do not import `@/chat/slack/*` directly.
 - Do not use MSW Slack helpers (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, `queueSlackApiError`, `queueSlackRateLimit`).
 - Do not validate raw Slack Web API request payload shapes from evals.
+- Do not invent parallel transcript, event-log, or tool-call schemas for assertions. If the existing `vitest-evals` primitives are insufficient, improve the harness boundary first.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.
 
 ## File Naming Strategy
@@ -155,12 +167,13 @@ Good conversational evals should:
 - Describe user-visible outcomes first (reply count, reply content, metadata effects visible to Slack users).
 - Use concrete real-world scenarios (incident updates, planning follow-ups, capability setup requests), not abstract mechanics like "posted two replies."
 - Use judge criteria written in product language, not implementation language.
-- Use rubric sections that are easy for maintainers to scan in a failure: one `contract`, a short `pass` list, and focused `allow` / `fail` lists only when needed.
+- Use rubric sections that are easy for maintainers to scan in a failure: a short `pass` list and a focused `fail` list only when it describes a real regression.
 - Keep rubric bullets at the behavior level. Prefer "uses the stored repo as the target" over requiring exact wording or incidental reply ordering.
-- Put incidental variation in `allow`, not `pass`. Omit `fail` bullets unless they describe a real regression or unsafe side effect.
+- Omit incidental variation from the rubric unless it affects the behavior contract.
+- Omit `fail` bullets unless they describe a real regression or unsafe side effect.
 - Use fake/nonexistent external targets unless the eval explicitly opts into live provider access.
 - Cover realistic failure behavior with clear user-visible errors.
-- Use tool-call traces when they prove behavior at a real boundary, such as source grounding, mutation safety, provider routing, or auth sequencing.
+- Use `toolCalls(result.session)` when tool/provider evidence proves behavior at a real boundary, such as source grounding, mutation safety, provider routing, or auth sequencing.
 
 Avoid:
 
@@ -180,7 +193,6 @@ describeEval("Routing", slackEvals, (it) => {
     await run({
       events: [mention("<@U_APP> summarize this")],
       criteria: rubric({
-        contract: "An explicit mention gets one direct reply.",
         pass: ["The assistant posts exactly one reply to the mention."],
       }),
     });
