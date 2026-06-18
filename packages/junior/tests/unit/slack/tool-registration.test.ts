@@ -69,6 +69,21 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
+  it("does not register standalone channel posting outside interactive Slack turns", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        surface: "api",
+      },
+    );
+
+    expect(tools).not.toHaveProperty("slackChannelPostMessage");
+    expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackThreadRead");
+  });
+
   it("registers delivery tools from assistant context channel in DM turns", () => {
     const tools = createTools(
       [],

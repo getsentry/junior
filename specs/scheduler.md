@@ -107,27 +107,19 @@ Stale occurrences are terminal skipped runs:
 7. During stale recovery, an equivalent newer active task in the same destination should be skipped and paused when an older active task with the same schedule and task contract remains canonical.
 8. Staleness is not a blocked or missing-input state and must not require human review. A user can still run the task manually if the missed work is still useful.
 
-### Prompt Framing
+### Dispatch Framing
 
-Every scheduled run must compile the stored task into a marker-delimited prompt before entering the agent runtime.
+Every scheduled run must call the public agent dispatch API with the stored task text as the dispatch `input`. Scheduler-specific facts belong in bounded dispatch `metadata`, with typed `source` and `destination` fields carrying runtime coordinates. The scheduler must not compile a custom replacement for the normal turn prompt.
 
-The prompt must make these facts explicit:
+The dispatch request must make these facts explicit through the shared dispatch contract:
 
-1. This is an autonomous scheduled run.
-2. The task contract is the source of truth for what to execute.
-3. The run executes as a Junior system actor, not as the user who created the task.
-4. The run should complete without asking follow-up questions unless access, approval, or required input is missing.
-5. If blocked, the result should identify the missing provider, permission, or input.
+1. `input` is the current request text and remains the task contract.
+2. `source` is the typed origin for the autonomous scheduled invocation.
+3. `destination` is the typed audience and delivery location for the final response.
+4. The core dispatch runner executes as a Junior system actor, not as the user who created the task.
+5. `metadata` carries bounded schedule/run facts such as `taskId`, `runId`, `scheduledFor`, `runningAt`, `scheduleKind`, `timezone`, and `creatorSlackUserId`.
 
-The compiled prompt must separate descriptive task facts from directives. Use marker blocks such as:
-
-- `<scheduled-task-run>`
-- `<scheduled-task>`
-- `<run-context>`
-- `<execution-rules>`
-- `<current-instruction priority="highest">`
-
-This follows the router and turn-context pattern: background and state live in descriptive blocks, while behavior rules live in a rules block and the actual ask appears last.
+The core turn-context builder may render dispatch metadata as generic dispatch background. That rendering must stay plugin-agnostic: core may expose `dispatch.metadata.*`, `source.*`, `destination.*`, and system actor facts, but it must not know scheduler field semantics or contain scheduler-specific instructions.
 
 ### Storage
 
@@ -196,11 +188,9 @@ Dispatch call for a scheduled run:
 await ctx.agent.dispatch({
   idempotencyKey: run.id,
   destination: task.destination,
-  input: buildScheduledTaskRunPrompt({ task, run, nowMs }),
-  metadata: {
-    taskId: task.id,
-    runId: run.id,
-  },
+  input: task.task.text,
+  metadata: buildScheduledTaskDispatchMetadata({ task, run, nowMs }),
+  source: scheduledTaskDispatchSource(task),
 });
 ```
 

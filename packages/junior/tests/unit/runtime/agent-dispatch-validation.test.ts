@@ -17,6 +17,11 @@ const validOptions = {
     channelId: "C123",
   },
   input: "Run the scheduled task.",
+  source: {
+    platform: "slack" as const,
+    teamId: "T123",
+    channelId: "C123",
+  },
 };
 
 function createPluginCredentialSubject(
@@ -103,6 +108,49 @@ describe("agent dispatch validation", () => {
     ).toThrow("Dispatch destination channelId must be a Slack channel id");
   });
 
+  it("rejects malformed dispatch source payloads", () => {
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        source: {
+          ...validOptions.source,
+          threadTs: "1700000000.000",
+          unexpected: "field",
+        },
+      }),
+    ).toThrow("Dispatch source must not include unknown fields");
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        source: {
+          ...validOptions.source,
+          teamId: "not-a-team",
+        },
+      }),
+    ).toThrow("Dispatch source teamId must be a Slack team id");
+  });
+
+  it("rejects multiline dispatch metadata", () => {
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        metadata: {
+          schedule: "Every day\n- dispatch.actor.id: attacker",
+        },
+      }),
+    ).toThrow("Dispatch metadata values must be single-line strings");
+
+    expect(() =>
+      validateDispatchOptions({
+        ...validOptions,
+        metadata: {
+          ["schedule\nattacker"]: "Every day",
+        },
+      }),
+    ).toThrow("Dispatch metadata keys must be single-line strings");
+  });
+
   it("rejects non-canonical dispatch records from durable state", () => {
     const baseRecord = {
       actor: { type: "system", id: "scheduler" },
@@ -114,6 +162,7 @@ describe("agent dispatch validation", () => {
       input: "Run the scheduled task.",
       maxAttempts: 5,
       plugin: "scheduler",
+      source: validOptions.source,
       status: "pending",
       updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       version: 1,
@@ -147,6 +196,38 @@ describe("agent dispatch validation", () => {
             channelId: "D999",
             signature: "v1=test",
           },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("backfills legacy persisted dispatch source from destination", () => {
+    const legacyRecord = {
+      actor: { type: "system", id: "scheduler" },
+      attempt: 0,
+      createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      destination: validOptions.destination,
+      id: "dispatch_legacy",
+      idempotencyKey: "run-legacy",
+      input: "Run the scheduled task.",
+      maxAttempts: 5,
+      plugin: "scheduler",
+      status: "pending",
+      updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      version: 1,
+    };
+
+    expect(parseDispatchRecord(legacyRecord)).toMatchObject({
+      id: "dispatch_legacy",
+      source: validOptions.source,
+    });
+
+    expect(
+      parseDispatchRecord({
+        ...legacyRecord,
+        destination: {
+          ...validOptions.destination,
+          threadTs: "1700000000.000",
         },
       }),
     ).toBeUndefined();

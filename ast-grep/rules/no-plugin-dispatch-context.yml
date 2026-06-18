@@ -1,0 +1,9 @@
+id: no-plugin-dispatch-context
+language: TypeScript
+severity: error
+message: Plugin agent dispatch must use typed source/destination/metadata, not an opaque context prompt blob.
+files:
+  - packages/**/*.ts
+  - packages/**/*.tsx
+rule:
+  pattern: "$CTX.agent.dispatch({ $$$BEFORE, context: $VALUE, $$$AFTER })"

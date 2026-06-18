@@ -4,6 +4,7 @@ import {
   pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
+  sourceSchema,
   type SlackDestination,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -74,6 +75,7 @@ const dispatchRecordSchema = z
     metadata: z.record(z.string(), z.string()).optional(),
     plugin: nonEmptyExactStringSchema,
     resultMessageTs: z.string().optional(),
+    source: sourceSchema,
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
     version: z.number().int().positive(),
@@ -157,7 +159,18 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
 export function parseDispatchRecord(
   value: unknown,
 ): DispatchRecord | undefined {
-  const parsed = dispatchRecordSchema.safeParse(value);
+  const candidate =
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    !("source" in value) &&
+    "destination" in value
+      ? {
+          ...(value as Record<string, unknown>),
+          source: (value as { destination: unknown }).destination,
+        }
+      : value;
+  const parsed = dispatchRecordSchema.safeParse(candidate);
   return parsed.success ? (parsed.data as DispatchRecord) : undefined;
 }
 
@@ -272,10 +285,15 @@ async function putRecord(
   state: StateAdapter,
   record: DispatchRecord,
 ): Promise<void> {
-  const next = parseDispatchRecord(record);
-  if (!next) {
-    throw new Error("Dispatch record is invalid.");
+  const parsed = dispatchRecordSchema.safeParse(record);
+  if (!parsed.success) {
+    throw new Error(
+      `Dispatch record is invalid: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "<root>"} ${issue.message}`)
+        .join("; ")}`,
+    );
   }
+  const next = parsed.data as DispatchRecord;
   await state.set(
     getDispatchStorageKey(next.id),
     next,
@@ -324,6 +342,7 @@ export async function createOrGetDispatch(args: {
       ...(metadata ? { metadata } : {}),
       plugin: args.plugin,
       status: "pending",
+      source: args.options.source,
       updatedAtMs: args.nowMs,
       version: 1,
     };

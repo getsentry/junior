@@ -63,6 +63,26 @@ function dispatchOptionsErrorMessage(
   if (hasIssueUnderPath(issues, ["destination", "channelId"])) {
     return "Dispatch destination channelId must be a Slack channel id";
   }
+  if (
+    issues.some(
+      (issue) =>
+        issue.code === "unrecognized_keys" && issue.path[0] === "source",
+    )
+  ) {
+    return "Dispatch source must not include unknown fields";
+  }
+  if (hasIssueAtPath(issues, ["source"])) {
+    return "Dispatch source platform is required";
+  }
+  if (hasIssueUnderPath(issues, ["source", "teamId"])) {
+    return "Dispatch source teamId must be a Slack team id";
+  }
+  if (hasIssueUnderPath(issues, ["source", "channelId"])) {
+    return "Dispatch source channelId must be a Slack channel id";
+  }
+  if (hasIssueUnderPath(issues, ["source", "conversationId"])) {
+    return "Dispatch source conversationId must be a local conversation id";
+  }
   if (hasIssueUnderPath(issues, ["idempotencyKey"])) {
     const tooLong = issues.some(
       (issue) => issue.path[0] === "idempotencyKey" && issue.code === "too_big",
@@ -92,6 +112,10 @@ function dispatchOptionsErrorMessage(
     (issue) =>
       issue.path[0] === "metadata" &&
       (issue.message === "Dispatch metadata has too many keys" ||
+        issue.message ===
+          "Dispatch metadata keys must be single-line strings" ||
+        issue.message ===
+          "Dispatch metadata values must be single-line strings" ||
         issue.message === "Dispatch metadata key exceeds the maximum length" ||
         issue.message === "Dispatch metadata value exceeds the maximum length"),
   );

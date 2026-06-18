@@ -66,6 +66,48 @@ describe("prompt builders", () => {
     expect(prompt).not.toContain("#roadmap & launches");
   });
 
+  it("renders generic dispatch facts in runtime context", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+      dispatch: {
+        actor: { type: "system", id: "scheduler" },
+        plugin: "scheduler",
+        source: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        metadata: {
+          scheduledFor: "2026-05-26T12:00:00.000Z",
+          taskId: "sched_plugin_1",
+        },
+      },
+      invocation: null,
+    });
+
+    expect(prompt).toContain("<dispatch>");
+    expect(prompt).toContain(
+      "- dispatch.execution: execute the dispatched input now",
+    );
+    expect(prompt).toContain(
+      "- dispatch.delivery: the runtime delivers the final answer to the destination",
+    );
+    expect(prompt).toContain("- dispatch.actor.type: system");
+    expect(prompt).toContain("- dispatch.actor.id: scheduler");
+    expect(prompt).toContain("- source.platform: slack");
+    expect(prompt).toContain("- destination.channel_id: C123");
+    expect(prompt).toContain(
+      "- dispatch.metadata.scheduledFor: 2026-05-26T12:00:00.000Z",
+    );
+    expect(prompt).toContain("- dispatch.metadata.taskId: sched_plugin_1");
+  });
+
   it("omits follow-up runtime context once session bootstrap exists", () => {
     expect(
       buildTurnContextPrompt({

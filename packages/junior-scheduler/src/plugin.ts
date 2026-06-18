@@ -7,9 +7,9 @@ import {
   type PluginReadState,
   type PluginState,
   type SlackDestination,
+  type Source,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { buildScheduledTaskRunPrompt } from "./prompt";
 import {
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
@@ -17,7 +17,10 @@ import {
   type SchedulerOperationalStore,
   type SchedulerStore,
 } from "./store";
-import { scheduledTaskPrincipalLabel } from "./identity";
+import {
+  sanitizeScheduledTaskPrincipal,
+  scheduledTaskPrincipalLabel,
+} from "./identity";
 import type {
   ScheduledRun,
   ScheduledTask,
@@ -34,6 +37,44 @@ import {
 
 const SCHEDULER_HEARTBEAT_LIMIT = 10;
 const DASHBOARD_TABLE_LIMIT = 5;
+
+function buildScheduledTaskDispatchMetadata(args: {
+  nowMs: number;
+  run: ScheduledRun;
+  task: ScheduledTask;
+}): Record<string, string> {
+  const { run, task } = args;
+  const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
+  if (!task.task.text?.trim()) {
+    throw new Error("Scheduled task text is required");
+  }
+
+  return {
+    creatorSlackUserId: creator.slackUserId,
+    runId: run.id,
+    schedule: task.schedule.description,
+    scheduleKind: task.schedule.kind,
+    scheduledFor: new Date(run.scheduledForMs).toISOString(),
+    runningAt: new Date(args.nowMs).toISOString(),
+    taskId: task.id,
+    timezone: task.schedule.timezone,
+    ...(task.schedule.recurrence
+      ? {
+          recurrenceFrequency: task.schedule.recurrence.frequency,
+          recurrenceInterval: String(task.schedule.recurrence.interval),
+          recurrenceStartDate: task.schedule.recurrence.startDate,
+        }
+      : {}),
+  };
+}
+
+function scheduledTaskDispatchSource(task: ScheduledTask): Source {
+  return {
+    platform: "slack",
+    teamId: task.destination.teamId,
+    channelId: task.destination.channelId,
+  };
+}
 
 function schedulerStore(ctx: { db?: PluginDb }): SchedulerStore {
   if (!ctx.db) {
@@ -464,9 +505,9 @@ export function createSchedulerPlugin() {
             continue;
           }
 
-          let prompt: string;
+          let dispatchMetadata: Record<string, string>;
           try {
-            prompt = buildScheduledTaskRunPrompt({
+            dispatchMetadata = buildScheduledTaskDispatchMetadata({
               nowMs: ctx.nowMs,
               run,
               task,
@@ -474,8 +515,8 @@ export function createSchedulerPlugin() {
           } catch (error) {
             const errorMessage =
               error instanceof Error
-                ? `Scheduled task prompt could not be built: ${error.message}`
-                : "Scheduled task prompt could not be built.";
+                ? `Scheduled task dispatch metadata could not be built: ${error.message}`
+                : "Scheduled task dispatch metadata could not be built.";
             await blockClaimedRun({
               errorMessage,
               nowMs: ctx.nowMs,
@@ -492,11 +533,9 @@ export function createSchedulerPlugin() {
                 ? { credentialSubject: task.credentialSubject }
                 : {}),
               destination: task.destination,
-              input: prompt,
-              metadata: {
-                runId: run.id,
-                taskId: task.id,
-              },
+              input: task.task.text,
+              metadata: dispatchMetadata,
+              source: scheduledTaskDispatchSource(task),
             });
           } catch (error) {
             const errorMessage =

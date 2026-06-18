@@ -4,6 +4,7 @@ import {
   defineJuniorPlugin,
   type PluginDb,
   type Destination,
+  type Source,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { recoverStaleDispatches } from "@/chat/agent-dispatch/heartbeat";
@@ -52,6 +53,11 @@ const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
+const SLACK_SOURCE = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} satisfies Source;
 
 let schedulerSqlFixture:
   | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>
@@ -477,13 +483,10 @@ describe("plugin heartbeat", () => {
     });
     const result = await schedulerCtx.agent.dispatch({
       idempotencyKey: "run-1",
-      destination: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-      },
+      destination: SLACK_DESTINATION,
       input: "Run the scheduled task.",
       metadata: { runId: "run-1" },
+      source: SLACK_SOURCE,
     });
 
     await expect(schedulerCtx.agent.get(result.id)).resolves.toEqual({
@@ -501,6 +504,7 @@ describe("plugin heartbeat", () => {
       input: "Run the scheduled task.",
       destination: { channelId: "C123" },
       metadata: { runId: "run-1" },
+      source: { channelId: "C123" },
     });
   });
 
@@ -558,24 +562,18 @@ describe("plugin heartbeat", () => {
     for (let index = 0; index < 25; index += 1) {
       await ctx.agent.dispatch({
         idempotencyKey: `run-${index}`,
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       });
     }
 
     await expect(
       ctx.agent.dispatch({
         idempotencyKey: "run-over-limit",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       }),
     ).rejects.toThrow("Plugin heartbeat exceeded the dispatch limit");
   });
@@ -601,6 +599,7 @@ describe("plugin heartbeat", () => {
             channelId: "C123",
           },
           input: "Run the scheduled task.",
+          source: SLACK_SOURCE,
         }),
       ).rejects.toThrow("Dispatch destination teamId must be a Slack team id");
     }
@@ -608,12 +607,9 @@ describe("plugin heartbeat", () => {
     await expect(
       ctx.agent.dispatch({
         idempotencyKey: "valid-after-invalid",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       }),
     ).resolves.toMatchObject({ status: "created" });
   });
@@ -644,6 +640,11 @@ describe("plugin heartbeat", () => {
           channelId: "D123",
         },
         input: "Run the scheduled task.",
+        source: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -666,6 +667,11 @@ describe("plugin heartbeat", () => {
         channelId: "D123",
       },
       input: "Run the scheduled task.",
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "D123",
+      },
     });
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
@@ -690,12 +696,9 @@ describe("plugin heartbeat", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-exhausted",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       },
     });
     await withDispatchLock(created.record.id, async (state) => {
@@ -729,12 +732,9 @@ describe("plugin heartbeat", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-exhausted-corrupt-row",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       },
     });
     await withDispatchLock(created.record.id, async (state) => {
@@ -793,12 +793,9 @@ describe("plugin heartbeat", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-terminal-index",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       },
     });
 
@@ -830,12 +827,9 @@ describe("plugin heartbeat", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-active-max-attempts",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
         input: "Run the scheduled task.",
+        source: SLACK_SOURCE,
       },
     });
     await withDispatchLock(created.record.id, async (state) => {
@@ -899,11 +893,23 @@ describe("plugin heartbeat", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toContain(
-      "- creator_slack_user_id: U039RR91S",
+    expect(dispatchRecord?.input).toBe(
+      "Post a digest. Summarize the latest state.",
     );
-    expect(dispatchRecord?.input).not.toContain("creator_user_name");
-    expect(dispatchRecord?.input).not.toContain("creator_full_name");
+    expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
+    expect(dispatchRecord?.source).toEqual(SLACK_SOURCE);
+    expect(dispatchRecord?.metadata).toMatchObject({
+      creatorSlackUserId: "U039RR91S",
+      runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      schedule: "Once at noon",
+      scheduleKind: "one_off",
+      scheduledFor: "2026-05-26T12:00:00.000Z",
+      runningAt: "2026-05-26T12:05:00.000Z",
+      taskId: "sched_plugin_1",
+      timezone: "UTC",
+    });
+    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
+    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
 
     await withDispatchLock(running!.dispatchId!, async (state) => {
       const record = await state.get<DispatchRecord>(
@@ -1194,7 +1200,7 @@ describe("plugin heartbeat", () => {
     ).resolves.toMatchObject({
       status: "blocked",
       errorMessage: expect.stringContaining(
-        "Scheduled task prompt could not be built",
+        "Scheduled task dispatch metadata could not be built",
       ),
     });
     await expect(
@@ -1202,7 +1208,7 @@ describe("plugin heartbeat", () => {
     ).resolves.toMatchObject({
       status: "blocked",
       statusReason: expect.stringContaining(
-        "Scheduled task prompt could not be built",
+        "Scheduled task dispatch metadata could not be built",
       ),
     });
     expect(fetchMock).not.toHaveBeenCalled();

@@ -45,7 +45,16 @@ import {
 import { generateAssistantReply } from "@/chat/respond";
 import type { JuniorDatabase } from "@/chat/sql/db";
 import { juniorSqlSchema } from "@/chat/sql/schema";
-import { schedulerPlugin } from "@sentry/junior-scheduler";
+import {
+  createSchedulerSqlStore,
+  schedulerPlugin,
+  type ScheduledTask,
+} from "@sentry/junior-scheduler";
+import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
+import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
+import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -130,11 +139,22 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
   user_id?: string;
 }
 
+interface ScheduledTaskDueEvent extends EvalBaseEvent {
+  type: "scheduled_task_due";
+  now_ms?: number;
+  recurrence?: "daily" | "weekly" | "monthly" | "yearly";
+  schedule?: string;
+  schedule_kind?: "one_off" | "recurring";
+  task_text: string;
+  timezone?: string;
+}
+
 export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
-  | AssistantContextChangedEvent;
+  | AssistantContextChangedEvent
+  | ScheduledTaskDueEvent;
 
 interface SubscribedDecisionFixture {
   reason: string;
@@ -1276,7 +1296,7 @@ async function setupHarnessEnvironment(
       scenario.events.flatMap((event) =>
         "message" in event
           ? [event.message.author?.user_id?.trim() || "U-test"]
-          : event.user_id
+          : "user_id" in event && event.user_id
             ? [event.user_id]
             : [],
       ),
@@ -1569,12 +1589,21 @@ function buildRuntimeServices(
 async function processEvents(args: {
   scenario: EvalScenario;
   env: HarnessEnvironment;
+  generateAssistantReply: typeof generateAssistantReply;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
   readyQueueDeliveries: QueueDelivery[];
+  schedulerDb: PluginDb;
 }): Promise<void> {
-  const { scenario, env, slackRuntime, getThreadRecord, readyQueueDeliveries } =
-    args;
+  const {
+    scenario,
+    env,
+    generateAssistantReply,
+    slackRuntime,
+    getThreadRecord,
+    readyQueueDeliveries,
+    schedulerDb,
+  } = args;
 
   const consumedOauthStates = new Set<string>();
   const consumedMcpAuthSessions = new Set<string>();
@@ -1650,9 +1679,113 @@ async function processEvents(args: {
     await slackRuntime.handleAssistantContextChanged(lifecycleEvent);
   };
 
+  const runScheduledTaskDue = async (
+    event: ScheduledTaskDueEvent,
+  ): Promise<void> => {
+    const { thread } = getThreadRecord(event.thread);
+    const nowMs = event.now_ms ?? Date.parse("2026-05-26T12:00:00.000Z");
+    const scheduleKind = event.schedule_kind ?? "one_off";
+    const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
+    const task: ScheduledTask = {
+      id: taskId,
+      createdAtMs: nowMs - 60_000,
+      createdBy: { slackUserId: "U-test", userName: "testuser" },
+      destination: createEvalDestination(
+        thread,
+      ) as ScheduledTask["destination"],
+      nextRunAtMs: nowMs,
+      schedule: {
+        description:
+          event.schedule ??
+          (scheduleKind === "recurring" ? "Weekly at noon" : "Once now"),
+        kind: scheduleKind,
+        timezone: event.timezone ?? "UTC",
+        ...(scheduleKind === "recurring"
+          ? {
+              recurrence: {
+                frequency: event.recurrence ?? "weekly",
+                interval: 1,
+                startDate: new Date(nowMs).toISOString().slice(0, 10),
+                time: { hour: 12, minute: 0 },
+              },
+            }
+          : {}),
+      },
+      status: "active",
+      task: { text: event.task_text },
+      updatedAtMs: nowMs - 60_000,
+    };
+    const schedulerStore = createSchedulerSqlStore(schedulerDb);
+    await schedulerStore.saveTask(task);
+
+    const callbacks: DispatchCallback[] = [];
+    const expectedCallbackUrl = new URL(
+      "/api/internal/agent-dispatch",
+      process.env.JUNIOR_BASE_URL,
+    ).href;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (new URL(url).href === expectedCallbackUrl) {
+        const callback = await verifyDispatchCallbackRequest(
+          new Request(input, init),
+        );
+        if (!callback) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        callbacks.push(callback);
+        return new Response("Accepted", { status: 202 });
+      }
+      return await originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      await runPluginHeartbeats({ nowMs });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    if (callbacks.length === 0) {
+      throw new Error(
+        "Scheduled eval task did not enqueue a dispatch callback.",
+      );
+    }
+
+    const dispatchedRuns = (await schedulerStore.listIncompleteRuns()).filter(
+      (run) => run.taskId === taskId && run.dispatchId,
+    );
+    if (dispatchedRuns.length === 0) {
+      const runs = (await schedulerStore.listIncompleteRuns()).filter(
+        (run) => run.taskId === taskId,
+      );
+      const savedTask = await schedulerStore.getTask(taskId);
+      throw new Error(
+        `Scheduled eval task did not create a dispatch: ${JSON.stringify({ runs, savedTask })}`,
+      );
+    }
+    for (const run of dispatchedRuns) {
+      const dispatch = await getDispatchRecord(run.dispatchId!);
+      if (!dispatch) {
+        throw new Error("Scheduled eval dispatch record was not found.");
+      }
+      const callback = callbacks.find(
+        (candidate) => candidate.id === dispatch.id,
+      );
+      if (!callback) {
+        throw new Error("Scheduled eval dispatch callback was not captured.");
+      }
+      await runAgentDispatchSlice(callback, { generateAssistantReply });
+    }
+  };
+
   for (const event of scenario.events) {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
+    } else if (event.type === "scheduled_task_due") {
+      await runScheduledTaskDue(event);
     } else {
       await runLifecycleEvent(event);
     }
@@ -1803,6 +1936,11 @@ export async function runEvalScenario(
       threadRecordsById,
       observations,
     );
+    const generateEvalAssistantReply =
+      services.replyExecutor?.generateAssistantReply;
+    if (!generateEvalAssistantReply) {
+      throw new Error("Eval reply executor was not configured.");
+    }
 
     const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => slackAdapter as any,
@@ -1812,9 +1950,11 @@ export async function runEvalScenario(
     await processEvents({
       scenario,
       env,
+      generateAssistantReply: generateEvalAssistantReply,
       slackRuntime,
       getThreadRecord,
       readyQueueDeliveries,
+      schedulerDb: schedulerSql.db,
     });
 
     return collectResults(

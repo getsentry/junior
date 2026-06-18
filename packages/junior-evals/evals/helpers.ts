@@ -518,6 +518,36 @@ export function threadMessage(
   };
 }
 
+/** Builds an event for a scheduled task becoming due and dispatching output. */
+export function scheduledTaskDue(
+  taskText: string,
+  opts?: {
+    now_ms?: number;
+    recurrence?: "daily" | "weekly" | "monthly" | "yearly";
+    schedule?: string;
+    schedule_kind?: "one_off" | "recurring";
+    thread?: ThreadOverrides;
+    timezone?: string;
+  },
+) {
+  const seq = nextId();
+  return {
+    type: "scheduled_task_due" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
+    task_text: taskText,
+    ...(opts?.now_ms ? { now_ms: opts.now_ms } : {}),
+    ...(opts?.recurrence ? { recurrence: opts.recurrence } : {}),
+    ...(opts?.schedule ? { schedule: opts.schedule } : {}),
+    ...(opts?.schedule_kind ? { schedule_kind: opts.schedule_kind } : {}),
+    ...(opts?.timezone ? { timezone: opts.timezone } : {}),
+  };
+}
+
 /** Builds an assistant thread lifecycle start event for a harnessed Slack eval. */
 export function threadStart(opts?: {
   thread?: ThreadOverrides;

@@ -124,6 +124,20 @@ const dispatchMetadataSchema = z
           path: [key],
         });
       }
+      if (/[\r\n]/.test(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch metadata keys must be single-line strings",
+          path: [key],
+        });
+      }
+      if (/[\r\n]/.test(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch metadata values must be single-line strings",
+          path: [key],
+        });
+      }
       if (value.length > 512) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -142,5 +156,6 @@ export const dispatchOptionsSchema = z
     destination: slackDestinationSchema,
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
+    source: sourceSchema,
   })
   .strict();

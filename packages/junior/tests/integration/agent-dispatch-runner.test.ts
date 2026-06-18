@@ -70,6 +70,14 @@ function createCredentialSubject() {
   return boundSubject;
 }
 
+function slackAddress(channelId = "C123") {
+  return {
+    platform: "slack" as const,
+    teamId: "T123",
+    channelId,
+  };
+}
+
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
     process.env.JUNIOR_SECRET = "dispatch-runner-secret";
@@ -93,19 +101,23 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-1",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: slackAddress(),
         input: "Run the scheduled task.",
         metadata: { runId: "run-1" },
+        source: slackAddress(),
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
     const generateAssistantReply = vi.fn(async (_input, context) => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
+      expect(context.surface).toBe("api");
+      expect(context.source).toEqual(slackAddress());
+      expect(context.dispatch).toEqual({
+        actor: { type: "system", id: "scheduler" },
+        metadata: { runId: "run-1" },
+        plugin: "scheduler",
+      });
       expect(context.correlation).toMatchObject({
         conversationId: dispatchConversationId,
         threadId: dispatchConversationId,
@@ -199,13 +211,10 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-isolated-context",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: slackAddress(),
         input: "Run the scheduled task.",
         metadata: { runId: "run-isolated-context" },
+        source: slackAddress(),
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
@@ -252,12 +261,9 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-timeout",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: slackAddress(),
         input: "Run the scheduled task.",
+        source: slackAddress(),
       },
     });
     const scheduleCallback = vi.fn(async () => undefined);
@@ -298,12 +304,9 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-delegated",
         credentialSubject: createCredentialSubject(),
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "D123",
-        },
+        destination: slackAddress("D123"),
         input: "Run the scheduled task.",
+        source: slackAddress("D123"),
       },
     });
     const generateAssistantReply = vi.fn(async (_input, context) => {
@@ -346,12 +349,9 @@ describe("agent dispatch runner", () => {
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-busy",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: slackAddress(),
         input: "Run the scheduled task.",
+        source: slackAddress(),
       },
     });
     const state = getStateAdapter();

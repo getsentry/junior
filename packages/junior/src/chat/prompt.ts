@@ -27,7 +27,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
-import type { Source } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -491,10 +491,93 @@ function buildRuntimeSection(params: {
   return renderTagBlock("runtime", lines.join("\n"));
 }
 
+function formatSourceLines(source: Source): string[] {
+  if (source.platform === "local") {
+    return [
+      "- source.platform: local",
+      `- source.conversation_id: ${escapeXml(source.conversationId)}`,
+    ];
+  }
+
+  return [
+    "- source.platform: slack",
+    `- source.team_id: ${escapeXml(source.teamId)}`,
+    `- source.channel_id: ${escapeXml(source.channelId)}`,
+    ...(source.messageTs
+      ? [`- source.message_ts: ${escapeXml(source.messageTs)}`]
+      : []),
+    ...(source.threadTs
+      ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
+      : []),
+  ];
+}
+
+function formatDestinationLines(destination: Destination): string[] {
+  if (destination.platform === "local") {
+    return [
+      "- destination.platform: local",
+      `- destination.conversation_id: ${escapeXml(destination.conversationId)}`,
+    ];
+  }
+
+  return [
+    "- destination.platform: slack",
+    `- destination.team_id: ${escapeXml(destination.teamId)}`,
+    `- destination.channel_id: ${escapeXml(destination.channelId)}`,
+  ];
+}
+
+function buildDispatchSection(
+  params:
+    | {
+        actor?: { id: string; type: string };
+        destination: Destination;
+        metadata?: Record<string, string>;
+        plugin?: string;
+        source: Source;
+      }
+    | undefined,
+): string[] | null {
+  if (!params) {
+    return null;
+  }
+
+  const metadataLines = Object.entries(params.metadata ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(
+      ([key, value]) =>
+        `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
+    );
+  return renderTag("dispatch", [
+    "- dispatch.execution: execute the dispatched input now",
+    "- dispatch.delivery: the runtime delivers the final answer to the destination",
+    "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
+    ...(params.actor
+      ? [
+          `- dispatch.actor.type: ${escapeXml(params.actor.type)}`,
+          `- dispatch.actor.id: ${escapeXml(params.actor.id)}`,
+        ]
+      : []),
+    ...(params.plugin
+      ? [`- dispatch.plugin: ${escapeXml(params.plugin)}`]
+      : []),
+    ...formatSourceLines(params.source),
+    ...formatDestinationLines(params.destination),
+    ...metadataLines,
+  ]);
+}
+
 function buildContextSection(params: {
   requester?: { userName?: string; fullName?: string; userId?: string };
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
+  dispatch?: {
+    actor?: { id: string; type: string };
+    destination: Destination;
+    metadata?: Record<string, string>;
+    plugin?: string;
+    source: Source;
+  };
   invocation: SkillInvocation | null;
 }): string | null {
   const blocks: string[][] = [];
@@ -516,6 +599,11 @@ function buildContextSection(params: {
   });
   if (requesterLines) {
     blocks.push(requesterLines);
+  }
+
+  const dispatchLines = buildDispatchSection(params.dispatch);
+  if (dispatchLines) {
+    blocks.push(dispatchLines);
   }
 
   const artifactLines = formatArtifactsLines(params.artifactState);
@@ -593,6 +681,13 @@ type TurnContextPromptInput = {
     conversationId?: string;
     slackConversation?: SlackConversationContext;
   };
+  dispatch?: {
+    actor?: { id: string; type: string };
+    destination: Destination;
+    metadata?: Record<string, string>;
+    plugin?: string;
+    source: Source;
+  };
   invocation: SkillInvocation | null;
   requester?: {
     userName?: string;
@@ -653,6 +748,7 @@ export function buildTurnContextPrompt(
       requester: params.requester,
       artifactState: params.artifactState,
       configuration: params.configuration,
+      dispatch: params.dispatch,
       invocation: params.invocation,
     }),
     buildRuntimeSection(params.runtime ?? {}),

@@ -293,6 +293,12 @@ export async function runAgentDispatchSlice(
       artifactState: artifacts,
       piMessages: conversation.piMessages,
       destination: dispatch.destination,
+      source: dispatch.source,
+      dispatch: {
+        actor: dispatch.actor,
+        metadata: dispatch.metadata,
+        plugin: dispatch.plugin,
+      },
       correlation: {
         conversationId,
         threadId: conversationId,
@@ -301,7 +307,7 @@ export async function runAgentDispatchSlice(
         channelId: dispatch.destination.channelId,
         teamId: dispatch.destination.teamId,
       },
-      surface: dispatch.actor.id === "scheduler" ? "scheduler" : "api",
+      surface: "api",
       toolChannelId: dispatch.destination.channelId,
       sandbox: {
         sandboxId,

@@ -198,9 +198,15 @@ export interface ReplyRequestContext {
   skillDirs?: string[];
   credentialContext?: CredentialContext;
   requester?: Requester;
+  source?: Source;
   slackConversation?: SlackConversationContext;
   destination: Destination;
   surface?: AgentTurnSurface;
+  dispatch?: {
+    actor?: { id: string; type: string };
+    metadata?: Record<string, string>;
+    plugin?: string;
+  };
   correlation?: {
     conversationId?: string;
     threadId?: string;
@@ -391,6 +397,9 @@ function actorRequesterFromContext(
 }
 
 function toolInvocationSource(context: ReplyRequestContext): Source {
+  if (context.source) {
+    return context.source;
+  }
   if (context.destination.platform !== "slack") {
     return context.destination;
   }
@@ -433,10 +442,6 @@ function surfaceFromContext(
     (conversationId ? parseSlackThreadId(conversationId) : undefined)
   ) {
     return "slack";
-  }
-  const actor = context.credentialContext?.actor;
-  if (actor?.type === "system" && actor.id === "scheduler") {
-    return "scheduler";
   }
   if (conversationId) {
     return "api";
@@ -1036,6 +1041,7 @@ export async function generateAssistantReply(
       configuration: configurationValues,
       mcpToolManager: turnMcpToolManager,
       sandbox,
+      surface,
       advisor: {
         config: botConfig.advisor,
         conversationId: sessionConversationId,
@@ -1177,6 +1183,13 @@ export async function generateAssistantReply(
             conversationId: spanContext.conversationId,
             slackConversation: context.slackConversation,
           },
+          dispatch: context.dispatch
+            ? {
+                ...context.dispatch,
+                destination: context.destination,
+                source: toolSource,
+              }
+            : undefined,
           invocation: skillInvocation,
           requester: actorRequester,
           artifactState: context.artifactState,

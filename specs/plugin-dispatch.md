@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-11
+- Last Edited: 2026-06-17
 
 ## Purpose
 
@@ -30,11 +30,9 @@ Plugins may dispatch an agent request:
 const result = await ctx.agent.dispatch({
   idempotencyKey: run.id,
   destination: task.destination,
-  input: buildScheduledTaskRunPrompt({ task, run, nowMs }),
-  metadata: {
-    taskId: task.id,
-    runId: run.id,
-  },
+  input: task.task.text,
+  metadata: buildScheduledTaskDispatchMetadata({ task, run, nowMs }),
+  source: scheduledTaskDispatchSource(task),
 });
 ```
 
@@ -51,6 +49,7 @@ type DispatchOptions = {
   destination: SlackDestination;
   input: string;
   metadata?: Record<string, string>;
+  source: Source;
 };
 ```
 
@@ -98,8 +97,10 @@ type Dispatch = {
 - Destination must be a Slack public channel, private channel, or existing DM channel the bot can post to.
 - Destination must not be an existing Slack thread.
 - Destination uses a Slack channel id; it must not accept a user id.
-- Input is plain text inserted as user-role synthetic conversation content.
-- Metadata is correlation-only and must not affect authorization.
+- Source must match the strict shared source schema exactly and must not include unknown fields.
+- Source identifies where the autonomous request originated; it is prompt-visible context and tool invocation context, not a credential grant.
+- Input is the current request text inserted as user-role synthetic conversation content.
+- Metadata is bounded plugin-owned dispatch context. The normal turn-context builder may render it as background facts for the model, but it must not affect authorization, credential selection, or routing.
 - System dispatches have no requester, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
 - Plugin-provided user credential subjects use the stable unbound shape: `type`, `userId`, and `allowedWhen`. Plugin input must not include a binding or signature; bindings are runtime-owned.
 - Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting a dispatch record, core binds the subject to the dispatch destination with the current runtime secret and verifies the signed `teamId`/`channelId` proof locally. Dispatch must not make Slack API calls just to re-check a subject from an already verified turn context.
@@ -145,6 +146,7 @@ Stored dispatch records include:
 - status: `pending | running | awaiting_resume | completed | failed | blocked`
 - version
 - system actor
+- source
 - Slack destination
 - input
 - metadata
@@ -154,7 +156,7 @@ Stored dispatch records include:
 - result timestamp or error message
 
 Plugin-visible `Dispatch` is a projection, not the stored record.
-Core persists dispatch records only after plugin input has parsed through the shared schema and runtime credential binding has succeeded. Every callback, recovery, and projection path must parse stored dispatch records before use; malformed records are invalid state and must not be repaired from nearby Slack channel/thread metadata during normal runtime reads.
+Core persists dispatch records only after plugin input has parsed through the shared schema and runtime credential binding has succeeded. Every callback, recovery, and projection path must parse stored dispatch records before use; malformed records are invalid state and must not be repaired from nearby Slack channel/thread metadata during normal runtime reads. Legacy dispatch records that predate stored `source` may derive source from their stored Slack destination only; new dispatch requests must provide `source` explicitly.
 
 Dispatch ids should be deterministic from plugin name and idempotency key. Duplicate calls return the existing dispatch id and may re-fire the callback only when the record is incomplete.
 

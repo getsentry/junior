@@ -1,5 +1,4 @@
 export { createSchedulerPlugin, schedulerPlugin } from "./plugin";
-export { buildScheduledTaskRunPrompt } from "./prompt";
 export {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,

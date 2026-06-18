@@ -134,6 +134,8 @@ export function createTools(
     const outputCapabilities = outputChannelId
       ? resolveChannelCapabilities(outputChannelId)
       : undefined;
+    const canPostStandaloneSlackMessage =
+      context.surface === undefined || context.surface === "slack";
     const rawChannelCapabilities = resolveChannelCapabilities(
       slackContext.sourceChannelId,
     );
@@ -145,11 +147,14 @@ export function createTools(
       );
     }
 
-    if (outputCapabilities?.canPostToChannel) {
+    if (outputCapabilities?.canPostToChannel && canPostStandaloneSlackMessage) {
       tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
         slackContext,
         state,
       );
+    }
+
+    if (outputCapabilities?.canPostToChannel) {
       tools.slackChannelListMessages =
         createSlackChannelListMessagesTool(slackContext);
     }

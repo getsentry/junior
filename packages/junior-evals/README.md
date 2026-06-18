@@ -78,7 +78,7 @@ These knobs work by overriding services on the eval-local runtime instance. They
 
 Tool replay:
 
-- `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. `pnpm evals` uses `auto` replay mode; use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.
+- `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. Use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.
 - Keep committed recordings minimal and source-specific. Regenerate them from the evals that need replay, then review for stale exploratory fetches and secret-like values before committing.
 
 ## Running
