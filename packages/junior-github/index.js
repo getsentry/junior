@@ -290,18 +290,25 @@ function buildOAuthTokenRequest(input) {
   };
 }
 
-function parseOAuthError(text) {
-  if (!text.trim()) {
+function parseOAuthResponseJson(responseText) {
+  if (!responseText.trim()) {
     return undefined;
   }
   try {
-    const parsed = JSON.parse(text);
-    return isRecord(parsed) && typeof parsed.error === "string"
-      ? parsed.error
-      : undefined;
+    return JSON.parse(responseText);
   } catch {
     return undefined;
   }
+}
+
+function oauthErrorCode(data) {
+  return isRecord(data) && typeof data.error === "string"
+    ? data.error
+    : undefined;
+}
+
+function isRejectedRefreshError(errorCode) {
+  return errorCode === "bad_refresh_token" || errorCode === "invalid_grant";
 }
 
 function parseOAuthTokenResponse(data, requestedScope) {
@@ -358,18 +365,30 @@ async function refreshUserAccessToken(input) {
     headers: request.headers,
     body: request.body,
   });
-  if (!response.ok) {
-    const errorCode = parseOAuthError(await response.text());
-    if (errorCode === "bad_refresh_token" || errorCode === "invalid_grant") {
-      throw new GitHubUserRefreshRejectedError(
-        `GitHub user token refresh rejected: ${errorCode}`,
-      );
-    }
+  const responseText = await response.text();
+  const responseData = parseOAuthResponseJson(responseText);
+  const errorCode = oauthErrorCode(responseData);
+  if (isRejectedRefreshError(errorCode)) {
+    throw new GitHubUserRefreshRejectedError(
+      `GitHub user token refresh rejected: ${errorCode}`,
+    );
+  }
+  if (!response.ok || errorCode) {
     throw new Error(
       `GitHub user token refresh failed: ${response.status}${errorCode ? ` ${errorCode}` : ""}`,
     );
   }
-  return parseOAuthTokenResponse(await response.json(), input.requestedScope);
+  try {
+    return parseOAuthTokenResponse(responseData, input.requestedScope);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "OAuth token response missing access_token"
+    ) {
+      throw new GitHubUserRefreshRejectedError(error.message);
+    }
+    throw error;
+  }
 }
 
 function leaseExpiry(expiresAt) {

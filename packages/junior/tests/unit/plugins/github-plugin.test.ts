@@ -867,6 +867,73 @@ describe("github plugin", () => {
     });
   });
 
+  it.each(["bad_refresh_token", "invalid_grant"])(
+    "requires reauthorization when GitHub returns %s in a successful refresh response",
+    async (errorCode) => {
+      process.env.GITHUB_APP_CLIENT_ID = "client-id";
+      process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+      mockGitHubRefresh(200, { error: errorCode });
+
+      const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+      const result = await plugin.hooks?.issueCredential?.(
+        githubIssueCredentialContext({
+          grant: {
+            name: "user-write",
+            access: "write",
+            reason: "github.issue-create",
+          },
+          currentUserToken: {
+            accessToken: "stale-token",
+            expiresAt: Date.now() + 60_000,
+            refreshToken: "stale-refresh-token",
+            scope: "repo",
+          },
+        }),
+      );
+
+      expect(result).toMatchObject({
+        type: "needed",
+        authorization: {
+          type: "oauth",
+          provider: "github",
+          scope: "repo",
+        },
+      });
+    },
+  );
+
+  it("requires reauthorization when GitHub returns a malformed successful refresh response", async () => {
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    mockGitHubRefresh(200, { error_description: "refresh token expired" });
+
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    const result = await plugin.hooks?.issueCredential?.(
+      githubIssueCredentialContext({
+        grant: {
+          name: "user-write",
+          access: "write",
+          reason: "github.issue-create",
+        },
+        currentUserToken: {
+          accessToken: "stale-token",
+          expiresAt: Date.now() + 60_000,
+          refreshToken: "stale-refresh-token",
+          scope: "repo",
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: "needed",
+      authorization: {
+        type: "oauth",
+        provider: "github",
+        scope: "repo",
+      },
+    });
+  });
+
   it("surfaces operational GitHub user token refresh failures", async () => {
     process.env.GITHUB_APP_CLIENT_ID = "client-id";
     process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
@@ -890,6 +957,56 @@ describe("github plugin", () => {
         }),
       ),
     ).rejects.toThrow("GitHub user token refresh failed: 500 server_error");
+  });
+
+  it("surfaces successful GitHub refresh responses with operational OAuth errors", async () => {
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    mockGitHubRefresh(200, { error: "server_error" });
+
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    await expect(
+      plugin.hooks?.issueCredential?.(
+        githubIssueCredentialContext({
+          grant: {
+            name: "user-write",
+            access: "write",
+            reason: "github.issue-create",
+          },
+          currentUserToken: {
+            accessToken: "stale-token",
+            expiresAt: Date.now() + 60_000,
+            refreshToken: "stale-refresh-token",
+            scope: "repo",
+          },
+        }),
+      ),
+    ).rejects.toThrow("GitHub user token refresh failed: 200 server_error");
+  });
+
+  it("surfaces malformed successful GitHub refresh token responses after access token parsing", async () => {
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    mockGitHubRefresh(200, { access_token: "new-access-token" });
+
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    await expect(
+      plugin.hooks?.issueCredential?.(
+        githubIssueCredentialContext({
+          grant: {
+            name: "user-write",
+            access: "write",
+            reason: "github.issue-create",
+          },
+          currentUserToken: {
+            accessToken: "stale-token",
+            expiresAt: Date.now() + 60_000,
+            refreshToken: "stale-refresh-token",
+            scope: "repo",
+          },
+        }),
+      ),
+    ).rejects.toThrow("OAuth token response missing refresh_token");
   });
 
   it("prepares git attribution hooks and sandbox git config", async () => {
