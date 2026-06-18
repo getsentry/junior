@@ -1,6 +1,7 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 import { githubPlugin } from "@sentry/junior-github";
+import { gocdPlugin } from "@sentry/junior-gocd";
 import {
   exampleDashboardAuthRequired,
   exampleDashboardMockConversations,
@@ -22,6 +23,7 @@ export const plugins = defineJuniorPlugins([
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
+  gocdPlugin(),
   "@sentry/junior-hex",
   "@sentry/junior-linear",
   "@sentry/junior-notion",

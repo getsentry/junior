@@ -17,6 +17,7 @@
     "@sentry/junior-dashboard": "workspace:*",
     "@sentry/junior-datadog": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-gocd": "workspace:*",
     "@sentry/junior-hex": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
