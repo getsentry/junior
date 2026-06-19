@@ -85,6 +85,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-test-fixtures": "workspace:*",
     "@sentry/junior-testing": "workspace:*",

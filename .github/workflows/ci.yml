@@ -89,6 +89,7 @@ jobs:
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
           pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
           pnpm --filter @sentry/junior-scheduler pack --pack-destination artifacts
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts

@@ -232,6 +232,9 @@ importers:
       "@emnapi/runtime":
         specifier: ^1.10.0
         version: 1.10.0
+      "@sentry/junior-memory":
+        specifier: workspace:*
+        version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       "@sentry/junior-scheduler":
         specifier: workspace:*
         version: file:packages/junior-scheduler(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -399,6 +402,28 @@ importers:
   packages/junior-linear: {}
 
   packages/junior-maintenance: {}
+
+  packages/junior-memory:
+    dependencies:
+      "@sentry/junior-plugin-api":
+        specifier: workspace:*
+        version: link:../junior-plugin-api
+      drizzle-orm:
+        specifier: "catalog:"
+        version: 0.45.2
+      zod:
+        specifier: "catalog:"
+        version: 4.4.3
+    devDependencies:
+      "@types/node":
+        specifier: ^25.9.1
+        version: 25.9.1
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/junior-notion: {}
 
@@ -3999,6 +4024,9 @@ packages:
 
   "@sentry/junior-plugin-api@file:packages/junior-plugin-api":
     resolution: { directory: packages/junior-plugin-api, type: directory }
+
+  "@sentry/junior-memory@file:packages/junior-memory":
+    resolution: { directory: packages/junior-memory, type: directory }
 
   "@sentry/junior-scheduler@file:packages/junior-scheduler":
     resolution: { directory: packages/junior-scheduler, type: directory }
@@ -14226,6 +14254,42 @@ snapshots:
   "@sentry/junior-plugin-api@file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)":
     dependencies:
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - "@aws-sdk/client-rds-data"
+      - "@cloudflare/workers-types"
+      - "@electric-sql/pglite"
+      - "@libsql/client"
+      - "@libsql/client-wasm"
+      - "@neondatabase/serverless"
+      - "@op-engineering/op-sqlite"
+      - "@opentelemetry/api"
+      - "@planetscale/database"
+      - "@prisma/client"
+      - "@tidbcloud/serverless"
+      - "@types/better-sqlite3"
+      - "@types/pg"
+      - "@types/sql.js"
+      - "@upstash/redis"
+      - "@vercel/postgres"
+      - "@xata.io/client"
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  "@sentry/junior-memory@file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)":
+    dependencies:
+      "@sentry/junior-plugin-api": file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       zod: 4.4.3
     transitivePeerDependencies:
       - "@aws-sdk/client-rds-data"

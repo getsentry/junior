@@ -21,7 +21,7 @@
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
-    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
+    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-dashboard test",
@@ -29,7 +29,7 @@
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
-    "typecheck": "pnpm --filter @sentry/junior-plugin-api typecheck && pnpm --filter @sentry/junior-scheduler typecheck && pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-dashboard typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
+    "typecheck": "pnpm --filter @sentry/junior-plugin-api typecheck && pnpm --filter @sentry/junior-scheduler typecheck && pnpm --filter @sentry/junior-memory typecheck && pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-dashboard typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check",
     "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-dashboard test:coverage"
   },

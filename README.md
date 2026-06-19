@@ -30,6 +30,7 @@ Start here:
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
+| `@sentry/junior-memory`        | Memory plugin package for long-term Junior memory storage                    |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
 | `@sentry/junior-scheduler`     | Scheduler plugin package for scheduled Junior tasks                          |
 | `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |
