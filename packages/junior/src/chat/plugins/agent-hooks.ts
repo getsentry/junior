@@ -1,9 +1,4 @@
-import {
-  pluginSessionStateAppendSchema,
-  pluginSessionStateKeySchema,
-  promptContributionSchema,
-  userPromptContributionResultSchema,
-} from "@sentry/junior-plugin-api";
+import { promptContributionSchema } from "@sentry/junior-plugin-api";
 import type {
   PluginConversations,
   PluginReadState,
@@ -17,7 +12,6 @@ import type {
   PluginRegistration,
   SlackToolRegistrationHookContext,
   UserPromptHookContext,
-  PluginJsonValue,
 } from "@sentry/junior-plugin-api";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginDbForRegistration } from "@/chat/plugins/db";
@@ -35,7 +29,6 @@ import type {
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { Requester } from "@/chat/requester";
-import { loadPluginSessionState } from "@/chat/state/session-log";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -176,32 +169,8 @@ function hasDuplicateContributionIds(
   return false;
 }
 
-function validateSessionStateAppend(append: unknown):
-  | {
-      key: string;
-      value: PluginJsonValue;
-    }
-  | undefined {
-  const parsed = pluginSessionStateAppendSchema.safeParse(append);
-  if (!parsed.success) {
-    return undefined;
-  }
-  try {
-    return {
-      key: parsed.data.key,
-      value: JSON.parse(JSON.stringify(parsed.data.value)) as PluginJsonValue,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 export interface PluginUserPromptContributions {
   contributions: PluginPromptContributionContext[];
-  sessionState: Array<{
-    appends: Array<{ key: string; value: PluginJsonValue }>;
-    pluginName: string;
-  }>;
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
@@ -304,7 +273,7 @@ export async function getPluginSystemPromptContributions(
   return contributions;
 }
 
-/** Collect request-scoped plugin prompt contributions and accepted session appends. */
+/** Collect request-scoped plugin prompt contributions. */
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
@@ -313,7 +282,6 @@ export async function getPluginUserPromptContributions(args: {
   isFirstPrompt: boolean;
 }): Promise<PluginUserPromptContributions> {
   const contributions: PluginPromptContributionContext[] = [];
-  const sessionState: PluginUserPromptContributions["sessionState"] = [];
   let totalChars = 0;
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
@@ -322,38 +290,18 @@ export async function getPluginUserPromptContributions(args: {
       continue;
     }
     try {
-      const session = {
-        async list<T = unknown>(key: string) {
-          if (
-            !pluginSessionStateKeySchema.safeParse(key).success ||
-            !args.context.conversationId
-          ) {
-            return [];
-          }
-          return await loadPluginSessionState<T>({
-            conversationId: args.context.conversationId,
-            plugin: pluginName,
-            key,
-          });
-        },
-      };
       const rawResult = await hook({
         ...invocationPluginContext(plugin, args.context),
         isFirstPrompt: args.isFirstPrompt,
-        session,
       } as UserPromptHookContext);
-      const result = userPromptContributionResultSchema.safeParse(rawResult);
-      if (!result.success) {
+      if (rawResult === undefined) {
         continue;
       }
-      const acceptedAppends = (result.data.sessionState ?? []).map(
-        validateSessionStateAppend,
-      );
-      if (acceptedAppends.some((append) => append === undefined)) {
+      if (!Array.isArray(rawResult)) {
         continue;
       }
 
-      const acceptedContributions = (result.data.contributions ?? [])
+      const acceptedContributions = rawResult
         .map((contribution) =>
           validatePromptContribution({
             contribution,
@@ -390,16 +338,6 @@ export async function getPluginUserPromptContributions(args: {
       }
       totalChars += pluginContributionChars;
       contributions.push(...acceptedContributions);
-
-      if (acceptedAppends.length > 0 && args.context.conversationId) {
-        sessionState.push({
-          appends: acceptedAppends as Array<{
-            key: string;
-            value: PluginJsonValue;
-          }>,
-          pluginName,
-        });
-      }
     } catch (error) {
       logWarn(
         "plugin_user_prompt_hook_failed",
@@ -414,7 +352,6 @@ export async function getPluginUserPromptContributions(args: {
   }
   return {
     contributions,
-    sessionState,
   };
 }
 

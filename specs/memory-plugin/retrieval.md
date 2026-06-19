@@ -26,42 +26,17 @@ are governed by the extraction and tool policies in [`./policy.md`](./policy.md)
 
 The memory plugin recalls memories through `userPrompt(ctx)`.
 
-Core invokes the hook for every model-visible user prompt. When automatic memory
-injection is disabled by policy, the plugin must return no memory contribution
-and must not append injected memory session state.
+Core invokes the hook once for the triggering user prompt of each agent run.
+When automatic memory injection is disabled by policy, the plugin must return no
+memory contribution.
 
 When automatic memory injection is enabled, the plugin must:
 
 1. Derive visible memory scopes from `ctx.requester`, `ctx.source`,
    `ctx.destination`, and `ctx.conversationId`.
-2. Read plugin session append state for already injected memory ids.
-3. Query active visible memories relevant to `ctx.userText`.
-4. Exclude memories already injected into the active session projection.
-5. Include newly relevant memories even when earlier prompts already included
-   different memories.
-6. Return one concise prompt contribution containing only accepted memory
+2. Query active visible memories relevant to `ctx.userText`.
+3. Return one concise prompt contribution containing only accepted memory
    content.
-7. Append injected memory ids to plugin session state only when a contribution
-   is returned.
-
-The plugin session append state key should be:
-
-```txt
-injected_memories
-```
-
-The value should be bounded JSON:
-
-```ts
-interface InjectedMemoriesState {
-  memoryIds: string[];
-}
-```
-
-The prompt hook session state helper returns state from the current
-model-visible session projection. If compaction removes a prior memory block
-from the active projection, the plugin may inject that memory again. Hidden
-bookkeeping must not make memory recall disappear.
 
 ## Tool-Mediated Recall
 
@@ -74,9 +49,8 @@ management, but it should otherwise return concise memory content and avoid
 private metadata. The tool must derive all authority-bearing scopes from
 runtime context, not from model-supplied arguments.
 
-`searchMemories` should not suppress results merely because they were already
-injected into the current session. That suppression is specific to automatic
-injection, where repeated prompt blocks would waste context.
+`searchMemories` should not suppress results merely because they may have been
+included by automatic injection in an earlier run.
 
 ### Visibility Filter
 

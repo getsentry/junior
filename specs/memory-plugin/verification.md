@@ -97,12 +97,10 @@ Use integration tests for:
   context
 - `searchMemories` cannot search across unrelated users or conversations
 - `removeMemory` archives only visible memories
-- `userPrompt` injects visible memories into every user prompt when
+- `userPrompt` injects visible memories into the triggering prompt for each run when
   `autoInjectMemories` is `true`
-- `userPrompt` returns no memory contribution and appends no injected-memory
-  state when `autoInjectMemories` is `false`
-- injected memory ids are excluded only while their contribution remains in the
-  active session projection
+- `userPrompt` returns no memory contribution when `autoInjectMemories` is
+  `false`
 - memory recall survives a follow-up prompt without requiring a search tool when
   automatic memory injection is enabled
 - memory recall works through `searchMemories` when automatic memory injection

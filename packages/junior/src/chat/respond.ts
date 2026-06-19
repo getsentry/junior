@@ -48,7 +48,6 @@ import {
   createPluginHookRunner,
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
-  type PluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
@@ -570,17 +569,6 @@ function buildSteeringPiMessageWithParts(
     content: userContentParts,
     timestamp: timestampMs ?? Date.now(),
   } as PiMessage;
-}
-
-function toPluginSessionStateCommit(
-  sessionState: PluginUserPromptContributions["sessionState"],
-): NonNullable<
-  Parameters<typeof persistRunningSessionRecord>[0]["pluginSessionState"]
-> {
-  return sessionState.map((append) => ({
-    plugin: append.pluginName,
-    appends: append.appends,
-  }));
 }
 
 function buildSteeringInput(message: ReplySteeringMessage): {
@@ -1201,6 +1189,9 @@ export async function generateAssistantReply(
       turnMcpToolManager.getActiveToolCatalog(),
     );
     const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
+    const isFirstPromptInProjection = !(priorPiMessages ?? []).some(
+      (message) => message.role === "user",
+    );
     const systemPromptContributions =
       await getPluginSystemPromptContributions(toolSource);
     const pluginSystemPrompt = buildPluginSystemPromptContributions(
@@ -1213,10 +1204,10 @@ export async function generateAssistantReply(
       .filter((section): section is string => Boolean(section))
       .join("\n\n");
     const pluginUserPrompt = resumedFromSessionRecord
-      ? { contributions: [], sessionState: [] }
+      ? { contributions: [] }
       : await getPluginUserPromptContributions({
           context: toolRuntimeContext,
-          isFirstPrompt: needsBootstrapContext,
+          isFirstPrompt: isFirstPromptInProjection,
         });
     const turnContextPrompt =
       needsBootstrapContext || pluginUserPrompt.contributions.length > 0
@@ -1326,9 +1317,6 @@ export async function generateAssistantReply(
     };
     const persistSafeBoundary = async (
       messages: PiMessage[],
-      pluginSessionState?: Parameters<
-        typeof persistRunningSessionRecord
-      >[0]["pluginSessionState"],
     ): Promise<boolean> => {
       if (
         !turnSessionState.canUseTurnSession ||
@@ -1345,7 +1333,6 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         messages,
-        pluginSessionState,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
@@ -1363,11 +1350,8 @@ export async function generateAssistantReply(
     };
     const requireDurableInputCheckpoint = async (
       messages: PiMessage[],
-      pluginSessionState?: Parameters<
-        typeof persistRunningSessionRecord
-      >[0]["pluginSessionState"],
     ): Promise<boolean> => {
-      const persisted = await persistSafeBoundary(messages, pluginSessionState);
+      const persisted = await persistSafeBoundary(messages);
       if (!persisted && context.onInputCommitted) {
         throw new TurnInputCommitLostError(
           `Durable turn input could not be checkpointed for conversation=${sessionConversationId ?? "unknown"} session=${sessionId ?? "unknown"}`,
@@ -1388,51 +1372,19 @@ export async function generateAssistantReply(
       try {
         let steeredMessageCount = 0;
         await context.drainSteeringMessages(async (messages) => {
-          const steeringInputs = await Promise.all(
-            messages.map(async (message) => {
-              const { userContentParts } = buildSteeringInput(message);
-              const pluginPrompt = await getPluginUserPromptContributions({
-                context: {
-                  ...toolRuntimeContext,
-                  userText: message.text,
-                },
-                isFirstPrompt: false,
-              });
-              const pluginContextPrompt =
-                pluginPrompt.contributions.length > 0
-                  ? buildTurnContextPrompt({
-                      availableSkills,
-                      activeMcpCatalogs,
-                      includeSessionContext: false,
-                      pluginPromptContributions: pluginPrompt.contributions,
-                      invocation: null,
-                    })
-                  : null;
-              const contentParts = pluginContextPrompt
-                ? [
-                    { type: "text" as const, text: pluginContextPrompt },
-                    ...userContentParts,
-                  ]
-                : userContentParts;
-              return {
-                message: buildSteeringPiMessageWithParts(
-                  contentParts,
-                  message.timestampMs,
-                ),
-                pluginSessionState: toPluginSessionStateCommit(
-                  pluginPrompt.sessionState,
-                ),
-              };
-            }),
+          const piMessages = messages.map((message) =>
+            buildSteeringPiMessageWithParts(
+              buildSteeringInput(message).userContentParts,
+              message.timestampMs,
+            ),
           );
-          const piMessages = steeringInputs.map((input) => input.message);
           if (piMessages.length === 0) {
             return;
           }
-          await requireDurableInputCheckpoint(
-            [...agent!.state.messages, ...piMessages],
-            steeringInputs.flatMap((input) => input.pluginSessionState),
-          );
+          await requireDurableInputCheckpoint([
+            ...agent!.state.messages,
+            ...piMessages,
+          ]);
           for (const message of piMessages) {
             agent!.steer(message);
           }
@@ -1570,13 +1522,10 @@ export async function generateAssistantReply(
             timestamp: Date.now(),
           } as PiMessage;
           if (!resumedFromSessionRecord) {
-            const promptPersisted = await requireDurableInputCheckpoint(
-              [...agent.state.messages, freshPromptMessage],
-              pluginUserPrompt.sessionState.map((append) => ({
-                plugin: append.pluginName,
-                appends: append.appends,
-              })),
-            );
+            const promptPersisted = await requireDurableInputCheckpoint([
+              ...agent.state.messages,
+              freshPromptMessage,
+            ]);
             if (promptPersisted) {
               await commitInput();
             }

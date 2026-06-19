@@ -1,5 +1,3 @@
-import type { PluginJsonValue } from "./json";
-
 export interface PluginState {
   delete(key: string): Promise<void>;
   get<T = unknown>(key: string): Promise<T | undefined>;
@@ -14,17 +12,4 @@ export interface PluginState {
 
 export interface PluginReadState {
   get<T = unknown>(key: string): Promise<T | undefined>;
-}
-
-/** Append-only plugin bookkeeping tied to the current model-visible session projection. */
-export interface PluginSessionStateAppend {
-  key: string;
-  value: PluginJsonValue;
-}
-
-/** Read plugin-scoped session bookkeeping for prompt continuity decisions. */
-export interface PluginSessionState {
-  list<T = unknown>(
-    key: string,
-  ): Promise<Array<{ createdAtMs: number; value: T }>>;
 }

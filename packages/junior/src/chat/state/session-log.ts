@@ -8,10 +8,6 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
-import {
-  pluginJsonValueSchema,
-  type PluginJsonValue,
-} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -67,16 +63,6 @@ const mcpProviderConnectedEntrySchema = z.object({
   provider: z.string().min(1),
 });
 
-const pluginSessionStateEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
-  type: z.literal("plugin_session_state"),
-  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
-  createdAtMs: z.number().int().nonnegative(),
-  plugin: z.string().min(1),
-  key: z.string().min(1),
-  value: pluginJsonValueSchema,
-});
-
 const authorizationKindSchema = z.union([
   z.literal("plugin"),
   z.literal("mcp"),
@@ -113,7 +99,6 @@ const sessionLogEntrySchema = z.discriminatedUnion("type", [
   projectionResetEntrySchema,
   requesterRecordedEntrySchema,
   mcpProviderConnectedEntrySchema,
-  pluginSessionStateEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
 ]);
@@ -130,11 +115,6 @@ interface AppendArgs {
   entries: SessionLogEntry[];
   scope: Scope;
   ttlMs: number;
-}
-
-export interface PluginSessionStateCommit {
-  appends: Array<{ key: string; value: PluginJsonValue }>;
-  plugin: string;
 }
 
 export interface SessionLogStore {
@@ -299,24 +279,6 @@ function mcpProviderConnectedEntry(
   };
 }
 
-function pluginSessionStateEntry(args: {
-  createdAtMs: number;
-  key: string;
-  plugin: string;
-  sessionId: string;
-  value: PluginJsonValue;
-}): SessionLogEntry {
-  return {
-    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
-    type: "plugin_session_state",
-    sessionId: args.sessionId,
-    createdAtMs: args.createdAtMs,
-    plugin: args.plugin,
-    key: args.key,
-    value: args.value,
-  };
-}
-
 function authorizationObservationMessage(entry: {
   createdAtMs: number;
   kind: AuthorizationKind;
@@ -425,7 +387,6 @@ function project(
     }
     if (
       entry.type === "mcp_provider_connected" ||
-      entry.type === "plugin_session_state" ||
       entry.type === "authorization_requested"
     ) {
       continue;
@@ -456,30 +417,6 @@ function connectedMcpProviders(
     }
   }
   return [...providers].sort((left, right) => left.localeCompare(right));
-}
-
-function pluginSessionStateValues<T>(
-  entries: SessionLogEntry[],
-  args: {
-    key: string;
-    plugin: string;
-    sessionId?: string;
-  },
-): Array<{ createdAtMs: number; value: T }> {
-  const values: Array<{ createdAtMs: number; value: T }> = [];
-  for (const entry of projectionEntries(entries, args.sessionId)) {
-    if (
-      entry.type === "plugin_session_state" &&
-      entry.plugin === args.plugin &&
-      entry.key === args.key
-    ) {
-      values.push({
-        createdAtMs: entry.createdAtMs,
-        value: entry.value as T,
-      });
-    }
-  }
-  return values;
 }
 
 /**
@@ -665,18 +602,6 @@ export async function loadConnectedMcpProviders(
   return connectedMcpProviders(await loadEntries(args));
 }
 
-/** Load append-only plugin session state from the current visible projection. */
-export async function loadPluginSessionState<T = unknown>(
-  args: Scope & {
-    key: string;
-    plugin: string;
-    sessionId?: string;
-    store?: SessionLogStore;
-  },
-): Promise<Array<{ createdAtMs: number; value: T }>> {
-  return pluginSessionStateValues<T>(await loadEntries(args), args);
-}
-
 /** Record a successful MCP provider connection without duplicating the fact. */
 export async function recordMcpProviderConnected(
   args: Scope & {
@@ -789,7 +714,6 @@ export async function commitMessages(
   args: Scope & {
     store?: SessionLogStore;
     messages: PiMessage[];
-    pluginSessionState?: PluginSessionStateCommit[];
     ttlMs: number;
     requester?: StoredSlackRequester;
   },
@@ -806,21 +730,9 @@ export async function commitMessages(
     existingProjection.requester,
     args.requester,
   );
-  const createdAtMs = Date.now();
-  const pluginEntries = (args.pluginSessionState ?? []).flatMap((state) =>
-    state.appends.map((append) =>
-      pluginSessionStateEntry({
-        createdAtMs,
-        key: append.key,
-        plugin: state.plugin,
-        sessionId: commit.sessionId,
-        value: append.value,
-      }),
-    ),
-  );
   await store.append({
     scope: args,
-    entries: [...commit.entries, ...pluginEntries],
+    entries: commit.entries,
     ttlMs: args.ttlMs,
   });
   return {

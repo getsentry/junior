@@ -162,7 +162,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects user prompt contributions and matching session appends", async () => {
+  it("collects user prompt messages from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -176,13 +176,7 @@ describe("agent plugin hooks", () => {
             expect(ctx.source).toEqual(LOCAL_DESTINATION);
             expect(ctx.userText).toBe("remember this");
             expect(ctx.isFirstPrompt).toBe(true);
-            await expect(ctx.session.list("Invalid Key")).resolves.toEqual([]);
-            return {
-              contributions: [{ id: "memory", text: "remembered context" }],
-              sessionState: [
-                { key: "injected_memories", value: { memoryIds: ["mem_1"] } },
-              ],
-            };
+            return [{ id: "memory", text: "remembered context" }];
           },
         },
       }),
@@ -206,24 +200,13 @@ describe("agent plugin hooks", () => {
             text: "remembered context",
           },
         ],
-        sessionState: [
-          {
-            pluginName: "agent-demo",
-            appends: [
-              {
-                key: "injected_memories",
-                value: { memoryIds: ["mem_1"] },
-              },
-            ],
-          },
-        ],
       });
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("does not keep session appends when no contribution is accepted", async () => {
+  it("omits invalid user prompt messages", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -233,10 +216,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return {
-              contributions: [{ id: "invalid id", text: "bad" }],
-              sessionState: [{ key: "injected_memories", value: ["mem_1"] }],
-            };
+            return [{ id: "invalid id", text: "bad" }];
           },
         },
       }),
@@ -254,7 +234,6 @@ describe("agent plugin hooks", () => {
         }),
       ).resolves.toEqual({
         contributions: [],
-        sessionState: [],
       });
     } finally {
       setPlugins(previous);
@@ -271,15 +250,10 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return {
-              contributions: [
-                { id: "duplicate", text: "one" },
-                { id: "duplicate", text: "two" },
-              ],
-              sessionState: [
-                { key: "injected_memories", value: { memoryIds: ["mem_1"] } },
-              ],
-            };
+            return [
+              { id: "duplicate", text: "one" },
+              { id: "duplicate", text: "two" },
+            ];
           },
         },
       }),
@@ -297,90 +271,6 @@ describe("agent plugin hooks", () => {
         }),
       ).resolves.toEqual({
         contributions: [],
-        sessionState: [],
-      });
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("drops a plugin user prompt result when a session append is invalid", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          userPrompt() {
-            return {
-              contributions: [{ id: "memory", text: "remembered context" }],
-              sessionState: [
-                { key: "injected_memories", value: undefined },
-              ] as never,
-            };
-          },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
-          },
-          isFirstPrompt: false,
-        }),
-      ).resolves.toEqual({
-        contributions: [],
-        sessionState: [],
-      });
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("drops a plugin user prompt result when a session append is oversized", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          userPrompt() {
-            return {
-              contributions: [{ id: "memory", text: "remembered context" }],
-              sessionState: [
-                {
-                  key: "injected_memories",
-                  value: { text: "x".repeat(4_001) },
-                },
-              ],
-            };
-          },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
-          },
-          isFirstPrompt: false,
-        }),
-      ).resolves.toEqual({
-        contributions: [],
-        sessionState: [],
       });
     } finally {
       setPlugins(previous);
@@ -397,12 +287,10 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return {
-              contributions: [
-                { id: "one", text: "x".repeat(8_000) },
-                { id: "two", text: "y".repeat(8_000) },
-              ],
-            };
+            return [
+              { id: "one", text: "x".repeat(8_000) },
+              { id: "two", text: "y".repeat(8_000) },
+            ];
           },
         },
       }),
@@ -414,9 +302,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return {
-              contributions: [{ id: "overflow", text: "z" }],
-            };
+            return [{ id: "overflow", text: "z" }];
           },
         },
       }),
@@ -437,7 +323,6 @@ describe("agent plugin hooks", () => {
           { id: "one", pluginName: "agent-demo", text: "x".repeat(8_000) },
           { id: "two", pluginName: "agent-demo", text: "y".repeat(8_000) },
         ],
-        sessionState: [],
       });
     } finally {
       setPlugins(previous);

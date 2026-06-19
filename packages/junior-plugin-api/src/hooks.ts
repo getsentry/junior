@@ -28,7 +28,6 @@ import type {
 import type {
   PromptContribution,
   SystemPromptHookContext,
-  UserPromptContributionResult,
   UserPromptHookContext,
 } from "./prompt";
 
@@ -39,8 +38,8 @@ export interface PluginHooks {
   userPrompt?(
     ctx: UserPromptHookContext,
   ):
-    | Promise<UserPromptContributionResult | undefined>
-    | UserPromptContributionResult
+    | Promise<PromptContribution[] | undefined>
+    | PromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
   grantForEgress?(

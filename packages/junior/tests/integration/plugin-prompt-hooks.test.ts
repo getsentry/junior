@@ -104,7 +104,6 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { generateAssistantReply } from "@/chat/respond";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { loadPluginSessionState } from "@/chat/state/session-log";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -132,21 +131,12 @@ describe("plugin prompt hooks", () => {
           },
           async userPrompt(ctx) {
             captured.isFirstPromptValues.push(ctx.isFirstPrompt);
-            const prior = await ctx.session.list("injected_memories");
-            return {
-              contributions: [
-                {
-                  id: "memory-user",
-                  text: `User memory guidance; prior=${prior.length}.`,
-                },
-              ],
-              sessionState: [
-                {
-                  key: "injected_memories",
-                  value: { memoryIds: ["mem_1"] },
-                },
-              ],
-            };
+            return [
+              {
+                id: "memory-user",
+                text: `User memory guidance; first=${String(ctx.isFirstPrompt)}.`,
+              },
+            ];
           },
         },
       }),
@@ -166,7 +156,7 @@ describe("plugin prompt hooks", () => {
     }
   });
 
-  it("renders prompt contributions and commits matching plugin session state", async () => {
+  it("renders prompt messages from plugin hooks", async () => {
     await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
       correlation: {
@@ -177,20 +167,8 @@ describe("plugin prompt hooks", () => {
 
     expect(captured.systemPrompt).toContain("System memory guidance.");
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "User memory guidance; prior=0.",
+      "User memory guidance; first=true.",
     );
-    await expect(
-      loadPluginSessionState({
-        conversationId: "conversation-plugin-prompt-hooks",
-        plugin: "memory",
-        key: "injected_memories",
-      }),
-    ).resolves.toEqual([
-      {
-        createdAtMs: expect.any(Number),
-        value: { memoryIds: ["mem_1"] },
-      },
-    ]);
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
@@ -222,11 +200,11 @@ describe("plugin prompt hooks", () => {
 
     expect(captured.isFirstPromptValues).toEqual([true, false]);
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "User memory guidance; prior=1.",
+      "User memory guidance; first=false.",
     );
   });
 
-  it("runs user prompt hooks for steering messages", async () => {
+  it("does not run user prompt hooks for steering messages", async () => {
     await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
       correlation: {
@@ -239,24 +217,9 @@ describe("plugin prompt hooks", () => {
       },
     });
 
-    expect(JSON.stringify(captured.steeredMessages[0])).toContain(
-      "User memory guidance; prior=1.",
+    expect(captured.isFirstPromptValues).toEqual([true]);
+    expect(JSON.stringify(captured.steeredMessages[0])).not.toContain(
+      "User memory guidance",
     );
-    await expect(
-      loadPluginSessionState({
-        conversationId: "conversation-plugin-prompt-steering",
-        plugin: "memory",
-        key: "injected_memories",
-      }),
-    ).resolves.toEqual([
-      {
-        createdAtMs: expect.any(Number),
-        value: { memoryIds: ["mem_1"] },
-      },
-      {
-        createdAtMs: expect.any(Number),
-        value: { memoryIds: ["mem_1"] },
-      },
-    ]);
   });
 });

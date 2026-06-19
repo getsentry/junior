@@ -161,7 +161,6 @@ Core owns:
 
 - plugin loading and hook ordering
 - prompt rendering and size limits
-- plugin session append state
 - database migration application
 - runtime identity, source, and destination context
 - plugin task enqueueing, retry, redelivery, and worker execution
@@ -257,8 +256,8 @@ be exported as part of Junior core.
 Implement in this order:
 
 1. Core plugin hook surfaces needed by this spec: `userPrompt`, `observeTurn`,
-   plugin background tasks, `tools`, `ctx.db`, active-projection plugin session
-   state, host embedding provider access, and plugin config/policy access.
+   plugin background tasks, `tools`, `ctx.db`, host embedding provider access,
+   and plugin config/policy access.
 2. Memory plugin package with manifest, schema, migrations, store, and
    install-level policy evaluator.
 3. Explicit `createMemory`, `listMemories`, `searchMemories`, and

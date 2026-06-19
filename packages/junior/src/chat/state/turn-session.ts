@@ -15,12 +15,7 @@ import {
   parseStoredSlackRequester,
   type StoredSlackRequester,
 } from "@/chat/requester";
-import {
-  commitMessages,
-  loadMessages,
-  loadProjection,
-  type PluginSessionStateCommit,
-} from "./session-log";
+import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import {
@@ -648,7 +643,6 @@ export async function upsertAgentTurnSessionRecord(args: {
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
-  pluginSessionState?: PluginSessionStateCommit[];
   requester?: StoredSlackRequester;
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
@@ -665,7 +659,6 @@ export async function upsertAgentTurnSessionRecord(args: {
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
-    pluginSessionState: args.pluginSessionState,
     requester: args.requester ?? existingRecord?.requester,
     ttlMs,
   });
