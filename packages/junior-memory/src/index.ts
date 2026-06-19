@@ -15,6 +15,7 @@ export type {
   MemoryRuntimeContext,
   MemoryScope,
   MemorySensitivity,
+  MemorySourceKind,
   MemorySubjectLabel,
   MemoryType,
 } from "./types";

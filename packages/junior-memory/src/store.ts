@@ -4,12 +4,14 @@ import { z } from "zod";
 import {
   MEMORY_SCOPES,
   MEMORY_SENSITIVITIES,
+  MEMORY_SOURCE_KINDS,
   MEMORY_TYPES,
   type MemoryMetadata,
   type MemoryRecord,
   type MemoryRuntimeContext,
   type MemoryScope,
   type MemorySensitivity,
+  type MemorySourceKind,
   type MemorySubjectLabel,
   type MemoryType,
 } from "./types";
@@ -43,6 +45,7 @@ const memoryRowSchema = z
     content_hash: z.string().min(1),
     source_platform: z.enum(["slack", "local"]),
     source_key: z.string().min(1),
+    source_kind: z.enum(MEMORY_SOURCE_KINDS),
     idempotency_key: optionalStringSchema,
     subject_labels: z.array(
       z
@@ -60,6 +63,7 @@ const memoryRowSchema = z
     observed_at_ms: z.coerce.number(),
     created_at_ms: z.coerce.number(),
     expires_at_ms: optionalNumberSchema,
+    superseded_at_ms: optionalNumberSchema,
     superseded_by_id: optionalStringSchema,
     archived_at_ms: optionalNumberSchema,
     archive_reason: optionalStringSchema,
@@ -81,9 +85,11 @@ interface MemoryRow {
   scope: MemoryScope;
   scope_key: string;
   sensitivity: MemorySensitivity;
+  source_kind: MemorySourceKind;
   source_key: string;
   source_platform: "slack" | "local";
   subject_labels: MemorySubjectLabel[];
+  superseded_at_ms?: number;
   superseded_by_id?: string;
   type: MemoryType;
 }
@@ -98,6 +104,7 @@ export interface CreateMemoryInput extends MemoryRuntimeContext {
   observedAtMs?: number;
   scope?: MemoryScope;
   sensitivity?: MemorySensitivity;
+  sourceKind?: MemorySourceKind;
   subjectLabels?: MemorySubjectLabel[];
   type?: MemoryType;
 }
@@ -168,6 +175,7 @@ function parseMemoryRow(row: unknown): MemoryRecord {
     contentHash: parsed.content_hash,
     sourcePlatform: parsed.source_platform,
     sourceKey: parsed.source_key,
+    sourceKind: parsed.source_kind,
     ...(parsed.idempotency_key
       ? { idempotencyKey: parsed.idempotency_key }
       : {}),
@@ -180,6 +188,9 @@ function parseMemoryRow(row: unknown): MemoryRecord {
     createdAtMs: parsed.created_at_ms,
     ...(parsed.expires_at_ms !== undefined
       ? { expiresAtMs: parsed.expires_at_ms }
+      : {}),
+    ...(parsed.superseded_at_ms !== undefined
+      ? { supersededAtMs: parsed.superseded_at_ms }
       : {}),
     ...(parsed.superseded_by_id
       ? { supersededById: parsed.superseded_by_id }
@@ -220,6 +231,7 @@ WHERE scope = $1
   AND scope_key = $2
   AND content_hash = $3
   AND archived_at_ms IS NULL
+  AND superseded_at_ms IS NULL
   AND superseded_by_id IS NULL
   AND (expires_at_ms IS NULL OR expires_at_ms > $4)
 ORDER BY created_at_ms DESC
@@ -290,6 +302,7 @@ SELECT *
 FROM junior_memory_memories
 WHERE (${predicate.sql})
   ${args.includeArchived ? "" : "AND archived_at_ms IS NULL"}
+  AND superseded_at_ms IS NULL
   AND superseded_by_id IS NULL
   AND (expires_at_ms IS NULL OR expires_at_ms > $${predicate.params.length + 1})
 ORDER BY created_at_ms DESC, id ASC
@@ -322,6 +335,7 @@ SELECT *
 FROM junior_memory_memories
 WHERE (${predicate.sql})
   AND archived_at_ms IS NULL
+  AND superseded_at_ms IS NULL
   AND superseded_by_id IS NULL
   AND (expires_at_ms IS NULL OR expires_at_ms > $${baseParamCount + 1})
   AND (${termClauses.join(" OR ")})
@@ -378,6 +392,7 @@ INSERT INTO junior_memory_memories (
   content_hash,
   source_platform,
   source_key,
+  source_kind,
   idempotency_key,
   subject_labels,
   metadata,
@@ -387,7 +402,7 @@ INSERT INTO junior_memory_memories (
   expires_at_ms
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-  $11::jsonb, $12::jsonb, $13, $14, $15, $16
+  $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17
 )
 RETURNING *
 `,
@@ -401,6 +416,7 @@ RETURNING *
           hash,
           input.source.platform,
           sourceKey(input),
+          input.sourceKind ?? "explicit",
           input.idempotencyKey,
           JSON.stringify(input.subjectLabels ?? []),
           JSON.stringify(input.metadata ?? {}),
@@ -462,6 +478,8 @@ SELECT *
 FROM junior_memory_memories
 WHERE (${predicate.sql})
   AND archived_at_ms IS NULL
+  AND superseded_at_ms IS NULL
+  AND superseded_by_id IS NULL
   AND (id = $${predicate.params.length + 1} OR id LIKE $${predicate.params.length + 2})
 ORDER BY id ASC
 LIMIT 2

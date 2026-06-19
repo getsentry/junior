@@ -1,4 +1,4 @@
-import type { Requester, Source } from "@sentry/junior-plugin-api";
+import type { Platform, Requester, Source } from "@sentry/junior-plugin-api";
 
 export const MEMORY_TYPES = [
   "preference",
@@ -12,6 +12,7 @@ export const MEMORY_TYPES = [
 ] as const;
 
 export const MEMORY_SCOPES = ["personal", "conversation"] as const;
+export const MEMORY_SOURCE_KINDS = ["explicit", "passive_extraction"] as const;
 export const MEMORY_SENSITIVITIES = [
   "public",
   "personal",
@@ -20,6 +21,7 @@ export const MEMORY_SENSITIVITIES = [
 
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
+export type MemorySourceKind = (typeof MEMORY_SOURCE_KINDS)[number];
 export type MemorySensitivity = (typeof MEMORY_SENSITIVITIES)[number];
 
 export interface MemoryRuntimeContext {
@@ -50,9 +52,11 @@ export interface MemoryRecord {
   scope: MemoryScope;
   scopeKey: string;
   sensitivity: MemorySensitivity;
+  sourceKind: MemorySourceKind;
   sourceKey: string;
-  sourcePlatform: Source["platform"];
+  sourcePlatform: Platform;
   subjectLabels: MemorySubjectLabel[];
+  supersededAtMs?: number;
   supersededById?: string;
   type: MemoryType;
 }
