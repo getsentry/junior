@@ -587,8 +587,11 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("creates auth-pause records before a prompt checkpoint", async () => {
-    const { persistAuthPauseSessionRecord, persistTimeoutSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const {
+      loadTurnSessionRecord,
+      persistAuthPauseSessionRecord,
+      persistTimeoutSessionRecord,
+    } = await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -609,6 +612,15 @@ describe("persistAuthPauseSessionRecord", () => {
       state: "awaiting_resume",
       piMessages: [],
       resumeReason: "auth",
+    });
+    await expect(
+      loadTurnSessionRecord({
+        conversationId: "conversation-auth-empty",
+        sessionId: "turn-auth-empty",
+      }),
+    ).resolves.toMatchObject({
+      resumedFromSessionRecord: true,
+      currentSliceId: 2,
     });
 
     await expect(

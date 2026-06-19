@@ -572,6 +572,28 @@ function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
   } as PiMessage;
 }
 
+function withoutTrailingUncheckpointedUserPrompt(
+  messages: PiMessage[] | undefined,
+  userContentParts: UserTurnContentPart[],
+): PiMessage[] {
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  const lastMessage = messages.at(-1) as
+    | { content?: unknown; role?: unknown }
+    | undefined;
+  if (lastMessage?.role !== "user") {
+    return messages;
+  }
+  if (
+    JSON.stringify(lastMessage.content) !== JSON.stringify(userContentParts)
+  ) {
+    return messages;
+  }
+  return messages.slice(0, -1);
+}
+
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
@@ -1175,9 +1197,15 @@ export async function generateAssistantReply(
       resumedFromSessionRecord &&
       existingSessionRecord?.turnStartMessageIndex !== undefined;
     const shouldPromptAgent = !resumedFromSessionRecord || !hasPromptCheckpoint;
-    const promptHistoryMessages = shouldPromptAgent
-      ? (priorPiMessages ?? [])
-      : existingSessionRecord!.piMessages;
+    const promptHistoryMessages =
+      shouldPromptAgent && resumedFromSessionRecord
+        ? withoutTrailingUncheckpointedUserPrompt(
+            priorPiMessages,
+            userContentParts,
+          )
+        : shouldPromptAgent
+          ? (priorPiMessages ?? [])
+          : existingSessionRecord!.piMessages;
     const needsBootstrapContextForPrompt =
       shouldPromptAgent && !hasRuntimeTurnContext(promptHistoryMessages);
     const systemPromptContributions =

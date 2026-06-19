@@ -932,6 +932,46 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
   });
 
+  it("does not duplicate a raw current prompt from a no-checkpoint resume record", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    const rawCurrentPrompt = {
+      role: "user",
+      content: [{ type: "text", text: "continue after auth" }],
+      timestamp: 2,
+    } as PiMessage;
+    const storedMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior question" }],
+        timestamp: 1,
+      },
+      rawCurrentPrompt,
+    ] as PiMessage[];
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-raw-current-resume",
+      sessionId: "turn-raw-current-resume",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: storedMessages,
+      resumeReason: "auth",
+      errorMessage: "authorization required",
+    });
+
+    await generateAssistantReply("continue after auth", {
+      ...makeReplyContext({
+        conversationId: "conversation-raw-current-resume",
+        threadTs: "1712345.0092",
+        turnId: "turn-raw-current-resume",
+      }),
+    });
+
+    expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
+    expect(JSON.stringify(promptMessages.at(-1))).toContain(
+      "continue after auth",
+    );
+  });
+
   it("injects session context for crash retries loaded from stripped running history", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
