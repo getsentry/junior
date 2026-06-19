@@ -104,6 +104,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { generateAssistantReply } from "@/chat/respond";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -220,6 +221,31 @@ describe("plugin prompt hooks", () => {
     expect(captured.isFirstPromptValues).toEqual([true]);
     expect(JSON.stringify(captured.steeredMessages[0])).not.toContain(
       "User memory guidance",
+    );
+  });
+
+  it("runs user prompt hooks when a resumed record has no prompt checkpoint", async () => {
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-plugin-prompt-resume-before-prompt",
+      sessionId: "turn-plugin-prompt-resume-before-prompt",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: [],
+      resumeReason: "auth",
+      errorMessage: "authorization required",
+    });
+
+    await generateAssistantReply("resume me", {
+      destination: LOCAL_DESTINATION,
+      correlation: {
+        conversationId: "conversation-plugin-prompt-resume-before-prompt",
+        turnId: "turn-plugin-prompt-resume-before-prompt",
+      },
+    });
+
+    expect(captured.isFirstPromptValues).toEqual([true]);
+    expect(JSON.stringify(captured.promptMessages[0])).toContain(
+      "User memory guidance; first=true.",
     );
   });
 });

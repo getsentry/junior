@@ -582,6 +582,10 @@ function buildSteeringInput(message: ReplySteeringMessage): {
   });
 }
 
+function hasUserPromptMessage(messages: PiMessage[] | undefined): boolean {
+  return (messages ?? []).some((message) => message.role === "user");
+}
+
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
@@ -1189,9 +1193,13 @@ export async function generateAssistantReply(
       turnMcpToolManager.getActiveToolCatalog(),
     );
     const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
-    const isFirstPromptInProjection = !(priorPiMessages ?? []).some(
-      (message) => message.role === "user",
-    );
+    const hasStoredUserPrompt =
+      resumedFromSessionRecord &&
+      hasUserPromptMessage(existingSessionRecord?.piMessages);
+    const shouldPromptAgent = !resumedFromSessionRecord || !hasStoredUserPrompt;
+    const needsPluginUserPrompt =
+      !resumedFromSessionRecord || needsBootstrapContext;
+    const isFirstPromptInProjection = !hasUserPromptMessage(priorPiMessages);
     const systemPromptContributions =
       await getPluginSystemPromptContributions(toolSource);
     const pluginSystemPrompt = buildPluginSystemPromptContributions(
@@ -1203,7 +1211,7 @@ export async function generateAssistantReply(
     ]
       .filter((section): section is string => Boolean(section))
       .join("\n\n");
-    const pluginUserPrompt = resumedFromSessionRecord
+    const pluginUserPrompt = !needsPluginUserPrompt
       ? { contributions: [] }
       : await getPluginUserPromptContributions({
           context: toolRuntimeContext,
@@ -1495,18 +1503,19 @@ export async function generateAssistantReply(
     beforeMessageCount = agent.state.messages.length;
     try {
       if (resumedFromSessionRecord) {
-        agent.state.messages = turnContextPrompt
-          ? prependMissingRuntimeTurnContext(
-              existingSessionRecord!.piMessages,
-              turnContextPrompt,
-            )
-          : existingSessionRecord!.piMessages;
+        agent.state.messages =
+          hasStoredUserPrompt && turnContextPrompt
+            ? prependMissingRuntimeTurnContext(
+                existingSessionRecord!.piMessages,
+                turnContextPrompt,
+              )
+            : existingSessionRecord!.piMessages;
         turnStartMessageIndex = existingSessionRecord!.turnStartMessageIndex;
       } else if (context.piMessages && context.piMessages.length > 0) {
         agent.state.messages = [...context.piMessages];
       }
       beforeMessageCount = agent.state.messages.length;
-      if (!resumedFromSessionRecord) {
+      if (shouldPromptAgent) {
         turnStartMessageIndex = beforeMessageCount;
       }
 
@@ -1521,7 +1530,7 @@ export async function generateAssistantReply(
             content: promptContentParts,
             timestamp: Date.now(),
           } as PiMessage;
-          if (!resumedFromSessionRecord) {
+          if (shouldPromptAgent) {
             const promptPersisted = await requireDurableInputCheckpoint([
               ...agent.state.messages,
               freshPromptMessage,
@@ -1607,9 +1616,9 @@ export async function generateAssistantReply(
             }
           };
 
-          let run = resumedFromSessionRecord
-            ? agent.continue()
-            : agent.prompt(freshPromptMessage);
+          let run = shouldPromptAgent
+            ? agent.prompt(freshPromptMessage)
+            : agent.continue();
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
             promptResult = await runAgentStep(run);
