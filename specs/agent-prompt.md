@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-06-12
+- Last Edited: 2026-06-19
 
 ## Purpose
 
@@ -21,9 +21,7 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 - Defining Pi agent loop mechanics or terminal output assembly; see `./harness-agent.md`.
 - Defining Slack delivery transport behavior; see `./slack-agent-delivery.md` and `./slack-outbound-contract.md`.
 - Defining test-layer taxonomy; see `./testing.md`.
-- Defining plugin prompt hook contracts; see `./plugin-prompt-hooks.md` for the
-  future target design. Those hooks are not implemented in the current plugin
-  API.
+- Defining plugin prompt hook contracts; see `./plugin-prompt-hooks.md`.
 - Defining provider workflows. Plugins own provider guidance through their skills, tools, schemas, tool guidance, and prompt hooks.
 
 ## Contracts
@@ -46,7 +44,10 @@ Turn context may disclose dynamic capability surfaces that the model can act on,
 
 Turn context is not a session-state cache. If prior tool use, loaded skills, MCP provider activation, or provider descriptors are already present in the agent session log, runtime must recover handles from that log and only disclose the currently actionable capability surface for this turn. Do not add prompt blocks whose purpose is to preserve or replay state that belongs in the session log.
 
-Future plugin prompt contributions are governed by `./plugin-prompt-hooks.md`. Core prompt code owns where accepted plugin contributions render, and plugin-provided session append state is plugin-visible bookkeeping rather than model-visible prompt history. Those prompt contribution hooks are not implemented in the current plugin API.
+Plugin prompt messages are governed by `./plugin-prompt-hooks.md`. Core prompt
+code owns where accepted plugin messages render and assigns any internal
+rendering identifiers. Plugins do not receive a prompt-side session append
+state channel.
 
 The combined prompt surface must keep these concerns distinct:
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-19
 
 ## Purpose
 
@@ -26,9 +26,10 @@ are governed by the extraction and tool policies in [`./policy.md`](./policy.md)
 
 The memory plugin recalls memories through `userPrompt(ctx)`.
 
-Core invokes the hook once for the triggering user prompt of each agent run.
-When automatic memory injection is disabled by policy, the plugin must return no
-memory contribution.
+Core invokes the hook once while constructing each fresh triggering user prompt.
+Resume records that already contain a prompt checkpoint continue from stored Pi
+history and do not invoke `userPrompt` again. When automatic memory injection is
+disabled by policy, the plugin must return no memory contribution.
 
 When automatic memory injection is enabled, the plugin must:
 

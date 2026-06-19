@@ -851,15 +851,19 @@ describe("generateAssistantReply progressive MCP loading", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
     });
-    expect(pausedSessionRecord?.piMessages).toHaveLength(3);
+    expect(pausedSessionRecord?.turnStartMessageIndex).toBeUndefined();
+    expect(pausedSessionRecord?.piMessages).toHaveLength(2);
     expect(pausedSessionRecord?.piMessages[0]).toMatchObject({
       role: "user",
       content: [{ type: "text", text: "prior question" }],
     });
     expect(pausedSessionRecord?.piMessages.at(-1)).toMatchObject({
-      role: "user",
-      content: [{ type: "text", text: "current follow-up" }],
+      role: "toolResult",
+      toolName: "callMcpTool",
     });
+    expect(JSON.stringify(pausedSessionRecord?.piMessages)).not.toContain(
+      "current follow-up",
+    );
 
     const reply = await generateAssistantReply("current follow-up", {
       ...makeReplyContext({
@@ -871,8 +875,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     expect(reply.text).toBe("resumed reply");
-    expect(resumeMessages).toHaveLength(1);
-    expect(resumeMessages[0]?.at(-1)).toMatchObject({
+    expect(resumeMessages).toHaveLength(0);
+    expect(promptSeedMessages.at(-1)).toEqual(priorMessages);
+    expect(promptMessages.at(-1)).toMatchObject({
       role: "user",
       content: [
         {
@@ -882,7 +887,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
         { type: "text", text: "current follow-up" },
       ],
     });
-    expect(resumeTurnContextCounts).toEqual([1]);
+    expect(resumeTurnContextCounts).toEqual([]);
     expect(turnContextInputs).toHaveLength(1);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
   });

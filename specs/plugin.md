@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-19
 
 ## Purpose
 
@@ -52,7 +52,7 @@ plugins/sentry/
 - [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and agent continuation behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
-- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): future target design for prompt contribution, turn observation, plugin background tasks, and plugin session append state hooks. These hooks are not implemented in the current plugin API.
+- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): implemented prompt hook contributions plus future turn observation and plugin background task contracts.
 - [Plugin Database Spec](./plugin-database.md): packaged SQL migrations and `ctx.db` access for trusted runtime hook plugins.
 - [Plugin CLI Spec](./plugin-cli.md): future plugin-contributed host CLI commands for operator/admin workflows.
 - [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, observation, background task, database, and tool hooks.

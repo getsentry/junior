@@ -79,7 +79,7 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
 ]);
 const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
-const userPromptMessageArraySchema = z.array(promptMessageSchema).min(1);
+const userPromptMessageArraySchema = z.array(promptMessageSchema);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -109,8 +109,8 @@ function invocationPluginContext(
     ToolRuntimeContext,
     "conversationId" | "destination" | "requester" | "source" | "userText"
   >,
-) {
-  const base = basePluginContext(plugin);
+): UserPromptContext {
+  const base = systemPromptPluginContext(plugin);
   const common = {
     ...base,
     conversationId: context.conversationId,
@@ -160,7 +160,6 @@ function toPromptContributionContext(args: {
 function logInvalidPromptContributions(args: {
   hookName: "systemPrompt" | "userPrompt";
   pluginName: string;
-  reason: string;
 }): void {
   logWarn(
     "plugin_prompt_contribution_result_invalid",
@@ -168,7 +167,7 @@ function logInvalidPromptContributions(args: {
     {
       "app.plugin.hook": args.hookName,
       "app.plugin.name": args.pluginName,
-      "app.plugin.validation_reason": args.reason,
+      "app.plugin.validation_reason": "invalid_shape",
     },
     "Plugin prompt contribution result invalid",
   );
@@ -231,7 +230,6 @@ export async function getPluginSystemPromptContributions(
         logInvalidPromptContributions({
           hookName: "systemPrompt",
           pluginName,
-          reason: "invalid_shape",
         });
         continue;
       }
@@ -296,7 +294,7 @@ export async function getPluginUserPromptContributions(args: {
     try {
       const rawResult = await hook({
         ...invocationPluginContext(plugin, args.context),
-      } as UserPromptContext);
+      });
       if (rawResult === undefined) {
         continue;
       }
@@ -305,7 +303,6 @@ export async function getPluginUserPromptContributions(args: {
         logInvalidPromptContributions({
           hookName: "userPrompt",
           pluginName,
-          reason: "invalid_shape",
         });
         continue;
       }

@@ -105,7 +105,6 @@ import {
   getSessionIdentifiers,
   hasRuntimeTurnContext,
   isAssistantMessage,
-  prependMissingRuntimeTurnContext,
   summarizeMessageText,
   toObservablePromptPart,
   upsertActiveSkill,
@@ -1480,12 +1479,7 @@ export async function generateAssistantReply(
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
           ? (promptHistoryMessages ?? [])
-          : turnContextPrompt
-            ? prependMissingRuntimeTurnContext(
-                existingSessionRecord!.piMessages,
-                turnContextPrompt,
-              )
-            : existingSessionRecord!.piMessages;
+          : existingSessionRecord!.piMessages;
         turnStartMessageIndex = existingSessionRecord!.turnStartMessageIndex;
       } else if (context.piMessages && context.piMessages.length > 0) {
         agent.state.messages = [...context.piMessages];

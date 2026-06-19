@@ -126,8 +126,8 @@ Rules:
 3. The hook must not receive runtime implementation details such as timeout
    continuation or auth-resume state. It receives product-level prompt facts
    only.
-4. If the hook has no contributions, it must return `undefined`; core rejects
-   empty contribution arrays.
+4. If the hook has no prompt messages, it may return `undefined` or an empty
+   array.
 5. Resume records that already contain a prompt checkpoint continue from stored
    Pi history and must not invoke `userPrompt` again. Resume records captured
    before a prompt checkpoint rebuild the fresh prompt and invoke `userPrompt`
