@@ -2,12 +2,15 @@ import { z } from "zod";
 import {
   destinationSchema,
   localRequesterSchema,
+  platformSchema,
   requesterSchema,
   slackRequesterSchema,
   sourceSchema,
 } from "./schemas";
 import type { PluginDb } from "./database";
 
+/** Runtime platform name without source or destination coordinates. */
+export type Platform = z.output<typeof platformSchema>;
 export type Requester = z.output<typeof requesterSchema>;
 export type SlackRequester = z.output<typeof slackRequesterSchema>;
 export type LocalRequester = z.output<typeof localRequesterSchema>;

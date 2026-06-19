@@ -8,6 +8,10 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import {
+  pluginJsonValueSchema,
+  type PluginJsonValue,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -24,6 +28,7 @@ const AGENT_SESSION_LOG_PREFIX = "junior:agent-session-log";
 const AGENT_SESSION_LOG_SCHEMA_VERSION = 1;
 const INITIAL_SESSION_ID = "session_0";
 const SESSION_ID_PREFIX = "session_";
+const STATE_STORE_LOCK_TTL_MS = 5_000;
 
 const piMessageSchema = z
   .object({
@@ -62,6 +67,16 @@ const mcpProviderConnectedEntrySchema = z.object({
   provider: z.string().min(1),
 });
 
+const pluginSessionStateEntrySchema = z.object({
+  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  type: z.literal("plugin_session_state"),
+  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
+  createdAtMs: z.number().int().nonnegative(),
+  plugin: z.string().min(1),
+  key: z.string().min(1),
+  value: pluginJsonValueSchema,
+});
+
 const authorizationKindSchema = z.union([
   z.literal("plugin"),
   z.literal("mcp"),
@@ -98,6 +113,7 @@ const sessionLogEntrySchema = z.discriminatedUnion("type", [
   projectionResetEntrySchema,
   requesterRecordedEntrySchema,
   mcpProviderConnectedEntrySchema,
+  pluginSessionStateEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
 ]);
@@ -114,6 +130,11 @@ interface AppendArgs {
   entries: SessionLogEntry[];
   scope: Scope;
   ttlMs: number;
+}
+
+export interface PluginSessionStateCommit {
+  appends: Array<{ key: string; value: PluginJsonValue }>;
+  plugin: string;
 }
 
 export interface SessionLogStore {
@@ -278,6 +299,24 @@ function mcpProviderConnectedEntry(
   };
 }
 
+function pluginSessionStateEntry(args: {
+  createdAtMs: number;
+  key: string;
+  plugin: string;
+  sessionId: string;
+  value: PluginJsonValue;
+}): SessionLogEntry {
+  return {
+    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
+    type: "plugin_session_state",
+    sessionId: args.sessionId,
+    createdAtMs: args.createdAtMs,
+    plugin: args.plugin,
+    key: args.key,
+    value: args.value,
+  };
+}
+
 function authorizationObservationMessage(entry: {
   createdAtMs: number;
   kind: AuthorizationKind;
@@ -386,6 +425,7 @@ function project(
     }
     if (
       entry.type === "mcp_provider_connected" ||
+      entry.type === "plugin_session_state" ||
       entry.type === "authorization_requested"
     ) {
       continue;
@@ -418,6 +458,30 @@ function connectedMcpProviders(
   return [...providers].sort((left, right) => left.localeCompare(right));
 }
 
+function pluginSessionStateValues<T>(
+  entries: SessionLogEntry[],
+  args: {
+    key: string;
+    plugin: string;
+    sessionId?: string;
+  },
+): Array<{ createdAtMs: number; value: T }> {
+  const values: Array<{ createdAtMs: number; value: T }> = [];
+  for (const entry of projectionEntries(entries, args.sessionId)) {
+    if (
+      entry.type === "plugin_session_state" &&
+      entry.plugin === args.plugin &&
+      entry.key === args.key
+    ) {
+      values.push({
+        createdAtMs: entry.createdAtMs,
+        value: entry.value as T,
+      });
+    }
+  }
+  return values;
+}
+
 /**
  * Commit by appending when history advanced normally, or by writing an explicit
  * projection reset when the runtime intentionally replaces visible history.
@@ -429,7 +493,7 @@ function commitEntries(
   entries: SessionLogEntry[],
   existingRequester?: StoredSlackRequester,
   requester?: StoredSlackRequester,
-): SessionLogEntry[] {
+): { entries: SessionLogEntry[]; sessionId: string } {
   const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
   if (matchingPrefix === existingMessages.length) {
     const newMessages = nextMessages.slice(matchingPrefix);
@@ -438,7 +502,10 @@ function commitEntries(
       requester &&
       !isDeepStrictEqual(existingRequester, requester)
     ) {
-      return [requesterRecordedEntry(requester, sessionId)];
+      return {
+        entries: [requesterRecordedEntry(requester, sessionId)],
+        sessionId,
+      };
     }
     // Attach requester to the last new user message — the current turn's
     // input. Using last rather than first avoids tagging older context
@@ -446,21 +513,24 @@ function commitEntries(
     const requesterIndex = requester
       ? findLastIndex(newMessages, (m) => m.role === "user")
       : -1;
-    return newMessages.map((message, index) =>
-      piEntry(
-        message,
-        sessionId,
-        index === requesterIndex ? requester : undefined,
+    return {
+      entries: newMessages.map((message, index) =>
+        piEntry(
+          message,
+          sessionId,
+          index === requesterIndex ? requester : undefined,
+        ),
       ),
-    );
+      sessionId,
+    };
   }
-  return [
-    resetEntry(
-      nextMessages,
-      nextSessionId(entries),
-      requester ?? existingRequester,
-    ),
-  ];
+  const resetSessionId = nextSessionId(entries);
+  return {
+    entries: [
+      resetEntry(nextMessages, resetSessionId, requester ?? existingRequester),
+    ],
+    sessionId: resetSessionId,
+  };
 }
 
 function redisStore(redisStateAdapter: RedisStateAdapter): SessionLogStore {
@@ -490,14 +560,34 @@ function stateStore(): SessionLogStore {
   return {
     async append({ entries, scope, ttlMs }) {
       const listKey = rawKey(scope);
-      for (const entry of entries) {
-        await stateAdapter.appendToList(listKey, entry, {
-          ttlMs: Math.max(1, ttlMs),
-        });
+      const lock = await stateAdapter.acquireLock(
+        `${listKey}:commit`,
+        STATE_STORE_LOCK_TTL_MS,
+      );
+      if (!lock) {
+        throw new Error("Could not acquire session log commit lock");
+      }
+      try {
+        const existingValue = await stateAdapter.get(listKey);
+        const existingEntries = Array.isArray(existingValue)
+          ? existingValue.map(decode)
+          : (await stateAdapter.getList(listKey)).map(decode);
+        await stateAdapter.set(
+          listKey,
+          [...existingEntries, ...entries],
+          Math.max(1, ttlMs),
+        );
+      } finally {
+        await stateAdapter.releaseLock(lock);
       }
     },
     async read(scope) {
-      const values = await stateAdapter.getList(rawKey(scope));
+      const listKey = rawKey(scope);
+      const value = await stateAdapter.get(listKey);
+      if (Array.isArray(value)) {
+        return value.map(decode);
+      }
+      const values = await stateAdapter.getList(listKey);
       return values.map(decode);
     },
   };
@@ -573,6 +663,18 @@ export async function loadConnectedMcpProviders(
   },
 ): Promise<string[]> {
   return connectedMcpProviders(await loadEntries(args));
+}
+
+/** Load append-only plugin session state from the current visible projection. */
+export async function loadPluginSessionState<T = unknown>(
+  args: Scope & {
+    key: string;
+    plugin: string;
+    sessionId?: string;
+    store?: SessionLogStore;
+  },
+): Promise<Array<{ createdAtMs: number; value: T }>> {
+  return pluginSessionStateValues<T>(await loadEntries(args), args);
 }
 
 /** Record a successful MCP provider connection without duplicating the fact. */
@@ -687,6 +789,7 @@ export async function commitMessages(
   args: Scope & {
     store?: SessionLogStore;
     messages: PiMessage[];
+    pluginSessionState?: PluginSessionStateCommit[];
     ttlMs: number;
     requester?: StoredSlackRequester;
   },
@@ -695,7 +798,7 @@ export async function commitMessages(
   const entries = await store.read(args);
   const existingProjection = project(entries);
   const currentId = currentSessionId(entries);
-  const nextEntries = commitEntries(
+  const commit = commitEntries(
     existingProjection.messages,
     args.messages,
     currentId,
@@ -703,14 +806,24 @@ export async function commitMessages(
     existingProjection.requester,
     args.requester,
   );
+  const createdAtMs = Date.now();
+  const pluginEntries = (args.pluginSessionState ?? []).flatMap((state) =>
+    state.appends.map((append) =>
+      pluginSessionStateEntry({
+        createdAtMs,
+        key: append.key,
+        plugin: state.plugin,
+        sessionId: commit.sessionId,
+        value: append.value,
+      }),
+    ),
+  );
   await store.append({
     scope: args,
-    entries: nextEntries,
+    entries: [...commit.entries, ...pluginEntries],
     ttlMs: args.ttlMs,
   });
   return {
-    sessionId:
-      nextEntries.find((entry) => entry.type === "projection_reset")
-        ?.sessionId ?? currentId,
+    sessionId: commit.sessionId,
   };
 }

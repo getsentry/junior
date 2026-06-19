@@ -8,6 +8,7 @@ import type { StoredSlackRequester } from "@/chat/requester";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { PluginSessionStateCommit } from "@/chat/state/session-log";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
@@ -134,6 +135,7 @@ export async function persistRunningSessionRecord(args: {
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
+  pluginSessionState?: PluginSessionStateCommit[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   requester?: StoredSlackRequester;
@@ -163,6 +165,7 @@ export async function persistRunningSessionRecord(args: {
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
+      pluginSessionState: args.pluginSessionState,
       ...((args.surface ?? latestSessionRecord?.surface)
         ? { surface: args.surface ?? latestSessionRecord?.surface }
         : {}),

@@ -14,10 +14,9 @@ creating memory-specific plugin APIs.
 
 ## Implementation Status
 
-This is a target design for future plugin prompt, observation, session-state,
-and background-task hooks. The current `@sentry/junior-plugin-api` package does
-not export `userPrompt`, `observeTurn`, plugin prompt session state, or plugin
-background task handlers, and Junior core does not invoke those hooks yet.
+Plugin prompt hooks and plugin-scoped prompt session state are implemented in
+Junior core and `@sentry/junior-plugin-api`. Turn observation hooks and
+background task handlers remain target design for a later implementation slice.
 
 ## Scope
 
@@ -53,7 +52,10 @@ interface PluginHooks {
 
   userPrompt?(
     ctx: UserPromptHookContext,
-  ): UserPromptContributionResult | Promise<UserPromptContributionResult>;
+  ):
+    | UserPromptContributionResult
+    | undefined
+    | Promise<UserPromptContributionResult | undefined>;
 
   observeTurn?(ctx: TurnObservationContext): void | Promise<void>;
 
@@ -90,6 +92,14 @@ Rules:
 
 `systemPrompt(ctx)` contributes stable plugin-level prompt text.
 
+```ts
+interface SystemPromptHookContext {
+  log: PluginLogger;
+  platform: Platform;
+  plugin: PluginMetadata;
+}
+```
+
 System prompt contributions:
 
 1. Must not include requester-specific, conversation-specific, or private data.
@@ -112,7 +122,7 @@ the hook for every model-visible user prompt.
 
 ```ts
 interface UserPromptContributionResult {
-  contributions?: PromptContribution[];
+  contributions: PromptContribution[];
   sessionState?: PluginSessionStateAppend[];
 }
 ```
@@ -129,8 +139,9 @@ Rules:
    only.
 4. Core commits returned `sessionState` appends only after it accepts the
    corresponding contribution result for rendering.
-5. If the hook returns no contributions, core must not append its returned
-   `sessionState`.
+5. If the hook has no contributions, it must return `undefined`; core rejects
+   empty contribution arrays and must not append session state for a no-op hook
+   result.
 
 ### User Prompt Context
 
@@ -172,8 +183,16 @@ bookkeeping such as memories already injected into the model-visible prompt.
 ```ts
 interface PluginSessionStateAppend {
   key: string;
-  value: unknown;
+  value: PluginJsonValue;
 }
+
+type PluginJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | PluginJsonValue[]
+  | { [key: string]: PluginJsonValue };
 
 interface PluginSessionState {
   list<T = unknown>(
@@ -189,7 +208,8 @@ Rules:
 2. Plugins can read only their own session append state.
 3. Session state is append-only in V1.
 4. Keys must be short validated strings.
-5. Values must be bounded JSON-serializable data.
+5. Values must be bounded JSON-serializable data. V1 accepts values whose
+   encoded JSON length is at most 4,000 characters.
 6. Session state is not an authorization source. Plugins must re-check current
    visibility and access before reusing a stored id or fact.
 7. Core appends session state in the same durable session-log stream used to

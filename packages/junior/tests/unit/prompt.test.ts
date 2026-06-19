@@ -147,4 +147,36 @@ describe("prompt builders", () => {
       }),
     ).toBeNull();
   });
+
+  it("renders plugin prompt contributions without replaying follow-up bootstrap context", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [
+        {
+          name: "alpha",
+          description: "Alpha workflow",
+          skillPath: "/tmp/skills/alpha",
+        },
+      ],
+      activeMcpCatalogs: [
+        { provider: "alpha-provider", available_tool_count: 2 },
+      ],
+      includeSessionContext: false,
+      invocation: null,
+      pluginPromptContributions: [
+        {
+          id: "memory",
+          pluginName: "memory",
+          text: "User prefers concise answers.",
+        },
+      ],
+      runtime: {
+        conversationId: "conversation-alpha",
+      },
+    });
+
+    expect(prompt).toContain("User prefers concise answers.");
+    expect(prompt).toContain('plugin="memory"');
+    expect(prompt).not.toContain("<available-skills>");
+    expect(prompt).not.toContain("conversation-alpha");
+  });
 });

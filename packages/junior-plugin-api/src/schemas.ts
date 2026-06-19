@@ -16,6 +16,9 @@ export const nonBlankStringSchema = z
   .string()
   .refine((value) => value.trim().length > 0);
 
+/** Runtime platform names supported by plugin public contracts. */
+export const platformSchema = z.enum(["slack", "local"]);
+
 /** Runtime-owned Slack address for routing future work or side effects. */
 export const slackDestinationSchema = z
   .object({

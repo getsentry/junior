@@ -24,7 +24,11 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { listReferenceFiles } from "@/chat/discovery";
-import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
+import {
+  buildPluginSystemPromptContributions,
+  buildSystemPrompt,
+  buildTurnContextPrompt,
+} from "@/chat/prompt";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
@@ -40,7 +44,12 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import {
+  createPluginHookRunner,
+  getPluginSystemPromptContributions,
+  getPluginUserPromptContributions,
+  type PluginUserPromptContributions,
+} from "@/chat/plugins/agent-hooks";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   inferActiveMcpProvidersFromPiMessages,
@@ -552,17 +561,37 @@ function buildUserTurnInput(args: {
   return { routerBlocks, userContentParts };
 }
 
-function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
-  const { userContentParts } = buildUserTurnInput({
+function buildSteeringPiMessageWithParts(
+  userContentParts: UserTurnContentPart[],
+  timestampMs: number | undefined,
+): PiMessage {
+  return {
+    role: "user",
+    content: userContentParts,
+    timestamp: timestampMs ?? Date.now(),
+  } as PiMessage;
+}
+
+function toPluginSessionStateCommit(
+  sessionState: PluginUserPromptContributions["sessionState"],
+): NonNullable<
+  Parameters<typeof persistRunningSessionRecord>[0]["pluginSessionState"]
+> {
+  return sessionState.map((append) => ({
+    plugin: append.pluginName,
+    appends: append.appends,
+  }));
+}
+
+function buildSteeringInput(message: ReplySteeringMessage): {
+  routerBlocks: string[];
+  userContentParts: UserTurnContentPart[];
+} {
+  return buildUserTurnInput({
     userTurnText: message.text,
     userAttachments: message.userAttachments,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
-  return {
-    role: "user",
-    content: userContentParts,
-    timestamp: message.timestampMs ?? Date.now(),
-  } as PiMessage;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
@@ -1171,31 +1200,49 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(),
     );
-    baseInstructions = buildSystemPrompt({ source: toolSource });
     const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
-    const turnContextPrompt = needsBootstrapContext
-      ? buildTurnContextPrompt({
-          availableSkills,
-          activeMcpCatalogs,
-          includeSessionContext: true,
-          toolGuidance,
-          runtime: {
-            conversationId: spanContext.conversationId,
-            slackConversation: context.slackConversation,
-          },
-          dispatch: context.dispatch
-            ? {
-                ...context.dispatch,
-                destination: context.destination,
-                source: toolSource,
-              }
-            : undefined,
-          invocation: skillInvocation,
-          requester: actorRequester,
-          artifactState: context.artifactState,
-          configuration: configurationValues,
-        })
-      : null;
+    const systemPromptContributions =
+      await getPluginSystemPromptContributions(toolSource);
+    const pluginSystemPrompt = buildPluginSystemPromptContributions(
+      systemPromptContributions,
+    );
+    baseInstructions = [
+      buildSystemPrompt({ source: toolSource }),
+      pluginSystemPrompt,
+    ]
+      .filter((section): section is string => Boolean(section))
+      .join("\n\n");
+    const pluginUserPrompt = resumedFromSessionRecord
+      ? { contributions: [], sessionState: [] }
+      : await getPluginUserPromptContributions({
+          context: toolRuntimeContext,
+          isFirstPrompt: needsBootstrapContext,
+        });
+    const turnContextPrompt =
+      needsBootstrapContext || pluginUserPrompt.contributions.length > 0
+        ? buildTurnContextPrompt({
+            availableSkills,
+            activeMcpCatalogs,
+            includeSessionContext: needsBootstrapContext,
+            pluginPromptContributions: pluginUserPrompt.contributions,
+            toolGuidance,
+            runtime: {
+              conversationId: spanContext.conversationId,
+              slackConversation: context.slackConversation,
+            },
+            dispatch: context.dispatch
+              ? {
+                  ...context.dispatch,
+                  destination: context.destination,
+                  source: toolSource,
+                }
+              : undefined,
+            invocation: skillInvocation,
+            requester: actorRequester,
+            artifactState: context.artifactState,
+            configuration: configurationValues,
+          })
+        : null;
     const turnContextParts: UserTurnContentPart[] = turnContextPrompt
       ? [{ type: "text", text: turnContextPrompt }]
       : [];
@@ -1279,6 +1326,9 @@ export async function generateAssistantReply(
     };
     const persistSafeBoundary = async (
       messages: PiMessage[],
+      pluginSessionState?: Parameters<
+        typeof persistRunningSessionRecord
+      >[0]["pluginSessionState"],
     ): Promise<boolean> => {
       if (
         !turnSessionState.canUseTurnSession ||
@@ -1295,6 +1345,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         messages,
+        pluginSessionState,
         loadedSkillNames: loadedSkillNamesForResume,
         logContext: sessionRecordLogContext,
         requester,
@@ -1312,8 +1363,11 @@ export async function generateAssistantReply(
     };
     const requireDurableInputCheckpoint = async (
       messages: PiMessage[],
+      pluginSessionState?: Parameters<
+        typeof persistRunningSessionRecord
+      >[0]["pluginSessionState"],
     ): Promise<boolean> => {
-      const persisted = await persistSafeBoundary(messages);
+      const persisted = await persistSafeBoundary(messages, pluginSessionState);
       if (!persisted && context.onInputCommitted) {
         throw new TurnInputCommitLostError(
           `Durable turn input could not be checkpointed for conversation=${sessionConversationId ?? "unknown"} session=${sessionId ?? "unknown"}`,
@@ -1334,14 +1388,51 @@ export async function generateAssistantReply(
       try {
         let steeredMessageCount = 0;
         await context.drainSteeringMessages(async (messages) => {
-          const piMessages = messages.map(buildSteeringPiMessage);
+          const steeringInputs = await Promise.all(
+            messages.map(async (message) => {
+              const { userContentParts } = buildSteeringInput(message);
+              const pluginPrompt = await getPluginUserPromptContributions({
+                context: {
+                  ...toolRuntimeContext,
+                  userText: message.text,
+                },
+                isFirstPrompt: false,
+              });
+              const pluginContextPrompt =
+                pluginPrompt.contributions.length > 0
+                  ? buildTurnContextPrompt({
+                      availableSkills,
+                      activeMcpCatalogs,
+                      includeSessionContext: false,
+                      pluginPromptContributions: pluginPrompt.contributions,
+                      invocation: null,
+                    })
+                  : null;
+              const contentParts = pluginContextPrompt
+                ? [
+                    { type: "text" as const, text: pluginContextPrompt },
+                    ...userContentParts,
+                  ]
+                : userContentParts;
+              return {
+                message: buildSteeringPiMessageWithParts(
+                  contentParts,
+                  message.timestampMs,
+                ),
+                pluginSessionState: toPluginSessionStateCommit(
+                  pluginPrompt.sessionState,
+                ),
+              };
+            }),
+          );
+          const piMessages = steeringInputs.map((input) => input.message);
           if (piMessages.length === 0) {
             return;
           }
-          await requireDurableInputCheckpoint([
-            ...agent!.state.messages,
-            ...piMessages,
-          ]);
+          await requireDurableInputCheckpoint(
+            [...agent!.state.messages, ...piMessages],
+            steeringInputs.flatMap((input) => input.pluginSessionState),
+          );
           for (const message of piMessages) {
             agent!.steer(message);
           }
@@ -1479,10 +1570,13 @@ export async function generateAssistantReply(
             timestamp: Date.now(),
           } as PiMessage;
           if (!resumedFromSessionRecord) {
-            const promptPersisted = await requireDurableInputCheckpoint([
-              ...agent.state.messages,
-              freshPromptMessage,
-            ]);
+            const promptPersisted = await requireDurableInputCheckpoint(
+              [...agent.state.messages, freshPromptMessage],
+              pluginUserPrompt.sessionState.map((append) => ({
+                plugin: append.pluginName,
+                appends: append.appends,
+              })),
+            );
             if (promptPersisted) {
               await commitInput();
             }

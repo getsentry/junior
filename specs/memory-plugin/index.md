@@ -13,10 +13,10 @@ contracts.
 
 ## Implementation Status
 
-This spec describes the intended V1 memory plugin shape. It depends on future
-plugin hook surfaces from `../plugin-prompt-hooks.md`; the current plugin API
-does not yet export or invoke `userPrompt`, `observeTurn`, plugin prompt session
-state, or plugin background task handlers.
+This spec describes the intended V1 memory plugin shape. Generic plugin prompt
+hooks and plugin prompt session state are available through
+`../plugin-prompt-hooks.md`. Passive learning still depends on future
+`observeTurn` and plugin background task handler surfaces.
 
 When automatic memory injection is enabled, the memory plugin makes relevant
 facts available before each response without making recall depend on the model

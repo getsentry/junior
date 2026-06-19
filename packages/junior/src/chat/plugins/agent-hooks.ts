@@ -1,3 +1,9 @@
+import {
+  pluginSessionStateAppendSchema,
+  pluginSessionStateKeySchema,
+  promptContributionSchema,
+  userPromptContributionResultSchema,
+} from "@sentry/junior-plugin-api";
 import type {
   PluginConversations,
   PluginReadState,
@@ -10,10 +16,13 @@ import type {
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
+  UserPromptHookContext,
+  PluginJsonValue,
 } from "@sentry/junior-plugin-api";
-import { logInfo } from "@/chat/logging";
+import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginDbForRegistration } from "@/chat/plugins/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -26,6 +35,7 @@ import type {
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { Requester } from "@/chat/requester";
+import { loadPluginSessionState } from "@/chat/state/session-log";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -73,6 +83,7 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "OPTIONS",
   "ALL",
 ]);
+const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -86,6 +97,111 @@ function basePluginContext(plugin: PluginRegistration) {
     log: createPluginLogger(name),
     ...(db ? { db } : {}),
   };
+}
+
+function systemPromptPluginContext(plugin: PluginRegistration) {
+  const name = plugin.manifest.name;
+  return {
+    plugin: { name },
+    log: createPluginLogger(name),
+  };
+}
+
+function invocationPluginContext(
+  plugin: PluginRegistration,
+  context: Pick<
+    ToolRuntimeContext,
+    "conversationId" | "destination" | "requester" | "source" | "userText"
+  >,
+) {
+  const base = basePluginContext(plugin);
+  const common = {
+    ...base,
+    conversationId: context.conversationId,
+    source: context.source,
+    userText: context.userText ?? "",
+    state: createPluginState(plugin.manifest.name),
+  };
+  if (context.source.platform === "slack") {
+    return {
+      ...common,
+      requester:
+        context.requester?.platform === "slack" ? context.requester : undefined,
+      destination:
+        context.destination?.platform === "slack"
+          ? context.destination
+          : undefined,
+    };
+  }
+  return {
+    ...common,
+    requester:
+      context.requester?.platform === "local" ? context.requester : undefined,
+    destination:
+      context.destination?.platform === "local"
+        ? context.destination
+        : undefined,
+  };
+}
+
+function safeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function validatePromptContribution(args: {
+  contribution: unknown;
+  pluginName: string;
+}): PluginPromptContributionContext | undefined {
+  const parsed = promptContributionSchema.safeParse(args.contribution);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return {
+    id: parsed.data.id,
+    pluginName: args.pluginName,
+    text: parsed.data.text,
+  };
+}
+
+function hasDuplicateContributionIds(
+  contributions: PluginPromptContributionContext[],
+): boolean {
+  const seen = new Set<string>();
+  for (const contribution of contributions) {
+    if (seen.has(contribution.id)) {
+      return true;
+    }
+    seen.add(contribution.id);
+  }
+  return false;
+}
+
+function validateSessionStateAppend(append: unknown):
+  | {
+      key: string;
+      value: PluginJsonValue;
+    }
+  | undefined {
+  const parsed = pluginSessionStateAppendSchema.safeParse(append);
+  if (!parsed.success) {
+    return undefined;
+  }
+  try {
+    return {
+      key: parsed.data.key,
+      value: JSON.parse(JSON.stringify(parsed.data.value)) as PluginJsonValue,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export interface PluginUserPromptContributions {
+  contributions: PluginPromptContributionContext[];
+  sessionState: Array<{
+    appends: Array<{ key: string; value: PluginJsonValue }>;
+    pluginName: string;
+  }>;
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
@@ -120,6 +236,186 @@ export function setPlugins(
 /** Return the current runtime hook plugins without exposing mutable state. */
 export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
+}
+
+/** Collect stable plugin prompt contributions for the static system prompt. */
+export async function getPluginSystemPromptContributions(
+  source: ToolRuntimeContext["source"],
+): Promise<PluginPromptContributionContext[]> {
+  const contributions: PluginPromptContributionContext[] = [];
+  let totalChars = 0;
+  for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
+    const hook = plugin.hooks?.systemPrompt;
+    if (!hook) {
+      continue;
+    }
+    try {
+      const pluginContributions = await hook({
+        ...systemPromptPluginContext(plugin),
+        platform: source.platform,
+      });
+      const acceptedContributions = (pluginContributions ?? [])
+        .map((contribution) =>
+          validatePromptContribution({
+            contribution,
+            pluginName,
+          }),
+        )
+        .filter(
+          (contribution): contribution is PluginPromptContributionContext =>
+            contribution !== undefined,
+        );
+      if (hasDuplicateContributionIds(acceptedContributions)) {
+        continue;
+      }
+      const pluginContributionChars = acceptedContributions.reduce(
+        (sum, contribution) => sum + contribution.text.length,
+        0,
+      );
+      if (
+        totalChars + pluginContributionChars >
+        PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
+      ) {
+        logWarn(
+          "plugin_system_prompt_contribution_budget_exceeded",
+          {},
+          {
+            "app.plugin.name": pluginName,
+          },
+          "Plugin system prompt contributions exceeded budget",
+        );
+        continue;
+      }
+      totalChars += pluginContributionChars;
+      contributions.push(...acceptedContributions);
+    } catch (error) {
+      logWarn(
+        "plugin_system_prompt_hook_failed",
+        {},
+        {
+          "app.plugin.name": pluginName,
+          "exception.message": safeErrorMessage(error),
+        },
+        "Plugin system prompt hook failed",
+      );
+    }
+  }
+  return contributions;
+}
+
+/** Collect request-scoped plugin prompt contributions and accepted session appends. */
+export async function getPluginUserPromptContributions(args: {
+  context: Pick<
+    ToolRuntimeContext,
+    "conversationId" | "destination" | "requester" | "source" | "userText"
+  >;
+  isFirstPrompt: boolean;
+}): Promise<PluginUserPromptContributions> {
+  const contributions: PluginPromptContributionContext[] = [];
+  const sessionState: PluginUserPromptContributions["sessionState"] = [];
+  let totalChars = 0;
+  for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
+    const hook = plugin.hooks?.userPrompt;
+    if (!hook) {
+      continue;
+    }
+    try {
+      const session = {
+        async list<T = unknown>(key: string) {
+          if (
+            !pluginSessionStateKeySchema.safeParse(key).success ||
+            !args.context.conversationId
+          ) {
+            return [];
+          }
+          return await loadPluginSessionState<T>({
+            conversationId: args.context.conversationId,
+            plugin: pluginName,
+            key,
+          });
+        },
+      };
+      const rawResult = await hook({
+        ...invocationPluginContext(plugin, args.context),
+        isFirstPrompt: args.isFirstPrompt,
+        session,
+      } as UserPromptHookContext);
+      const result = userPromptContributionResultSchema.safeParse(rawResult);
+      if (!result.success) {
+        continue;
+      }
+      const acceptedAppends = (result.data.sessionState ?? []).map(
+        validateSessionStateAppend,
+      );
+      if (acceptedAppends.some((append) => append === undefined)) {
+        continue;
+      }
+
+      const acceptedContributions = (result.data.contributions ?? [])
+        .map((contribution) =>
+          validatePromptContribution({
+            contribution,
+            pluginName,
+          }),
+        )
+        .filter(
+          (contribution): contribution is PluginPromptContributionContext =>
+            contribution !== undefined,
+        );
+      if (acceptedContributions.length === 0) {
+        continue;
+      }
+      if (hasDuplicateContributionIds(acceptedContributions)) {
+        continue;
+      }
+      const pluginContributionChars = acceptedContributions.reduce(
+        (sum, contribution) => sum + contribution.text.length,
+        0,
+      );
+      if (
+        totalChars + pluginContributionChars >
+        PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
+      ) {
+        logWarn(
+          "plugin_user_prompt_contribution_budget_exceeded",
+          {},
+          {
+            "app.plugin.name": pluginName,
+          },
+          "Plugin user prompt contributions exceeded budget",
+        );
+        continue;
+      }
+      totalChars += pluginContributionChars;
+      contributions.push(...acceptedContributions);
+
+      if (acceptedAppends.length > 0 && args.context.conversationId) {
+        sessionState.push({
+          appends: acceptedAppends as Array<{
+            key: string;
+            value: PluginJsonValue;
+          }>,
+          pluginName,
+        });
+      }
+    } catch (error) {
+      logWarn(
+        "plugin_user_prompt_hook_failed",
+        {},
+        {
+          "app.plugin.name": pluginName,
+          "exception.message": safeErrorMessage(error),
+        },
+        "Plugin user prompt hook failed",
+      );
+    }
+  }
+  return {
+    contributions,
+    sessionState,
+  };
 }
 
 /** Collect turn-scoped tools exposed by plugins. */
