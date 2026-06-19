@@ -34,7 +34,7 @@ When automatic memory injection is enabled, the plugin must:
 
 1. Derive visible memory scopes from `ctx.requester`, `ctx.source`,
    `ctx.destination`, and `ctx.conversationId`.
-2. Query active visible memories relevant to `ctx.userText`.
+2. Query active visible memories relevant to `ctx.text`.
 3. Return one concise prompt contribution containing only accepted memory
    content.
 

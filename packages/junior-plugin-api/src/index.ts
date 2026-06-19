@@ -1,12 +1,11 @@
 export * from "./schemas";
 export * from "./context";
-export * from "./json";
 export * from "./state";
 export {
-  promptContributionSchema,
-  type PromptContribution,
-  type SystemPromptHookContext,
-  type UserPromptHookContext,
+  promptMessageSchema,
+  type PromptMessage,
+  type SystemPromptContext,
+  type UserPromptContext,
 } from "./prompt";
 export * from "./dispatch";
 export * from "./database";

@@ -1,4 +1,4 @@
-import { promptContributionSchema } from "@sentry/junior-plugin-api";
+import { promptMessageSchema } from "@sentry/junior-plugin-api";
 import type {
   PluginConversations,
   PluginReadState,
@@ -11,7 +11,7 @@ import type {
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
-  UserPromptHookContext,
+  UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginDbForRegistration } from "@/chat/plugins/db";
@@ -29,6 +29,7 @@ import type {
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { Requester } from "@/chat/requester";
+import { z } from "zod";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -77,6 +78,8 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
+const systemPromptMessageArraySchema = z.array(promptMessageSchema);
+const userPromptMessageArraySchema = z.array(promptMessageSchema).min(1);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -112,7 +115,7 @@ function invocationPluginContext(
     ...base,
     conversationId: context.conversationId,
     source: context.source,
-    userText: context.userText ?? "",
+    text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
   };
   if (context.source.platform === "slack") {
@@ -141,36 +144,34 @@ function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function validatePromptContribution(args: {
-  contribution: unknown;
+function toPromptContributionContext(args: {
+  hookName: "systemPrompt" | "userPrompt";
+  index: number;
+  message: z.output<typeof promptMessageSchema>;
   pluginName: string;
-}): PluginPromptContributionContext | undefined {
-  const parsed = promptContributionSchema.safeParse(args.contribution);
-  if (!parsed.success) {
-    return undefined;
-  }
+}): PluginPromptContributionContext {
   return {
-    id: parsed.data.id,
+    id: `${args.hookName}:${args.index}`,
     pluginName: args.pluginName,
-    text: parsed.data.text,
+    text: args.message.text,
   };
 }
 
-function hasDuplicateContributionIds(
-  contributions: PluginPromptContributionContext[],
-): boolean {
-  const seen = new Set<string>();
-  for (const contribution of contributions) {
-    if (seen.has(contribution.id)) {
-      return true;
-    }
-    seen.add(contribution.id);
-  }
-  return false;
-}
-
-export interface PluginUserPromptContributions {
-  contributions: PluginPromptContributionContext[];
+function logInvalidPromptContributions(args: {
+  hookName: "systemPrompt" | "userPrompt";
+  pluginName: string;
+  reason: string;
+}): void {
+  logWarn(
+    "plugin_prompt_contribution_result_invalid",
+    {},
+    {
+      "app.plugin.hook": args.hookName,
+      "app.plugin.name": args.pluginName,
+      "app.plugin.validation_reason": args.reason,
+    },
+    "Plugin prompt contribution result invalid",
+  );
 }
 
 /** Validate plugin identity before it can affect process-wide hooks. */
@@ -224,20 +225,24 @@ export async function getPluginSystemPromptContributions(
         ...systemPromptPluginContext(plugin),
         platform: source.platform,
       });
-      const acceptedContributions = (pluginContributions ?? [])
-        .map((contribution) =>
-          validatePromptContribution({
-            contribution,
-            pluginName,
-          }),
-        )
-        .filter(
-          (contribution): contribution is PluginPromptContributionContext =>
-            contribution !== undefined,
-        );
-      if (hasDuplicateContributionIds(acceptedContributions)) {
+      const result =
+        systemPromptMessageArraySchema.safeParse(pluginContributions);
+      if (!result.success) {
+        logInvalidPromptContributions({
+          hookName: "systemPrompt",
+          pluginName,
+          reason: "invalid_shape",
+        });
         continue;
       }
+      const acceptedContributions = result.data.map((message, index) =>
+        toPromptContributionContext({
+          hookName: "systemPrompt",
+          index,
+          message,
+          pluginName,
+        }),
+      );
       const pluginContributionChars = acceptedContributions.reduce(
         (sum, contribution) => sum + contribution.text.length,
         0,
@@ -279,8 +284,7 @@ export async function getPluginUserPromptContributions(args: {
     ToolRuntimeContext,
     "conversationId" | "destination" | "requester" | "source" | "userText"
   >;
-  isFirstPrompt: boolean;
-}): Promise<PluginUserPromptContributions> {
+}): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   for (const plugin of getPlugins()) {
@@ -292,32 +296,28 @@ export async function getPluginUserPromptContributions(args: {
     try {
       const rawResult = await hook({
         ...invocationPluginContext(plugin, args.context),
-        isFirstPrompt: args.isFirstPrompt,
-      } as UserPromptHookContext);
+      } as UserPromptContext);
       if (rawResult === undefined) {
         continue;
       }
-      if (!Array.isArray(rawResult)) {
+      const result = userPromptMessageArraySchema.safeParse(rawResult);
+      if (!result.success) {
+        logInvalidPromptContributions({
+          hookName: "userPrompt",
+          pluginName,
+          reason: "invalid_shape",
+        });
         continue;
       }
 
-      const acceptedContributions = rawResult
-        .map((contribution) =>
-          validatePromptContribution({
-            contribution,
-            pluginName,
-          }),
-        )
-        .filter(
-          (contribution): contribution is PluginPromptContributionContext =>
-            contribution !== undefined,
-        );
-      if (acceptedContributions.length === 0) {
-        continue;
-      }
-      if (hasDuplicateContributionIds(acceptedContributions)) {
-        continue;
-      }
+      const acceptedContributions = result.data.map((message, index) =>
+        toPromptContributionContext({
+          hookName: "userPrompt",
+          index,
+          message,
+          pluginName,
+        }),
+      );
       const pluginContributionChars = acceptedContributions.reduce(
         (sum, contribution) => sum + contribution.text.length,
         0,
@@ -350,9 +350,7 @@ export async function getPluginUserPromptContributions(args: {
       );
     }
   }
-  return {
-    contributions,
-  };
+  return contributions;
 }
 
 /** Collect turn-scoped tools exposed by plugins. */

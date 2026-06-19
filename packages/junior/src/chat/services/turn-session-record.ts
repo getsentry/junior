@@ -303,7 +303,7 @@ export async function persistAuthPauseSessionRecord(args: {
       args.messages,
       latestSessionRecord?.piMessages,
     );
-    if (piMessages.length === 0 || !isContinuableBoundary(piMessages)) {
+    if (piMessages.length > 0 && !isContinuableBoundary(piMessages)) {
       return undefined;
     }
     return await upsertAgentTurnSessionRecord({

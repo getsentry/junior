@@ -560,30 +560,17 @@ function buildUserTurnInput(args: {
   return { routerBlocks, userContentParts };
 }
 
-function buildSteeringPiMessageWithParts(
-  userContentParts: UserTurnContentPart[],
-  timestampMs: number | undefined,
-): PiMessage {
-  return {
-    role: "user",
-    content: userContentParts,
-    timestamp: timestampMs ?? Date.now(),
-  } as PiMessage;
-}
-
-function buildSteeringInput(message: ReplySteeringMessage): {
-  routerBlocks: string[];
-  userContentParts: UserTurnContentPart[];
-} {
-  return buildUserTurnInput({
+function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
+  const { userContentParts } = buildUserTurnInput({
     userTurnText: message.text,
     userAttachments: message.userAttachments,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
-}
-
-function hasUserPromptMessage(messages: PiMessage[] | undefined): boolean {
-  return (messages ?? []).some((message) => message.role === "user");
+  return {
+    role: "user",
+    content: userContentParts,
+    timestamp: message.timestampMs ?? Date.now(),
+  } as PiMessage;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
@@ -941,14 +928,7 @@ export async function generateAssistantReply(
       userTurnText,
     });
     const preAgentPromptMessages = (): PiMessage[] =>
-      existingSessionRecord?.piMessages ?? [
-        ...(context.piMessages ?? []),
-        {
-          role: "user",
-          content: userContentParts,
-          timestamp: Date.now(),
-        } as PiMessage,
-      ];
+      existingSessionRecord?.piMessages ?? [...(context.piMessages ?? [])];
 
     thinkingSelection = await selectTurnThinkingLevel({
       completeObject,
@@ -1192,14 +1172,15 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(),
     );
-    const needsBootstrapContext = !hasRuntimeTurnContext(priorPiMessages ?? []);
-    const hasStoredUserPrompt =
+    const hasPromptCheckpoint =
       resumedFromSessionRecord &&
-      hasUserPromptMessage(existingSessionRecord?.piMessages);
-    const shouldPromptAgent = !resumedFromSessionRecord || !hasStoredUserPrompt;
-    const needsPluginUserPrompt =
-      !resumedFromSessionRecord || needsBootstrapContext;
-    const isFirstPromptInProjection = !hasUserPromptMessage(priorPiMessages);
+      existingSessionRecord?.turnStartMessageIndex !== undefined;
+    const shouldPromptAgent = !resumedFromSessionRecord || !hasPromptCheckpoint;
+    const promptHistoryMessages = shouldPromptAgent
+      ? (priorPiMessages ?? [])
+      : existingSessionRecord!.piMessages;
+    const needsBootstrapContextForPrompt =
+      shouldPromptAgent && !hasRuntimeTurnContext(promptHistoryMessages);
     const systemPromptContributions =
       await getPluginSystemPromptContributions(toolSource);
     const pluginSystemPrompt = buildPluginSystemPromptContributions(
@@ -1211,19 +1192,18 @@ export async function generateAssistantReply(
     ]
       .filter((section): section is string => Boolean(section))
       .join("\n\n");
-    const pluginUserPrompt = !needsPluginUserPrompt
-      ? { contributions: [] }
+    const pluginUserPromptContributions = !shouldPromptAgent
+      ? []
       : await getPluginUserPromptContributions({
           context: toolRuntimeContext,
-          isFirstPrompt: isFirstPromptInProjection,
         });
     const turnContextPrompt =
-      needsBootstrapContext || pluginUserPrompt.contributions.length > 0
+      needsBootstrapContextForPrompt || pluginUserPromptContributions.length > 0
         ? buildTurnContextPrompt({
             availableSkills,
             activeMcpCatalogs,
-            includeSessionContext: needsBootstrapContext,
-            pluginPromptContributions: pluginUserPrompt.contributions,
+            includeSessionContext: needsBootstrapContextForPrompt,
+            pluginPromptContributions: pluginUserPromptContributions,
             toolGuidance,
             runtime: {
               conversationId: spanContext.conversationId,
@@ -1380,12 +1360,7 @@ export async function generateAssistantReply(
       try {
         let steeredMessageCount = 0;
         await context.drainSteeringMessages(async (messages) => {
-          const piMessages = messages.map((message) =>
-            buildSteeringPiMessageWithParts(
-              buildSteeringInput(message).userContentParts,
-              message.timestampMs,
-            ),
-          );
+          const piMessages = messages.map(buildSteeringPiMessage);
           if (piMessages.length === 0) {
             return;
           }
@@ -1503,8 +1478,9 @@ export async function generateAssistantReply(
     beforeMessageCount = agent.state.messages.length;
     try {
       if (resumedFromSessionRecord) {
-        agent.state.messages =
-          hasStoredUserPrompt && turnContextPrompt
+        agent.state.messages = shouldPromptAgent
+          ? (promptHistoryMessages ?? [])
+          : turnContextPrompt
             ? prependMissingRuntimeTurnContext(
                 existingSessionRecord!.piMessages,
                 turnContextPrompt,

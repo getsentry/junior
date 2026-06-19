@@ -14,10 +14,10 @@ process.env.JUNIOR_STATE_ADAPTER = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
-    isFirstPromptValues: [] as boolean[],
     promptMessages: [] as unknown[],
     steeredMessages: [] as unknown[],
     systemPrompt: "",
+    userPromptTexts: [] as string[],
   },
 }));
 
@@ -115,10 +115,10 @@ describe("plugin prompt hooks", () => {
   let previousPlugins: ReturnType<typeof setPlugins>;
 
   beforeEach(() => {
-    captured.isFirstPromptValues = [];
     captured.promptMessages = [];
     captured.steeredMessages = [];
     captured.systemPrompt = "";
+    captured.userPromptTexts = [];
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -128,14 +128,13 @@ describe("plugin prompt hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [{ id: "memory-system", text: "System memory guidance." }];
+            return [{ text: "System memory guidance." }];
           },
           async userPrompt(ctx) {
-            captured.isFirstPromptValues.push(ctx.isFirstPrompt);
+            captured.userPromptTexts.push(ctx.text);
             return [
               {
-                id: "memory-user",
-                text: `User memory guidance; first=${String(ctx.isFirstPrompt)}.`,
+                text: `User memory guidance for ${ctx.text}.`,
               },
             ];
           },
@@ -168,7 +167,7 @@ describe("plugin prompt hooks", () => {
 
     expect(captured.systemPrompt).toContain("System memory guidance.");
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "User memory guidance; first=true.",
+      "User memory guidance for hello.",
     );
   });
 
@@ -199,9 +198,9 @@ describe("plugin prompt hooks", () => {
       ] as never,
     });
 
-    expect(captured.isFirstPromptValues).toEqual([true, false]);
+    expect(captured.userPromptTexts).toEqual(["hello", "again"]);
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "User memory guidance; first=false.",
+      "User memory guidance for again.",
     );
   });
 
@@ -218,7 +217,7 @@ describe("plugin prompt hooks", () => {
       },
     });
 
-    expect(captured.isFirstPromptValues).toEqual([true]);
+    expect(captured.userPromptTexts).toEqual(["hello"]);
     expect(JSON.stringify(captured.steeredMessages[0])).not.toContain(
       "User memory guidance",
     );
@@ -243,9 +242,39 @@ describe("plugin prompt hooks", () => {
       },
     });
 
-    expect(captured.isFirstPromptValues).toEqual([true]);
+    expect(captured.userPromptTexts).toEqual(["resume me"]);
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
-      "User memory guidance; first=true.",
+      "User memory guidance for resume me.",
     );
+  });
+
+  it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-plugin-prompt-resume-after-prompt",
+      sessionId: "turn-plugin-prompt-resume-after-prompt",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "checkpointed prompt" }],
+          timestamp: Date.now(),
+        },
+      ] as never,
+      turnStartMessageIndex: 0,
+      resumeReason: "timeout",
+      errorMessage: "timed out",
+    });
+
+    await generateAssistantReply("resume me", {
+      destination: LOCAL_DESTINATION,
+      correlation: {
+        conversationId: "conversation-plugin-prompt-resume-after-prompt",
+        turnId: "turn-plugin-prompt-resume-after-prompt",
+      },
+    });
+
+    expect(captured.userPromptTexts).toEqual([]);
+    expect(captured.promptMessages).toEqual([]);
   });
 });

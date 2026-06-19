@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-19
 
 ## Purpose
 
@@ -45,15 +45,12 @@ Runtime hook plugins may provide prompt and observation hooks:
 ```ts
 interface PluginHooks {
   systemPrompt?(
-    ctx: SystemPromptHookContext,
-  ): PromptContribution[] | Promise<PromptContribution[]>;
+    ctx: SystemPromptContext,
+  ): PromptMessage[] | Promise<PromptMessage[]>;
 
   userPrompt?(
-    ctx: UserPromptHookContext,
-  ):
-    | PromptContribution[]
-    | undefined
-    | Promise<PromptContribution[] | undefined>;
+    ctx: UserPromptContext,
+  ): PromptMessage[] | undefined | Promise<PromptMessage[] | undefined>;
 
   observeTurn?(ctx: TurnObservationContext): void | Promise<void>;
 
@@ -65,33 +62,33 @@ These hooks are app-code plugin hooks registered through
 `defineJuniorPlugin({ manifest, hooks })`. Declarative `plugin.yaml` manifests
 must not register prompt or observation hooks.
 
-### Prompt Contributions
+### Prompt Messages
 
-Prompt contributions are intentionally small:
+Prompt messages are intentionally small:
 
 ```ts
-interface PromptContribution {
-  id: string;
+interface PromptMessage {
   text: string;
 }
 ```
 
 Rules:
 
-1. `id` is unique only within one plugin hook invocation.
-2. `text` is plugin-provided prompt text after the plugin has applied its own
+1. `text` is plugin-provided prompt text after the plugin has applied its own
    domain policy.
-3. Core owns ordering between plugins, wrapper rendering, escaping where needed,
+2. Core owns ordering between plugins, wrapper rendering, escaping where needed,
    total size limits, and failure behavior.
-4. Contributions are not durable plugin state by themselves. Plugins that need
+3. Messages are not durable plugin state by themselves. Plugins that need
    durable continuity must use their own plugin storage.
+4. Core may assign internal IDs for rendering, logging, and diagnostics; those
+   IDs are not part of the plugin public contract.
 
 ### System Prompt Hook
 
 `systemPrompt(ctx)` contributes stable plugin-level prompt text.
 
 ```ts
-interface SystemPromptHookContext {
+interface SystemPromptContext {
   log: PluginLogger;
   platform: Platform;
   plugin: PluginMetadata;
@@ -116,8 +113,9 @@ credential, tool, and output rules.
 ### User Prompt Hook
 
 `userPrompt(ctx)` contributes dynamic request-scoped prompt text. Core invokes
-the hook once for the triggering user prompt of an agent run. Steering messages
-delivered while that run is already active do not invoke `userPrompt`.
+the hook once while constructing the fresh triggering user prompt of an agent
+run. Steering messages delivered while that run is already active do not invoke
+`userPrompt`.
 
 Rules:
 
@@ -130,28 +128,27 @@ Rules:
    only.
 4. If the hook has no contributions, it must return `undefined`; core rejects
    empty contribution arrays.
+5. Resume records that already contain a prompt checkpoint continue from stored
+   Pi history and must not invoke `userPrompt` again. Resume records captured
+   before a prompt checkpoint rebuild the fresh prompt and invoke `userPrompt`
+   once.
 
 ### User Prompt Context
 
-`UserPromptHookContext` exposes only narrow runtime facts and helper surfaces:
+`UserPromptContext` exposes only narrow runtime facts and helper surfaces:
 
 ```ts
-interface UserPromptHookContext {
+interface UserPromptContext {
   conversationId?: string;
   destination?: Destination;
-  isFirstPrompt: boolean;
   log: PluginLogger;
   plugin: PluginMetadata;
   requester?: Requester;
   source: Source;
   state: PluginState;
-  userText: string;
+  text: string;
 }
 ```
-
-`isFirstPrompt` means this is the first model-visible user prompt in the
-current agent session projection. It is the only prompt lifecycle flag exposed
-in V1.
 
 The context must not expose:
 
@@ -334,8 +331,10 @@ Use integration tests for:
 - user prompt hooks run once for the triggering user prompt of each agent run
 - user prompt hooks do not run for steering messages delivered during an active
   run
-- `isFirstPrompt` is true only for the first model-visible user prompt in the
-  current session projection
+- user prompt hooks do not run again when resuming from a stored prompt
+  checkpoint
+- user prompt hooks run when resuming a record captured before the prompt
+  checkpoint
 - private conversation prompt contribution payloads are redacted from logs,
   traces, and dashboard APIs
 

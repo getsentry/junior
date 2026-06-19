@@ -586,29 +586,35 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("does not create an awaiting-resume record without a continuable Pi boundary", async () => {
+  it("creates auth-pause records before a prompt checkpoint", async () => {
     const { persistAuthPauseSessionRecord, persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    await expect(
-      persistAuthPauseSessionRecord({
-        conversationId: "conversation-empty",
-        sessionId: "turn-empty",
-        currentSliceId: 1,
-        messages: [],
-        errorMessage: "auth pause",
-        logContext: {
-          modelId: "test-model",
-        },
-      }),
-    ).resolves.toBeUndefined();
+    const authRecord = await persistAuthPauseSessionRecord({
+      conversationId: "conversation-auth-empty",
+      sessionId: "turn-auth-empty",
+      currentSliceId: 1,
+      messages: [],
+      errorMessage: "auth pause",
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    expect(authRecord).toMatchObject({
+      conversationId: "conversation-auth-empty",
+      sessionId: "turn-auth-empty",
+      state: "awaiting_resume",
+      piMessages: [],
+      resumeReason: "auth",
+    });
 
     await expect(
       persistTimeoutSessionRecord({
-        conversationId: "conversation-empty",
-        sessionId: "turn-empty",
+        conversationId: "conversation-timeout-empty",
+        sessionId: "turn-timeout-empty",
         currentSliceId: 1,
         messages: [],
         errorMessage: "timeout",
@@ -619,7 +625,10 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toBeUndefined();
 
     await expect(
-      getAgentTurnSessionRecord("conversation-empty", "turn-empty"),
+      getAgentTurnSessionRecord(
+        "conversation-timeout-empty",
+        "turn-timeout-empty",
+      ),
     ).resolves.toBeUndefined();
   });
 

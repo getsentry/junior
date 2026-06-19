@@ -26,21 +26,18 @@ import type {
   ToolRegistrationHookContext,
 } from "./tools";
 import type {
-  PromptContribution,
-  SystemPromptHookContext,
-  UserPromptHookContext,
+  PromptMessage,
+  SystemPromptContext,
+  UserPromptContext,
 } from "./prompt";
 
 export interface PluginHooks {
   systemPrompt?(
-    ctx: SystemPromptHookContext,
-  ): Promise<PromptContribution[]> | PromptContribution[];
+    ctx: SystemPromptContext,
+  ): Promise<PromptMessage[]> | PromptMessage[];
   userPrompt?(
-    ctx: UserPromptHookContext,
-  ):
-    | Promise<PromptContribution[] | undefined>
-    | PromptContribution[]
-    | undefined;
+    ctx: UserPromptContext,
+  ): Promise<PromptMessage[] | undefined> | PromptMessage[] | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
   grantForEgress?(
     ctx: EgressHookContext,

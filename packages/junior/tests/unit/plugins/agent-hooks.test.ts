@@ -106,7 +106,7 @@ describe("agent plugin hooks", () => {
           systemPrompt(ctx) {
             expect(ctx.platform).toBe("local");
             expect("db" in ctx).toBe(false);
-            return [{ id: "z", text: "Z contribution" }];
+            return [{ text: "Z contribution" }];
           },
         },
       }),
@@ -118,7 +118,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [{ id: "a", text: "A contribution" }];
+            return [{ text: "A contribution" }];
           },
         },
       }),
@@ -127,15 +127,15 @@ describe("agent plugin hooks", () => {
       await expect(
         getPluginSystemPromptContributions(LOCAL_DESTINATION),
       ).resolves.toEqual([
-        { id: "a", pluginName: "a-demo", text: "A contribution" },
-        { id: "z", pluginName: "z-demo", text: "Z contribution" },
+        { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
+        { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
       ]);
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("drops duplicate system prompt contribution ids from one plugin", async () => {
+  it("omits malformed system prompt messages", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -145,10 +145,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [
-              { id: "duplicate", text: "one" },
-              { id: "duplicate", text: "two" },
-            ];
+            return [{ text: "" }] as any;
           },
         },
       }),
@@ -174,9 +171,8 @@ describe("agent plugin hooks", () => {
           async userPrompt(ctx) {
             expect(ctx.requester).toBeUndefined();
             expect(ctx.source).toEqual(LOCAL_DESTINATION);
-            expect(ctx.userText).toBe("remember this");
-            expect(ctx.isFirstPrompt).toBe(true);
-            return [{ id: "memory", text: "remembered context" }];
+            expect(ctx.text).toBe("remember this");
+            return [{ text: "remembered context" }];
           },
         },
       }),
@@ -190,17 +186,14 @@ describe("agent plugin hooks", () => {
             destination: LOCAL_DESTINATION,
             userText: "remember this",
           },
-          isFirstPrompt: true,
         }),
-      ).resolves.toEqual({
-        contributions: [
-          {
-            id: "memory",
-            pluginName: "agent-demo",
-            text: "remembered context",
-          },
-        ],
-      });
+      ).resolves.toEqual([
+        {
+          id: "userPrompt:0",
+          pluginName: "agent-demo",
+          text: "remembered context",
+        },
+      ]);
     } finally {
       setPlugins(previous);
     }
@@ -216,7 +209,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [{ id: "invalid id", text: "bad" }];
+            return [{ text: "" }] as any;
           },
         },
       }),
@@ -230,17 +223,14 @@ describe("agent plugin hooks", () => {
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
-          isFirstPrompt: false,
         }),
-      ).resolves.toEqual({
-        contributions: [],
-      });
+      ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("drops duplicate user prompt contribution ids from one plugin", async () => {
+  it("omits empty user prompt message arrays", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -250,10 +240,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [
-              { id: "duplicate", text: "one" },
-              { id: "duplicate", text: "two" },
-            ];
+            return [];
           },
         },
       }),
@@ -267,11 +254,8 @@ describe("agent plugin hooks", () => {
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
-          isFirstPrompt: false,
         }),
-      ).resolves.toEqual({
-        contributions: [],
-      });
+      ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);
     }
@@ -287,10 +271,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [
-              { id: "one", text: "x".repeat(8_000) },
-              { id: "two", text: "y".repeat(8_000) },
-            ];
+            return [{ text: "x".repeat(8_000) }, { text: "y".repeat(8_000) }];
           },
         },
       }),
@@ -302,7 +283,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [{ id: "overflow", text: "z" }];
+            return [{ text: "z" }];
           },
         },
       }),
@@ -316,14 +297,19 @@ describe("agent plugin hooks", () => {
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
-          isFirstPrompt: false,
         }),
-      ).resolves.toEqual({
-        contributions: [
-          { id: "one", pluginName: "agent-demo", text: "x".repeat(8_000) },
-          { id: "two", pluginName: "agent-demo", text: "y".repeat(8_000) },
-        ],
-      });
+      ).resolves.toEqual([
+        {
+          id: "userPrompt:0",
+          pluginName: "agent-demo",
+          text: "x".repeat(8_000),
+        },
+        {
+          id: "userPrompt:1",
+          pluginName: "agent-demo",
+          text: "y".repeat(8_000),
+        },
+      ]);
     } finally {
       setPlugins(previous);
     }
