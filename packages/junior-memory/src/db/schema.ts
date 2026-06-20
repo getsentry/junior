@@ -1,14 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  doublePrecision,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
-import type { MemoryMetadata, MemorySubjectLabel } from "../types";
+import { bigint, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const juniorMemoryMemories = pgTable(
   "junior_memory_memories",
@@ -22,14 +13,7 @@ export const juniorMemoryMemories = pgTable(
     contentHash: text("content_hash").notNull(),
     sourcePlatform: text("source_platform").notNull(),
     sourceKey: text("source_key").notNull(),
-    sourceKind: text("source_kind").notNull(),
     idempotencyKey: text("idempotency_key"),
-    subjectLabels: jsonb("subject_labels")
-      .$type<MemorySubjectLabel[]>()
-      .notNull()
-      .default([]),
-    metadata: jsonb("metadata").$type<MemoryMetadata>().notNull().default({}),
-    confidence: doublePrecision("confidence"),
     observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     expiresAtMs: bigint("expires_at_ms", { mode: "number" }),
@@ -52,7 +36,7 @@ export const juniorMemoryMemories = pgTable(
     uniqueIndex("junior_memory_memories_active_hash_idx")
       .on(table.scope, table.scopeKey, table.contentHash)
       .where(
-        sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL`,
+        sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),
     uniqueIndex("junior_memory_memories_idempotency_idx")
       .on(table.scope, table.scopeKey, table.idempotencyKey)

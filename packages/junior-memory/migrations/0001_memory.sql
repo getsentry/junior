@@ -8,11 +8,7 @@ CREATE TABLE IF NOT EXISTS junior_memory_memories (
   content_hash TEXT NOT NULL,
   source_platform TEXT NOT NULL,
   source_key TEXT NOT NULL,
-  source_kind TEXT NOT NULL,
   idempotency_key TEXT,
-  subject_labels JSONB NOT NULL DEFAULT '[]'::jsonb,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  confidence DOUBLE PRECISION,
   observed_at_ms BIGINT NOT NULL,
   created_at_ms BIGINT NOT NULL,
   expires_at_ms BIGINT,
@@ -32,7 +28,7 @@ CREATE INDEX IF NOT EXISTS junior_memory_memories_expiration_idx
 
 CREATE UNIQUE INDEX IF NOT EXISTS junior_memory_memories_active_hash_idx
   ON junior_memory_memories (scope, scope_key, content_hash)
-  WHERE archived_at_ms IS NULL AND superseded_at_ms IS NULL;
+  WHERE archived_at_ms IS NULL AND superseded_at_ms IS NULL AND superseded_by_id IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS junior_memory_memories_idempotency_idx
   ON junior_memory_memories (scope, scope_key, idempotency_key)

@@ -4,15 +4,11 @@ import { z } from "zod";
 import {
   MEMORY_SCOPES,
   MEMORY_SENSITIVITIES,
-  MEMORY_SOURCE_KINDS,
   MEMORY_TYPES,
-  type MemoryMetadata,
   type MemoryRecord,
   type MemoryRuntimeContext,
   type MemoryScope,
   type MemorySensitivity,
-  type MemorySourceKind,
-  type MemorySubjectLabel,
   type MemoryType,
 } from "./types";
 import { validateMemoryWritePolicy } from "./policy";
@@ -45,21 +41,7 @@ const memoryRowSchema = z
     content_hash: z.string().min(1),
     source_platform: z.enum(["slack", "local"]),
     source_key: z.string().min(1),
-    source_kind: z.enum(MEMORY_SOURCE_KINDS),
     idempotency_key: optionalStringSchema,
-    subject_labels: z.array(
-      z
-        .object({
-          label: z.string().min(1),
-          kind: z.string().optional(),
-        })
-        .strict(),
-    ),
-    metadata: z.record(
-      z.string(),
-      z.union([z.string(), z.number(), z.boolean(), z.null()]),
-    ),
-    confidence: optionalNumberSchema,
     observed_at_ms: z.coerce.number(),
     created_at_ms: z.coerce.number(),
     expires_at_ms: optionalNumberSchema,
@@ -73,39 +55,31 @@ const memoryRowSchema = z
 interface MemoryRow {
   archived_at_ms?: number;
   archive_reason?: string;
-  confidence?: number;
   content: string;
   content_hash: string;
   created_at_ms: number;
   expires_at_ms?: number;
   id: string;
   idempotency_key?: string;
-  metadata: MemoryMetadata;
   observed_at_ms: number;
   scope: MemoryScope;
   scope_key: string;
   sensitivity: MemorySensitivity;
-  source_kind: MemorySourceKind;
   source_key: string;
   source_platform: "slack" | "local";
-  subject_labels: MemorySubjectLabel[];
   superseded_at_ms?: number;
   superseded_by_id?: string;
   type: MemoryType;
 }
 
 export interface CreateMemoryInput extends MemoryRuntimeContext {
-  confidence?: number;
   content: string;
   expiresAtMs?: number;
   idempotencyKey?: string;
-  metadata?: MemoryMetadata;
   nowMs?: number;
   observedAtMs?: number;
   scope?: MemoryScope;
   sensitivity?: MemorySensitivity;
-  sourceKind?: MemorySourceKind;
-  subjectLabels?: MemorySubjectLabel[];
   type?: MemoryType;
 }
 
@@ -175,14 +149,8 @@ function parseMemoryRow(row: unknown): MemoryRecord {
     contentHash: parsed.content_hash,
     sourcePlatform: parsed.source_platform,
     sourceKey: parsed.source_key,
-    sourceKind: parsed.source_kind,
     ...(parsed.idempotency_key
       ? { idempotencyKey: parsed.idempotency_key }
-      : {}),
-    subjectLabels: parsed.subject_labels,
-    metadata: parsed.metadata,
-    ...(parsed.confidence !== undefined
-      ? { confidence: parsed.confidence }
       : {}),
     observedAtMs: parsed.observed_at_ms,
     createdAtMs: parsed.created_at_ms,
@@ -265,9 +233,7 @@ LIMIT 1
 }
 
 function searchScore(memory: MemoryRecord, terms: string[]): number {
-  const haystack = `${memory.content} ${memory.subjectLabels
-    .map((label) => label.label)
-    .join(" ")}`.toLowerCase();
+  const haystack = memory.content.toLowerCase();
   return terms.reduce(
     (score, term) => score + (haystack.includes(term) ? 1 : 0),
     0,
@@ -326,8 +292,7 @@ async function searchVisibleMemories(args: {
   const predicate = visibleScopePredicate(args.scopes);
   const baseParamCount = predicate.params.length;
   const termClauses = terms.map(
-    (_term, index) =>
-      `(content ILIKE $${baseParamCount + 2 + index} OR subject_labels::text ILIKE $${baseParamCount + 2 + index})`,
+    (_term, index) => `content ILIKE $${baseParamCount + 2 + index}`,
   );
   const rows = await args.db.query(
     `
@@ -392,17 +357,13 @@ INSERT INTO junior_memory_memories (
   content_hash,
   source_platform,
   source_key,
-  source_kind,
   idempotency_key,
-  subject_labels,
-  metadata,
-  confidence,
   observed_at_ms,
   created_at_ms,
   expires_at_ms
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-  $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17
+  $11, $12, $13
 )
 RETURNING *
 `,
@@ -416,11 +377,7 @@ RETURNING *
           hash,
           input.source.platform,
           sourceKey(input),
-          input.sourceKind ?? "explicit",
           input.idempotencyKey,
-          JSON.stringify(input.subjectLabels ?? []),
-          JSON.stringify(input.metadata ?? {}),
-          input.confidence,
           input.observedAtMs ?? nowMs,
           nowMs,
           input.expiresAtMs,

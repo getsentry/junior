@@ -10,12 +10,9 @@ export type {
   SearchMemoriesInput,
 } from "./store";
 export type {
-  MemoryMetadata,
   MemoryRecord,
   MemoryRuntimeContext,
   MemoryScope,
   MemorySensitivity,
-  MemorySourceKind,
-  MemorySubjectLabel,
   MemoryType,
 } from "./types";

@@ -90,7 +90,6 @@ describe("memory plugin SQL storage", () => {
       });
 
       expect(personal.created).toBe(true);
-      expect(personal.memory.sourceKind).toBe("explicit");
       expect(personal.memory.supersededAtMs).toBeUndefined();
       expect(duplicate).toMatchObject({
         created: false,
@@ -191,10 +190,10 @@ describe("memory plugin SQL storage", () => {
         content: "Different content with the same retry key.",
         idempotencyKey: "explicit-create-1",
         nowMs: TEST_NOW_MS,
+        observedAtMs: TEST_NOW_MS - 5_000,
         scope: "personal",
-        sourceKind: "passive_extraction",
       });
-      expect(created.memory.sourceKind).toBe("passive_extraction");
+      expect(created.memory.observedAtMs).toBe(TEST_NOW_MS - 5_000);
 
       await expect(
         store.createMemory({

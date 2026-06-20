@@ -12,7 +12,6 @@ export const MEMORY_TYPES = [
 ] as const;
 
 export const MEMORY_SCOPES = ["personal", "conversation"] as const;
-export const MEMORY_SOURCE_KINDS = ["explicit", "passive_extraction"] as const;
 export const MEMORY_SENSITIVITIES = [
   "public",
   "personal",
@@ -21,7 +20,6 @@ export const MEMORY_SENSITIVITIES = [
 
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
-export type MemorySourceKind = (typeof MEMORY_SOURCE_KINDS)[number];
 export type MemorySensitivity = (typeof MEMORY_SENSITIVITIES)[number];
 
 export interface MemoryRuntimeContext {
@@ -30,32 +28,21 @@ export interface MemoryRuntimeContext {
   source: Source;
 }
 
-export interface MemorySubjectLabel {
-  label: string;
-  kind?: string;
-}
-
-export type MemoryMetadata = Record<string, string | number | boolean | null>;
-
 export interface MemoryRecord {
   archivedAtMs?: number;
   archiveReason?: string;
-  confidence?: number;
   content: string;
   contentHash: string;
   createdAtMs: number;
   expiresAtMs?: number;
   id: string;
   idempotencyKey?: string;
-  metadata: MemoryMetadata;
   observedAtMs: number;
   scope: MemoryScope;
   scopeKey: string;
   sensitivity: MemorySensitivity;
-  sourceKind: MemorySourceKind;
   sourceKey: string;
   sourcePlatform: Platform;
-  subjectLabels: MemorySubjectLabel[];
   supersededAtMs?: number;
   supersededById?: string;
   type: MemoryType;
