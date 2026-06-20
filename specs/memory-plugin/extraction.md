@@ -110,8 +110,8 @@ The memory plugin's `extractMemories` task handler must:
 6. Skip extraction when the bounded observation payload is unavailable,
    expired, malformed, or no longer visible to the plugin.
 7. Run policy adjudication for extracted candidates.
-8. Reject malformed, low-confidence, incoherent, duplicate, unsafe, or
-   out-of-scope facts.
+8. Reject malformed, low-confidence, incoherent, semantically duplicative,
+   unsafe, or out-of-scope facts.
 9. Reject facts disallowed by install policy, including non-public or
    workplace-sensitive categories.
 10. Convert relative times to absolute dates using `observed_at`.
@@ -126,8 +126,9 @@ The memory plugin's `extractMemories` task handler must:
     beyond the accepted memory records.
 
 Extraction tasks must be idempotent. If the same completed turn is observed or
-delivered more than once, source idempotency fields and duplicate detection must
-prevent duplicate memories.
+delivered more than once, source idempotency fields must prevent duplicate
+memory writes. Semantic duplicate detection belongs in the extractor and
+retrieval slices, not exact-content storage identity.
 
 The task handler must be safe to run in a separate serverless invocation from
 the original user turn. It must not depend on process memory, live Slack

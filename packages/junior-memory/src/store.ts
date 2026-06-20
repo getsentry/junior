@@ -5,7 +5,7 @@
  * operations. Visibility, expiration, and supersession are enforced before
  * records leave the store.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { PluginDb } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -82,7 +82,6 @@ const memoryRowSchema = z
     subject_type: z.enum(MEMORY_SUBJECT_TYPES),
     subject_key: optionalNonEmptyStringSchema,
     content: z.string().min(1),
-    content_hash: z.string().min(1),
     source_platform: z.enum(MEMORY_SOURCE_PLATFORMS),
     source_key: z.string().min(1),
     idempotency_key: optionalStringSchema,
@@ -116,7 +115,7 @@ const memoryRecordSchema = z
 export type MemoryRecord = z.output<typeof memoryRecordSchema>;
 export type CreateMemoryInput = z.output<typeof createMemoryInputSchema>;
 
-/** Result of a memory write after duplicate/idempotency checks. */
+/** Result of a memory write after idempotency checks. */
 export interface CreateMemoryResult {
   created: boolean;
   memory: MemoryRecord;
@@ -147,12 +146,6 @@ export interface MemoryStore {
 
 function normalizeContent(content: string): string {
   return content.replace(/\s+/g, " ").trim();
-}
-
-function contentHash(content: string): string {
-  return createHash("sha256")
-    .update(normalizeContent(content).toLowerCase())
-    .digest("hex");
 }
 
 function boundedLimit(value: number | undefined, fallback: number): number {
@@ -217,57 +210,6 @@ function visibleScopePredicate(scopes: ResolvedMemoryScope[]): {
     return `(scope = $${params.length - 1} AND scope_key = $${params.length})`;
   });
   return { params, sql: clauses.join(" OR ") };
-}
-
-/** Find an active duplicate in the same visibility scope. */
-async function findActiveDuplicate(args: {
-  db: PluginDb;
-  hash: string;
-  scope: ResolvedMemoryScope;
-  nowMs: number;
-}): Promise<MemoryRecord | undefined> {
-  const rows = await args.db.query(
-    `
-SELECT *
-FROM junior_memory_memories
-WHERE scope = $1
-  AND scope_key = $2
-  AND content_hash = $3
-  AND archived_at_ms IS NULL
-  AND superseded_at_ms IS NULL
-  AND superseded_by_id IS NULL
-  AND (expires_at_ms IS NULL OR expires_at_ms > $4)
-ORDER BY created_at_ms DESC
-LIMIT 1
-`,
-    [args.scope.scope, args.scope.scopeKey, args.hash, args.nowMs],
-  );
-  return rows[0] ? parseMemoryRow(rows[0]) : undefined;
-}
-
-/** Archive expired matching rows so recreated content can become active again. */
-async function archiveExpiredDuplicates(args: {
-  db: PluginDb;
-  hash: string;
-  nowMs: number;
-  scope: ResolvedMemoryScope;
-}): Promise<void> {
-  await args.db.query(
-    `
-UPDATE junior_memory_memories
-SET archived_at_ms = $1,
-    archive_reason = 'expired'
-WHERE scope = $2
-  AND scope_key = $3
-  AND content_hash = $4
-  AND archived_at_ms IS NULL
-  AND superseded_at_ms IS NULL
-  AND superseded_by_id IS NULL
-  AND expires_at_ms IS NOT NULL
-  AND expires_at_ms <= $1
-`,
-    [args.nowMs, args.scope.scope, args.scope.scopeKey, args.hash],
-  );
 }
 
 /** Resolve retry attempts for the same scoped write idempotency key. */
@@ -400,7 +342,6 @@ export function createMemoryStore(
       throw new Error("Memory content exceeds the maximum length.");
     }
 
-    const hash = contentHash(content);
     const idempotent = await findByIdempotencyKey({
       db,
       idempotencyKey: input.idempotencyKey,
@@ -408,11 +349,6 @@ export function createMemoryStore(
     });
     if (idempotent) {
       return { created: false, memory: idempotent };
-    }
-    await archiveExpiredDuplicates({ db, hash, nowMs, scope });
-    const existing = await findActiveDuplicate({ db, hash, scope, nowMs });
-    if (existing) {
-      return { created: false, memory: existing };
     }
 
     const id = `mem_${randomUUID()}`;
@@ -426,7 +362,6 @@ INSERT INTO junior_memory_memories (
   subject_type,
   subject_key,
   content,
-  content_hash,
   source_platform,
   source_key,
   idempotency_key,
@@ -435,7 +370,7 @@ INSERT INTO junior_memory_memories (
   expires_at_ms
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-  $11, $12, $13, $14
+  $11, $12, $13
 )
 RETURNING *
 `,
@@ -447,7 +382,6 @@ RETURNING *
         subject.subjectType,
         subject.subjectKey,
         content,
-        hash,
         runtimeContext.source.platform,
         sourceKey(runtimeContext),
         input.idempotencyKey,

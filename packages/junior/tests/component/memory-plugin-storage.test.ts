@@ -134,7 +134,7 @@ WHERE table_name = 'junior_memory_memories'
     }
   }, 15_000);
 
-  it("persists, recalls, deduplicates, and archives visible memories", async () => {
+  it("persists, recalls, and archives visible memories", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -152,11 +152,6 @@ WHERE table_name = 'junior_memory_memories'
         idempotencyKey: "memory-test:personal",
       });
       nowMs = TEST_NOW_MS + 1;
-      const duplicate = await store.createMemory({
-        content: "The requester prefers short PR summaries.",
-        idempotencyKey: "memory-test:personal-duplicate-content",
-      });
-      nowMs = TEST_NOW_MS + 2;
       const conversation = await store.createConversationMemory({
         content: "The channel keeps deploy runbooks in Notion.",
         idempotencyKey: "memory-test:conversation",
@@ -168,10 +163,6 @@ WHERE table_name = 'junior_memory_memories'
       });
       expect(personal.memory).not.toHaveProperty("subjectKey");
       expect(personal.memory.supersededAtMs).toBeUndefined();
-      expect(duplicate).toMatchObject({
-        created: false,
-        memory: { id: personal.memory.id },
-      });
       expect(conversation.created).toBe(true);
       expect(conversation.memory).toMatchObject({
         subjectType: "conversation",
@@ -517,13 +508,12 @@ INSERT INTO junior_memory_memories (
   subject_type,
   subject_key,
   content,
-  content_hash,
   source_platform,
   source_key,
   observed_at_ms,
   created_at_ms
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 )
 `,
           [
@@ -534,7 +524,6 @@ INSERT INTO junior_memory_memories (
             "general",
             null,
             "Unsupported scope value.",
-            "hash-invalid-enum",
             "slack",
             "slack:T123:C123:1718800000.000000",
             TEST_NOW_MS,

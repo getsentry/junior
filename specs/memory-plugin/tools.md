@@ -51,7 +51,7 @@ destination, conversation, and tenant/workspace authority from runtime context.
 
 The tool derives source, requester, destination, and candidate scope from
 runtime context plus the accepted memory intent. It runs the same validation,
-secret rejection, duplicate checks, and embedding write path as passive
+secret rejection, idempotency checks, and embedding write path as passive
 extraction. Explicit tool requests are still subject to install-level memory
 policy.
 

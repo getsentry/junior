@@ -49,13 +49,12 @@ Required conceptual fields:
 
 - stable memory id
 - self-contained memory content
-- normalized content hash for duplicate detection
 - memory type
 - runtime-derived visibility scope
 - subject type
 - runtime-derived subject key when the subject is a user or conversation
 - runtime-derived source attribution
-- observation or tool idempotency marker when available
+- observation or tool idempotency marker
 - observed timestamp
 - created timestamp
 - optional expiration timestamp

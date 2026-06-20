@@ -1,5 +1,5 @@
 {
-  "id": "4f371b23-99ee-47a8-a323-7e9bbe58deb9",
+  "id": "57a69a4f-1cc5-4597-a818-fb23e3a5bf17",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -46,12 +46,6 @@
         },
         "content": {
           "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_hash": {
-          "name": "content_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -164,34 +158,6 @@
           ],
           "isUnique": false,
           "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"expires_at_ms\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_memory_memories_active_hash_idx": {
-          "name": "junior_memory_memories_active_hash_idx",
-          "columns": [
-            {
-              "expression": "scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "scope_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "content_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

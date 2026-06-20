@@ -73,7 +73,7 @@ Read these files as one canonical spec:
 - [retrieval.md](./retrieval.md): automatic recall, tool-mediated recall,
   hybrid ranking, automatic injection mechanics, and performance strategy.
 - [extraction.md](./extraction.md): passive observation, background extraction,
-  storable-fact policy, duplicate detection, and supersession.
+  storable-fact policy, semantic duplicate detection, and supersession.
 - [tools.md](./tools.md): model-visible memory management and recall tools.
 - [admin.md](./admin.md): future operator/admin CLI command shape for memory
   inspection and repair.
@@ -107,8 +107,9 @@ qmd, Mem0/OpenMemory, Supermemory, Zep/Graphiti, Cognee, Letta, and MemU. The
 common durable-storage pattern is an authoritative scoped memory row plus
 derived retrieval indexes, source attribution, lifecycle state, and optional
 versioning or graph layers. V1 uses Ash's useful type taxonomy, centralized
-secret rejection, temporal rewriting, and duplicate/supersession discipline,
-but does not copy Ash's sensitivity split or person graph.
+secret rejection, temporal rewriting, and lifecycle/supersession discipline,
+but does not copy Ash's sensitivity split, exact-content dedupe, or person
+graph.
 
 Future graph/entity/fact indexes should be derived from authoritative memory
 records and source attribution. They can be added as separate rebuildable tables
@@ -311,7 +312,6 @@ The store boundary owns:
 - rejecting invalid enum values and malformed rows
 - visibility filtering
 - create/archive/list operations
-- duplicate detection
 - extraction idempotency
 - embedding row repair
 - expiration and supersession updates

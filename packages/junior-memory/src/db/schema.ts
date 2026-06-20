@@ -30,7 +30,6 @@ export const juniorMemoryMemories = pgTable(
     subjectType: text("subject_type", { enum: MEMORY_SUBJECT_TYPES }).notNull(),
     subjectKey: text("subject_key"),
     content: text("content").notNull(),
-    contentHash: text("content_hash").notNull(),
     sourcePlatform: text("source_platform", {
       enum: MEMORY_SOURCE_PLATFORMS,
     }).notNull(),
@@ -54,11 +53,6 @@ export const juniorMemoryMemories = pgTable(
       .on(table.expiresAtMs)
       .where(
         sql`${table.archivedAtMs} IS NULL AND ${table.expiresAtMs} IS NOT NULL`,
-      ),
-    uniqueIndex("junior_memory_memories_active_hash_idx")
-      .on(table.scope, table.scopeKey, table.contentHash)
-      .where(
-        sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),
     uniqueIndex("junior_memory_memories_idempotency_idx")
       .on(table.scope, table.scopeKey, table.idempotencyKey)

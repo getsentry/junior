@@ -31,8 +31,7 @@ requirements.
 10. Task retry bound exceeded or observation payload expired: mark or drop the
     task with safe metadata; do not fail the completed user turn.
 11. Duplicate post-turn observation or duplicate task delivery: task
-    idempotency, source idempotency, and duplicate detection suppress duplicate
-    stored memories.
+    idempotency and source idempotency suppress duplicate stored memories.
 12. Secret detection match: reject the write with a model-visible tool input
     error for explicit tools or drop the passive fact with safe logging.
 13. Visibility mismatch: fail closed and omit the memory.
@@ -140,7 +139,7 @@ Use unit tests for:
 - policy adjudication output parsing
 - TTL calculation
 - visibility predicates
-- duplicate detection
+- semantic duplicate detection
 - prompt contribution formatting bounds
 - tool schema rejection of actor, destination, team, channel, and conversation
   fields
