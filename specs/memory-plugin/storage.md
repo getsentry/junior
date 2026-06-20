@@ -52,17 +52,18 @@ Required conceptual fields:
 - runtime-derived visibility scope
 - runtime-derived source attribution
 - observation or tool idempotency marker when available
-- optional subject/display labels that are not authorization principals
-- extraction confidence when learned passively
 - observed timestamp
 - created timestamp
 - optional expiration timestamp
 - optional supersession link
 - archive timestamp and reason
-- bounded operational metadata
 
-Scope and source fields are authority-bearing. Display labels, subject labels,
-model-generated summaries, and tool arguments are not.
+The first storage slice intentionally keeps this authoritative row lean.
+Subject/display labels, extraction confidence, and operational metadata should
+be added only with the extraction, graph, or admin consumer that needs them.
+
+Scope and source fields are authority-bearing. Display labels, model-generated
+summaries, and tool arguments are not.
 
 ### Visibility Data
 

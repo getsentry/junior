@@ -6,9 +6,6 @@ export interface ResolvedMemoryScope {
 }
 
 function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
-  if (ctx.conversationId?.trim()) {
-    return ctx.conversationId.trim();
-  }
   if (ctx.source.platform === "local") {
     return ctx.source.conversationId;
   }

@@ -1,4 +1,8 @@
-import type { Platform, Requester, Source } from "@sentry/junior-plugin-api";
+import type {
+  LocalInvocationContext,
+  Platform,
+  SlackInvocationContext,
+} from "@sentry/junior-plugin-api";
 
 export const MEMORY_TYPES = [
   "preference",
@@ -22,11 +26,9 @@ export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySensitivity = (typeof MEMORY_SENSITIVITIES)[number];
 
-export interface MemoryRuntimeContext {
-  conversationId?: string;
-  requester?: Requester;
-  source: Source;
-}
+export type MemoryRuntimeContext =
+  | Pick<SlackInvocationContext, "conversationId" | "requester" | "source">
+  | Pick<LocalInvocationContext, "conversationId" | "requester" | "source">;
 
 export interface MemoryRecord {
   archivedAtMs?: number;

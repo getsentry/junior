@@ -17,7 +17,6 @@ function memoryMigrationsDir(): string {
 function slackContext(
   overrides: {
     channelId?: string;
-    conversationId?: string;
     teamId?: string;
     threadTs?: string;
     userId?: string;
@@ -27,8 +26,7 @@ function slackContext(
   const channelId = overrides.channelId ?? "C123";
   const threadTs = overrides.threadTs ?? "1718800000.000000";
   return {
-    conversationId:
-      overrides.conversationId ?? `slack:${channelId}:${threadTs}`,
+    conversationId: `slack:${channelId}:${threadTs}`,
     requester: {
       platform: "slack" as const,
       teamId,
@@ -116,7 +114,6 @@ describe("memory plugin SQL storage", () => {
         store.listMemories({
           ...slackContext({
             channelId: "C999",
-            conversationId: "slack:C999:1718800001.000000",
             threadTs: "1718800001.000000",
             userId: "U456",
           }),
@@ -137,7 +134,6 @@ describe("memory plugin SQL storage", () => {
         store.searchMemories({
           ...slackContext({
             channelId: "C999",
-            conversationId: "slack:C999:1718800001.000000",
             threadTs: "1718800001.000000",
           }),
           nowMs: TEST_NOW_MS + 3,
@@ -148,13 +144,18 @@ describe("memory plugin SQL storage", () => {
         store.archiveMemory({
           ...slackContext({
             channelId: "C999",
-            conversationId: "slack:C999:1718800001.000000",
             threadTs: "1718800001.000000",
           }),
           id: conversation.memory.id,
           nowMs: TEST_NOW_MS + 4,
         }),
       ).rejects.toThrow("Memory was not found in the current context.");
+      await expect(
+        store.listMemories({
+          ...slackContext({ teamId: "T999", userId: "U456" }),
+          nowMs: TEST_NOW_MS + 4,
+        }),
+      ).resolves.toEqual([]);
 
       const archived = await store.archiveMemory({
         ...requesterContext,
@@ -207,6 +208,49 @@ describe("memory plugin SQL storage", () => {
         created: false,
         memory: { id: created.memory.id, content: created.memory.content },
       });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("treats expired memories as inactive for archive and recreate", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateMemorySchema(fixture);
+      const store = createMemoryStore(
+        createPluginDbForExecutor(fixture.executor),
+      );
+      const requesterContext = slackContext();
+
+      const expired = await store.createMemory({
+        ...requesterContext,
+        content: "The requester temporarily prefers quiet deploy reminders.",
+        expiresAtMs: TEST_NOW_MS + 10,
+        nowMs: TEST_NOW_MS,
+        scope: "personal",
+      });
+
+      await expect(
+        store.archiveMemory({
+          ...requesterContext,
+          id: expired.memory.id,
+          nowMs: TEST_NOW_MS + 11,
+        }),
+      ).rejects.toThrow("Memory was not found in the current context.");
+
+      const recreated = await store.createMemory({
+        ...requesterContext,
+        content: "The requester temporarily prefers quiet deploy reminders.",
+        nowMs: TEST_NOW_MS + 12,
+        scope: "personal",
+      });
+
+      expect(recreated).toMatchObject({
+        created: true,
+        memory: { content: expired.memory.content },
+      });
+      expect(recreated.memory.id).not.toBe(expired.memory.id);
     } finally {
       await fixture.close();
     }

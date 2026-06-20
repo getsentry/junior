@@ -1,5 +1,4 @@
 export { createMemoryPlugin, memoryPlugin } from "./plugin";
-export { validateMemoryWritePolicy } from "./policy";
 export { createMemoryStore } from "./store";
 export type {
   ArchiveMemoryInput,

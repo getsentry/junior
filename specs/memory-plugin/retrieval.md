@@ -79,12 +79,12 @@ visible.
 V1 uses hybrid retrieval without Ash's person graph:
 
 1. Build visible active candidate scopes.
-2. Run lexical search against memory content and subject labels.
+2. Run lexical search against memory content.
 3. Run vector search when embeddings are configured and the user text can be
    embedded.
 4. Merge lexical and vector results with reciprocal-rank style fusion.
 5. Apply small deterministic boosts for exact scope match, durable memory
-   types, high confidence, and recent observations.
+   types, and recent observations.
 6. For automatic injection only, drop memories already injected into the active
    session projection.
 7. Return the top memories within count and character budgets.

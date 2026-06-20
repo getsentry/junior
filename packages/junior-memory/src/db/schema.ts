@@ -24,7 +24,7 @@ export const juniorMemoryMemories = pgTable(
   },
   (table) => [
     index("junior_memory_memories_visible_idx")
-      .on(table.scope, table.scopeKey, table.createdAtMs, table.id)
+      .on(table.scope, table.scopeKey, table.createdAtMs.desc(), table.id)
       .where(
         sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),

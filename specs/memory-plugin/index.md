@@ -240,7 +240,7 @@ behind a small store such as `MemoryStore`.
 The store boundary owns:
 
 - parsing database rows into memory records
-- rejecting invalid enum values and malformed metadata
+- rejecting invalid enum values and malformed rows
 - visibility filtering
 - create/archive/list operations
 - duplicate detection

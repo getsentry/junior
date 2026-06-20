@@ -1,3 +1,10 @@
+/**
+ * SQL-backed memory store boundary.
+ *
+ * This module owns row parsing plus visible create/list/search/archive
+ * operations. Visibility, expiration, and supersession are enforced before
+ * records leave the store.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import type { PluginDb } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -72,7 +79,7 @@ interface MemoryRow {
   type: MemoryType;
 }
 
-export interface CreateMemoryInput extends MemoryRuntimeContext {
+export type CreateMemoryInput = MemoryRuntimeContext & {
   content: string;
   expiresAtMs?: number;
   idempotencyKey?: string;
@@ -81,30 +88,29 @@ export interface CreateMemoryInput extends MemoryRuntimeContext {
   scope?: MemoryScope;
   sensitivity?: MemorySensitivity;
   type?: MemoryType;
-}
+};
 
 export interface CreateMemoryResult {
   created: boolean;
   memory: MemoryRecord;
 }
 
-export interface ListMemoriesInput extends MemoryRuntimeContext {
-  includeArchived?: boolean;
+export type ListMemoriesInput = MemoryRuntimeContext & {
   limit?: number;
   nowMs?: number;
-}
+};
 
-export interface SearchMemoriesInput extends MemoryRuntimeContext {
+export type SearchMemoriesInput = MemoryRuntimeContext & {
   limit?: number;
   nowMs?: number;
   query: string;
-}
+};
 
-export interface ArchiveMemoryInput extends MemoryRuntimeContext {
+export type ArchiveMemoryInput = MemoryRuntimeContext & {
   id: string;
   nowMs?: number;
   reason?: string;
-}
+};
 
 export interface MemoryStore {
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
@@ -130,11 +136,18 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.min(200, Math.max(1, Math.floor(value)));
 }
 
+/** Build the durable source attribution key from runtime-owned source fields. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
   if (ctx.source.platform === "local") {
     return ctx.source.conversationId;
   }
-  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${ctx.source.threadTs ?? ctx.source.messageTs ?? "unknown"}`;
+  const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
+  if (!threadKey) {
+    throw new Error(
+      "Memory source requires a Slack message or thread timestamp.",
+    );
+  }
+  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
 }
 
 function parseMemoryRow(row: unknown): MemoryRecord {
@@ -210,6 +223,31 @@ LIMIT 1
   return rows[0] ? parseMemoryRow(rows[0]) : undefined;
 }
 
+/** Archive expired matching rows so recreated content can become active again. */
+async function archiveExpiredDuplicates(args: {
+  db: PluginDb;
+  hash: string;
+  nowMs: number;
+  scope: ResolvedMemoryScope;
+}): Promise<void> {
+  await args.db.query(
+    `
+UPDATE junior_memory_memories
+SET archived_at_ms = $1,
+    archive_reason = 'expired'
+WHERE scope = $2
+  AND scope_key = $3
+  AND content_hash = $4
+  AND archived_at_ms IS NULL
+  AND superseded_at_ms IS NULL
+  AND superseded_by_id IS NULL
+  AND expires_at_ms IS NOT NULL
+  AND expires_at_ms <= $1
+`,
+    [args.nowMs, args.scope.scope, args.scope.scopeKey, args.hash],
+  );
+}
+
 async function findByIdempotencyKey(args: {
   db: PluginDb;
   idempotencyKey: string | undefined;
@@ -254,7 +292,6 @@ function searchTerms(query: string): string[] {
 
 async function listVisibleMemories(args: {
   db: PluginDb;
-  includeArchived?: boolean;
   limit?: number;
   nowMs: number;
   scopes: ResolvedMemoryScope[];
@@ -267,7 +304,7 @@ async function listVisibleMemories(args: {
 SELECT *
 FROM junior_memory_memories
 WHERE (${predicate.sql})
-  ${args.includeArchived ? "" : "AND archived_at_ms IS NULL"}
+  AND archived_at_ms IS NULL
   AND superseded_at_ms IS NULL
   AND superseded_by_id IS NULL
   AND (expires_at_ms IS NULL OR expires_at_ms > $${predicate.params.length + 1})
@@ -339,6 +376,7 @@ export function createMemoryStore(db: PluginDb): MemoryStore {
       if (idempotent) {
         return { created: false, memory: idempotent };
       }
+      await archiveExpiredDuplicates({ db, hash, nowMs, scope });
       const existing = await findActiveDuplicate({ db, hash, scope, nowMs });
       if (existing) {
         return { created: false, memory: existing };
@@ -391,7 +429,6 @@ RETURNING *
       const scopes = deriveVisibleMemoryScopes(input);
       return await listVisibleMemories({
         db,
-        includeArchived: input.includeArchived,
         limit: input.limit,
         nowMs,
         scopes,
@@ -437,11 +474,12 @@ WHERE (${predicate.sql})
   AND archived_at_ms IS NULL
   AND superseded_at_ms IS NULL
   AND superseded_by_id IS NULL
-  AND (id = $${predicate.params.length + 1} OR id LIKE $${predicate.params.length + 2})
+  AND (expires_at_ms IS NULL OR expires_at_ms > $${predicate.params.length + 1})
+  AND (id = $${predicate.params.length + 2} OR id LIKE $${predicate.params.length + 3})
 ORDER BY id ASC
 LIMIT 2
 `,
-        [...predicate.params, idPrefix, `${idPrefix}%`],
+        [...predicate.params, nowMs, idPrefix, `${idPrefix}%`],
       );
       if (rows.length === 0) {
         throw new Error("Memory was not found in the current context.");
