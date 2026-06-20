@@ -6,7 +6,12 @@ import {
   type Source,
   type Requester,
 } from "@sentry/junior-plugin-api";
-import { createMemoryStore, type MemoryRecord } from "./store";
+import {
+  createMemoryStore,
+  type CreateMemoryInput,
+  type CreateMemoryResult,
+  type MemoryRecord,
+} from "./store";
 import type { MemoryRuntimeContext } from "./types";
 
 const MAX_TOOL_CONTENT_CHARS = 4_000;
@@ -94,24 +99,21 @@ function requireMemoryContent(value: string): string {
   return value;
 }
 
-/** Return the model-visible projection without hidden ownership/source fields. */
-function compactMemory(memory: MemoryRecord) {
-  return {
-    id: memory.id,
-    scope: memory.scope,
-    content: memory.content,
-    createdAtMs: memory.createdAtMs,
-    ...(memory.expiresAtMs !== undefined
-      ? { expiresAtMs: memory.expiresAtMs }
-      : {}),
-  };
-}
+type MemoryWriteToolInput = {
+  content: string;
+  expires_at?: string;
+};
 
-/** Create a tool that stores a public memory in the active runtime context. */
-export function createMemoryCreateTool(context: MemoryToolContext) {
+function createMemoryWriteTool(
+  context: MemoryToolContext,
+  description: string,
+  write: (
+    store: ReturnType<typeof memoryStore>,
+    input: CreateMemoryInput,
+  ) => Promise<CreateMemoryResult>,
+) {
   return {
-    description:
-      "Remember a public/shareable fact for later. Use when the user explicitly asks Junior to remember something. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Choose whether the memory targets the current requester or active conversation; the runtime derives all actor ids, Slack ids, scope keys, and subject ids.",
+    description,
     executionMode: "sequential",
     inputSchema: Type.Object(
       {
@@ -119,18 +121,8 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
           minLength: 1,
           maxLength: MAX_TOOL_CONTENT_CHARS,
           description:
-            "Self-contained public/shareable memory content to store. Use first person only for facts about the current requester.",
+            "Self-contained public/shareable memory content to store.",
         }),
-        applies_to: Type.Union(
-          [
-            Type.Literal("current_requester"),
-            Type.Literal("active_conversation"),
-          ],
-          {
-            description:
-              "What this memory is about. Use current_requester only for public first-person facts about the current requester; use active_conversation for shared operational knowledge in the active conversation.",
-          },
-        ),
         expires_at: Type.Optional(
           Type.String({
             minLength: 1,
@@ -152,9 +144,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
       };
       const result = await (async () => {
         try {
-          return input.applies_to === "current_requester"
-            ? await store.createMemory(createInput)
-            : await store.createConversationMemory(createInput);
+          return await write(store, createInput);
         } catch (error) {
           asToolInputError(error);
         }
@@ -165,11 +155,38 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
         memory: compactMemory(result.memory),
       };
     },
-  } satisfies PluginToolDefinition<{
-    applies_to: "active_conversation" | "current_requester";
-    content: string;
-    expires_at?: string;
-  }>;
+  } satisfies PluginToolDefinition<MemoryWriteToolInput>;
+}
+
+/** Return the model-visible projection without hidden ownership/source fields. */
+function compactMemory(memory: MemoryRecord) {
+  return {
+    id: memory.id,
+    scope: memory.scope,
+    content: memory.content,
+    createdAtMs: memory.createdAtMs,
+    ...(memory.expiresAtMs !== undefined
+      ? { expiresAtMs: memory.expiresAtMs }
+      : {}),
+  };
+}
+
+/** Create a tool that stores a public memory about the current requester. */
+export function createRememberForRequesterTool(context: MemoryToolContext) {
+  return createMemoryWriteTool(
+    context,
+    "Remember a public/shareable first-person fact about the current requester. Use when the requester explicitly asks Junior to remember something about themselves. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, and subject ids.",
+    async (store, input) => await store.createMemory(input),
+  );
+}
+
+/** Create a tool that stores public operational knowledge for this conversation. */
+export function createRememberForConversationTool(context: MemoryToolContext) {
+  return createMemoryWriteTool(
+    context,
+    "Remember public/shareable operational knowledge for the active conversation. Use for durable facts about this conversation's project, workflow, runbooks, or shared preferences. Do not use for another person's personal profile. Runtime context derives all channel, thread, scope, and subject ids.",
+    async (store, input) => await store.createConversationMemory(input),
+  );
 }
 
 /** Create a tool that archives a visible memory in the active context. */

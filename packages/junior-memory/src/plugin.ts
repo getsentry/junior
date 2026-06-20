@@ -1,9 +1,10 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import {
-  createMemoryCreateTool,
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
+  createRememberForConversationTool,
+  createRememberForRequesterTool,
   type MemoryToolContext,
 } from "./memory-tools";
 
@@ -38,7 +39,8 @@ export function createMemoryPlugin() {
       tools(ctx) {
         const context = memoryToolContext(ctx);
         return {
-          createMemory: createMemoryCreateTool(context),
+          rememberForRequester: createRememberForRequesterTool(context),
+          rememberForConversation: createRememberForConversationTool(context),
           removeMemory: createMemoryRemoveTool(context),
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),

@@ -215,7 +215,8 @@ strict schemas, source visibility, provider allowlists, and lifecycle bounds.
 
 Explicit-only memory creation is not a passive extraction setting. It is the
 normal tool path: when `passiveExtraction` is `false`, the only way to write
-memory is through explicit tools such as `createMemory`.
+memory is through explicit tools such as `rememberForRequester` or
+`rememberForConversation`.
 
 When `passiveExtraction` is `true`, policy allows passive extraction of:
 
@@ -257,7 +258,7 @@ automatic memory injection.
 
 ## Explicit Tools And Policy
 
-Explicit `createMemory` requests are still subject to install policy.
+Explicit memory creation requests are still subject to install policy.
 
 For example, passive extraction is limited to public-conversation workplace
 knowledge in V1, but users may still explicitly store public/shareable personal
@@ -272,7 +273,7 @@ and embedding policy, or retention and lifecycle policy.
 Tool errors should explain policy rejection at a high level without revealing
 hidden policy internals or sensitive content.
 
-Explicit `createMemory` may use the same policy adjudicator as passive
+Explicit memory creation may use the same policy adjudicator as passive
 extraction when the policy decision is not deterministic. If adjudication fails
 for an explicit tool request, the tool should return a retryable input error
 rather than storing the memory.

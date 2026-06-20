@@ -9,10 +9,11 @@ import { PluginToolInputError, type PluginDb } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
-  createMemoryCreateTool,
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
+  createRememberForConversationTool,
+  createRememberForRequesterTool,
 } from "../src/memory-tools";
 import { createMemoryStore } from "../src/store";
 
@@ -224,17 +225,17 @@ ORDER BY created_at_ms ASC
         ...slackContext(),
       };
       const tools = {
-        createMemory: createMemoryCreateTool(context),
         removeMemory: createMemoryRemoveTool(context),
+        rememberForConversation: createRememberForConversationTool(context),
+        rememberForRequester: createRememberForRequesterTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
 
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForRequester.execute!(
           {
             content: "I prefer terse status updates.",
-            applies_to: "current_requester",
           },
           { toolCallId: "tool-create-personal" },
         ),
@@ -247,10 +248,9 @@ ORDER BY created_at_ms ASC
         },
       });
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForConversation.execute!(
           {
             content: "The channel keeps incident notes in Linear.",
-            applies_to: "active_conversation",
           },
           { toolCallId: "tool-create-conversation" },
         ),
@@ -314,38 +314,34 @@ ORDER BY created_at_ms ASC
       ).resolves.toEqual({ ok: true, memories: [] });
 
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForRequester.execute!(
           {
             content: "I prefer missing retry ids to fail.",
-            applies_to: "current_requester",
           },
           {},
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForRequester.execute!(
           {
             content: "I prefer invalid expiration to fail.",
             expires_at: "not-a-date",
-            applies_to: "current_requester",
           },
           { toolCallId: "tool-create-invalid-expiration" },
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForRequester.execute!(
           {
             content: " \n\t ",
-            applies_to: "current_requester",
           },
           { toolCallId: "tool-create-empty-content" },
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForConversation.execute!(
           {
             content: "Linear is where our channel tracks incidents.",
-            applies_to: "active_conversation",
           },
           { toolCallId: "tool-create-linear" },
         ),
@@ -358,10 +354,9 @@ ORDER BY created_at_ms ASC
         },
       });
       await expect(
-        tools.createMemory.execute!(
+        tools.rememberForRequester.execute!(
           {
             content: "I prefer duplicate-safe retries.",
-            applies_to: "current_requester",
           },
           { toolCallId: "tool-create-personal" },
         ),
