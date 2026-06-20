@@ -1,8 +1,19 @@
-import type { MemoryRuntimeContext, MemoryScope } from "./types";
+import type {
+  MemoryRuntimeContext,
+  MemoryScope,
+  MemorySubjectType,
+} from "./types";
 
+/** Runtime-derived visibility scope used for memory authorization checks. */
 export interface ResolvedMemoryScope {
   scope: MemoryScope;
   scopeKey: string;
+}
+
+/** Runtime-derived subject classification stored for filtering and rendering. */
+export interface ResolvedMemorySubject {
+  subjectKey?: string;
+  subjectType: MemorySubjectType;
 }
 
 function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
@@ -45,6 +56,28 @@ export function deriveMemoryScope(
     throw new Error("Conversation memory requires conversation context.");
   }
   return { scope, scopeKey };
+}
+
+/** Derive the memory subject from the already-authorized write scope. */
+export function deriveMemorySubject(
+  ctx: MemoryRuntimeContext,
+  scope: ResolvedMemoryScope,
+): ResolvedMemorySubject {
+  if (scope.scope === "personal") {
+    const subjectKey = requesterScopeKey(ctx);
+    if (!subjectKey) {
+      throw new Error("User-subject memory requires requester context.");
+    }
+    return { subjectType: "user", subjectKey };
+  }
+
+  const subjectKey = sourceConversationKey(ctx);
+  if (!subjectKey) {
+    throw new Error(
+      "Conversation-subject memory requires conversation context.",
+    );
+  }
+  return { subjectType: "conversation", subjectKey };
 }
 
 /** Return every visible scope for memory retrieval in the current context. */

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -13,9 +13,9 @@ model calls, embeddings, logging, and multi-user visibility.
 ## Security Invariants
 
 1. Runtime context, not model text, determines memory visibility.
-2. Install-level policy determines which categories, scopes, and model providers
-   are allowed.
-3. Secrets are rejected, not stored as sensitive memories.
+2. Install-level policy determines which public/shareable categories, scopes,
+   subjects, and model providers are allowed.
+3. Secrets are rejected, not stored with a special classification.
 4. Memory content may be model-visible only inside the stored scope and current
    policy.
 5. Retrieval ranking is not an authorization boundary.
@@ -39,14 +39,15 @@ The store must derive authority-bearing fields from Junior runtime context:
 - source event or observation id
 
 The model may request memory operations, but it cannot choose authority fields.
-Tool arguments can express content, requested scope class, query text, limit, or
-expiration. They cannot express actor ids, workspace ids, channel ids, thread
-ids, arbitrary owner ids, arbitrary conversation ids, or arbitrary scope
-overrides for `searchMemories`.
+Tool arguments can express content, query text, limit, or expiration. They
+cannot express actor ids, workspace ids, channel ids, thread ids, arbitrary
+owner ids, arbitrary conversation ids, requested scope classes, or arbitrary
+scope overrides for `searchMemories`.
 
-Display names, subject labels, aliases, and model-extracted subject text are
-metadata. They are useful for rendering and future graph work, but they are not
-authorization principals.
+Subject type is stored so the plugin can distinguish user, conversation, and
+general knowledge. Subject keys are runtime-derived when present. Display names,
+aliases, and model-extracted subject text are metadata. They are useful for
+rendering and future graph work, but they are not authorization principals.
 
 Admin CLI selectors also are not authorization by themselves. They identify the
 records an operator wants to inspect or repair; deployment/operator
@@ -68,9 +69,10 @@ unknown, local CLI, and unsupported sources may still use explicit memory tools
 when policy allows them, but they must not feed passive extraction. Visibility
 classification must fail closed.
 
-Sensitive memory is personal-only. Passive extraction must never create a
-conversation-scoped sensitive memory. An explicit tool request to store
-sensitive shared memory must fail with a model-visible input error.
+Personal-scoped `user` subject memories may be created only by the current
+author/requester and must contain public/shareable first-person content. An
+explicit tool request to store private, sensitive, or third-party personal
+profile content must fail with a model-visible input error.
 
 For workplace installs, passive third-party personal facts should be rejected.
 Third-party operational facts from public conversations may be stored only when
@@ -93,7 +95,7 @@ payloads, raw OAuth data, or unrestricted transcripts through the plugin API.
 Install policy may disable extraction or embedding providers for private
 conversation text.
 
-Embedding vectors inherit the same sensitivity, scope, lifecycle, policy, and
+Embedding vectors inherit the same scope, subject, lifecycle, policy, and
 provider restrictions as their source memories. They must not be logged,
 reported, exported, retained, or exposed under weaker rules than memory content.
 
@@ -126,7 +128,8 @@ Logs, spans, dashboards, and plugin operational reports may include:
 - memory operation name
 - memory id or bounded id prefix
 - scope type
-- memory type and sensitivity enum
+- subject type
+- memory type
 - embedding provider/model/dimensions
 - extraction candidate counts
 - rejection reason codes

@@ -5,14 +5,15 @@ export type {
   CreateMemoryInput,
   CreateMemoryResult,
   ListMemoriesInput,
+  MemoryRecord,
   MemoryStore,
+  MemoryStoreOptions,
   SearchMemoriesInput,
 } from "./store";
 export type {
-  MemoryRecord,
   MemoryRuntimeContext,
   MemoryScope,
-  MemorySensitivity,
   MemorySourcePlatform,
+  MemorySubjectType,
   MemoryType,
 } from "./types";

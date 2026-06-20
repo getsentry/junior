@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -62,7 +62,7 @@ runtime code; display names and labels are not authorities.
 
 ### stats
 
-Reports aggregate counts by scope type, memory type, sensitivity, archive
+Reports aggregate counts by scope type, subject type, memory type, archive
 state, embedding status, repair status, and policy-hidden status.
 
 Default output must not include raw memory content.
@@ -71,9 +71,9 @@ Default output must not include raw memory content.
 
 Lists memories for an explicit scope or query.
 
-Default output should include ids, type, sensitivity, timestamps, archive
-state, and short redacted previews. Full content requires an explicit flag such
-as `--show-content`.
+Default output should include ids, scope type, subject type, memory type,
+timestamps, archive state, and short redacted previews. Full content requires
+an explicit flag such as `--show-content`.
 
 ### show
 

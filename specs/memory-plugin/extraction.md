@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -18,8 +18,9 @@ assistance without requiring the original conversation.
 A candidate may be stored only when all of these are true:
 
 1. Install-level memory policy allows this category, scope, and source.
-2. It is a concrete fact, preference, relationship, durable project fact,
-   durable workflow preference, or explicit user request to remember something.
+2. It is a public/shareable concrete fact, preference, relationship, durable
+   project fact, durable workflow preference, or explicit user request to
+   remember something.
 3. It is useful beyond the current turn or has an explicit expiration.
 4. It is understandable without unresolved pronouns or hidden conversation
    context.
@@ -29,6 +30,12 @@ A candidate may be stored only when all of these are true:
    connection string with credentials, payment card number, or similar secret.
 8. It is not merely an assistant claim, assistant action, tool result summary,
    system capability, implementation detail, or prompt/routing rule.
+9. Personal-scoped identity, preference, or relationship facts are first-person
+   facts authored by the current requester, not third-person profile facts
+   about someone else.
+10. It has a valid subject type: `user` for the current requester,
+    `conversation` for the current conversation, or `general` for public
+    operational/domain knowledge.
 
 Examples that can be stored:
 
@@ -42,6 +49,8 @@ Examples that must not be stored:
 - `The assistant searched GitHub.`
 - `The user asked a question about the memory system.`
 - `The OAuth token is xoxb-...`
+- `David is on the billing team.` when proposed as David's personal memory by
+  someone other than David
 - `The user is somewhere next week.`
 - `The user has not decided what to do.`
 - `Junior can use the scheduler plugin.`
@@ -103,10 +112,10 @@ The memory plugin's `extractMemories` task handler must:
 7. Run policy adjudication for extracted candidates.
 8. Reject malformed, low-confidence, incoherent, duplicate, unsafe, or
    out-of-scope facts.
-9. Reject facts disallowed by install policy, including workplace-sensitive
-   categories.
+9. Reject facts disallowed by install policy, including non-public or
+   workplace-sensitive categories.
 10. Convert relative times to absolute dates using `observed_at`.
-11. Assign type, sensitivity, scope, and optional expiration.
+11. Assign type, subject, scope, and optional expiration.
 12. Run centralized secret detection immediately before writing memory rows.
 13. Insert accepted memories transactionally.
 14. Generate or queue embeddings for accepted rows when configured and allowed
@@ -145,11 +154,17 @@ Extraction must follow these rules:
 11. Reject workplace-sensitive categories disallowed by install policy, such as
     HR/performance, protected-class, health, legal, financial, gossip, or
     coworker speculation.
-12. In V1 passive extraction, prefer conversation-scoped operational knowledge
+12. Reject private or sensitive content instead of storing it under personal
+    scope.
+13. In V1 passive extraction, prefer conversation-scoped operational knowledge
     over personal memory.
-13. Preserve provenance for third-party claims when the source matters for
+14. Personal-scoped memories must be public/shareable first-person facts from
+    the current author/requester.
+15. Assign `user` subject only for the current author/requester; do not create
+    third-party user subjects in V1.
+16. Preserve provenance for third-party claims when the source matters for
     correctness.
-14. Store the minimum useful assertion rather than a direct quote or broad
+17. Store the minimum useful assertion rather than a direct quote or broad
     summary.
 
 The plugin must have a deterministic post-extraction validation layer. The
@@ -177,8 +192,7 @@ Policy adjudication output must be structured. It should include:
 - candidate id
 - decision: `allow` or `reject`
 - normalized rejection reason code when rejected
-- optional adjusted memory type, sensitivity, scope, expiration, or content
-  rewrite
+- optional adjusted memory type, subject, scope, expiration, or content rewrite
 - confidence
 
 The adjudicator may narrow, rewrite, or reject extracted candidates, but it may
@@ -213,7 +227,7 @@ The detector must reject at least:
 - connection strings with embedded credentials
 
 If a user explicitly asks Junior to remember a secret, the correct behavior is
-a model-visible rejection, not storage with `sensitive`.
+a model-visible rejection, not storage with a special classification.
 
 ## Duplicate And Supersession Rules
 

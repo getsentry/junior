@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -32,9 +32,7 @@ destination, conversation, and tenant/workspace authority from runtime context.
 `createMemory` may accept:
 
 - content
-- optional scope enum: `personal` or `conversation`
 - optional expiration duration/date
-- optional sensitivity hint
 
 `createMemory` must not accept:
 
@@ -45,12 +43,31 @@ destination, conversation, and tenant/workspace authority from runtime context.
 - Slack thread timestamp
 - arbitrary conversation id
 - arbitrary owner id
+- arbitrary scope enum
+- arbitrary subject id
+- arbitrary subject display name
+- arbitrary subject enum
 - raw source metadata
 
-The tool derives source, requester, destination, and scope from runtime context.
-It runs the same validation, secret rejection, duplicate checks, and embedding
-write path as passive extraction. Explicit tool requests are still subject to
-install-level memory policy.
+The tool derives source, requester, destination, and candidate scope from
+runtime context plus the accepted memory intent. It runs the same validation,
+secret rejection, duplicate checks, and embedding write path as passive
+extraction. Explicit tool requests are still subject to install-level memory
+policy.
+
+For `personal` scope, `createMemory` may store only public/shareable
+first-person facts authored by the current requester. It must reject attempts
+to create another person's personal memory, such as storing `David is xyz` as a
+personal memory when the current requester is not David. Third-person facts may
+be stored only as conversation-scoped operational knowledge when policy allows
+them.
+
+The plugin derives the stored scope and subject from the accepted content,
+runtime context, and classifier/extractor decision. In the first explicit
+storage slice, personal memories default to `user` subject and conversation
+memories default to `conversation` subject. The model cannot provide arbitrary
+scope enums, subject ids, Slack user ids, display names, aliases, or subject
+classes.
 
 `createMemory` must run the same deterministic policy filter as passive
 extraction before writing. The fact that a user explicitly asked Junior to
@@ -60,7 +77,7 @@ bypass:
 - secret rejection
 - source and scope rules
 - workplace-sensitive category rejection
-- sensitivity restrictions
+- public-content restrictions
 - provider and embedding policy
 - retention and lifecycle policy
 

@@ -1,3 +1,9 @@
+/**
+ * Drizzle source of truth for memory plugin SQL migrations.
+ *
+ * Update this schema first, then regenerate packaged migrations with
+ * `pnpm --filter @sentry/junior-memory db:generate`.
+ */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -9,8 +15,8 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   MEMORY_SCOPES,
-  MEMORY_SENSITIVITIES,
   MEMORY_SOURCE_PLATFORMS,
+  MEMORY_SUBJECT_TYPES,
   MEMORY_TYPES,
 } from "../types";
 
@@ -21,7 +27,8 @@ export const juniorMemoryMemories = pgTable(
     scope: text("scope", { enum: MEMORY_SCOPES }).notNull(),
     scopeKey: text("scope_key").notNull(),
     type: text("type", { enum: MEMORY_TYPES }).notNull(),
-    sensitivity: text("sensitivity", { enum: MEMORY_SENSITIVITIES }).notNull(),
+    subjectType: text("subject_type", { enum: MEMORY_SUBJECT_TYPES }).notNull(),
+    subjectKey: text("subject_key"),
     content: text("content").notNull(),
     contentHash: text("content_hash").notNull(),
     sourcePlatform: text("source_platform", {
@@ -74,8 +81,12 @@ export const juniorMemoryMemories = pgTable(
       )`,
     ),
     check(
-      "junior_memory_memories_sensitivity_check",
-      sql`${table.sensitivity} IN ('public', 'personal', 'sensitive')`,
+      "junior_memory_memories_subject_type_check",
+      sql`${table.subjectType} IN ('user', 'conversation', 'general')`,
+    ),
+    check(
+      "junior_memory_memories_subject_key_check",
+      sql`(${table.subjectType} = 'general' AND ${table.subjectKey} IS NULL) OR (${table.subjectType} IN ('user', 'conversation') AND ${table.subjectKey} IS NOT NULL AND length(${table.subjectKey}) > 0)`,
     ),
     check(
       "junior_memory_memories_source_platform_check",

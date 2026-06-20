@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -17,6 +17,11 @@ This spec describes the intended V1 memory plugin shape. Generic plugin prompt
 hooks and plugin prompt session state are available through
 `../plugin-prompt-hooks.md`. Passive learning still depends on future
 `observeTurn` and plugin background task handler surfaces.
+
+V1 stores only public/shareable memory content. Scope controls who can see a
+record; it is not a content sensitivity model. Private, sensitive, secret, or
+otherwise restricted content is rejected instead of being stored with a
+classification label.
 
 When automatic memory injection is enabled, the memory plugin makes relevant
 facts available before each response without making recall depend on the model
@@ -35,14 +40,16 @@ support user-directed memory management.
 - Passive learning through `observeTurn` plus a plugin background task handler.
 - Explicit `createMemory`, `removeMemory`, `listMemories`, and
   `searchMemories` tools.
-- Scope, attribution, sensitivity, lifecycle, tool, model, and secret rejection
-  rules.
+- Scope, attribution, lifecycle, tool, model, public-content, and secret
+  rejection rules.
 - V1 implementation order and verification requirements.
 
 ## Non-Goals
 
 - A core memory API outside the plugin system.
-- A person graph, alias resolver, or multi-hop social retrieval.
+- A canonical person graph, alias resolver, or multi-hop social retrieval.
+- Storing private, sensitive, secret, or otherwise restricted memory content in
+  V1.
 - Cross-context recall between unrelated conversations.
 - Requiring search tools when automatic memory injection is enabled.
 - Storing conversation transcript history as memory.
@@ -73,13 +80,39 @@ Read these files as one canonical spec:
 - [verification.md](./verification.md): failure model, observability, and test
   requirements.
 
+## User Stories
+
+V1 memory must satisfy these product stories:
+
+1. As a requester, I can ask Junior to remember a public/shareable first-person
+   fact about me and have Junior recall it for me later.
+2. As a requester, I cannot create a personal memory about another person,
+   because personal user-subject memories are owned by the current
+   author/requester.
+3. As a public conversation participant, I can ask Junior to remember shared
+   operational knowledge for that conversation.
+4. As a requester, I can list, search, and remove memories visible in the
+   current context without giving the model actor ids, Slack ids, or arbitrary
+   scope selectors.
+5. As an installer, I can enable memory knowing private, sensitive, and secret
+   content is rejected rather than stored with a dormant classification.
+6. As an operator, I can add embeddings, lexical indexes, or future graph
+   indexes as derived data without changing the authoritative memory ownership
+   model.
+
 ## Design Inputs
 
-The V1 shape is adapted from `~/src/ash/specs/memory/*`: use Ash's memory type
-taxonomy, sensitivity split, centralized secret rejection, temporal rewriting,
-and duplicate/supersession discipline, but omit Ash's person graph and
-cross-context traversal until Junior has a stricter identity and disclosure
-model for that behavior.
+The V1 shape is informed by `~/src/ash/specs/memory/*` and a prior-art pass over
+qmd, Mem0/OpenMemory, Supermemory, Zep/Graphiti, Cognee, Letta, and MemU. The
+common durable-storage pattern is an authoritative scoped memory row plus
+derived retrieval indexes, source attribution, lifecycle state, and optional
+versioning or graph layers. V1 uses Ash's useful type taxonomy, centralized
+secret rejection, temporal rewriting, and duplicate/supersession discipline,
+but does not copy Ash's sensitivity split or person graph.
+
+Future graph/entity/fact indexes should be derived from authoritative memory
+records and source attribution. They can be added as separate rebuildable tables
+without changing the V1 memory row's authority model.
 
 External storage and retrieval assumptions are based on primary documentation:
 
@@ -140,8 +173,8 @@ may receive memory text, and which retention defaults apply.
 V1 passive extraction targets workplace knowledge from conversations classified
 as `public` by Junior's existing conversation privacy/destination visibility
 contracts. Private, direct, unknown, or unsupported sources can still use
-explicit memory tools when policy allows them, but passive learning from those
-sources is out of scope for V1.
+explicit memory tools for public/shareable memories when policy allows them,
+but passive learning from those sources is out of scope for V1.
 
 V1 uses the default extraction guidance in `policy.md`. Install-provided
 extraction guidelines are out of scope for V1.
@@ -190,8 +223,8 @@ scheduled task through the scheduler workflow.
 
 V1 passive extraction must not create `identity` or `relationship` memories
 about third parties. Those types are primarily for explicit personal memory,
-such as the requester's own preferences, identity facts, or working
-relationships that pass policy.
+such as the requester's own public/shareable preferences, identity facts, or
+working relationships that pass policy.
 
 ## Scope Model
 
@@ -207,30 +240,65 @@ Rules:
 1. Scope is derived from runtime context. Model-visible tool arguments never
    provide requester ids, team ids, channel ids, thread ids, or conversation ids.
 2. Personal memory is the default for first-person facts in interactive turns.
+   The current author/requester must be the subject of any personal-scoped
+   identity, preference, or relationship fact. For example, `I am on the
+billing team` may become a personal memory for that requester, while `David
+is on the billing team` is not a valid personal memory when written by
+   someone else.
 3. Conversation memory may be created only when the user explicitly frames the
    fact as shared team/channel/conversation knowledge or the passive extractor
    can prove the fact is about the current conversation rather than a person.
 4. V1 does not recall memories across unrelated conversations, even if display
    names or Slack users appear to match.
-5. Subject labels may be stored for later display and future person-graph work,
-   but they are not authorization principals in V1.
+5. Subject fields describe what the memory is about; they do not broaden
+   visibility beyond the stored scope.
 
-## Sensitivity
+## Subject Model
 
-Every memory has a sensitivity:
+Scope answers who can see the memory. Subject answers what the memory is about.
+V1 supports a small subject model rather than a graph:
 
-| Sensitivity | Meaning                                          | V1 disclosure                                                                |
-| ----------- | ------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `public`    | Normal preference or operational fact            | visible within stored scope                                                  |
-| `personal`  | Private detail that should not be shared broadly | personal scope only unless explicitly conversation-scoped by the source user |
-| `sensitive` | health, financial, legal, employment, or similar | personal scope only                                                          |
+| Subject type   | Meaning                                      | Subject key                                 |
+| -------------- | -------------------------------------------- | ------------------------------------------- |
+| `user`         | public/shareable fact about the current user | current requester actor key                 |
+| `conversation` | norm or fact about the current conversation  | current source/destination conversation key |
+| `general`      | project, product, repository, or domain fact | none                                        |
 
-Sensitive memories must not be created as conversation-scoped passive memories.
-If a user explicitly asks to store sensitive information as shared conversation
-knowledge, the tool must reject the request with a model-visible input error
-explaining that sensitive memories can only be stored personally.
+Rules:
 
-Secrets are not a sensitivity class. Secrets are rejected and never stored.
+1. `user` subject is allowed only for the current author/requester. V1 does not
+   let one participant create another user's personal profile memory.
+2. `conversation` subject is derived from the current runtime conversation.
+3. `general` subject is for public/shareable operational or domain knowledge
+   that is not primarily about a person or the conversation itself.
+4. Subject keys are runtime-derived internal storage fields when present.
+   Model-visible tool arguments cannot provide arbitrary user ids, actor ids,
+   conversation ids, aliases, or display names as subjects.
+5. Subject fields may be used for rendering, filtering, ranking, and future
+   derived graph construction, but authorization still comes from scope.
+6. Third-party operational facts may appear in conversation-scoped `general`
+   memories when policy allows them, but V1 does not create `user` subject
+   memories for third parties.
+
+## Public-Only Content
+
+V1 does not store a sensitivity, classification, or privacy label on memory
+records. A memory is eligible only if the accepted content is safe to recall
+inside its stored scope without special private/sensitive handling.
+
+Rules:
+
+1. `personal` scope means requester-owned visibility for public/shareable
+   first-person memories authored by that requester. It does not mean the
+   content may be private, sensitive, secret, or third-party profile data.
+2. `conversation` scope means the memory may be recalled in the same
+   conversation. It must be appropriate as shared conversation knowledge.
+3. Secrets are rejected and never stored.
+4. Sensitive or private personal facts are rejected in V1, including explicit
+   user requests.
+5. If Junior later supports non-public memory, it must add an intentional
+   storage, retrieval, prompt, admin, export, and deletion contract. Existing V1
+   rows can be deterministically treated as public/shareable rows.
 
 ## Store Boundary
 

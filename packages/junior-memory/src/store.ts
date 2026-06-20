@@ -10,18 +10,17 @@ import type { PluginDb } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   MEMORY_SCOPES,
-  MEMORY_SENSITIVITIES,
   MEMORY_SOURCE_PLATFORMS,
+  MEMORY_SUBJECT_TYPES,
   MEMORY_TYPES,
-  type MemoryRecord,
+  memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
   type MemoryScope,
-  type MemorySensitivity,
-  type MemoryType,
 } from "./types";
 import { validateMemoryWritePolicy } from "./policy";
 import {
   deriveMemoryScope,
+  deriveMemorySubject,
   deriveVisibleMemoryScopes,
   type ResolvedMemoryScope,
 } from "./scope";
@@ -30,6 +29,38 @@ const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 
+const nonEmptyStringSchema = z.string().min(1);
+const numberSchema = z.number().finite();
+const createMemoryInputSchema = z
+  .object({
+    content: nonEmptyStringSchema,
+    expiresAtMs: numberSchema.optional(),
+    idempotencyKey: nonEmptyStringSchema,
+  })
+  .strict();
+const listMemoriesInputSchema = z
+  .object({
+    limit: numberSchema.optional(),
+  })
+  .strict();
+const searchMemoriesInputSchema = z
+  .object({
+    limit: numberSchema.optional(),
+    query: nonEmptyStringSchema,
+  })
+  .strict();
+const archiveMemoryInputSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    reason: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+const clockSchema = z.function({ input: [], output: numberSchema }).optional();
+const memoryStoreOptionsSchema = z
+  .object({
+    now: clockSchema,
+  })
+  .strict();
 const optionalNumberSchema = z.preprocess(
   (value) => (value === null ? undefined : value),
   z.coerce.number().optional(),
@@ -38,13 +69,18 @@ const optionalStringSchema = z.preprocess(
   (value) => (value === null ? undefined : value),
   z.string().optional(),
 );
+const optionalNonEmptyStringSchema = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().min(1).optional(),
+);
 const memoryRowSchema = z
   .object({
     id: z.string().min(1),
     scope: z.enum(MEMORY_SCOPES),
     scope_key: z.string().min(1),
     type: z.enum(MEMORY_TYPES),
-    sensitivity: z.enum(MEMORY_SENSITIVITIES),
+    subject_type: z.enum(MEMORY_SUBJECT_TYPES),
+    subject_key: optionalNonEmptyStringSchema,
     content: z.string().min(1),
     content_hash: z.string().min(1),
     source_platform: z.enum(MEMORY_SOURCE_PLATFORMS),
@@ -60,45 +96,52 @@ const memoryRowSchema = z
   })
   .strict();
 
-type MemoryRow = z.output<typeof memoryRowSchema>;
+const memoryRecordSchema = z
+  .object({
+    archivedAtMs: numberSchema.optional(),
+    archiveReason: nonEmptyStringSchema.optional(),
+    content: nonEmptyStringSchema,
+    createdAtMs: numberSchema,
+    expiresAtMs: numberSchema.optional(),
+    id: nonEmptyStringSchema,
+    observedAtMs: numberSchema,
+    scope: z.enum(MEMORY_SCOPES),
+    subjectType: z.enum(MEMORY_SUBJECT_TYPES),
+    supersededAtMs: numberSchema.optional(),
+    supersededById: nonEmptyStringSchema.optional(),
+    type: z.enum(MEMORY_TYPES),
+  })
+  .strict();
 
-export type CreateMemoryInput = MemoryRuntimeContext & {
-  content: string;
-  expiresAtMs?: number;
-  idempotencyKey?: string;
-  nowMs?: number;
-  observedAtMs?: number;
-  scope?: MemoryScope;
-  sensitivity?: MemorySensitivity;
-  type?: MemoryType;
-};
+export type MemoryRecord = z.output<typeof memoryRecordSchema>;
+export type CreateMemoryInput = z.output<typeof createMemoryInputSchema>;
 
+/** Result of a memory write after duplicate/idempotency checks. */
 export interface CreateMemoryResult {
   created: boolean;
   memory: MemoryRecord;
 }
 
-export type ListMemoriesInput = MemoryRuntimeContext & {
-  limit?: number;
-  nowMs?: number;
-};
+export type ListMemoriesInput = z.output<typeof listMemoriesInputSchema>;
 
-export type SearchMemoriesInput = MemoryRuntimeContext & {
-  limit?: number;
-  nowMs?: number;
-  query: string;
-};
+export type SearchMemoriesInput = z.output<typeof searchMemoriesInputSchema>;
 
-export type ArchiveMemoryInput = MemoryRuntimeContext & {
-  id: string;
-  nowMs?: number;
-  reason?: string;
-};
+export type ArchiveMemoryInput = z.output<typeof archiveMemoryInputSchema>;
+export type MemoryStoreOptions = z.output<typeof memoryStoreOptionsSchema>;
 
+/** Context-bound storage operations for visible long-term memories. */
 export interface MemoryStore {
+  /** Archive a visible memory in the current runtime context. */
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
+  /** Store a personal memory for the current requester. */
   createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult>;
+  /** Store a conversation memory for the current source conversation. */
+  createConversationMemory(
+    input: CreateMemoryInput,
+  ): Promise<CreateMemoryResult>;
+  /** List active memories visible in the current runtime context. */
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
+  /** Search active memories visible in the current runtime context. */
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
 }
 
@@ -133,21 +176,15 @@ function sourceKey(ctx: MemoryRuntimeContext): string {
   return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
 }
 
+/** Parse one SQL row into the public memory record projection. */
 function parseMemoryRow(row: unknown): MemoryRecord {
-  const parsed = memoryRowSchema.parse(row) as MemoryRow;
-  return {
+  const parsed = memoryRowSchema.parse(row);
+  return memoryRecordSchema.parse({
     id: parsed.id,
     scope: parsed.scope,
-    scopeKey: parsed.scope_key,
     type: parsed.type,
-    sensitivity: parsed.sensitivity,
+    subjectType: parsed.subject_type,
     content: parsed.content,
-    contentHash: parsed.content_hash,
-    sourcePlatform: parsed.source_platform,
-    sourceKey: parsed.source_key,
-    ...(parsed.idempotency_key
-      ? { idempotencyKey: parsed.idempotency_key }
-      : {}),
     observedAtMs: parsed.observed_at_ms,
     createdAtMs: parsed.created_at_ms,
     ...(parsed.expires_at_ms !== undefined
@@ -163,9 +200,10 @@ function parseMemoryRow(row: unknown): MemoryRecord {
       ? { archivedAtMs: parsed.archived_at_ms }
       : {}),
     ...(parsed.archive_reason ? { archiveReason: parsed.archive_reason } : {}),
-  };
+  });
 }
 
+/** Build the scoped SQL predicate and ordered params for visible memory reads. */
 function visibleScopePredicate(scopes: ResolvedMemoryScope[]): {
   params: string[];
   sql: string;
@@ -181,6 +219,7 @@ function visibleScopePredicate(scopes: ResolvedMemoryScope[]): {
   return { params, sql: clauses.join(" OR ") };
 }
 
+/** Find an active duplicate in the same visibility scope. */
 async function findActiveDuplicate(args: {
   db: PluginDb;
   hash: string;
@@ -231,14 +270,12 @@ WHERE scope = $2
   );
 }
 
+/** Resolve retry attempts for the same scoped write idempotency key. */
 async function findByIdempotencyKey(args: {
   db: PluginDb;
-  idempotencyKey: string | undefined;
+  idempotencyKey: string;
   scope: ResolvedMemoryScope;
 }): Promise<MemoryRecord | undefined> {
-  if (!args.idempotencyKey) {
-    return undefined;
-  }
   const rows = await args.db.query(
     `
 SELECT *
@@ -273,6 +310,7 @@ function searchTerms(query: string): string[] {
   ];
 }
 
+/** List active records for the runtime-derived visible scopes. */
 async function listVisibleMemories(args: {
   db: PluginDb;
   limit?: number;
@@ -299,6 +337,7 @@ LIMIT $${predicate.params.length + 2}
   return rows.map(parseMemoryRow);
 }
 
+/** Search active visible records with the first-slice lexical matcher. */
 async function searchVisibleMemories(args: {
   db: PluginDb;
   nowMs: number;
@@ -330,50 +369,62 @@ WHERE (${predicate.sql})
   return rows.map(parseMemoryRow);
 }
 
-/** Create the SQL-backed store for explicit memory operations. */
-export function createMemoryStore(db: PluginDb): MemoryStore {
-  return {
-    async createMemory(input) {
-      const nowMs = input.nowMs ?? Date.now();
-      const content = normalizeContent(input.content);
-      const scope = deriveMemoryScope(input, input.scope ?? "personal");
-      const sensitivity = input.sensitivity ?? "public";
-      const policy = validateMemoryWritePolicy({
-        content,
-        scope: scope.scope,
-        sensitivity,
-      });
-      if (!policy.ok) {
-        throw new Error(policy.reason);
-      }
-      if (content.length > MAX_MEMORY_CONTENT_CHARS) {
-        throw new Error("Memory content exceeds the maximum length.");
-      }
+/** Create a context-bound SQL-backed store for explicit memory operations. */
+export function createMemoryStore(
+  db: PluginDb,
+  context: MemoryRuntimeContext,
+  options: MemoryStoreOptions = {},
+): MemoryStore {
+  const runtimeContext = memoryRuntimeContextSchema.parse(context);
+  const parsedOptions = memoryStoreOptionsSchema.parse(options);
+  const getNowMs = parsedOptions.now ?? Date.now;
 
-      const hash = contentHash(content);
-      const idempotent = await findByIdempotencyKey({
-        db,
-        idempotencyKey: input.idempotencyKey,
-        scope,
-      });
-      if (idempotent) {
-        return { created: false, memory: idempotent };
-      }
-      await archiveExpiredDuplicates({ db, hash, nowMs, scope });
-      const existing = await findActiveDuplicate({ db, hash, scope, nowMs });
-      if (existing) {
-        return { created: false, memory: existing };
-      }
+  /** Persist a memory under the plugin-derived scope and subject. */
+  async function createScopedMemory(
+    rawInput: CreateMemoryInput,
+    scopeKind: MemoryScope,
+  ): Promise<CreateMemoryResult> {
+    const input = createMemoryInputSchema.parse(rawInput);
+    const nowMs = getNowMs();
+    const content = normalizeContent(input.content);
+    const scope = deriveMemoryScope(runtimeContext, scopeKind);
+    const subject = deriveMemorySubject(runtimeContext, scope);
+    const policy = validateMemoryWritePolicy({
+      content,
+      subjectType: subject.subjectType,
+    });
+    if (!policy.ok) {
+      throw new Error(policy.reason);
+    }
+    if (content.length > MAX_MEMORY_CONTENT_CHARS) {
+      throw new Error("Memory content exceeds the maximum length.");
+    }
 
-      const id = `mem_${randomUUID()}`;
-      const rows = await db.query(
-        `
+    const hash = contentHash(content);
+    const idempotent = await findByIdempotencyKey({
+      db,
+      idempotencyKey: input.idempotencyKey,
+      scope,
+    });
+    if (idempotent) {
+      return { created: false, memory: idempotent };
+    }
+    await archiveExpiredDuplicates({ db, hash, nowMs, scope });
+    const existing = await findActiveDuplicate({ db, hash, scope, nowMs });
+    if (existing) {
+      return { created: false, memory: existing };
+    }
+
+    const id = `mem_${randomUUID()}`;
+    const rows = await db.query(
+      `
 INSERT INTO junior_memory_memories (
   id,
   scope,
   scope_key,
   type,
-  sensitivity,
+  subject_type,
+  subject_key,
   content,
   content_hash,
   source_platform,
@@ -384,32 +435,43 @@ INSERT INTO junior_memory_memories (
   expires_at_ms
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-  $11, $12, $13
+  $11, $12, $13, $14
 )
 RETURNING *
 `,
-        [
-          id,
-          scope.scope,
-          scope.scopeKey,
-          input.type ?? "knowledge",
-          sensitivity,
-          content,
-          hash,
-          input.source.platform,
-          sourceKey(input),
-          input.idempotencyKey,
-          input.observedAtMs ?? nowMs,
-          nowMs,
-          input.expiresAtMs,
-        ],
-      );
-      return { created: true, memory: parseMemoryRow(rows[0]) };
+      [
+        id,
+        scope.scope,
+        scope.scopeKey,
+        "knowledge",
+        subject.subjectType,
+        subject.subjectKey,
+        content,
+        hash,
+        runtimeContext.source.platform,
+        sourceKey(runtimeContext),
+        input.idempotencyKey,
+        nowMs,
+        nowMs,
+        input.expiresAtMs,
+      ],
+    );
+    return { created: true, memory: parseMemoryRow(rows[0]) };
+  }
+
+  return {
+    async createMemory(input) {
+      return await createScopedMemory(input, "personal");
+    },
+
+    async createConversationMemory(input) {
+      return await createScopedMemory(input, "conversation");
     },
 
     async listMemories(input) {
-      const nowMs = input.nowMs ?? Date.now();
-      const scopes = deriveVisibleMemoryScopes(input);
+      input = listMemoriesInputSchema.parse(input);
+      const nowMs = getNowMs();
+      const scopes = deriveVisibleMemoryScopes(runtimeContext);
       return await listVisibleMemories({
         db,
         limit: input.limit,
@@ -419,8 +481,9 @@ RETURNING *
     },
 
     async searchMemories(input) {
-      const nowMs = input.nowMs ?? Date.now();
-      const scopes = deriveVisibleMemoryScopes(input);
+      input = searchMemoriesInputSchema.parse(input);
+      const nowMs = getNowMs();
+      const scopes = deriveVisibleMemoryScopes(runtimeContext);
       const candidates = await searchVisibleMemories({
         db,
         nowMs,
@@ -442,8 +505,9 @@ RETURNING *
     },
 
     async archiveMemory(input) {
-      const nowMs = input.nowMs ?? Date.now();
-      const scopes = deriveVisibleMemoryScopes(input);
+      input = archiveMemoryInputSchema.parse(input);
+      const nowMs = getNowMs();
+      const scopes = deriveVisibleMemoryScopes(runtimeContext);
       const predicate = visibleScopePredicate(scopes);
       const idPrefix = input.id.trim();
       if (!idPrefix) {

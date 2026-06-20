@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -30,12 +30,15 @@ The plugin stores two classes of data:
 2. **Retrieval indexes**: derived data, such as embeddings and lexical indexes,
    that can be deleted and rebuilt from memory records.
 
-The implementation may use one table per class or split them further if needed,
-but V1 should keep the shape simple:
+The implementation may use one table per class or split them further if needed.
+The first authoritative storage slice keeps the shape simple:
 
 - one authoritative memory-record table
-- one derived embedding/vector table or equivalent vector index
-- optional database-native lexical search support
+- no canonical graph/entity/fact tables
+
+The embedding slice adds one derived embedding/vector table or equivalent vector
+index. Optional database-native lexical search support may be added with the
+retrieval slice.
 
 ### Memory Record Shape
 
@@ -48,8 +51,9 @@ Required conceptual fields:
 - self-contained memory content
 - normalized content hash for duplicate detection
 - memory type
-- sensitivity
 - runtime-derived visibility scope
+- subject type
+- runtime-derived subject key when the subject is a user or conversation
 - runtime-derived source attribution
 - observation or tool idempotency marker when available
 - observed timestamp
@@ -62,8 +66,29 @@ The first storage slice intentionally keeps this authoritative row lean.
 Subject/display labels, extraction confidence, and operational metadata should
 be added only with the extraction, graph, or admin consumer that needs them.
 
-Scope and source fields are authority-bearing. Display labels, model-generated
-summaries, and tool arguments are not.
+Scope and source fields are authority-bearing. Subject fields describe the
+memory's topic, but they must not grant visibility beyond scope. The stored
+subject key is runtime-derived internal metadata, not model-visible tool input
+or ordinary memory output. Display labels, model-generated summaries, and tool
+arguments are not authorities.
+
+V1 stores only public/shareable memory content, so the authoritative row must
+not include a dormant sensitivity or classification column. If a future feature
+supports non-public memory, it must add a new end-to-end contract; existing V1
+rows can be backfilled or interpreted as public/shareable without semantic
+recategorization.
+
+### Derived Graph Data
+
+Graph/entity/fact storage is out of scope for V1. Prior-art systems that use a
+graph still treat episodes, passages, or memory items as the source from which
+graph edges are derived.
+
+If Junior later needs entity linking, relationship retrieval, or multi-hop
+recall, it should add separate derived graph tables keyed by memory id and
+source attribution. Those tables must be rebuildable from authoritative memory
+records plus bounded source references. Graph nodes, aliases, display labels,
+and model-extracted entity subjects must not become authorization principals.
 
 ### Visibility Data
 
@@ -79,7 +104,7 @@ thread ids, or arbitrary conversation ids.
 The store must be able to filter active visible records by:
 
 - scope
-- sensitivity
+- plugin-derived subject type
 - current install policy
 - archive state
 - supersession state
@@ -109,7 +134,8 @@ before returning rows to prompt rendering or tools.
 Embeddings are derived retrieval data. They are not the authority for memory
 existence, visibility, or deletion.
 
-Embedding rows or index entries must record:
+When the embedding slice is implemented, embedding rows or index entries must
+record:
 
 - memory id
 - provider id
@@ -126,9 +152,9 @@ Changing provider, model, dimensions, or metric requires re-embedding active
 memories. Missing or stale embeddings degrade retrieval to lexical and recency
 ranking.
 
-Vectors inherit the classification, scope, retention, deletion, and provider
-policy of their source memory. Archiving or deleting a memory must remove or
-invalidate derived vectors under the same rules as the memory content.
+Vectors inherit the scope, retention, deletion, and provider policy of their
+source memory. Archiving or deleting a memory must remove or invalidate derived
+vectors under the same rules as the memory content.
 
 ### Vector Storage
 
@@ -201,9 +227,10 @@ records the resolved provider and model used for each vector.
 
 Memory creation follows this order:
 
-1. Validate content, scope, sensitivity, source, expiration, and metadata.
+1. Validate content, scope, source, expiration, and metadata.
 2. Run model-assisted policy adjudication when needed.
-3. Run deterministic policy validation and centralized secret rejection.
+3. Run deterministic public-content policy validation and centralized secret
+   rejection.
 4. Insert the memory record transactionally.
 5. After the transaction commits, batch-generate embeddings for inserted records
    when an embedding provider is configured.

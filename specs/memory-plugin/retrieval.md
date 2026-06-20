@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -59,12 +59,10 @@ Retrieval must filter by visibility before prompt rendering:
 
 - matching personal requester scope
 - matching conversation scope
-- current install policy allows recall for the memory type, scope, and
-  sensitivity
+- current install policy allows recall for the memory type, scope, and source
 - `archived_at is null`
 - `superseded_at is null`
 - `expires_at is null or expires_at > now()`
-- sensitivity allowed in the current scope
 
 The query planner, vector index, model, and ranker are not authorization
 boundaries.
@@ -76,18 +74,23 @@ visible.
 
 ### Ranking Pipeline
 
-V1 uses hybrid retrieval without Ash's person graph:
+The first storage slice uses lexical retrieval without a graph or vector index:
 
 1. Build visible active candidate scopes.
 2. Run lexical search against memory content.
-3. Run vector search when embeddings are configured and the user text can be
-   embedded.
-4. Merge lexical and vector results with reciprocal-rank style fusion.
-5. Apply small deterministic boosts for exact scope match, durable memory
-   types, and recent observations.
-6. For automatic injection only, drop memories already injected into the active
+3. Apply small deterministic boosts for exact scope match, durable memory
+   types, subject match, and recent observations.
+4. For automatic injection only, drop memories already injected into the active
    session projection.
-7. Return the top memories within count and character budgets.
+5. Return the top memories within count and character budgets.
+
+The later embedding slice may upgrade this to hybrid retrieval:
+
+1. Run vector search when embeddings are configured and the user text can be
+   embedded.
+2. Merge lexical and vector results with reciprocal-rank style fusion.
+3. Apply the same visibility filtering, deterministic boosts, and prompt
+   budgets.
 
 Vector results should be overfetched before final filtering and prompt
 formatting. Approximate vector search must be exact-reranked over visible

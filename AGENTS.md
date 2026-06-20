@@ -36,6 +36,8 @@ Co-Authored-By: (agent model name) <email>
 - If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
 - Use instrumentation conventions from `specs/instrumentation.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
+- Plugin SQL migrations must be generated from Drizzle schema changes with the
+  package `db:generate` script; do not hand-edit migration SQL.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.
 - Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
 - Prefer minimal interfaces and simple components across the codebase.

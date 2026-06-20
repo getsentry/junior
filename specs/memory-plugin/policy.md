@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -16,7 +16,7 @@ compliance risks.
 - What must be tunable by the installing app or workspace.
 - V1 passive extraction toggle and default extraction guidance.
 - Default workplace extraction guidance.
-- Workplace-sensitive information categories.
+- Public-memory eligibility and workplace-sensitive rejection categories.
 - How policy affects tools, passive extraction, retrieval, retention, models,
   and admin output.
 
@@ -59,6 +59,7 @@ rules:
 - no secrets
 - runtime-derived scope only
 - source visibility checks
+- public/shareable memory content only
 - `public` conversation visibility for passive capture only in V1
 - policy toggle checks
 - provider allowlist checks
@@ -81,8 +82,8 @@ Workplace-safe defaults should be conservative:
    `searchMemories` for recall.
 5. Passive extraction from conversations classified as `direct`, `private`,
    `unknown`, or unsupported is out of scope for V1.
-6. Sensitive memory should be personal-only and should be disabled for passive
-   extraction by default.
+6. V1 does not store private or sensitive memory content, even in personal
+   scope.
 7. Third-party personal facts about coworkers should not be passively stored by
    default.
 8. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
@@ -105,8 +106,8 @@ Aim to extract:
 - explicit decisions, status changes, deadlines, launch windows, or deploy
   windows
 - channel-level norms, such as how a public channel tracks work or incidents
-- explicit "remember this" requests that are appropriate for the current
-  channel scope
+- explicit "remember this" requests that are appropriate for the requested
+  scope
 
 Avoid extracting:
 
@@ -130,8 +131,8 @@ sources.
 
 ## Third-Party Facts
 
-Third-party facts are allowed in V1 when they are operational knowledge from a
-conversation classified as `public`, rather than personal claims.
+Third-party facts are allowed in V1 only when they are operational knowledge
+from a conversation classified as `public`, rather than personal claims.
 
 Useful third-party memories include:
 
@@ -143,6 +144,8 @@ Useful third-party memories include:
 Unsafe third-party memories include:
 
 - `Bob is unreliable.`
+- `David is on the billing team.` when written as personal memory by someone
+  other than David
 - `Sam is interviewing elsewhere.`
 - `Alice is dealing with a medical issue.`
 - `Dana dislikes working with Chris.`
@@ -153,12 +156,28 @@ conversation fact, preserve provenance in the content. Prefer
 `The deploy freeze starts Friday` unless the conversation context makes it an
 accepted team fact.
 
-## Workplace-Sensitive Categories
+### Personal Scope Authorship
 
-The extractor must be careful about information that can harm people if stored
-or recalled out of context.
+Personal-scoped memories may store public/shareable first-person facts only for
+the current author/requester. The author can explicitly ask Junior to remember
+`I prefer terse code reviews` or `I am the release captain for Project Atlas`.
+Another participant cannot create a personal memory such as `David prefers
+terse code reviews` or `David is the release captain` on David's behalf.
 
-The default workplace policy should reject passive storage of:
+Personal-scoped memories can also store public/shareable `general` subject
+knowledge for the requester when explicitly requested, but they cannot target
+another user as the subject. Third-person facts belong only in conversation
+scope when they are clean operational knowledge for the current public
+conversation and pass the normal third-party policy. They are not personal
+memories for the named person.
+
+## Non-Public And Sensitive Categories
+
+V1 stores only public/shareable memory content. The extractor and explicit tool
+path must reject information that requires private, sensitive, legal,
+compliance, or secret handling.
+
+The default workplace policy should reject storage of:
 
 - health, disability, medical, or family-care details
 - legal issues, immigration status, or government identifiers
@@ -172,9 +191,9 @@ The default workplace policy should reject passive storage of:
 - jokes, venting, gossip, conflict, or interpersonal commentary
 - raw conversation summaries whose future usefulness depends on hidden context
 
-Explicit user requests to remember sensitive personal details must still follow
-scope and sensitivity rules. Some installs may choose to reject those requests
-entirely.
+Explicit user requests to remember private or sensitive personal details are
+rejected in V1. Personal scope controls who can see an allowed public/shareable
+memory; it does not authorize storage of non-public content.
 
 ## Passive Extraction Policy
 
@@ -210,7 +229,7 @@ Policy still disallows passive extraction by category, including:
 - personal facts about third parties
 - identity or relationship facts about third parties
 - non-operational conversation summaries
-- sensitive facts
+- non-public or sensitive facts
 - low-confidence inferences
 - facts without explicit durability
 
@@ -240,15 +259,14 @@ automatic memory injection.
 Explicit `createMemory` requests are still subject to install policy.
 
 For example, passive extraction is limited to public-conversation workplace
-knowledge in V1, but users may still explicitly store personal preferences when
-the requested memory passes policy. An install may disallow all sensitive memory
-writes, including explicit requests.
+knowledge in V1, but users may still explicitly store public/shareable personal
+preferences about themselves when the requested memory passes policy.
 
 The explicit tool path must run the same deterministic policy filter as passive
 extraction. Explicit user intent can make a fact eligible for storage under
 install policy, but it cannot override secret rejection, source/scope rules,
-workplace-sensitive category rejection, provider policy, or sensitivity
-restrictions.
+workplace-sensitive category rejection, public-content restrictions, provider
+and embedding policy, or retention and lifecycle policy.
 
 Tool errors should explain policy rejection at a high level without revealing
 hidden policy internals or sensitive content.

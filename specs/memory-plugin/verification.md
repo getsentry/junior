@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-20
 
 ## Purpose
 
@@ -48,7 +48,8 @@ Logs and spans may include:
 - memory operation name
 - memory id or bounded id prefix
 - scope type
-- type and sensitivity enum
+- subject type
+- memory type
 - embedding provider/model/dimensions
 - extracted candidate fact count
 - accepted/rejected fact counts
@@ -77,11 +78,15 @@ Use integration tests for:
 
 - memory plugin packaged storage migrations are discovered and applied through
   `junior upgrade`
-- storage migrations provide the broad memory-record and derived-vector storage
-  mechanisms required by `storage.md`
+- storage migrations provide the authoritative memory-record mechanism required
+  by the first storage slice in `storage.md`
 - explicit memory creation stores a personal memory under the current requester
 - explicit conversation memory stores under the current conversation without
   accepting model-supplied Slack ids
+- explicit personal user-subject memory can be created only for the current
+  requester/author
+- explicit personal memory rejects third-party user profile facts such as
+  storing `David is xyz` on David's behalf
 - explicit memory creation is rejected when it violates install policy or
   workplace-sensitive category rules
 - install policy can disable passive extraction without disabling explicit
@@ -127,7 +132,7 @@ When the future admin CLI is implemented, use integration tests for:
 
 Use unit tests for:
 
-- memory type, scope, and sensitivity parsers
+- memory type, scope, and subject parsers
 - install policy parser and policy evaluation predicates
 - secret detection
 - storable-fact validation
