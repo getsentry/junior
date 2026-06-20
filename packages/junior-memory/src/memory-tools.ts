@@ -87,6 +87,13 @@ function requireToolCallId(value: string | undefined): string {
   return value;
 }
 
+function requireMemoryContent(value: string): string {
+  if (value.trim().length === 0) {
+    throwToolInputError("Memory content is required.");
+  }
+  return value;
+}
+
 /** Return the model-visible projection without hidden ownership/source fields. */
 function compactMemory(memory: MemoryRecord) {
   return {
@@ -137,7 +144,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
     execute: async (input, options) => {
       const store = memoryStore(context);
       const createInput = {
-        content: input.content,
+        content: requireMemoryContent(input.content),
         idempotencyKey: `tool:${requireToolCallId(options.toolCallId)}`,
         ...(input.expires_at
           ? { expiresAtMs: parseExpiresAt(input.expires_at) }

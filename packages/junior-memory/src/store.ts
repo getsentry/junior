@@ -29,10 +29,15 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 
 const nonEmptyStringSchema = z.string().min(1);
+const memoryContentSchema = z
+  .string()
+  .refine((content) => content.trim().length > 0, {
+    message: "Memory content is required.",
+  });
 const numberSchema = z.number().finite();
 const createMemoryInputSchema = z
   .object({
-    content: nonEmptyStringSchema,
+    content: memoryContentSchema,
     expiresAtMs: numberSchema.optional(),
     idempotencyKey: nonEmptyStringSchema,
   })
@@ -80,7 +85,7 @@ const memoryRowSchema = z
     type: z.enum(MEMORY_TYPES),
     subject_type: z.enum(MEMORY_SUBJECT_TYPES),
     subject_key: optionalNonEmptyStringSchema,
-    content: z.string().min(1),
+    content: memoryContentSchema,
     source_platform: z.enum(MEMORY_SOURCE_PLATFORMS),
     source_key: z.string().min(1),
     idempotency_key: optionalStringSchema,
@@ -117,7 +122,7 @@ const memoryRecordSchema = z
   .object({
     archivedAtMs: numberSchema.optional(),
     archiveReason: nonEmptyStringSchema.optional(),
-    content: nonEmptyStringSchema,
+    content: memoryContentSchema,
     createdAtMs: numberSchema,
     expiresAtMs: numberSchema.optional(),
     id: nonEmptyStringSchema,

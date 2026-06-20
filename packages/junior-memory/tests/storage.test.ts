@@ -335,6 +335,15 @@ ORDER BY created_at_ms ASC
       await expect(
         tools.createMemory.execute!(
           {
+            content: " \n\t ",
+            applies_to: "current_requester",
+          },
+          { toolCallId: "tool-create-empty-content" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
+        tools.createMemory.execute!(
+          {
             content: "Linear is where our channel tracks incidents.",
             applies_to: "active_conversation",
           },
@@ -581,6 +590,26 @@ INSERT INTO junior_memory_memories (
         } as unknown as Parameters<typeof store.listMemories>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 
+      await expect(store.listMemories({})).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("rejects memory content that normalizes to empty text", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+        now: () => TEST_NOW_MS,
+      });
+
+      await expect(
+        store.createMemory({
+          content: " \n\t ",
+          idempotencyKey: "memory-test:empty-content",
+        }),
+      ).rejects.toThrow("Memory content is required.");
       await expect(store.listMemories({})).resolves.toEqual([]);
     } finally {
       await fixture.close();
