@@ -67,6 +67,7 @@ Co-Authored-By: (agent model name) <email>
 ## Policies
 
 - `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
+- `policies/agentic-semantics.md` (agentic semantic decisions vs deterministic boundary checks)
 - `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
 - `policies/context-bound-systems.md` (explicit actor/destination/context propagation across runtime boundaries)
 - `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)

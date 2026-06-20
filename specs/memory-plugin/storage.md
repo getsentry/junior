@@ -227,10 +227,12 @@ records the resolved provider and model used for each vector.
 
 Memory creation follows this order:
 
-1. Validate content, scope, source, expiration, and metadata.
-2. Run model-assisted policy adjudication when needed.
-3. Run deterministic public-content policy validation and centralized secret
-   rejection.
+1. Validate content shape, runtime-derived scope/source, expiration, and
+   metadata.
+2. Run agentic policy adjudication before write paths that originate from
+   model/extractor decisions.
+3. Run deterministic structural validation for schemas, authority fields,
+   lifecycle bounds, idempotency, and storage constraints.
 4. Insert the memory record transactionally.
 5. After the transaction commits, batch-generate embeddings for inserted records
    when an embedding provider is configured.

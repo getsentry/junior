@@ -62,10 +62,20 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   };
 }
 
+export interface PluginToolExecuteOptions {
+  /**
+   * @deprecated Internal compatibility escape hatch for legacy tool bridges.
+   * Plugin tools should use typed input fields and runtime hook context instead.
+   */
+  experimental_context?: unknown;
+  /** Stable runtime tool-call id; durable create tools should derive idempotency keys from it. */
+  toolCallId?: string;
+}
+
 export type PluginToolExecute<TInput = unknown> = {
   bivarianceHack(
     input: TInput,
-    options: { experimental_context?: unknown },
+    options: PluginToolExecuteOptions,
   ): Promise<unknown> | unknown;
 }["bivarianceHack"];
 

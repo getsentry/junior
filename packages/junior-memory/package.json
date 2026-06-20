@@ -27,17 +27,21 @@
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "@sinclair/typebox": "^0.34.49",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@sentry/junior-test-fixtures": "workspace:*",
     "@types/node": "^25.9.1",
     "drizzle-kit": "catalog:",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }

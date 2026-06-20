@@ -32,6 +32,7 @@ destination, conversation, and tenant/workspace authority from runtime context.
 `createMemory` may accept:
 
 - content
+- `applies_to`, with values `current_requester` or `active_conversation`
 - optional expiration duration/date
 
 `createMemory` must not accept:
@@ -49,11 +50,13 @@ destination, conversation, and tenant/workspace authority from runtime context.
 - arbitrary subject enum
 - raw source metadata
 
-The tool derives source, requester, destination, and candidate scope from
-runtime context plus the accepted memory intent. It runs the same validation,
-secret rejection, idempotency checks, and embedding write path as passive
-extraction. Explicit tool requests are still subject to install-level memory
-policy.
+The tool derives source, requester, destination, stored scope, and subject from
+runtime context plus the agent-selected `applies_to` value. `applies_to` is not
+an authority-bearing storage key: it can choose only the current requester or
+the active conversation, and the runtime still owns all ids and visibility keys.
+The explicit tool path runs the same idempotency, lifecycle, embedding, and
+storage validation paths as passive extraction. Explicit tool requests are
+still subject to install-level memory policy.
 
 For `personal` scope, `createMemory` may store only public/shareable
 first-person facts authored by the current requester. It must reject attempts
@@ -62,21 +65,20 @@ personal memory when the current requester is not David. Third-person facts may
 be stored only as conversation-scoped operational knowledge when policy allows
 them.
 
-The plugin derives the stored scope and subject from the accepted content,
-runtime context, and classifier/extractor decision. In the first explicit
-storage slice, personal memories default to `user` subject and conversation
-memories default to `conversation` subject. The model cannot provide arbitrary
-scope enums, subject ids, Slack user ids, display names, aliases, or subject
-classes.
+The plugin derives the stored scope and subject from runtime context and the
+agent/extractor decision. In the first explicit storage slice, memories where
+`applies_to` is `current_requester` default to personal `user` subject and
+memories where `applies_to` is `active_conversation` default to conversation
+subject. The model cannot provide arbitrary scope enums, subject ids, Slack
+user ids, display names, aliases, or subject classes.
 
-`createMemory` must run the same deterministic policy filter as passive
-extraction before writing. The fact that a user explicitly asked Junior to
-remember something can satisfy the "explicit request" category, but it must not
-bypass:
+Content eligibility is an agentic policy decision, not a deterministic regex
+classifier. The fact that a user explicitly asked Junior to remember something
+can satisfy the "explicit request" category, but it must not bypass:
 
-- secret rejection
+- secret rejection by the agent/policy adjudicator
 - source and scope rules
-- workplace-sensitive category rejection
+- workplace-sensitive category rejection by the agent/policy adjudicator
 - public-content restrictions
 - provider and embedding policy
 - retention and lifecycle policy

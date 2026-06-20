@@ -168,8 +168,8 @@ Extraction must follow these rules:
 17. Store the minimum useful assertion rather than a direct quote or broad
     summary.
 
-The plugin must have a deterministic post-extraction validation layer. The
-extraction prompt is guidance, not the security boundary.
+The plugin must have a post-extraction adjudication layer. The extraction prompt
+is guidance, not the security boundary.
 
 ## Policy Adjudication
 
@@ -180,8 +180,9 @@ the default V1 shape when passive extraction is enabled:
    observation payload.
 2. A policy adjudicator, typically the configured fast/auxiliary model, reviews
    each candidate against the installed memory policy and workplace guidance.
-3. The deterministic validator applies hard rules and rejects anything unsafe or
-   malformed before storage.
+3. Deterministic validation applies only hard structural rules, such as schema
+   shape, runtime-owned authority, source visibility, lifecycle bounds,
+   idempotency, and storage constraints before storage.
 
 The policy adjudicator should receive only the candidate memory, the minimum
 source context needed to judge it, and the installed policy guidance. It should
@@ -197,14 +198,14 @@ Policy adjudication output must be structured. It should include:
 - confidence
 
 The adjudicator may narrow, rewrite, or reject extracted candidates, but it may
-not override hard validators. If extraction and policy adjudication disagree,
-the stricter outcome wins. If the policy adjudicator fails or returns malformed
-output, the candidate is rejected unless it came from an explicit tool workflow
-that can return a model-visible retryable error.
+not override hard structural validators. If extraction and policy adjudication
+disagree, the stricter outcome wins. If the policy adjudicator fails or returns
+malformed output, the candidate is rejected unless it came from an explicit tool
+workflow that can return a model-visible retryable error.
 
 ## Secret Rejection
 
-Every entry point must call the same secret detector before writing memory
+Every entry point must use the same policy guidance before writing memory
 content:
 
 - `createMemory`
@@ -212,11 +213,12 @@ content:
 - repair/import workflows
 - tests and fixture helpers that create real memory records
 
-Every entry point must also run the same deterministic policy filter before
-writing memory content. Explicit tools may use explicit user intent as a policy
-input, but they do not bypass the filter.
+Explicit tools may use explicit user intent as a policy input, but they do not
+bypass the policy guidance. Secret handling may use a dedicated scanner as a
+hard safety backstop, but scanner matches are not a substitute for agentic
+memory eligibility decisions.
 
-The detector must reject at least:
+The policy guidance must reject at least:
 
 - API keys and access tokens
 - Slack tokens

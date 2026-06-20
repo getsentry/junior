@@ -17,7 +17,6 @@ import {
   type MemoryRuntimeContext,
   type MemoryScope,
 } from "./types";
-import { validateMemoryWritePolicy } from "./policy";
 import {
   deriveMemoryScope,
   deriveMemorySubject,
@@ -350,13 +349,6 @@ export function createMemoryStore(
     const content = normalizeContent(input.content);
     const scope = deriveMemoryScope(runtimeContext, scopeKind);
     const subject = deriveMemorySubject(runtimeContext, scope);
-    const policy = validateMemoryWritePolicy({
-      content,
-      subjectType: subject.subjectType,
-    });
-    if (!policy.ok) {
-      throw new Error(policy.reason);
-    }
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }

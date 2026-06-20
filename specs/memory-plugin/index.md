@@ -329,7 +329,8 @@ Implement in this order:
 2. Memory plugin package with manifest, schema, migrations, store, and
    install-level policy evaluator.
 3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
-   `removeMemory` tools with context-bound scope and secret rejection.
+   `removeMemory` tools with context-bound authority and agent-selected
+   memory applicability.
 4. Automatic recall from stored memories through `userPrompt` when
    `autoInjectMemories` is enabled, using lexical ranking before embeddings are
    available.
