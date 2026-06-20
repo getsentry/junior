@@ -232,11 +232,15 @@ a model-visible rejection, not storage with a special classification.
 
 ## Duplicate And Supersession Rules
 
-Duplicate prevention is required before insertion:
+Duplicate prevention is required before insertion where the relevant signal is
+available:
 
 - same source observation id and same extracted fact index
-- exact normalized content match in the same scope
 - high lexical or embedding similarity to an active memory in the same scope
+
+V1 storage enforces source/fact idempotency. Exact normalized-content equality
+is not a durable identity for memory facts and must not be the only duplicate
+suppression strategy.
 
 Supersession is allowed when a new memory clearly replaces an old memory in the
 same scope, such as a changed preference. Superseded memories remain archived

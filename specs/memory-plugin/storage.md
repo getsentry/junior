@@ -116,8 +116,9 @@ redelivery, and task retry. The store needs a stable source marker for a
 completed observation and the extracted fact's position or stable fact id inside
 that observation.
 
-Duplicate suppression also needs active-scope content hashing and a later
-semantic-similarity check when embeddings are available.
+Semantic duplicate suppression needs extractor and retrieval context. It should
+run before insertion when implemented, but V1 storage does not use exact-content
+hashing as memory identity.
 
 ### Lexical Search
 

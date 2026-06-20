@@ -10,10 +10,4 @@ export type {
   MemoryStoreOptions,
   SearchMemoriesInput,
 } from "./store";
-export type {
-  MemoryRuntimeContext,
-  MemoryScope,
-  MemorySourcePlatform,
-  MemorySubjectType,
-  MemoryType,
-} from "./types";
+export type { MemoryRuntimeContext } from "./types";

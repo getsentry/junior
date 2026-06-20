@@ -252,6 +252,9 @@ ORDER BY created_at_ms ASC
       await expect(store.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
+      await expect(
+        store.searchMemories({ query: "summaries" }),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -342,6 +345,42 @@ ORDER BY created_at_ms ASC
         created: false,
         memory: { id: created.memory.id, content: created.memory.content },
       });
+      await expect(
+        fixture.executor.execute(
+          `
+INSERT INTO junior_memory_memories (
+  id,
+  scope,
+  scope_key,
+  type,
+  subject_type,
+  subject_key,
+  content,
+  source_platform,
+  source_key,
+  idempotency_key,
+  observed_at_ms,
+  created_at_ms
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+)
+`,
+          [
+            "mem_duplicate_idempotency",
+            "personal",
+            "slack:T123:U123",
+            "knowledge",
+            "user",
+            "slack:T123:U123",
+            "Duplicate raw insert with same retry key.",
+            "slack",
+            "slack:T123:C123:1718800000.000000",
+            "explicit-create-1",
+            nowMs,
+            nowMs,
+          ],
+        ),
+      ).rejects.toThrow("duplicate key value violates unique constraint");
     } finally {
       await fixture.close();
     }
@@ -372,6 +411,9 @@ ORDER BY created_at_ms ASC
           id: expired.memory.id,
         }),
       ).rejects.toThrow("Memory was not found in the current context.");
+      await expect(store.searchMemories({ query: "quiet" })).resolves.toEqual(
+        [],
+      );
 
       nowMs = TEST_NOW_MS + 12;
       const recreated = await store.createMemory({
@@ -384,6 +426,9 @@ ORDER BY created_at_ms ASC
         memory: { content: expired.memory.content },
       });
       expect(recreated.memory.id).not.toBe(expired.memory.id);
+      await expect(store.searchMemories({ query: "quiet" })).resolves.toEqual([
+        expect.objectContaining({ id: recreated.memory.id }),
+      ]);
     } finally {
       await fixture.close();
     }

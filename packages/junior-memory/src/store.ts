@@ -93,7 +93,26 @@ const memoryRowSchema = z
     archived_at_ms: optionalNumberSchema,
     archive_reason: optionalStringSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((row, ctx) => {
+    if (row.subject_type === "general") {
+      if (row.subject_key !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "General-subject memory rows must not have a subject key.",
+          path: ["subject_key"],
+        });
+      }
+      return;
+    }
+    if (row.subject_key === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "User and conversation memory rows require a subject key.",
+        path: ["subject_key"],
+      });
+    }
+  });
 
 const memoryRecordSchema = z
   .object({
@@ -342,15 +361,6 @@ export function createMemoryStore(
       throw new Error("Memory content exceeds the maximum length.");
     }
 
-    const idempotent = await findByIdempotencyKey({
-      db,
-      idempotencyKey: input.idempotencyKey,
-      scope,
-    });
-    if (idempotent) {
-      return { created: false, memory: idempotent };
-    }
-
     const id = `mem_${randomUUID()}`;
     const rows = await db.query(
       `
@@ -372,6 +382,9 @@ INSERT INTO junior_memory_memories (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
   $11, $12, $13
 )
+ON CONFLICT (scope, scope_key, idempotency_key)
+WHERE idempotency_key IS NOT NULL
+DO NOTHING
 RETURNING *
 `,
       [
@@ -390,7 +403,19 @@ RETURNING *
         input.expiresAtMs,
       ],
     );
-    return { created: true, memory: parseMemoryRow(rows[0]) };
+    if (rows[0]) {
+      return { created: true, memory: parseMemoryRow(rows[0]) };
+    }
+
+    const idempotent = await findByIdempotencyKey({
+      db,
+      idempotencyKey: input.idempotencyKey,
+      scope,
+    });
+    if (!idempotent) {
+      throw new Error("Memory idempotency conflict did not resolve.");
+    }
+    return { created: false, memory: idempotent };
   }
 
   return {
