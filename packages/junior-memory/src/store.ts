@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   MEMORY_SCOPES,
   MEMORY_SENSITIVITIES,
+  MEMORY_SOURCE_PLATFORMS,
   MEMORY_TYPES,
   type MemoryRecord,
   type MemoryRuntimeContext,
@@ -46,7 +47,7 @@ const memoryRowSchema = z
     sensitivity: z.enum(MEMORY_SENSITIVITIES),
     content: z.string().min(1),
     content_hash: z.string().min(1),
-    source_platform: z.enum(["slack", "local"]),
+    source_platform: z.enum(MEMORY_SOURCE_PLATFORMS),
     source_key: z.string().min(1),
     idempotency_key: optionalStringSchema,
     observed_at_ms: z.coerce.number(),
@@ -59,25 +60,7 @@ const memoryRowSchema = z
   })
   .strict();
 
-interface MemoryRow {
-  archived_at_ms?: number;
-  archive_reason?: string;
-  content: string;
-  content_hash: string;
-  created_at_ms: number;
-  expires_at_ms?: number;
-  id: string;
-  idempotency_key?: string;
-  observed_at_ms: number;
-  scope: MemoryScope;
-  scope_key: string;
-  sensitivity: MemorySensitivity;
-  source_key: string;
-  source_platform: "slack" | "local";
-  superseded_at_ms?: number;
-  superseded_by_id?: string;
-  type: MemoryType;
-}
+type MemoryRow = z.output<typeof memoryRowSchema>;
 
 export type CreateMemoryInput = MemoryRuntimeContext & {
   content: string;

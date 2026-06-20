@@ -15,7 +15,26 @@ CREATE TABLE IF NOT EXISTS junior_memory_memories (
   superseded_at_ms BIGINT,
   superseded_by_id TEXT,
   archived_at_ms BIGINT,
-  archive_reason TEXT
+  archive_reason TEXT,
+  CONSTRAINT junior_memory_memories_scope_check
+    CHECK (scope IN ('personal', 'conversation')),
+  CONSTRAINT junior_memory_memories_type_check
+    CHECK (
+      type IN (
+        'preference',
+        'identity',
+        'relationship',
+        'knowledge',
+        'context',
+        'event',
+        'task',
+        'observation'
+      )
+    ),
+  CONSTRAINT junior_memory_memories_sensitivity_check
+    CHECK (sensitivity IN ('public', 'personal', 'sensitive')),
+  CONSTRAINT junior_memory_memories_source_platform_check
+    CHECK (source_platform IN ('slack', 'local'))
 );
 
 CREATE INDEX IF NOT EXISTS junior_memory_memories_visible_idx

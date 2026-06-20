@@ -331,4 +331,49 @@ describe("memory plugin SQL storage", () => {
       await fixture.close();
     }
   }, 15_000);
+
+  it("rejects unsupported enum-like values at the storage boundary", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateMemorySchema(fixture);
+
+      await expect(
+        fixture.executor.execute(
+          `
+INSERT INTO junior_memory_memories (
+  id,
+  scope,
+  scope_key,
+  type,
+  sensitivity,
+  content,
+  content_hash,
+  source_platform,
+  source_key,
+  observed_at_ms,
+  created_at_ms
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+)
+`,
+          [
+            "mem_invalid_enum",
+            "workspace",
+            "slack:T123:U123",
+            "knowledge",
+            "public",
+            "Unsupported scope value.",
+            "hash-invalid-enum",
+            "slack",
+            "slack:T123:C123:1718800000.000000",
+            TEST_NOW_MS,
+            TEST_NOW_MS,
+          ],
+        ),
+      ).rejects.toThrow("violates check constraint");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
 });

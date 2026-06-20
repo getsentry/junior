@@ -21,10 +21,15 @@ export const MEMORY_SENSITIVITIES = [
   "personal",
   "sensitive",
 ] as const;
+export const MEMORY_SOURCE_PLATFORMS = [
+  "slack",
+  "local",
+] as const satisfies readonly Platform[];
 
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySensitivity = (typeof MEMORY_SENSITIVITIES)[number];
+export type MemorySourcePlatform = (typeof MEMORY_SOURCE_PLATFORMS)[number];
 
 export type MemoryRuntimeContext =
   | Pick<SlackInvocationContext, "conversationId" | "requester" | "source">
@@ -44,7 +49,7 @@ export interface MemoryRecord {
   scopeKey: string;
   sensitivity: MemorySensitivity;
   sourceKey: string;
-  sourcePlatform: Platform;
+  sourcePlatform: MemorySourcePlatform;
   supersededAtMs?: number;
   supersededById?: string;
   type: MemoryType;
