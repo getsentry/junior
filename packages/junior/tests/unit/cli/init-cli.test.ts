@@ -80,8 +80,11 @@ describe("init cli", () => {
     expect(pluginsFile).toContain(
       'import { defineJuniorPlugins } from "@sentry/junior";',
     );
+    expect(pluginsFile).toContain(
+      'import { createMemoryPlugin } from "@sentry/junior-memory";',
+    );
     expect(pluginsFile).toContain("defineJuniorPlugins(");
-    expect(pluginsFile).toContain('"@sentry/junior-memory"');
+    expect(pluginsFile).toContain("createMemoryPlugin()");
     expect(pluginsFile).toContain('"@sentry/junior-maintenance"');
 
     const pkg = JSON.parse(
