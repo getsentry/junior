@@ -339,6 +339,29 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
+        createRememberForRequesterTool({
+          db: pluginDb(fixture),
+          source: slackContext().source,
+        }).execute!(
+          { content: "I prefer requester context failures to be visible." },
+          { toolCallId: "tool-create-missing-requester" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
+        createRememberForConversationTool({
+          db: pluginDb(fixture),
+          requester: slackContext().requester,
+          source: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+          },
+        }).execute!(
+          { content: "The channel keeps context failures visible." },
+          { toolCallId: "tool-create-missing-conversation" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
         tools.rememberForConversation.execute!(
           {
             content: "Linear is where our channel tracks incidents.",

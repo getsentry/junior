@@ -19,11 +19,15 @@ const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
+  "Conversation memory requires conversation context.",
+  "Conversation-subject memory requires conversation context.",
   "Memory content is required.",
   "Memory content exceeds the maximum length.",
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
+  "Personal memory requires requester context.",
+  "User-subject memory requires requester context.",
 ]);
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
