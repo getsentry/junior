@@ -35,6 +35,7 @@ function writePluginsFile(targetDir: string): void {
     `import { defineJuniorPlugins } from "@sentry/junior";
 
 export const plugins = defineJuniorPlugins([
+  "@sentry/junior-memory",
   "@sentry/junior-maintenance",
 ]);
 `,
@@ -151,6 +152,7 @@ export async function runInit(
     },
     dependencies: {
       "@sentry/junior": "latest",
+      "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       hono: "^4.12.0",
     },
