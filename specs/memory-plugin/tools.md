@@ -18,8 +18,7 @@ must not be exposed through this model-visible tool surface.
 The plugin exposes memory tools from `tools(ctx)`:
 
 ```txt
-rememberForRequester
-rememberForConversation
+createMemory
 removeMemory
 listMemories
 searchMemories
@@ -28,14 +27,14 @@ searchMemories
 Tool schemas must be context-bound. All tools derive requester, source,
 destination, conversation, and tenant/workspace authority from runtime context.
 
-### rememberForRequester
+### createMemory
 
-`rememberForRequester` may accept:
+`createMemory` may accept:
 
 - content
 - optional expiration duration/date
 
-`rememberForRequester` must not accept:
+`createMemory` must not accept:
 
 - requester id
 - actor id
@@ -50,53 +49,20 @@ destination, conversation, and tenant/workspace authority from runtime context.
 - arbitrary subject enum
 - raw source metadata
 
-The tool stores a public/shareable first-person memory about the current
-requester. Tool selection is the memory agent's subject decision; runtime
-context derives source, requester, destination, stored scope, and subject ids.
-The explicit tool path runs the same idempotency, lifecycle, embedding, and
-storage validation paths as passive extraction. Explicit tool requests are
-still subject to install-level memory policy.
+The tool submits one public/shareable memory candidate. The candidate content
+must be self-contained and include the relevant subject in natural language
+when needed. For example, `The requester prefers terse status updates` is a
+valid candidate, while `remember this` is not. The outer agent provides the
+candidate text; it does not select storage scope or subject.
 
-For `personal` scope, `rememberForRequester` may store only public/shareable
-first-person facts authored by the current requester. It must reject attempts
-to create another person's personal memory, such as storing `David is xyz` as a
-personal memory when the current requester is not David. Third-person facts may
-be stored only as conversation-scoped operational knowledge when policy allows
-them.
+The explicit tool path uses runtime context for source and idempotency. It must
+run through the same memory agent/policy adjudication path as passive
+extraction. That adjudicator decides allow/reject, normalized content, subject,
+and whether the memory targets the current requester, active conversation, or
+no valid V1 target.
 
-### rememberForConversation
-
-`rememberForConversation` may accept:
-
-- content
-- optional expiration duration/date
-
-`rememberForConversation` must not accept:
-
-- requester id
-- actor id
-- Slack team id
-- Slack channel id
-- Slack thread timestamp
-- arbitrary conversation id
-- arbitrary owner id
-- arbitrary scope enum
-- arbitrary subject id
-- arbitrary subject display name
-- arbitrary subject enum
-- raw source metadata
-
-The tool stores public/shareable operational knowledge for the active
-conversation. Tool selection is the memory agent's subject decision; runtime
-context derives all channel, thread, scope, source, and subject ids. It must
-not be used to create another person's personal profile memory.
-
-The plugin derives stored scopes and subjects from runtime context and the
-agent/extractor decision. In the first explicit storage slice,
-`rememberForRequester` writes personal `user` subject memories for the current
-requester, and `rememberForConversation` writes conversation subject memories
-for the active conversation. The model cannot provide arbitrary scope enums,
-subject ids, Slack user ids, display names, aliases, or subject classes.
+The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
+display names, aliases, or subject classes.
 
 Content eligibility is an agentic policy decision, not a deterministic regex
 classifier. The fact that a user explicitly asked Junior to remember something

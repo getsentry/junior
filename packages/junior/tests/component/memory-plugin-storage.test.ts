@@ -131,10 +131,9 @@ WHERE table_name = 'junior_memory_memories'
         userText: "remember memory plugin facts",
       });
 
-      expect(tools).toHaveProperty("rememberForRequester");
-      expect(tools).toHaveProperty("rememberForConversation");
+      expect(tools).toHaveProperty("createMemory");
       await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: "I prefer terse status updates.",
           },

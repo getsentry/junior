@@ -9,7 +9,6 @@ import {
 import {
   createMemoryStore,
   type CreateMemoryInput,
-  type CreateMemoryResult,
   type MemoryRecord,
 } from "./store";
 import type { MemoryRuntimeContext } from "./types";
@@ -108,58 +107,14 @@ type MemoryWriteToolInput = {
   expires_at?: string;
 };
 
-function createMemoryWriteTool(
-  context: MemoryToolContext,
-  description: string,
-  write: (
-    store: ReturnType<typeof memoryStore>,
-    input: CreateMemoryInput,
-  ) => Promise<CreateMemoryResult>,
-) {
+function createInput(input: MemoryWriteToolInput, toolCallId: string) {
   return {
-    description,
-    executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        content: Type.String({
-          minLength: 1,
-          maxLength: MAX_TOOL_CONTENT_CHARS,
-          description:
-            "Self-contained public/shareable memory content to store.",
-        }),
-        expires_at: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Optional exact ISO timestamp when this memory should expire.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    execute: async (input, options) => {
-      const store = memoryStore(context);
-      const createInput = {
-        content: requireMemoryContent(input.content),
-        idempotencyKey: `tool:${requireToolCallId(options.toolCallId)}`,
-        ...(input.expires_at
-          ? { expiresAtMs: parseExpiresAt(input.expires_at) }
-          : {}),
-      };
-      const result = await (async () => {
-        try {
-          return await write(store, createInput);
-        } catch (error) {
-          asToolInputError(error);
-        }
-      })();
-      return {
-        ok: true,
-        created: result.created,
-        memory: compactMemory(result.memory),
-      };
-    },
-  } satisfies PluginToolDefinition<MemoryWriteToolInput>;
+    content: requireMemoryContent(input.content),
+    idempotencyKey: `tool:${toolCallId}`,
+    ...(input.expires_at
+      ? { expiresAtMs: parseExpiresAt(input.expires_at) }
+      : {}),
+  } satisfies CreateMemoryInput;
 }
 
 /** Return the model-visible projection without hidden ownership/source fields. */
@@ -175,22 +130,50 @@ function compactMemory(memory: MemoryRecord) {
   };
 }
 
-/** Create a tool that stores a public memory about the current requester. */
-export function createRememberForRequesterTool(context: MemoryToolContext) {
-  return createMemoryWriteTool(
-    context,
-    "Remember a public/shareable first-person fact about the current requester. Use when the requester explicitly asks Junior to remember something about themselves. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, and subject ids.",
-    async (store, input) => await store.createMemory(input),
-  );
-}
-
-/** Create a tool that stores public operational knowledge for this conversation. */
-export function createRememberForConversationTool(context: MemoryToolContext) {
-  return createMemoryWriteTool(
-    context,
-    "Remember public/shareable operational knowledge for the active conversation. Use for durable facts about this conversation's project, workflow, runbooks, or shared preferences. Do not use for another person's personal profile. Runtime context derives all channel, thread, scope, and subject ids.",
-    async (store, input) => await store.createConversationMemory(input),
-  );
+/** Create a tool that submits an explicit memory candidate for storage. */
+export function createMemoryCreateTool(context: MemoryToolContext) {
+  return {
+    description:
+      "Remember a public/shareable fact about the current requester for later. Use only when the requester explicitly asks Junior to remember something about themselves. Pass one self-contained memory candidate; include the requester as the subject in the content itself when needed, such as 'The requester prefers terse updates'. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids.",
+    executionMode: "sequential",
+    inputSchema: Type.Object(
+      {
+        content: Type.String({
+          minLength: 1,
+          maxLength: MAX_TOOL_CONTENT_CHARS,
+          description:
+            "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
+        }),
+        expires_at: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description:
+              "Optional exact ISO timestamp when this memory should expire.",
+          }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
+    execute: async (input, options) => {
+      const store = memoryStore(context);
+      const memoryInput = createInput(
+        input,
+        requireToolCallId(options.toolCallId),
+      );
+      const result = await (async () => {
+        try {
+          return await store.createMemory(memoryInput);
+        } catch (error) {
+          asToolInputError(error);
+        }
+      })();
+      return {
+        ok: true,
+        created: result.created,
+        memory: compactMemory(result.memory),
+      };
+    },
+  } satisfies PluginToolDefinition<MemoryWriteToolInput>;
 }
 
 /** Create a tool that archives a visible memory in the active context. */

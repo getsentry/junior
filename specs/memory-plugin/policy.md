@@ -215,8 +215,7 @@ strict schemas, source visibility, provider allowlists, and lifecycle bounds.
 
 Explicit-only memory creation is not a passive extraction setting. It is the
 normal tool path: when `passiveExtraction` is `false`, the only way to write
-memory is through explicit tools such as `rememberForRequester` or
-`rememberForConversation`.
+memory is through explicit tools such as `createMemory`.
 
 When `passiveExtraction` is `true`, policy allows passive extraction of:
 

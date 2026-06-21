@@ -208,8 +208,7 @@ workflow that can return a model-visible retryable error.
 Every entry point must use the same policy guidance before writing memory
 content:
 
-- `rememberForRequester`
-- `rememberForConversation`
+- `createMemory`
 - passive extraction
 - repair/import workflows
 - tests and fixture helpers that create real memory records

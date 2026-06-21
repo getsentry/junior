@@ -38,8 +38,8 @@ support user-directed memory management.
   boundaries.
 - Automatic recall through `userPrompt` when `autoInjectMemories` is enabled.
 - Passive learning through `observeTurn` plus a plugin background task handler.
-- Explicit `rememberForRequester`, `rememberForConversation`, `removeMemory`,
-  `listMemories`, and `searchMemories` tools.
+- Explicit `createMemory`, `removeMemory`, `listMemories`, and
+  `searchMemories` tools.
 - Scope, attribution, lifecycle, tool, model, public-content, and secret
   rejection rules.
 - V1 implementation order and verification requirements.
@@ -328,9 +328,10 @@ Implement in this order:
    and plugin config/policy access.
 2. Memory plugin package with manifest, schema, migrations, store, and
    install-level policy evaluator.
-3. Explicit `rememberForRequester`, `rememberForConversation`, `listMemories`,
-   `searchMemories`, and `removeMemory` tools with context-bound authority;
-   creation tool selection carries the agent-selected memory applicability.
+3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
+   `removeMemory` tools with context-bound authority. `createMemory` submits a
+   candidate memory; the memory agent/adjudicator owns subject and scope
+   decisions.
 4. Automatic recall from stored memories through `userPrompt` when
    `autoInjectMemories` is enabled, using lexical ranking before embeddings are
    available.

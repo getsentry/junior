@@ -9,11 +9,10 @@ import { PluginToolInputError, type PluginDb } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
+  createMemoryCreateTool,
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
-  createRememberForConversationTool,
-  createRememberForRequesterTool,
 } from "../src/memory-tools";
 import { createMemoryStore } from "../src/store";
 
@@ -225,15 +224,14 @@ ORDER BY created_at_ms ASC
         ...slackContext(),
       };
       const tools = {
+        createMemory: createMemoryCreateTool(context),
         removeMemory: createMemoryRemoveTool(context),
-        rememberForConversation: createRememberForConversationTool(context),
-        rememberForRequester: createRememberForRequesterTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
 
       await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: "I prefer terse status updates.",
           },
@@ -247,20 +245,12 @@ ORDER BY created_at_ms ASC
           content: "I prefer terse status updates.",
         },
       });
-      await expect(
-        tools.rememberForConversation.execute!(
-          {
-            content: "The channel keeps incident notes in Linear.",
-          },
-          { toolCallId: "tool-create-conversation" },
-        ),
-      ).resolves.toMatchObject({
-        ok: true,
-        created: true,
-        memory: {
-          scope: "conversation",
-          content: "The channel keeps incident notes in Linear.",
-        },
+      await createMemoryStore(
+        pluginDb(fixture),
+        slackContext(),
+      ).createConversationMemory({
+        content: "The channel keeps incident notes in Linear.",
+        idempotencyKey: "tool-test:conversation",
       });
 
       await expect(
@@ -314,7 +304,7 @@ ORDER BY created_at_ms ASC
       ).resolves.toEqual({ ok: true, memories: [] });
 
       await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: "I prefer missing retry ids to fail.",
           },
@@ -322,7 +312,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: "I prefer invalid expiration to fail.",
             expires_at: "not-a-date",
@@ -331,7 +321,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: " \n\t ",
           },
@@ -339,45 +329,18 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        createRememberForRequesterTool({
+        createMemoryCreateTool({
           db: pluginDb(fixture),
           source: slackContext().source,
         }).execute!(
-          { content: "I prefer requester context failures to be visible." },
+          {
+            content: "I prefer requester context failures to be visible.",
+          },
           { toolCallId: "tool-create-missing-requester" },
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        createRememberForConversationTool({
-          db: pluginDb(fixture),
-          requester: slackContext().requester,
-          source: {
-            platform: "slack",
-            teamId: "T123",
-            channelId: "C123",
-          },
-        }).execute!(
-          { content: "The channel keeps context failures visible." },
-          { toolCallId: "tool-create-missing-conversation" },
-        ),
-      ).rejects.toThrow(PluginToolInputError);
-      await expect(
-        tools.rememberForConversation.execute!(
-          {
-            content: "Linear is where our channel tracks incidents.",
-          },
-          { toolCallId: "tool-create-linear" },
-        ),
-      ).resolves.toMatchObject({
-        ok: true,
-        created: true,
-        memory: {
-          scope: "conversation",
-          content: "Linear is where our channel tracks incidents.",
-        },
-      });
-      await expect(
-        tools.rememberForRequester.execute!(
+        tools.createMemory.execute!(
           {
             content: "I prefer duplicate-safe retries.",
           },
