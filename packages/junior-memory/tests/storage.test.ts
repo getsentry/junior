@@ -241,7 +241,6 @@ ORDER BY created_at_ms ASC
         ok: true,
         created: true,
         memory: {
-          scope: "personal",
           content: "I prefer terse status updates.",
         },
       });
@@ -259,11 +258,9 @@ ORDER BY created_at_ms ASC
         ok: true,
         memories: [
           expect.objectContaining({
-            scope: "conversation",
             content: "The channel keeps incident notes in Linear.",
           }),
           expect.objectContaining({
-            scope: "personal",
             content: "I prefer terse status updates.",
           }),
         ],
@@ -274,7 +271,6 @@ ORDER BY created_at_ms ASC
         ok: true,
         memories: [
           expect.objectContaining({
-            scope: "conversation",
             content: "The channel keeps incident notes in Linear.",
           }),
         ],
@@ -323,6 +319,31 @@ ORDER BY created_at_ms ASC
       await expect(
         tools.createMemory.execute!(
           {
+            content: "I prefer valid expiration to be stored.",
+            expires_at: "2026-06-19T13:00:00.000Z",
+          },
+          { toolCallId: "tool-create-valid-expiration" },
+        ),
+      ).resolves.toMatchObject({
+        ok: true,
+        created: true,
+        memory: {
+          content: "I prefer valid expiration to be stored.",
+          expiresAtMs: Date.parse("2026-06-19T13:00:00.000Z"),
+        },
+      });
+      await expect(
+        tools.createMemory.execute!(
+          {
+            content: "I prefer hidden fields to fail.",
+            scope: "conversation",
+          } as never,
+          { toolCallId: "tool-create-hidden-field" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
+        tools.createMemory.execute!(
+          {
             content: " \n\t ",
           },
           { toolCallId: "tool-create-empty-content" },
@@ -351,6 +372,47 @@ ORDER BY created_at_ms ASC
         created: false,
         memory: { content: "I prefer terse status updates." },
       });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("scopes tool create idempotency to the runtime source", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const firstTool = createMemoryCreateTool({
+        db: pluginDb(fixture),
+        ...slackContext(),
+      });
+      const secondTool = createMemoryCreateTool({
+        db: pluginDb(fixture),
+        ...slackContext({ threadTs: "1718800001.000000" }),
+      });
+
+      await expect(
+        firstTool.execute!(
+          { content: "I prefer the first remembered fact." },
+          { toolCallId: "tool-create-reused-id" },
+        ),
+      ).resolves.toMatchObject({ created: true });
+      await expect(
+        secondTool.execute!(
+          { content: "I prefer the second remembered fact." },
+          { toolCallId: "tool-create-reused-id" },
+        ),
+      ).resolves.toMatchObject({ created: true });
+
+      await expect(
+        createMemoryStore(pluginDb(fixture), slackContext()).listMemories({}),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "I prefer the second remembered fact.",
+        }),
+        expect.objectContaining({
+          content: "I prefer the first remembered fact.",
+        }),
+      ]);
     } finally {
       await fixture.close();
     }

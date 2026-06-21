@@ -143,7 +143,6 @@ WHERE table_name = 'junior_memory_memories'
         ok: true,
         created: true,
         memory: {
-          scope: "personal",
           content: "I prefer terse status updates.",
         },
       });

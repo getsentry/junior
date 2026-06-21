@@ -12,7 +12,7 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm --filter @sentry/junior lint && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "ast-grep:lint": "ast-grep scan",
     "lint-staged": "lint-staged",
@@ -24,14 +24,14 @@
     "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
-    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-dashboard test",
+    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-dashboard test",
     "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm --filter @sentry/junior-plugin-api typecheck && pnpm --filter @sentry/junior-scheduler typecheck && pnpm --filter @sentry/junior-memory typecheck && pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-dashboard typecheck && pnpm --filter @sentry/junior-testing typecheck && pnpm --filter @sentry/junior-example typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check",
-    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-dashboard test:coverage"
+    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-dashboard test:coverage"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"

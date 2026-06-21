@@ -430,6 +430,9 @@ importers:
       drizzle-kit:
         specifier: "catalog:"
         version: 0.31.10
+      oxlint:
+        specifier: ^1.66.0
+        version: 1.66.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)

@@ -25,6 +25,7 @@
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "test": "vitest run",
@@ -40,6 +41,7 @@
     "@sentry/junior-test-fixtures": "workspace:*",
     "@types/node": "^25.9.1",
     "drizzle-kit": "catalog:",
+    "oxlint": "^1.66.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

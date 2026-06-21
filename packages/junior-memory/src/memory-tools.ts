@@ -1,4 +1,5 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import {
   PluginToolInputError,
   type PluginDb,
@@ -18,8 +19,6 @@ const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
-  "Conversation memory requires conversation context.",
-  "Conversation-subject memory requires conversation context.",
   "Memory content is required.",
   "Memory content exceeds the maximum length.",
   "Memory id is required.",
@@ -82,7 +81,10 @@ function parseExpiresAt(value: string | undefined): number | undefined {
     return undefined;
   }
   const expiresAtMs = Date.parse(value);
-  if (!Number.isFinite(expiresAtMs)) {
+  if (
+    !Number.isFinite(expiresAtMs) ||
+    new Date(expiresAtMs).toISOString() !== value
+  ) {
     throwToolInputError("expires_at must be a valid ISO timestamp.");
   }
   return expiresAtMs;
@@ -107,10 +109,97 @@ type MemoryWriteToolInput = {
   expires_at?: string;
 };
 
-function createInput(input: MemoryWriteToolInput, toolCallId: string) {
+const createMemoryInputSchema = Type.Object(
+  {
+    content: Type.String({
+      minLength: 1,
+      maxLength: MAX_TOOL_CONTENT_CHARS,
+      description:
+        "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
+    }),
+    expires_at: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description:
+          "Optional exact ISO timestamp when this memory should expire.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const removeMemoryInputSchema = Type.Object(
+  {
+    id: Type.String({
+      minLength: 1,
+      description: "Memory id or unambiguous short id prefix to remove.",
+    }),
+  },
+  { additionalProperties: false },
+);
+
+const listMemoriesInputSchema = Type.Object(
+  {
+    limit: Type.Optional(
+      Type.Number({
+        minimum: 1,
+        maximum: 50,
+        description: "Maximum number of visible memories to return.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const searchMemoriesInputSchema = Type.Object(
+  {
+    query: Type.String({
+      minLength: 1,
+      description: "Search query for visible memory content.",
+    }),
+    limit: Type.Optional(
+      Type.Number({
+        minimum: 1,
+        maximum: 50,
+        description: "Maximum number of matching memories to return.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+function parseToolInput<T>(schema: TSchema, input: unknown): T {
+  try {
+    if (!Value.Check(schema, input)) {
+      throw new Error("Input does not match memory tool schema.");
+    }
+    return Value.Parse(schema, input) as T;
+  } catch (error) {
+    throw new PluginToolInputError("Invalid memory tool input.", {
+      cause: error,
+    });
+  }
+}
+
+function sourceIdempotencyKey(context: MemoryToolContext): string {
+  if (context.source.platform === "local") {
+    return context.source.conversationId;
+  }
+  const threadKey = context.source.threadTs ?? context.source.messageTs;
+  if (!threadKey) {
+    throwToolInputError("Memory creation requires source message context.");
+  }
+  return `slack:${context.source.teamId}:${context.source.channelId}:${threadKey}`;
+}
+
+function createInput(
+  context: MemoryToolContext,
+  input: MemoryWriteToolInput,
+  toolCallId: string,
+) {
   return {
     content: requireMemoryContent(input.content),
-    idempotencyKey: `tool:${toolCallId}`,
+    idempotencyKey: `tool:${sourceIdempotencyKey(context)}:${toolCallId}`,
     ...(input.expires_at
       ? { expiresAtMs: parseExpiresAt(input.expires_at) }
       : {}),
@@ -121,7 +210,6 @@ function createInput(input: MemoryWriteToolInput, toolCallId: string) {
 function compactMemory(memory: MemoryRecord) {
   return {
     id: memory.id,
-    scope: memory.scope,
     content: memory.content,
     createdAtMs: memory.createdAtMs,
     ...(memory.expiresAtMs !== undefined
@@ -136,28 +224,16 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
     description:
       "Remember a public/shareable fact about the current requester for later. Use only when the requester explicitly asks Junior to remember something about themselves. Pass one self-contained memory candidate; include the requester as the subject in the content itself when needed, such as 'The requester prefers terse updates'. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids.",
     executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        content: Type.String({
-          minLength: 1,
-          maxLength: MAX_TOOL_CONTENT_CHARS,
-          description:
-            "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
-        }),
-        expires_at: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Optional exact ISO timestamp when this memory should expire.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: createMemoryInputSchema,
     execute: async (input, options) => {
+      const parsedInput = parseToolInput<MemoryWriteToolInput>(
+        createMemoryInputSchema,
+        input,
+      );
       const store = memoryStore(context);
       const memoryInput = createInput(
-        input,
+        context,
+        parsedInput,
         requireToolCallId(options.toolCallId),
       );
       const result = await (async () => {
@@ -182,20 +258,16 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
     description:
       "Forget one memory visible in the active context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
     executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        id: Type.String({
-          minLength: 1,
-          description: "Memory id or unambiguous short id prefix to remove.",
-        }),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: removeMemoryInputSchema,
     execute: async (input) => {
+      const parsedInput = parseToolInput<{ id: string }>(
+        removeMemoryInputSchema,
+        input,
+      );
       const memory = await (async () => {
         try {
           return await memoryStore(context).archiveMemory({
-            id: input.id,
+            id: parsedInput.id,
             reason: "tool_removed",
           });
         } catch (error) {
@@ -216,21 +288,14 @@ export function createMemoryListTool(context: MemoryToolContext) {
     description:
       "List active memories visible in the current context. Use when the user asks what Junior remembers or when memory ids are needed before removing a memory.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        limit: Type.Optional(
-          Type.Number({
-            minimum: 1,
-            maximum: 50,
-            description: "Maximum number of visible memories to return.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: listMemoriesInputSchema,
     execute: async (input) => {
+      const parsedInput = parseToolInput<{ limit?: number }>(
+        listMemoriesInputSchema,
+        input,
+      );
       const memories = await memoryStore(context).listMemories({
-        limit: boundedLimit(input.limit, DEFAULT_RESULT_LIMIT),
+        limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
       return {
         ok: true,
@@ -246,26 +311,15 @@ export function createMemorySearchTool(context: MemoryToolContext) {
     description:
       "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current requester and active conversation scopes.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        query: Type.String({
-          minLength: 1,
-          description: "Search query for visible memory content.",
-        }),
-        limit: Type.Optional(
-          Type.Number({
-            minimum: 1,
-            maximum: 50,
-            description: "Maximum number of matching memories to return.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: searchMemoriesInputSchema,
     execute: async (input) => {
+      const parsedInput = parseToolInput<{ limit?: number; query: string }>(
+        searchMemoriesInputSchema,
+        input,
+      );
       const memories = await memoryStore(context).searchMemories({
-        query: input.query,
-        limit: boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT),
+        query: parsedInput.query,
+        limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });
       return {
         ok: true,

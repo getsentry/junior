@@ -32,7 +32,7 @@ destination, conversation, and tenant/workspace authority from runtime context.
 `createMemory` may accept:
 
 - content
-- optional expiration duration/date
+- optional exact `expires_at` ISO timestamp
 
 `createMemory` must not accept:
 
