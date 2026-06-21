@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Output Contract", slackEvals, (it) => {
   it("when asked for a structured overview, avoid hash markdown headings", async ({

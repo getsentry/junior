@@ -12,8 +12,11 @@
     "noEmit": true,
     "paths": {
       "@/*": ["../junior/src/*"],
-      "@junior-tests/*": ["../junior/tests/*"]
+      "@junior-tests/*": ["../junior/tests/*"],
+      "@sentry/junior-memory": ["../junior-memory/src/index.ts"],
+      "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"],
+      "@sentry/junior-scheduler": ["../junior-scheduler/src/index.ts"]
     }
   },
-  "include": ["evals/**/*.ts", "tests/**/*.ts"]
+  "include": ["evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
 }

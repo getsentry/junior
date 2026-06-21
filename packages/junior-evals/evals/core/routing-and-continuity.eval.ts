@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({

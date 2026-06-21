@@ -1,7 +1,7 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import type { HarnessRun } from "vitest-evals/harness";
 import { expect } from "vitest";
-import { rubric, slackEvals, threadMessage } from "../helpers";
+import { rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 type EvalRun = HarnessRun;
 
@@ -64,7 +64,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     const result = await run({
       overrides: {
         auto_complete_mcp_oauth: ["eval-auth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        plugin_dirs: ["fixtures/plugins"],
       },
       events: [
         threadMessage(
@@ -109,7 +109,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     const result = await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        plugin_dirs: ["fixtures/plugins"],
       },
       events: [
         threadMessage(
@@ -154,7 +154,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
     const result = await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
-        plugin_dirs: ["evals/fixtures/plugins"],
+        plugin_dirs: ["fixtures/plugins"],
       },
       events: [
         threadMessage(

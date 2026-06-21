@@ -1,8 +1,8 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Skill Invocation Control", slackEvals, (it) => {
-  const skillDirs = ["evals/fixtures/skills"];
+  const skillDirs = ["fixtures/skills"];
 
   it("does not auto-select a user-callable skill even when contextually relevant", async ({
     run,

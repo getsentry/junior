@@ -50,6 +50,7 @@ import {
   schedulerPlugin,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
+import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
@@ -367,7 +368,10 @@ function toEvalToolInvocation(input: {
   toolName: string;
   params: Record<string, unknown>;
 }): EvalToolInvocation {
-  const invocation: EvalToolInvocation = { tool: input.toolName };
+  const invocation: EvalToolInvocation = {
+    tool: input.toolName,
+    arguments: input.params,
+  };
 
   if (input.toolName.startsWith("slackSchedule")) {
     invocation.arguments = Object.fromEntries(
@@ -1873,6 +1877,9 @@ export async function runEvalScenario(
       pluginDbModule.getPluginDbForRegistration;
     const schedulerSql = await createEvalSchedulerSqlFixture();
     schedulerSqlFixture = schedulerSql.fixture;
+    const usesMemoryPlugin = Boolean(
+      scenario.overrides?.plugin_packages?.includes("@sentry/junior-memory"),
+    );
     pluginDbSpy = vi
       .spyOn(pluginDbModule, "getPluginDbForRegistration")
       .mockImplementation((plugin) =>
@@ -1884,11 +1891,13 @@ export async function runEvalScenario(
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
       schedulerPlugin(),
+      ...(usesMemoryPlugin ? [createMemoryPlugin()] : []),
       ...currentPlugins.filter(
-        (plugin) => plugin.manifest.name !== "scheduler",
+        (plugin) =>
+          plugin.manifest.name !== "scheduler" &&
+          (!usesMemoryPlugin || plugin.manifest.name !== "memory"),
       ),
     ]);
-
     const slackAdapter = new FakeSlackAdapter();
     const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];

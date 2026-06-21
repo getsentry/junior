@@ -8,7 +8,6 @@ import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import {
   toJsonValue,
   type Harness,
-  type HarnessMetadata,
   type HarnessRun,
   type JsonValue,
   type NormalizedMessage,
@@ -358,7 +357,7 @@ const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
 
 const judgeHarness = createJudgeHarness({
   name: "slack-rubric-judge-model",
-  run: async ({ prompt, system }, { metadata }) => {
+  run: async ({ prompt, system }) => {
     const { text } = await completeText({
       modelId: EVAL_JUDGE_MODEL_ID,
       system,
@@ -370,7 +369,6 @@ const judgeHarness = createJudgeHarness({
         },
       ],
       temperature: 0,
-      metadata,
     });
     return text;
   },
@@ -475,7 +473,6 @@ export const RubricJudge = createJudge(
   }: JudgeContext<
     SlackEvalInput,
     JsonValue | undefined,
-    HarnessMetadata,
     typeof slackHarness
   >) => {
     if (!runJudge) {
@@ -483,18 +480,13 @@ export const RubricJudge = createJudge(
     }
     const object = parseJudgeResult(
       String(
-        await runJudge(
-          {
-            prompt: formatJudgePrompt(
-              serializeSession(session),
-              formatRubric(input.criteria),
-            ),
-            system: EVAL_SYSTEM,
-          },
-          {
-            metadata: { judge: "RubricJudge" },
-          },
-        ),
+        await runJudge({
+          prompt: formatJudgePrompt(
+            serializeSession(session),
+            formatRubric(input.criteria),
+          ),
+          system: EVAL_SYSTEM,
+        }),
       ),
     );
     const answer = object.answer as keyof typeof CHOICE_SCORES;

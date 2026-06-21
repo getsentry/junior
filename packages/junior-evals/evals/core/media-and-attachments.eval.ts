@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Media and Attachments", slackEvals, (it) => {
   it("when the user asks for an image, attach an image instead of replying with text alone", async ({

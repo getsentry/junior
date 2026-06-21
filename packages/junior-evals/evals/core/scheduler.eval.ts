@@ -1,5 +1,10 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, scheduledTaskDue, slackEvals } from "../helpers";
+import {
+  mention,
+  rubric,
+  scheduledTaskDue,
+  slackEvals,
+} from "../../src/helpers";
 
 describeEval("Scheduler", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({

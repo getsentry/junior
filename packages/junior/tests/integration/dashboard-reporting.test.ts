@@ -14,7 +14,7 @@ const SYSTEM_MESSAGE = {
 };
 
 const ORIGINAL_ENV = { ...process.env };
-const USE_POSTGRES_HARNESS = Boolean(process.env.JUNIOR_TEST_DATABASE_URL);
+const USE_POSTGRES_HARNESS = Boolean(process.env.DATABASE_URL);
 
 async function createStateReportingReader() {
   const { createStateConversationStore } =

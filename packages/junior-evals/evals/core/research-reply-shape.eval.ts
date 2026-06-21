@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Research Reply Shape", slackEvals, (it) => {
   it("when summarizing multiple sources, show initial progress and return a concise answer without process chatter", async ({

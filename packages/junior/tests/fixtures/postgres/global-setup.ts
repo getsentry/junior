@@ -5,6 +5,7 @@ import {
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 import { createPostgresJuniorSqlExecutor } from "@/chat/sql/postgres";
 
 declare module "vitest" {
@@ -13,15 +14,30 @@ declare module "vitest" {
   }
 }
 
-const TEST_DATABASE_URL = process.env.JUNIOR_TEST_DATABASE_URL;
+const TEST_DATABASE_URL = process.env.DATABASE_URL;
 
-/** Provide the migrated Postgres harness when real database tests are enabled. */
-export default async function setup(
+function assertLocalDatabaseUrl(databaseUrl: string): void {
+  const { hostname } = new URL(databaseUrl);
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    throw new Error(
+      `Junior test database URL must point at localhost or 127.0.0.1, got ${hostname}`,
+    );
+  }
+}
+
+export interface JuniorPostgresHarnessOptions {
+  migrateTemplate?(executor: JuniorSqlMigrationExecutor): Promise<void>;
+}
+
+/** Provide the migrated Junior Postgres harness when real database tests are enabled. */
+export async function setupJuniorPostgresHarness(
   project: TestProject,
+  options: JuniorPostgresHarnessOptions = {},
 ): Promise<() => Promise<void>> {
   if (!TEST_DATABASE_URL) {
     return async () => undefined;
   }
+  assertLocalDatabaseUrl(TEST_DATABASE_URL);
 
   const config = await setupPostgresTemplate({
     applicationName: "junior-vitest",
@@ -30,6 +46,7 @@ export default async function setup(
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
         await migrateSchema(executor);
+        await options.migrateTemplate?.(executor);
       } finally {
         await executor.close();
       }
@@ -42,3 +59,5 @@ export default async function setup(
     await cleanupPostgresHarness(config);
   };
 }
+
+export default setupJuniorPostgresHarness;

@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {

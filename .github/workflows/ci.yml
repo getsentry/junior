@@ -44,7 +44,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      JUNIOR_TEST_DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4

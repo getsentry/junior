@@ -11,6 +11,7 @@
   "devDependencies": {
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
@@ -20,6 +21,6 @@
     "tinyrainbow": "^3.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "vitest-evals": "0.11.0"
+    "vitest-evals": "0.13.1"
   }
 }

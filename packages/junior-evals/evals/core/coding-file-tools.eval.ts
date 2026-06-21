@@ -1,8 +1,8 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 const codingFixtureOverrides = {
-  skill_dirs: ["evals/fixtures/coding-skills"],
+  skill_dirs: ["fixtures/coding-skills"],
 };
 
 describeEval("Coding File Tools", slackEvals, (it) => {

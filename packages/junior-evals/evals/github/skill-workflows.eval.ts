@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   it("when asked about PR auth sequencing, mention push auth before PR auth", async ({

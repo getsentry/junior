@@ -5,10 +5,9 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@": path.resolve(juniorPackageRoot, "src"),
-      "@junior-tests": path.resolve(juniorPackageRoot, "tests"),
-    },
+    // Vite 8 resolves tsconfig `paths` natively here:
+    // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
+    tsconfigPaths: true,
   },
   test: {
     environment: "node",

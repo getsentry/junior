@@ -47,9 +47,10 @@ Not in scope:
   - `evals/core/skill-infra.eval.ts`
 - Plugin eval cases:
   - `evals/github/skill-workflows.eval.ts`
+  - `evals/memory/workflows.eval.ts`
   - `evals/sentry/skill-workflows.eval.ts`
-- Helpers and event builders: `evals/helpers.ts`
-- Harness/runtime adapter: `evals/behavior-harness.ts`
+- Helpers and event builders: `src/helpers.ts`
+- Harness/runtime adapter: `src/behavior-harness.ts`
 
 ## Execution Model
 
@@ -116,7 +117,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 ## Authoring Rules
 
 - Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `describeEval()` with `slackEvals`.
-- Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
+- Use event builders (`mention`, `threadMessage`, `threadStart`) from `src/helpers.ts`.
 - Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
@@ -186,7 +187,7 @@ Avoid:
 
 ```typescript
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../helpers";
+import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Routing", slackEvals, (it) => {
   it("when explicitly mentioned, post one direct reply", async ({ run }) => {

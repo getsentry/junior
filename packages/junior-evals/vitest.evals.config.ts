@@ -31,24 +31,20 @@ process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@sentry/junior-plugin-api": path.resolve(
-        workspaceRoot,
-        "packages/junior-plugin-api/src/index.ts",
-      ),
-      "@sentry/junior-scheduler": path.resolve(
-        workspaceRoot,
-        "packages/junior-scheduler/src/index.ts",
-      ),
-    },
+    // Vite 8 resolves tsconfig `paths` natively here:
+    // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
     tsconfigPaths: true,
   },
   test: {
     environment: "node",
     fileParallelism: false,
+    globalSetup: [path.resolve(__dirname, "postgres-global-setup.ts")],
     include: ["evals/**/*.eval.ts"],
     maxWorkers: 1,
-    setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
+    setupFiles: [
+      path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+    ],
     reporters: [new DefaultEvalReporter()],
     testTimeout: EVAL_TEST_TIMEOUT_MS,
   },

@@ -1,6 +1,6 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
   const followUpThread = {

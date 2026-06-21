@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadStart } from "../helpers";
+import { mention, rubric, slackEvals, threadStart } from "../../src/helpers";
 
 describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   it("when an assistant thread starts, set title and prompts without posting a reply", async ({

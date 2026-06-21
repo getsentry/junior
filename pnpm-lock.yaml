@@ -363,6 +363,9 @@ importers:
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../junior-github
+      "@sentry/junior-memory":
+        specifier: workspace:*
+        version: link:../junior-memory
       "@sentry/junior-plugin-api":
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -391,8 +394,8 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(tsx@4.22.3)
       vitest-evals:
-        specifier: 0.11.0
-        version: 0.11.0(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))
+        specifier: 0.13.1
+        version: 0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))
 
   packages/junior-github:
     dependencies:
@@ -5438,6 +5441,18 @@ packages:
     resolution:
       {
         integrity: sha512-GpS3tPwUeDJCkrKbMNtS2XLRFgfxTlN7YNUL+Bo23+fGolrDw6Oq79R3yvxTYgqRaJMGSEqC7iMw6mj6I5loxg==,
+      }
+
+  "@vitest-evals/core@0.13.1":
+    resolution:
+      {
+        integrity: sha512-YX5bRG+J0GCzwJiNoq7UHJVRrtqx07lF3cYUrHnvfRLrn/R5nfBkFkm9eluAYlMFbWehFw+fFIW7bPuyL+3pMg==,
+      }
+
+  "@vitest-evals/report-ui@0.13.1":
+    resolution:
+      {
+        integrity: sha512-uA0OSe8UFhSP8i92hUNSFbdJ7Lwi0b06DVfvPb9lnEADgZrExv8IiHy9mkRuU+aMwo7zQI75ZZz1qx07XzPczA==,
       }
 
   "@vitest/coverage-v8@4.1.7":
@@ -12162,11 +12177,12 @@ packages:
       vite:
         optional: true
 
-  vitest-evals@0.11.0:
+  vitest-evals@0.13.1:
     resolution:
       {
-        integrity: sha512-XkLiIMYPH6f+R5h+Is4tSafhRr8NCane3P50/y+rXJShE6RSAa8hppww2OwzmeQ/LEP4phqXXgGwt8HykfN0yQ==,
+        integrity: sha512-UCA3drMFVxtYB3F/0AjQEBSp7EPc2Du2Au85kLHtQg4V6p2mpifP4m5VEfwgxVXq8UfrnsMk8SJvOB/5EiDC0g==,
       }
+    hasBin: true
     peerDependencies:
       ai: 6.0.190
       tinyrainbow: ">=2 <4"
@@ -15932,6 +15948,14 @@ snapshots:
       ajv: 8.6.3
       json-schema-to-ts: 1.6.4
       ts-morph: 12.0.0
+
+  "@vitest-evals/core@0.13.1":
+    dependencies:
+      zod: 4.4.3
+
+  "@vitest-evals/report-ui@0.13.1":
+    dependencies:
+      "@vitest-evals/core": 0.13.1
 
   "@vitest/coverage-v8@4.1.7(vitest@4.1.7)":
     dependencies:
@@ -20707,8 +20731,10 @@ snapshots:
     optionalDependencies:
       vite: 7.3.3(tsx@4.22.3)
 
-  vitest-evals@0.11.0(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3)):
+  vitest-evals@0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3)):
     dependencies:
+      "@vitest-evals/core": 0.13.1
+      "@vitest-evals/report-ui": 0.13.1
       tinyrainbow: 3.1.0
       vitest: 4.1.7(tsx@4.22.3)
 

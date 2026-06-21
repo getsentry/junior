@@ -10,16 +10,30 @@ const { Pool } = pg;
 const TEST_DATABASE_RESET_LOCK_ID = 287442;
 const schemaName = "public";
 const harnessConfig = inject("juniorPostgresHarness");
+const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalJuniorDatabaseUrl = process.env.JUNIOR_DATABASE_URL;
 const originalJuniorDatabaseDriver = process.env.JUNIOR_DATABASE_DRIVER;
 let resetPool: pg.Pool | undefined;
 
+function assertLocalDatabaseUrl(databaseUrl: string): void {
+  const { hostname } = new URL(databaseUrl);
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    throw new Error(
+      `Junior test database URL must point at localhost or 127.0.0.1, got ${hostname}`,
+    );
+  }
+}
+
 if (harnessConfig) {
-  process.env.JUNIOR_DATABASE_URL = await getPostgresWorkerDatabaseUrl(
+  const databaseUrl = await getPostgresWorkerDatabaseUrl(
     parsePostgresHarnessConfig(harnessConfig),
   );
+  assertLocalDatabaseUrl(databaseUrl);
+  process.env.DATABASE_URL = databaseUrl;
+  delete process.env.JUNIOR_DATABASE_URL;
   process.env.JUNIOR_DATABASE_DRIVER = "postgres";
   resetPool = new Pool({
-    connectionString: process.env.JUNIOR_DATABASE_URL,
+    connectionString: process.env.DATABASE_URL,
     max: 1,
   });
 }
@@ -82,6 +96,16 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await resetPool?.end();
+  if (originalDatabaseUrl === undefined) {
+    delete process.env.DATABASE_URL;
+  } else {
+    process.env.DATABASE_URL = originalDatabaseUrl;
+  }
+  if (originalJuniorDatabaseUrl === undefined) {
+    delete process.env.JUNIOR_DATABASE_URL;
+  } else {
+    process.env.JUNIOR_DATABASE_URL = originalJuniorDatabaseUrl;
+  }
   if (originalJuniorDatabaseDriver === undefined) {
     delete process.env.JUNIOR_DATABASE_DRIVER;
   } else {

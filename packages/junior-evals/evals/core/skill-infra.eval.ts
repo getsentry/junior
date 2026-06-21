@@ -1,12 +1,12 @@
 import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("Skill Infrastructure", slackEvals, (it) => {
   it("when the candidate brief command runs, return one candidate brief reply", async ({
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { skill_dirs: ["fixtures/skills"] },
       events: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
         pass: [
@@ -28,7 +28,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { skill_dirs: ["fixtures/skills"] },
       events: [
         mention("/candidate-brief Alice Example", {
           thread: candidateBriefThread,
@@ -53,7 +53,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { skill_dirs: ["fixtures/skills"] },
       events: [mention("/list-working-directory")],
       criteria: rubric({
         pass: [
@@ -69,7 +69,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      overrides: { skill_dirs: ["fixtures/skills"] },
       events: [
         mention(
           "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
@@ -95,7 +95,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: {
-        plugin_dirs: ["evals/fixtures/plugins"],
+        plugin_dirs: ["fixtures/plugins"],
       },
       events: [
         mention(

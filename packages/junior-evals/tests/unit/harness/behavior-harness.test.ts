@@ -63,7 +63,7 @@ vi.mock("@/chat/app/factory", () => ({
 import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
-} from "../../../evals/behavior-harness";
+} from "../../../src/behavior-harness";
 
 describe("behavior harness", () => {
   afterAll(() => {
@@ -310,7 +310,7 @@ describe("behavior harness", () => {
       runEvalScenario({
         events: [],
         overrides: {
-          plugin_dirs: ["evals/fixtures/plugins"],
+          plugin_dirs: ["fixtures/plugins"],
           plugin_packages: ["../bad-package"],
         },
       }),
