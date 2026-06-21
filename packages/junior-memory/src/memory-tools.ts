@@ -12,6 +12,10 @@ import {
   type CreateMemoryInput,
   type MemoryRecord,
 } from "./store";
+import {
+  parseMemoryAdjudicationResult,
+  type MemoryAdjudicator,
+} from "./adjudicator";
 import type { MemoryRuntimeContext } from "./types";
 
 const MAX_TOOL_CONTENT_CHARS = 4_000;
@@ -19,6 +23,8 @@ const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
+  "Conversation memory requires conversation context.",
+  "Conversation-subject memory requires conversation context.",
   "Memory content is required.",
   "Memory content exceeds the maximum length.",
   "Memory id is required.",
@@ -30,6 +36,7 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
 export interface MemoryToolContext {
+  adjudicator?: MemoryAdjudicator;
   conversationId?: string;
   db: PluginDb;
   requester?: Requester;
@@ -67,6 +74,15 @@ function memoryRuntimeContext(
 
 function memoryStore(context: MemoryToolContext) {
   return createMemoryStore(context.db, memoryRuntimeContext(context));
+}
+
+function requireAdjudicator(
+  adjudicator: MemoryAdjudicator | undefined,
+): MemoryAdjudicator {
+  if (!adjudicator) {
+    throwToolInputError("Memory policy adjudication is unavailable.");
+  }
+  return adjudicator;
 }
 
 function boundedLimit(value: number | undefined, fallback: number): number {
@@ -194,14 +210,14 @@ function sourceIdempotencyKey(context: MemoryToolContext): string {
 
 function createInput(
   context: MemoryToolContext,
-  input: MemoryWriteToolInput,
+  input: { content: string; expiresAtMs?: number },
   toolCallId: string,
 ) {
   return {
     content: requireMemoryContent(input.content),
     idempotencyKey: `tool:${sourceIdempotencyKey(context)}:${toolCallId}`,
-    ...(input.expires_at
-      ? { expiresAtMs: parseExpiresAt(input.expires_at) }
+    ...(input.expiresAtMs !== undefined
+      ? { expiresAtMs: input.expiresAtMs }
       : {}),
   } satisfies CreateMemoryInput;
 }
@@ -231,13 +247,52 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
         input,
       );
       const store = memoryStore(context);
+      const runtimeContext = memoryRuntimeContext(context);
+      const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
+      const adjudicator = requireAdjudicator(context.adjudicator);
+      const adjudication = await (async () => {
+        try {
+          return parseMemoryAdjudicationResult(
+            await adjudicator.adjudicateCreateMemory({
+              content: requireMemoryContent(parsedInput.content),
+              ...(requestedExpiresAtMs !== undefined
+                ? { expiresAtMs: requestedExpiresAtMs }
+                : {}),
+              runtimeContext,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof PluginToolInputError) {
+            throw error;
+          }
+          throw new PluginToolInputError(
+            "Memory policy adjudication returned invalid output.",
+            { cause: error },
+          );
+        }
+      })();
+      if (adjudication.decision === "reject") {
+        throw new PluginToolInputError(
+          `Memory was not stored: ${adjudication.reason}`,
+        );
+      }
       const memoryInput = createInput(
         context,
-        parsedInput,
+        {
+          content: adjudication.content,
+          ...(adjudication.expiresAtMs !== undefined
+            ? { expiresAtMs: adjudication.expiresAtMs }
+            : requestedExpiresAtMs !== undefined
+              ? { expiresAtMs: requestedExpiresAtMs }
+              : {}),
+        },
         requireToolCallId(options.toolCallId),
       );
       const result = await (async () => {
         try {
+          if (adjudication.target === "conversation") {
+            return await store.createConversationMemory(memoryInput);
+          }
           return await store.createMemory(memoryInput);
         } catch (error) {
           asToolInputError(error);

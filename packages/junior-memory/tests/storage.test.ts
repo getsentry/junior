@@ -8,6 +8,7 @@ import {
 import { PluginToolInputError, type PluginDb } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
+import type { MemoryAdjudicator } from "../src/adjudicator";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
@@ -95,6 +96,30 @@ function localContext(
     },
   };
 }
+
+function allowMemory(target: "requester" | "conversation"): MemoryAdjudicator {
+  return {
+    adjudicateCreateMemory(candidate) {
+      return {
+        decision: "allow",
+        target,
+        content: candidate.content,
+        ...(candidate.expiresAtMs !== undefined
+          ? { expiresAtMs: candidate.expiresAtMs }
+          : {}),
+      };
+    },
+  };
+}
+
+const rejectMemory: MemoryAdjudicator = {
+  adjudicateCreateMemory() {
+    return {
+      decision: "reject",
+      reason: "not public/shareable",
+    };
+  },
+};
 
 describe("memory plugin storage", () => {
   it("persists, recalls, and archives visible memories", async () => {
@@ -220,6 +245,7 @@ ORDER BY created_at_ms ASC
 
     try {
       const context = {
+        adjudicator: allowMemory("requester"),
         db: pluginDb(fixture),
         ...slackContext(),
       };
@@ -244,12 +270,22 @@ ORDER BY created_at_ms ASC
           content: "I prefer terse status updates.",
         },
       });
-      await createMemoryStore(
-        pluginDb(fixture),
-        slackContext(),
-      ).createConversationMemory({
-        content: "The channel keeps incident notes in Linear.",
-        idempotencyKey: "tool-test:conversation",
+      await expect(
+        createMemoryCreateTool({
+          ...context,
+          adjudicator: allowMemory("conversation"),
+        }).execute!(
+          {
+            content: "The channel keeps incident notes in Linear.",
+          },
+          { toolCallId: "tool-create-conversation" },
+        ),
+      ).resolves.toMatchObject({
+        ok: true,
+        created: true,
+        memory: {
+          content: "The channel keeps incident notes in Linear.",
+        },
       });
 
       await expect(
@@ -352,6 +388,30 @@ ORDER BY created_at_ms ASC
       await expect(
         createMemoryCreateTool({
           db: pluginDb(fixture),
+          ...slackContext(),
+        }).execute!(
+          {
+            content: "I prefer missing adjudicators to fail closed.",
+          },
+          { toolCallId: "tool-create-missing-adjudicator" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
+        createMemoryCreateTool({
+          adjudicator: rejectMemory,
+          db: pluginDb(fixture),
+          ...slackContext(),
+        }).execute!(
+          {
+            content: "I prefer rejected memories not to be stored.",
+          },
+          { toolCallId: "tool-create-rejected" },
+        ),
+      ).rejects.toThrow(PluginToolInputError);
+      await expect(
+        createMemoryCreateTool({
+          adjudicator: allowMemory("requester"),
+          db: pluginDb(fixture),
           source: slackContext().source,
         }).execute!(
           {
@@ -382,10 +442,12 @@ ORDER BY created_at_ms ASC
 
     try {
       const firstTool = createMemoryCreateTool({
+        adjudicator: allowMemory("requester"),
         db: pluginDb(fixture),
         ...slackContext(),
       });
       const secondTool = createMemoryCreateTool({
+        adjudicator: allowMemory("requester"),
         db: pluginDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
       });

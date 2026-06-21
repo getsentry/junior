@@ -79,6 +79,9 @@ If policy rejects an explicit memory request, the tool should return a
 model-visible input error that explains the rejection at a high level without
 echoing sensitive content.
 
+If policy adjudication is unavailable or returns malformed output, the tool
+must fail closed and must not write the candidate.
+
 ### removeMemory
 
 `removeMemory` accepts a memory id or short id prefix and archives only a memory

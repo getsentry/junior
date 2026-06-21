@@ -1,7 +1,10 @@
 import path from "node:path";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { createMemoryPlugin } from "@sentry/junior-memory";
+import {
+  createMemoryPlugin,
+  type MemoryAdjudicator,
+} from "@sentry/junior-memory";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import {
@@ -63,6 +66,19 @@ async function migrateMemorySchema(
   );
 }
 
+const allowRequesterMemory: MemoryAdjudicator = {
+  adjudicateCreateMemory(candidate) {
+    return {
+      decision: "allow",
+      target: "requester",
+      content: candidate.content,
+      ...(candidate.expiresAtMs !== undefined
+        ? { expiresAtMs: candidate.expiresAtMs }
+        : {}),
+    };
+  },
+};
+
 describe("memory plugin host wiring", () => {
   it("applies packaged migrations through plugin discovery", async () => {
     const stateAdapter = createMemoryState();
@@ -103,7 +119,9 @@ WHERE table_name = 'junior_memory_memories'
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([createMemoryPlugin()]);
+    const previousPlugins = setPlugins([
+      createMemoryPlugin({ adjudicator: allowRequesterMemory }),
+    ]);
     NEON.executor = fixture.executor;
 
     try {
