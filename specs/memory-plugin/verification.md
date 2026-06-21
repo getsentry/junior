@@ -116,9 +116,9 @@ Use integration tests for:
 - passive `observeTurn` enqueues an extraction task without failing delivery
 - extraction task payloads contain references rather than raw private text
 - extraction task handlers can run in a separate worker invocation
-- policy adjudication rejects extracted candidates that violate installed
+- memory agent review rejects extracted candidates that violate installed
   workplace policy
-- malformed or failed policy adjudication fails closed for passive extraction
+- malformed or failed memory agent review fails closed for passive extraction
 - duplicate observation or task delivery of the same turn stores accepted
   memories once
 
@@ -136,7 +136,7 @@ Use unit tests for:
 - secret detection
 - storable-fact validation
 - explicit-tool policy filtering
-- policy adjudication output parsing
+- memory agent review output parsing
 - TTL calculation
 - visibility predicates
 - semantic duplicate detection

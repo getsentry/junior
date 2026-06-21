@@ -86,8 +86,8 @@ boundaries.
 The plugin must validate structured extraction output after model generation and
 before storage. It must reject malformed, low-confidence, out-of-scope,
 secret-like, or incoherent candidates even if the model marks them as valid.
-If a second policy-adjudication model is used, its output is also guidance, not
-the final security boundary.
+If memory agent review uses a second model call, its output is also guidance,
+not the final security boundary.
 
 The embedding provider receives only memory text or retrieval query text needed
 for the operation. It must not receive raw provider credentials, raw Slack

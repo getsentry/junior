@@ -13,10 +13,11 @@ import {
   type MemoryRecord,
 } from "./store";
 import {
-  parseMemoryAdjudicationResult,
-  type MemoryAdjudicator,
-} from "./adjudicator";
-import type { MemoryRuntimeContext } from "./types";
+  parseCreateMemoryRequest,
+  parseMemoryReview,
+  type MemoryAgent,
+} from "./agent";
+import { memoryRuntimeContextSchema, type MemoryRuntimeContext } from "./types";
 
 const MAX_TOOL_CONTENT_CHARS = 4_000;
 const DEFAULT_RESULT_LIMIT = 20;
@@ -36,7 +37,7 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
 export interface MemoryToolContext {
-  adjudicator?: MemoryAdjudicator;
+  agent: MemoryAgent;
   conversationId?: string;
   db: PluginDb;
   requester?: Requester;
@@ -63,26 +64,17 @@ function asToolInputError(error: unknown): never {
 function memoryRuntimeContext(
   context: MemoryToolContext,
 ): MemoryRuntimeContext {
-  return {
+  return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : {}),
     ...(context.requester ? { requester: context.requester } : {}),
     source: context.source,
-  } as MemoryRuntimeContext;
+  });
 }
 
 function memoryStore(context: MemoryToolContext) {
   return createMemoryStore(context.db, memoryRuntimeContext(context));
-}
-
-function requireAdjudicator(
-  adjudicator: MemoryAdjudicator | undefined,
-): MemoryAdjudicator {
-  if (!adjudicator) {
-    throwToolInputError("Memory policy adjudication is unavailable.");
-  }
-  return adjudicator;
 }
 
 function boundedLimit(value: number | undefined, fallback: number): number {
@@ -249,39 +241,40 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
       const store = memoryStore(context);
       const runtimeContext = memoryRuntimeContext(context);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
-      const adjudicator = requireAdjudicator(context.adjudicator);
-      const adjudication = await (async () => {
+      const review = await (async () => {
         try {
-          return parseMemoryAdjudicationResult(
-            await adjudicator.adjudicateCreateMemory({
-              content: requireMemoryContent(parsedInput.content),
-              ...(requestedExpiresAtMs !== undefined
-                ? { expiresAtMs: requestedExpiresAtMs }
-                : {}),
-              runtimeContext,
-            }),
+          return parseMemoryReview(
+            await context.agent.reviewCreateRequest(
+              parseCreateMemoryRequest({
+                content: requireMemoryContent(parsedInput.content),
+                ...(requestedExpiresAtMs !== undefined
+                  ? { expiresAtMs: requestedExpiresAtMs }
+                  : {}),
+                runtimeContext,
+              }),
+            ),
           );
         } catch (error) {
           if (error instanceof PluginToolInputError) {
             throw error;
           }
           throw new PluginToolInputError(
-            "Memory policy adjudication returned invalid output.",
+            "Memory agent returned invalid output.",
             { cause: error },
           );
         }
       })();
-      if (adjudication.decision === "reject") {
+      if (review.decision === "reject") {
         throw new PluginToolInputError(
-          `Memory was not stored: ${adjudication.reason}`,
+          `Memory was not stored: ${review.reason}`,
         );
       }
       const memoryInput = createInput(
         context,
         {
-          content: adjudication.content,
-          ...(adjudication.expiresAtMs !== undefined
-            ? { expiresAtMs: adjudication.expiresAtMs }
+          content: review.content,
+          ...(review.expiresAtMs !== undefined
+            ? { expiresAtMs: review.expiresAtMs }
             : requestedExpiresAtMs !== undefined
               ? { expiresAtMs: requestedExpiresAtMs }
               : {}),
@@ -290,7 +283,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
       );
       const result = await (async () => {
         try {
-          if (adjudication.target === "conversation") {
+          if (review.target === "conversation") {
             return await store.createConversationMemory(memoryInput);
           }
           return await store.createMemory(memoryInput);

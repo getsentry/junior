@@ -117,8 +117,8 @@ completed observation and the extracted fact's position or stable fact id inside
 that observation.
 
 Semantic duplicate suppression needs extractor and retrieval context. It runs
-before insertion in memory creation paths that have semantic adjudication, but
-V1 storage does not use exact-content hashing as memory identity.
+before insertion in memory creation paths that have memory agent review, but V1
+storage does not use exact-content hashing as memory identity.
 
 ### Lexical Search
 
@@ -229,8 +229,8 @@ Memory creation follows this order:
 
 1. Validate content shape, runtime-derived scope/source, expiration, and
    metadata.
-2. Run agentic policy adjudication before write paths that originate from
-   model/extractor decisions.
+2. Run memory agent review before write paths that originate from model or
+   extractor decisions.
 3. Run deterministic structural validation for schemas, authority fields,
    lifecycle bounds, idempotency, and storage constraints.
 4. Insert the memory record transactionally.

@@ -8,13 +8,13 @@ import {
 import { PluginToolInputError, type PluginDb } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
-import type { MemoryAdjudicator } from "../src/adjudicator";
+import type { CreateMemoryRequest, MemoryAgent } from "../src/agent";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
-} from "../src/memory-tools";
+} from "../src/tools";
 import { createMemoryStore } from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
@@ -97,11 +97,15 @@ function localContext(
   };
 }
 
-function allowMemory(target: "requester" | "conversation"): MemoryAdjudicator {
+function allowMemory(
+  target: "requester" | "conversation",
+  onRequest?: (request: CreateMemoryRequest) => void,
+): MemoryAgent {
   return {
-    adjudicateCreateMemory(candidate) {
+    reviewCreateRequest(candidate) {
+      onRequest?.(candidate);
       return {
-        decision: "allow",
+        decision: "store",
         target,
         content: candidate.content,
         ...(candidate.expiresAtMs !== undefined
@@ -112,8 +116,8 @@ function allowMemory(target: "requester" | "conversation"): MemoryAdjudicator {
   };
 }
 
-const rejectMemory: MemoryAdjudicator = {
-  adjudicateCreateMemory() {
+const rejectMemory: MemoryAgent = {
+  reviewCreateRequest() {
     return {
       decision: "reject",
       reason: "not public/shareable",
@@ -244,8 +248,11 @@ ORDER BY created_at_ms ASC
     const fixture = await createMemoryFixture();
 
     try {
+      const reviewedRequests: CreateMemoryRequest[] = [];
       const context = {
-        adjudicator: allowMemory("requester"),
+        agent: allowMemory("requester", (request) => {
+          reviewedRequests.push(request);
+        }),
         db: pluginDb(fixture),
         ...slackContext(),
       };
@@ -270,10 +277,28 @@ ORDER BY created_at_ms ASC
           content: "I prefer terse status updates.",
         },
       });
+      expect(reviewedRequests[0]).toMatchObject({
+        content: "I prefer terse status updates.",
+        runtimeContext: {
+          conversationId: "slack:C123:1718800000.000000",
+          requester: {
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          },
+          source: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            messageTs: "1718800000.000000",
+            threadTs: "1718800000.000000",
+          },
+        },
+      });
       await expect(
         createMemoryCreateTool({
           ...context,
-          adjudicator: allowMemory("conversation"),
+          agent: allowMemory("conversation"),
         }).execute!(
           {
             content: "The channel keeps incident notes in Linear.",
@@ -387,18 +412,7 @@ ORDER BY created_at_ms ASC
       ).rejects.toThrow(PluginToolInputError);
       await expect(
         createMemoryCreateTool({
-          db: pluginDb(fixture),
-          ...slackContext(),
-        }).execute!(
-          {
-            content: "I prefer missing adjudicators to fail closed.",
-          },
-          { toolCallId: "tool-create-missing-adjudicator" },
-        ),
-      ).rejects.toThrow(PluginToolInputError);
-      await expect(
-        createMemoryCreateTool({
-          adjudicator: rejectMemory,
+          agent: rejectMemory,
           db: pluginDb(fixture),
           ...slackContext(),
         }).execute!(
@@ -410,7 +424,7 @@ ORDER BY created_at_ms ASC
       ).rejects.toThrow(PluginToolInputError);
       await expect(
         createMemoryCreateTool({
-          adjudicator: allowMemory("requester"),
+          agent: allowMemory("requester"),
           db: pluginDb(fixture),
           source: slackContext().source,
         }).execute!(
@@ -442,12 +456,12 @@ ORDER BY created_at_ms ASC
 
     try {
       const firstTool = createMemoryCreateTool({
-        adjudicator: allowMemory("requester"),
+        agent: allowMemory("requester"),
         db: pluginDb(fixture),
         ...slackContext(),
       });
       const secondTool = createMemoryCreateTool({
-        adjudicator: allowMemory("requester"),
+        agent: allowMemory("requester"),
         db: pluginDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
       });

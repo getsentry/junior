@@ -1,14 +1,13 @@
 import path from "node:path";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import {
-  createMemoryPlugin,
-  type MemoryAdjudicator,
-} from "@sentry/junior-memory";
+import { createMemoryPlugin, createMemoryStore } from "@sentry/junior-memory";
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   closeConfiguredPluginDb,
+  createPluginDbForExecutor,
   migratePluginSchemas,
   readPluginMigrations,
 } from "@/chat/plugins/db";
@@ -66,19 +65,6 @@ async function migrateMemorySchema(
   );
 }
 
-const allowRequesterMemory: MemoryAdjudicator = {
-  adjudicateCreateMemory(candidate) {
-    return {
-      decision: "allow",
-      target: "requester",
-      content: candidate.content,
-      ...(candidate.expiresAtMs !== undefined
-        ? { expiresAtMs: candidate.expiresAtMs }
-        : {}),
-    };
-  },
-};
-
 describe("memory plugin host wiring", () => {
   it("applies packaged migrations through plugin discovery", async () => {
     const stateAdapter = createMemoryState();
@@ -119,37 +105,76 @@ WHERE table_name = 'junior_memory_memories'
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([
-      createMemoryPlugin({ adjudicator: allowRequesterMemory }),
-    ]);
+    const previousPlugins = setPlugins([createMemoryPlugin()]);
     NEON.executor = fixture.executor;
 
     try {
       await migrateMemorySchema(fixture);
+      const conversationId = "slack:C123:1718800000.000000";
+      const requester = {
+        platform: "slack" as const,
+        teamId: "T123",
+        userId: "U123",
+      };
+      const source = {
+        platform: "slack" as const,
+        teamId: "T123",
+        channelId: "C123",
+        messageTs: "1718800000.000000",
+        threadTs: "1718800000.000000",
+      };
+      const store = createMemoryStore(
+        createPluginDbForExecutor(fixture.executor),
+        {
+          conversationId,
+          requester,
+          source,
+        },
+      );
+      await store.createMemory({
+        content: "I prefer host-wired personal recall.",
+        idempotencyKey: "component-memory-personal",
+      });
+      await store.createConversationMemory({
+        content: "This thread tracks host-wired memory context.",
+        idempotencyKey: "component-memory-conversation",
+      });
+
       const tools = getPluginTools({
-        conversationId: "slack:C123:1718800000.000000",
+        conversationId,
         destination: {
           platform: "slack",
           teamId: "T123",
           channelId: "C123",
         },
-        requester: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-        },
+        requester,
         sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
-        source: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          messageTs: "1718800000.000000",
-          threadTs: "1718800000.000000",
-        },
+        source,
         userText: "remember memory plugin facts",
       });
 
       expect(tools).toHaveProperty("createMemory");
+      await expect(tools.listMemories.execute!({}, {})).resolves.toMatchObject({
+        ok: true,
+        memories: [
+          expect.objectContaining({
+            content: "This thread tracks host-wired memory context.",
+          }),
+          expect.objectContaining({
+            content: "I prefer host-wired personal recall.",
+          }),
+        ],
+      });
+      await expect(
+        tools.searchMemories.execute!({ query: "personal recall" }, {}),
+      ).resolves.toMatchObject({
+        ok: true,
+        memories: [
+          expect.objectContaining({
+            content: "I prefer host-wired personal recall.",
+          }),
+        ],
+      });
       await expect(
         tools.createMemory.execute!(
           {
@@ -157,13 +182,7 @@ WHERE table_name = 'junior_memory_memories'
           },
           { toolCallId: "tool-create-personal" },
         ),
-      ).resolves.toMatchObject({
-        ok: true,
-        created: true,
-        memory: {
-          content: "I prefer terse status updates.",
-        },
-      });
+      ).rejects.toThrow(PluginToolInputError);
     } finally {
       setPlugins(previousPlugins);
       await closeConfiguredPluginDb();

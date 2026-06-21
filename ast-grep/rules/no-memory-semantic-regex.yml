@@ -1,12 +1,12 @@
 id: no-memory-semantic-regex
 language: TypeScript
 severity: error
-message: Memory semantic decisions must stay agentic. Do not use regex classifiers in memory tools, policy, extraction, or adjudication modules.
+message: Memory semantic decisions must stay agentic. Do not use regex classifiers in memory tools, policy, extraction, or agent modules.
 files:
-  - packages/junior-memory/src/memory-tools.ts
+  - packages/junior-memory/src/tools.ts
+  - packages/junior-memory/src/agent.ts
   - packages/junior-memory/src/**/*policy*.ts
   - packages/junior-memory/src/**/*extraction*.ts
-  - packages/junior-memory/src/**/*adjudicat*.ts
 rule:
   any:
     - pattern: /$R/

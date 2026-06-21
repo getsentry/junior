@@ -56,10 +56,10 @@ valid candidate, while `remember this` is not. The outer agent provides the
 candidate text; it does not select storage scope or subject.
 
 The explicit tool path uses runtime context for source and idempotency. It must
-run through the same memory agent/policy adjudication path as passive
-extraction. That adjudicator decides allow/reject, normalized content, subject,
-and whether the memory targets the current requester, active conversation, or
-no valid V1 target.
+run through the same memory agent review path as passive extraction. The
+memory agent decides store/reject, normalized content, subject, and whether the
+memory targets the current requester, active conversation, or no valid V1
+target.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
 display names, aliases, or subject classes.
@@ -68,9 +68,9 @@ Content eligibility is an agentic policy decision, not a deterministic regex
 classifier. The fact that a user explicitly asked Junior to remember something
 can satisfy the "explicit request" category, but it must not bypass:
 
-- secret rejection by the agent/policy adjudicator
+- secret rejection by the memory agent
 - source and scope rules
-- workplace-sensitive category rejection by the agent/policy adjudicator
+- workplace-sensitive category rejection by the memory agent
 - public-content restrictions
 - provider and embedding policy
 - retention and lifecycle policy
@@ -79,7 +79,7 @@ If policy rejects an explicit memory request, the tool should return a
 model-visible input error that explains the rejection at a high level without
 echoing sensitive content.
 
-If policy adjudication is unavailable or returns malformed output, the tool
+If memory agent review is unavailable or returns malformed output, the tool
 must fail closed and must not write the candidate.
 
 ### removeMemory

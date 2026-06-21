@@ -53,10 +53,9 @@ Plugin enablement is controlled by the normal plugin registration path. If an
 install does not want memory at all, it should not enable the memory plugin.
 
 V1 uses the default workplace guidance in this spec. Configurable extraction
-guidelines are a future extension. The agent or policy adjudicator owns
-semantic memory decisions, including public/shareable eligibility and
-workplace-sensitive rejection. Deterministic code enforces structural hard
-rules:
+guidelines are a future extension. The memory agent owns semantic memory
+decisions, including public/shareable eligibility and workplace-sensitive
+rejection. Deterministic code enforces structural hard rules:
 
 - runtime-derived scope only
 - source visibility checks
@@ -201,8 +200,8 @@ Passive extraction must use policy as an input before model prompting and again
 after structured extraction output.
 
 The extraction prompt may describe allowed categories for quality. Policy
-enforcement should happen in a separate policy adjudication step after
-extraction proposes candidate facts. Deterministic validation remains the final
+enforcement should happen through memory agent review after extraction proposes
+candidate facts. Deterministic validation remains the final
 enforcement point for structural rules such as runtime-derived authority,
 strict schemas, source visibility, provider allowlists, and lifecycle bounds.
 
@@ -272,10 +271,10 @@ and embedding policy, or retention and lifecycle policy.
 Tool errors should explain policy rejection at a high level without revealing
 hidden policy internals or sensitive content.
 
-Explicit memory creation may use the same policy adjudicator as passive
-extraction when the policy decision is not deterministic. If adjudication fails
-for an explicit tool request, the tool should return a retryable input error
-rather than storing the memory.
+Explicit memory creation must use the same memory agent review as passive
+extraction when the policy decision is not deterministic. If review fails for
+an explicit tool request, the tool should return a retryable input error rather
+than storing the memory.
 
 ## Retrieval And Policy
 

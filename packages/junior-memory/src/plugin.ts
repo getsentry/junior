@@ -1,19 +1,15 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { createMemoryAgent, type MemoryAgent } from "./agent";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryToolContext,
-} from "./memory-tools";
-import type { MemoryAdjudicator } from "./adjudicator";
-
-export interface MemoryPluginOptions {
-  adjudicator?: MemoryAdjudicator;
-}
+} from "./tools";
 
 function memoryToolContext(ctx: {
-  adjudicator?: MemoryAdjudicator;
+  agent: MemoryAgent;
   conversationId?: string;
   db?: MemoryToolContext["db"];
   requester?: MemoryToolContext["requester"];
@@ -23,7 +19,7 @@ function memoryToolContext(ctx: {
     throw new Error("Memory tools require plugin database access.");
   }
   return {
-    ...(ctx.adjudicator ? { adjudicator: ctx.adjudicator } : {}),
+    agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
     ...(ctx.requester ? { requester: ctx.requester } : {}),
     db: ctx.db,
@@ -32,7 +28,9 @@ function memoryToolContext(ctx: {
 }
 
 /** Create Junior's trusted long-term memory plugin registration. */
-export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
+export function createMemoryPlugin() {
+  const agent = createMemoryAgent();
+
   return defineJuniorPlugin({
     database: {},
     manifest: {
@@ -43,10 +41,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     hooks: {
       tools(ctx) {
-        const context = memoryToolContext({
-          ...ctx,
-          ...(options.adjudicator ? { adjudicator: options.adjudicator } : {}),
-        });
+        const context = memoryToolContext({ ...ctx, agent });
         return {
           createMemory: createMemoryCreateTool(context),
           removeMemory: createMemoryRemoveTool(context),

@@ -330,8 +330,7 @@ The V1 contract has these implementation dependencies:
    install-level policy evaluator.
 3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
    `removeMemory` tools with context-bound authority. `createMemory` submits a
-   candidate memory; the memory agent/adjudicator owns subject and scope
-   decisions.
+   candidate memory; the memory agent owns subject and scope decisions.
 4. Automatic recall from stored memories through `userPrompt` when
    `autoInjectMemories` is enabled, using lexical ranking before embeddings are
    available.
