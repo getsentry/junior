@@ -35,8 +35,8 @@ export interface PluginLogger {
 }
 
 export interface PluginContext {
-  /** Shared database connection for plugins that declare database access. */
-  db?: PluginDb;
+  /** Shared database connection for plugin hooks. */
+  db: PluginDb;
   log: PluginLogger;
   plugin: PluginMetadata;
 }

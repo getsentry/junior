@@ -166,10 +166,13 @@ function parseExpiresAt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
+  if (value === "never") {
+    return undefined;
+  }
   const parts = parseIsoTimestampParts(value);
   const expiresAtMs = Date.parse(value);
   if (!parts || !Number.isFinite(expiresAtMs)) {
-    throwToolInputError("expires_at must be a valid ISO timestamp.");
+    throwToolInputError('expires_at must be "never" or a valid ISO timestamp.');
   }
   const calendarDate = new Date(
     Date.UTC(parts.year, parts.month - 1, parts.day),
@@ -182,7 +185,7 @@ function parseExpiresAt(value: string | undefined): number | undefined {
     parts.minute > 59 ||
     parts.second > 59
   ) {
-    throwToolInputError("expires_at must be a valid ISO timestamp.");
+    throwToolInputError('expires_at must be "never" or a valid ISO timestamp.');
   }
   return expiresAtMs;
 }
@@ -203,7 +206,7 @@ function requireMemoryContent(value: string): string {
 
 type MemoryWriteToolInput = {
   content: string;
-  expires_at?: string;
+  expires_at: string;
 };
 
 const createMemoryInputSchema = Type.Object(
@@ -214,13 +217,11 @@ const createMemoryInputSchema = Type.Object(
       description:
         "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
     }),
-    expires_at: Type.Optional(
-      Type.String({
-        minLength: 1,
-        description:
-          "Optional exact ISO timestamp when this memory should expire.",
-      }),
-    ),
+    expires_at: Type.String({
+      minLength: 1,
+      description:
+        'Required expiration selector. Use "never" when the memory should not expire, or an exact ISO timestamp such as "2027-06-21T00:00:00Z".',
+    }),
   },
   { additionalProperties: false },
 );

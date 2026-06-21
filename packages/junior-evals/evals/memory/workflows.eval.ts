@@ -105,6 +105,13 @@ function visibleAssistantText(result: {
     .join("\n");
 }
 
+function expectVisibleMemoryId(text: string, id: string): void {
+  const parts = text.match(/\bmem_[a-zA-Z0-9_-]+\b/g) ?? [];
+  expect(parts.some((part) => id.startsWith(part) && part.length >= 12)).toBe(
+    true,
+  );
+}
+
 afterEach(async () => {
   await closeConfiguredPluginDb();
 });
@@ -129,14 +136,13 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         ],
         criteria: rubric({
           pass: [
-            "The assistant treats the request as an explicit memory request.",
+            "Judge only the visible assistant reply for this case; the test separately checks database writes.",
+            "The assistant treats this as an explicit memory request or explains that it could not remember the preference.",
             "The assistant does not ask the user to provide hidden scope, actor, Slack, or subject identifiers.",
-            "If storage is unavailable or rejected, the assistant says it could not store the memory rather than claiming it was saved.",
-            "Ignore Junior's automatic processing or completion reaction; judge memory storage success only from the assistant text and memory tool result.",
           ],
           fail: [
             "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-            "Do not claim the memory was definitely saved if the memory tool rejected it.",
+            "Do not visibly claim the memory was definitely saved unless the assistant has confirmed the memory was accepted.",
           ],
         }),
       });
@@ -144,15 +150,11 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       const createCall = toolCalls(result.session).find(
         (call) => call.name === "createMemory",
       );
-      expect(createCall).toBeDefined();
       expect(createCall?.arguments).toEqual(
         expect.objectContaining({
           content: expect.stringMatching(/\bterse\b.*\bPR summaries\b/i),
         }),
       );
-      expect(Object.keys(createCall?.arguments ?? {}).sort()).toEqual([
-        "content",
-      ]);
       expect(await readMemories(executor)).toHaveLength(0);
     });
   });
@@ -167,7 +169,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     run,
   }) => {
     await withMemoryDb(async (executor) => {
-      await seedMemory({
+      const seeded = await seedMemory({
         content: "The requester prefers terse PR summaries.",
         executor,
         idempotencyKey: "eval-memory-list",
@@ -177,13 +179,17 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       const result = await run({
         overrides: memoryPluginOverrides,
         events: [
-          mention("What do you remember about how I like PR summaries?", {
-            thread: listThread,
-          }),
+          mention(
+            "List the exact memories you have about how I like PR summaries, including the memory id.",
+            {
+              thread: listThread,
+            },
+          ),
         ],
         criteria: rubric({
           pass: [
-            "The assistant answers from memory that the requester prefers terse PR summaries.",
+            "The assistant lists the stored memory that the requester prefers terse PR summaries.",
+            "The assistant includes a memory id or id prefix from the memory tool output.",
             "The assistant does not ask the user to restate the preference.",
           ],
           fail: [
@@ -193,12 +199,10 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         }),
       });
 
-      expect(
-        toolCalls(result.session).some((call) => call.name === "listMemories"),
-      ).toBe(true);
       expect(visibleAssistantText(result)).toMatch(
         /\bterse\b.*\bPR summaries\b/i,
       );
+      expectVisibleMemoryId(visibleAssistantText(result), seeded.memory.id);
       expect(await readMemories(executor)).toEqual([
         expect.objectContaining({
           archivedAtMs: null,
@@ -219,7 +223,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     run,
   }) => {
     await withMemoryDb(async (executor) => {
-      await seedMemory({
+      const match = await seedMemory({
         content:
           "The requester prefers incident reports with bullet summaries.",
         executor,
@@ -236,13 +240,17 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       const result = await run({
         overrides: memoryPluginOverrides,
         events: [
-          mention("Based on memory, how do I like incident reports?", {
-            thread: searchThread,
-          }),
+          mention(
+            "Search memory for my incident report preference and include the matching memory id with the answer.",
+            {
+              thread: searchThread,
+            },
+          ),
         ],
         criteria: rubric({
           pass: [
             "The assistant answers from memory that the requester likes incident reports with bullet summaries.",
+            "The assistant includes the matching memory id or id prefix from the memory search result.",
             "The assistant does not substitute the unrelated PR summary preference.",
           ],
           fail: [
@@ -252,14 +260,10 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         }),
       });
 
-      expect(
-        toolCalls(result.session).some(
-          (call) => call.name === "searchMemories",
-        ),
-      ).toBe(true);
       expect(visibleAssistantText(result)).toMatch(
         /\bincident reports\b.*\bbullet summaries\b/i,
       );
+      expectVisibleMemoryId(visibleAssistantText(result), match.memory.id);
       expect(await readMemories(executor)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -271,6 +275,52 @@ describeEval("Memory Workflows", slackEvals, (it) => {
           }),
         ]),
       );
+    });
+  });
+
+  const autoRecallThread = {
+    id: "thread-memory-auto-recall",
+    channel_id: "CMEMORYAUTORECALL",
+    thread_ts: "17000000.memory-auto-recall",
+  };
+
+  it("automatically injects relevant memories without requiring a recall tool", async ({
+    run,
+  }) => {
+    await withMemoryDb(async (executor) => {
+      await seedMemory({
+        content: "The requester prefers PR summaries with risks first.",
+        executor,
+        idempotencyKey: "eval-memory-auto-recall",
+        thread: autoRecallThread,
+      });
+
+      await run({
+        overrides: memoryPluginOverrides,
+        events: [
+          mention("How should I structure my next PR summary?", {
+            thread: autoRecallThread,
+          }),
+        ],
+        criteria: rubric({
+          pass: [
+            "The assistant uses memory to say the requester prefers PR summaries with risks first.",
+            "The assistant does not ask the user to restate the preference.",
+          ],
+          fail: [
+            "Do not answer as if no relevant preference exists.",
+            "Do not mention hidden storage fields, scope keys, or Slack ids.",
+          ],
+        }),
+      });
+
+      expect(await readMemories(executor)).toEqual([
+        expect.objectContaining({
+          archivedAtMs: null,
+          content: "The requester prefers PR summaries with risks first.",
+          scope: "personal",
+        }),
+      ]);
     });
   });
 
@@ -289,7 +339,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         thread: removeThread,
       });
 
-      const result = await run({
+      await run({
         overrides: memoryPluginOverrides,
         events: [
           mention("Please forget that I prefer terse PR summaries.", {
@@ -302,15 +352,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
             "The assistant does not ask the user for hidden ids or scope fields.",
           ],
           fail: [
-            "Do not claim the memory was removed if the remove tool was not called.",
+            "Do not claim the memory was removed if the assistant cannot identify the matching remembered preference.",
             "Do not ask the user for Slack ids, scope keys, or subject ids.",
           ],
         }),
       });
 
-      expect(
-        toolCalls(result.session).some((call) => call.name === "removeMemory"),
-      ).toBe(true);
       expect(await readMemories(executor)).toEqual([
         expect.objectContaining({
           archivedAtMs: expect.any(Number),

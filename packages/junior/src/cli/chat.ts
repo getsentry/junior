@@ -78,6 +78,27 @@ async function reportStatus(io: ChatIo, status: string): Promise<void> {
   }
 }
 
+function formatToolParams(params: Record<string, unknown>): string {
+  if (Object.keys(params).length === 0) {
+    return "";
+  }
+  const rendered = JSON.stringify(params);
+  if (rendered.length <= 500) {
+    return ` ${rendered}`;
+  }
+  return ` ${rendered.slice(0, 497)}...`;
+}
+
+async function reportToolInvocation(
+  io: ChatIo,
+  invocation: { params: Record<string, unknown>; toolName: string },
+): Promise<void> {
+  await reportStatus(
+    io,
+    `tool: ${invocation.toolName}${formatToolParams(invocation.params)}`,
+  );
+}
+
 function writeStream(
   stream: NodeJS.WritableStream,
   text: string,
@@ -210,6 +231,9 @@ async function runPrompt(
       onStatus: async (status) => {
         await reportStatus(io, status);
       },
+      onToolInvocation: async (invocation) => {
+        await reportToolInvocation(io, invocation);
+      },
     },
   );
   return result.outcome === "success" ? 0 : 1;
@@ -247,6 +271,9 @@ async function runInteractive(io: ChatIo): Promise<void> {
             },
             onStatus: async (status) => {
               await reportStatus(io, status);
+            },
+            onToolInvocation: async (invocation) => {
+              await reportToolInvocation(io, invocation);
             },
           },
         );

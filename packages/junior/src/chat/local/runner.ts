@@ -49,12 +49,18 @@ export interface LocalAgentReply {
   text: string;
 }
 
+export interface LocalToolInvocation {
+  params: Record<string, unknown>;
+  toolName: string;
+}
+
 export interface LocalAgentTurnDeps {
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   generateAssistantReply?: typeof generateAssistantReplyImpl;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
+  onToolInvocation?: (invocation: LocalToolInvocation) => void | Promise<void>;
 }
 
 export interface LocalAgentTurnResult {
@@ -258,6 +264,9 @@ export async function runLocalAgentTurn(
         await deps.onStatus?.(status.text);
       },
       onTextDelta: deps.onTextDelta,
+      onToolInvocation: async (invocation) => {
+        await deps.onToolInvocation?.(invocation);
+      },
     });
 
     completedState = buildDeliveredTurnStatePatch({

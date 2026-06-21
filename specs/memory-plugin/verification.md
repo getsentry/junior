@@ -90,8 +90,6 @@ Use integration tests for:
   workplace-sensitive category rules
 - install policy can disable passive extraction without disabling explicit
   memory tools
-- install policy can disable automatic memory injection without disabling
-  explicit memory tools
 - install policy can reject workplace-sensitive passive facts
 - stricter current policy hides previously stored memories from automatic memory
   injection and list/search results
@@ -100,14 +98,9 @@ Use integration tests for:
   context
 - `searchMemories` cannot search across unrelated users or conversations
 - `removeMemory` archives only visible memories
-- `userPrompt` injects visible memories into each fresh triggering prompt when
-  `autoInjectMemories` is `true`
-- `userPrompt` returns no memory contribution when `autoInjectMemories` is
-  `false`
-- memory recall survives a follow-up prompt without requiring a search tool when
-  automatic memory injection is enabled
-- memory recall works through `searchMemories` when automatic memory injection
-  is disabled
+- `userPrompt` injects visible memories into each fresh triggering prompt
+- memory recall survives a follow-up prompt without requiring a search tool
+- memory recall works through `searchMemories`
 - lexical recall works when embeddings are unavailable
 - vector recall works after embedding rows are created
 - embedding failures leave memories listable and lexically recallable
@@ -150,7 +143,7 @@ Use evals for:
 
 - explicit "remember this" behavior
 - later recall of stored preferences or facts
-- use of `searchMemories` when automatic memory injection is disabled
+- explicit `searchMemories` recall for targeted recall and memory management
 - refusal to remember secrets
 - explicit create rejection for policy-disallowed workplace-sensitive facts
 - refusal or policy rejection for workplace-sensitive facts

@@ -1,6 +1,7 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 import { githubPlugin } from "@sentry/junior-github";
+import { createMemoryPlugin } from "@sentry/junior-memory";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import {
   exampleDashboardAuthRequired,
@@ -25,6 +26,7 @@ export const plugins = defineJuniorPlugins([
   }),
   "@sentry/junior-hex",
   "@sentry/junior-linear",
+  createMemoryPlugin(),
   "@sentry/junior-notion",
   schedulerPlugin(),
   "@sentry/junior-sentry",

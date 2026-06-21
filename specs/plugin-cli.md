@@ -80,7 +80,7 @@ Plugin CLI command handlers may receive:
 - safe logger
 - plugin metadata
 - plugin config
-- `ctx.db` when the plugin requires SQL and migrations are applied
+- `ctx.db` from the standard plugin hook context
 - background task enqueue capability for repair/backfill work
 - host embedding/model capabilities only when explicitly declared by the
   plugin's command contract

@@ -8,7 +8,7 @@
 ## Purpose
 
 Define how explicitly enabled plugins extend Junior's shared SQL database with
-packaged migrations and access that database from trusted runtime hooks without
+packaged migrations and access that database from plugin hooks without
 requiring a memory-specific storage API or a globally merged plugin schema type.
 
 ## Scope
@@ -18,7 +18,7 @@ requiring a memory-specific storage API or a globally merged plugin schema type.
 - Migration ordering, checksums, and application through `junior upgrade`.
 - Plugin-owned storage migration hooks for moving existing plugin state into
   plugin SQL tables.
-- The `ctx.db` surface exposed to trusted plugin hooks.
+- The `ctx.db` surface exposed to plugin hooks.
 - Drizzle table ownership and typing boundaries for plugin code.
 - Database behavior for plugins.
 
@@ -132,7 +132,7 @@ part of V1 migration discovery.
 ### Storage Migration Hooks
 
 Schema migrations are not enough when an existing plugin has durable state in a
-non-SQL store. A trusted runtime plugin may provide a storage migration hook:
+non-SQL store. A plugin may provide a storage migration hook:
 
 ```ts
 defineJuniorPlugin({
@@ -247,13 +247,12 @@ boundary.
 
 ### Runtime DB Access
 
-Trusted runtime hook contexts may expose `ctx.db` when all of these are true:
+Plugin hook contexts expose `ctx.db`. Runtime provides a live DB connection when
+Junior SQL is configured; otherwise DB calls fail with a missing database URL
+error.
 
-1. A Junior SQL database URL is configured.
-2. The plugin is explicitly enabled.
-3. The plugin declared database access through code registration.
-4. The hook is running in host runtime code, not sandboxed model-controlled
-   code.
+This surface is only for plugin hooks running in Junior host runtime code. It
+must not be exposed to sandboxed model-controlled code.
 
 Runtime does not validate plugin migration state before creating `ctx.db`.
 `junior upgrade` is the only command that applies plugin migrations and checks
@@ -311,9 +310,8 @@ auto-discovery.
 
 ### Database Plugins
 
-Junior deployments require a SQL database. Plugins that use SQL still declare
-database access through code registration so runtime contexts know whether to
-expose `ctx.db`:
+Junior deployments require a SQL database. Plugins that own SQL schema or
+storage migrations declare database access through code registration:
 
 ```ts
 defineJuniorPlugin({
@@ -325,10 +323,10 @@ defineJuniorPlugin({
 
 Rules:
 
-1. Runtime and `junior upgrade` fail when Junior cannot resolve a SQL database
-   URL.
-2. A plugin receives `ctx.db` only when it declares database access through code
-   registration.
+1. Runtime and `junior upgrade` fail when a database plugin is enabled and
+   Junior cannot resolve a SQL database URL.
+2. Plugin hook contexts receive `ctx.db` regardless of whether the plugin owns
+   migrations.
 3. Migration application and checksum validation happen only in `junior
 upgrade`.
 4. Declarative `plugin.yaml` cannot declare executable database behavior.
@@ -385,7 +383,7 @@ Use integration tests with the local Postgres-compatible PGlite fixture for:
 - deterministic plugin migration order
 - checksum mismatch failure
 - missing database URL failure
-- plugins without database declarations do not receive `ctx.db`
+- plugin hook contexts receive `ctx.db`
 - typed plugin table queries using plugin-owned Drizzle table objects
 - plugin storage migration hooks run after plugin schema migrations
 - plugin storage migration hooks are idempotent across repeated upgrade runs
@@ -395,7 +393,7 @@ Use unit tests for:
 - migration filename validation
 - table-prefix derivation from plugin names
 - build/package bundling including `migrations/`
-- `ctx.db` presence checks in hook context construction
+- missing database URL failures from the plugin DB surface
 
 No evals are required for the database extension mechanism itself.
 

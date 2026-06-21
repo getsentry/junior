@@ -98,6 +98,42 @@ describe("chat cli", () => {
     );
   });
 
+  it("prints tool calls on the status stream as they run", async () => {
+    const output: string[] = [];
+    const status: string[] = [];
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      const result = reply("success");
+      await deps.onToolInvocation?.({
+        toolName: "createMemory",
+        params: { content: "remember this" },
+      });
+      await deps.onToolInvocation?.({
+        toolName: "searchMemories",
+        params: { query: "remember" },
+      });
+      await deps.deliverReply(result.reply);
+      return result;
+    });
+
+    const io = {
+      error: (line: string) => {
+        status.push(line);
+      },
+      input: process.stdin,
+      output: process.stdout,
+      write: async (text: string) => {
+        output.push(text);
+      },
+    };
+
+    expect(await runChat(["-p", "hello"], io)).toBe(0);
+    expect(status).toEqual([
+      'tool: createMemory {"content":"remember this"}',
+      'tool: searchMemories {"query":"remember"}',
+    ]);
+    expect(output).toEqual(["hello\n"]);
+  });
+
   it("defaults prompt local chat to memory even when REDIS_URL is present", async () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
     process.env.REDIS_URL = "redis://localhost:6379";

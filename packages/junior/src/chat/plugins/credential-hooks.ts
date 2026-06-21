@@ -73,11 +73,10 @@ function pluginFor(provider: string) {
 
 function basePluginContext(plugin: NonNullable<ReturnType<typeof pluginFor>>) {
   const pluginName = plugin.manifest.name;
-  const db = getPluginDbForRegistration(plugin);
   return {
     plugin: { name: pluginName },
     log: createPluginLogger(pluginName),
-    ...(db ? { db } : {}),
+    db: getPluginDbForRegistration(plugin),
   };
 }
 

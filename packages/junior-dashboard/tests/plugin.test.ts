@@ -1,3 +1,4 @@
+import type { PluginDb } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { juniorDashboardPlugin } from "../src/index";
 
@@ -17,6 +18,7 @@ const log = {
   info() {},
   warn() {},
 };
+const db = {} as PluginDb;
 
 afterEach(() => {
   for (const name of envNames) {
@@ -48,6 +50,7 @@ describe("juniorDashboardPlugin", () => {
     expect(
       plugin.hooks?.slackConversationLink?.({
         conversationId: "slack:C1:123",
+        db,
         log,
         plugin: { name: "dashboard" },
       }),
@@ -64,6 +67,7 @@ describe("juniorDashboardPlugin", () => {
     expect(
       plugin.hooks?.slackConversationLink?.({
         conversationId: "slack:D1:123",
+        db,
         log,
         plugin: { name: "dashboard" },
       }),

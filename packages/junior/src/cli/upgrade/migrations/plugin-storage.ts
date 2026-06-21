@@ -6,7 +6,7 @@ import type {
 import { pluginHookRegistrationsFromPluginSet } from "@/plugins";
 import {
   createPluginDbForExecutor,
-  getPluginDbForRegistration,
+  getConfiguredPluginDbForRuntime,
 } from "@/chat/plugins/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
@@ -48,7 +48,7 @@ function dbForPlugin(
   if (!plugin.database) {
     return undefined;
   }
-  return context.pluginDb ?? sqlUrlDb ?? getPluginDbForRegistration(plugin);
+  return context.pluginDb ?? sqlUrlDb ?? getConfiguredPluginDbForRuntime();
 }
 
 /** Run plugin-owned storage migrations after plugin SQL schemas are available. */

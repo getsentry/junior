@@ -270,7 +270,7 @@ export interface ReplyRequestContext {
   onToolInvocation?: (invocation: {
     toolName: string;
     params: Record<string, unknown>;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 export type AssistantReplyRequestContext = ReplyRequestContext;
@@ -1274,10 +1274,13 @@ export async function generateAssistantReply(
     );
 
     // ── Agent tools ──────────────────────────────────────────────────
-    const onToolCall = (toolName: string, params: Record<string, unknown>) => {
+    const onToolCall = async (
+      toolName: string,
+      params: Record<string, unknown>,
+    ) => {
       toolCalls.push(toolName);
       try {
-        context.onToolInvocation?.({ toolName, params });
+        await context.onToolInvocation?.({ toolName, params });
       } catch (error) {
         logWarn(
           "tool_invocation_observer_failed",

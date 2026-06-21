@@ -32,7 +32,8 @@ destination, conversation, and tenant/workspace authority from runtime context.
 `createMemory` may accept:
 
 - content
-- optional exact `expires_at` ISO timestamp
+- required `expires_at` expiration selector: exact ISO timestamp, or the
+  literal `never` for memories with no expiration
 
 `createMemory` must not accept:
 
@@ -101,9 +102,8 @@ handle. Normal automatic memory injection should avoid ids.
 
 ### searchMemories
 
-`searchMemories` is the model-visible recall path when automatic memory
-injection is disabled, and it can supplement automatic recall when the model
-needs a targeted lookup.
+`searchMemories` is the model-visible targeted recall path for cases where the
+model needs a more specific lookup than automatic recall supplied.
 
 `searchMemories` may accept:
 

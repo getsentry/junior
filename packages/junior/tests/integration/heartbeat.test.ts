@@ -84,8 +84,8 @@ async function useSchedulerSqlStore() {
   schedulerSqlFixture = await createLocalJuniorSqlFixture();
   await migrateSchedulerSchema(schedulerSqlFixture);
   schedulerPluginDb = createPluginDbForExecutor(schedulerSqlFixture.executor);
-  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockImplementation(
-    (plugin) => (plugin.database ? schedulerPluginDb : undefined),
+  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(
+    schedulerPluginDb,
   );
   return createSchedulerSqlStore(schedulerPluginDb);
 }

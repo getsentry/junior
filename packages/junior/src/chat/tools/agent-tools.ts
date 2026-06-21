@@ -31,7 +31,10 @@ export function createAgentTools(
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
   pluginAuthOrchestration?: PluginAuthOrchestration,
-  onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
+  onToolCall?: (
+    toolName: string,
+    params: Record<string, unknown>,
+  ) => void | Promise<void>,
   agentHooks?: PluginHookRunner,
   conversationPrivacy?: ConversationPrivacy,
 ): AgentTool[] {
@@ -103,7 +106,7 @@ export function createAgentTools(
                 })
               : { input: parsed, env: {} };
             const toolInput = beforeTool.input;
-            onToolCall?.(toolName, toolInput);
+            await onToolCall?.(toolName, toolInput);
             const sandboxInput = buildSandboxInput(toolName, toolInput);
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const result = isSandbox

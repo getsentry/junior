@@ -87,19 +87,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function basePluginContext(plugin: PluginRegistration) {
   const name = plugin.manifest.name;
-  const db = getPluginDbForRegistration(plugin);
   return {
     plugin: { name },
     log: createPluginLogger(name),
-    ...(db ? { db } : {}),
+    db: getPluginDbForRegistration(plugin),
   };
 }
 
 function systemPromptPluginContext(plugin: PluginRegistration) {
-  const name = plugin.manifest.name;
   return {
-    plugin: { name },
-    log: createPluginLogger(name),
+    ...basePluginContext(plugin),
   };
 }
 
@@ -110,7 +107,7 @@ function invocationPluginContext(
     "conversationId" | "destination" | "requester" | "source" | "userText"
   >,
 ): UserPromptContext {
-  const base = systemPromptPluginContext(plugin);
+  const base = basePluginContext(plugin);
   const common = {
     ...base,
     conversationId: context.conversationId,

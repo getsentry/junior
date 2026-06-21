@@ -101,17 +101,17 @@ CREATE TABLE IF NOT EXISTS junior_schema_migrations (
 function createPluginDb(executor: JuniorSqlMigrationExecutor): PluginDb {
   const db = executor.db();
   const pluginDb: PluginDb = {
-    delete: db.delete.bind(db) as PluginDb["delete"],
+    delete: db.delete.bind(db) as unknown as PluginDb["delete"],
     execute: (statement, params) => executor.execute(statement, params),
-    insert: db.insert.bind(db) as PluginDb["insert"],
+    insert: db.insert.bind(db) as unknown as PluginDb["insert"],
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
       executor.query<T>(statement, params),
-    select: db.select.bind(db) as PluginDb["select"],
+    select: db.select.bind(db) as unknown as PluginDb["select"],
     transaction: async (callback) =>
       await executor.transaction(
         async () => await callback(createPluginDb(executor)),
       ),
-    update: db.update.bind(db) as PluginDb["update"],
+    update: db.update.bind(db) as unknown as PluginDb["update"],
   };
   return pluginDb;
 }
@@ -139,6 +139,24 @@ function getConfiguredPluginDb(): PluginDb | undefined {
     };
   }
   return configuredPluginDb.db;
+}
+
+function missingPluginDb(pluginName: string): never {
+  throw new Error(
+    `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${pluginName}`,
+  );
+}
+
+function createMissingPluginDb(pluginName: string): PluginDb {
+  return {
+    delete: (() => missingPluginDb(pluginName)) as PluginDb["delete"],
+    execute: async () => missingPluginDb(pluginName),
+    insert: (() => missingPluginDb(pluginName)) as PluginDb["insert"],
+    query: async () => missingPluginDb(pluginName),
+    select: (() => missingPluginDb(pluginName)) as PluginDb["select"],
+    transaction: async () => missingPluginDb(pluginName),
+    update: (() => missingPluginDb(pluginName)) as PluginDb["update"],
+  };
 }
 
 /** Close the configured plugin DB executor if one has been created. */
@@ -182,14 +200,23 @@ export function createPluginDbForExecutor(
   return createPluginDb(executor);
 }
 
-/** Return a configured plugin DB only for plugins that declare database usage. */
+/** Return a configured plugin DB when the host has SQL enabled. */
+export function getConfiguredPluginDbForRuntime(): PluginDb | undefined {
+  return getConfiguredPluginDb();
+}
+
+/** Return the standard plugin hook DB surface for a registered plugin. */
 export function getPluginDbForRegistration(
   registration: PluginRegistration,
-): PluginDb | undefined {
-  if (!registration.database) {
-    return undefined;
-  }
-  return getConfiguredPluginDb();
+): PluginDb {
+  return (
+    getConfiguredPluginDb() ?? createMissingPluginDb(registration.manifest.name)
+  );
+}
+
+/** Return the standard plugin hook DB surface for a plugin name. */
+export function getPluginDbForName(pluginName: string): PluginDb {
+  return getConfiguredPluginDb() ?? createMissingPluginDb(pluginName);
 }
 
 /** Fail early when a plugin declares DB access without SQL config. */

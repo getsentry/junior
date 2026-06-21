@@ -163,10 +163,12 @@ are enabled. The default should be a fixed-dimensional vector column compatible
 with the configured embedding model.
 
 Use cosine distance by default. `text-embedding-3-small` at 1536 dimensions is
-the expected default because it fits a common pgvector setup and matches the Ash
-prototype's default. Larger native embedding models must either be configured to
-return the stored dimension or wait for a migration/rebuild plan that changes
-the stored vector dimension.
+the expected fallback because it fits a common pgvector setup and matches the
+Ash prototype's default. The embedding model must still be deployment
+configurable through the host provider boundary, following the same
+Gateway-model configuration pattern as other Junior model roles. Larger native
+embedding models must either be configured to return the stored dimension or
+wait for a migration/rebuild plan that changes the stored vector dimension.
 
 ### Vector Index Strategy
 
@@ -183,7 +185,7 @@ Approximate vector search is a performance tool, not an authorization boundary.
 ### Embedding Provider
 
 Core must keep provider credentials and expose only a narrow host capability to
-trusted plugin hooks and tasks:
+plugin hooks and tasks:
 
 ```ts
 interface PluginEmbeddingProvider {
@@ -220,8 +222,10 @@ dimensions = 1536
 metric = cosine
 ```
 
-The exact provider name is deployment configuration. Stored embedding metadata
-records the resolved provider and model used for each vector.
+The exact provider name and model id are deployment configuration. The memory
+plugin should not hardcode an embedding model outside the default fallback.
+Stored embedding metadata records the resolved provider and model used for each
+vector.
 
 ### Write Path
 

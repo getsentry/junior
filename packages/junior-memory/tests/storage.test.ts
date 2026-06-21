@@ -5,10 +5,16 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-test-fixtures/pglite";
-import { PluginToolInputError, type PluginDb } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type PluginDb,
+  type PluginLogger,
+  type PluginState,
+} from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import type { CreateMemoryRequest, MemoryAgent } from "../src/agent";
+import { createMemoryPlugin } from "../src/plugin";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
@@ -21,6 +27,26 @@ const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type MemoryFixture = LocalPgliteFixture<unknown>;
+
+const noopLogger: PluginLogger = {
+  error() {},
+  info() {},
+  warn() {},
+};
+
+const memoryState: PluginState = {
+  async delete() {},
+  async get() {
+    return undefined;
+  },
+  async set() {},
+  async setIfNotExists() {
+    return true;
+  },
+  async withLock(_key, _ttlMs, callback) {
+    return await callback();
+  },
+};
 
 function pluginDb(fixture: MemoryFixture): PluginDb {
   const db = fixture.db() as {
@@ -267,6 +293,7 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: "I prefer terse status updates.",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-personal" },
         ),
@@ -295,6 +322,7 @@ ORDER BY created_at_ms ASC
           },
         },
       });
+      expect(reviewedRequests[0]).not.toHaveProperty("expiresAtMs");
       await expect(
         createMemoryCreateTool({
           ...context,
@@ -302,6 +330,7 @@ ORDER BY created_at_ms ASC
         }).execute!(
           {
             content: "The channel keeps incident notes in Linear.",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-conversation" },
         ),
@@ -373,6 +402,7 @@ ORDER BY created_at_ms ASC
         }).execute!(
           {
             content: "I prefer missing retry ids to fail.",
+            expires_at: "never",
           },
           {},
         ),
@@ -406,6 +436,7 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: "I prefer hidden fields to fail.",
+            expires_at: "never",
             scope: "conversation",
           } as never,
           { toolCallId: "tool-create-hidden-field" },
@@ -415,6 +446,7 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: " \n\t ",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-empty-content" },
         ),
@@ -427,6 +459,7 @@ ORDER BY created_at_ms ASC
         }).execute!(
           {
             content: "I prefer rejected memories not to be stored.",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-rejected" },
         ),
@@ -439,6 +472,7 @@ ORDER BY created_at_ms ASC
         }).execute!(
           {
             content: "I prefer requester context failures to be visible.",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-missing-requester" },
         ),
@@ -447,6 +481,7 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: "I prefer duplicate-safe retries.",
+            expires_at: "never",
           },
           { toolCallId: "tool-create-personal" },
         ),
@@ -455,6 +490,92 @@ ORDER BY created_at_ms ASC
         created: false,
         memory: { content: "I prefer terse status updates." },
       });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("injects visible active memories into user prompt context", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const context = slackContext();
+      const store = createMemoryStore(pluginDb(fixture), context, {
+        now: () => nowMs,
+      });
+      const personal = await store.createMemory({
+        content: "The requester prefers PR summary risks first.",
+        idempotencyKey: "memory-test:recall-personal",
+      });
+      nowMs += 1;
+      const conversation = await store.createConversationMemory({
+        content: "The channel stores release notes in Notion.",
+        idempotencyKey: "memory-test:recall-conversation",
+      });
+      nowMs += 1;
+      await store.createMemory({
+        content: "The requester prefers PR summary obsolete wording.",
+        expiresAtMs: TEST_NOW_MS + 1,
+        idempotencyKey: "memory-test:recall-expired",
+      });
+      nowMs += 1;
+      await createMemoryStore(
+        pluginDb(fixture),
+        slackContext({ userId: "U456" }),
+        { now: () => nowMs },
+      ).createMemory({
+        content: "The requester prefers PR summary unrelated owner.",
+        idempotencyKey: "memory-test:recall-other-user",
+      });
+
+      const plugin = createMemoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        db: pluginDb(fixture),
+        log: noopLogger,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "Draft a PR summary and mention release notes.",
+      });
+
+      expect(result).toEqual([
+        {
+          text: expect.stringContaining(personal.memory.content),
+        },
+      ]);
+      const text = result?.[0]?.text ?? "";
+      expect(text).toContain(conversation.memory.content);
+      expect(text).not.toContain(personal.memory.id);
+      expect(text).not.toContain(conversation.memory.id);
+      expect(text).not.toContain("obsolete wording");
+      expect(text).not.toContain("unrelated owner");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("skips user prompt memory recall when prompt text is blank", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      await createMemoryStore(pluginDb(fixture), context).createMemory({
+        content: "The requester prefers PR summary risks first.",
+        idempotencyKey: "memory-test:recall-blank",
+      });
+
+      const plugin = createMemoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          db: pluginDb(fixture),
+          log: noopLogger,
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: "   ",
+        }),
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }
@@ -477,13 +598,19 @@ ORDER BY created_at_ms ASC
 
       await expect(
         firstTool.execute!(
-          { content: "I prefer the first remembered fact." },
+          {
+            content: "I prefer the first remembered fact.",
+            expires_at: "never",
+          },
           { toolCallId: "tool-create-reused-id" },
         ),
       ).resolves.toMatchObject({ created: true });
       await expect(
         secondTool.execute!(
-          { content: "I prefer the second remembered fact." },
+          {
+            content: "I prefer the second remembered fact.",
+            expires_at: "never",
+          },
           { toolCallId: "tool-create-reused-id" },
         ),
       ).resolves.toMatchObject({ created: true });

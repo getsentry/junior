@@ -1,14 +1,42 @@
 packages:
   - "packages/*"
   - "apps/*"
+injectWorkspacePackages: true
+autoInstallPeers: false
+dedupePeerDependents: false
 catalog:
   "@sentry/node": 10.53.1
   "@sentry/starlight-theme": ^0.7.0
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.2
   zod: ^4.4.3
+overrides:
+  ai: 6.0.190
+  "@swc/core": 1.15.33
+  linkify-it: 5.0.0
+  tinyexec: 1.1.2
+  tldts: 7.0.30
+  ws: 8.20.1
+  yaml: ^2.9.0
+peerDependencyRules:
+  allowedVersions:
+    bash-tool>just-bash: ">=2.9.3"
+    vitest-evals>ai: ">=4"
+    vitest-evals>zod: ">=3"
 syncInjectedDepsAfterScripts:
   - build
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"
+allowBuilds:
+  "@ast-grep/cli": true
+  "@google/genai": true
+  "@mongodb-js/zstd": true
+  "@parcel/watcher": true
+  agent-browser: true
+  esbuild: true
+  msw: true
+  node-liblzma: false
+  protobufjs: true
+  sharp: true
+  simple-git-hooks: true

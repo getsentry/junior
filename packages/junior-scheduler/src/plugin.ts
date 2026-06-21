@@ -83,19 +83,13 @@ function scheduledTaskDispatchSource(task: ScheduledTask): Source {
   };
 }
 
-function schedulerStore(ctx: { db?: PluginDb }): SchedulerStore {
-  if (!ctx.db) {
-    throw new Error("Scheduler plugin requires ctx.db");
-  }
+function schedulerStore(ctx: { db: PluginDb }): SchedulerStore {
   return createSchedulerSqlStore(ctx.db);
 }
 
 function schedulerOperationalStore(ctx: {
-  db?: PluginDb;
+  db: PluginDb;
 }): SchedulerOperationalStore {
-  if (!ctx.db) {
-    throw new Error("Scheduler plugin requires ctx.db");
-  }
   return createSchedulerOperationalSqlStore(ctx.db);
 }
 
@@ -575,9 +569,6 @@ export function createSchedulerPlugin() {
         });
       },
       async migrateStorage(ctx) {
-        if (!ctx.db) {
-          throw new Error("Scheduler storage migration requires ctx.db");
-        }
         return await migrateSchedulerStateToSql({
           db: ctx.db,
           state: ctx.state,
@@ -587,5 +578,5 @@ export function createSchedulerPlugin() {
   });
 }
 
-/** Register trusted scheduler runtime hooks for scheduled Junior tasks. */
+/** Register scheduler runtime hooks for scheduled Junior tasks. */
 export const schedulerPlugin = createSchedulerPlugin;

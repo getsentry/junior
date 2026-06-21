@@ -18,12 +18,15 @@ export const promptMessageSchema = z
 export type PromptMessage = z.output<typeof promptMessageSchema>;
 
 /** Stable platform context for plugin system prompt guidance. */
-export type SystemPromptContext = Pick<PluginContext, "log" | "plugin"> & {
+export type SystemPromptContext = Pick<
+  PluginContext,
+  "db" | "log" | "plugin"
+> & {
   platform: Platform;
 };
 
 /** Runtime facts available while building plugin user prompt context. */
-export type UserPromptContext = Pick<PluginContext, "log" | "plugin"> & {
+export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
   destination?: Destination;
   requester?: Requester;

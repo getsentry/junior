@@ -52,9 +52,7 @@ async function useSchedulerSqlPlugin() {
     }),
   );
   const db: PluginDb = createPluginDbForExecutor(fixture.executor);
-  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockImplementation(
-    (plugin) => (plugin.database ? db : undefined),
-  );
+  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(db);
   return {
     fixture,
     store: createSchedulerSqlStore(db),

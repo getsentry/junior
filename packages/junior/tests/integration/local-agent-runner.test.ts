@@ -5,7 +5,11 @@ import type {
   ReplyRequestContext,
 } from "@/chat/respond";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
-import { runLocalAgentTurn } from "@/chat/local/runner";
+import {
+  runLocalAgentTurn,
+  type LocalAgentReply,
+  type LocalToolInvocation,
+} from "@/chat/local/runner";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPersistedSandboxState,
@@ -18,16 +22,20 @@ import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 
 function successReply(
   text: string,
-  options: Partial<Pick<AssistantReply, "piMessages">> = {},
+  options: Partial<
+    Pick<AssistantReply, "piMessages"> & {
+      toolCalls: string[];
+    }
+  > = {},
 ): AssistantReply {
   return {
     text,
-    ...options,
+    ...(options.piMessages ? { piMessages: options.piMessages } : {}),
     diagnostics: {
       assistantMessageCount: 1,
       modelId: "fake-local-agent",
       outcome: "success",
-      toolCalls: [],
+      toolCalls: options.toolCalls ?? [],
       toolErrorCount: 0,
       toolResultCount: 0,
       usedPrimaryText: true,
@@ -50,7 +58,7 @@ describe("local agent runner", () => {
         return successReply("hello from local");
       },
     );
-    const delivered: string[] = [];
+    const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
       {
@@ -59,7 +67,7 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async (reply) => {
-          delivered.push(reply.text);
+          delivered.push(reply);
         },
         generateAssistantReply: generateReply,
       },
@@ -89,7 +97,11 @@ describe("local agent runner", () => {
     expect(contexts[0]?.correlation?.channelId).toBeUndefined();
     expect(contexts[0]?.correlation?.teamId).toBeUndefined();
     expect(contexts[0]?.correlation?.threadId).toBeUndefined();
-    expect(delivered).toEqual(["hello from local"]);
+    expect(delivered).toEqual([
+      {
+        text: "hello from local",
+      },
+    ]);
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
@@ -116,6 +128,46 @@ describe("local agent runner", () => {
         replied: true,
       },
     });
+  });
+
+  it("forwards tool invocations from the shared reply boundary", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "tools",
+      cwd: "/tmp/local-agent-runner-tools",
+    });
+    expect(conversationId).toBeDefined();
+
+    const generateReply = vi.fn<typeof generateAssistantReply>(
+      async (_text, context) => {
+        context.onToolInvocation?.({
+          toolName: "createMemory",
+          params: { content: "The requester prefers short updates." },
+        });
+        return successReply("saved", { toolCalls: ["createMemory"] });
+      },
+    );
+    const invocations: LocalToolInvocation[] = [];
+
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "remember this",
+      },
+      {
+        deliverReply: async () => undefined,
+        generateAssistantReply: generateReply,
+        onToolInvocation: async (invocation) => {
+          invocations.push(invocation);
+        },
+      },
+    );
+
+    expect(invocations).toEqual([
+      {
+        toolName: "createMemory",
+        params: { content: "The requester prefers short updates." },
+      },
+    ]);
   });
 
   it("preserves visible local conversation context across messages", async () => {

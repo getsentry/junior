@@ -123,9 +123,9 @@ The core turn-context builder may render dispatch metadata as generic dispatch b
 
 ### Storage
 
-The scheduler is a trusted runtime plugin and requires plugin SQL storage. Its
-plugin package owns the scheduler migration files under `migrations/`, and
-`junior upgrade` applies those migrations before scheduler storage hooks run.
+The scheduler is a plugin and requires plugin SQL storage. Its plugin package
+owns the scheduler migration files under `migrations/`, and `junior upgrade`
+applies those migrations before scheduler storage hooks run.
 
 The SQL store keeps task and run records in scheduler-owned tables. The JSON
 `record` column is the canonical durable scheduler record; scalar columns are

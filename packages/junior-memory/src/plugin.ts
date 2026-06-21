@@ -7,17 +7,15 @@ import {
   createMemorySearchTool,
   type MemoryToolContext,
 } from "./tools";
+import { createMemoryPromptMessages } from "./recall";
 
 function memoryToolContext(ctx: {
   agent: MemoryAgent;
   conversationId?: string;
-  db?: MemoryToolContext["db"];
+  db: MemoryToolContext["db"];
   requester?: MemoryToolContext["requester"];
   source: MemoryToolContext["source"];
 }): MemoryToolContext {
-  if (!ctx.db) {
-    throw new Error("Memory tools require plugin database access.");
-  }
   return {
     agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
@@ -27,7 +25,7 @@ function memoryToolContext(ctx: {
   };
 }
 
-/** Create Junior's trusted long-term memory plugin registration. */
+/** Create Junior's long-term memory plugin registration. */
 export function createMemoryPlugin() {
   const agent = createMemoryAgent();
 
@@ -48,6 +46,15 @@ export function createMemoryPlugin() {
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
         };
+      },
+      async userPrompt(ctx) {
+        return await createMemoryPromptMessages({
+          ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
+          ...(ctx.requester ? { requester: ctx.requester } : {}),
+          db: ctx.db,
+          source: ctx.source,
+          text: ctx.text,
+        });
       },
     },
   });

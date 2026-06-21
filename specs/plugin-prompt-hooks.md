@@ -89,6 +89,7 @@ Rules:
 
 ```ts
 interface SystemPromptContext {
+  db: PluginDb;
   log: PluginLogger;
   platform: Platform;
   plugin: PluginMetadata;
@@ -140,6 +141,7 @@ Rules:
 ```ts
 interface UserPromptContext {
   conversationId?: string;
+  db: PluginDb;
   destination?: Destination;
   log: PluginLogger;
   plugin: PluginMetadata;
@@ -263,10 +265,10 @@ The memory plugin should use the generic hooks as follows:
 4. `tools(ctx)` may expose explicit memory tools such as `createMemory`,
    `removeMemory`, `listMemories`, and `searchMemories`.
 
-When automatic memory injection is enabled, retrieval must not depend on the
-model choosing a search tool. When automatic memory injection is disabled by
-install policy, `searchMemories` is the explicit model-visible recall path.
-Other tools are for explicit user management.
+Memory retrieval must not depend on the model choosing a search tool for default
+recall. `searchMemories` remains the explicit model-visible recall path for
+targeted recall and follow-up memory management. Other tools are for explicit
+user management.
 
 ### Memory Tool Constraints
 
@@ -347,9 +349,8 @@ Use unit tests for:
 Use evals for:
 
 - automatic memory recall without explicit search tool use when automatic memory
-  injection is enabled
-- explicit memory recall through `searchMemories` when automatic memory
-  injection is disabled
+  plugin is enabled
+- explicit targeted memory recall through `searchMemories`
 - explicit create/list/remove memory workflows
 - secret rejection in explicit and passive memory paths
 

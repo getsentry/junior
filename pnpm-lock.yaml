@@ -86,12 +86,15 @@ importers:
       "@sentry/junior-linear":
         specifier: workspace:*
         version: link:../../packages/junior-linear
+      "@sentry/junior-memory":
+        specifier: workspace:*
+        version: file:packages/junior-memory
       "@sentry/junior-notion":
         specifier: workspace:*
         version: link:../../packages/junior-notion
       "@sentry/junior-scheduler":
         specifier: workspace:*
-        version: link:../../packages/junior-scheduler
+        version: file:packages/junior-scheduler
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../../packages/junior-sentry
@@ -110,7 +113,7 @@ importers:
         version: 2.7.0
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(jiti@2.7.0)
+        version: 3.0.260522-beta(@electric-sql/pglite@0.4.6)(@vercel/blob@2.4.0)(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -122,16 +125,16 @@ importers:
         version: 0.9.9(prettier@3.8.3)(typescript@6.0.3)
       "@astrojs/starlight":
         specifier: ^0.39.2
-        version: 0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3)
+        version: 0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)
       "@sentry/starlight-theme":
         specifier: "catalog:"
-        version: 0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3))
+        version: 0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))
       astro:
         specifier: ^6.3.7
-        version: 6.3.7(tsx@4.22.3)
+        version: 6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)
       starlight-typedoc:
         specifier: ^0.23.0
-        version: 0.23.0(@astrojs/starlight@0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))
+        version: 0.23.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))
       typedoc:
         specifier: ^0.28.19
         version: 0.28.19(typescript@6.0.3)
@@ -203,7 +206,7 @@ importers:
         version: 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       drizzle-orm:
         specifier: "catalog:"
-        version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+        version: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -264,13 +267,13 @@ importers:
         version: 2.14.6(@types/node@25.9.1)(typescript@6.0.3)
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
+        version: 3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1))(jiti@2.7.0)(rollup@4.60.4)
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(jiti@2.7.0)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -279,7 +282,7 @@ importers:
         version: 54.4.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       vitest:
         specifier: ^4.1.7
-        version: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0)
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0)
 
   packages/junior-agent-browser: {}
 
@@ -290,13 +293,13 @@ importers:
         version: file:packages/junior
       "@sentry/junior-plugin-api":
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       "@tanstack/react-query":
         specifier: ^5.100.14
         version: 5.100.14(react@19.2.6)
       better-auth:
         specifier: ^1.3.36
-        version: 1.6.11(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7)
+        version: 1.6.11(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(pg@8.21.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7)
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -305,7 +308,7 @@ importers:
         version: 1.17.0(react@19.2.6)
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta
+        version: 3.0.260522-beta(@vercel/queue@0.2.0)(jiti@2.7.0)(rollup@4.60.4)
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -320,7 +323,7 @@ importers:
         version: 7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       recharts:
         specifier: ^3.8.1
-        version: 3.8.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)
+        version: 3.8.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)(redux@5.0.1)
       shiki:
         specifier: 4.1.0
         version: 4.1.0
@@ -345,13 +348,13 @@ importers:
         version: 4.3.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3)
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3)
 
   packages/junior-datadog: {}
 
@@ -365,25 +368,25 @@ importers:
         version: link:../junior-github
       "@sentry/junior-memory":
         specifier: workspace:*
-        version: link:../junior-memory
+        version: file:packages/junior-memory
       "@sentry/junior-plugin-api":
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       "@sentry/junior-scheduler":
         specifier: workspace:*
-        version: link:../junior-scheduler
+        version: file:packages/junior-scheduler
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../junior-sentry
       "@sentry/junior-test-fixtures":
         specifier: workspace:*
-        version: link:../junior-test-fixtures
+        version: file:packages/junior-test-fixtures
       "@sentry/junior-testing":
         specifier: workspace:*
         version: link:../junior-testing
       chat:
         specifier: 4.29.0
-        version: 4.29.0
+        version: 4.29.0(zod@4.4.3)
       tinyrainbow:
         specifier: ^3.1.0
         version: 3.1.0
@@ -392,16 +395,16 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.7(tsx@4.22.3)
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3)
       vitest-evals:
         specifier: 0.13.1
-        version: 0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))
+        version: 0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3))(zod@4.4.3)
 
   packages/junior-github:
     dependencies:
       "@sentry/junior-plugin-api":
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
 
   packages/junior-hex: {}
 
@@ -413,20 +416,20 @@ importers:
     dependencies:
       "@sentry/junior-plugin-api":
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       "@sinclair/typebox":
         specifier: ^0.34.49
         version: 0.34.49
       drizzle-orm:
         specifier: "catalog:"
-        version: 0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
       zod:
         specifier: "catalog:"
         version: 4.4.3
     devDependencies:
       "@sentry/junior-test-fixtures":
         specifier: workspace:*
-        version: link:../junior-test-fixtures
+        version: file:packages/junior-test-fixtures
       "@types/node":
         specifier: ^25.9.1
         version: 25.9.1
@@ -438,13 +441,13 @@ importers:
         version: 1.66.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.7(@types/node@25.9.1)(tsx@4.22.3)
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3)
 
   packages/junior-notion: {}
 
@@ -452,7 +455,7 @@ importers:
     dependencies:
       drizzle-orm:
         specifier: "catalog:"
-        version: 0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
       zod:
         specifier: "catalog:"
         version: 4.4.3
@@ -462,7 +465,7 @@ importers:
         version: 1.66.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -471,13 +474,13 @@ importers:
     dependencies:
       "@sentry/junior-plugin-api":
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       "@sinclair/typebox":
         specifier: ^0.34.49
         version: 0.34.49
       drizzle-orm:
         specifier: "catalog:"
-        version: 0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
       zod:
         specifier: "catalog:"
         version: 4.4.3
@@ -487,7 +490,7 @@ importers:
         version: 25.9.1
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -501,7 +504,7 @@ importers:
         version: 0.4.6
       drizzle-orm:
         specifier: "catalog:"
-        version: 0.45.2(@electric-sql/pglite@0.4.6)
+        version: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
     devDependencies:
       "@types/node":
         specifier: ^25.9.1
@@ -9490,6 +9493,7 @@ packages:
         integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==,
       }
     engines: { node: ">=10.5.0" }
+    deprecated: Use your platform's native DOMException instead
 
   node-fetch-native@1.6.7:
     resolution:
@@ -10152,6 +10156,7 @@ packages:
         integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==,
       }
     engines: { node: ">=10" }
+    deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
     hasBin: true
 
   prettier@3.8.3:
@@ -11173,6 +11178,7 @@ packages:
       {
         integrity: sha512-HAGUASw8NT0k8JvIVutB2Y/9iBk7gpgEyAudXwNJmZERdMITGdajOa4VJfD/kNiA3TppQpTP4J+CtcHwdzKBAw==,
       }
+    deprecated: Deprecated. Use node:stream/promises and node:stream/consumers instead.
 
   streamx@2.25.0:
     resolution:
@@ -11368,6 +11374,7 @@ packages:
         integrity: sha512-fov56fJiRuThVFXD6o6/Q354S7pnWMJIVlDBYijsTNx6jKSE4pvrDTs6lUnmGvNyfJwFQQwWy3owKz1ucIhveQ==,
       }
     engines: { node: ">=18" }
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   text-decoder@1.2.7:
     resolution:
@@ -12780,12 +12787,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  "@astrojs/mdx@5.0.6(astro@6.3.7(tsx@4.22.3))":
+  "@astrojs/mdx@5.0.6(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))":
     dependencies:
       "@astrojs/markdown-remark": 7.1.2
       "@mdx-js/mdx": 3.1.1
       acorn: 8.16.0
-      astro: 6.3.7(tsx@4.22.3)
+      astro: 6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)
       es-module-lexer: 2.1.0
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -12809,17 +12816,17 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 4.4.3
 
-  "@astrojs/starlight@0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3)":
+  "@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)":
     dependencies:
       "@astrojs/markdown-remark": 7.1.2
-      "@astrojs/mdx": 5.0.6(astro@6.3.7(tsx@4.22.3))
+      "@astrojs/mdx": 5.0.6(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))
       "@astrojs/sitemap": 3.7.2
       "@pagefind/default-ui": 1.5.2
       "@types/hast": 3.0.4
       "@types/js-yaml": 4.0.9
       "@types/mdast": 4.0.4
-      astro: 6.3.7(tsx@4.22.3)
-      astro-expressive-code: 0.42.0(astro@6.3.7(tsx@4.22.3))
+      astro: 6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)
+      astro-expressive-code: 0.42.0(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))
       bcp-47: 2.1.0
       hast-util-from-html: 2.0.3
       hast-util-select: 6.0.4
@@ -13098,6 +13105,20 @@ snapshots:
 
   "@bcoe/v8-coverage@1.0.2": {}
 
+  "@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)":
+    dependencies:
+      "@better-auth/utils": 0.4.0
+      "@better-fetch/fetch": 1.1.21
+      "@opentelemetry/semantic-conventions": 1.41.1
+      "@standard-schema/spec": 1.1.0
+      better-call: 1.3.5(zod@4.4.3)
+      jose: 6.2.3
+      kysely: 0.28.17
+      nanostores: 1.3.0
+      zod: 4.4.3
+    optionalDependencies:
+      "@opentelemetry/api": 1.9.1
+
   "@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)":
     dependencies:
       "@better-auth/utils": 0.4.0
@@ -13110,10 +13131,22 @@ snapshots:
       nanostores: 1.3.0
       zod: 4.4.3
 
+  "@better-auth/drizzle-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+
   "@better-auth/drizzle-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
     dependencies:
       "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       "@better-auth/utils": 0.4.0
+
+  "@better-auth/kysely-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(kysely@0.28.17)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+    optionalDependencies:
+      kysely: 0.28.17
 
   "@better-auth/kysely-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(kysely@0.28.17)":
     dependencies:
@@ -13122,9 +13155,19 @@ snapshots:
     optionalDependencies:
       kysely: 0.28.17
 
+  "@better-auth/memory-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+
   "@better-auth/memory-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
     dependencies:
       "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+
+  "@better-auth/mongo-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       "@better-auth/utils": 0.4.0
 
   "@better-auth/mongo-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
@@ -13132,10 +13175,21 @@ snapshots:
       "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       "@better-auth/utils": 0.4.0
 
+  "@better-auth/prisma-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+
   "@better-auth/prisma-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)":
     dependencies:
       "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       "@better-auth/utils": 0.4.0
+
+  "@better-auth/telemetry@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)":
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/utils": 0.4.0
+      "@better-fetch/fetch": 1.1.21
 
   "@better-auth/telemetry@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)":
     dependencies:
@@ -14552,7 +14606,7 @@ snapshots:
     dependencies:
       "@redis/client": 5.12.1
 
-  "@reduxjs/toolkit@2.12.0(react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)":
+  "@reduxjs/toolkit@2.12.0(react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6)(redux@5.0.1))(react@19.2.6)":
     dependencies:
       "@standard-schema/spec": 1.1.0
       "@standard-schema/utils": 0.3.0
@@ -14562,7 +14616,7 @@ snapshots:
       reselect: 5.1.1
     optionalDependencies:
       react: 19.2.6
-      react-redux: 9.3.0(@types/react@19.2.15)(react@19.2.6)
+      react-redux: 9.3.0(@types/react@19.2.15)(react@19.2.6)(redux@5.0.1)
 
   "@reduxjs/toolkit@2.12.0(react-redux@9.3.0(react@19.2.6))(react@19.2.6)":
     dependencies:
@@ -14680,6 +14734,14 @@ snapshots:
       "@types/estree": 1.0.9
       estree-walker: 2.0.2
       picomatch: 4.0.4
+
+  "@rollup/pluginutils@5.3.0(rollup@4.60.4)":
+    dependencies:
+      "@types/estree": 1.0.9
+      estree-walker: 2.0.2
+      picomatch: 4.0.4
+    optionalDependencies:
+      rollup: 4.60.4
 
   "@rollup/rollup-android-arm-eabi@4.60.4":
     optional: true
@@ -14858,6 +14920,43 @@ snapshots:
       - xml2js
       - zephyr-agent
 
+  "@sentry/junior-memory@file:packages/junior-memory":
+    dependencies:
+      "@sentry/junior-plugin-api": file:packages/junior-plugin-api
+      "@sinclair/typebox": 0.34.49
+      drizzle-orm: 0.45.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - "@aws-sdk/client-rds-data"
+      - "@cloudflare/workers-types"
+      - "@electric-sql/pglite"
+      - "@libsql/client"
+      - "@libsql/client-wasm"
+      - "@neondatabase/serverless"
+      - "@op-engineering/op-sqlite"
+      - "@opentelemetry/api"
+      - "@planetscale/database"
+      - "@prisma/client"
+      - "@tidbcloud/serverless"
+      - "@types/better-sqlite3"
+      - "@types/pg"
+      - "@types/sql.js"
+      - "@upstash/redis"
+      - "@vercel/postgres"
+      - "@xata.io/client"
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   "@sentry/junior-memory@file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)":
     dependencies:
       "@sentry/junior-plugin-api": file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -15000,6 +15099,43 @@ snapshots:
       - sql.js
       - sqlite3
 
+  "@sentry/junior-scheduler@file:packages/junior-scheduler":
+    dependencies:
+      "@sentry/junior-plugin-api": file:packages/junior-plugin-api
+      "@sinclair/typebox": 0.34.49
+      drizzle-orm: 0.45.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - "@aws-sdk/client-rds-data"
+      - "@cloudflare/workers-types"
+      - "@electric-sql/pglite"
+      - "@libsql/client"
+      - "@libsql/client-wasm"
+      - "@neondatabase/serverless"
+      - "@op-engineering/op-sqlite"
+      - "@opentelemetry/api"
+      - "@planetscale/database"
+      - "@prisma/client"
+      - "@tidbcloud/serverless"
+      - "@types/better-sqlite3"
+      - "@types/pg"
+      - "@types/sql.js"
+      - "@upstash/redis"
+      - "@vercel/postgres"
+      - "@xata.io/client"
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   "@sentry/junior-scheduler@file:packages/junior-scheduler(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)":
     dependencies:
       "@sentry/junior-plugin-api": file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -15010,6 +15146,40 @@ snapshots:
       - "@aws-sdk/client-rds-data"
       - "@cloudflare/workers-types"
       - "@electric-sql/pglite"
+      - "@libsql/client"
+      - "@libsql/client-wasm"
+      - "@neondatabase/serverless"
+      - "@op-engineering/op-sqlite"
+      - "@opentelemetry/api"
+      - "@planetscale/database"
+      - "@prisma/client"
+      - "@tidbcloud/serverless"
+      - "@types/better-sqlite3"
+      - "@types/pg"
+      - "@types/sql.js"
+      - "@upstash/redis"
+      - "@vercel/postgres"
+      - "@xata.io/client"
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  "@sentry/junior-test-fixtures@file:packages/junior-test-fixtures":
+    dependencies:
+      "@electric-sql/pglite": 0.4.6
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)
+    transitivePeerDependencies:
+      - "@aws-sdk/client-rds-data"
+      - "@cloudflare/workers-types"
       - "@libsql/client"
       - "@libsql/client-wasm"
       - "@neondatabase/serverless"
@@ -15197,9 +15367,9 @@ snapshots:
       "@opentelemetry/semantic-conventions": 1.41.1
       "@sentry/core": 10.53.1
 
-  "@sentry/starlight-theme@0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3))":
+  "@sentry/starlight-theme@0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))":
     dependencies:
-      "@astrojs/starlight": 0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3)
+      "@astrojs/starlight": 0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)
       "@fontsource-variable/rubik": 5.2.8
       "@fontsource/ibm-plex-mono": 5.2.7
       ultrahtml: 1.6.0
@@ -15969,7 +16139,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0)
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0)
 
   "@vitest/expect@4.1.7":
     dependencies:
@@ -15996,14 +16166,6 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       vite: 8.0.14(@types/node@25.9.1)(tsx@4.22.3)
-
-  "@vitest/mocker@4.1.7(vite@8.0.14(tsx@4.22.3))":
-    dependencies:
-      "@vitest/spy": 4.1.7
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 8.0.14(tsx@4.22.3)
 
   "@vitest/pretty-format@4.1.7":
     dependencies:
@@ -16195,12 +16357,12 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.42.0(astro@6.3.7(tsx@4.22.3)):
+  astro-expressive-code@0.42.0(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)):
     dependencies:
-      astro: 6.3.7(tsx@4.22.3)
+      astro: 6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0)
       rehype-expressive-code: 0.42.0
 
-  astro@6.3.7(tsx@4.22.3):
+  astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
       "@astrojs/compiler": 4.0.0
       "@astrojs/internal-helpers": 0.9.1
@@ -16209,7 +16371,7 @@ snapshots:
       "@capsizecss/unpack": 4.0.0
       "@clack/prompts": 1.4.0
       "@oslojs/encoding": 1.1.0
-      "@rollup/pluginutils": 5.3.0
+      "@rollup/pluginutils": 5.3.0(rollup@4.60.4)
       aria-query: 5.3.2
       axobject-query: 4.1.0
       ci-info: 4.4.0
@@ -16250,10 +16412,10 @@ snapshots:
       ultrahtml: 1.6.0
       unifont: 0.7.4
       unist-util-visit: 5.1.0
-      unstorage: 1.17.5
+      unstorage: 1.17.5(@vercel/blob@2.4.0)
       vfile: 6.0.3
-      vite: 7.3.3(tsx@4.22.3)
-      vitefu: 1.1.3(vite@7.3.3(tsx@4.22.3))
+      vite: 7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitefu: 1.1.3(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
       xxhash-wasm: 1.1.0
       yargs-parser: 22.0.0
       zod: 4.4.3
@@ -16351,6 +16513,35 @@ snapshots:
       is-alphanumerical: 2.0.1
       is-decimal: 2.0.1
 
+  better-auth@1.6.11(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(pg@8.21.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7):
+    dependencies:
+      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      "@better-auth/drizzle-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
+      "@better-auth/kysely-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(kysely@0.28.17)
+      "@better-auth/memory-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
+      "@better-auth/mongo-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
+      "@better-auth/prisma-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
+      "@better-auth/telemetry": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)
+      "@better-auth/utils": 0.4.0
+      "@better-fetch/fetch": 1.1.21
+      "@noble/ciphers": 2.2.0
+      "@noble/hashes": 2.2.0
+      better-call: 1.3.5(zod@4.4.3)
+      defu: 6.1.7
+      jose: 6.2.3
+      kysely: 0.28.17
+      nanostores: 1.3.0
+      zod: 4.4.3
+    optionalDependencies:
+      drizzle-kit: 0.31.10
+      pg: 8.21.0
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3)
+    transitivePeerDependencies:
+      - "@cloudflare/workers-types"
+      - "@opentelemetry/api"
+
   better-auth@1.6.11(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
     dependencies:
       "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
@@ -16373,33 +16564,6 @@ snapshots:
     optionalDependencies:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
-    transitivePeerDependencies:
-      - "@cloudflare/workers-types"
-      - "@opentelemetry/api"
-
-  better-auth@1.6.11(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7):
-    dependencies:
-      "@better-auth/core": 1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
-      "@better-auth/drizzle-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
-      "@better-auth/kysely-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(kysely@0.28.17)
-      "@better-auth/memory-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
-      "@better-auth/mongo-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
-      "@better-auth/prisma-adapter": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)
-      "@better-auth/telemetry": 1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)
-      "@better-auth/utils": 0.4.0
-      "@better-fetch/fetch": 1.1.21
-      "@noble/ciphers": 2.2.0
-      "@noble/hashes": 2.2.0
-      better-call: 1.3.5(zod@4.4.3)
-      defu: 6.1.7
-      jose: 6.2.3
-      kysely: 0.28.17
-      nanostores: 1.3.0
-      zod: 4.4.3
-    optionalDependencies:
-      react: 19.2.6
-      react-dom: 19.2.6(react@19.2.6)
-      vitest: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3)
     transitivePeerDependencies:
       - "@cloudflare/workers-types"
       - "@opentelemetry/api"
@@ -16509,18 +16673,6 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
-  chat@4.29.0:
-    dependencies:
-      "@workflow/serde": 4.1.0-beta.2
-      mdast-util-to-string: 4.0.0
-      remark-gfm: 4.0.1
-      remark-parse: 11.0.0
-      remark-stringify: 11.0.0
-      remend: 1.3.0
-      unified: 11.0.5
-    transitivePeerDependencies:
-      - supports-color
-
   chat@4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3):
     dependencies:
       "@workflow/serde": 4.1.0-beta.2
@@ -16532,6 +16684,20 @@ snapshots:
       unified: 11.0.5
     optionalDependencies:
       ai: 6.0.190(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
+  chat@4.29.0(zod@4.4.3):
+    dependencies:
+      "@workflow/serde": 4.1.0-beta.2
+      mdast-util-to-string: 4.0.0
+      remark-gfm: 4.0.1
+      remark-parse: 11.0.0
+      remark-stringify: 11.0.0
+      remend: 1.3.0
+      unified: 11.0.5
+    optionalDependencies:
       zod: 4.4.3
     transitivePeerDependencies:
       - supports-color
@@ -16727,9 +16893,13 @@ snapshots:
 
   db0@0.3.4: {}
 
-  db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)):
+  db0@0.3.4(@electric-sql/pglite@0.4.6):
     optionalDependencies:
-      drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      "@electric-sql/pglite": 0.4.6
+
+  db0@0.3.4(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)):
+    optionalDependencies:
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
 
   debug@4.3.4:
     dependencies:
@@ -16834,6 +17004,16 @@ snapshots:
   drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6):
     optionalDependencies:
       "@electric-sql/pglite": 0.4.6
+
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1):
+    optionalDependencies:
+      "@electric-sql/pglite": 0.4.6
+      "@neondatabase/serverless": 1.1.0
+      "@opentelemetry/api": 1.9.1
+      "@types/pg": 8.15.6
+      kysely: 0.28.17
+      pg: 8.21.0
+      sql.js: 1.14.1
 
   drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0):
     optionalDependencies:
@@ -18766,12 +18946,12 @@ snapshots:
 
   nf3@0.3.17: {}
 
-  nitro@3.0.260522-beta:
+  nitro@3.0.260522-beta(@electric-sql/pglite@0.4.6)(@vercel/blob@2.4.0)(@vercel/queue@0.2.0)(chokidar@5.0.0)(jiti@2.7.0)(lru-cache@11.5.0)(rollup@4.60.4):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.5(srvx@0.11.16)
-      db0: 0.3.4
-      env-runner: 0.1.9
+      db0: 0.3.4(@electric-sql/pglite@0.4.6)
+      env-runner: 0.1.9(@vercel/queue@0.2.0)
       h3: 2.0.1-rc.22(crossws@0.4.5(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
@@ -18781,7 +18961,11 @@ snapshots:
       rolldown: 1.0.2
       srvx: 0.11.16
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(db0@0.3.4)(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.6))(lru-cache@11.5.0)(ofetch@2.0.0-alpha.3)
+    optionalDependencies:
+      "@vercel/queue": 0.2.0
+      jiti: 2.7.0
+      rollup: 4.60.4
     transitivePeerDependencies:
       - "@azure/app-configuration"
       - "@azure/cosmos"
@@ -18813,11 +18997,11 @@ snapshots:
       - sqlite3
       - uploadthing
 
-  nitro@3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0):
+  nitro@3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1))(jiti@2.7.0)(rollup@4.60.4):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.5(srvx@0.11.16)
-      db0: 0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))
+      db0: 0.3.4(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1))
       env-runner: 0.1.9(@vercel/queue@0.2.0)
       h3: 2.0.1-rc.22(crossws@0.4.5(srvx@0.11.16))
       hookable: 6.1.1
@@ -18828,10 +19012,62 @@ snapshots:
       rolldown: 1.0.2
       srvx: 0.11.16
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)))(ofetch@2.0.0-alpha.3)
     optionalDependencies:
       "@vercel/queue": 0.2.0
       jiti: 2.7.0
+      rollup: 4.60.4
+    transitivePeerDependencies:
+      - "@azure/app-configuration"
+      - "@azure/cosmos"
+      - "@azure/data-tables"
+      - "@azure/identity"
+      - "@azure/keyvault-secrets"
+      - "@azure/storage-blob"
+      - "@capacitor/preferences"
+      - "@deno/kv"
+      - "@electric-sql/pglite"
+      - "@libsql/client"
+      - "@netlify/blobs"
+      - "@netlify/runtime"
+      - "@planetscale/database"
+      - "@upstash/redis"
+      - "@vercel/blob"
+      - "@vercel/functions"
+      - "@vercel/kv"
+      - aws4fetch
+      - better-sqlite3
+      - chokidar
+      - drizzle-orm
+      - idb-keyval
+      - ioredis
+      - lru-cache
+      - miniflare
+      - mongodb
+      - mysql2
+      - sqlite3
+      - uploadthing
+
+  nitro@3.0.260522-beta(@vercel/queue@0.2.0)(jiti@2.7.0)(rollup@4.60.4):
+    dependencies:
+      consola: 3.4.2
+      crossws: 0.4.5(srvx@0.11.16)
+      db0: 0.3.4
+      env-runner: 0.1.9(@vercel/queue@0.2.0)
+      h3: 2.0.1-rc.22(crossws@0.4.5(srvx@0.11.16))
+      hookable: 6.1.1
+      nf3: 0.3.17
+      ocache: 0.1.4
+      ofetch: 2.0.0-alpha.3
+      ohash: 2.0.11
+      rolldown: 1.0.2
+      srvx: 0.11.16
+      unenv: 2.0.0-rc.24
+      unstorage: 2.0.0-alpha.7(db0@0.3.4)(ofetch@2.0.0-alpha.3)
+    optionalDependencies:
+      "@vercel/queue": 0.2.0
+      jiti: 2.7.0
+      rollup: 4.60.4
     transitivePeerDependencies:
       - "@azure/app-configuration"
       - "@azure/cosmos"
@@ -19267,18 +19503,20 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  postcss-load-config@6.0.1(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0):
+  postcss-load-config@6.0.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 2.7.0
+      postcss: 8.5.15
       tsx: 4.22.3
       yaml: 2.9.0
 
-  postcss-load-config@6.0.1(tsx@4.22.3):
+  postcss-load-config@6.0.1(postcss@8.5.15)(tsx@4.22.3):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
+      postcss: 8.5.15
       tsx: 4.22.3
 
   postcss-nested@6.2.0(postcss@8.5.15):
@@ -19446,13 +19684,14 @@ snapshots:
 
   react-is@19.2.7: {}
 
-  react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6):
+  react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6)(redux@5.0.1):
     dependencies:
       "@types/use-sync-external-store": 0.0.6
       react: 19.2.6
       use-sync-external-store: 1.6.0(react@19.2.6)
     optionalDependencies:
       "@types/react": 19.2.15
+      redux: 5.0.1
 
   react-redux@9.3.0(react@19.2.6):
     dependencies:
@@ -19481,9 +19720,9 @@ snapshots:
 
   readdirp@5.0.0: {}
 
-  recharts@3.8.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6):
+  recharts@3.8.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)(redux@5.0.1):
     dependencies:
-      "@reduxjs/toolkit": 2.12.0(react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
+      "@reduxjs/toolkit": 2.12.0(react-redux@9.3.0(@types/react@19.2.15)(react@19.2.6)(redux@5.0.1))(react@19.2.6)
       clsx: 2.1.1
       decimal.js-light: 2.5.1
       es-toolkit: 1.47.0
@@ -19492,7 +19731,7 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       react-is: 19.2.7
-      react-redux: 9.3.0(@types/react@19.2.15)(react@19.2.6)
+      react-redux: 9.3.0(@types/react@19.2.15)(react@19.2.6)(redux@5.0.1)
       reselect: 5.1.1
       tiny-invariant: 1.3.3
       use-sync-external-store: 1.6.0(react@19.2.6)
@@ -20085,9 +20324,9 @@ snapshots:
 
   stackback@0.0.2: {}
 
-  starlight-typedoc@0.23.0(@astrojs/starlight@0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3)):
+  starlight-typedoc@0.23.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3)):
     dependencies:
-      "@astrojs/starlight": 0.39.2(astro@6.3.7(tsx@4.22.3))(typescript@6.0.3)
+      "@astrojs/starlight": 0.39.2(astro@6.3.7(@types/node@25.9.1)(@vercel/blob@2.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.4)(tsx@4.22.3)(yaml@2.9.0))(typescript@6.0.3)
       github-slugger: 2.0.0
       typedoc: 0.28.19(typescript@6.0.3)
       typedoc-plugin-markdown: 4.11.0(typedoc@0.28.19(typescript@6.0.3))
@@ -20352,7 +20591,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.5.1(jiti@2.7.0)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0):
+  tsup@8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -20363,7 +20602,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(yaml@2.9.0)
       resolve-from: 5.0.0
       rollup: 4.60.4
       source-map: 0.7.6
@@ -20372,6 +20611,7 @@ snapshots:
       tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
+      postcss: 8.5.15
       typescript: 6.0.3
     transitivePeerDependencies:
       - jiti
@@ -20379,7 +20619,7 @@ snapshots:
       - tsx
       - yaml
 
-  tsup@8.5.1(tsx@4.22.3)(typescript@6.0.3):
+  tsup@8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@6.0.3):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -20390,7 +20630,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(tsx@4.22.3)
+      postcss-load-config: 6.0.1(postcss@8.5.15)(tsx@4.22.3)
       resolve-from: 5.0.0
       rollup: 4.60.4
       source-map: 0.7.6
@@ -20399,6 +20639,7 @@ snapshots:
       tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
+      postcss: 8.5.15
       typescript: 6.0.3
     transitivePeerDependencies:
       - jiti
@@ -20564,7 +20805,7 @@ snapshots:
 
   unpipe@1.0.0: {}
 
-  unstorage@1.17.5:
+  unstorage@1.17.5(@vercel/blob@2.4.0):
     dependencies:
       anymatch: 3.1.3
       chokidar: 5.0.0
@@ -20574,11 +20815,21 @@ snapshots:
       node-fetch-native: 1.6.7
       ofetch: 1.5.1
       ufo: 1.6.4
+    optionalDependencies:
+      "@vercel/blob": 2.4.0
 
-  unstorage@2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3):
+  unstorage@2.0.0-alpha.7(@vercel/blob@2.4.0)(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.6))(lru-cache@11.5.0)(ofetch@2.0.0-alpha.3):
+    optionalDependencies:
+      "@vercel/blob": 2.4.0
+      chokidar: 5.0.0
+      db0: 0.3.4(@electric-sql/pglite@0.4.6)
+      lru-cache: 11.5.0
+      ofetch: 2.0.0-alpha.3
+
+  unstorage@2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)))(ofetch@2.0.0-alpha.3):
     optionalDependencies:
       "@vercel/functions": 3.6.0
-      db0: 0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))
+      db0: 0.3.4(drizzle-orm@0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1))
       ofetch: 2.0.0-alpha.3
 
   unstorage@2.0.0-alpha.7(db0@0.3.4)(ofetch@2.0.0-alpha.3):
@@ -20678,7 +20929,7 @@ snapshots:
       d3-time: 3.1.0
       d3-timer: 3.0.1
 
-  vite@7.3.3(tsx@4.22.3):
+  vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -20687,8 +20938,12 @@ snapshots:
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:
+      "@types/node": 25.9.1
       fsevents: 2.3.3
+      jiti: 2.7.0
+      lightningcss: 1.32.0
       tsx: 4.22.3
+      yaml: 2.9.0
 
   vite@8.0.14(@types/node@25.9.1)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
@@ -20716,29 +20971,20 @@ snapshots:
       fsevents: 2.3.3
       tsx: 4.22.3
 
-  vite@8.0.14(tsx@4.22.3):
-    dependencies:
-      lightningcss: 1.32.0
-      picomatch: 4.0.4
-      postcss: 8.5.15
-      rolldown: 1.0.2
-      tinyglobby: 0.2.16
+  vitefu@1.1.3(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)):
     optionalDependencies:
-      fsevents: 2.3.3
-      tsx: 4.22.3
+      vite: 7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
 
-  vitefu@1.1.3(vite@7.3.3(tsx@4.22.3)):
-    optionalDependencies:
-      vite: 7.3.3(tsx@4.22.3)
-
-  vitest-evals@0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3)):
+  vitest-evals@0.13.1(tinyrainbow@3.1.0)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3))(zod@4.4.3):
     dependencies:
       "@vitest-evals/core": 0.13.1
       "@vitest-evals/report-ui": 0.13.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.7(tsx@4.22.3)
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3)
+    optionalDependencies:
+      zod: 4.4.3
 
-  vitest@4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0):
+  vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
       "@vitest/expect": 4.1.7
       "@vitest/mocker": 4.1.7(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -20761,6 +21007,7 @@ snapshots:
       vite: 8.0.14(@types/node@25.9.1)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      "@opentelemetry/api": 1.9.1
       "@types/node": 25.9.1
       "@vitest/coverage-v8": 4.1.7(vitest@4.1.7)
     transitivePeerDependencies:
@@ -20777,7 +21024,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3):
+  vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(tsx@4.22.3):
     dependencies:
       "@vitest/expect": 4.1.7
       "@vitest/mocker": 4.1.7(vite@8.0.14(@types/node@25.9.1)(tsx@4.22.3))
@@ -20800,6 +21047,7 @@ snapshots:
       vite: 8.0.14(@types/node@25.9.1)(tsx@4.22.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      "@opentelemetry/api": 1.9.1
       "@types/node": 25.9.1
       "@vitest/coverage-v8": 4.1.7(vitest@4.1.7)
     transitivePeerDependencies:
@@ -20816,7 +21064,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.7(@types/node@25.9.1)(tsx@4.22.3):
+  vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(tsx@4.22.3):
     dependencies:
       "@vitest/expect": 4.1.7
       "@vitest/mocker": 4.1.7(vite@8.0.14(@types/node@25.9.1)(tsx@4.22.3))
@@ -20839,43 +21087,8 @@ snapshots:
       vite: 8.0.14(@types/node@25.9.1)(tsx@4.22.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      "@opentelemetry/api": 1.9.1
       "@types/node": 25.9.1
-    transitivePeerDependencies:
-      - "@vitejs/devtools"
-      - esbuild
-      - jiti
-      - less
-      - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - yaml
-
-  vitest@4.1.7(tsx@4.22.3):
-    dependencies:
-      "@vitest/expect": 4.1.7
-      "@vitest/mocker": 4.1.7(vite@8.0.14(tsx@4.22.3))
-      "@vitest/pretty-format": 4.1.7
-      "@vitest/runner": 4.1.7
-      "@vitest/snapshot": 4.1.7
-      "@vitest/spy": 4.1.7
-      "@vitest/utils": 4.1.7
-      es-module-lexer: 2.1.0
-      expect-type: 1.3.0
-      magic-string: 0.30.21
-      obug: 2.1.1
-      pathe: 2.0.3
-      picomatch: 4.0.4
-      std-env: 4.1.0
-      tinybench: 2.9.0
-      tinyexec: 1.1.2
-      tinyglobby: 0.2.16
-      tinyrainbow: 3.1.0
-      vite: 8.0.14(tsx@4.22.3)
-      why-is-node-running: 2.3.0
     transitivePeerDependencies:
       - "@vitejs/devtools"
       - esbuild

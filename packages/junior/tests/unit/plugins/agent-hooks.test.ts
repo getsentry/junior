@@ -105,7 +105,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           systemPrompt(ctx) {
             expect(ctx.platform).toBe("local");
-            expect("db" in ctx).toBe(false);
+            expect(ctx.db).toEqual(expect.any(Object));
             return [{ text: "Z contribution" }];
           },
         },
@@ -933,6 +933,12 @@ describe("getPluginTools channel resolution", () => {
     });
 
     expect(ctx.conversationId).toBe("slack:DDM:1780479160.406339");
+  });
+
+  it("exposes db to plugin hooks", () => {
+    const ctx = capturePluginContext();
+
+    expect(ctx.db).toEqual(expect.any(Object));
   });
 
   it("does not synthesize Slack context from local destinations", () => {

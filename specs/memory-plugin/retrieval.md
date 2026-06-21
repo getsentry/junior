@@ -7,20 +7,19 @@
 
 ## Purpose
 
-Define how the memory plugin recalls active visible memories, optionally
-injects them into model-visible user prompts, and exposes explicit recall
-through `searchMemories`.
+Define how the memory plugin recalls active visible memories, injects them into
+model-visible user prompts, and exposes explicit recall through
+`searchMemories`.
 
 ## Automatic Injection Policy
 
-Install policy controls whether recall is automatic or tool-mediated:
+V1 automatically injects relevant visible memories when the memory plugin is
+enabled. Installs that do not want automatic memory injection should not enable
+the memory plugin.
 
-- `autoInjectMemories: true` enables `userPrompt` memory injection.
-- `autoInjectMemories: false` disables memory injection; the model-visible recall
-  path is `searchMemories`.
-
-This setting does not control writes. Passive extraction and explicit creation
-are governed by the extraction and tool policies in [`./policy.md`](./policy.md).
+Plugin enablement does not control writes. Passive extraction and explicit
+creation are governed by the extraction and tool policies in
+[`./policy.md`](./policy.md).
 
 ## Automatic Recall
 
@@ -28,10 +27,9 @@ The memory plugin recalls memories through `userPrompt(ctx)`.
 
 Core invokes the hook once while constructing each fresh triggering user prompt.
 Resume records that already contain a prompt checkpoint continue from stored Pi
-history and do not invoke `userPrompt` again. When automatic memory injection is
-disabled by policy, the plugin must return no memory contribution.
+history and do not invoke `userPrompt` again.
 
-When automatic memory injection is enabled, the plugin must:
+The plugin must:
 
 1. Derive visible memory scopes from `ctx.requester`, `ctx.source`,
    `ctx.destination`, and `ctx.conversationId`.
@@ -41,9 +39,9 @@ When automatic memory injection is enabled, the plugin must:
 
 ## Tool-Mediated Recall
 
-When automatic memory injection is disabled, `searchMemories` is the only
-model-visible recall path. It must use the same visibility filter, policy
-checks, ranking pipeline, and result budgets as automatic memory injection.
+`searchMemories` is the explicit model-visible recall path. It must use the same
+visibility filter, policy checks, ranking pipeline, and result budgets as
+automatic memory injection.
 
 `searchMemories` may return ids or short ids when useful for follow-up memory
 management, but it should otherwise return concise memory content and avoid
@@ -74,23 +72,29 @@ visible.
 
 ### Ranking Pipeline
 
-V1 uses lexical retrieval without a graph or vector index:
+V1 uses lexical retrieval without a graph or vector index. Lexical retrieval is
+a candidate retrieval and ordering primitive, not the semantic policy authority
+for whether content should be remembered, who it is about, whether it is safe,
+or whether the assistant should rely on it. Those judgments belong to the memory
+agent, ranker/evaluator, and eval coverage.
 
 1. Build visible active candidate scopes.
-2. Run lexical search against memory content.
-3. Apply small deterministic boosts for exact scope match, durable memory
-   types, subject match, and recent observations.
-4. For automatic injection only, drop memories already injected into the active
+2. Run lexical search against memory content to retrieve candidates.
+3. For automatic injection only, drop memories already injected into the active
    session projection.
-5. Return the top memories within count and character budgets.
+4. Return the top memories within count and character budgets.
+
+Do not add regexes, keyword lists, stopwords, or text-shape heuristics as a
+semantic relevance gate. If recall relevance is weak, improve the memory agent,
+ranking model, embeddings, or evals rather than hardcoding natural-language
+classification in deterministic code.
 
 Embedding support may upgrade this to hybrid retrieval:
 
 1. Run vector search when embeddings are configured and the user text can be
    embedded.
 2. Merge lexical and vector results with reciprocal-rank style fusion.
-3. Apply the same visibility filtering, deterministic boosts, and prompt
-   budgets.
+3. Apply the same visibility filtering, ranking model, and prompt budgets.
 
 Vector results should be overfetched before final filtering and prompt
 formatting. Approximate vector search must be exact-reranked over visible

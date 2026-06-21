@@ -38,14 +38,12 @@ context. The model may not change policy through prompt text or tool arguments.
 V1 needs only a small required policy surface:
 
 - passive extraction toggle
-- automatic memory injection toggle
 
 The V1 config shape is:
 
 ```ts
 interface MemoryPolicy {
   passiveExtraction: boolean;
-  autoInjectMemories: boolean;
 }
 ```
 
@@ -75,22 +73,20 @@ Workplace-safe defaults should be conservative:
 1. `passiveExtraction` defaults to `false`.
 2. If passive extraction is enabled in V1, it learns only allowed workplace
    knowledge from conversations classified as `public`.
-3. `autoInjectMemories` defaults to `true` when the memory plugin is enabled.
-4. Installs that do not want automatic memory injection can set
-   `autoInjectMemories` to `false`, requiring the model to use
-   `searchMemories` for recall.
-5. Passive extraction from conversations classified as `direct`, `private`,
+3. Automatic memory injection is enabled when the memory plugin is enabled.
+4. Passive extraction from conversations classified as `direct`, `private`,
    `unknown`, or unsupported is out of scope for V1.
-6. V1 does not store private or sensitive memory content, even in personal
+5. V1 does not store private or sensitive memory content, even in personal
    scope.
-7. Third-party personal facts about coworkers should not be passively stored by
+6. Third-party personal facts about coworkers should not be passively stored by
    default.
-8. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
+7. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
    `observation` memories.
-9. Default admin output should be redacted.
+8. Default admin output should be redacted.
 
-An install can choose whether to enable passive extraction and whether to enable
-automatic memory injection, but V1 does not expose broader extraction behaviors.
+An install can choose whether to enable passive extraction, but automatic recall
+is part of enabling the memory plugin. V1 does not expose broader extraction
+behaviors.
 
 ## Default Workplace Guidelines
 
@@ -240,19 +236,13 @@ to that requester.
 
 ## Automatic Injection Policy
 
-`autoInjectMemories` controls automatic memory reads. It is independent from
-passive extraction:
+Automatic memory injection is enabled when the memory plugin is enabled. It is
+independent from passive extraction: the plugin may inject stored memories even
+when `passiveExtraction` is `false`.
 
-| Value   | Meaning                                                                    |
-| ------- | -------------------------------------------------------------------------- |
-| `true`  | `userPrompt` injects relevant visible memories into model-visible prompts. |
-| `false` | `userPrompt` does not inject memories; recall requires `searchMemories`.   |
-
-When `autoInjectMemories` is `false`, the plugin may still expose memory tools
-and may still perform passive extraction if `passiveExtraction` is `true`. The
-model-visible recall path is explicit: the model must call `searchMemories`,
-which applies the same visibility, policy, ranking, and redaction rules as
-automatic memory injection.
+`searchMemories` remains the explicit model-visible recall path. It applies the
+same visibility, policy, ranking, and redaction rules as automatic memory
+injection.
 
 ## Explicit Tools And Policy
 

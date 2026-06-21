@@ -23,11 +23,9 @@ record; it is not a content sensitivity model. Private, sensitive, secret, or
 otherwise restricted content is rejected instead of being stored with a
 classification label.
 
-When automatic memory injection is enabled, the memory plugin makes relevant
-facts available before each response without making recall depend on the model
-choosing a search tool. When automatic memory injection is disabled,
-model-visible recall is explicit through `searchMemories`. Other explicit tools
-support user-directed memory management.
+When the memory plugin is enabled, it makes relevant facts available before each
+response without making recall depend on the model choosing a search tool.
+Explicit tools also support user-directed memory management.
 
 ## Scope
 
@@ -36,7 +34,7 @@ support user-directed memory management.
 - Memory plugin package shape and required plugin hooks.
 - Plugin-owned SQL storage, retrieval indexes, embeddings, and model-provider
   boundaries.
-- Automatic recall through `userPrompt` when `autoInjectMemories` is enabled.
+- Automatic recall through `userPrompt` when the memory plugin is enabled.
 - Passive learning through `observeTurn` plus a plugin background task handler.
 - Explicit `createMemory`, `removeMemory`, `listMemories`, and
   `searchMemories` tools.
@@ -51,7 +49,7 @@ support user-directed memory management.
 - Storing private, sensitive, secret, or otherwise restricted memory content in
   V1.
 - Cross-context recall between unrelated conversations.
-- Requiring search tools when automatic memory injection is enabled.
+- Requiring search tools for default recall.
 - Storing conversation transcript history as memory.
 - Storing credentials, secrets, raw OAuth data, or provider tokens.
 - Letting model-supplied tool arguments choose actors, Slack workspaces,
@@ -161,15 +159,16 @@ backfill, but it is named separately so embedding repair can be queued without
 pretending a completed turn needs to be re-extracted.
 
 The exact hook and task type names are owned by their generic plugin specs. The
-memory plugin needs these broad V1 surfaces: optional automatic recall,
-completed-turn observation, background task handling, model-visible memory
-tools, SQL access, and host-owned embedding-provider access. A future admin CLI
-surface is specified separately in [`./admin.md`](./admin.md).
+memory plugin needs these broad V1 surfaces: automatic recall when the plugin is
+enabled, completed-turn observation, background task handling, model-visible
+memory tools, SQL access, and host-owned embedding-provider access. A future
+admin CLI surface is specified separately in [`./admin.md`](./admin.md).
 
 The plugin must also receive install-level memory policy before hooks execute.
-Policy controls whether passive extraction is enabled, whether automatic memory
-injection is enabled, what categories and scopes may be stored, which providers
-may receive memory text, and which retention defaults apply.
+Policy controls whether passive extraction is enabled, what categories and
+scopes may be stored, which providers may receive memory text, and which
+retention defaults apply. Installations that do not want automatic memory recall
+should disable the memory plugin rather than split recall from the plugin.
 
 V1 passive extraction targets workplace knowledge from conversations classified
 as `public` by Junior's existing conversation privacy/destination visibility
@@ -331,9 +330,8 @@ The V1 contract has these implementation dependencies:
 3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
    `removeMemory` tools with context-bound authority. `createMemory` submits a
    candidate memory; the memory agent owns subject and scope decisions.
-4. Automatic recall from stored memories through `userPrompt` when
-   `autoInjectMemories` is enabled, using lexical ranking before embeddings are
-   available.
+4. Automatic recall from stored memories through `userPrompt`, using lexical
+   ranking before embeddings are available.
 5. Embedding provider integration, vector storage, and embedding repair tasks.
 6. `observeTurn` task enqueueing and `extractMemories` task execution.
 7. Deduplication, TTL archival, and conservative supersession.
