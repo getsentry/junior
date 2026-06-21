@@ -18,7 +18,7 @@ outside model-visible tools.
 
 ## Non-Goals
 
-- Requiring memory admin CLI in the first implementation slice.
+- Requiring a memory admin CLI for V1.
 - Letting the model invoke admin commands.
 - Defining a dashboard UI for memory administration.
 - Defining account deletion, legal export, or retention workflows.

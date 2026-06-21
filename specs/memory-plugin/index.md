@@ -42,7 +42,7 @@ support user-directed memory management.
   `searchMemories` tools.
 - Scope, attribution, lifecycle, tool, model, public-content, and secret
   rejection rules.
-- V1 implementation order and verification requirements.
+- V1 capability boundaries and verification requirements.
 
 ## Non-Goals
 
@@ -319,9 +319,9 @@ The store boundary owns:
 Drizzle table objects may be imported inside the plugin package. They must not
 be exported as part of Junior core.
 
-## Implementation Order
+## Delivery Dependencies
 
-Implement in this order:
+The V1 contract has these implementation dependencies:
 
 1. Core plugin hook surfaces needed by this spec: `userPrompt`, `observeTurn`,
    plugin background tasks, `tools`, `ctx.db`, host embedding provider access,
@@ -339,12 +339,9 @@ Implement in this order:
 6. `observeTurn` task enqueueing and `extractMemories` task execution.
 7. Deduplication, TTL archival, and conservative supersession.
 8. Optional vector index tuning and hybrid ranking improvements.
-9. Future admin CLI inspection and repair commands after redaction and access
+9. Admin CLI inspection and repair commands after redaction and access
    rules are implemented.
 10. Dashboard/admin UI only after a separate UI access-control contract exists.
-
-The first vertical slice should prove explicit memory create/list/remove/search
-and optional automatic memory injection before adding automatic extraction.
 
 ## Related Specs
 

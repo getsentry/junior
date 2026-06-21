@@ -302,7 +302,7 @@ LIMIT $${predicate.params.length + 2}
   return rows.map(parseMemoryRow);
 }
 
-/** Search active visible records with the first-slice lexical matcher. */
+/** Search active visible records with the V1 lexical matcher. */
 async function searchVisibleMemories(args: {
   db: PluginDb;
   nowMs: number;

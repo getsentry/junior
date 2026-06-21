@@ -31,14 +31,14 @@ The plugin stores two classes of data:
    that can be deleted and rebuilt from memory records.
 
 The implementation may use one table per class or split them further if needed.
-The first authoritative storage slice keeps the shape simple:
+The V1 authoritative storage shape is:
 
 - one authoritative memory-record table
 - no canonical graph/entity/fact tables
 
-The embedding slice adds one derived embedding/vector table or equivalent vector
-index. Optional database-native lexical search support may be added with the
-retrieval slice.
+Embedding support adds one derived embedding/vector table or equivalent vector
+index. Optional database-native lexical search support may be added as a
+retrieval implementation detail.
 
 ### Memory Record Shape
 
@@ -61,9 +61,9 @@ Required conceptual fields:
 - optional supersession link
 - archive timestamp and reason
 
-The first storage slice intentionally keeps this authoritative row lean.
-Subject/display labels, extraction confidence, and operational metadata should
-be added only with the extraction, graph, or admin consumer that needs them.
+V1 intentionally keeps this authoritative row lean. Subject/display labels,
+extraction confidence, and operational metadata should be added only with the
+extraction, graph, or admin consumer that needs them.
 
 Scope and source fields are authority-bearing. Subject fields describe the
 memory's topic, but they must not grant visibility beyond scope. The stored
@@ -116,9 +116,9 @@ redelivery, and task retry. The store needs a stable source marker for a
 completed observation and the extracted fact's position or stable fact id inside
 that observation.
 
-Semantic duplicate suppression needs extractor and retrieval context. It should
-run before insertion when implemented, but V1 storage does not use exact-content
-hashing as memory identity.
+Semantic duplicate suppression needs extractor and retrieval context. It runs
+before insertion in memory creation paths that have semantic adjudication, but
+V1 storage does not use exact-content hashing as memory identity.
 
 ### Lexical Search
 
@@ -134,7 +134,7 @@ before returning rows to prompt rendering or tools.
 Embeddings are derived retrieval data. They are not the authority for memory
 existence, visibility, or deletion.
 
-When the embedding slice is implemented, embedding rows or index entries must
+When embeddings are enabled, embedding rows or index entries must
 record:
 
 - memory id

@@ -78,7 +78,7 @@ Use integration tests for:
 - memory plugin packaged storage migrations are discovered and applied through
   `junior upgrade`
 - storage migrations provide the authoritative memory-record mechanism required
-  by the first storage slice in `storage.md`
+  by `storage.md`
 - explicit memory creation stores a personal memory under the current requester
 - explicit conversation memory stores under the current conversation without
   accepting model-supplied Slack ids

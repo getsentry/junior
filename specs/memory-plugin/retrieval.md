@@ -74,7 +74,7 @@ visible.
 
 ### Ranking Pipeline
 
-The first storage slice uses lexical retrieval without a graph or vector index:
+V1 uses lexical retrieval without a graph or vector index:
 
 1. Build visible active candidate scopes.
 2. Run lexical search against memory content.
@@ -84,7 +84,7 @@ The first storage slice uses lexical retrieval without a graph or vector index:
    session projection.
 5. Return the top memories within count and character budgets.
 
-The later embedding slice may upgrade this to hybrid retrieval:
+Embedding support may upgrade this to hybrid retrieval:
 
 1. Run vector search when embeddings are configured and the user text can be
    embedded.

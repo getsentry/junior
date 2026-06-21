@@ -128,7 +128,7 @@ The memory plugin's `extractMemories` task handler must:
 Extraction tasks must be idempotent. If the same completed turn is observed or
 delivered more than once, source idempotency fields must prevent duplicate
 memory writes. Semantic duplicate detection belongs in the extractor and
-retrieval slices, not exact-content storage identity.
+retrieval pipeline, not exact-content storage identity.
 
 The task handler must be safe to run in a separate serverless invocation from
 the original user turn. It must not depend on process memory, live Slack
