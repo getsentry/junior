@@ -22,6 +22,8 @@ import { memoryRuntimeContextSchema, type MemoryRuntimeContext } from "./types";
 const MAX_TOOL_CONTENT_CHARS = 4_000;
 const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_SEARCH_LIMIT = 10;
+const ISO_TIMESTAMP_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Conversation memory requires conversation context.",
@@ -88,10 +90,25 @@ function parseExpiresAt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
+  const match = ISO_TIMESTAMP_PATTERN.exec(value);
   const expiresAtMs = Date.parse(value);
+  if (!match || !Number.isFinite(expiresAtMs)) {
+    throwToolInputError("expires_at must be a valid ISO timestamp.");
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
   if (
-    !Number.isFinite(expiresAtMs) ||
-    new Date(expiresAtMs).toISOString() !== value
+    calendarDate.getUTCFullYear() !== year ||
+    calendarDate.getUTCMonth() !== month - 1 ||
+    calendarDate.getUTCDate() !== day ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
   ) {
     throwToolInputError("expires_at must be a valid ISO timestamp.");
   }
@@ -238,9 +255,10 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
         createMemoryInputSchema,
         input,
       );
-      const store = memoryStore(context);
-      const runtimeContext = memoryRuntimeContext(context);
+      const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
+      const runtimeContext = memoryRuntimeContext(context);
+      const store = memoryStore(context);
       const review = await (async () => {
         try {
           return parseMemoryReview(
@@ -279,7 +297,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
               ? { expiresAtMs: requestedExpiresAtMs }
               : {}),
         },
-        requireToolCallId(options.toolCallId),
+        toolCallId,
       );
       const result = await (async () => {
         try {

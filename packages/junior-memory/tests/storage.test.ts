@@ -361,7 +361,16 @@ ORDER BY created_at_ms ASC
       ).resolves.toEqual({ ok: true, memories: [] });
 
       await expect(
-        tools.createMemory.execute!(
+        createMemoryCreateTool({
+          ...context,
+          agent: {
+            reviewCreateRequest() {
+              throw new Error(
+                "Memory agent should not review missing tool ids.",
+              );
+            },
+          },
+        }).execute!(
           {
             content: "I prefer missing retry ids to fail.",
           },
@@ -381,7 +390,7 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: "I prefer valid expiration to be stored.",
-            expires_at: "2026-06-19T13:00:00.000Z",
+            expires_at: "2026-06-19T13:00:00+00:00",
           },
           { toolCallId: "tool-create-valid-expiration" },
         ),
@@ -390,7 +399,7 @@ ORDER BY created_at_ms ASC
         created: true,
         memory: {
           content: "I prefer valid expiration to be stored.",
-          expiresAtMs: Date.parse("2026-06-19T13:00:00.000Z"),
+          expiresAtMs: Date.parse("2026-06-19T13:00:00+00:00"),
         },
       });
       await expect(
