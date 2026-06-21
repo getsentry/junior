@@ -22,8 +22,6 @@ import { memoryRuntimeContextSchema, type MemoryRuntimeContext } from "./types";
 const MAX_TOOL_CONTENT_CHARS = 4_000;
 const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_SEARCH_LIMIT = 10;
-const ISO_TIMESTAMP_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Conversation memory requires conversation context.",
@@ -86,29 +84,103 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.min(50, Math.max(1, Math.floor(value)));
 }
 
+function digitAt(value: string, index: number): boolean {
+  const code = value.charCodeAt(index);
+  return code >= 48 && code <= 57;
+}
+
+function readDigits(
+  value: string,
+  start: number,
+  length: number,
+): number | undefined {
+  for (let index = start; index < start + length; index++) {
+    if (!digitAt(value, index)) {
+      return undefined;
+    }
+  }
+  return Number(value.slice(start, start + length));
+}
+
+function parseIsoTimestampParts(value: string) {
+  if (
+    value.length < 20 ||
+    value[4] !== "-" ||
+    value[7] !== "-" ||
+    value[10] !== "T" ||
+    value[13] !== ":" ||
+    value[16] !== ":"
+  ) {
+    return undefined;
+  }
+  const year = readDigits(value, 0, 4);
+  const month = readDigits(value, 5, 2);
+  const day = readDigits(value, 8, 2);
+  const hour = readDigits(value, 11, 2);
+  const minute = readDigits(value, 14, 2);
+  const second = readDigits(value, 17, 2);
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return undefined;
+  }
+
+  let zoneStart = 19;
+  if (value[zoneStart] === ".") {
+    zoneStart += 1;
+    const fractionStart = zoneStart;
+    while (zoneStart < value.length && digitAt(value, zoneStart)) {
+      zoneStart += 1;
+    }
+    if (zoneStart === fractionStart) {
+      return undefined;
+    }
+  }
+
+  if (value[zoneStart] === "Z") {
+    if (zoneStart !== value.length - 1) {
+      return undefined;
+    }
+  } else if (value[zoneStart] === "+" || value[zoneStart] === "-") {
+    if (
+      zoneStart !== value.length - 6 ||
+      value[zoneStart + 3] !== ":" ||
+      readDigits(value, zoneStart + 1, 2) === undefined ||
+      readDigits(value, zoneStart + 4, 2) === undefined
+    ) {
+      return undefined;
+    }
+  } else {
+    return undefined;
+  }
+
+  return { day, hour, minute, month, second, year };
+}
+
 function parseExpiresAt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
-  const match = ISO_TIMESTAMP_PATTERN.exec(value);
+  const parts = parseIsoTimestampParts(value);
   const expiresAtMs = Date.parse(value);
-  if (!match || !Number.isFinite(expiresAtMs)) {
+  if (!parts || !Number.isFinite(expiresAtMs)) {
     throwToolInputError("expires_at must be a valid ISO timestamp.");
   }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6]);
-  const calendarDate = new Date(Date.UTC(year, month - 1, day));
+  const calendarDate = new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day),
+  );
   if (
-    calendarDate.getUTCFullYear() !== year ||
-    calendarDate.getUTCMonth() !== month - 1 ||
-    calendarDate.getUTCDate() !== day ||
-    hour > 23 ||
-    minute > 59 ||
-    second > 59
+    calendarDate.getUTCFullYear() !== parts.year ||
+    calendarDate.getUTCMonth() !== parts.month - 1 ||
+    calendarDate.getUTCDate() !== parts.day ||
+    parts.hour > 23 ||
+    parts.minute > 59 ||
+    parts.second > 59
   ) {
     throwToolInputError("expires_at must be a valid ISO timestamp.");
   }
