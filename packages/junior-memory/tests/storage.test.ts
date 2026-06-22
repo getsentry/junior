@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -58,11 +58,16 @@ function memoryDb(fixture: MemoryFixture): MemoryDb {
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
   const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema);
-  const migration = await readFile(
-    resolve(__dirname, "../migrations/0000_dizzy_millenium_guard.sql"),
-    "utf8",
-  );
-  await fixture.execute(migration);
+  const migrationsDir = resolve(__dirname, "../migrations");
+  const migrations = (await readdir(migrationsDir))
+    .filter((filename) => filename.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrations) {
+    const migration = await readFile(resolve(migrationsDir, migrationFile), {
+      encoding: "utf8",
+    });
+    await fixture.execute(migration);
+  }
   return fixture;
 }
 
@@ -340,7 +345,7 @@ ORDER BY created_at_ms ASC
       };
 
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: "I prefer terse status updates.",
           },
@@ -376,7 +381,7 @@ ORDER BY created_at_ms ASC
         createMemoryCreateTool({
           ...context,
           agent: allowMemory("conversation"),
-        }).execute!(
+        }).execute(
           {
             content: "Incident notes live in Linear.",
             expires_at: "never",
@@ -392,7 +397,7 @@ ORDER BY created_at_ms ASC
       });
 
       await expect(
-        tools.listMemories.execute!({ limit: 10 }, {}),
+        tools.listMemories.execute({ limit: 10 }, {}),
       ).resolves.toMatchObject({
         ok: true,
         memories: [
@@ -405,7 +410,7 @@ ORDER BY created_at_ms ASC
         ],
       });
       await expect(
-        tools.searchMemories.execute!({ query: "incident notes" }, {}),
+        tools.searchMemories.execute({ query: "incident notes" }, {}),
       ).resolves.toMatchObject({
         ok: true,
         memories: [
@@ -415,7 +420,7 @@ ORDER BY created_at_ms ASC
         ],
       });
 
-      const listResult = (await tools.listMemories.execute!(
+      const listResult = (await tools.listMemories.execute(
         { limit: 10 },
         {},
       )) as {
@@ -426,7 +431,7 @@ ORDER BY created_at_ms ASC
       );
       expect(personal).toBeDefined();
       await expect(
-        tools.removeMemory.execute!({ id: personal!.id.slice(0, 12) }, {}),
+        tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
         ok: true,
         memory: {
@@ -435,7 +440,7 @@ ORDER BY created_at_ms ASC
         },
       });
       await expect(
-        tools.searchMemories.execute!({ query: "terse status" }, {}),
+        tools.searchMemories.execute({ query: "terse status" }, {}),
       ).resolves.toEqual({ ok: true, memories: [] });
 
       await expect(
@@ -448,7 +453,7 @@ ORDER BY created_at_ms ASC
               );
             },
           },
-        }).execute!(
+        }).execute(
           {
             content: "I prefer missing retry ids to fail.",
             expires_at: "never",
@@ -457,7 +462,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: "I prefer invalid expiration to fail.",
             expires_at: "not-a-date",
@@ -466,7 +471,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: "I prefer valid expiration to be stored.",
             expires_at: "2026-06-19T13:00:00+00:00",
@@ -482,7 +487,7 @@ ORDER BY created_at_ms ASC
         },
       });
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: "I prefer hidden fields to fail.",
             expires_at: "never",
@@ -492,7 +497,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: " \n\t ",
             expires_at: "never",
@@ -505,7 +510,7 @@ ORDER BY created_at_ms ASC
           agent: rejectMemory,
           db: memoryDb(fixture),
           ...slackContext(),
-        }).execute!(
+        }).execute(
           {
             content: "I prefer rejected memories not to be stored.",
             expires_at: "never",
@@ -518,7 +523,7 @@ ORDER BY created_at_ms ASC
           agent: allowMemory("requester"),
           db: memoryDb(fixture),
           source: slackContext().source,
-        }).execute!(
+        }).execute(
           {
             content: "I prefer requester context failures to be visible.",
             expires_at: "never",
@@ -527,7 +532,7 @@ ORDER BY created_at_ms ASC
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        tools.createMemory.execute!(
+        tools.createMemory.execute(
           {
             content: "I prefer duplicate-safe retries.",
             expires_at: "never",
@@ -536,8 +541,18 @@ ORDER BY created_at_ms ASC
         ),
       ).resolves.toMatchObject({
         ok: true,
-        created: false,
-        memory: { content: "Prefers terse status updates." },
+        created: true,
+        memory: { content: "Prefers duplicate-safe retries." },
+      });
+      await expect(
+        tools.searchMemories.execute({ query: "duplicate-safe retries" }, {}),
+      ).resolves.toMatchObject({
+        ok: true,
+        memories: [
+          expect.objectContaining({
+            content: "Prefers duplicate-safe retries.",
+          }),
+        ],
       });
     } finally {
       await fixture.close();
@@ -646,7 +661,7 @@ ORDER BY created_at_ms ASC
       });
 
       await expect(
-        firstTool.execute!(
+        firstTool.execute(
           {
             content: "I prefer the first remembered fact.",
             expires_at: "never",
@@ -655,7 +670,7 @@ ORDER BY created_at_ms ASC
         ),
       ).resolves.toMatchObject({ created: true });
       await expect(
-        secondTool.execute!(
+        secondTool.execute(
           {
             content: "I prefer the second remembered fact.",
             expires_at: "never",
@@ -792,6 +807,55 @@ INSERT INTO junior_memory_memories (
           ],
         ),
       ).rejects.toThrow("duplicate key value violates unique constraint");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("recreates archived memories instead of resolving retries to hidden rows", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+
+      const archived = await store.createMemory({
+        content: "Prefers short deployment summaries.",
+        idempotencyKey: "explicit-create-archived",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      await store.archiveMemory({ id: archived.memory.id });
+
+      nowMs = TEST_NOW_MS + 2;
+      const recreated = await store.createMemory({
+        content: "Prefers short deployment summaries.",
+        idempotencyKey: "explicit-create-archived",
+      });
+      expect(recreated).toMatchObject({
+        created: true,
+        memory: { content: archived.memory.content },
+      });
+      expect(recreated.memory.id).not.toBe(archived.memory.id);
+
+      nowMs = TEST_NOW_MS + 3;
+      await expect(
+        store.createMemory({
+          content: "Changed content with the recreated retry key.",
+          idempotencyKey: "explicit-create-archived",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: {
+          id: recreated.memory.id,
+          content: recreated.memory.content,
+        },
+      });
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: recreated.memory.id }),
+      ]);
     } finally {
       await fixture.close();
     }

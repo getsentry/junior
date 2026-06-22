@@ -8,6 +8,13 @@
       "when": 1781976138405,
       "tag": "0000_dizzy_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782149964214,
+      "tag": "0001_closed_madrox",
+      "breakpoints": true
     }
   ]
 }

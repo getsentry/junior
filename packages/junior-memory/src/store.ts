@@ -284,6 +284,9 @@ async function findByIdempotencyKey(args: {
         eq(juniorMemoryMemories.scope, args.scope.scope),
         eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
         eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
+        isNull(juniorMemoryMemories.archivedAtMs),
+        isNull(juniorMemoryMemories.supersededAtMs),
+        isNull(juniorMemoryMemories.supersededById),
       ),
     )
     .limit(1);
@@ -413,7 +416,7 @@ export function createMemoryStore(
           juniorMemoryMemories.scopeKey,
           juniorMemoryMemories.idempotencyKey,
         ],
-        where: sql`${juniorMemoryMemories.idempotencyKey} IS NOT NULL`,
+        where: sql`${juniorMemoryMemories.idempotencyKey} IS NOT NULL AND ${juniorMemoryMemories.archivedAtMs} IS NULL AND ${juniorMemoryMemories.supersededAtMs} IS NULL AND ${juniorMemoryMemories.supersededById} IS NULL`,
       })
       .returning();
     if (rows[0]) {

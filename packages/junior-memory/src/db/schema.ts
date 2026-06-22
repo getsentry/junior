@@ -56,7 +56,9 @@ export const juniorMemoryMemories = pgTable(
       ),
     uniqueIndex("junior_memory_memories_idempotency_idx")
       .on(table.scope, table.scopeKey, table.idempotencyKey)
-      .where(sql`${table.idempotencyKey} IS NOT NULL`),
+      .where(
+        sql`${table.idempotencyKey} IS NOT NULL AND ${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
+      ),
     check(
       "junior_memory_memories_scope_check",
       sql`${table.scope} IN ('personal', 'conversation')`,
