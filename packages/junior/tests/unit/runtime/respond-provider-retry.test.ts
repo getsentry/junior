@@ -32,6 +32,17 @@ async function waitForPromptCall(count: number): Promise<void> {
   throw new Error(`Expected ${count} prompt call(s)`);
 }
 
+async function advanceUntilContinueCall(maxMs: number): Promise<void> {
+  for (let elapsed = 0; elapsed < maxMs; elapsed += 100) {
+    if (counters.continueCalls > 0) {
+      return;
+    }
+    await vi.advanceTimersByTimeAsync(100);
+    await realSleep(1);
+  }
+  throw new Error("Expected provider retry continuation to start");
+}
+
 vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
     state: {
@@ -285,8 +296,7 @@ describe("generateAssistantReply provider retry", () => {
     });
 
     await waitForPromptCall(1);
-    await realSleep(10);
-    await vi.advanceTimersByTimeAsync(2_000);
+    await advanceUntilContinueCall(5_000);
     const reply = await replyPromise;
 
     expect(reply.text).toBe("Recovered.");
