@@ -151,7 +151,6 @@ async function expectRequesterMemorySemantics(
 async function expectAssistantMemoryAnswer(args: {
   assistantText: string;
   expectedBehavior: string;
-  memoryId?: string;
 }): Promise<void> {
   const { text } = await completeText({
     modelId: memoryJudgeModelId,
@@ -164,15 +163,11 @@ async function expectAssistantMemoryAnswer(args: {
           "<assistant-text>",
           args.assistantText,
           "</assistant-text>",
-          args.memoryId
-            ? ["<memory-id>", args.memoryId, "</memory-id>"].join("\n")
-            : "",
           "<expected-behavior>",
           args.expectedBehavior,
           "</expected-behavior>",
           "<criteria>",
           "Pass only if the assistant text satisfies the expected behavior.",
-          "If a memory id is provided, the assistant must include either the full id or a usable unambiguous prefix from that id.",
           "Fail if the assistant asks the user to restate the remembered fact, claims no relevant memory exists, or exposes hidden storage fields such as scope keys or Slack ids.",
           "</criteria>",
         ].join("\n"),
@@ -185,6 +180,14 @@ async function expectAssistantMemoryAnswer(args: {
   expect(judgment, judgment.rationale).toEqual(
     expect.objectContaining({ passed: true }),
   );
+}
+
+function expectMemoryIdReference(text: string, memoryId: string): void {
+  expect(
+    Array.from({ length: memoryId.length - 11 }, (_, index) =>
+      memoryId.slice(0, index + 12),
+    ).some((prefix) => text.includes(prefix)),
+  ).toBe(true);
 }
 
 afterEach(async () => {
@@ -365,9 +368,9 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await expectAssistantMemoryAnswer({
       assistantText: visibleAssistantText(result),
       expectedBehavior:
-        "The assistant lists the stored memory that the requester prefers terse PR summaries and includes a usable memory id or id prefix.",
-      memoryId: seeded.memory.id,
+        "The assistant lists the stored memory that the requester prefers terse PR summaries.",
     });
+    expectMemoryIdReference(visibleAssistantText(result), seeded.memory.id);
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
@@ -423,9 +426,9 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await expectAssistantMemoryAnswer({
       assistantText: visibleAssistantText(result),
       expectedBehavior:
-        "The assistant answers from memory that the requester prefers incident reports with bullet summaries and includes a usable matching memory id or id prefix.",
-      memoryId: match.memory.id,
+        "The assistant answers from memory that the requester prefers incident reports with bullet summaries.",
     });
+    expectMemoryIdReference(visibleAssistantText(result), match.memory.id);
     expect(await readMemories()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

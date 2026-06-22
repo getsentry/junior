@@ -1,4 +1,4 @@
-import type { PluginModel } from "@sentry/junior-plugin-api";
+import type { PluginEmbedder, PluginModel } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { completeObject, embedTexts } from "@/chat/pi/client";
 
@@ -21,6 +21,12 @@ export function createPluginModel(pluginName: string): PluginModel {
       });
       return { object: result.object };
     },
+  };
+}
+
+/** Create the host-owned embedding capability exposed to prompt hooks. */
+export function createPluginEmbedder(pluginName: string): PluginEmbedder {
+  return {
     async embedTexts(input) {
       return await embedTexts({
         modelId: botConfig.embeddingModelId,

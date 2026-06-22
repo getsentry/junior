@@ -110,7 +110,6 @@ export const juniorMemoryEmbeddings = pgTable(
       dimensions: MEMORY_EMBEDDING_DIMENSIONS,
     }).notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
-    repairedAtMs: bigint("repaired_at_ms", { mode: "number" }),
   },
   (table) => [
     index("junior_memory_embeddings_model_idx").on(

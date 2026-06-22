@@ -102,21 +102,6 @@ function createTestEmbedder(
   };
 }
 
-function createTestPluginModel(
-  embedder: Pick<PluginModel, "embedTexts"> = createTestEmbedder(),
-): PluginModel {
-  return {
-    async completeObject() {
-      throw new Error(
-        "Unexpected structured model call in memory storage test.",
-      );
-    },
-    async embedTexts(input) {
-      return await embedder.embedTexts(input);
-    },
-  };
-}
-
 function slackContext(
   overrides: {
     channelId?: string;
@@ -210,9 +195,6 @@ describe("memory plugin storage", () => {
           },
         };
       },
-      async embedTexts(input) {
-        return await createTestEmbedder().embedTexts(input);
-      },
     };
     const agent = createMemoryAgent(model);
 
@@ -241,9 +223,6 @@ describe("memory plugin storage", () => {
             expiresAtMs: null,
           },
         };
-      },
-      async embedTexts(input) {
-        return await createTestEmbedder().embedTexts(input);
       },
     };
     const agent = createMemoryAgent(model);
@@ -425,6 +404,58 @@ ORDER BY created_at_ms ASC
       expect(results[0]).toEqual(
         expect.objectContaining({ id: react.memory.id }),
       );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("fuses vector and lexical matches before applying the search limit", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const query = "exact lexical preference";
+      const vectorMemories = [
+        "Uses server components for dashboard filters.",
+        "Keeps migrations generated through drizzle-kit.",
+        "Prefers short-lived QA branches.",
+        "Stores runbooks near deploy checklists.",
+      ];
+      const lexicalMemory = "Exact lexical preference lives in this memory.";
+      const vectors: Record<string, number[]> = {
+        [query]: unitEmbedding(1),
+      };
+      for (const memory of vectorMemories) {
+        vectors[memory] = unitEmbedding(1);
+      }
+      const embedder = createTestEmbedder(vectors);
+      let nowMs = TEST_NOW_MS;
+      const vectorStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => nowMs,
+      });
+      for (const [index, memory] of vectorMemories.entries()) {
+        nowMs += 1;
+        await vectorStore.createMemory({
+          content: memory,
+          idempotencyKey: `memory-test:fusion-vector-${index}`,
+        });
+      }
+      nowMs += 1;
+      const lexicalStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext(),
+        {
+          now: () => nowMs,
+        },
+      );
+      const lexical = await lexicalStore.createMemory({
+        content: lexicalMemory,
+        idempotencyKey: "memory-test:fusion-lexical",
+      });
+
+      await expect(
+        vectorStore.searchMemories({ limit: 1, query }),
+      ).resolves.toEqual([expect.objectContaining({ id: lexical.memory.id })]);
     } finally {
       await fixture.close();
     }
@@ -764,8 +795,8 @@ ORDER BY created_at_ms ASC
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
         log: noopLogger,
-        model: createTestPluginModel(),
         plugin: { name: "memory" },
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
@@ -802,13 +833,53 @@ ORDER BY created_at_ms ASC
         plugin.hooks?.userPrompt?.({
           ...context,
           db: memoryDb(fixture),
+          embedder: createTestEmbedder(),
           log: noopLogger,
-          model: createTestPluginModel(),
           plugin: { name: "memory" },
           state: memoryState,
           text: "   ",
         }),
       ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("uses prompt hook embeddings for semantic recall", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      const memory = "Uses React hooks for UI state.";
+      const query = "client rendering library";
+      const embedder = createTestEmbedder({
+        [memory]: unitEmbedding(1),
+        [query]: unitEmbedding(1),
+      });
+      await createMemoryStore(memoryDb(fixture), context, {
+        embedder,
+        now: () => TEST_NOW_MS,
+      }).createMemory({
+        content: memory,
+        idempotencyKey: "memory-test:recall-semantic",
+      });
+
+      const plugin = createMemoryPlugin();
+      await expect(
+        plugin.hooks?.userPrompt?.({
+          ...context,
+          db: memoryDb(fixture),
+          embedder,
+          log: noopLogger,
+          plugin: { name: "memory" },
+          state: memoryState,
+          text: query,
+        }),
+      ).resolves.toEqual([
+        {
+          text: expect.stringContaining(memory),
+        },
+      ]);
     } finally {
       await fixture.close();
     }

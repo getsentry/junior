@@ -172,6 +172,8 @@ describe("agent plugin hooks", () => {
             expect(ctx.requester).toBeUndefined();
             expect(ctx.source).toEqual(LOCAL_DESTINATION);
             expect(ctx.text).toBe("remember this");
+            expect(ctx).toHaveProperty("embedder");
+            expect(ctx).not.toHaveProperty("model");
             return [{ text: "remembered context" }];
           },
         },

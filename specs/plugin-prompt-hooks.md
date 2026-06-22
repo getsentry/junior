@@ -143,6 +143,7 @@ interface UserPromptContext {
   conversationId?: string;
   db: object;
   destination?: Destination;
+  embedder: PluginEmbedder;
   log: PluginLogger;
   plugin: PluginMetadata;
   requester?: Requester;
@@ -154,6 +155,7 @@ interface UserPromptContext {
 
 The context must not expose:
 
+- structured completion/model-review capabilities
 - raw Slack clients or tokens
 - raw HTTP requests
 - raw Pi internals

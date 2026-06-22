@@ -1,4 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS vector;
+--> statement-breakpoint
 CREATE TABLE "junior_memory_embeddings" (
 	"memory_id" text PRIMARY KEY NOT NULL,
 	"provider" text NOT NULL,
@@ -8,7 +9,6 @@ CREATE TABLE "junior_memory_embeddings" (
 	"content_hash" text NOT NULL,
 	"embedding" vector(1536) NOT NULL,
 	"created_at_ms" bigint NOT NULL,
-	"repaired_at_ms" bigint,
 	CONSTRAINT "junior_memory_embeddings_metric_check" CHECK ("junior_memory_embeddings"."metric" IN ('cosine')),
 	CONSTRAINT "junior_memory_embeddings_dimensions_check" CHECK ("junior_memory_embeddings"."dimensions" = 1536)
 );

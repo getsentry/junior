@@ -32,7 +32,7 @@ cd my-bot
 pnpm install
 ```
 
-`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, `.env.example`, and a `plugins.ts` with `@sentry/junior-maintenance` enabled by default.
+`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, `.env.example`, and a `plugins.ts` with maintenance and memory enabled by default.
 
 The generated `app/` files have separate jobs:
 
@@ -72,6 +72,8 @@ Set these values before running real turns:
 | `JUNIOR_STATE_KEY_PREFIX` | No                     | Redis key namespace for this local app/environment.            |
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
+If you keep the default memory plugin enabled, use a Postgres database with
+pgvector support before running migrations.
 
 ## Run locally
 
@@ -97,7 +99,7 @@ After you complete [Slack App Setup](/start-here/slack-app-setup/), point Slack 
 
 ## Add packaged plugins
 
-New apps created with `junior init` already have a `plugins.ts` file with `@sentry/junior-maintenance` enabled. To add more packaged plugins, install the packages and add them to the existing plugin set.
+New apps created with `junior init` already have a `plugins.ts` file with maintenance and memory enabled. To add more packaged plugins, install the packages and add them to the existing plugin set.
 
 For an existing app created without a `plugins.ts`, create one as shown below.
 

@@ -50,6 +50,11 @@ const EMBEDDING_METRIC = "cosine";
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
+interface SearchCandidate {
+  memory: MemoryRecord;
+  score: number;
+}
+
 const nonEmptyStringSchema = z.string().min(1);
 const memoryContentSchema = z
   .string()
@@ -328,6 +333,7 @@ async function findByIdempotencyKey(args: {
 
 function searchScore(memory: MemoryRecord, terms: string[]): number {
   const haystack = memory.content.toLowerCase();
+  // Lexical score is a retrieval fallback signal, not a memory policy decision.
   return terms.reduce(
     (score, term) => score + (haystack.includes(term) ? 1 : 0),
     0,
@@ -344,19 +350,6 @@ function searchTerms(query: string): string[] {
         .filter((term) => term.length >= 2),
     ),
   ];
-}
-
-function dedupeMemories(memories: MemoryRecord[]): MemoryRecord[] {
-  const seen = new Set<string>();
-  const result: MemoryRecord[] = [];
-  for (const memory of memories) {
-    if (seen.has(memory.id)) {
-      continue;
-    }
-    seen.add(memory.id);
-    result.push(memory);
-  }
-  return result;
 }
 
 async function embedOne(
@@ -384,6 +377,7 @@ async function embedOne(
   };
 }
 
+/** Store the derived vector index; failures must not block memory persistence. */
 async function storeEmbedding(args: {
   content: string;
   db: MemoryDb;
@@ -400,19 +394,23 @@ async function storeEmbedding(args: {
   } catch {
     return;
   }
-  await args.db
-    .insert(juniorMemoryEmbeddings)
-    .values({
-      contentHash: hashEmbeddedContent(args.content),
-      createdAtMs: args.nowMs,
-      dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-      embedding: embedding.vector,
-      memoryId: args.memoryId,
-      metric: EMBEDDING_METRIC,
-      model: embedding.model,
-      provider: embedding.provider,
-    })
-    .onConflictDoNothing();
+  try {
+    await args.db
+      .insert(juniorMemoryEmbeddings)
+      .values({
+        contentHash: hashEmbeddedContent(args.content),
+        createdAtMs: args.nowMs,
+        dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+        embedding: embedding.vector,
+        memoryId: args.memoryId,
+        metric: EMBEDDING_METRIC,
+        model: embedding.model,
+        provider: embedding.provider,
+      })
+      .onConflictDoNothing();
+  } catch {
+    return;
+  }
 }
 
 /** List active records for the runtime-derived visible scopes. */
@@ -478,7 +476,7 @@ async function searchVisibleVectorMemories(args: {
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
-}): Promise<MemoryRecord[]> {
+}): Promise<SearchCandidate[]> {
   if (!args.embedder) {
     return [];
   }
@@ -521,16 +519,53 @@ async function searchVisibleVectorMemories(args: {
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),
     )
-    .limit(args.limit * VECTOR_SEARCH_OVERFETCH);
-  return rows
-    .filter(
-      (row) =>
-        row.distance !== null &&
-        Number.isFinite(Number(row.distance)) &&
-        hashEmbeddedContent(row.memory.content) === row.contentHash,
+    .limit(args.limit);
+  return rows.flatMap((row) => {
+    const distanceValue = Number(row.distance);
+    if (
+      row.distance === null ||
+      !Number.isFinite(distanceValue) ||
+      hashEmbeddedContent(row.memory.content) !== row.contentHash
+    ) {
+      return [];
+    }
+    return [
+      {
+        memory: parseMemoryRow(row.memory),
+        score: 1 / (1 + Math.max(0, distanceValue)),
+      },
+    ];
+  });
+}
+
+/** Fuse higher-is-better retrieval candidates before applying the final limit. */
+function mergeSearchCandidates(candidates: SearchCandidate[]): MemoryRecord[] {
+  const byId = new Map<
+    string,
+    {
+      memory: MemoryRecord;
+      score: number;
+    }
+  >();
+  for (const candidate of candidates) {
+    const existing = byId.get(candidate.memory.id);
+    if (existing) {
+      existing.score += candidate.score;
+      continue;
+    }
+    byId.set(candidate.memory.id, {
+      memory: candidate.memory,
+      score: candidate.score,
+    });
+  }
+  return [...byId.values()]
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        right.memory.createdAtMs - left.memory.createdAtMs ||
+        left.memory.id.localeCompare(right.memory.id),
     )
-    .slice(0, args.limit)
-    .map((row) => parseMemoryRow(row.memory));
+    .map((candidate) => candidate.memory);
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */
@@ -634,10 +669,10 @@ export function createMemoryStore(
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
       const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
-      const vectorMatches = await searchVisibleVectorMemories({
+      const vectorCandidates = await searchVisibleVectorMemories({
         db,
         embedder,
-        limit,
+        limit: limit * VECTOR_SEARCH_OVERFETCH,
         nowMs,
         query: input.query,
         scopes,
@@ -649,20 +684,13 @@ export function createMemoryStore(
         scopes,
       });
       const terms = searchTerms(input.query);
-      const lexicalMatches = candidates
+      const lexicalCandidates = candidates
         .map((memory) => ({ memory, score: searchScore(memory, terms) }))
-        .filter((item) => item.score > 0)
-        .sort(
-          (left, right) =>
-            right.score - left.score ||
-            right.memory.createdAtMs - left.memory.createdAtMs ||
-            left.memory.id.localeCompare(right.memory.id),
-        )
-        .map((item) => item.memory);
-      return dedupeMemories([...vectorMatches, ...lexicalMatches]).slice(
-        0,
-        limit,
-      );
+        .filter((item) => item.score > 0);
+      return mergeSearchCandidates([
+        ...vectorCandidates,
+        ...lexicalCandidates,
+      ]).slice(0, limit);
     },
 
     async archiveMemory(input) {

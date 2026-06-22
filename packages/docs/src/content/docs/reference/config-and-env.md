@@ -34,6 +34,10 @@ related:
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                |
 | `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                                |
 
+When `@sentry/junior-memory` is enabled, the configured Postgres database must
+support pgvector because the plugin migration creates the `vector` extension
+and stores 1536-dimensional memory embeddings.
+
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
 
 ```bash

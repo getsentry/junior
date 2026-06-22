@@ -45,7 +45,7 @@ export function createMemoryPlugin() {
           ...ctx,
           agent: createMemoryAgent(ctx.model),
           db: ctx.db as MemoryDb,
-          embedder: ctx.model,
+          embedder: ctx.embedder,
         });
         return {
           createMemory: createMemoryCreateTool(context),
@@ -59,7 +59,7 @@ export function createMemoryPlugin() {
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
           ...(ctx.requester ? { requester: ctx.requester } : {}),
           db: ctx.db as MemoryDb,
-          embedder: ctx.model,
+          embedder: ctx.embedder,
           source: ctx.source,
           text: ctx.text,
         });

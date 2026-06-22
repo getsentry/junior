@@ -139,11 +139,15 @@ Tool registration contexts receive `ctx.model`, a host-owned structured
 completion capability for plugin-owned semantic review before tool execution.
 `ctx.model` accepts a strict schema plus prompt text and uses Junior's
 configured model boundary without exposing provider credentials, SDK clients,
-provider names, or model-visible tools to plugins. Current hook contracts are
-defined in [Plugin Database Spec](./plugin-database.md), [Plugin CLI
-Spec](./plugin-cli.md), [Plugin Heartbeat Spec](./plugin-heartbeat.md),
-[Plugin Dispatch Spec](./plugin-dispatch.md), and [Plugin Prompt Hooks
-Spec](./plugin-prompt-hooks.md). Prompt hooks are exported by
+provider names, or model-visible tools to plugins. Tool registration contexts
+also receive `ctx.embedder`, the separate host-owned embedding capability for
+derived retrieval indexes. Current hook contracts are defined in
+[Plugin Database Spec](./plugin-database.md), [Plugin CLI Spec](./plugin-cli.md),
+[Plugin Heartbeat Spec](./plugin-heartbeat.md), [Plugin Dispatch
+Spec](./plugin-dispatch.md), and [Plugin Prompt Hooks
+Spec](./plugin-prompt-hooks.md). User prompt contexts receive only the narrow
+embedding capability needed for retrieval-oriented prompt contributions; they
+do not receive structured completion. Prompt hooks are exported by
 `@sentry/junior-plugin-api` and invoked by Junior core; observation and
 background-task hooks remain future work. Plugin `migrateStorage` hooks are
 limited to `junior upgrade` storage backfills after SQL schema migration; they

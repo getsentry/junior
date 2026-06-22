@@ -16,7 +16,7 @@ import type {
 import { getDb } from "@/chat/db";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginModel } from "@/chat/plugins/model";
+import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
@@ -112,7 +112,7 @@ function invocationPluginContext(
   const common = {
     ...base,
     conversationId: context.conversationId,
-    model: createPluginModel(plugin.manifest.name),
+    embedder: createPluginEmbedder(plugin.manifest.name),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
@@ -392,6 +392,7 @@ export function getPluginTools(
             slack: slackContext!,
             source: context.source,
             userText: context.userText,
+            embedder: createPluginEmbedder(pluginName),
             model: createPluginModel(pluginName),
             state: createPluginState(pluginName),
           }
@@ -406,6 +407,7 @@ export function getPluginTools(
               destination?.platform === "local" ? destination : undefined,
             source: context.source,
             userText: context.userText,
+            embedder: createPluginEmbedder(pluginName),
             model: createPluginModel(pluginName),
             state: createPluginState(pluginName),
           };

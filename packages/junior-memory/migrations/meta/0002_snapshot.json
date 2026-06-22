@@ -1,5 +1,5 @@
 {
-  "id": "decdc572-12c7-4e53-8d7d-4b2b581b6df0",
+  "id": "9e9985ce-7ac3-4872-97f3-e4a4d3fe39c9",
   "prevId": "aef16541-5bbe-4c1b-867d-a19c841cb278",
   "version": "7",
   "dialect": "postgresql",
@@ -55,12 +55,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "repaired_at_ms": {
-          "name": "repaired_at_ms",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
