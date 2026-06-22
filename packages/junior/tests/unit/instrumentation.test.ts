@@ -34,6 +34,7 @@ async function loadInstrumentationModule() {
   vi.doMock("@/chat/sentry", () => ({
     getClient: () => undefined,
     init,
+    withStreamedSpan: (fn: Function) => fn,
     vercelAIIntegration: () => ({ name: "vercel-ai" }),
   }));
   const instrumentation = await import("@/instrumentation");
@@ -63,14 +64,14 @@ describe("initSentry", () => {
     expect(options?.beforeSendSpan).toBeTypeOf("function");
 
     const span = {
-      data: {
+      attributes: {
         "deployment.id": "span-deployment",
         "service.version": "span-version",
       },
     };
 
     expect(options.beforeSendSpan(span)).toBe(span);
-    expect(span.data).toMatchObject({
+    expect(span.attributes).toMatchObject({
       "deployment.id": "dpl_123",
       "service.version": "git-sha",
     });

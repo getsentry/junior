@@ -37,23 +37,24 @@ export function initSentry(): void {
       process.env.NODE_ENV,
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
+    traceLifecycle: "stream",
     sendDefaultPii: true,
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
     // Keep deployment identity centralized so every emitted Sentry span carries it.
-    beforeSendSpan(span) {
+    beforeSendSpan: Sentry.withStreamedSpan((span) => {
       if (Object.keys(deploymentSpanAttributes).length === 0) {
         return span;
       }
 
-      span.data = {
-        ...span.data,
+      span.attributes = {
+        ...span.attributes,
         ...deploymentSpanAttributes,
       };
 
       return span;
-    },
+    }),
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,
