@@ -388,6 +388,18 @@ async function storeEmbedding(args: {
   if (!args.embedder) {
     return;
   }
+  try {
+    const existing = await args.db
+      .select({ memoryId: juniorMemoryEmbeddings.memoryId })
+      .from(juniorMemoryEmbeddings)
+      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
+      .limit(1);
+    if (existing[0]) {
+      return;
+    }
+  } catch {
+    return;
+  }
   let embedding: Awaited<ReturnType<typeof embedOne>>;
   try {
     embedding = await embedOne(args.embedder, args.content);
@@ -640,6 +652,13 @@ export function createMemoryStore(
     if (!idempotent) {
       throw new Error("Memory idempotency conflict did not resolve.");
     }
+    await storeEmbedding({
+      content: idempotent.content,
+      db,
+      embedder,
+      memoryId: idempotent.id,
+      nowMs,
+    });
     return { created: false, memory: idempotent };
   }
 

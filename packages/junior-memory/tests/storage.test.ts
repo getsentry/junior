@@ -78,7 +78,7 @@ async function createMemoryFixture(): Promise<MemoryFixture> {
 }
 
 function unitEmbedding(index: number): number[] {
-  const embedding = new Array<number>(TEST_EMBEDDING_DIMENSIONS).fill(0);
+  const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
   embedding[index] = 1;
   return embedding;
 }
@@ -489,6 +489,48 @@ ORDER BY created_at_ms ASC
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
       ).resolves.toHaveLength(1);
       expect(embedder.calls).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("backfills missing embeddings on idempotent create retries", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const content = "Prefers derived embeddings to be repairable.";
+      const firstStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => TEST_NOW_MS,
+      });
+      const created = await firstStore.createMemory({
+        content,
+        idempotencyKey: "memory-test:embedding-retry-backfill",
+      });
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([]);
+
+      const embedder = createTestEmbedder();
+      const retryStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => TEST_NOW_MS + 1,
+      });
+      await expect(
+        retryStore.createMemory({
+          content: "Changed retry content should not be embedded.",
+          idempotencyKey: "memory-test:embedding-retry-backfill",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id },
+      });
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([
+        expect.objectContaining({ memoryId: created.memory.id }),
+      ]);
+      expect(embedder.calls).toEqual([[content]]);
     } finally {
       await fixture.close();
     }

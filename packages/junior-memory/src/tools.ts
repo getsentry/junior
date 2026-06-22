@@ -78,7 +78,7 @@ function memoryRuntimeContext(
 
 function memoryStore(context: MemoryToolContext) {
   return createMemoryStore(context.db, memoryRuntimeContext(context), {
-    ...(context.embedder ? { embedder: context.embedder } : {}),
+    embedder: context.embedder,
   });
 }
 
