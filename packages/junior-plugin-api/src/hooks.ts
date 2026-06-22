@@ -30,6 +30,7 @@ import type {
   SystemPromptContext,
   UserPromptContext,
 } from "./prompt";
+import type { TurnObservationContext } from "./observation";
 
 export interface PluginHooks {
   systemPrompt?(
@@ -38,6 +39,7 @@ export interface PluginHooks {
   userPrompt?(
     ctx: UserPromptContext,
   ): Promise<PromptMessage[] | undefined> | PromptMessage[] | undefined;
+  observeTurn?(ctx: TurnObservationContext): Promise<void> | void;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
   grantForEgress?(
     ctx: EgressHookContext,

@@ -3,12 +3,12 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
-Define passive memory learning through completed-session plugin background
-tasks.
+Define passive memory learning through completed-turn observation and the
+memory-owned internal extraction agent.
 
 ## What Belongs In Memory
 
@@ -60,76 +60,40 @@ Examples that must not be stored:
 
 ## Passive Learning
 
-The memory plugin learns passively from its `extractMemories`
-`session.completed` plugin background task. Junior core schedules registered
-plugin tasks after successful completed sessions; the memory plugin owns the
-memory-specific decision about whether that completed session is learnable.
+The memory plugin observes completed turns through `observeTurn(ctx)`.
 
-Core scheduling must:
+The observation hook must:
 
 1. Run only after the user-visible turn is durably committed enough that
-   scheduling failure cannot fail delivery.
-2. Enqueue the registered `extractMemories` plugin background task for the
-   completed session.
-3. Use a stable task id derived from the plugin, task name, and
-   completed-session reference.
-
-The task params must contain stable references and safe metadata only. They must
-not contain raw private user text, raw assistant text, raw tool payloads,
-credentials, or tokens. Core owns how the task is delivered through the generic
-plugin background task contract.
-
-Core must not require plugin code to know queue topic names, queue message
-shape, Vercel-specific APIs, callback routes, visibility timeouts, or
-acknowledgement semantics.
-
-## Extraction Task Handler
-
-The memory plugin's `extractMemories` task handler must:
-
-1. Reload the bounded completed-session projection through
-   `ctx.session.load()`.
-2. Reload current install-level memory policy.
-3. Skip extraction when passive extraction is disabled, the source is not
-   learnable, the source is private, the source conversation is not classified
-   as public by Junior's existing conversation privacy/destination visibility
-   contracts, or the bounded session projection is unavailable, expired,
-   malformed, or no longer visible to the plugin.
-4. Process only that completed turn.
+   observation failure cannot fail delivery.
+2. Invoke the memory-owned extraction agent with bounded user-authored turn
+   text.
+3. Ignore assistant-authored claims as memory sources.
+4. Skip passive extraction when the completed turn already called
+   `createMemory`; the explicit tool path owns that memory write.
 5. Extract candidate facts with a structured model output contract.
-6. Ignore assistant-authored claims as memory sources.
-7. Run memory agent review for extracted candidates.
-8. Reject malformed, low-confidence, incoherent, semantically duplicative,
-   unsafe, or out-of-scope facts.
-9. Reject facts disallowed by install policy, including non-public or
-   workplace-sensitive categories.
-10. Convert relative times to absolute dates using `observed_at`.
-11. Assign type, subject, scope, and optional expiration.
-12. Run centralized secret detection immediately before writing memory rows.
-13. Insert accepted memories transactionally.
-14. Generate or queue embeddings for accepted rows when configured and allowed
-    by policy.
-15. Archive expired, superseded, or explicitly removed memories in bounded
-    batches.
-16. Avoid storing raw extraction prompt, raw model output, or raw turn text
+6. Reject malformed, incoherent, unsafe, out-of-scope, or non-durable facts.
+7. Assign requester or conversation target from memory-agent output, while
+   deriving all authority-bearing ids from runtime context.
+8. Insert accepted memories idempotently with a stable key derived from the
+   source, turn id, and extracted fact position.
+9. Generate embeddings for accepted rows when the host embedder is configured.
+10. Avoid storing raw extraction prompt, raw model output, or raw turn text
     beyond the accepted memory records.
 
-Extraction tasks must be idempotent. If the same completed turn is observed or
-delivered more than once, source idempotency fields must prevent duplicate
-memory writes. Semantic duplicate detection belongs in the extractor and
-retrieval pipeline, not exact-content storage identity.
+Observation hooks are best effort. If extraction or storage fails, Junior logs
+safe metadata and the completed user-visible turn remains successful.
 
-The task handler must be safe to run in a separate serverless invocation from
-the original user turn. It must not depend on process memory, live Slack
-clients, raw HTTP requests, provider tokens, or the model-visible prompt object
-from the original run.
+Queued extraction can be added later as a scaling option. If added, queue
+payloads must contain stable references and safe metadata only; they must not
+become the authority for private conversation text.
 
 ## Extraction Rules
 
 Extraction must follow these rules:
 
 1. Extract only from user-authored text.
-2. Prefer explicit "remember" requests over inferred passive learning.
+2. Prefer explicit `createMemory` tool writes over inferred passive learning.
 3. Store facts, not conversation summaries.
 4. Make content self-contained and perspective-neutral.
 5. Reject unresolved references such as "that", "it", "the thing", "someone",
@@ -138,25 +102,22 @@ Extraction must follow these rules:
 7. Reject assistant/system implementation details.
 8. Reject low-utility facts that will not help 30 days later unless they have
    explicit expiration.
-9. Assign `context`, `event`, `task`, or `observation` for facts that should
-   decay.
-10. Treat extraction confidence below the configured threshold as not stored.
-11. Reject workplace-sensitive categories disallowed by install policy, such as
-    HR/performance, protected-class, health, legal, financial, gossip, or
-    coworker speculation.
-12. Reject private or sensitive content instead of storing it under personal
+9. Reject workplace-sensitive categories, such as
+   HR/performance, protected-class, health, legal, financial, gossip, or
+   coworker speculation.
+10. Reject private or sensitive content instead of storing it under personal
     scope.
-13. In V1 passive extraction, prefer conversation-scoped operational knowledge
-    over personal memory.
-14. Personal-scoped memories must be public/shareable first-person facts from
+11. In V1 passive extraction, prefer conversation-scoped operational knowledge
+    over personal memory unless the user makes a clear first-person statement.
+12. Personal-scoped memories must be public/shareable first-person facts from
     the current author/requester.
-15. Assign `user` subject only for the current author/requester; do not create
+13. Assign `user` subject only for the current author/requester; do not create
     third-party user subjects in V1.
-16. Preserve provenance for third-party claims when the source matters for
+14. Preserve provenance for third-party claims when the source matters for
     correctness.
-17. Store the minimum useful assertion rather than a direct quote or broad
+15. Store the minimum useful assertion rather than a direct quote or broad
     summary.
-18. Store ownership, subject, and provenance in structured fields, not content
+16. Store ownership, subject, and provenance in structured fields, not content
     prose. Remove requester names, display names, `the requester`, `the user`,
     `I`, `my`, thread labels, channel labels, and source labels from accepted
     content.
@@ -174,31 +135,33 @@ belong to the memory agent rather than a caller-provided policy hook.
 The default V1 passive-extraction shape is:
 
 1. The memory agent proposes structured candidate memories from the bounded
-   completed-session task projection.
-2. The memory agent reviews each candidate against the installed memory policy
-   and workplace guidance.
+   observation payload.
+2. The memory agent accepts only candidates that satisfy public/shareable memory
+   guidance.
 3. Deterministic validation applies only hard structural rules, such as schema
    shape, runtime-owned authority, source visibility, lifecycle bounds,
    idempotency, and storage constraints before storage.
 
-Memory agent review should receive only the candidate memory, the minimum
-source context needed to judge it, and the installed policy guidance. It should
-not receive unrestricted transcript history, raw tool payloads, provider
-credentials, or unrelated conversation context unless those fields are part of
-the bounded extraction input. Prompt inputs should use the same structured
-context-block style as Junior's turn context, with separate `<runtime>` and
-`<source-context>` blocks. Explicit `createMemory` review uses a singular
+Memory agent review should receive only the candidate memory or completed
+user-authored text, the minimum source context needed to judge it, and
+public/shareable memory guidance. It should not receive unrestricted transcript
+history, raw tool
+payloads, provider credentials, or unrelated conversation context unless those
+fields are part of the bounded extraction input. Prompt inputs should use the
+same structured context-block style as Junior's turn context, with separate
+`<runtime>` and source blocks. Explicit `createMemory` review uses a singular
 `<candidate>` block and the current user-authored message as bounded source
-context. Passive extraction may add bounded prior-thread context, such as
-compacted thread context or selected user-authored messages, inside the same
-`<source-context>` block and batch proposed facts inside `<candidates>`.
+context. Passive extraction uses only the completed turn's user-authored text.
 
-Memory agent review output must be structured. It should include:
+Memory agent output must be structured. For explicit review it should include:
 
-- candidate id
 - decision: `store` or `reject`
 - normalized rejection reason code when rejected
 - optional adjusted memory type, subject, scope, expiration, or content rewrite
+
+For passive extraction it should include an array of accepted candidate
+memories with target, canonical content, and optional expiration. Rejections are
+represented by omitting a candidate from the array.
 
 The structured content field is the canonical stored memory text. The memory
 agent must use that field to return perspective-neutral fact text. For example,
@@ -246,7 +209,7 @@ a model-visible rejection, not storage with a special classification.
 Duplicate prevention is required before insertion where the relevant signal is
 available:
 
-- same source observation id and same extracted fact index
+- same source, turn id, and extracted fact index
 - high lexical or embedding similarity to an active memory in the same scope
 
 V1 storage enforces source/fact idempotency. Exact normalized-content equality

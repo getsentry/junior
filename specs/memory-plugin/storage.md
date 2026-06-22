@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
@@ -121,7 +121,7 @@ The store must be able to filter active visible records by:
 
 - scope
 - plugin-derived subject type
-- current install policy
+- future install policy, when that policy surface exists
 - archive state
 - supersession state
 - expiration

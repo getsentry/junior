@@ -8,6 +8,7 @@ import {
   createMemorySearchTool,
   type MemoryToolContext,
 } from "./tools";
+import { observeMemoryTurn } from "./observe";
 import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
@@ -67,6 +68,9 @@ export function createMemoryPlugin() {
           source: ctx.source,
           text: ctx.text,
         });
+      },
+      async observeTurn(ctx) {
+        await observeMemoryTurn(ctx);
       },
     },
   });

@@ -10,6 +10,7 @@ import {
   createLocalSource,
   createSlackSource,
   PluginToolInputError,
+  type TurnObservationContext,
   type PluginLogger,
   type PluginModel,
   type PluginState,
@@ -30,6 +31,7 @@ import {
   createMemoryRemoveTool,
   createMemorySearchTool,
 } from "../src/tools";
+import { observeMemoryTurn } from "../src/observe";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
@@ -179,6 +181,30 @@ function createTestEmbedder(
   };
 }
 
+function extractionModel(
+  memories: Array<{
+    content: string;
+    expiresAtMs?: number | null;
+    target: "requester" | "conversation";
+  }>,
+) {
+  const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
+  const model: PluginModel = {
+    async completeObject(input) {
+      calls.push(input);
+      return {
+        object: {
+          memories: memories.map((memory) => ({
+            ...memory,
+            expiresAtMs: memory.expiresAtMs ?? null,
+          })),
+        },
+      };
+    },
+  };
+  return { calls, model };
+}
+
 function slackContext(
   overrides: {
     channelId?: string;
@@ -217,6 +243,35 @@ function localContext(
       userId: overrides.userId ?? "local-user",
     },
     source: createLocalSource(conversationId),
+  };
+}
+
+function observationContext(
+  overrides: Partial<TurnObservationContext> = {},
+): TurnObservationContext {
+  const runtime = localContext();
+  return {
+    assistantText: "Got it.",
+    conversationId: runtime.conversationId,
+    db: overrides.db ?? {},
+    embedder: overrides.embedder ?? createTestEmbedder(),
+    log: noopLogger,
+    model:
+      overrides.model ??
+      extractionModel([
+        {
+          content: "Prefers terse PR summaries.",
+          target: "requester",
+        },
+      ]).model,
+    plugin: { name: "memory" },
+    requester: runtime.requester,
+    source: runtime.source,
+    state: memoryState,
+    toolCalls: [],
+    turnId: "local-turn-1",
+    userText: "I prefer terse PR summaries.",
+    ...overrides,
   };
 }
 
@@ -310,6 +365,90 @@ describe("memory plugin storage", () => {
       reason: "not_public_shareable",
     });
   });
+
+  it("extracts and stores accepted memories from observed turns", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers QA notes that mention database row checks.",
+          target: "requester",
+        },
+        {
+          content: "Deploy runbooks live in Notion.",
+          target: "conversation",
+        },
+      ]);
+      const embedder = createTestEmbedder();
+
+      await observeMemoryTurn(
+        observationContext({
+          assistantText: "I will keep that in mind.",
+          db: memoryDb(fixture),
+          embedder,
+          model,
+          userText:
+            "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
+        }),
+      );
+
+      expect(calls).toHaveLength(1);
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryMemories)
+        .orderBy(memorySqlSchema.juniorMemoryMemories.createdAtMs);
+      expect(rows).toEqual([
+        expect.objectContaining({
+          content: "Prefers QA notes that mention database row checks.",
+          scope: "personal",
+          sourcePlatform: "local",
+          subjectType: "user",
+        }),
+        expect.objectContaining({
+          content: "Deploy runbooks live in Notion.",
+          scope: "conversation",
+          sourcePlatform: "local",
+          subjectType: "conversation",
+        }),
+      ]);
+      expect(embedder.calls).toEqual([
+        ["Prefers QA notes that mention database row checks."],
+        ["Deploy runbooks live in Notion."],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("skips passive extraction for memory tool turns", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers duplicate memory avoidance.",
+          target: "requester",
+        },
+      ]);
+
+      await observeMemoryTurn(
+        observationContext({
+          db: memoryDb(fixture),
+          model,
+          toolCalls: ["searchMemories"],
+          userText: "Remember that I prefer duplicate memory avoidance.",
+        }),
+      );
+
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
 
   it("persists, recalls, and archives visible memories", async () => {
     const fixture = await createMemoryFixture();

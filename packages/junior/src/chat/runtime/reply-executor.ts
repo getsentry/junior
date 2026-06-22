@@ -9,6 +9,7 @@
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
+import { observePluginTurn } from "@/chat/plugins/agent-hooks";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
@@ -1067,6 +1068,26 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               destination,
               source,
               traceId: getActiveTraceId(),
+            });
+          }
+          if (reply.diagnostics.outcome === "success") {
+            await observePluginTurn({
+              assistantText: reply.text,
+              toolCalls: reply.diagnostics.toolCalls,
+              turnId,
+              context: {
+                ...(conversationId ? { conversationId } : {}),
+                destination,
+                requester: requesterIdentity,
+                source: {
+                  platform: "slack",
+                  teamId: destination.teamId,
+                  channelId: destination.channelId,
+                  ...(messageTs ? { messageTs } : {}),
+                  ...(threadTs ? { threadTs } : {}),
+                },
+                userText: effectiveUserText,
+              },
             });
           }
           preparedState.conversation = completedState.conversation;

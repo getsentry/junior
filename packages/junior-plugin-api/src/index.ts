@@ -8,6 +8,7 @@ export {
   type UserPromptContext,
 } from "./prompt";
 export * from "./dispatch";
+export * from "./observation";
 export * from "./tools";
 export * from "./operations";
 export * from "./credentials";

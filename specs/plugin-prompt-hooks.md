@@ -3,26 +3,28 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-22
 
 ## Purpose
 
 Define the generic plugin hooks that let runtime hook plugins contribute prompt
-text without exposing raw Junior internals or creating memory-specific plugin
-APIs.
+text and observe completed turns without exposing raw Junior internals or
+creating memory-specific plugin APIs.
 
 ## Implementation Status
 
 Plugin prompt hooks are implemented in Junior core and
-`@sentry/junior-plugin-api`. Plugin background tasks are specified separately
-in [Plugin Background Tasks Spec](./plugin-tasks.md).
+`@sentry/junior-plugin-api`. Turn observation hooks are implemented as
+post-delivery best-effort hooks. Plugin background task handlers remain target
+design for a later implementation slice.
 
 ## Scope
 
 - Plugin-provided system prompt and user prompt contributions.
 - Prompt hook context.
+- Post-turn observation hook contract for passive extraction workflows.
 - Security and rendering boundaries for prompt contributions.
-- V1 memory plugin prompt-recall usage of these generic hooks.
+- V1 memory plugin usage of these generic hooks.
 
 ## Non-Goals
 
@@ -38,7 +40,7 @@ in [Plugin Background Tasks Spec](./plugin-tasks.md).
 
 ### Hook Surface
 
-Runtime hook plugins may provide prompt hooks:
+Runtime hook plugins may provide prompt and observation hooks:
 
 ```ts
 interface PluginHooks {
@@ -49,12 +51,14 @@ interface PluginHooks {
   userPrompt?(
     ctx: UserPromptContext,
   ): PromptMessage[] | undefined | Promise<PromptMessage[] | undefined>;
+
+  observeTurn?(ctx: TurnObservationContext): void | Promise<void>;
 }
 ```
 
 These hooks are app-code plugin hooks registered through
 `defineJuniorPlugin({ manifest, hooks })`. Declarative `plugin.yaml` manifests
-must not register prompt hooks.
+must not register prompt or observation hooks.
 
 ### Prompt Messages
 
@@ -83,7 +87,7 @@ Rules:
 
 ```ts
 interface SystemPromptContext {
-  db: unknown;
+  db: object;
   log: PluginLogger;
   platform: Platform;
   plugin: PluginMetadata;
@@ -135,7 +139,7 @@ Rules:
 ```ts
 interface UserPromptContext {
   conversationId?: string;
-  db: unknown;
+  db: object;
   destination?: Destination;
   embedder: PluginEmbedder;
   log: PluginLogger;
@@ -157,17 +161,109 @@ The context must not expose:
 - cross-plugin state
 - model messages outside the safe hook-specific context
 
+### Turn Observation Hook
+
+`observeTurn(ctx)` lets plugins inspect a completed turn and perform bounded
+post-turn work such as passive memory extraction.
+
+Core invokes observation hooks only after final turn state is committed far
+enough that the hook cannot affect whether the user-visible turn succeeds.
+
+Observation context should include:
+
+- requester, source, destination, and conversation id
+- bounded user-visible turn text needed by the plugin: user text and assistant
+  text
+- safe metadata about tool use
+- plugin-scoped durable state and logger
+- plugin-scoped model and embedding helpers
+
+The bounded observation payload is a runtime-owned projection, not a raw
+transcript. Core may expose the same projection directly to `observeTurn(ctx)`
+and later through `PluginTaskContext.observation.load()` for
+observation-backed tasks.
+
+Observation hooks must not receive provider credentials, raw authorization URLs,
+raw Slack clients, or unrestricted transcript history. For private
+conversations, observation payloads must follow the same raw-payload restrictions
+as runtime code: a plugin may receive private turn text only when it is an
+explicitly enabled trusted host plugin whose contract requires that payload.
+
+Observation hooks must be best effort. A thrown observation error must be logged
+with safe metadata and must not fail the already-completed user turn.
+
+### Plugin Background Tasks
+
+Future observation hooks may enqueue plugin-owned background tasks through a
+core-owned task capability:
+
+```ts
+interface PluginTaskEnqueueOptions {
+  idempotencyKey: string;
+  name: string;
+  payload?: unknown;
+}
+
+interface PluginTaskEnqueueResult {
+  id: string;
+  status: "created" | "already_exists";
+}
+
+interface PluginTaskQueue {
+  enqueue(options: PluginTaskEnqueueOptions): Promise<PluginTaskEnqueueResult>;
+}
+
+interface PluginTaskContext extends PluginContext {
+  id: string;
+  name: string;
+  payload?: unknown;
+  observation?: {
+    load(): Promise<TurnObservationPayload | undefined>;
+  };
+}
+
+type PluginTaskHandler = (ctx: PluginTaskContext) => Promise<void> | void;
+```
+
+This task surface is not implemented yet. The exact host implementation is not
+part of the plugin API. Core may run
+plugin tasks with the existing queue infrastructure, a signed internal callback,
+a future dedicated task worker, or a local in-process test worker. Plugin code
+must observe the same contract in all cases.
+
+Task rules:
+
+1. Task names are resolved only inside the owning plugin.
+2. Idempotency is scoped to plugin name and task name.
+3. Task payloads must be bounded JSON-serializable data.
+4. Task payloads should contain stable references and safe metadata, not raw
+   private prompt text, raw tool payloads, credentials, or tokens.
+5. Task handlers run with plugin-scoped `ctx.db`, `ctx.state`, logger, and the
+   runtime-owned context needed by that task type.
+6. Observation-backed tasks receive an `observation.load()` helper when core can
+   reconstruct a bounded observation payload from durable runtime state.
+7. Task handlers must be idempotent because delivery is at least once.
+8. Core owns queue acknowledgement, retry, redelivery, worker leases, callback
+   signing, and provider-specific visibility timeouts.
+9. Plugins must not depend on task execution happening in the same process or
+   same request as `observeTurn`.
+
+For future queued memory extraction, the observation hook should enqueue a task with stable
+conversation/session/message references. The task worker reloads the bounded
+observation payload from durable runtime state before invoking the plugin task
+handler. Queue payloads must not become the authority for private conversation
+text.
+
 ### Memory Plugin V1 Usage
 
-The memory plugin should use the generic prompt hooks as follows:
+The memory plugin should use the generic hooks as follows:
 
 1. `userPrompt(ctx)` retrieves memories visible to the current requester and
    source, then returns a concise memory block for the run's triggering prompt.
-2. `tools(ctx)` may expose explicit memory tools such as `createMemory`,
+2. `observeTurn(ctx)` runs the memory-owned structured extraction agent over the
+   completed turn and writes accepted facts idempotently.
+3. `tools(ctx)` may expose explicit memory tools such as `createMemory`,
    `removeMemory`, `listMemories`, and `searchMemories`.
-3. Passive extraction uses plugin background tasks; see
-   [Plugin Background Tasks Spec](./plugin-tasks.md) and
-   [Memory Plugin Spec](./memory-plugin/index.md).
 
 Memory retrieval must not depend on the model choosing a search tool for default
 recall. `searchMemories` remains the explicit model-visible recall path for
@@ -209,6 +305,8 @@ Core owns prompt rendering:
    and continue unless startup validation can catch the problem earlier.
 2. Oversized contribution: truncate only if the contribution contract supports
    deterministic truncation; otherwise omit and log safe metadata.
+3. Observation hook failure: log safe metadata and do not change the completed
+   turn result.
 
 ## Observability
 

@@ -3,18 +3,18 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
-Define install-level memory policy controls, with specific attention to
-workplace deployments where passive memory can create privacy, trust, and
-compliance risks.
+Define V1 memory policy guidance, with specific attention to workplace
+deployments where passive memory can create privacy, trust, and compliance
+risks.
 
 ## Scope
 
-- What must be tunable by the installing app or workspace.
-- V1 passive extraction toggle and default extraction guidance.
+- Current V1 default extraction guidance.
+- Future install-level policy controls for the installing app or workspace.
 - Default workplace extraction guidance.
 - Public-memory eligibility and workplace-sensitive rejection categories.
 - How policy affects tools, passive extraction, retrieval, retention, models,
@@ -29,69 +29,42 @@ compliance risks.
 
 ## Policy Model
 
-The memory plugin must evaluate an install-level policy before writing,
-recalling, embedding, or displaying memory.
-
-Policy should be resolved from explicit plugin configuration and runtime
-context. The model may not change policy through prompt text or tool arguments.
-
-V1 needs only a small required policy surface:
-
-- passive extraction toggle
-
-The V1 config shape is:
-
-```ts
-interface MemoryPolicy {
-  passiveExtraction: boolean;
-}
-```
-
 Plugin enablement is controlled by the normal plugin registration path. If an
 install does not want memory at all, it should not enable the memory plugin.
 
-V1 uses the default workplace guidance in this spec. Configurable extraction
-guidelines are a future extension. The memory agent owns semantic memory
-decisions, including public/shareable eligibility and workplace-sensitive
-rejection. Deterministic code enforces structural hard rules:
+V1 uses the default workplace guidance in this spec. Configurable install-level
+policy and extraction guidelines are future extensions. The memory agent owns
+semantic memory decisions, including public/shareable eligibility and
+workplace-sensitive rejection. Deterministic code enforces structural hard
+rules:
 
 - runtime-derived scope only
-- source visibility checks
-- `public` conversation visibility for passive capture only in V1
-- policy toggle checks
-- provider allowlist checks
 - no raw transcript storage
 - redaction and logging restrictions
 
-Memory policy must be loaded before hooks run and must be available to
-extraction, tools, retrieval, storage, and admin code.
+The model may not change memory policy through prompt text or tool arguments.
 
 ## Conservative Defaults
 
 Workplace-safe defaults should be conservative:
 
-1. `passiveExtraction` defaults to `false`.
-2. If passive extraction is enabled in V1, it learns only allowed workplace
-   knowledge from conversations classified as `public`.
-3. Automatic memory injection is enabled when the memory plugin is enabled.
-4. Passive extraction from conversations classified as `direct`, `private`,
-   `unknown`, or unsupported is out of scope for V1.
-5. V1 does not store private or sensitive memory content, even in personal
+1. Automatic memory injection is enabled when the memory plugin is enabled.
+2. Passive extraction is enabled when the memory plugin is enabled.
+3. V1 does not store private or sensitive memory content, even in personal
    scope.
-6. Third-party personal facts about coworkers should not be passively stored by
+4. Third-party personal facts about coworkers should not be passively stored by
    default.
-7. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
+5. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
    `observation` memories.
-8. Default admin output should be redacted.
+6. Default admin output should be redacted.
 
-An install can choose whether to enable passive extraction, but automatic recall
-is part of enabling the memory plugin. V1 does not expose broader extraction
-behaviors.
+An install chooses whether to enable memory through plugin registration. V1 does
+not expose broader extraction behaviors.
 
 ## Default Workplace Guidelines
 
-When `passiveExtraction` is `true`, the extractor should look for clean
-workplace knowledge from conversations classified as `public`.
+When the memory plugin is enabled, the passive extractor should look for clean
+public/shareable knowledge from supported runtime contexts.
 
 Aim to extract:
 
@@ -124,8 +97,7 @@ canonical text such as `Prefers terse code reviews`.
 Future configurable extraction guidelines may narrow or redirect what the model
 looks for, such as "only remember repository conventions and product
 decisions." They are not part of V1, and when added they must not override hard
-validators or allow passive extraction from non-public or otherwise disallowed
-sources.
+validators or public/shareable-content rules.
 
 ## Third-Party Facts
 
@@ -200,8 +172,8 @@ memory; it does not authorize storage of non-public content.
 
 ## Passive Extraction Policy
 
-Passive extraction must use policy as an input before model prompting and again
-after structured extraction output.
+Passive extraction must use this policy guidance in the memory agent prompt and
+again when validating structured extraction output.
 
 The extraction prompt may describe allowed categories for quality. Policy
 enforcement should happen through memory agent review after extraction proposes
@@ -209,18 +181,7 @@ candidate facts. Deterministic validation remains the final
 enforcement point for structural rules such as runtime-derived authority,
 strict schemas, source visibility, provider allowlists, and lifecycle bounds.
 
-`passiveExtraction` is a boolean:
-
-| Value   | Meaning                                                                 |
-| ------- | ----------------------------------------------------------------------- |
-| `false` | Do not enqueue passive extraction tasks.                                |
-| `true`  | Learn allowed workplace knowledge from public conversations only in V1. |
-
-Explicit-only memory creation is not a passive extraction setting. It is the
-normal tool path: when `passiveExtraction` is `false`, the only way to write
-memory is through explicit tools such as `createMemory`.
-
-When `passiveExtraction` is `true`, policy allows passive extraction of:
+Policy allows passive extraction of:
 
 - explicitly requested durable user preferences about Junior's behavior
 - durable project or repository facts
@@ -239,14 +200,13 @@ Policy still disallows passive extraction by category, including:
 
 For V1, passive extraction should store conversation-scoped operational
 knowledge by default. Passive personal memory from public conversations requires
-explicit remember language from the source user and must still be visible only
-to that requester.
+clear first-person source evidence from the user and must still be visible only
+to that requester. Explicit `createMemory` tool calls remain the stronger write
+signal and suppress passive duplicate writes for the same completed turn.
 
 ## Automatic Injection Policy
 
-Automatic memory injection is enabled when the memory plugin is enabled. It is
-independent from passive extraction: the plugin may inject stored memories even
-when `passiveExtraction` is `false`.
+Automatic memory injection is enabled when the memory plugin is enabled.
 
 `searchMemories` remains the explicit model-visible recall path. It applies the
 same visibility, policy, ranking, and redaction rules as automatic memory
@@ -254,19 +214,18 @@ injection.
 
 ## Explicit Tools And Policy
 
-Explicit memory creation requests are still subject to install policy.
+Explicit memory creation requests are still subject to memory policy guidance.
 
-For example, passive extraction is limited to public-conversation workplace
-knowledge in V1, but users may still explicitly store public/shareable personal
-preferences about themselves when the requested memory passes policy.
-This includes ordinary technical and workplace preferences or opinions, such
-as language, tool, repository, product, communication, and workflow
-preferences, when they are authored by the current requester and do not include
-private or sensitive content.
+Users may explicitly store public/shareable personal preferences about
+themselves when the requested memory passes policy. This includes ordinary
+technical and workplace preferences or opinions, such as language, tool,
+repository, product, communication, and workflow preferences, when they are
+authored by the current requester and do not include private or sensitive
+content.
 
 The explicit tool path must use the same agentic policy guidance as passive
 extraction. Explicit user intent can make a fact eligible for storage under
-install policy, but it cannot override secret rejection, source/scope rules,
+memory policy, but it cannot override secret rejection, source/scope rules,
 workplace-sensitive category rejection, public-content restrictions, provider
 and embedding policy, or retention and lifecycle policy.
 
@@ -291,9 +250,10 @@ asks for them.
 
 ## Model And Provider Policy
 
-Some installs may restrict which providers can receive memory-related text.
+Future install policy may restrict which providers can receive memory-related
+text.
 
-Host provider configuration must support disabling:
+Host provider configuration should support disabling or narrowing:
 
 - passive extraction model calls
 - embedding model calls

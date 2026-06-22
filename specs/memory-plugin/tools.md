@@ -103,7 +103,8 @@ removing multiple rows.
 
 `listMemories` lists only active memories visible in the current context. It
 may accept an optional limit, but it must not search across unrelated users or
-conversations. Current install policy must be applied before returning results.
+conversations. Future install policy must be applied before returning results
+when that policy surface exists.
 
 The tool may include ids or short ids because explicit removal workflows need a
 handle. Normal automatic memory injection should avoid ids.

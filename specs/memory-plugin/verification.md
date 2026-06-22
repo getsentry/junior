@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
@@ -25,17 +25,14 @@ requirements.
 6. `userPrompt` retrieval failure: omit memory contribution, log safe metadata,
    and continue unless the failure indicates a broken required migration.
 7. Prompt message validation failure: omit the prompt message.
-8. Passive task scheduling failure: log safe metadata and do not fail the
+8. `observeTurn` extraction failure: log safe metadata and do not fail the
    completed turn.
-9. Task delivery failure: core retries according to the task runner policy.
-10. Task retry bound exceeded or session projection expired: mark or drop the
-    task with safe metadata; do not fail the completed user turn.
-11. Duplicate scheduling or duplicate task delivery: task idempotency and
-    source idempotency suppress duplicate stored memories.
-12. Secret detection match: reject the write with a model-visible tool input
+9. Duplicate post-turn observation: source idempotency suppresses duplicate
+   stored memories.
+10. Secret detection match: reject the write with a model-visible tool input
     error for explicit tools or drop the passive fact with safe logging.
-13. Visibility mismatch: fail closed and omit the memory.
-14. Malformed stored rows: ignore the row for recall/list, log safe metadata,
+11. Visibility mismatch: fail closed and omit the memory.
+12. Malformed stored rows: ignore the row for recall/list, log safe metadata,
     and leave repair to a future administrative workflow.
 
 ## Observability
@@ -86,13 +83,8 @@ Use integration tests for:
   requester/author
 - explicit personal memory rejects third-party user profile facts such as
   storing `David is xyz` on David's behalf
-- explicit memory creation is rejected when it violates install policy or
-  workplace-sensitive category rules
-- install policy can disable passive extraction without disabling explicit
-  memory tools
-- install policy can reject workplace-sensitive passive facts
-- stricter current policy hides previously stored memories from automatic memory
-  injection and list/search results
+- explicit memory creation is rejected when it violates workplace-sensitive
+  category rules
 - `listMemories` returns only memories visible in the current context
 - `searchMemories` returns only relevant memories visible in the current
   context
@@ -106,14 +98,14 @@ Use integration tests for:
 - embedding failures leave memories listable and lexically recallable
 - private conversation memory content is absent from logs, traces, and
   dashboard reporting payloads
-- passive session completion schedules an extraction task without failing delivery
-- extraction task params contain references rather than raw private text
-- extraction task handlers can run in a separate worker invocation
-- memory agent review rejects extracted candidates that violate installed
-  workplace policy
+- passive `observeTurn` extracts from organic completed turns without failing
+  delivery
+- passive extraction skips turns where explicit `createMemory` was already
+  called
+- memory agent review rejects extracted candidates that violate workplace
+  guidance
 - malformed or failed memory agent review fails closed for passive extraction
-- duplicate scheduling or task delivery of the same turn stores accepted
-  memories once
+- duplicate observation of the same turn stores accepted memories once
 
 When the future admin CLI is implemented, use integration tests for:
 
@@ -125,7 +117,7 @@ When the future admin CLI is implemented, use integration tests for:
 Use unit tests for:
 
 - memory type, scope, and subject parsers
-- install policy parser and policy evaluation predicates
+- future install policy parser and policy evaluation predicates
 - secret detection
 - storable-fact validation
 - explicit-tool policy filtering
@@ -147,7 +139,7 @@ Use evals for:
 - refusal to remember secrets
 - explicit create rejection for policy-disallowed workplace-sensitive facts
 - refusal or policy rejection for workplace-sensitive facts
-- passive extraction quality once the extraction task is implemented
+- passive extraction quality for organic conversation
 - model use of current user corrections over stale memories
 
 ## Related Specs

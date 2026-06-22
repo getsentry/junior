@@ -169,6 +169,7 @@ async function expectAssistantMemoryAnswer(args: {
           "<criteria>",
           "Pass only if the assistant text satisfies the expected behavior.",
           "Fail if the assistant asks the user to restate the remembered fact, claims no relevant memory exists, or exposes hidden storage fields such as scope keys or Slack ids.",
+          "Memory ids or id prefixes are allowed when the user explicitly requested an id.",
           "</criteria>",
         ].join("\n"),
         timestamp: Date.now(),
@@ -293,6 +294,63 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         "The requester thinks types in Python are bad or dislikes Python typing/type annotations.",
       storedMemories: rows,
       userText,
+    });
+  });
+
+  const passiveFirstPersonThread = {
+    id: "thread-memory-passive-first-person",
+    channel_id: "CMEMORYPASSIVEPERSONAL",
+    thread_ts: "17000000.memory-passive-personal",
+  };
+
+  it("when organic conversation reveals a durable first-person preference, passively store and recall it", async ({
+    run,
+  }) => {
+    const userText =
+      "For future PR reviews, I prefer risk notes before summary notes.";
+    const result = await run({
+      overrides: memoryPluginOverrides,
+      events: [
+        mention(userText, {
+          thread: passiveFirstPersonThread,
+        }),
+        mention("How should you order notes in my next PR review?", {
+          thread: passiveFirstPersonThread,
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant uses the organic first-person preference from the earlier turn when answering the follow-up.",
+          "The assistant does not require the user to explicitly say remember before using durable memory.",
+          "The assistant does not mention hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not answer as if no relevant preference exists.",
+          "Do not claim passive memory requires an explicit remember command.",
+          "Do not store requester names, 'the requester', 'the user', 'I', 'my', thread labels, channel labels, or source labels as memory content.",
+        ],
+      }),
+    });
+
+    const rows = await readMemories();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        archivedAtMs: null,
+        scope: "personal",
+        subjectType: "user",
+      }),
+    ]);
+    await expectRequesterMemorySemantics({
+      assistantText: visibleAssistantText(result),
+      expectedMeaning:
+        "The requester prefers risk notes before summary notes in future pull request reviews.",
+      storedMemories: rows,
+      userText,
+    });
+    await expectAssistantMemoryAnswer({
+      assistantText: visibleAssistantText(result),
+      expectedBehavior:
+        "The assistant says to put risk notes before summary notes in the next PR review.",
     });
   });
 
@@ -426,7 +484,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await expectAssistantMemoryAnswer({
       assistantText: visibleAssistantText(result),
       expectedBehavior:
-        "The assistant answers from memory that the requester prefers incident reports with bullet summaries.",
+        "The assistant answers from memory that the requester prefers incident reports with bullet summaries and includes the requested matching memory id or id prefix.",
     });
     expectMemoryIdReference(visibleAssistantText(result), match.memory.id);
     expect(await readMemories()).toEqual(

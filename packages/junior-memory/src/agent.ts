@@ -26,6 +26,12 @@ const createMemoryRequestSchema = z
       .optional(),
   })
   .strict();
+const extractTurnRequestSchema = z
+  .object({
+    runtimeContext: memoryRuntimeContextSchema,
+    userText: z.string().min(1),
+  })
+  .strict();
 
 const memoryReviewDecisionSchema = z.discriminatedUnion("decision", [
   z
@@ -70,6 +76,36 @@ const memoryReviewResponseSchema = z
       ),
   })
   .strict();
+const extractedMemorySchema = z
+  .object({
+    target: memoryTargetSchema.describe(
+      "Where the memory should be stored when this is accepted.",
+    ),
+    content: z
+      .string()
+      .min(1)
+      .describe(
+        "Canonical perspective-neutral fact. Do not include requester names, display names, 'the requester', 'the user', 'I', 'my', 'this thread', or channel/source labels.",
+      ),
+    expiresAtMs: z
+      .number()
+      .finite()
+      .nullable()
+      .describe(
+        "Expiration timestamp when the fact should expire, otherwise null.",
+      ),
+  })
+  .strict();
+const extractTurnResponseSchema = z
+  .object({
+    memories: z
+      .array(extractedMemorySchema)
+      .max(5)
+      .describe(
+        "Accepted public/shareable durable memories from this completed turn. Return an empty array when nothing should be stored.",
+      ),
+  })
+  .strict();
 
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
 
@@ -78,8 +114,13 @@ export type MemoryTarget = z.output<typeof memoryTargetSchema>;
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
 
 export type CreateMemoryRequest = z.output<typeof createMemoryRequestSchema>;
+export type ExtractTurnRequest = z.output<typeof extractTurnRequestSchema>;
+export type ExtractedMemory = z.output<typeof extractedMemorySchema>;
 
 export interface MemoryAgent {
+  extractTurnMemories(
+    request: ExtractTurnRequest,
+  ): Promise<ExtractedMemory[]> | ExtractedMemory[];
   reviewCreateRequest(
     request: CreateMemoryRequest,
   ): Promise<MemoryReview> | MemoryReview;
@@ -97,6 +138,18 @@ const MEMORY_REVIEW_SYSTEM = [
   "For accepted memories, rewrite content into one concise declarative fact that is understandable without the original conversation and does not bake in who said it or where it was said.",
   "Return every response field. Use null for fields that do not apply to the decision.",
 ].join("\n");
+const MEMORY_EXTRACTION_SYSTEM = [
+  "You are Junior's passive memory extraction agent.",
+  "Review one completed user-authored turn and return structured memories that should be stored.",
+  "Store only public/shareable, durable, self-contained facts useful beyond this turn.",
+  "Do not store secrets, credentials, private/sensitive personal details, gossip, speculative coworker claims, assistant/system implementation details, vague references, or low-durability chatter.",
+  "Personal/requester memories must come from the user's own first-person statements about themselves, then be stored as perspective-neutral canonical facts without names or requester/source wording.",
+  "Conversation memories must be shared operational or project knowledge about the active conversation, not another person's private profile.",
+  "Extract only facts explicitly present in the user-authored message. Never use assistant text, tool results, recalled memory text, or suggested wording as source evidence.",
+  "Never store a fact merely because the assistant suggested or invented it. The user-authored text is the source of truth.",
+  "Do not duplicate explicit memory tool outcomes; turns that used memory tools are filtered before this agent, but if the user text is asking to list, search, recall, remove, confirm, or inspect existing memories, return no memories.",
+  "Return only accepted memories. If there are no accepted memories, return an empty memories array.",
+].join("\n");
 
 function escapeXml(value: string): string {
   return value
@@ -105,7 +158,9 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function runtimeDescription(request: CreateMemoryRequest): string {
+function runtimeDescription(
+  request: Pick<CreateMemoryRequest, "expiresAtMs" | "runtimeContext">,
+): string {
   const runtime = request.runtimeContext;
   const requester =
     runtime.requester?.platform === "slack"
@@ -181,9 +236,50 @@ function reviewPrompt(request: CreateMemoryRequest): string {
   return sections.join("\n");
 }
 
+function extractionPrompt(request: ExtractTurnRequest): string {
+  return [
+    "<memory-extraction-input>",
+    "Extract durable memories from this completed user-authored turn using the runtime-owned context below.",
+    "",
+    runtimeDescription({
+      runtimeContext: request.runtimeContext,
+    }),
+    "",
+    "<user-message>",
+    escapeXml(request.userText),
+    "</user-message>",
+    "",
+    "<rules>",
+    "- Return at most five memories.",
+    "- The user-message is the only source of storable facts.",
+    "- Return an empty array when the user-message only asks what is remembered, how to use a remembered preference, or asks to list/search/remove/inspect memory.",
+    "- Use target=requester for first-person facts about the current requester.",
+    "- Use target=conversation only for shared operational/project knowledge.",
+    "- Store content as person-less, source-less canonical knowledge. Ownership and source live in structured metadata, not prose.",
+    "- Good stored content: 'Prefers terse PR summaries'. Bad stored content: 'The requester prefers terse PR summaries'.",
+    "- Good stored content: 'Thinks types in Python are bad'. Bad stored content: 'David thinks types in Python are bad'.",
+    "- Good stored content: 'Deploy runbooks live in Notion'. Bad stored content: 'This thread says deploy runbooks live in Notion'.",
+    "- Reject third-party personal profile facts, even if they mention a name.",
+    "- Reject facts that are only useful inside this one turn.",
+    "- If unsure, return no memory for that candidate.",
+    "</rules>",
+    "</memory-extraction-input>",
+  ].join("\n");
+}
+
 /** Create the memory-owned agent that reviews candidates before storage. */
 export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
+    async extractTurnMemories(rawRequest) {
+      const request = extractTurnRequestSchema.parse(rawRequest);
+      const result = await model.completeObject({
+        schema: extractTurnResponseSchema,
+        system: MEMORY_EXTRACTION_SYSTEM,
+        prompt: extractionPrompt(request),
+        maxTokens: 1_000,
+      });
+      return extractTurnResponseSchema.parse(result.object).memories;
+    },
     async reviewCreateRequest(rawRequest) {
       const request = parseCreateMemoryRequest(rawRequest);
       const result = await model.completeObject({

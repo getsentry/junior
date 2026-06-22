@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
@@ -57,7 +57,8 @@ Retrieval must filter by visibility before prompt rendering:
 
 - matching personal requester scope
 - matching conversation scope
-- current install policy allows recall for the memory type, scope, and source
+- future install policy allows recall for the memory type, scope, and source
+  when that policy surface exists
 - `archived_at is null`
 - `superseded_at is null`
 - `expires_at is null or expires_at > now()`
@@ -65,10 +66,10 @@ Retrieval must filter by visibility before prompt rendering:
 The query planner, vector index, model, and ranker are not authorization
 boundaries.
 
-If install policy changes after a memory was created, retrieval must apply the
-current policy. Stricter current policy hides the memory from automatic memory
-injection and normal list/search results even if the stored row is otherwise
-visible.
+If future install policy changes after a memory was created, retrieval must
+apply the current policy. Stricter current policy hides the memory from
+automatic memory injection and normal list/search results even if the stored row
+is otherwise visible.
 
 ### Ranking Pipeline
 
