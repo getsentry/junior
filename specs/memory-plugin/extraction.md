@@ -39,10 +39,10 @@ A candidate may be stored only when all of these are true:
 
 Examples that can be stored:
 
-- `User prefers concise technical answers.`
-- `User's production deploy window is Mondays from 10:00 to 12:00 UTC.`
-- `The #infra conversation uses Linear for incident follow-up.`
-- `User wants Junior to remember that the Acme migration is paused.`
+- `Prefers concise technical answers.`
+- `Production deploy window is Mondays from 10:00 to 12:00 UTC.`
+- `Incident follow-up lives in Linear.`
+- `The Acme migration is paused.`
 
 Examples that must not be stored:
 
@@ -51,6 +51,9 @@ Examples that must not be stored:
 - `The OAuth token is xoxb-...`
 - `David is on the billing team.` when proposed as David's personal memory by
   someone other than David
+- `The requester prefers concise technical answers.`
+- `My favorite CLI QA snack is mango chips.`
+- `This thread says incident follow-up lives in Linear.`
 - `The user is somewhere next week.`
 - `The user has not decided what to do.`
 - `Junior can use the scheduler plugin.`
@@ -142,7 +145,7 @@ Extraction must follow these rules:
 1. Extract only from user-authored text.
 2. Prefer explicit "remember" requests over inferred passive learning.
 3. Store facts, not conversation summaries.
-4. Make content self-contained.
+4. Make content self-contained and perspective-neutral.
 5. Reject unresolved references such as "that", "it", "the thing", "someone",
    or "somewhere" when the referenced value is not present.
 6. Reject negative knowledge such as "the user has not decided yet".
@@ -167,6 +170,10 @@ Extraction must follow these rules:
     correctness.
 17. Store the minimum useful assertion rather than a direct quote or broad
     summary.
+18. Store ownership, subject, and provenance in structured fields, not content
+    prose. Remove requester names, display names, `the requester`, `the user`,
+    `I`, `my`, thread labels, channel labels, and source labels from accepted
+    content.
 
 The plugin must route extracted candidates through the memory agent before
 storage. The extraction prompt is guidance, not the security boundary.
@@ -206,6 +213,12 @@ Memory agent review output must be structured. It should include:
 - decision: `store` or `reject`
 - normalized rejection reason code when rejected
 - optional adjusted memory type, subject, scope, expiration, or content rewrite
+
+The structured content field is the canonical stored memory text. The memory
+agent must use that field to return perspective-neutral fact text. For example,
+`I prefer terse PR summaries` should become `Prefers terse PR summaries`, and
+`This thread says deploy runbooks live in Notion` should become
+`Deploy runbooks live in Notion`.
 
 The memory agent may narrow, rewrite, or reject extracted candidates, but it
 may not override hard structural validators. If extraction and review disagree,

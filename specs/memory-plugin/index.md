@@ -127,7 +127,7 @@ External storage and retrieval assumptions are based on primary documentation:
 ## Plugin Shape
 
 The V1 memory implementation is a trusted host plugin registered through
-`defineJuniorPlugin({ manifest, database, hooks })`.
+`defineJuniorPlugin({ manifest, hooks })`.
 
 The plugin uses the package name and plugin name `memory`. Plugin database
 tables use the prefix:
@@ -251,6 +251,10 @@ is on the billing team` is not a valid personal memory when written by
    names or Slack users appear to match.
 5. Subject fields describe what the memory is about; they do not broaden
    visibility beyond the stored scope.
+6. Stored content must not include ownership, source, or perspective labels
+   such as `the requester`, `the user`, display names, `I`, `my`, `this
+thread`, or channel labels. Those facts belong in structured scope, subject,
+   and source fields; prompt rendering may add perspective later.
 
 ## Subject Model
 

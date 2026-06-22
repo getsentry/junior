@@ -52,16 +52,16 @@ destination, conversation, and tenant/workspace authority from runtime context.
 - raw source metadata
 
 The tool submits one public/shareable memory candidate. The candidate content
-must be self-contained and include the relevant subject in natural language
-when needed. For example, `The requester prefers terse status updates` is a
-valid candidate, while `remember this` is not. The outer agent provides the
-candidate text; it does not select storage scope or subject.
+must be self-contained natural-language text, such as `I prefer terse status
+updates`, while vague references like `remember this` are invalid. The outer
+agent provides the candidate text; it does not select storage scope, subject,
+or canonical stored content.
 
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the same memory agent review path as passive extraction. The
-memory agent decides store/reject, normalized content, subject, and whether the
-memory targets the current requester, active conversation, or no valid V1
-target.
+memory agent decides store/reject, canonical perspective-neutral content,
+subject, and whether the memory targets the current requester, active
+conversation, or no valid V1 target.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
 display names, aliases, or subject classes.

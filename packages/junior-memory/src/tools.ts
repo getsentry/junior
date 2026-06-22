@@ -323,7 +323,7 @@ function compactMemory(memory: MemoryRecord) {
 export function createMemoryCreateTool(context: MemoryToolContext) {
   return {
     description:
-      "Remember a public/shareable fact about the current requester for later. Use only when the requester explicitly asks Junior to remember something about themselves. Pass one self-contained memory candidate; include the requester as the subject in the content itself when needed, such as 'The requester prefers terse updates'. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids.",
+      "Remember a public/shareable fact about the current requester for later. Use only when the requester explicitly asks Junior to remember something about themselves. Pass one self-contained memory candidate in natural language, such as 'I prefer terse updates'. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids; the memory agent decides the canonical stored content, subject, and target.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     execute: async (input, options) => {

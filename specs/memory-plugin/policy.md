@@ -115,8 +115,11 @@ Avoid extracting:
 - sensitive workplace categories listed below
 
 The memory text should be the minimum useful assertion, not a transcript quote.
-It should strip incidental names, Slack handles, timestamps, and context unless
-they are needed for the memory to be correct.
+It should strip incidental names, Slack handles, timestamps, perspective, and
+source context unless they are needed for the memory to be correct. For
+personal memories, the tool or extractor may receive first-person candidate
+text such as `I prefer terse code reviews`, but the stored content should be
+canonical text such as `Prefers terse code reviews`.
 
 Future configurable extraction guidelines may narrow or redirect what the model
 looks for, such as "only remember repository conventions and product
@@ -158,6 +161,11 @@ the current author/requester. The author can explicitly ask Junior to remember
 `I prefer terse code reviews` or `I am the release captain for Project Atlas`.
 Another participant cannot create a personal memory such as `David prefers
 terse code reviews` or `David is the release captain` on David's behalf.
+
+Stored personal content must not include the author's display name, `the
+requester`, `the user`, `I`, or `my`. Ownership lives in the personal scope and
+user subject fields. Content should be rendered with user-relative perspective
+only when recalled.
 
 Personal-scoped memories can also store public/shareable `general` subject
 knowledge for the requester when explicitly requested, but they cannot target

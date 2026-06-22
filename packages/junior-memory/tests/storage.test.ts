@@ -111,6 +111,10 @@ function localContext(
   };
 }
 
+function testCanonicalContent(content: string): string {
+  return content.replace(/^I prefer /, "Prefers ").replace(/^I use /, "Uses ");
+}
+
 function allowMemory(
   target: "requester" | "conversation",
   onRequest?: (request: CreateMemoryRequest) => void,
@@ -121,7 +125,7 @@ function allowMemory(
       return {
         decision: "store",
         target,
-        content: candidate.content,
+        content: testCanonicalContent(candidate.content),
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
           : {}),
@@ -149,7 +153,7 @@ describe("memory plugin storage", () => {
           object: {
             decision: "store",
             target: "requester",
-            content: "The requester uses qa-structured-output in CLI QA.",
+            content: "Uses qa-structured-output in CLI QA.",
             reason: null,
             expiresAtMs: null,
           },
@@ -166,7 +170,7 @@ describe("memory plugin storage", () => {
     ).resolves.toEqual({
       decision: "store",
       target: "requester",
-      content: "The requester uses qa-structured-output in CLI QA.",
+      content: "Uses qa-structured-output in CLI QA.",
     });
     expect(calls[0]?.schema).toBeDefined();
   });
@@ -209,12 +213,12 @@ describe("memory plugin storage", () => {
       });
 
       const personal = await store.createMemory({
-        content: "The requester prefers short PR summaries.",
+        content: "Prefers short PR summaries.",
         idempotencyKey: "memory-test:personal",
       });
       nowMs = TEST_NOW_MS + 1;
       const conversation = await store.createConversationMemory({
-        content: "The channel keeps deploy runbooks in Notion.",
+        content: "Deploy runbooks live in Notion.",
         idempotencyKey: "memory-test:conversation",
       });
 
@@ -346,7 +350,7 @@ ORDER BY created_at_ms ASC
         ok: true,
         created: true,
         memory: {
-          content: "I prefer terse status updates.",
+          content: "Prefers terse status updates.",
         },
       });
       expect(reviewedRequests[0]).toMatchObject({
@@ -374,7 +378,7 @@ ORDER BY created_at_ms ASC
           agent: allowMemory("conversation"),
         }).execute!(
           {
-            content: "The channel keeps incident notes in Linear.",
+            content: "Incident notes live in Linear.",
             expires_at: "never",
           },
           { toolCallId: "tool-create-conversation" },
@@ -383,7 +387,7 @@ ORDER BY created_at_ms ASC
         ok: true,
         created: true,
         memory: {
-          content: "The channel keeps incident notes in Linear.",
+          content: "Incident notes live in Linear.",
         },
       });
 
@@ -393,10 +397,10 @@ ORDER BY created_at_ms ASC
         ok: true,
         memories: [
           expect.objectContaining({
-            content: "The channel keeps incident notes in Linear.",
+            content: "Incident notes live in Linear.",
           }),
           expect.objectContaining({
-            content: "I prefer terse status updates.",
+            content: "Prefers terse status updates.",
           }),
         ],
       });
@@ -406,7 +410,7 @@ ORDER BY created_at_ms ASC
         ok: true,
         memories: [
           expect.objectContaining({
-            content: "The channel keeps incident notes in Linear.",
+            content: "Incident notes live in Linear.",
           }),
         ],
       });
@@ -418,7 +422,7 @@ ORDER BY created_at_ms ASC
         memories: Array<{ content: string; id: string }>;
       };
       const personal = listResult.memories.find(
-        (memory) => memory.content === "I prefer terse status updates.",
+        (memory) => memory.content === "Prefers terse status updates.",
       );
       expect(personal).toBeDefined();
       await expect(
@@ -427,7 +431,7 @@ ORDER BY created_at_ms ASC
         ok: true,
         memory: {
           id: personal!.id,
-          content: "I prefer terse status updates.",
+          content: "Prefers terse status updates.",
         },
       });
       await expect(
@@ -473,7 +477,7 @@ ORDER BY created_at_ms ASC
         ok: true,
         created: true,
         memory: {
-          content: "I prefer valid expiration to be stored.",
+          content: "Prefers valid expiration to be stored.",
           expiresAtMs: Date.parse("2026-06-19T13:00:00+00:00"),
         },
       });
@@ -533,7 +537,7 @@ ORDER BY created_at_ms ASC
       ).resolves.toMatchObject({
         ok: true,
         created: false,
-        memory: { content: "I prefer terse status updates." },
+        memory: { content: "Prefers terse status updates." },
       });
     } finally {
       await fixture.close();
@@ -550,17 +554,17 @@ ORDER BY created_at_ms ASC
         now: () => nowMs,
       });
       const personal = await store.createMemory({
-        content: "The requester prefers PR summary risks first.",
+        content: "Prefers PR summaries with risks first.",
         idempotencyKey: "memory-test:recall-personal",
       });
       nowMs += 1;
       const conversation = await store.createConversationMemory({
-        content: "The channel stores release notes in Notion.",
+        content: "Release notes live in Notion.",
         idempotencyKey: "memory-test:recall-conversation",
       });
       nowMs += 1;
       await store.createMemory({
-        content: "The requester prefers PR summary obsolete wording.",
+        content: "Prefers PR summary obsolete wording.",
         expiresAtMs: TEST_NOW_MS + 1,
         idempotencyKey: "memory-test:recall-expired",
       });
@@ -570,7 +574,7 @@ ORDER BY created_at_ms ASC
         slackContext({ userId: "U456" }),
         { now: () => nowMs },
       ).createMemory({
-        content: "The requester prefers PR summary unrelated owner.",
+        content: "Prefers PR summary unrelated owner.",
         idempotencyKey: "memory-test:recall-other-user",
       });
 
@@ -606,7 +610,7 @@ ORDER BY created_at_ms ASC
     try {
       const context = slackContext();
       await createMemoryStore(memoryDb(fixture), context).createMemory({
-        content: "The requester prefers PR summary risks first.",
+        content: "Prefers PR summaries with risks first.",
         idempotencyKey: "memory-test:recall-blank",
       });
 
@@ -664,10 +668,10 @@ ORDER BY created_at_ms ASC
         createMemoryStore(memoryDb(fixture), slackContext()).listMemories({}),
       ).resolves.toEqual([
         expect.objectContaining({
-          content: "I prefer the second remembered fact.",
+          content: "Prefers the second remembered fact.",
         }),
         expect.objectContaining({
-          content: "I prefer the first remembered fact.",
+          content: "Prefers the first remembered fact.",
         }),
       ]);
     } finally {
@@ -685,12 +689,12 @@ ORDER BY created_at_ms ASC
       });
 
       const personal = await store.createMemory({
-        content: "The requester prefers local CLI memory checks.",
+        content: "Prefers local CLI memory checks.",
         idempotencyKey: "memory-test:local-personal",
       });
       nowMs = TEST_NOW_MS + 1;
       const conversation = await store.createConversationMemory({
-        content: "This local session tracks memory plugin validation.",
+        content: "Memory plugin validation is tracked in this local session.",
         idempotencyKey: "memory-test:local-conversation",
       });
 
@@ -803,7 +807,7 @@ INSERT INTO junior_memory_memories (
       });
 
       const expired = await store.createMemory({
-        content: "The requester temporarily prefers quiet deploy reminders.",
+        content: "Temporarily prefers quiet deploy reminders.",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:expires",
       });
@@ -818,7 +822,7 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 12;
       const recreated = await store.createMemory({
-        content: "The requester temporarily prefers quiet deploy reminders.",
+        content: "Temporarily prefers quiet deploy reminders.",
         idempotencyKey: "memory-test:expires-recreated",
       });
 
@@ -844,8 +848,7 @@ INSERT INTO junior_memory_memories (
         now: () => nowMs,
       });
       const target = await store.createConversationMemory({
-        content:
-          "The oldest durable memory mentions release cutover rehearsal.",
+        content: "Release cutover rehearsal is durable.",
         idempotencyKey: "memory-test:search-target",
       });
 
@@ -876,7 +879,7 @@ INSERT INTO junior_memory_memories (
 
       await expect(
         store.createMemory({
-          content: "The requester prefers short PR summaries.",
+          content: "Prefers short PR summaries.",
           idempotencyKey: "memory-test:smuggle",
           scope: "conversation",
           subjectKey: "slack:T123:U999",
