@@ -73,6 +73,10 @@ describe("memory plugin host wiring", () => {
     NEON.sql = fixture.sql;
 
     try {
+      const migrationCount = readPluginMigrations({
+        dir: memoryMigrationsDir(),
+        pluginName: "memory",
+      }).length;
       await expect(
         migratePluginsToSql({
           io: { info: () => {} },
@@ -82,9 +86,9 @@ describe("memory plugin host wiring", () => {
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 1,
+        migrated: migrationCount,
         missing: 0,
-        scanned: 1,
+        scanned: migrationCount,
       });
 
       await expect(
