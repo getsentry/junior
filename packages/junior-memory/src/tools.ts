@@ -2,7 +2,6 @@ import { Type, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
   PluginToolInputError,
-  type PluginDb,
   type PluginToolDefinition,
   type Source,
   type Requester,
@@ -10,6 +9,7 @@ import {
 import {
   createMemoryStore,
   type CreateMemoryInput,
+  type MemoryDb,
   type MemoryRecord,
 } from "./store";
 import {
@@ -39,9 +39,10 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
 export interface MemoryToolContext {
   agent: MemoryAgent;
   conversationId?: string;
-  db: PluginDb;
+  db: MemoryDb;
   requester?: Requester;
   source: Source;
+  userText?: string;
 }
 
 function throwToolInputError(message: string): never {
@@ -206,7 +207,7 @@ function requireMemoryContent(value: string): string {
 
 type MemoryWriteToolInput = {
   content: string;
-  expires_at: string;
+  expires_at?: string;
 };
 
 const createMemoryInputSchema = Type.Object(
@@ -217,11 +218,13 @@ const createMemoryInputSchema = Type.Object(
       description:
         "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
     }),
-    expires_at: Type.String({
-      minLength: 1,
-      description:
-        'Required expiration selector. Use "never" when the memory should not expire, or an exact ISO timestamp such as "2027-06-21T00:00:00Z".',
-    }),
+    expires_at: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description:
+          'Expiration selector. Omit or use "never" when the memory should not expire, or use an exact ISO timestamp such as "2027-06-21T00:00:00Z".',
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -342,6 +345,13 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
                   ? { expiresAtMs: requestedExpiresAtMs }
                   : {}),
                 runtimeContext,
+                ...(context.userText?.trim()
+                  ? {
+                      sourceContext: {
+                        currentUserText: context.userText.trim(),
+                      },
+                    }
+                  : {}),
               }),
             ),
           );
@@ -349,8 +359,12 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
           if (error instanceof PluginToolInputError) {
             throw error;
           }
+          const detail =
+            error instanceof Error && error.message.trim()
+              ? `: ${error.message}`
+              : "";
           throw new PluginToolInputError(
-            "Memory agent returned invalid output.",
+            `Memory agent review failed${detail}`,
             { cause: error },
           );
         }

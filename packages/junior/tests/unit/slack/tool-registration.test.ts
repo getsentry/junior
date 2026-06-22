@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginDb } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import * as pluginDbModule from "@/chat/plugins/db";
 const noopSandbox = {} as any;
 
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
@@ -105,9 +103,6 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
-    vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(
-      {} as PluginDb,
-    );
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
       [],

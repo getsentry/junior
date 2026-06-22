@@ -18,10 +18,7 @@ import {
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
-import {
-  getConfiguredConversationStore,
-  hasConfiguredSqlConversationStore,
-} from "@/chat/conversations/configured";
+import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { logWarn } from "@/chat/logging";
 
@@ -321,25 +318,12 @@ async function recordConversationActivityMetadata(args: {
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
-  const conversationStore =
-    args.conversationStore ?? getConfiguredConversationStore();
+  const conversationStore = args.conversationStore ?? getConversationStore();
   const source =
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  const shouldRequireExistingStateConversation =
-    !args.conversationStore &&
-    args.summary.destination?.platform === "slack" &&
-    !hasConfiguredSqlConversationStore();
   try {
-    if (shouldRequireExistingStateConversation) {
-      const existing = await conversationStore.get({
-        conversationId: args.summary.conversationId,
-      });
-      if (!existing) {
-        return;
-      }
-    }
     await conversationStore.recordActivity({
       activityAtMs: args.summary.updatedAtMs,
       channelName: args.summary.channelName,

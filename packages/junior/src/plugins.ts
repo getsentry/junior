@@ -190,9 +190,5 @@ export function pluginCatalogConfigFromEnv(
 export function pluginHookRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,
 ): PluginRegistration[] {
-  return (
-    pluginSet?.registrations.filter(
-      (plugin) => plugin.database || plugin.hooks,
-    ) ?? []
-  );
+  return pluginSet?.registrations.filter((plugin) => plugin.hooks) ?? [];
 }

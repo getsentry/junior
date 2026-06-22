@@ -9,6 +9,7 @@ import {
   runLocalAgentTurn,
   type LocalAgentReply,
   type LocalToolInvocation,
+  type LocalToolResult,
 } from "@/chat/local/runner";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -130,7 +131,7 @@ describe("local agent runner", () => {
     });
   });
 
-  it("forwards tool invocations from the shared reply boundary", async () => {
+  it("forwards tool events from the shared reply boundary", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "tools",
       cwd: "/tmp/local-agent-runner-tools",
@@ -143,10 +144,17 @@ describe("local agent runner", () => {
           toolName: "createMemory",
           params: { content: "The requester prefers short updates." },
         });
+        await context.onToolResult?.({
+          ok: true,
+          toolName: "createMemory",
+          params: { content: "The requester prefers short updates." },
+          result: { ok: true },
+        });
         return successReply("saved", { toolCalls: ["createMemory"] });
       },
     );
     const invocations: LocalToolInvocation[] = [];
+    const results: LocalToolResult[] = [];
 
     await runLocalAgentTurn(
       {
@@ -159,6 +167,9 @@ describe("local agent runner", () => {
         onToolInvocation: async (invocation) => {
           invocations.push(invocation);
         },
+        onToolResult: async (result) => {
+          results.push(result);
+        },
       },
     );
 
@@ -166,6 +177,14 @@ describe("local agent runner", () => {
       {
         toolName: "createMemory",
         params: { content: "The requester prefers short updates." },
+      },
+    ]);
+    expect(results).toEqual([
+      {
+        ok: true,
+        toolName: "createMemory",
+        params: { content: "The requester prefers short updates." },
+        result: { ok: true },
       },
     ]);
   });

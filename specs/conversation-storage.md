@@ -152,13 +152,13 @@ Postgres, not as a special transcript, queue, or analytics backend:
   one-shot query paths only when no advisory lock or interactive transaction is
   required.
 
-Local tests and local development may use PGlite for the shared Junior SQL
-database. It must be treated as a Postgres-compatible local mode, not as a
-SQLite mock. The private `@sentry/junior-test-fixtures` package owns the
-PGlite dependency as dev-only test infrastructure so production deploy artifacts
-do not include PGlite. `packages/junior/tests/fixtures/sql.ts` wraps that
-fixture with Junior's schema and factories so future metadata tables can be
-covered without rebuilding ad-hoc stores.
+Local tests may use PGlite for the shared Junior SQL database when a real
+Postgres service is not required. It must be treated as a Postgres-compatible
+test fixture, not as a SQLite mock. The private `@sentry/junior-testing/pglite`
+helper owns the PGlite dependency as dev-only test infrastructure so production
+deploy artifacts do not include PGlite. `packages/junior/tests/fixtures/sql.ts`
+wraps that fixture with Junior's schema and factories so future metadata tables
+can be covered without rebuilding ad-hoc stores.
 
 ### Vercel Deployment And Upgrade
 

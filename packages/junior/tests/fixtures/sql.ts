@@ -1,10 +1,10 @@
 import type { juniorConversations } from "@/chat/conversations/sql/schema";
-import type { JuniorDatabase, JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
 import { juniorSqlSchema } from "@/chat/sql/schema";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
-} from "@sentry/junior-test-fixtures/pglite";
+} from "@sentry/junior-testing/pglite";
 import {
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
@@ -15,7 +15,7 @@ export type JuniorSqlConversationInsert =
 
 export interface LocalJuniorSqlFixture {
   client?: LocalPgliteFixture<JuniorDatabase>["client"];
-  executor: JuniorSqlMigrationExecutor;
+  sql: JuniorSqlExecutor;
   close(): Promise<void>;
 }
 
@@ -26,7 +26,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
   if (hasJuniorPostgresTestDatabase()) {
     const fixture = await createEmptyJuniorSqlFixture();
     return {
-      executor: fixture.executor,
+      sql: fixture.sql,
       close: () => fixture.close(),
     };
   }
@@ -36,7 +36,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
 
   return {
     client: fixture.client,
-    executor: fixture,
+    sql: fixture as unknown as JuniorSqlExecutor,
     close: () => fixture.close(),
   };
 }

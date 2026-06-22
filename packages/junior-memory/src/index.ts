@@ -5,6 +5,7 @@ export type {
   CreateMemoryInput,
   CreateMemoryResult,
   ListMemoriesInput,
+  MemoryDb,
   MemoryRecord,
   MemoryStore,
   MemoryStoreOptions,

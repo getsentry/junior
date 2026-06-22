@@ -256,9 +256,31 @@ function readJuniorDatabaseUrl(env: NodeJS.ProcessEnv): string | undefined {
   );
 }
 
-function readSqlDriver(env: NodeJS.ProcessEnv): SqlDriver {
+function isLocalDatabaseUrl(databaseUrl: string | undefined): boolean {
+  if (!databaseUrl) {
+    return false;
+  }
+  try {
+    const { hostname } = new URL(databaseUrl);
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function readSqlDriver(
+  env: NodeJS.ProcessEnv,
+  databaseUrl: string | undefined,
+): SqlDriver {
   const value = toOptionalTrimmed(env.JUNIOR_DATABASE_DRIVER);
   if (value === undefined) {
+    if (isLocalDatabaseUrl(databaseUrl)) {
+      return "postgres";
+    }
     return "neon";
   }
   if (value === "neon" || value === "postgres") {
@@ -271,12 +293,13 @@ function readSqlDriver(env: NodeJS.ProcessEnv): SqlDriver {
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): ChatConfig {
+  const databaseUrl = readJuniorDatabaseUrl(env);
   return {
     bot: readBotConfig(env),
     functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
     sql: {
-      databaseUrl: readJuniorDatabaseUrl(env),
-      driver: readSqlDriver(env),
+      databaseUrl,
+      driver: readSqlDriver(env, databaseUrl),
     },
     slack: {
       botToken:

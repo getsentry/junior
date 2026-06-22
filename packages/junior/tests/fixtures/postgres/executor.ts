@@ -77,7 +77,7 @@ export function createPooledJuniorSqlExecutor(args: {
   applicationName: string;
   connectionString: string;
 }): {
-  executor: JuniorSqlExecutor;
+  db: JuniorSqlExecutor;
   close(): Promise<void>;
 } {
   const executor = createPostgresJuniorSqlExecutor({
@@ -85,7 +85,7 @@ export function createPooledJuniorSqlExecutor(args: {
     connectionString: args.connectionString,
   });
   return {
-    executor,
+    db: executor,
     close: async () => {
       await executor.close();
     },

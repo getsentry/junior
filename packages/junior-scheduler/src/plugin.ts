@@ -1,7 +1,6 @@
 import {
   defineJuniorPlugin,
   type Dispatch,
-  type PluginDb,
   type PluginToolDefinition,
   type PluginOperationalReportContent,
   type PluginReadState,
@@ -14,6 +13,7 @@ import {
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
   migrateSchedulerStateToSql,
+  type SchedulerDb,
   type SchedulerOperationalStore,
   type SchedulerStore,
 } from "./store";
@@ -83,14 +83,14 @@ function scheduledTaskDispatchSource(task: ScheduledTask): Source {
   };
 }
 
-function schedulerStore(ctx: { db: PluginDb }): SchedulerStore {
-  return createSchedulerSqlStore(ctx.db);
+function schedulerStore(ctx: { db: unknown }): SchedulerStore {
+  return createSchedulerSqlStore(ctx.db as SchedulerDb);
 }
 
 function schedulerOperationalStore(ctx: {
-  db: PluginDb;
+  db: unknown;
 }): SchedulerOperationalStore {
-  return createSchedulerOperationalSqlStore(ctx.db);
+  return createSchedulerOperationalSqlStore(ctx.db as SchedulerDb);
 }
 
 function shouldSkipRun(
@@ -424,7 +424,6 @@ async function buildSchedulerOperationalReport(args: {
 /** Create Junior's built-in trusted scheduler plugin. */
 export function createSchedulerPlugin() {
   return defineJuniorPlugin({
-    database: {},
     manifest: {
       name: "scheduler",
       displayName: "Scheduler",
@@ -570,7 +569,7 @@ export function createSchedulerPlugin() {
       },
       async migrateStorage(ctx) {
         return await migrateSchedulerStateToSql({
-          db: ctx.db,
+          db: ctx.db as SchedulerDb,
           state: ctx.state,
         });
       },

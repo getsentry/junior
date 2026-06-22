@@ -12,9 +12,16 @@ import type {
 const runner = vi.hoisted(() => ({
   runLocalAgentTurn: vi.fn(),
 }));
+const db = vi.hoisted(() => ({
+  getDb: vi.fn(() => ({})),
+}));
 
 vi.mock("@/chat/local/runner", () => ({
   runLocalAgentTurn: runner.runLocalAgentTurn,
+}));
+
+vi.mock("@/chat/db", () => ({
+  getDb: db.getDb,
 }));
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
@@ -37,9 +44,23 @@ function reply(outcome: LocalAgentTurnResult["outcome"]): {
   };
 }
 
+async function waitForMockCalls(
+  mock: { mock: { calls: unknown[] } },
+  count: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (mock.mock.calls.length >= count) {
+      return;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`Expected ${count} mock calls`);
+}
+
 describe("chat cli", () => {
   beforeEach(() => {
     runner.runLocalAgentTurn.mockReset();
+    db.getDb.mockClear();
   });
 
   afterEach(() => {
@@ -98,18 +119,22 @@ describe("chat cli", () => {
     );
   });
 
-  it("prints tool calls on the status stream as they run", async () => {
+  it("prints tool results on the status stream after execution", async () => {
     const output: string[] = [];
     const status: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
-      await deps.onToolInvocation?.({
+      await deps.onToolResult?.({
+        ok: true,
         toolName: "createMemory",
         params: { content: "remember this" },
+        result: { ok: true, created: true },
       });
-      await deps.onToolInvocation?.({
+      await deps.onToolResult?.({
+        ok: false,
         toolName: "searchMemories",
         params: { query: "remember" },
+        error: "Search failed",
       });
       await deps.deliverReply(result.reply);
       return result;
@@ -128,8 +153,8 @@ describe("chat cli", () => {
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(status).toEqual([
-      'tool: createMemory {"content":"remember this"}',
-      'tool: searchMemories {"query":"remember"}',
+      'tool: createMemory ok {"ok":true,"created":true}',
+      "tool: searchMemories error Search failed",
     ]);
     expect(output).toEqual(["hello\n"]);
   });
@@ -156,9 +181,12 @@ describe("chat cli", () => {
     expect(getChatConfig().state.adapter).toBe("memory");
   });
 
-  it("fails local chat for database plugins without SQL configuration", async () => {
+  it("fails local chat for hook plugins without SQL configuration", async () => {
     delete process.env.DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_URL;
+    db.getDb.mockImplementationOnce(() => {
+      throw new Error("DATABASE_URL or JUNIOR_DATABASE_URL is required");
+    });
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
     writeFileSync(
       path.join(tempDir, "plugins.mjs"),
@@ -166,12 +194,12 @@ describe("chat cli", () => {
   packageNames: [],
   registrations: [
     {
-      database: {},
       manifest: {
-        name: "database-plugin",
-        displayName: "Database Plugin",
-        description: "Database-backed local chat test plugin",
+        name: "hook-plugin",
+        displayName: "Hook Plugin",
+        description: "Hook-backed local chat test plugin",
       },
+      hooks: {},
     },
   ],
 };
@@ -189,7 +217,7 @@ describe("chat cli", () => {
 
       expect(await runChat(["-p", "hello"], io)).toBe(1);
       expect(io.error).toHaveBeenCalledWith(
-        "Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: database-plugin",
+        "DATABASE_URL or JUNIOR_DATABASE_URL is required",
       );
       expect(runner.runLocalAgentTurn).not.toHaveBeenCalled();
     } finally {
@@ -476,9 +504,9 @@ export const plugins = {
       write: vi.fn(),
     });
     input.write("hello\n");
-    await new Promise((resolve) => setImmediate(resolve));
+    await waitForMockCalls(runner.runLocalAgentTurn, 1);
     input.write("again\n");
-    await new Promise((resolve) => setImmediate(resolve));
+    await waitForMockCalls(runner.runLocalAgentTurn, 2);
     input.write("/exit\n");
     input.end();
 

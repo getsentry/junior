@@ -90,7 +90,10 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
-import { createAgentTools } from "@/chat/tools/agent-tools";
+import {
+  createAgentTools,
+  type ToolExecutionReport,
+} from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import {
   CooperativeTurnYieldError,
@@ -271,6 +274,7 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void | Promise<void>;
+  onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
 }
 
 export type AssistantReplyRequestContext = ReplyRequestContext;
@@ -1304,6 +1308,7 @@ export async function generateAssistantReply(
       onToolCall,
       pluginHooks,
       conversationPrivacy,
+      context.onToolResult,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -1315,6 +1320,7 @@ export async function generateAssistantReply(
       onToolCall,
       pluginHooks,
       conversationPrivacy,
+      context.onToolResult,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic

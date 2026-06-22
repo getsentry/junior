@@ -4,10 +4,9 @@ import { fileURLToPath } from "node:url";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
-} from "@sentry/junior-test-fixtures/pglite";
+} from "@sentry/junior-testing/pglite";
 import {
   PluginToolInputError,
-  type PluginDb,
   type PluginLogger,
   type PluginState,
 } from "@sentry/junior-plugin-api";
@@ -21,12 +20,12 @@ import {
   createMemoryRemoveTool,
   createMemorySearchTool,
 } from "../src/tools";
-import { createMemoryStore } from "../src/store";
+import { createMemoryStore, type MemoryDb } from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-type MemoryFixture = LocalPgliteFixture<unknown>;
+type MemoryFixture = LocalPgliteFixture<MemoryDb>;
 
 const noopLogger: PluginLogger = {
   error() {},
@@ -48,28 +47,12 @@ const memoryState: PluginState = {
   },
 };
 
-function pluginDb(fixture: MemoryFixture): PluginDb {
-  const db = fixture.db() as {
-    delete: PluginDb["delete"];
-    insert: PluginDb["insert"];
-    select: PluginDb["select"];
-    update: PluginDb["update"];
-  };
-  return {
-    delete: db.delete.bind(db) as PluginDb["delete"],
-    execute: (statement, params) => fixture.execute(statement, params),
-    insert: db.insert.bind(db) as PluginDb["insert"],
-    query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
-      fixture.query<T>(statement, params),
-    select: db.select.bind(db) as PluginDb["select"],
-    transaction: async (callback) =>
-      await fixture.transaction(async () => await callback(pluginDb(fixture))),
-    update: db.update.bind(db) as PluginDb["update"],
-  };
+function memoryDb(fixture: MemoryFixture): MemoryDb {
+  return fixture.db();
 }
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<unknown>(memorySqlSchema);
+  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema);
   const migration = await readFile(
     resolve(__dirname, "../migrations/0000_dizzy_millenium_guard.sql"),
     "utf8",
@@ -146,7 +129,7 @@ const rejectMemory: MemoryAgent = {
   reviewCreateRequest() {
     return {
       decision: "reject",
-      reason: "not public/shareable",
+      reason: "not_public_shareable",
     };
   },
 };
@@ -158,7 +141,7 @@ describe("memory plugin storage", () => {
     try {
       const requesterContext = slackContext();
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(pluginDb(fixture), requesterContext, {
+      const store = createMemoryStore(memoryDb(fixture), requesterContext, {
         now: () => nowMs,
       });
 
@@ -212,7 +195,7 @@ ORDER BY created_at_ms ASC
       ]);
 
       const otherRequesterStore = createMemoryStore(
-        pluginDb(fixture),
+        memoryDb(fixture),
         slackContext({ userId: "U456" }),
         { now: () => nowMs },
       );
@@ -220,7 +203,7 @@ ORDER BY created_at_ms ASC
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
       const otherConversationStore = createMemoryStore(
-        pluginDb(fixture),
+        memoryDb(fixture),
         slackContext({
           channelId: "C999",
           threadTs: "1718800001.000000",
@@ -245,7 +228,7 @@ ORDER BY created_at_ms ASC
         otherConversationStore.archiveMemory({ id: conversation.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
       const otherTeamStore = createMemoryStore(
-        pluginDb(fixture),
+        memoryDb(fixture),
         slackContext({ teamId: "T999", userId: "U456" }),
         { now: () => nowMs },
       );
@@ -279,7 +262,7 @@ ORDER BY created_at_ms ASC
         agent: allowMemory("requester", (request) => {
           reviewedRequests.push(request);
         }),
-        db: pluginDb(fixture),
+        db: memoryDb(fixture),
         ...slackContext(),
       };
       const tools = {
@@ -293,7 +276,6 @@ ORDER BY created_at_ms ASC
         tools.createMemory.execute!(
           {
             content: "I prefer terse status updates.",
-            expires_at: "never",
           },
           { toolCallId: "tool-create-personal" },
         ),
@@ -454,7 +436,7 @@ ORDER BY created_at_ms ASC
       await expect(
         createMemoryCreateTool({
           agent: rejectMemory,
-          db: pluginDb(fixture),
+          db: memoryDb(fixture),
           ...slackContext(),
         }).execute!(
           {
@@ -467,7 +449,7 @@ ORDER BY created_at_ms ASC
       await expect(
         createMemoryCreateTool({
           agent: allowMemory("requester"),
-          db: pluginDb(fixture),
+          db: memoryDb(fixture),
           source: slackContext().source,
         }).execute!(
           {
@@ -501,7 +483,7 @@ ORDER BY created_at_ms ASC
     try {
       let nowMs = TEST_NOW_MS;
       const context = slackContext();
-      const store = createMemoryStore(pluginDb(fixture), context, {
+      const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => nowMs,
       });
       const personal = await store.createMemory({
@@ -521,7 +503,7 @@ ORDER BY created_at_ms ASC
       });
       nowMs += 1;
       await createMemoryStore(
-        pluginDb(fixture),
+        memoryDb(fixture),
         slackContext({ userId: "U456" }),
         { now: () => nowMs },
       ).createMemory({
@@ -532,7 +514,7 @@ ORDER BY created_at_ms ASC
       const plugin = createMemoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
-        db: pluginDb(fixture),
+        db: memoryDb(fixture),
         log: noopLogger,
         plugin: { name: "memory" },
         state: memoryState,
@@ -560,7 +542,7 @@ ORDER BY created_at_ms ASC
 
     try {
       const context = slackContext();
-      await createMemoryStore(pluginDb(fixture), context).createMemory({
+      await createMemoryStore(memoryDb(fixture), context).createMemory({
         content: "The requester prefers PR summary risks first.",
         idempotencyKey: "memory-test:recall-blank",
       });
@@ -569,7 +551,7 @@ ORDER BY created_at_ms ASC
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
-          db: pluginDb(fixture),
+          db: memoryDb(fixture),
           log: noopLogger,
           plugin: { name: "memory" },
           state: memoryState,
@@ -587,12 +569,12 @@ ORDER BY created_at_ms ASC
     try {
       const firstTool = createMemoryCreateTool({
         agent: allowMemory("requester"),
-        db: pluginDb(fixture),
+        db: memoryDb(fixture),
         ...slackContext(),
       });
       const secondTool = createMemoryCreateTool({
         agent: allowMemory("requester"),
-        db: pluginDb(fixture),
+        db: memoryDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
       });
 
@@ -616,7 +598,7 @@ ORDER BY created_at_ms ASC
       ).resolves.toMatchObject({ created: true });
 
       await expect(
-        createMemoryStore(pluginDb(fixture), slackContext()).listMemories({}),
+        createMemoryStore(memoryDb(fixture), slackContext()).listMemories({}),
       ).resolves.toEqual([
         expect.objectContaining({
           content: "I prefer the second remembered fact.",
@@ -635,7 +617,7 @@ ORDER BY created_at_ms ASC
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(pluginDb(fixture), localContext(), {
+      const store = createMemoryStore(memoryDb(fixture), localContext(), {
         now: () => nowMs,
       });
 
@@ -660,7 +642,7 @@ ORDER BY created_at_ms ASC
       ]);
 
       const otherConversationStore = createMemoryStore(
-        pluginDb(fixture),
+        memoryDb(fixture),
         localContext({ conversationId: "local:junior:other-memory-test" }),
         { now: () => nowMs },
       );
@@ -687,7 +669,7 @@ ORDER BY created_at_ms ASC
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
 
@@ -753,7 +735,7 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
 
@@ -795,7 +777,7 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
       const target = await store.createConversationMemory({
@@ -825,7 +807,7 @@ INSERT INTO junior_memory_memories (
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
       });
 
@@ -855,7 +837,7 @@ INSERT INTO junior_memory_memories (
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(pluginDb(fixture), slackContext(), {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
       });
 

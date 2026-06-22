@@ -5,7 +5,12 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { serializeGenAiAttribute } from "@/chat/logging";
-import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
+import {
+  logWarn,
+  setSpanAttributes,
+  withSpan,
+  type LogContext,
+} from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -23,6 +28,14 @@ import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 
+export interface ToolExecutionReport {
+  error?: string;
+  ok: boolean;
+  params: Record<string, unknown>;
+  result?: unknown;
+  toolName: string;
+}
+
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
@@ -37,6 +50,7 @@ export function createAgentTools(
   ) => void | Promise<void>,
   agentHooks?: PluginHookRunner,
   conversationPrivacy?: ConversationPrivacy,
+  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
@@ -46,6 +60,22 @@ export function createAgentTools(
         ? toGenAiPayloadMetadata(payload)
         : payload,
     );
+  const notifyToolResult = async (report: ToolExecutionReport) => {
+    try {
+      await onToolResult?.(report);
+    } catch (error) {
+      logWarn(
+        "tool_result_observer_failed",
+        spanContext,
+        {
+          "gen_ai.tool.name": report.toolName,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        },
+        "Tool result observer failed",
+      );
+    }
+  };
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -149,8 +179,20 @@ export function createAgentTools(
                 ),
               });
             }
+            await notifyToolResult({
+              ok: true,
+              params: toolInput,
+              result: resultAttributeValue,
+              toolName,
+            });
             return normalized;
           } catch (error) {
+            await notifyToolResult({
+              error: error instanceof Error ? error.message : String(error),
+              ok: false,
+              params: parsed,
+              toolName,
+            });
             if (
               error instanceof AuthorizationPauseError ||
               error instanceof AuthorizationFlowDisabledError

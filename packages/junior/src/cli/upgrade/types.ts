@@ -1,6 +1,5 @@
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { StateAdapter } from "chat";
-import type { PluginDb } from "@sentry/junior-plugin-api";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type { JuniorPluginSet } from "@/plugins";
 import type { SqlDriver } from "@/chat/config";
@@ -10,8 +9,8 @@ export interface UpgradeIo {
 }
 
 export interface MigrationContext {
+  db?: object;
   io: UpgradeIo;
-  pluginDb?: PluginDb;
   pluginCatalogConfig?: PluginCatalogConfig;
   pluginSet?: JuniorPluginSet;
   sqlDatabaseUrl?: string;

@@ -1,5 +1,5 @@
 import type { StateAdapter } from "chat";
-import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { logWarn } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
@@ -40,7 +40,7 @@ interface MetadataOptions {
 }
 
 function metadataStore(options: MetadataOptions): ConversationStore {
-  return options.conversationStore ?? getConfiguredConversationStore();
+  return options.conversationStore ?? getConversationStore();
 }
 
 function duplicateInboundNudgeIdempotencyKey(

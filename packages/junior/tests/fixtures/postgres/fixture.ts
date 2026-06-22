@@ -12,7 +12,7 @@ import {
 } from "./executor";
 
 export interface JuniorPostgresFixture {
-  executor: JuniorSqlExecutor;
+  sql: JuniorSqlExecutor;
   close(): Promise<void>;
 }
 
@@ -43,7 +43,7 @@ export async function createMigratedJuniorSqlFixture(): Promise<JuniorPostgresFi
     ({ client, close }) => createClientJuniorSqlExecutor(client, close),
   );
   return {
-    executor: transaction.resource,
+    sql: transaction.resource,
     close: () => transaction.close(),
   };
 }
@@ -59,7 +59,7 @@ export async function createEmptyJuniorSqlFixture(): Promise<JuniorPostgresDatab
   return {
     connectionString: database.connectionString,
     databaseName: database.databaseName,
-    executor: pooled.executor,
+    sql: pooled.db,
     close: async () => {
       await pooled.close();
       await database.close();

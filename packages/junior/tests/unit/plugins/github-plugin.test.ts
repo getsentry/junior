@@ -1,8 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import type {
-  PluginDb,
-  SandboxPrepareHookContext,
-} from "@sentry/junior-plugin-api";
+import type { SandboxPrepareHookContext } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../../../../junior-github/index.js";
@@ -10,7 +7,7 @@ import { mswServer } from "../../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const pluginDb = {} as PluginDb;
+const db = {};
 
 function beforeToolContext(requester: {
   email?: string;
@@ -43,7 +40,7 @@ function beforeToolContext(requester: {
         warn() {},
       },
       plugin: { name: "github" },
-      db: pluginDb,
+      db,
       requester,
       tool: {
         input: { command: "git commit -m test" },
@@ -165,7 +162,7 @@ async function grantForEgress(input: {
 }) {
   const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
   return await plugin.hooks?.grantForEgress?.({
-    db: pluginDb,
+    db,
     log: pluginLog,
     plugin: { name: "github" },
     request: {
@@ -210,7 +207,7 @@ function githubIssueCredentialContext(input: {
       ? { credentialSubject: { type: "user" as const, userId: "U456" } }
       : {}),
     grant: input.grant,
-    db: pluginDb,
+    db,
     log: pluginLog,
     plugin: { name: "github" },
     tokens: {
@@ -580,7 +577,7 @@ describe("github plugin", () => {
         access: "read",
         reason: "github.api-read",
       },
-      db: pluginDb,
+      db,
       log: pluginLog,
       plugin: { name: "github" },
       tokens: {},
@@ -632,7 +629,7 @@ describe("github plugin", () => {
         access: "read" as const,
         reason: "github.api-read",
       },
-      db: pluginDb,
+      db,
       log: pluginLog,
       plugin: { name: "github" },
       tokens: {},
@@ -676,7 +673,7 @@ describe("github plugin", () => {
     const missingActor = await plugin.hooks?.issueCredential?.({
       actor: { type: "system", id: "scheduler" },
       grant: { name: "user-write", access: "write" },
-      db: pluginDb,
+      db,
       log: pluginLog,
       plugin: { name: "github" },
       tokens: {},
@@ -757,7 +754,7 @@ describe("github plugin", () => {
 
     const plugin = githubPlugin();
     const account = await plugin.hooks?.resolveOAuthAccount?.({
-      db: pluginDb,
+      db,
       log: pluginLog,
       plugin: { name: "github" },
       tokens: {
@@ -1027,7 +1024,7 @@ describe("github plugin", () => {
 
     const plugin = githubPlugin();
     const ctx: SandboxPrepareHookContext = {
-      db: pluginDb,
+      db,
       log: {
         error() {},
         info() {},

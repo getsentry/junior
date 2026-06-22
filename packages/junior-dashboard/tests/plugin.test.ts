@@ -1,4 +1,3 @@
-import type { PluginDb } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { juniorDashboardPlugin } from "../src/index";
 
@@ -18,7 +17,7 @@ const log = {
   info() {},
   warn() {},
 };
-const db = {} as PluginDb;
+const db = {};
 
 afterEach(() => {
   for (const name of envNames) {

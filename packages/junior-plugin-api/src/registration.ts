@@ -1,9 +1,7 @@
-import type { PluginDatabaseConfig } from "./database";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 
 export type PluginRegistrationInput = {
-  database?: PluginDatabaseConfig;
   hooks?: PluginHooks;
   manifest: PluginManifest;
   packageName?: string;

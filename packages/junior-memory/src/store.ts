@@ -6,8 +6,24 @@
  * records leave the store.
  */
 import { randomUUID } from "node:crypto";
-import type { PluginDb } from "@sentry/junior-plugin-api";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  isNull,
+  like,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
+import * as memorySqlSchema from "./db/schema";
+import { juniorMemoryMemories } from "./db/schema";
 import {
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
@@ -27,6 +43,8 @@ import {
 const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
+
+export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryContentSchema = z
@@ -79,41 +97,41 @@ const optionalNonEmptyStringSchema = z.preprocess(
 );
 const memoryRowSchema = z
   .object({
-    id: z.string().min(1),
-    scope: z.enum(MEMORY_SCOPES),
-    scope_key: z.string().min(1),
-    type: z.enum(MEMORY_TYPES),
-    subject_type: z.enum(MEMORY_SUBJECT_TYPES),
-    subject_key: optionalNonEmptyStringSchema,
+    archivedAtMs: optionalNumberSchema,
+    archiveReason: optionalStringSchema,
     content: memoryContentSchema,
-    source_platform: z.enum(MEMORY_SOURCE_PLATFORMS),
-    source_key: z.string().min(1),
-    idempotency_key: optionalStringSchema,
-    observed_at_ms: z.coerce.number(),
-    created_at_ms: z.coerce.number(),
-    expires_at_ms: optionalNumberSchema,
-    superseded_at_ms: optionalNumberSchema,
-    superseded_by_id: optionalStringSchema,
-    archived_at_ms: optionalNumberSchema,
-    archive_reason: optionalStringSchema,
+    createdAtMs: z.coerce.number(),
+    expiresAtMs: optionalNumberSchema,
+    id: z.string().min(1),
+    idempotencyKey: optionalStringSchema,
+    observedAtMs: z.coerce.number(),
+    scope: z.enum(MEMORY_SCOPES),
+    scopeKey: z.string().min(1),
+    sourceKey: z.string().min(1),
+    sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
+    subjectKey: optionalNonEmptyStringSchema,
+    subjectType: z.enum(MEMORY_SUBJECT_TYPES),
+    supersededAtMs: optionalNumberSchema,
+    supersededById: optionalStringSchema,
+    type: z.enum(MEMORY_TYPES),
   })
   .strict()
   .superRefine((row, ctx) => {
-    if (row.subject_type === "general") {
-      if (row.subject_key !== undefined) {
+    if (row.subjectType === "general") {
+      if (row.subjectKey !== undefined) {
         ctx.addIssue({
           code: "custom",
           message: "General-subject memory rows must not have a subject key.",
-          path: ["subject_key"],
+          path: ["subjectKey"],
         });
       }
       return;
     }
-    if (row.subject_key === undefined) {
+    if (row.subjectKey === undefined) {
       ctx.addIssue({
         code: "custom",
         message: "User and conversation memory rows require a subject key.",
-        path: ["subject_key"],
+        path: ["subjectKey"],
       });
     }
   });
@@ -199,59 +217,76 @@ function parseMemoryRow(row: unknown): MemoryRecord {
     id: parsed.id,
     scope: parsed.scope,
     type: parsed.type,
-    subjectType: parsed.subject_type,
+    subjectType: parsed.subjectType,
     content: parsed.content,
-    observedAtMs: parsed.observed_at_ms,
-    createdAtMs: parsed.created_at_ms,
-    ...(parsed.expires_at_ms !== undefined
-      ? { expiresAtMs: parsed.expires_at_ms }
+    observedAtMs: parsed.observedAtMs,
+    createdAtMs: parsed.createdAtMs,
+    ...(parsed.expiresAtMs !== undefined
+      ? { expiresAtMs: parsed.expiresAtMs }
       : {}),
-    ...(parsed.superseded_at_ms !== undefined
-      ? { supersededAtMs: parsed.superseded_at_ms }
+    ...(parsed.supersededAtMs !== undefined
+      ? { supersededAtMs: parsed.supersededAtMs }
       : {}),
-    ...(parsed.superseded_by_id
-      ? { supersededById: parsed.superseded_by_id }
+    ...(parsed.supersededById ? { supersededById: parsed.supersededById } : {}),
+    ...(parsed.archivedAtMs !== undefined
+      ? { archivedAtMs: parsed.archivedAtMs }
       : {}),
-    ...(parsed.archived_at_ms !== undefined
-      ? { archivedAtMs: parsed.archived_at_ms }
-      : {}),
-    ...(parsed.archive_reason ? { archiveReason: parsed.archive_reason } : {}),
+    ...(parsed.archiveReason ? { archiveReason: parsed.archiveReason } : {}),
   });
 }
 
 /** Build the scoped SQL predicate and ordered params for visible memory reads. */
-function visibleScopePredicate(scopes: ResolvedMemoryScope[]): {
-  params: string[];
-  sql: string;
-} {
+function visibleScopePredicate(scopes: ResolvedMemoryScope[]): SQL | undefined {
   if (scopes.length === 0) {
-    return { params: [], sql: "FALSE" };
+    return undefined;
   }
-  const params: string[] = [];
-  const clauses = scopes.map((scope) => {
-    params.push(scope.scope, scope.scopeKey);
-    return `(scope = $${params.length - 1} AND scope_key = $${params.length})`;
-  });
-  return { params, sql: clauses.join(" OR ") };
+  return or(
+    ...scopes.map((scope) =>
+      and(
+        eq(juniorMemoryMemories.scope, scope.scope),
+        eq(juniorMemoryMemories.scopeKey, scope.scopeKey),
+      ),
+    ),
+  );
+}
+
+function activeVisiblePredicate(args: {
+  nowMs: number;
+  scopes: ResolvedMemoryScope[];
+}): SQL | undefined {
+  const scopePredicate = visibleScopePredicate(args.scopes);
+  if (!scopePredicate) {
+    return undefined;
+  }
+  return and(
+    scopePredicate,
+    isNull(juniorMemoryMemories.archivedAtMs),
+    isNull(juniorMemoryMemories.supersededAtMs),
+    isNull(juniorMemoryMemories.supersededById),
+    or(
+      isNull(juniorMemoryMemories.expiresAtMs),
+      gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+    ),
+  );
 }
 
 /** Resolve retry attempts for the same scoped write idempotency key. */
 async function findByIdempotencyKey(args: {
-  db: PluginDb;
+  db: MemoryDb;
   idempotencyKey: string;
   scope: ResolvedMemoryScope;
 }): Promise<MemoryRecord | undefined> {
-  const rows = await args.db.query(
-    `
-SELECT *
-FROM junior_memory_memories
-WHERE scope = $1
-  AND scope_key = $2
-  AND idempotency_key = $3
-LIMIT 1
-`,
-    [args.scope.scope, args.scope.scopeKey, args.idempotencyKey],
-  );
+  const rows = await args.db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        eq(juniorMemoryMemories.scope, args.scope.scope),
+        eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+        eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
+      ),
+    )
+    .limit(1);
   return rows[0] ? parseMemoryRow(rows[0]) : undefined;
 }
 
@@ -277,34 +312,31 @@ function searchTerms(query: string): string[] {
 
 /** List active records for the runtime-derived visible scopes. */
 async function listVisibleMemories(args: {
-  db: PluginDb;
+  db: MemoryDb;
   limit?: number;
   nowMs: number;
   scopes: ResolvedMemoryScope[];
 }): Promise<MemoryRecord[]> {
-  const predicate = visibleScopePredicate(args.scopes);
+  const predicate = activeVisiblePredicate(args);
+  if (!predicate) {
+    return [];
+  }
   const limit = boundedLimit(args.limit, DEFAULT_LIST_LIMIT);
-  const params: unknown[] = [...predicate.params, args.nowMs, limit];
-  const rows = await args.db.query(
-    `
-SELECT *
-FROM junior_memory_memories
-WHERE (${predicate.sql})
-  AND archived_at_ms IS NULL
-  AND superseded_at_ms IS NULL
-  AND superseded_by_id IS NULL
-  AND (expires_at_ms IS NULL OR expires_at_ms > $${predicate.params.length + 1})
-ORDER BY created_at_ms DESC, id ASC
-LIMIT $${predicate.params.length + 2}
-`,
-    params,
-  );
+  const rows = await args.db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(predicate)
+    .orderBy(
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(limit);
   return rows.map(parseMemoryRow);
 }
 
 /** Search active visible records with the V1 lexical matcher. */
 async function searchVisibleMemories(args: {
-  db: PluginDb;
+  db: MemoryDb;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
@@ -313,30 +345,29 @@ async function searchVisibleMemories(args: {
   if (terms.length === 0) {
     return [];
   }
-  const predicate = visibleScopePredicate(args.scopes);
-  const baseParamCount = predicate.params.length;
-  const termClauses = terms.map(
-    (_term, index) => `content ILIKE $${baseParamCount + 2 + index}`,
-  );
-  const rows = await args.db.query(
-    `
-SELECT *
-FROM junior_memory_memories
-WHERE (${predicate.sql})
-  AND archived_at_ms IS NULL
-  AND superseded_at_ms IS NULL
-  AND superseded_by_id IS NULL
-  AND (expires_at_ms IS NULL OR expires_at_ms > $${baseParamCount + 1})
-  AND (${termClauses.join(" OR ")})
-`,
-    [...predicate.params, args.nowMs, ...terms.map((term) => `%${term}%`)],
-  );
+  const predicate = activeVisiblePredicate(args);
+  if (!predicate) {
+    return [];
+  }
+  const rows = await args.db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        predicate,
+        or(
+          ...terms.map((term) =>
+            ilike(juniorMemoryMemories.content, `%${term}%`),
+          ),
+        ),
+      ),
+    );
   return rows.map(parseMemoryRow);
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */
 export function createMemoryStore(
-  db: PluginDb,
+  db: MemoryDb,
   context: MemoryRuntimeContext,
   options: MemoryStoreOptions = {},
 ): MemoryStore {
@@ -359,47 +390,32 @@ export function createMemoryStore(
     }
 
     const id = `mem_${randomUUID()}`;
-    const rows = await db.query(
-      `
-INSERT INTO junior_memory_memories (
-  id,
-  scope,
-  scope_key,
-  type,
-  subject_type,
-  subject_key,
-  content,
-  source_platform,
-  source_key,
-  idempotency_key,
-  observed_at_ms,
-  created_at_ms,
-  expires_at_ms
-) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-  $11, $12, $13
-)
-ON CONFLICT (scope, scope_key, idempotency_key)
-WHERE idempotency_key IS NOT NULL
-DO NOTHING
-RETURNING *
-`,
-      [
-        id,
-        scope.scope,
-        scope.scopeKey,
-        "knowledge",
-        subject.subjectType,
-        subject.subjectKey,
+    const rows = await db
+      .insert(juniorMemoryMemories)
+      .values({
         content,
-        runtimeContext.source.platform,
-        sourceKey(runtimeContext),
-        input.idempotencyKey,
-        nowMs,
-        nowMs,
-        input.expiresAtMs,
-      ],
-    );
+        createdAtMs: nowMs,
+        expiresAtMs: input.expiresAtMs,
+        id,
+        idempotencyKey: input.idempotencyKey,
+        observedAtMs: nowMs,
+        scope: scope.scope,
+        scopeKey: scope.scopeKey,
+        sourceKey: sourceKey(runtimeContext),
+        sourcePlatform: runtimeContext.source.platform,
+        subjectKey: subject.subjectKey,
+        subjectType: subject.subjectType,
+        type: "knowledge",
+      })
+      .onConflictDoNothing({
+        target: [
+          juniorMemoryMemories.scope,
+          juniorMemoryMemories.scopeKey,
+          juniorMemoryMemories.idempotencyKey,
+        ],
+        where: sql`${juniorMemoryMemories.idempotencyKey} IS NOT NULL`,
+      })
+      .returning();
     if (rows[0]) {
       return { created: true, memory: parseMemoryRow(rows[0]) };
     }
@@ -464,26 +480,27 @@ RETURNING *
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      const predicate = visibleScopePredicate(scopes);
+      const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {
         throw new Error("Memory id is required.");
       }
-      const rows = await db.query(
-        `
-SELECT *
-FROM junior_memory_memories
-WHERE (${predicate.sql})
-  AND archived_at_ms IS NULL
-  AND superseded_at_ms IS NULL
-  AND superseded_by_id IS NULL
-  AND (expires_at_ms IS NULL OR expires_at_ms > $${predicate.params.length + 1})
-  AND (id = $${predicate.params.length + 2} OR id LIKE $${predicate.params.length + 3})
-ORDER BY id ASC
-LIMIT 2
-`,
-        [...predicate.params, nowMs, idPrefix, `${idPrefix}%`],
-      );
+      const rows = predicate
+        ? await db
+            .select()
+            .from(juniorMemoryMemories)
+            .where(
+              and(
+                predicate,
+                or(
+                  eq(juniorMemoryMemories.id, idPrefix),
+                  like(juniorMemoryMemories.id, `${idPrefix}%`),
+                ),
+              ),
+            )
+            .orderBy(asc(juniorMemoryMemories.id))
+            .limit(2)
+        : [];
       if (rows.length === 0) {
         throw new Error("Memory was not found in the current context.");
       }
@@ -491,16 +508,14 @@ LIMIT 2
         throw new Error("Memory id prefix is ambiguous.");
       }
       const memory = parseMemoryRow(rows[0]);
-      const updated = await db.query(
-        `
-UPDATE junior_memory_memories
-SET archived_at_ms = $1,
-    archive_reason = $2
-WHERE id = $3
-RETURNING *
-`,
-        [nowMs, input.reason ?? "user_removed", memory.id],
-      );
+      const updated = await db
+        .update(juniorMemoryMemories)
+        .set({
+          archivedAtMs: nowMs,
+          archiveReason: input.reason ?? "user_removed",
+        })
+        .where(eq(juniorMemoryMemories.id, memory.id))
+        .returning();
       return parseMemoryRow(updated[0]);
     },
   };

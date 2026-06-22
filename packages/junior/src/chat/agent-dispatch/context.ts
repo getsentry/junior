@@ -3,10 +3,7 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { bindSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import {
-  getPluginDbForName,
-  getPluginDbForRegistration,
-} from "@/chat/plugins/db";
+import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import {
@@ -76,15 +73,11 @@ export function createHeartbeatContext(args: {
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
-  const db =
-    typeof args.plugin === "string"
-      ? getPluginDbForName(pluginName)
-      : getPluginDbForRegistration(args.plugin);
   let dispatchCount = 0;
   return {
     plugin: { name: pluginName },
     nowMs: args.nowMs,
-    db,
+    db: getDb(),
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {

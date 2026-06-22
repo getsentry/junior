@@ -18,9 +18,9 @@ describe("conversation SQL local mode", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.executor);
+      await migrateSchema(fixture.sql);
 
-      const rows = await fixture.executor.query<{
+      const rows = await fixture.sql.query<{
         column_name: string;
         table_name: string;
       }>(
@@ -49,7 +49,7 @@ ORDER BY table_name ASC, ordinal_position ASC
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
-      const indexRows = await fixture.executor.query<{ indexname: string }>(
+      const indexRows = await fixture.sql.query<{ indexname: string }>(
         `
 SELECT indexname
 FROM pg_indexes
@@ -76,7 +76,7 @@ ORDER BY indexname ASC
         ]),
       );
 
-      const constraintRows = await fixture.executor.query<{
+      const constraintRows = await fixture.sql.query<{
         constraint_name: string;
         constraint_type: string;
         table_name: string;
@@ -112,14 +112,14 @@ ORDER BY table_name ASC, constraint_name ASC
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.executor);
-      await migrateSchema(fixture.executor);
+      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql);
 
       const conversation = buildJuniorSqlConversation({
         conversationId: "slack:C123:1718123456.000000",
       });
 
-      await fixture.executor.execute(
+      await fixture.sql.execute(
         `
 INSERT INTO junior_conversations (
   conversation_id,
@@ -148,7 +148,7 @@ INSERT INTO junior_conversations (
         ],
       );
 
-      const rows = await fixture.executor.query<{
+      const rows = await fixture.sql.query<{
         channel_name: string;
         conversation_id: string;
         destination_json: unknown;
@@ -164,7 +164,7 @@ WHERE conversation_id = $1
 `,
         ["slack:C123:1718123456.000000"],
       );
-      const migrationRows = await fixture.executor.query<{ id: string }>(
+      const migrationRows = await fixture.sql.query<{ id: string }>(
         "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
       );
 
@@ -198,8 +198,8 @@ WHERE conversation_id = $1
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.executor);
-      const store = createSqlStore(fixture.executor);
+      await migrateSchema(fixture.sql);
+      const store = createSqlStore(fixture.sql);
 
       await recordAgentTurnSessionSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",

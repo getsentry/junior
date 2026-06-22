@@ -3,6 +3,10 @@ import { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
+  createGatewayProvider: vi.fn(() => ({
+    chat: vi.fn((modelId: string) => ({ modelId })),
+  })),
+  generateObject: vi.fn(),
   getEnvApiKey: vi.fn(),
   getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
   logException: vi.fn(),
@@ -32,6 +36,14 @@ vi.mock("@earendil-works/pi-ai", () => ({
 vi.mock("@earendil-works/pi-ai/anthropic", () => ({
   streamAnthropic: mocks.streamAnthropic,
   streamSimpleAnthropic: mocks.streamSimpleAnthropic,
+}));
+
+vi.mock("@ai-sdk/gateway", () => ({
+  createGatewayProvider: mocks.createGatewayProvider,
+}));
+
+vi.mock("ai", () => ({
+  generateObject: mocks.generateObject,
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -173,8 +185,46 @@ describe("completeText", () => {
     );
   });
 
+  it("uses AI SDK structured output for object completions", async () => {
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
+    });
+
+    const { completeObject, GEN_AI_PROVIDER_NAME } =
+      await import("@/chat/pi/client");
+    const schema = z.object({ ok: z.boolean() });
+
+    const result = await completeObject({
+      modelId: "openai/gpt-4o-mini",
+      schema,
+      prompt: "return json",
+      system: "structured only",
+    });
+
+    expect(result).toEqual({ object: { ok: true } });
+    expect(mocks.generateObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { modelId: "openai/gpt-4o-mini" },
+        schema,
+        prompt: "return json",
+        system: "structured only",
+      }),
+    );
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": "chat",
+        "gen_ai.request.model": "openai/gpt-4o-mini",
+        "gen_ai.output.type": "json",
+        "gen_ai.response.finish_reasons": ["stop"],
+      }),
+    );
+  });
+
   it("rethrows retryable object provider failures without capturing", async () => {
-    mocks.completeSimple.mockRejectedValue(
+    mocks.generateObject.mockRejectedValue(
       new Error("Anthropic stream ended before message_stop"),
     );
 

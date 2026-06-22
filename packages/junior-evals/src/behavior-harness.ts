@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { Message } from "chat";
-import type { Destination, PluginDb } from "@sentry/junior-plugin-api";
+import type { Destination } from "@sentry/junior-plugin-api";
 import {
   interceptTestHttp,
   resetTestGitHubHttpFixtures,
@@ -17,6 +17,7 @@ import {
   type PluginAppFixture,
 } from "@junior-tests/fixtures/plugin-app";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -33,22 +34,15 @@ import {
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import {
-  createPluginDbForExecutor,
-  migratePluginSchemas,
-  readPluginMigrations,
-} from "@/chat/plugins/db";
-import * as pluginDbModule from "@/chat/plugins/db";
-import {
   getPluginOAuthConfig,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
-import type { JuniorDatabase } from "@/chat/sql/db";
-import { juniorSqlSchema } from "@/chat/sql/schema";
 import {
   createSchedulerSqlStore,
   schedulerPlugin,
   type ScheduledTask,
+  type SchedulerDb,
 } from "@sentry/junior-scheduler";
 import { createMemoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
@@ -84,10 +78,6 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
-import {
-  createLocalPgliteFixture,
-  type LocalPgliteFixture,
-} from "@sentry/junior-test-fixtures/pglite";
 import { createSlackDestination } from "@/chat/destination";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
@@ -427,12 +417,7 @@ function toEvalToolInvocation(input: {
 const EVAL_PACKAGE_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
-const SCHEDULER_MIGRATIONS_DIR = path.resolve(
-  EVAL_PACKAGE_ROOT,
-  "../junior-scheduler/migrations",
-);
 type HarnessStateAdapter = ReturnType<typeof getStateAdapter>;
-type EvalSchedulerSqlFixture = LocalPgliteFixture<JuniorDatabase>;
 
 const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EVAL_SLACK_TEAM_ID = "TEVAL";
@@ -473,25 +458,6 @@ function createEvalDestination(thread: TestThread): Destination {
     throw new Error("Eval Slack destination requires a Slack channel id");
   }
   return destination;
-}
-
-async function createEvalSchedulerSqlFixture(): Promise<{
-  db: PluginDb;
-  fixture: EvalSchedulerSqlFixture;
-}> {
-  const fixture =
-    await createLocalPgliteFixture<JuniorDatabase>(juniorSqlSchema);
-  await migratePluginSchemas(
-    fixture,
-    readPluginMigrations({
-      dir: SCHEDULER_MIGRATIONS_DIR,
-      pluginName: "scheduler",
-    }),
-  );
-  return {
-    db: createPluginDbForExecutor(fixture),
-    fixture,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1597,7 +1563,6 @@ async function processEvents(args: {
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
   readyQueueDeliveries: QueueDelivery[];
-  schedulerDb: PluginDb;
 }): Promise<void> {
   const {
     scenario,
@@ -1606,7 +1571,6 @@ async function processEvents(args: {
     slackRuntime,
     getThreadRecord,
     readyQueueDeliveries,
-    schedulerDb,
   } = args;
 
   const consumedOauthStates = new Set<string>();
@@ -1719,7 +1683,9 @@ async function processEvents(args: {
       task: { text: event.task_text },
       updatedAtMs: nowMs - 60_000,
     };
-    const schedulerStore = createSchedulerSqlStore(schedulerDb);
+    const schedulerStore = createSchedulerSqlStore(
+      getDb() as unknown as SchedulerDb,
+    );
     await schedulerStore.saveTask(task);
 
     const callbacks: DispatchCallback[] = [];
@@ -1869,24 +1835,11 @@ export async function runEvalScenario(
   const logRecords = options.logRecords ?? [];
   const env = await setupHarnessEnvironment(scenario);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
-  let schedulerSqlFixture: EvalSchedulerSqlFixture | undefined;
-  let pluginDbSpy: { mockRestore(): void } | undefined;
 
   try {
-    const getPluginDbForRegistration =
-      pluginDbModule.getPluginDbForRegistration;
-    const schedulerSql = await createEvalSchedulerSqlFixture();
-    schedulerSqlFixture = schedulerSql.fixture;
     const usesMemoryPlugin = Boolean(
       scenario.overrides?.plugin_packages?.includes("@sentry/junior-memory"),
     );
-    pluginDbSpy = vi
-      .spyOn(pluginDbModule, "getPluginDbForRegistration")
-      .mockImplementation((plugin) =>
-        plugin.manifest.name === "scheduler"
-          ? schedulerSql.db
-          : getPluginDbForRegistration(plugin),
-      );
 
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
@@ -1963,7 +1916,6 @@ export async function runEvalScenario(
       slackRuntime,
       getThreadRecord,
       readyQueueDeliveries,
-      schedulerDb: schedulerSql.db,
     });
 
     return collectResults(
@@ -1976,8 +1928,6 @@ export async function runEvalScenario(
     if (previousPlugins) {
       setPlugins(previousPlugins);
     }
-    pluginDbSpy?.mockRestore();
-    await schedulerSqlFixture?.close();
     await teardownHarnessEnvironment(scenario, env);
   }
 }

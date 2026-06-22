@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-22
 
 ## Purpose
 
@@ -130,7 +130,24 @@ and validates that every registration has a matching manifest. Hook
 factories carry their manifest inline, so runtime code is not declared from
 `plugin.yaml`.
 
-Hook contexts expose narrow capabilities rather than raw Junior internals. Current hook contracts are defined in [Plugin Database Spec](./plugin-database.md), [Plugin CLI Spec](./plugin-cli.md), [Plugin Heartbeat Spec](./plugin-heartbeat.md), [Plugin Dispatch Spec](./plugin-dispatch.md), and [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md). Prompt hooks are exported by `@sentry/junior-plugin-api` and invoked by Junior core; observation and background-task hooks remain future work. Plugin `migrateStorage` hooks are limited to `junior upgrade` storage backfills after SQL schema migration; they are not request-time runtime hooks and must not dispatch agent work.
+Hook contexts expose host capabilities to trusted plugin code. Prefer direct
+standard capabilities over bespoke restricting facades; add a wrapper only when
+it represents a real model-visible, sandbox, credential, external-system,
+lifecycle, or migration boundary. Do not add a facade merely to stop trusted
+plugins from seeing core schemas or ordinary host objects.
+Tool registration contexts receive `ctx.model`, a host-owned structured
+completion capability for plugin-owned semantic review before tool execution.
+`ctx.model` accepts a strict schema plus prompt text and uses Junior's
+configured model boundary without exposing provider credentials, SDK clients,
+provider names, or model-visible tools to plugins. Current hook contracts are
+defined in [Plugin Database Spec](./plugin-database.md), [Plugin CLI
+Spec](./plugin-cli.md), [Plugin Heartbeat Spec](./plugin-heartbeat.md),
+[Plugin Dispatch Spec](./plugin-dispatch.md), and [Plugin Prompt Hooks
+Spec](./plugin-prompt-hooks.md). Prompt hooks are exported by
+`@sentry/junior-plugin-api` and invoked by Junior core; observation and
+background-task hooks remain future work. Plugin `migrateStorage` hooks are
+limited to `junior upgrade` storage backfills after SQL schema migration; they
+are not request-time runtime hooks and must not dispatch agent work.
 
 Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
 

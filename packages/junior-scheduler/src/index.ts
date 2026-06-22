@@ -11,6 +11,7 @@ export {
   createSchedulerOperationalSqlStore,
   createSchedulerSqlStore,
   migrateSchedulerStateToSql,
+  type SchedulerDb,
 } from "./store";
 export type {
   ScheduledCalendarFrequency,

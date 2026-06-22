@@ -35,7 +35,7 @@ describe("conversation SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
 
       await expect(
         store.recordActivity({
@@ -53,7 +53,7 @@ describe("conversation SQL store", () => {
       ).resolves.toBeUndefined();
 
       await expect(
-        fixture.executor.query(
+        fixture.sql.query(
           "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
         ),
       ).resolves.toHaveLength(1);
@@ -68,21 +68,20 @@ describe("conversation SQL store", () => {
     try {
       let attempts = 0;
       const migrationExecutor: JuniorSqlMigrationExecutor = {
-        db: () => fixture.executor.db(),
-        execute: (statement, params) =>
-          fixture.executor.execute(statement, params),
+        db: () => fixture.sql.db(),
+        execute: (statement, params) => fixture.sql.execute(statement, params),
         query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
-          fixture.executor.query<T>(statement, params),
-        transaction: (callback) => fixture.executor.transaction(callback),
+          fixture.sql.query<T>(statement, params),
+        transaction: (callback) => fixture.sql.transaction(callback),
         withLock: async (lockName, callback) => {
           attempts++;
           if (attempts === 1) {
             throw new Error("transient schema failure");
           }
-          return await fixture.executor.withLock(lockName, callback);
+          return await fixture.sql.withLock(lockName, callback);
         },
       };
-      const store = new SqlStore(fixture.executor, migrationExecutor);
+      const store = new SqlStore(fixture.sql, migrationExecutor);
 
       await expect(store.migrate()).rejects.toThrow("transient schema failure");
       await expect(store.migrate()).resolves.toBeUndefined();
@@ -96,7 +95,7 @@ describe("conversation SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
 
       await store.recordActivity({
@@ -132,7 +131,7 @@ describe("conversation SQL store", () => {
       expect(conversations[0]?.execution).not.toHaveProperty("pendingCount");
       expect(conversations[0]?.execution).not.toHaveProperty("pendingMessages");
 
-      const linkedRows = await fixture.executor
+      const linkedRows = await fixture.sql
         .db()
         .select({
           actorIdentityId: juniorConversations.actorIdentityId,
@@ -185,9 +184,9 @@ describe("conversation SQL store", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
-      await fixture.executor.execute(
+      await fixture.sql.execute(
         `
 INSERT INTO junior_conversations (
   conversation_id,
@@ -237,7 +236,7 @@ INSERT INTO junior_conversations (
         nowMs: 2_000,
       });
 
-      const target = createSqlStore(fixture.executor);
+      const target = createSqlStore(fixture.sql);
       const result = await backfillToSql({
         source,
         target,
@@ -268,7 +267,7 @@ INSERT INTO junior_conversations (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
 
       await store.recordExecution({
@@ -319,7 +318,7 @@ INSERT INTO junior_conversations (
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
 
       await store.recordActivity({
@@ -354,7 +353,7 @@ INSERT INTO junior_conversations (
 
     try {
       await disconnectStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -362,6 +361,7 @@ INSERT INTO junior_conversations (
         nowMs: 1_000,
       });
       await upsertAgentTurnSessionRecord({
+        conversationStore: store,
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("summary-target").destination,
         lastProgressAtMs: 1_200,
@@ -395,7 +395,7 @@ INSERT INTO junior_conversations (
     try {
       vi.useFakeTimers({ now: 2_000 });
       await disconnectStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
@@ -403,6 +403,7 @@ INSERT INTO junior_conversations (
         nowMs: 1_000,
       });
       await upsertAgentTurnSessionRecord({
+        conversationStore: store,
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("active-target").destination,
         lastProgressAtMs: 1_500,
@@ -437,7 +438,7 @@ INSERT INTO junior_conversations (
     try {
       vi.useFakeTimers({ now: 2_000 });
       await disconnectStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
@@ -452,6 +453,7 @@ INSERT INTO junior_conversations (
         updatedAtMs: 2_000,
       });
       await upsertAgentTurnSessionRecord({
+        conversationStore: store,
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("completed-target").destination,
         lastProgressAtMs: 1_500,
@@ -486,7 +488,7 @@ INSERT INTO junior_conversations (
     try {
       vi.useFakeTimers({ now: 600_000 });
       await disconnectStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
@@ -501,6 +503,7 @@ INSERT INTO junior_conversations (
         updatedAtMs: 600_000,
       });
       await upsertAgentTurnSessionRecord({
+        conversationStore: store,
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("hung-target").destination,
         lastProgressAtMs: 1_000,
@@ -537,7 +540,7 @@ INSERT INTO junior_conversations (
       vi.useFakeTimers({ now: 1_000 });
       await disconnectStateAdapter();
       const state = getStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await appendInboundMessage({
         message: inboundMessage("check-in"),
@@ -590,7 +593,7 @@ INSERT INTO junior_conversations (
     try {
       await disconnectStateAdapter();
       const state = getStateAdapter();
-      const store = createSqlStore(fixture.executor);
+      const store = createSqlStore(fixture.sql);
       await store.migrate();
       await appendInboundMessage({
         message: inboundMessage("drain-sql"),

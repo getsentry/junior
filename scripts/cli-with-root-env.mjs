@@ -19,6 +19,8 @@ const cliArgs = rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
 
 loadEnvFiles([workspaceRoot, exampleRoot]);
 
+process.env.JUNIOR_STATE_ADAPTER ??= "memory";
+
 function run(command, args, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {

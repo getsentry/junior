@@ -9,7 +9,7 @@ import { discoverSkills } from "@/chat/skills";
 import { homeDir } from "@/chat/discovery";
 import { GET as healthGET } from "@/handlers/health";
 import type { PluginOperationalReport } from "@sentry/junior-plugin-api";
-import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import { getConversationStore } from "@/chat/db";
 import {
   readConversationFeed,
   readConversationReport,
@@ -156,7 +156,7 @@ export function createJuniorReporting(): JuniorReporting & {
   }): Promise<PluginConversationSummary[]>;
   getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 } {
-  const conversationStore = getConfiguredConversationStore();
+  const conversationStore = getConversationStore();
   const listRecent = (listOptions?: { limit?: number }) =>
     listRecentConversationSummaries({
       ...listOptions,

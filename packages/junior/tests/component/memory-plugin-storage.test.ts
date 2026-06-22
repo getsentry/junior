@@ -1,22 +1,22 @@
 import path from "node:path";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { createMemoryPlugin, createMemoryStore } from "@sentry/junior-memory";
+import {
+  createMemoryPlugin,
+  createMemoryStore,
+  type MemoryDb,
+} from "@sentry/junior-memory";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import {
-  closeConfiguredPluginDb,
-  createPluginDbForExecutor,
-  migratePluginSchemas,
-  readPluginMigrations,
-} from "@/chat/plugins/db";
+import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { closeDb } from "@/chat/db";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
-  executor: undefined as
-    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["executor"]
+  sql: undefined as
+    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
     | undefined,
   originalJuniorDatabaseUrl: process.env.JUNIOR_DATABASE_URL,
 }));
@@ -27,15 +27,15 @@ vi.hoisted(() => {
 
 vi.mock("@/chat/sql/executor", () => ({
   createJuniorSqlExecutor: vi.fn(() => {
-    if (!NEON.executor) {
+    if (!NEON.sql) {
       throw new Error("Missing test SQL executor");
     }
     return {
-      db: NEON.executor.db.bind(NEON.executor),
-      execute: NEON.executor.execute.bind(NEON.executor),
-      query: NEON.executor.query.bind(NEON.executor),
-      transaction: NEON.executor.transaction.bind(NEON.executor),
-      withLock: NEON.executor.withLock.bind(NEON.executor),
+      db: NEON.sql.db.bind(NEON.sql),
+      execute: NEON.sql.execute.bind(NEON.sql),
+      query: NEON.sql.query.bind(NEON.sql),
+      transaction: NEON.sql.transaction.bind(NEON.sql),
+      withLock: NEON.sql.withLock.bind(NEON.sql),
       close: async () => {},
     };
   }),
@@ -57,7 +57,7 @@ async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
   await migratePluginSchemas(
-    fixture.executor,
+    fixture.sql,
     readPluginMigrations({
       dir: memoryMigrationsDir(),
       pluginName: "memory",
@@ -70,7 +70,7 @@ describe("memory plugin host wiring", () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    NEON.executor = fixture.executor;
+    NEON.sql = fixture.sql;
 
     try {
       await expect(
@@ -88,7 +88,7 @@ describe("memory plugin host wiring", () => {
       });
 
       await expect(
-        fixture.executor.query<{ table_name: string }>(
+        fixture.sql.query<{ table_name: string }>(
           `
 SELECT table_name
 FROM information_schema.tables
@@ -97,7 +97,7 @@ WHERE table_name = 'junior_memory_memories'
         ),
       ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
     } finally {
-      NEON.executor = undefined;
+      NEON.sql = undefined;
       await stateAdapter.disconnect();
       await fixture.close();
     }
@@ -106,7 +106,7 @@ WHERE table_name = 'junior_memory_memories'
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const previousPlugins = setPlugins([createMemoryPlugin()]);
-    NEON.executor = fixture.executor;
+    NEON.sql = fixture.sql;
 
     try {
       await migrateMemorySchema(fixture);
@@ -123,14 +123,11 @@ WHERE table_name = 'junior_memory_memories'
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
       };
-      const store = createMemoryStore(
-        createPluginDbForExecutor(fixture.executor),
-        {
-          conversationId,
-          requester,
-          source,
-        },
-      );
+      const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
+        conversationId,
+        requester,
+        source,
+      });
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",
@@ -179,14 +176,15 @@ WHERE table_name = 'junior_memory_memories'
         tools.createMemory.execute!(
           {
             content: "I prefer terse status updates.",
-          },
+            scope: "conversation",
+          } as never,
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);
     } finally {
       setPlugins(previousPlugins);
-      await closeConfiguredPluginDb();
-      NEON.executor = undefined;
+      await closeDb();
+      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);

@@ -2,7 +2,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PluginToolInputError,
-  type PluginDb,
   type PluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import {
@@ -13,15 +12,12 @@ import {
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
   type ScheduledTask,
+  type SchedulerDb,
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import {
-  createPluginDbForExecutor,
-  migratePluginSchemas,
-  readPluginMigrations,
-} from "@/chat/plugins/db";
-import * as pluginDbModule from "@/chat/plugins/db";
+import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
@@ -45,14 +41,14 @@ function schedulerMigrationsDir(): string {
 async function useSchedulerSqlPlugin() {
   const fixture = await createLocalJuniorSqlFixture();
   await migratePluginSchemas(
-    fixture.executor,
+    fixture.sql,
     readPluginMigrations({
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
     }),
   );
-  const db: PluginDb = createPluginDbForExecutor(fixture.executor);
-  vi.spyOn(pluginDbModule, "getPluginDbForRegistration").mockReturnValue(db);
+  const db = fixture.sql.db() as unknown as SchedulerDb;
+  vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
   return {
     fixture,
     store: createSchedulerSqlStore(db),

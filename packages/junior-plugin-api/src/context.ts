@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   localRequesterSchema,
@@ -7,7 +8,6 @@ import {
   slackRequesterSchema,
   sourceSchema,
 } from "./schemas";
-import type { PluginDb } from "./database";
 
 /** Runtime platform name without source or destination coordinates. */
 export type Platform = z.output<typeof platformSchema>;
@@ -34,9 +34,19 @@ export interface PluginLogger {
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
 
+export interface PluginModel {
+  /** Run a host-owned structured model call without exposing provider credentials. */
+  completeObject<TSchema extends ZodTypeAny>(input: {
+    maxTokens?: number;
+    prompt: string;
+    schema: TSchema;
+    system?: string;
+  }): Promise<{ object: z.infer<TSchema> }>;
+}
+
 export interface PluginContext {
   /** Shared database connection for plugin hooks. */
-  db: PluginDb;
+  db: object;
   log: PluginLogger;
   plugin: PluginMetadata;
 }

@@ -39,7 +39,7 @@ import {
 } from "@/chat/state/turn-session";
 import type { StoredSlackRequester } from "@/chat/requester";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import { getConversationStore } from "@/chat/db";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -66,7 +66,7 @@ interface ConversationReaderOptions {
 function conversationStore(
   options: ConversationReaderOptions = {},
 ): ConversationStore {
-  return options.conversationStore ?? getConfiguredConversationStore();
+  return options.conversationStore ?? getConversationStore();
 }
 
 export type ConversationReportStatus =

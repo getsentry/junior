@@ -175,7 +175,7 @@ export const plugins = {
     );
     await stateAdapter.set("junior:conversation-work:index", [CONVERSATION_ID]);
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.sql);
 
     try {
       const context = {
@@ -232,7 +232,7 @@ export const plugins = {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.sql);
 
     try {
       for (let index = 0; index < 3; index++) {
@@ -497,7 +497,7 @@ export const plugins = {
       state: stateAdapter,
     });
     const fixture = await createLocalJuniorSqlFixture();
-    const sqlStore = createSqlStore(fixture.executor);
+    const sqlStore = createSqlStore(fixture.sql);
 
     try {
       const context = {

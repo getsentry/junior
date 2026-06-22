@@ -84,10 +84,10 @@ Extraction, retrieval, and tool-calling models are helpers, not security
 boundaries.
 
 The plugin must validate structured extraction output after model generation and
-before storage. It must reject malformed, low-confidence, out-of-scope,
-secret-like, or incoherent candidates even if the model marks them as valid.
-If memory agent review uses a second model call, its output is also guidance,
-not the final security boundary.
+before storage. It must reject malformed, out-of-scope, secret-like, or
+incoherent candidates even if the model marks them as valid. Memory agent
+review uses the host-owned plugin model capability rather than direct provider
+SDKs or credentials; its output is guidance, not the final security boundary.
 
 The embedding provider receives only memory text or retrieval query text needed
 for the operation. It must not receive raw provider credentials, raw Slack

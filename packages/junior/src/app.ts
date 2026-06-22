@@ -4,6 +4,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
+import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
@@ -17,7 +18,6 @@ import {
   setPlugins,
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
-import { validatePluginDatabaseRequirements } from "@/chat/plugins/db";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -237,7 +237,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   validateBuildIncludesPluginHookRegistrations(plugins, virtualConfig);
   validatePlugins(plugins);
-  validatePluginDatabaseRequirements(plugins);
+  getDb();
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||

@@ -34,6 +34,11 @@ Define the plugin model for provider integrations. Plugins package declarative r
 7. Runtime-hook behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
 8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for plugins with runtime hooks. Do not split one plugin definition across both.
 9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
+10. JavaScript plugin registrations are trusted host code. Core should prevent
+    obvious registration and boundary mistakes, but must not add restrictive
+    facades solely to hide core schemas, internals, or capabilities from those
+    plugins. Use direct host capabilities unless there is a real model-visible,
+    sandbox, credential, external-system, lifecycle, or migration boundary.
 
 ## File Shape
 

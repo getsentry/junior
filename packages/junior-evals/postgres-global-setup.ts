@@ -14,13 +14,19 @@ export default async function setup(
 ): Promise<() => Promise<void>> {
   return await setupJuniorPostgresHarness(project, {
     migrateTemplate: async (executor) => {
-      await migratePluginSchemas(
-        executor,
-        readPluginMigrations({
+      await migratePluginSchemas(executor, [
+        ...readPluginMigrations({
           dir: path.resolve(workspaceRoot, "packages/junior-memory/migrations"),
           pluginName: "memory",
         }),
-      );
+        ...readPluginMigrations({
+          dir: path.resolve(
+            workspaceRoot,
+            "packages/junior-scheduler/migrations",
+          ),
+          pluginName: "scheduler",
+        }),
+      ]);
     },
   });
 }

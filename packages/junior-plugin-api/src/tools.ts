@@ -1,6 +1,7 @@
 import type {
   PluginContext,
   LocalInvocationContext,
+  PluginModel,
   Requester,
   SlackInvocationContext,
 } from "./context";
@@ -121,6 +122,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
+  model: PluginModel;
   state: PluginState;
   userText?: string;
 }

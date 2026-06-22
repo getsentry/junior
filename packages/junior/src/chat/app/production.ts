@@ -17,7 +17,7 @@ import type { VercelConversationWorkCallbackOptions } from "@/chat/task-executio
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { generateAssistantReply } from "@/chat/respond";
-import { getConfiguredConversationStore } from "@/chat/conversations/configured";
+import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 
 let productionSlackAdapter: SlackAdapter | undefined;
@@ -60,7 +60,7 @@ export function getProductionSlackRuntime(): ReturnType<
 
 /** Return the production conversation store for current config. */
 export function getProductionConversationStore(): ConversationStore {
-  return getConfiguredConversationStore();
+  return getConversationStore();
 }
 
 /** Create production-backed services for Slack webhook ingress. */

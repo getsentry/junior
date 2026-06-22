@@ -10,6 +10,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
+import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,
@@ -54,6 +55,8 @@ export interface LocalToolInvocation {
   toolName: string;
 }
 
+export type LocalToolResult = ToolExecutionReport;
+
 export interface LocalAgentTurnDeps {
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   generateAssistantReply?: typeof generateAssistantReplyImpl;
@@ -61,6 +64,7 @@ export interface LocalAgentTurnDeps {
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onToolInvocation?: (invocation: LocalToolInvocation) => void | Promise<void>;
+  onToolResult?: (result: LocalToolResult) => void | Promise<void>;
 }
 
 export interface LocalAgentTurnResult {
@@ -266,6 +270,9 @@ export async function runLocalAgentTurn(
       onTextDelta: deps.onTextDelta,
       onToolInvocation: async (invocation) => {
         await deps.onToolInvocation?.(invocation);
+      },
+      onToolResult: async (result) => {
+        await deps.onToolResult?.(result);
       },
     });
 

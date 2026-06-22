@@ -91,7 +91,7 @@ empty isolated database and does not apply Junior migrations implicitly.
 
 Transactional fixtures pin all SQL calls to one `pg.Client`.
 
-`executor.transaction()` inside a transactional fixture must use savepoints, not
+`fixture.sql.transaction()` inside a transactional fixture must use savepoints, not
 commit the outer test transaction. Nested transactions create nested savepoints.
 Failed nested transactions roll back to their savepoint and release it from the
 fixture's stack before rethrowing.
@@ -99,14 +99,13 @@ fixture's stack before rethrowing.
 `withLock()` may use Postgres advisory transaction locks inside the current
 transaction. Empty lock names are invalid.
 
-Tests that use transactional fixtures must inject the returned executor or a
-store built from it. Production singleton database construction uses the
+Tests that use transactional fixtures must inject the returned `fixture.sql` or
+a store built from it. Production singleton database construction uses the
 worker-scoped global test database and before-each reset; it is not eligible for
 transaction rollback isolation.
 
-Calling `executor.close()` on a transactional fixture must be equivalent to
-calling the fixture's `close()`: rollback happens once, the client is released
-once, and repeated close calls are no-ops.
+Closing a transactional fixture rolls back once, releases the client once, and
+repeated close calls are no-ops.
 
 ## Migration Contract
 

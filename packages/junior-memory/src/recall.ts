@@ -1,10 +1,9 @@
 import type {
-  PluginDb,
   PromptMessage,
   Requester,
   Source,
 } from "@sentry/junior-plugin-api";
-import { createMemoryStore, type MemoryRecord } from "./store";
+import { createMemoryStore, type MemoryDb, type MemoryRecord } from "./store";
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
@@ -13,7 +12,7 @@ const MAX_MEMORY_LINE_CHARS = 320;
 
 export interface MemoryRecallContext {
   conversationId?: string;
-  db: PluginDb;
+  db: MemoryDb;
   requester?: Requester;
   source: Source;
   text: string;

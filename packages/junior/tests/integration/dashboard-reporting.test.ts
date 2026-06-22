@@ -49,9 +49,8 @@ describe("dashboard reporting", () => {
 
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    const { closeConfiguredConversationStore } =
-      await import("@/chat/conversations/configured");
-    await closeConfiguredConversationStore();
+    const { closeDb } = await import("@/chat/db");
+    await closeDb();
     await disconnectStateAdapter();
     vi.useRealTimers();
     vi.resetModules();
@@ -133,10 +132,9 @@ describe("dashboard reporting", () => {
   });
 
   it("lists recent conversations through reporting", async () => {
-    const { getConfiguredConversationStore } =
-      await import("@/chat/conversations/configured");
+    const { getConversationStore } = await import("@/chat/db");
     const { createJuniorReporting } = await import("@/reporting");
-    const conversationStore = getConfiguredConversationStore();
+    const conversationStore = getConversationStore();
 
     await conversationStore.recordActivity({
       conversationId: "slack:C1:111",
@@ -162,8 +160,7 @@ describe("dashboard reporting", () => {
   it("mirrors local turn sessions as local conversation summaries", async () => {
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
-    const { getConfiguredConversationStore } =
-      await import("@/chat/conversations/configured");
+    const { getConversationStore } = await import("@/chat/db");
     const conversationId = "local:workspace:run-123";
 
     await recordAgentTurnSessionSummary({
@@ -180,7 +177,7 @@ describe("dashboard reporting", () => {
     });
 
     await expect(
-      getConfiguredConversationStore().get({
+      getConversationStore().get({
         conversationId,
       }),
     ).resolves.toMatchObject({
@@ -190,10 +187,9 @@ describe("dashboard reporting", () => {
   });
 
   it("redacts private conversation summaries", async () => {
-    const { getConfiguredConversationStore } =
-      await import("@/chat/conversations/configured");
+    const { getConversationStore } = await import("@/chat/db");
     const { createJuniorReporting } = await import("@/reporting");
-    const conversationStore = getConfiguredConversationStore();
+    const conversationStore = getConversationStore();
 
     await conversationStore.recordActivity({
       conversationId: "slack:G1:222",

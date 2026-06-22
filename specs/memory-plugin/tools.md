@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-20
+- Last Edited: 2026-06-22
 
 ## Purpose
 
@@ -32,8 +32,9 @@ destination, conversation, and tenant/workspace authority from runtime context.
 `createMemory` may accept:
 
 - content
-- required `expires_at` expiration selector: exact ISO timestamp, or the
-  literal `never` for memories with no expiration
+- optional `expires_at` expiration selector: exact ISO timestamp, or the
+  literal `never` for memories with no expiration. Omission also means no
+  expiration.
 
 `createMemory` must not accept:
 

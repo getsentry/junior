@@ -141,7 +141,6 @@ The V1 runtime plugin interface is:
 ```ts
 defineJuniorPlugin({
   manifest,
-  database: {},
   hooks: {
     userPrompt,
     observeTurn,
@@ -324,12 +323,14 @@ The V1 contract has these implementation dependencies:
 
 1. Core plugin hook surfaces needed by this spec: `userPrompt`, `observeTurn`,
    plugin background tasks, `tools`, `ctx.db`, host embedding provider access,
-   and plugin config/policy access.
+   and plugin config/policy access. The explicit memory tool path also needs
+   the tool-hook `ctx.model` review capability.
 2. Memory plugin package with manifest, schema, migrations, store, and
    install-level policy evaluator.
 3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
    `removeMemory` tools with context-bound authority. `createMemory` submits a
-   candidate memory; the memory agent owns subject and scope decisions.
+   candidate memory; the memory agent uses the tool-hook model capability to
+   own subject and scope decisions.
 4. Automatic recall from stored memories through `userPrompt`, using lexical
    ranking before embeddings are available.
 5. Embedding provider integration, vector storage, and embedding repair tasks.

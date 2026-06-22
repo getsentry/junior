@@ -7,6 +7,8 @@ import {
   type Model,
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
+import { createGatewayProvider } from "@ai-sdk/gateway";
+import { generateObject } from "ai";
 import {
   streamAnthropic,
   streamSimpleAnthropic,
@@ -82,69 +84,6 @@ function extractText(message: {
     .map((part) => part.text ?? "")
     .join("")
     .trim();
-}
-
-function parseJsonCandidate(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    const fencedBlocks = [
-      ...trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi),
-    ];
-    for (const block of fencedBlocks) {
-      try {
-        return JSON.parse(block[1]) as unknown;
-      } catch {}
-    }
-
-    const openBraceIndex = trimmed.indexOf("{");
-    if (openBraceIndex >= 0) {
-      let depth = 0;
-      let inString = false;
-      let escaped = false;
-      for (let index = openBraceIndex; index < trimmed.length; index += 1) {
-        const char = trimmed[index];
-        if (inString) {
-          if (escaped) {
-            escaped = false;
-            continue;
-          }
-          if (char === "\\") {
-            escaped = true;
-            continue;
-          }
-          if (char === '"') {
-            inString = false;
-          }
-          continue;
-        }
-        if (char === '"') {
-          inString = true;
-          continue;
-        }
-        if (char === "{") {
-          depth += 1;
-          continue;
-        }
-        if (char === "}") {
-          depth -= 1;
-          if (depth === 0) {
-            const slice = trimmed.slice(openBraceIndex, index + 1);
-            try {
-              return JSON.parse(slice) as unknown;
-            } catch {
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    return undefined;
-  }
 }
 
 /**
@@ -339,7 +278,7 @@ function logContextFromMetadata(
   };
 }
 
-/** Execute a schema-constrained completion using the traced text path above. */
+/** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
   schema: TSchema;
@@ -350,32 +289,61 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
-}): Promise<{ object: z.infer<TSchema>; text: string }> {
-  let text = "";
+}): Promise<{ object: z.infer<TSchema> }> {
+  const apiKey = getGatewayApiKey();
+  const provider = createGatewayProvider(apiKey ? { apiKey } : {});
   try {
-    ({ text } = await completeText({
-      modelId: params.modelId,
-      system: params.system,
-      thinkingLevel: params.thinkingLevel,
-      temperature: params.temperature,
-      maxTokens: params.maxTokens,
-      signal: params.signal,
-      metadata: params.metadata,
-      messages: [
-        {
-          role: "user",
-          content: params.prompt,
-          timestamp: Date.now(),
-        },
-      ],
-    }));
+    const result = await withSpan(
+      `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
+      "gen_ai.chat",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async () =>
+        await generateObject({
+          model: provider.chat(params.modelId),
+          schema: params.schema,
+          prompt: params.prompt,
+          ...(params.system !== undefined ? { system: params.system } : {}),
+          ...(params.temperature !== undefined
+            ? { temperature: params.temperature }
+            : {}),
+          ...(params.maxTokens !== undefined
+            ? { maxOutputTokens: params.maxTokens }
+            : {}),
+          ...(params.signal !== undefined
+            ? { abortSignal: params.signal }
+            : {}),
+        }),
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+        "gen_ai.request.model": params.modelId,
+        "gen_ai.output.type": "json",
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        ...(params.thinkingLevel
+          ? { "app.ai.reasoning_effort": params.thinkingLevel }
+          : {}),
+      },
+    );
+    setSpanAttributes({
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+      "gen_ai.request.model": params.modelId,
+      "gen_ai.output.type": "json",
+      "server.address": GEN_AI_SERVER_ADDRESS,
+      "server.port": GEN_AI_SERVER_PORT,
+      "gen_ai.response.finish_reasons": [result.finishReason],
+      ...extractGenAiUsageAttributes(result.usage),
+    });
+    return { object: result.object as z.infer<TSchema> };
   } catch (error) {
-    if (isProviderRetryError(error)) {
-      throw error;
+    const providerError = createProviderError(error);
+    if (isProviderRetryError(providerError)) {
+      throw providerError;
     }
 
     logException(
-      error,
+      providerError,
       "ai_completion_failed",
       {},
       {
@@ -385,31 +353,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       },
       "AI object completion failed",
     );
-    throw error;
+    throw providerError;
   }
-
-  const candidate = parseJsonCandidate(text);
-  const parsed = params.schema.safeParse(candidate);
-  if (!parsed.success) {
-    const preview = text.length > 400 ? `${text.slice(0, 400)}...` : text;
-    logWarn(
-      "ai_completion_schema_parse_failed",
-      {},
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-        "gen_ai.request.model": params.modelId,
-        "app.ai.response_preview": preview,
-      },
-      "AI object completion schema parse failed",
-    );
-    throw new Error(
-      `Model did not return valid JSON for schema: ${parsed.error.message}. Raw response: ${preview}`,
-    );
-  }
-
-  return {
-    object: parsed.data,
-    text,
-  };
 }

@@ -1,13 +1,6 @@
-import type {
-  PluginDb,
-  PluginRegistration,
-  StorageMigrationResult,
-} from "@sentry/junior-plugin-api";
+import type { StorageMigrationResult } from "@sentry/junior-plugin-api";
 import { pluginHookRegistrationsFromPluginSet } from "@/plugins";
-import {
-  createPluginDbForExecutor,
-  getConfiguredPluginDbForRuntime,
-} from "@/chat/plugins/db";
+import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { setPluginCatalogConfig } from "@/chat/plugins/registry";
@@ -42,13 +35,9 @@ function addResult(
 
 function dbForPlugin(
   context: MigrationContext,
-  plugin: PluginRegistration,
-  sqlUrlDb: PluginDb | undefined,
-): PluginDb | undefined {
-  if (!plugin.database) {
-    return undefined;
-  }
-  return context.pluginDb ?? sqlUrlDb ?? getConfiguredPluginDbForRuntime();
+  sqlUrlDb: object | undefined,
+): object {
+  return context.db ?? sqlUrlDb ?? getDb();
 }
 
 /** Run plugin-owned storage migrations after plugin SQL schemas are available. */
@@ -63,15 +52,13 @@ export async function runPluginStorageMigrations(
 
   const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
   const ownedExecutor =
-    context.pluginDb || !context.sqlDatabaseUrl
+    context.db || !context.sqlDatabaseUrl
       ? undefined
       : createJuniorSqlExecutor({
           connectionString: context.sqlDatabaseUrl,
           driver: context.sqlDriver ?? getChatConfig().sql.driver,
         });
-  const sqlUrlDb = ownedExecutor
-    ? createPluginDbForExecutor(ownedExecutor)
-    : undefined;
+  const sqlUrlDb = ownedExecutor ? ownedExecutor.db() : undefined;
   try {
     let result = emptyResult();
     const plugins = pluginHookRegistrationsFromPluginSet(pluginSet)
@@ -85,12 +72,7 @@ export async function runPluginStorageMigrations(
       if (!hook) {
         continue;
       }
-      const db = dbForPlugin(context, plugin, sqlUrlDb);
-      if (!db) {
-        throw new Error(
-          `Plugin "${pluginName}" storage migration requires database access`,
-        );
-      }
+      const db = dbForPlugin(context, sqlUrlDb);
       const pluginResult = await hook({
         db,
         log: createPluginLogger(pluginName),

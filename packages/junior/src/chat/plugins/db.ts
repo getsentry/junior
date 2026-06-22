@@ -1,14 +1,8 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import type { PluginDb, PluginRegistration } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { getChatConfig, type SqlDriver } from "@/chat/config";
-import type {
-  JuniorSqlExecutor,
-  JuniorSqlMigrationExecutor,
-} from "@/chat/sql/db";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
 
 const PLUGIN_SCHEMA_LOCK_NAME = "junior_plugin_schema";
 const MIGRATION_FILENAME_RE = /^[0-9]{4}_[a-z0-9_]+\.sql$/;
@@ -44,15 +38,6 @@ interface StoredMigrationRecord {
   checksum: string;
   id: string;
 }
-
-let configuredPluginDb:
-  | {
-      databaseUrl: string;
-      driver: SqlDriver;
-      db: PluginDb;
-      executor: JuniorSqlExecutor;
-    }
-  | undefined;
 
 function checksumSql(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
@@ -98,74 +83,6 @@ CREATE TABLE IF NOT EXISTS junior_schema_migrations (
 `;
 }
 
-function createPluginDb(executor: JuniorSqlMigrationExecutor): PluginDb {
-  const db = executor.db();
-  const pluginDb: PluginDb = {
-    delete: db.delete.bind(db) as unknown as PluginDb["delete"],
-    execute: (statement, params) => executor.execute(statement, params),
-    insert: db.insert.bind(db) as unknown as PluginDb["insert"],
-    query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
-      executor.query<T>(statement, params),
-    select: db.select.bind(db) as unknown as PluginDb["select"],
-    transaction: async (callback) =>
-      await executor.transaction(
-        async () => await callback(createPluginDb(executor)),
-      ),
-    update: db.update.bind(db) as unknown as PluginDb["update"],
-  };
-  return pluginDb;
-}
-
-function getConfiguredPluginDb(): PluginDb | undefined {
-  const databaseUrl = getChatConfig().sql.databaseUrl;
-  const driver = getChatConfig().sql.driver;
-  if (!databaseUrl) {
-    return undefined;
-  }
-  if (
-    configuredPluginDb?.databaseUrl !== databaseUrl ||
-    configuredPluginDb.driver !== driver
-  ) {
-    void configuredPluginDb?.executor.close().catch(() => undefined);
-    const executor = createJuniorSqlExecutor({
-      connectionString: databaseUrl,
-      driver,
-    });
-    configuredPluginDb = {
-      databaseUrl,
-      driver,
-      executor,
-      db: createPluginDb(executor),
-    };
-  }
-  return configuredPluginDb.db;
-}
-
-function missingPluginDb(pluginName: string): never {
-  throw new Error(
-    `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${pluginName}`,
-  );
-}
-
-function createMissingPluginDb(pluginName: string): PluginDb {
-  return {
-    delete: (() => missingPluginDb(pluginName)) as PluginDb["delete"],
-    execute: async () => missingPluginDb(pluginName),
-    insert: (() => missingPluginDb(pluginName)) as PluginDb["insert"],
-    query: async () => missingPluginDb(pluginName),
-    select: (() => missingPluginDb(pluginName)) as PluginDb["select"],
-    transaction: async () => missingPluginDb(pluginName),
-    update: (() => missingPluginDb(pluginName)) as PluginDb["update"],
-  };
-}
-
-/** Close the configured plugin DB executor if one has been created. */
-export async function closeConfiguredPluginDb(): Promise<void> {
-  const current = configuredPluginDb;
-  configuredPluginDb = undefined;
-  await current?.executor.close();
-}
-
 async function listAppliedMigrations(
   executor: JuniorSqlMigrationExecutor,
 ): Promise<Map<string, StoredMigrationRecord>> {
@@ -191,49 +108,6 @@ async function applyPluginMigration(
       [migration.id, migration.checksum],
     );
   });
-}
-
-/** Adapt the shared Junior SQL executor to the plugin-facing DB surface. */
-export function createPluginDbForExecutor(
-  executor: JuniorSqlMigrationExecutor,
-): PluginDb {
-  return createPluginDb(executor);
-}
-
-/** Return a configured plugin DB when the host has SQL enabled. */
-export function getConfiguredPluginDbForRuntime(): PluginDb | undefined {
-  return getConfiguredPluginDb();
-}
-
-/** Return the standard plugin hook DB surface for a registered plugin. */
-export function getPluginDbForRegistration(
-  registration: PluginRegistration,
-): PluginDb {
-  return (
-    getConfiguredPluginDb() ?? createMissingPluginDb(registration.manifest.name)
-  );
-}
-
-/** Return the standard plugin hook DB surface for a plugin name. */
-export function getPluginDbForName(pluginName: string): PluginDb {
-  return getConfiguredPluginDb() ?? createMissingPluginDb(pluginName);
-}
-
-/** Fail early when a plugin declares DB access without SQL config. */
-export function validatePluginDatabaseRequirements(
-  registrations: PluginRegistration[],
-): void {
-  if (getChatConfig().sql.databaseUrl) {
-    return;
-  }
-  const databasePlugins = registrations
-    .filter((registration) => registration.database)
-    .map((registration) => registration.manifest.name);
-  if (databasePlugins.length > 0) {
-    throw new Error(
-      `Plugin database access requires JUNIOR_DATABASE_URL or DATABASE_URL for: ${databasePlugins.join(", ")}`,
-    );
-  }
 }
 
 /** Read committed SQL migration artifacts for one enabled plugin root. */

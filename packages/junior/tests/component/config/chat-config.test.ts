@@ -99,9 +99,20 @@ describe("chat config", () => {
 
   it("uses Neon as the default SQL driver", async () => {
     delete process.env.JUNIOR_DATABASE_DRIVER;
+    delete process.env.JUNIOR_DATABASE_URL;
+    delete process.env.DATABASE_URL;
 
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().sql.driver).toBe("neon");
+  });
+
+  it("defaults localhost database URLs to the node-postgres SQL driver", async () => {
+    delete process.env.JUNIOR_DATABASE_DRIVER;
+    process.env.DATABASE_URL =
+      "postgres://junior:junior@localhost:54322/junior";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().sql.driver).toBe("postgres");
   });
 
   it("reads the optional node-postgres SQL driver override", async () => {

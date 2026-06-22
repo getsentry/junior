@@ -192,7 +192,13 @@ Memory agent review should receive only the candidate memory, the minimum
 source context needed to judge it, and the installed policy guidance. It should
 not receive unrestricted transcript history, raw tool payloads, provider
 credentials, or unrelated conversation context unless those fields are part of
-the bounded extraction input.
+the bounded extraction input. Prompt inputs should use the same structured
+context-block style as Junior's turn context, with separate `<runtime>` and
+`<source-context>` blocks. Explicit `createMemory` review uses a singular
+`<candidate>` block and the current user-authored message as bounded source
+context. Passive extraction may add bounded prior-thread context, such as
+compacted thread context or selected user-authored messages, inside the same
+`<source-context>` block and batch proposed facts inside `<candidates>`.
 
 Memory agent review output must be structured. It should include:
 
@@ -200,7 +206,6 @@ Memory agent review output must be structured. It should include:
 - decision: `store` or `reject`
 - normalized rejection reason code when rejected
 - optional adjusted memory type, subject, scope, expiration, or content rewrite
-- confidence
 
 The memory agent may narrow, rewrite, or reject extracted candidates, but it
 may not override hard structural validators. If extraction and review disagree,

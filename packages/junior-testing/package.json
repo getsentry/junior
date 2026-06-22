@@ -5,12 +5,15 @@
   "type": "module",
   "exports": {
     "./http": "./src/http/index.ts",
+    "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.4.6",
+    "drizzle-orm": "catalog:",
     "pg": "^8.16.3",
     "zod": "catalog:"
   },
