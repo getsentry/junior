@@ -49,25 +49,29 @@ const memoryReviewResponseSchema = z
       .enum(["store", "reject"])
       .describe("Whether this memory candidate should be stored or rejected."),
     target: memoryTargetSchema
-      .optional()
-      .describe("Required only when decision is store."),
+      .nullable()
+      .describe("Memory target when decision is store, otherwise null."),
     content: z
       .string()
       .min(1)
-      .optional()
+      .nullable()
       .describe(
-        "Required only when decision is store. Rewrite as one self-contained declarative sentence.",
+        "Self-contained declarative memory sentence when decision is store, otherwise null.",
       ),
     reason: memoryRejectReasonSchema
-      .optional()
-      .describe("Required only when decision is reject."),
+      .nullable()
+      .describe("Reject reason when decision is reject, otherwise null."),
     expiresAtMs: z
       .number()
       .finite()
-      .optional()
-      .describe("Preserve the requested expiration timestamp when present."),
+      .nullable()
+      .describe(
+        "Requested expiration timestamp when decision is store and one was present, otherwise null.",
+      ),
   })
   .strict();
+
+type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
 
 export type MemoryTarget = z.output<typeof memoryTargetSchema>;
 
@@ -90,6 +94,7 @@ const MEMORY_REVIEW_SYSTEM = [
   "Conversation memories must be shared operational or project knowledge about the active conversation, not another person's private profile.",
   "Do not accept model/caller-provided actor ids, scope ids, aliases, or arbitrary subjects.",
   "For accepted memories, rewrite content into one concise declarative sentence that is understandable without the original conversation.",
+  "Return every response field. Use null for fields that do not apply to the decision.",
 ].join("\n");
 
 function escapeXml(value: string): string {
@@ -158,7 +163,9 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "- Use target=conversation only for shared operational/project knowledge in the active conversation.",
     "- Reject third-party personal profile facts, even if they mention a name.",
     "- Reject vague content such as 'remember this' unless the candidate itself contains the fact.",
-    "- Preserve the requested expiration when one exists; otherwise omit expiresAtMs.",
+    "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
+    "- For store, set reason to null.",
+    "- For reject, set target, content, and expiresAtMs to null.",
     "- If unsure, reject.",
     "</rules>",
     "</memory-review-input>",
@@ -178,9 +185,28 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         maxTokens: 700,
       });
       const response = memoryReviewResponseSchema.parse(result.object);
-      return parseMemoryReview(response);
+      return memoryReviewFromResponse(response);
     },
   };
+}
+
+function memoryReviewFromResponse(
+  response: MemoryReviewResponse,
+): MemoryReview {
+  if (response.decision === "store") {
+    return parseMemoryReview({
+      decision: "store",
+      target: response.target,
+      content: response.content,
+      ...(response.expiresAtMs !== null
+        ? { expiresAtMs: response.expiresAtMs }
+        : {}),
+    });
+  }
+  return parseMemoryReview({
+    decision: "reject",
+    reason: response.reason,
+  });
 }
 
 /** Parse the structured decision returned by the memory agent. */

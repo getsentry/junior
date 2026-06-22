@@ -8,11 +8,16 @@ import {
 import {
   PluginToolInputError,
   type PluginLogger,
+  type PluginModel,
   type PluginState,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
-import type { CreateMemoryRequest, MemoryAgent } from "../src/agent";
+import {
+  createMemoryAgent,
+  type CreateMemoryRequest,
+  type MemoryAgent,
+} from "../src/agent";
 import { createMemoryPlugin } from "../src/plugin";
 import {
   createMemoryCreateTool,
@@ -135,6 +140,64 @@ const rejectMemory: MemoryAgent = {
 };
 
 describe("memory plugin storage", () => {
+  it("normalizes nullable structured review responses", async () => {
+    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
+    const model: PluginModel = {
+      async completeObject(input) {
+        calls.push(input);
+        return {
+          object: {
+            decision: "store",
+            target: "requester",
+            content: "The requester uses qa-structured-output in CLI QA.",
+            reason: null,
+            expiresAtMs: null,
+          },
+        };
+      },
+    };
+    const agent = createMemoryAgent(model);
+
+    await expect(
+      agent.reviewCreateRequest({
+        content: "I use qa-structured-output in CLI QA.",
+        runtimeContext: localContext(),
+      }),
+    ).resolves.toEqual({
+      decision: "store",
+      target: "requester",
+      content: "The requester uses qa-structured-output in CLI QA.",
+    });
+    expect(calls[0]?.schema).toBeDefined();
+  });
+
+  it("normalizes nullable structured rejection responses", async () => {
+    const model: PluginModel = {
+      async completeObject() {
+        return {
+          object: {
+            decision: "reject",
+            target: null,
+            content: null,
+            reason: "not_public_shareable",
+            expiresAtMs: null,
+          },
+        };
+      },
+    };
+    const agent = createMemoryAgent(model);
+
+    await expect(
+      agent.reviewCreateRequest({
+        content: "remember this",
+        runtimeContext: localContext(),
+      }),
+    ).resolves.toEqual({
+      decision: "reject",
+      reason: "not_public_shareable",
+    });
+  });
+
   it("persists, recalls, and archives visible memories", async () => {
     const fixture = await createMemoryFixture();
 
