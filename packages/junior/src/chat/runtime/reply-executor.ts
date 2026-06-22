@@ -1086,7 +1086,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   ...(messageTs ? { messageTs } : {}),
                   ...(threadTs ? { threadTs } : {}),
                 },
-                userText: effectiveUserText,
+                userText: currentText.userText,
               },
             });
           }

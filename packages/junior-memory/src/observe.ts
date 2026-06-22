@@ -14,14 +14,22 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 
+function canPassivelyLearn(context: TurnObservationContext): boolean {
+  if (context.source.platform === "local") {
+    return true;
+  }
+  return Boolean(
+    context.source.channelId.startsWith("C") &&
+    (context.source.threadTs ?? context.source.messageTs),
+  );
+}
+
 function observationSourceKey(context: TurnObservationContext): string {
   if (context.source.platform === "local") {
     return context.source.conversationId;
   }
   const messageKey = context.source.threadTs ?? context.source.messageTs;
-  return `slack:${context.source.teamId}:${context.source.channelId}:${
-    messageKey ?? context.turnId
-  }`;
+  return `slack:${context.source.teamId}:${context.source.channelId}:${messageKey}`;
 }
 
 function passiveInput(
@@ -43,9 +51,11 @@ export async function observeMemoryTurn(
   if (context.toolCalls.some((toolName) => MEMORY_TOOL_NAMES.has(toolName))) {
     return;
   }
+  if (!canPassivelyLearn(context)) {
+    return;
+  }
   const userText = context.userText.trim();
-  const assistantText = context.assistantText.trim();
-  if (!userText || !assistantText) {
+  if (!userText) {
     return;
   }
 

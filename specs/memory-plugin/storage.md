@@ -261,8 +261,8 @@ If embedding generation fails, the memory remains active and can be found
 through lexical/list retrieval. A later embedding repair task may repair missing
 or stale embeddings.
 
-If install policy disables embeddings or a provider for a scope, the write path
-must skip vector generation without failing the memory write.
+If future install policy disables embeddings or a provider for a scope, the
+write path must skip vector generation without failing the memory write.
 
 ### Repair And Rebuild
 

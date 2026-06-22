@@ -153,7 +153,6 @@ function observationPluginContext(
     assistantText: context.assistantText,
     embedder: createPluginEmbedder(plugin.manifest.name),
     model: createPluginModel(plugin.manifest.name),
-    source: context.source,
     state: createPluginState(plugin.manifest.name),
     toolCalls: [...context.toolCalls],
     turnId: context.turnId,
@@ -165,6 +164,7 @@ function observationPluginContext(
   if (context.source.platform === "slack") {
     return {
       ...common,
+      source: context.source,
       requester:
         context.requester?.platform === "slack" ? context.requester : undefined,
       destination:
@@ -175,6 +175,7 @@ function observationPluginContext(
   }
   return {
     ...common,
+    source: context.source,
     requester:
       context.requester?.platform === "local" ? context.requester : undefined,
     destination:

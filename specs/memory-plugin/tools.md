@@ -65,10 +65,10 @@ to rephrase them as safer memory text. The memory agent owns the semantic
 store-or-reject decision and canonical rewrite.
 
 The explicit tool path uses runtime context for source and idempotency. It must
-run through the same memory agent review path as passive extraction. The
-memory agent decides store/reject, canonical perspective-neutral content,
-subject, and whether the memory targets the current requester, active
-conversation, or no valid V1 target.
+run through the memory agent's explicit-create review path. The memory agent
+decides store/reject, canonical perspective-neutral content, subject, and
+whether the memory targets the current requester, active conversation, or no
+valid V1 target.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
 display names, aliases, or subject classes.

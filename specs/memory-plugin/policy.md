@@ -201,8 +201,8 @@ Policy still disallows passive extraction by category, including:
 For V1, passive extraction should store conversation-scoped operational
 knowledge by default. Passive personal memory from public conversations requires
 clear first-person source evidence from the user and must still be visible only
-to that requester. Explicit `createMemory` tool calls remain the stronger write
-signal and suppress passive duplicate writes for the same completed turn.
+to that requester. Explicit memory-management tool calls suppress passive
+extraction for the same completed turn so the tool path owns its effect.
 
 ## Automatic Injection Policy
 
@@ -232,14 +232,15 @@ and embedding policy, or retention and lifecycle policy.
 Tool errors should explain policy rejection at a high level without revealing
 hidden policy internals or sensitive content.
 
-Explicit memory creation must use the same memory agent review as passive
-extraction when the policy decision is not deterministic. If review fails for
-an explicit tool request, the tool should return a retryable input error rather
-than storing the memory.
+Explicit memory creation must use the memory agent's explicit-create review
+when the policy decision is not deterministic. If review fails for an explicit
+tool request, the tool should return a retryable input error rather than
+storing the memory.
 
 ## Retrieval And Policy
 
-Retrieval must apply current policy as well as stored scope and lifecycle.
+Retrieval must apply default V1 policy guidance as well as stored scope and
+lifecycle.
 
 If policy changes after a memory was created, the stricter current policy wins
 for automatic memory injection and list/search results. The memory may remain

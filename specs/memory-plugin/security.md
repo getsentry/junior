@@ -13,8 +13,8 @@ model calls, embeddings, logging, and multi-user visibility.
 ## Security Invariants
 
 1. Runtime context, not model text, determines memory visibility.
-2. Install-level policy determines which public/shareable categories, scopes,
-   subjects, and model providers are allowed.
+2. Default V1 policy guidance determines which public/shareable categories,
+   scopes, subjects, and model providers are allowed.
 3. Secrets are rejected, not stored with a special classification.
 4. Memory content may be model-visible only inside the stored scope and current
    policy.

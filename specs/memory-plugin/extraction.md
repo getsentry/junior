@@ -69,16 +69,21 @@ The observation hook must:
 2. Invoke the memory-owned extraction agent with bounded user-authored turn
    text.
 3. Ignore assistant-authored claims as memory sources.
-4. Skip passive extraction when the completed turn already called
-   `createMemory`; the explicit tool path owns that memory write.
-5. Extract candidate facts with a structured model output contract.
-6. Reject malformed, incoherent, unsafe, out-of-scope, or non-durable facts.
-7. Assign requester or conversation target from memory-agent output, while
+4. Skip passive extraction for unsupported sources. V1 supports local CLI
+   observations and public Slack channel observations with a message or thread
+   timestamp; private Slack and timestamp-less Slack observations are ignored
+   before model extraction.
+5. Skip passive extraction when the completed turn already called a
+   memory-management tool (`createMemory`, `listMemories`, `searchMemories`, or
+   `removeMemory`); the explicit tool path owns `createMemory` writes.
+6. Extract candidate facts with a structured model output contract.
+7. Reject malformed, incoherent, unsafe, out-of-scope, or non-durable facts.
+8. Assign requester or conversation target from memory-agent output, while
    deriving all authority-bearing ids from runtime context.
-8. Insert accepted memories idempotently with a stable key derived from the
+9. Insert accepted memories idempotently with a stable key derived from the
    source, turn id, and extracted fact position.
-9. Generate embeddings for accepted rows when the host embedder is configured.
-10. Avoid storing raw extraction prompt, raw model output, or raw turn text
+10. Generate embeddings for accepted rows when the host embedder is configured.
+11. Avoid storing raw extraction prompt, raw model output, or raw turn text
     beyond the accepted memory records.
 
 Observation hooks are best effort. If extraction or storage fails, Junior logs

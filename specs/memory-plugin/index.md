@@ -32,7 +32,7 @@ Explicit tools also support user-directed memory management.
 ## Scope
 
 - What is eligible for long-term memory.
-- Install-level policy controls for workplace-safe extraction and recall.
+- Default V1 policy guidance for workplace-safe extraction and recall.
 - Memory plugin package shape and required plugin hooks.
 - Plugin-owned SQL storage, retrieval indexes, embeddings, and model-provider
   boundaries.
@@ -65,9 +65,8 @@ Read these files as one canonical spec:
 
 - [storage.md](./storage.md): SQL storage model, retrieval indexes, pgvector,
   embedding model provider, and operational storage rules.
-- [policy.md](./policy.md): install-level controls for memory categories,
-  passive extraction, workplace-sensitive facts, model/provider use, and
-  retention.
+- [policy.md](./policy.md): default V1 controls for memory categories, passive
+  extraction, workplace-sensitive facts, model/provider use, and retention.
 - [security.md](./security.md): authority boundaries, multi-user visibility,
   model/tool boundaries, task payload safety, and redaction rules.
 - [retrieval.md](./retrieval.md): automatic recall, tool-mediated recall,

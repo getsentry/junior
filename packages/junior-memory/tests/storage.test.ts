@@ -30,6 +30,7 @@ import {
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
+  type MemoryReviewer,
 } from "../src/tools";
 import { observeMemoryTurn } from "../src/observe";
 import { createMemoryStore, type MemoryDb } from "../src/store";
@@ -282,7 +283,7 @@ function testCanonicalContent(content: string): string {
 function allowMemory(
   target: "requester" | "conversation",
   onRequest?: (request: CreateMemoryRequest) => void,
-): MemoryAgent {
+): MemoryReviewer {
   return {
     reviewCreateRequest(candidate) {
       onRequest?.(candidate);
@@ -298,7 +299,7 @@ function allowMemory(
   };
 }
 
-const rejectMemory: MemoryAgent = {
+const rejectMemory: MemoryReviewer = {
   reviewCreateRequest() {
     return {
       decision: "reject",
@@ -438,6 +439,72 @@ describe("memory plugin storage", () => {
           model,
           toolCalls: ["searchMemories"],
           userText: "Remember that I prefer duplicate memory avoidance.",
+        }),
+      );
+
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("skips passive extraction in private Slack contexts", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers private Slack context skips.",
+          target: "requester",
+        },
+      ]);
+      const privateContext = slackContext({ channelId: "D123" });
+
+      await observeMemoryTurn(
+        observationContext({
+          ...privateContext,
+          db: memoryDb(fixture),
+          model,
+          userText: "I prefer private Slack context skips.",
+        }),
+      );
+
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("skips passive extraction for Slack observations without a message key", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers Slack message key validation.",
+          target: "requester",
+        },
+      ]);
+      const runtime = slackContext();
+
+      await observeMemoryTurn(
+        observationContext({
+          conversationId: "slack:C123:missing-message-key",
+          db: memoryDb(fixture),
+          model,
+          requester: runtime.requester,
+          source: {
+            platform: "slack",
+            teamId: runtime.source.teamId,
+            channelId: runtime.source.channelId,
+          },
+          userText: "I prefer Slack message key validation.",
         }),
       );
 

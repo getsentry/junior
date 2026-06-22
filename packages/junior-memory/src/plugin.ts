@@ -6,6 +6,7 @@ import {
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
+  type MemoryReviewer,
   type MemoryToolContext,
 } from "./tools";
 import { observeMemoryTurn } from "./observe";
@@ -13,7 +14,7 @@ import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
 function memoryToolContext(ctx: {
-  agent: MemoryAgent;
+  agent: MemoryReviewer;
   conversationId?: string;
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
@@ -69,9 +70,7 @@ export function createMemoryPlugin() {
           text: ctx.text,
         });
       },
-      async observeTurn(ctx) {
-        await observeMemoryTurn(ctx);
-      },
+      observeTurn: observeMemoryTurn,
     },
   });
 }
