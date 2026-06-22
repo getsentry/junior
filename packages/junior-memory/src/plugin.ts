@@ -14,6 +14,7 @@ function memoryToolContext(ctx: {
   agent: MemoryAgent;
   conversationId?: string;
   db: MemoryToolContext["db"];
+  embedder?: MemoryToolContext["embedder"];
   requester?: MemoryToolContext["requester"];
   source: MemoryToolContext["source"];
   userText?: string;
@@ -23,6 +24,7 @@ function memoryToolContext(ctx: {
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
     ...(ctx.requester ? { requester: ctx.requester } : {}),
     db: ctx.db,
+    ...(ctx.embedder ? { embedder: ctx.embedder } : {}),
     source: ctx.source,
     ...(ctx.userText ? { userText: ctx.userText } : {}),
   };
@@ -43,6 +45,7 @@ export function createMemoryPlugin() {
           ...ctx,
           agent: createMemoryAgent(ctx.model),
           db: ctx.db as MemoryDb,
+          embedder: ctx.model,
         });
         return {
           createMemory: createMemoryCreateTool(context),
@@ -56,6 +59,7 @@ export function createMemoryPlugin() {
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
           ...(ctx.requester ? { requester: ctx.requester } : {}),
           db: ctx.db as MemoryDb,
+          embedder: ctx.model,
           source: ctx.source,
           text: ctx.text,
         });

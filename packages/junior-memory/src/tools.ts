@@ -9,6 +9,7 @@ import {
 import {
   createMemoryStore,
   type CreateMemoryInput,
+  type MemoryEmbeddingProvider,
   type MemoryDb,
   type MemoryRecord,
 } from "./store";
@@ -40,6 +41,7 @@ export interface MemoryToolContext {
   agent: MemoryAgent;
   conversationId?: string;
   db: MemoryDb;
+  embedder?: MemoryEmbeddingProvider;
   requester?: Requester;
   source: Source;
   userText?: string;
@@ -75,7 +77,9 @@ function memoryRuntimeContext(
 }
 
 function memoryStore(context: MemoryToolContext) {
-  return createMemoryStore(context.db, memoryRuntimeContext(context));
+  return createMemoryStore(context.db, memoryRuntimeContext(context), {
+    ...(context.embedder ? { embedder: context.embedder } : {}),
+  });
 }
 
 function boundedLimit(value: number | undefined, fallback: number): number {
@@ -323,7 +327,7 @@ function compactMemory(memory: MemoryRecord) {
 export function createMemoryCreateTool(context: MemoryToolContext) {
   return {
     description:
-      "Remember a public/shareable fact about the current requester for later. Use only when the requester explicitly asks Junior to remember something about themselves. Pass one self-contained memory candidate in natural language, such as 'I prefer terse updates'. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids; the memory agent decides the canonical stored content, subject, and target.",
+      "Remember a public/shareable fact about the current requester for later. Use when the requester explicitly asks Junior to remember something about themselves, including ordinary technical, workflow, communication, tool, language, product, repository, or project preferences and opinions. Pass one self-contained memory candidate in natural language, preserving the user's memory intent as directly as possible, such as 'I prefer terse updates' or 'I think types in Python are bad'. Do not ask the requester to rephrase ordinary technical/workflow preferences; pass the candidate to this tool and let the memory agent decide store vs reject. Do not rewrite first-person requester claims into display-name or third-person phrasing. Do not pass vague references like 'remember this'. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or facts about another person's private life. Runtime context derives all actor ids, Slack ids, scope keys, source ids, and subject ids; the memory agent decides the canonical stored content, subject, and target.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     execute: async (input, options) => {

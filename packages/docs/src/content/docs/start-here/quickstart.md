@@ -66,6 +66,7 @@ Set these values before running real turns:
 | `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                   |
 | `AI_MODEL`                | No                     | Primary assistant model override.                              |
 | `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.             |
+| `AI_EMBEDDING_MODEL`      | No                     | Embedding model override for plugin vector retrieval.          |
 | `AI_VISION_MODEL`         | No                     | Enables image understanding when set.                          |
 | `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                         |
 | `JUNIOR_STATE_KEY_PREFIX` | No                     | Redis key namespace for this local app/environment.            |

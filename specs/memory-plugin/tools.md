@@ -57,6 +57,13 @@ updates`, while vague references like `remember this` are invalid. The outer
 agent provides the candidate text; it does not select storage scope, subject,
 or canonical stored content.
 
+Ordinary technical, workflow, communication, tool, language, product,
+repository, or project preferences and opinions are valid candidates when the
+current requester explicitly asks Junior to remember them. The outer agent
+should call `createMemory` for those requests instead of asking the requester
+to rephrase them as safer memory text. The memory agent owns the semantic
+store-or-reject decision and canonical rewrite.
+
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the same memory agent review path as passive extraction. The
 memory agent decides store/reject, canonical perspective-neutral content,

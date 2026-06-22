@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createLocalPgliteFixture,
+  pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
@@ -28,6 +29,7 @@ import {
 import { createMemoryStore, type MemoryDb } from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
+const TEST_EMBEDDING_DIMENSIONS = 1536;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type MemoryFixture = LocalPgliteFixture<MemoryDb>;
@@ -52,12 +54,16 @@ const memoryState: PluginState = {
   },
 };
 
+const defaultEmbedding = unitEmbedding(0);
+
 function memoryDb(fixture: MemoryFixture): MemoryDb {
   return fixture.db();
 }
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema);
+  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
+    extensions: { vector: pgliteVectorExtension },
+  });
   const migrationsDir = resolve(__dirname, "../migrations");
   const migrations = (await readdir(migrationsDir))
     .filter((filename) => filename.endsWith(".sql"))
@@ -69,6 +75,46 @@ async function createMemoryFixture(): Promise<MemoryFixture> {
     await fixture.execute(migration);
   }
   return fixture;
+}
+
+function unitEmbedding(index: number): number[] {
+  const embedding = new Array<number>(TEST_EMBEDDING_DIMENSIONS).fill(0);
+  embedding[index] = 1;
+  return embedding;
+}
+
+function createTestEmbedder(
+  vectors: Record<string, number[]> = {},
+  overrides: { dimensions?: number; model?: string; provider?: string } = {},
+) {
+  const calls: string[][] = [];
+  return {
+    calls,
+    async embedTexts(input: { texts: string[] }) {
+      calls.push(input.texts);
+      return {
+        dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
+        model: overrides.model ?? "test-embedding-model",
+        provider: overrides.provider ?? "test-embedding-provider",
+        vectors: input.texts.map((text) => vectors[text] ?? defaultEmbedding),
+      };
+    },
+  };
+}
+
+function createTestPluginModel(
+  embedder: Pick<PluginModel, "embedTexts"> = createTestEmbedder(),
+): PluginModel {
+  return {
+    async completeObject() {
+      throw new Error(
+        "Unexpected structured model call in memory storage test.",
+      );
+    },
+    async embedTexts(input) {
+      return await embedder.embedTexts(input);
+    },
+  };
 }
 
 function slackContext(
@@ -164,6 +210,9 @@ describe("memory plugin storage", () => {
           },
         };
       },
+      async embedTexts(input) {
+        return await createTestEmbedder().embedTexts(input);
+      },
     };
     const agent = createMemoryAgent(model);
 
@@ -192,6 +241,9 @@ describe("memory plugin storage", () => {
             expiresAtMs: null,
           },
         };
+      },
+      async embedTexts(input) {
+        return await createTestEmbedder().embedTexts(input);
       },
     };
     const agent = createMemoryAgent(model);
@@ -320,6 +372,121 @@ ORDER BY created_at_ms ASC
       await expect(
         store.searchMemories({ query: "summaries" }),
       ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("stores derived embeddings and uses vector recall before lexical fallback", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const reactMemory = "Uses React hooks for UI state.";
+      const mangoMemory = "Favorite CLI QA snack is mango chips.";
+      const embedder = createTestEmbedder({
+        [reactMemory]: unitEmbedding(1),
+        [mangoMemory]: unitEmbedding(2),
+        "client rendering library": unitEmbedding(1),
+      });
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => nowMs,
+      });
+
+      const react = await store.createMemory({
+        content: reactMemory,
+        idempotencyKey: "memory-test:embedding-react",
+      });
+      nowMs += 1;
+      await store.createMemory({
+        content: mangoMemory,
+        idempotencyKey: "memory-test:embedding-mango",
+      });
+
+      const embeddingRows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryEmbeddings);
+      expect(embeddingRows).toHaveLength(2);
+      expect(embeddingRows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            dimensions: TEST_EMBEDDING_DIMENSIONS,
+            memoryId: react.memory.id,
+            metric: "cosine",
+            model: "test-embedding-model",
+            provider: "test-embedding-provider",
+          }),
+        ]),
+      );
+      const results = await store.searchMemories({
+        query: "client rendering library",
+      });
+      expect(results[0]).toEqual(
+        expect.objectContaining({ id: react.memory.id }),
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not duplicate embeddings for idempotent create retries", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const embedder = createTestEmbedder();
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+
+      const created = await store.createMemory({
+        content: "Prefers duplicate-safe vector writes.",
+        idempotencyKey: "memory-test:embedding-idempotent",
+      });
+      await expect(
+        store.createMemory({
+          content: "Changed retry content should not be re-embedded.",
+          idempotencyKey: "memory-test:embedding-idempotent",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id },
+      });
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toHaveLength(1);
+      expect(embedder.calls).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps memories searchable when embeddings have the wrong dimension", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const embedder = createTestEmbedder(
+        { "Prefers lexical fallback for vector failures.": [1, 0, 0] },
+        { dimensions: 3 },
+      );
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+
+      const created = await store.createMemory({
+        content: "Prefers lexical fallback for vector failures.",
+        idempotencyKey: "memory-test:embedding-dimension-mismatch",
+      });
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([]);
+      await expect(
+        store.searchMemories({ query: "lexical fallback" }),
+      ).resolves.toEqual([expect.objectContaining({ id: created.memory.id })]);
     } finally {
       await fixture.close();
     }
@@ -598,6 +765,7 @@ ORDER BY created_at_ms ASC
         ...context,
         db: memoryDb(fixture),
         log: noopLogger,
+        model: createTestPluginModel(),
         plugin: { name: "memory" },
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
@@ -635,6 +803,7 @@ ORDER BY created_at_ms ASC
           ...context,
           db: memoryDb(fixture),
           log: noopLogger,
+          model: createTestPluginModel(),
           plugin: { name: "memory" },
           state: memoryState,
           text: "   ",

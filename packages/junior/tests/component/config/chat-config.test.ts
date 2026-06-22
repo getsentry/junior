@@ -45,6 +45,20 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("openai/gpt-5.4");
   });
 
+  it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", async () => {
+    delete process.env.AI_EMBEDDING_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-small");
+  });
+
+  it("uses AI_EMBEDDING_MODEL when configured", async () => {
+    process.env.AI_EMBEDDING_MODEL = "openai/text-embedding-3-large";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-large");
+  });
+
   it("uses the default slash command when JUNIOR_SLASH_COMMAND is unset", async () => {
     delete process.env.JUNIOR_SLASH_COMMAND;
 

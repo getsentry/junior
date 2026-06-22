@@ -42,6 +42,13 @@ export interface PluginModel {
     schema: TSchema;
     system?: string;
   }): Promise<{ object: z.infer<TSchema> }>;
+  /** Embed plugin-owned text for derived retrieval without exposing provider credentials. */
+  embedTexts(input: { texts: string[] }): Promise<{
+    dimensions: number;
+    model: string;
+    provider: string;
+    vectors: number[][];
+  }>;
 }
 
 export interface PluginContext {

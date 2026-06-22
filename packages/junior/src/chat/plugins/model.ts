@@ -1,6 +1,6 @@
 import type { PluginModel } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject, embedTexts } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
 export function createPluginModel(pluginName: string): PluginModel {
@@ -20,6 +20,16 @@ export function createPluginModel(pluginName: string): PluginModel {
         },
       });
       return { object: result.object };
+    },
+    async embedTexts(input) {
+      return await embedTexts({
+        modelId: botConfig.embeddingModelId,
+        texts: input.texts,
+        metadata: {
+          pluginName,
+          pluginModelRole: "embedding",
+        },
+      });
     },
   };
 }

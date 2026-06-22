@@ -259,6 +259,10 @@ Explicit memory creation requests are still subject to install policy.
 For example, passive extraction is limited to public-conversation workplace
 knowledge in V1, but users may still explicitly store public/shareable personal
 preferences about themselves when the requested memory passes policy.
+This includes ordinary technical and workplace preferences or opinions, such
+as language, tool, repository, product, communication, and workflow
+preferences, when they are authored by the current requester and do not include
+private or sensitive content.
 
 The explicit tool path must use the same agentic policy guidance as passive
 extraction. Explicit user intent can make a fact eligible for storage under

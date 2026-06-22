@@ -3,7 +3,12 @@ import type {
   Requester,
   Source,
 } from "@sentry/junior-plugin-api";
-import { createMemoryStore, type MemoryDb, type MemoryRecord } from "./store";
+import {
+  createMemoryStore,
+  type MemoryDb,
+  type MemoryEmbeddingProvider,
+  type MemoryRecord,
+} from "./store";
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
@@ -13,6 +18,7 @@ const MAX_MEMORY_LINE_CHARS = 320;
 export interface MemoryRecallContext {
   conversationId?: string;
   db: MemoryDb;
+  embedder?: MemoryEmbeddingProvider;
   requester?: Requester;
   source: Source;
   text: string;
@@ -65,6 +71,7 @@ export async function createMemoryPromptMessages(
   const memories = await createMemoryStore(
     context.db,
     runtimeContext,
+    context.embedder ? { embedder: context.embedder } : {},
   ).searchMemories({
     query: context.text,
     limit: DEFAULT_RECALL_LIMIT,

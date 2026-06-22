@@ -42,6 +42,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 
 export interface BotConfig {
   advisor: AdvisorConfig;
+  embeddingModelId: string;
   fastModelId: string;
   loadingMessages: string[];
   modelId: string;
@@ -191,12 +192,17 @@ const DEFAULT_ADVISOR_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.5",
 ).id;
+const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
   if (trimmed === undefined) return undefined;
   resolveGatewayModel(trimmed);
   return trimmed;
+}
+
+function validateEmbeddingModelId(raw: string | undefined): string | undefined {
+  return toOptionalTrimmed(raw);
 }
 
 function readAdvisorConfig(env: NodeJS.ProcessEnv): AdvisorConfig {
@@ -239,6 +245,9 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     fastModelId:
       validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
       DEFAULT_FAST_MODEL_ID,
+    embeddingModelId:
+      validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
+      DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(

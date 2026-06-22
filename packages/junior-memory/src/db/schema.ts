@@ -9,11 +9,15 @@ import {
   bigint,
   check,
   index,
+  integer,
   pgTable,
   text,
   uniqueIndex,
+  vector,
 } from "drizzle-orm/pg-core";
 import {
+  MEMORY_EMBEDDING_DIMENSIONS,
+  MEMORY_EMBEDDING_METRICS,
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
@@ -87,6 +91,41 @@ export const juniorMemoryMemories = pgTable(
     check(
       "junior_memory_memories_source_platform_check",
       sql`${table.sourcePlatform} IN ('slack', 'local')`,
+    ),
+  ],
+);
+
+export const juniorMemoryEmbeddings = pgTable(
+  "junior_memory_embeddings",
+  {
+    memoryId: text("memory_id")
+      .primaryKey()
+      .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    dimensions: integer("dimensions").notNull(),
+    metric: text("metric", { enum: MEMORY_EMBEDDING_METRICS }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    embedding: vector("embedding", {
+      dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    }).notNull(),
+    createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    repairedAtMs: bigint("repaired_at_ms", { mode: "number" }),
+  },
+  (table) => [
+    index("junior_memory_embeddings_model_idx").on(
+      table.provider,
+      table.model,
+      table.dimensions,
+      table.metric,
+    ),
+    check(
+      "junior_memory_embeddings_metric_check",
+      sql`${table.metric} IN ('cosine')`,
+    ),
+    check(
+      "junior_memory_embeddings_dimensions_check",
+      sql`${table.dimensions} = ${sql.raw(String(MEMORY_EMBEDDING_DIMENSIONS))}`,
     ),
   ],
 );

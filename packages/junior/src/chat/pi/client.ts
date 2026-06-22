@@ -8,7 +8,7 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { generateObject } from "ai";
+import { embedMany, generateObject } from "ai";
 import {
   streamAnthropic,
   streamSimpleAnthropic,
@@ -52,6 +52,7 @@ export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
+const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
 export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
 
@@ -352,6 +353,90 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.request.model": params.modelId,
       },
       "AI object completion failed",
+    );
+    throw providerError;
+  }
+}
+
+/** Generate text embeddings through the host-owned AI Gateway provider. */
+export async function embedTexts(params: {
+  modelId: string;
+  texts: string[];
+  signal?: AbortSignal;
+  metadata?: Record<string, unknown>;
+}): Promise<{
+  dimensions: number;
+  model: string;
+  provider: string;
+  vectors: number[][];
+}> {
+  const texts = params.texts.map((text) => text.trim());
+  if (texts.length === 0 || texts.some((text) => text.length === 0)) {
+    throw new Error("Embedding text is required.");
+  }
+  const apiKey = getGatewayApiKey();
+  const provider = createGatewayProvider(apiKey ? { apiKey } : {});
+  try {
+    const result = await withSpan(
+      `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
+      "gen_ai.embeddings",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async () =>
+        await embedMany({
+          model: provider.embeddingModel(params.modelId),
+          values: texts,
+          ...(params.signal !== undefined
+            ? { abortSignal: params.signal }
+            : {}),
+        }),
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+        "gen_ai.request.model": params.modelId,
+        "gen_ai.output.type": "embedding",
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+      },
+    );
+    const dimensions = result.embeddings[0]?.length;
+    if (
+      result.embeddings.length !== texts.length ||
+      !dimensions ||
+      !result.embeddings.every((embedding) => embedding.length === dimensions)
+    ) {
+      throw new Error("Embedding provider returned invalid vectors.");
+    }
+    setSpanAttributes({
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+      "gen_ai.request.model": params.modelId,
+      "gen_ai.output.type": "embedding",
+      "server.address": GEN_AI_SERVER_ADDRESS,
+      "server.port": GEN_AI_SERVER_PORT,
+      ...extractGenAiUsageAttributes(result.usage),
+    });
+    return {
+      dimensions,
+      model: params.modelId,
+      provider: GEN_AI_PROVIDER_NAME,
+      vectors: result.embeddings,
+    };
+  } catch (error) {
+    const providerError = createProviderError(error);
+    if (isProviderRetryError(providerError)) {
+      throw providerError;
+    }
+
+    logException(
+      providerError,
+      "ai_embeddings_failed",
+      {},
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+        "gen_ai.request.model": params.modelId,
+      },
+      "AI embeddings failed",
     );
     throw providerError;
   }

@@ -175,17 +175,17 @@ vectors under the same rules as the memory content.
 
 ### Vector Storage
 
-V1 should use Postgres-native vector storage through pgvector when embeddings
-are enabled. The default should be a fixed-dimensional vector column compatible
-with the configured embedding model.
+V1 uses Postgres-native vector storage through pgvector when embeddings are
+enabled. The storage profile is fixed at `vector(1536)` with cosine distance.
 
 Use cosine distance by default. `text-embedding-3-small` at 1536 dimensions is
 the expected fallback because it fits a common pgvector setup and matches the
 Ash prototype's default. The embedding model must still be deployment
 configurable through the host provider boundary, following the same
-Gateway-model configuration pattern as other Junior model roles. Larger native
-embedding models must either be configured to return the stored dimension or
-wait for a migration/rebuild plan that changes the stored vector dimension.
+Gateway-model configuration pattern as other Junior model roles. The configured
+model must return 1536 dimensions for the v1 vector table. Larger native
+embedding models require a new derived embedding storage version plus a rebuild
+plan; they must not force changes to authoritative memory rows.
 
 ### Vector Index Strategy
 
@@ -206,12 +206,7 @@ plugin hooks and tasks:
 
 ```ts
 interface PluginEmbeddingProvider {
-  embed(input: {
-    texts: string[];
-    purpose: "memory";
-    model?: string;
-    dimensions?: number;
-  }): Promise<{
+  embedTexts(input: { texts: string[] }): Promise<{
     provider: string;
     model: string;
     dimensions: number;
@@ -235,14 +230,14 @@ The default embedding configuration should be:
 ```txt
 provider = openai-compatible
 model = text-embedding-3-small
-dimensions = 1536
+storage_dimensions = 1536
 metric = cosine
 ```
 
-The exact provider name and model id are deployment configuration. The memory
-plugin should not hardcode an embedding model outside the default fallback.
-Stored embedding metadata records the resolved provider and model used for each
-vector.
+The exact provider name and model id are deployment configuration. The storage
+dimension is not a v1 deployment knob. Stored embedding metadata records the
+resolved provider and model used for each vector so derived rows can be skipped
+or rebuilt when the model no longer matches the storage profile.
 
 ### Write Path
 

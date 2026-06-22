@@ -28,11 +28,14 @@ export const MEMORY_SOURCE_PLATFORMS = [
   "slack",
   "local",
 ] as const satisfies readonly z.output<typeof platformSchema>[];
+export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
+export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySubjectType = (typeof MEMORY_SUBJECT_TYPES)[number];
 export type MemorySourcePlatform = (typeof MEMORY_SOURCE_PLATFORMS)[number];
+export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
 
 const nonEmptyStringSchema = z.string().min(1);
 

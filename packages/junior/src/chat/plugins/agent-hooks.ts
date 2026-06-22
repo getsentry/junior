@@ -112,6 +112,7 @@ function invocationPluginContext(
   const common = {
     ...base,
     conversationId: context.conversationId,
+    model: createPluginModel(plugin.manifest.name),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),

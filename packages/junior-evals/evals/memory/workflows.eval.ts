@@ -1,6 +1,7 @@
 import { afterEach, expect } from "vitest";
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
 import { closeDb, getDb } from "@/chat/db";
+import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { juniorMemoryMemories } from "../../../junior-memory/src/db/schema";
 import { mention, rubric, slackEvals } from "../../src/helpers";
@@ -10,6 +11,7 @@ const memoryPluginOverrides = {
 };
 const memoryTeamId = "TEVAL";
 const requesterUserId = "U-test";
+const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
 
 interface MemoryThread {
   channel_id: string;
@@ -73,20 +75,115 @@ function visibleAssistantText(result: {
     .join("\n");
 }
 
-function expectVisibleMemoryId(text: string, id: string): void {
-  const parts = text.match(/\bmem_[a-zA-Z0-9_-]+\b/g) ?? [];
-  expect(parts.some((part) => id.startsWith(part) && part.length >= 12)).toBe(
-    true,
+interface MemorySemanticJudgmentInput {
+  assistantText: string;
+  expectedMeaning: string;
+  storedMemories: Awaited<ReturnType<typeof readMemories>>;
+  userText: string;
+}
+
+function parseMemoryJudgeResult(text: string): {
+  passed: boolean;
+  rationale: string;
+} {
+  const parsed = JSON.parse(text) as unknown;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`Memory judge returned non-object JSON: ${text}`);
+  }
+  const passed = (parsed as Record<string, unknown>).passed;
+  const rationale = (parsed as Record<string, unknown>).rationale;
+  if (typeof passed !== "boolean" || typeof rationale !== "string") {
+    throw new Error(`Memory judge returned invalid JSON: ${text}`);
+  }
+  return { passed, rationale };
+}
+
+async function expectRequesterMemorySemantics(
+  input: MemorySemanticJudgmentInput,
+): Promise<void> {
+  const { text } = await completeText({
+    modelId: memoryJudgeModelId,
+    system:
+      'You judge Junior memory eval results. Return only raw JSON matching {"passed":boolean,"rationale":"..."}.',
+    messages: [
+      {
+        role: "user",
+        content: [
+          "<memory-eval>",
+          "<user-text>",
+          input.userText,
+          "</user-text>",
+          "<expected-meaning>",
+          input.expectedMeaning,
+          "</expected-meaning>",
+          "<stored-memories-json>",
+          JSON.stringify(
+            input.storedMemories.map((memory) => ({
+              archivedAtMs: memory.archivedAtMs,
+              content: memory.content,
+              scope: memory.scope,
+              subjectType: memory.subjectType,
+            })),
+          ),
+          "</stored-memories-json>",
+          "<assistant-text>",
+          input.assistantText,
+          "</assistant-text>",
+          "<criteria>",
+          "Pass only if exactly one active personal/user memory is stored and its content is semantically equivalent to the expected meaning.",
+          "The stored content must be canonical memory text: no requester display name, no 'the requester', no 'the user', no first-person wording, and no thread/channel/source wording.",
+          "The assistant text must not claim the memory failed because the user's first-person request was rewritten in third person.",
+          "Fail if no memory was stored, if the stored memory is about someone other than the requester, if the content is a vague paraphrase, or if the content preserves source/user labels.",
+          "</criteria>",
+          "</memory-eval>",
+        ].join("\n"),
+        timestamp: Date.now(),
+      },
+    ],
+    temperature: 0,
+  });
+  const judgment = parseMemoryJudgeResult(text);
+  expect(judgment, judgment.rationale).toEqual(
+    expect.objectContaining({ passed: true }),
   );
 }
 
-function expectCanonicalMemoryContent(
-  content: string,
-  expectedPattern: RegExp,
-): void {
-  expect(content).toMatch(expectedPattern);
-  expect(content).not.toMatch(
-    /\b(the requester|the user|requester|user|David|this thread|this channel|channel|Slack|I|my)\b/i,
+async function expectAssistantMemoryAnswer(args: {
+  assistantText: string;
+  expectedBehavior: string;
+  memoryId?: string;
+}): Promise<void> {
+  const { text } = await completeText({
+    modelId: memoryJudgeModelId,
+    system:
+      'You judge Junior memory eval replies. Return only raw JSON matching {"passed":boolean,"rationale":"..."}.',
+    messages: [
+      {
+        role: "user",
+        content: [
+          "<assistant-text>",
+          args.assistantText,
+          "</assistant-text>",
+          args.memoryId
+            ? ["<memory-id>", args.memoryId, "</memory-id>"].join("\n")
+            : "",
+          "<expected-behavior>",
+          args.expectedBehavior,
+          "</expected-behavior>",
+          "<criteria>",
+          "Pass only if the assistant text satisfies the expected behavior.",
+          "If a memory id is provided, the assistant must include either the full id or a usable unambiguous prefix from that id.",
+          "Fail if the assistant asks the user to restate the remembered fact, claims no relevant memory exists, or exposes hidden storage fields such as scope keys or Slack ids.",
+          "</criteria>",
+        ].join("\n"),
+        timestamp: Date.now(),
+      },
+    ],
+    temperature: 0,
+  });
+  const judgment = parseMemoryJudgeResult(text);
+  expect(judgment, judgment.rationale).toEqual(
+    expect.objectContaining({ passed: true }),
   );
 }
 
@@ -129,27 +226,71 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    const createCall = toolCalls(result.session).find(
-      (call) => call.name === "createMemory",
-    );
-    expect(createCall?.arguments).toEqual(
-      expect.objectContaining({
-        content: expect.stringMatching(/\bterse\b.*\bPR summaries\b/i),
-      }),
-    );
-    expect(await readMemories()).toEqual([
+    const rows = await readMemories();
+    expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
-        content: expect.stringMatching(/^Prefers terse PR summaries\.?$/i),
         scope: "personal",
         subjectType: "user",
       }),
     ]);
+    await expectRequesterMemorySemantics({
+      assistantText: visibleAssistantText(result),
+      expectedMeaning: "The requester prefers terse pull request summaries.",
+      storedMemories: rows,
+      userText: "Please remember that I prefer terse PR summaries.",
+    });
+  });
+
+  const firstPersonRewrittenThread = {
+    id: "thread-memory-first-person-rewritten",
+    channel_id: "CMEMORYFIRSTPERSON",
+    thread_ts: "17000000.memory-first-person",
+  };
+
+  it("when the requester states a first-person opinion, store it even if candidate wording is rewritten", async ({
+    run,
+  }) => {
+    const userText = "ok remember that i think types in python are bad";
+    const result = await run({
+      overrides: memoryPluginOverrides,
+      events: [
+        mention(userText, {
+          thread: firstPersonRewrittenThread,
+        }),
+        mention("What exact memory did you store about Python types?", {
+          thread: firstPersonRewrittenThread,
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant treats the user's first-person request as requester-authored source evidence.",
+          "The assistant stores and later reports a canonical requester memory matching the user's opinion about Python types.",
+          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not refuse the memory because a candidate or reply uses the requester's name, 'the requester', or third-person wording.",
+          "Do not ask the user to rephrase the already first-person memory request.",
+          "Do not store a memory about a third party.",
+        ],
+      }),
+    });
+
     const rows = await readMemories();
-    expectCanonicalMemoryContent(
-      rows[0]!.content,
-      /^Prefers terse PR summaries\.?$/i,
-    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        archivedAtMs: null,
+        scope: "personal",
+        subjectType: "user",
+      }),
+    ]);
+    await expectRequesterMemorySemantics({
+      assistantText: visibleAssistantText(result),
+      expectedMeaning:
+        "The requester thinks types in Python are bad or dislikes Python typing/type annotations.",
+      storedMemories: rows,
+      userText,
+    });
   });
 
   const thirdPartyRememberThread = {
@@ -221,10 +362,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleAssistantText(result)).toMatch(
-      /\bterse\b.*\bPR summaries\b/i,
-    );
-    expectVisibleMemoryId(visibleAssistantText(result), seeded.memory.id);
+    await expectAssistantMemoryAnswer({
+      assistantText: visibleAssistantText(result),
+      expectedBehavior:
+        "The assistant lists the stored memory that the requester prefers terse PR summaries and includes a usable memory id or id prefix.",
+      memoryId: seeded.memory.id,
+    });
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
@@ -277,10 +420,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleAssistantText(result)).toMatch(
-      /\bincident reports\b.*\bbullet summaries\b/i,
-    );
-    expectVisibleMemoryId(visibleAssistantText(result), match.memory.id);
+    await expectAssistantMemoryAnswer({
+      assistantText: visibleAssistantText(result),
+      expectedBehavior:
+        "The assistant answers from memory that the requester prefers incident reports with bullet summaries and includes a usable matching memory id or id prefix.",
+      memoryId: match.memory.id,
+    });
     expect(await readMemories()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
