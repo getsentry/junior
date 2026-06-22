@@ -38,11 +38,12 @@ provide fixtures for Junior test files.
 
 ## Database Lifecycle
 
-The harness is opt-in outside CI. `JUNIOR_TEST_DATABASE_URL` enables global
-Postgres setup; when it is unset, Postgres-harness-specific tests must skip and
-the existing PGlite-backed tests continue to run. CI provides
-`JUNIOR_TEST_DATABASE_URL` through the workflow Postgres service so the harness
-contract is still exercised on pull requests.
+The harness uses Junior's normal SQL database configuration. Vitest and eval
+configs load `apps/example/.env` as local defaults before workspace/package
+overrides, so local tests use `postgres://junior:junior@localhost:54322/junior`
+without per-command environment overrides. CI provides `DATABASE_URL` through
+the workflow Postgres service, and explicit developer or CI env vars still take
+precedence over env-file defaults.
 
 Global setup creates a run-scoped database prefix from the test process and a
 random suffix. It creates a migrated template database once per Vitest run, then
@@ -54,8 +55,8 @@ database name derived from `VITEST_POOL_ID` so test files can remain parallel.
 The harness must terminate only connections with the configured test
 application name before dropping or recreating test databases.
 
-Worker setup sets `JUNIOR_DATABASE_URL` to the worker database URL before test
-files import product modules. Tests that use normal Junior imports such as
+Worker setup sets `DATABASE_URL` to the worker database URL before test files
+import product modules. Tests that use normal Junior imports such as
 configured conversation stores, plugin DB resolution, or `createJuniorSqlExecutor`
 must therefore use the test database without changing import paths, injecting a
 special executor, or mocking database factories.
@@ -142,7 +143,7 @@ and Drizzle database objects are created inside worker/test processes.
   name through the generated worker database URL.
 - Transactional fixture state must never commit to the worker database.
 - Normal production-style imports must use the worker test database when
-  `JUNIOR_TEST_DATABASE_URL` is configured.
+  `DATABASE_URL` is configured by the test/eval environment.
 
 ## Observability
 

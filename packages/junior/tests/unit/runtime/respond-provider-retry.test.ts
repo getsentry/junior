@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -16,6 +17,20 @@ const { agentMode, counters } = vi.hoisted(() => ({
     promptCalls: 0,
   },
 }));
+
+async function realSleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
+}
+
+async function waitForPromptCall(count: number): Promise<void> {
+  for (let index = 0; index < 100; index += 1) {
+    if (counters.promptCalls >= count) {
+      return;
+    }
+    await realSleep(5);
+  }
+  throw new Error(`Expected ${count} prompt call(s)`);
+}
 
 vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
@@ -141,9 +156,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const memoryConfig = original.readChatConfig({
     ...process.env,
     AGENT_TURN_TIMEOUT_MS: "10000",
-    DATABASE_URL: undefined,
     FUNCTION_MAX_DURATION_SECONDS: "60",
-    JUNIOR_DATABASE_URL: undefined,
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -229,6 +242,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { generateAssistantReply } from "@/chat/respond";
+import { getConversationStore } from "@/chat/db";
 import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -248,6 +262,7 @@ describe("generateAssistantReply provider retry", () => {
     counters.promptCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
+    await getConversationStore().listByActivity({ limit: 1 });
     vi.useFakeTimers();
   });
 
@@ -269,6 +284,8 @@ describe("generateAssistantReply provider retry", () => {
       },
     });
 
+    await waitForPromptCall(1);
+    await realSleep(10);
     await vi.advanceTimersByTimeAsync(2_000);
     const reply = await replyPromise;
 

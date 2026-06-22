@@ -1,4 +1,3 @@
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defineJuniorPlugin,
@@ -13,7 +12,7 @@ import {
   type ScheduledTask,
   type SchedulerDb,
 } from "@sentry/junior-scheduler";
-import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { getDb } from "@/chat/db";
 import {
   createOrGetDispatch,
   getDispatchRecord,
@@ -33,7 +32,6 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
@@ -54,31 +52,10 @@ const SLACK_SOURCE = {
   channelId: "C123",
 } satisfies Source;
 
-let schedulerSqlFixture:
-  | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>
-  | undefined;
 let schedulerDb: SchedulerDb | undefined;
 
-function schedulerMigrationsDir(): string {
-  return path.resolve(process.cwd(), "../junior-scheduler/migrations");
-}
-
-async function migrateSchedulerSchema(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
-) {
-  await migratePluginSchemas(
-    fixture.sql,
-    readPluginMigrations({
-      dir: schedulerMigrationsDir(),
-      pluginName: "scheduler",
-    }),
-  );
-}
-
 async function useSchedulerSqlStore() {
-  schedulerSqlFixture = await createLocalJuniorSqlFixture();
-  await migrateSchedulerSchema(schedulerSqlFixture);
-  schedulerDb = schedulerSqlFixture.sql.db() as unknown as SchedulerDb;
+  schedulerDb = getDb() as unknown as SchedulerDb;
   return createSchedulerSqlStore(schedulerDb);
 }
 
@@ -209,8 +186,6 @@ describe("plugin heartbeat", () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     setPlugins([]);
-    await schedulerSqlFixture?.close();
-    schedulerSqlFixture = undefined;
     schedulerDb = undefined;
     await disconnectStateAdapter();
     delete process.env.JUNIOR_SCHEDULER_SECRET;

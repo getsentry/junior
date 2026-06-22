@@ -1,18 +1,58 @@
 import { Buffer } from "node:buffer";
+import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 
-const { promptAborted, promptMode } = vi.hoisted(() => ({
-  promptAborted: { value: false },
-  promptMode: {
-    value: "settlesAfterAbort" as
-      | "settlesAfterAbort"
-      | "hangsAfterAbort"
-      | "continueSettlesAfterAbort"
-      | "providerRetryThenHangs",
-  },
-}));
+const { continueCalls, promptAborted, promptCalls, promptMode, promptSettled } =
+  vi.hoisted(() => ({
+    continueCalls: { value: 0 },
+    promptAborted: { value: false },
+    promptCalls: { value: 0 },
+    promptMode: {
+      value: "settlesAfterAbort" as
+        | "settlesAfterAbort"
+        | "hangsAfterAbort"
+        | "continueSettlesAfterAbort"
+        | "providerRetryThenHangs",
+    },
+    promptSettled: { value: false },
+  }));
+
+async function realSleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
+}
+
+async function waitForPromptCall(count: number): Promise<void> {
+  for (let index = 0; index < 100; index += 1) {
+    if (promptCalls.value >= count) {
+      return;
+    }
+    await realSleep(5);
+  }
+  throw new Error(`Expected ${count} prompt call(s)`);
+}
+
+async function waitForProviderPromptSettlement(): Promise<void> {
+  for (let index = 0; index < 100; index += 1) {
+    if (promptSettled.value) {
+      return;
+    }
+    await realSleep(5);
+  }
+  throw new Error("Expected provider retry prompt to settle");
+}
+
+async function advanceUntilContinueCall(maxMs: number): Promise<void> {
+  for (let elapsed = 0; elapsed < maxMs; elapsed += 100) {
+    if (continueCalls.value > 0) {
+      return;
+    }
+    await vi.advanceTimersByTimeAsync(100);
+    await realSleep(1);
+  }
+  throw new Error("Expected provider retry continuation to start");
+}
 
 vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
@@ -49,6 +89,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     async continue() {
+      continueCalls.value += 1;
       if (promptMode.value === "continueSettlesAfterAbort") {
         await new Promise<void>((resolve) => {
           this.resolveAbort = resolve;
@@ -80,6 +121,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     async prompt(message: unknown) {
+      promptCalls.value += 1;
       this.state.messages.push(message);
       if (promptMode.value === "providerRetryThenHangs") {
         await new Promise((resolve) => setTimeout(resolve, 8_000));
@@ -89,6 +131,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           stopReason: "error",
           errorMessage: "Provider returned error: 503 service unavailable",
         });
+        promptSettled.value = true;
         return {};
       }
       if (promptMode.value === "hangsAfterAbort") {
@@ -114,9 +157,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const memoryConfig = original.readChatConfig({
     ...process.env,
     AGENT_TURN_TIMEOUT_MS: "10000",
-    DATABASE_URL: undefined,
     FUNCTION_MAX_DURATION_SECONDS: "60",
-    JUNIOR_DATABASE_URL: undefined,
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -207,6 +248,7 @@ import {
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
+import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -228,9 +270,13 @@ const TEST_REQUESTER = {
 describe("generateAssistantReply agent continuation", () => {
   beforeEach(async () => {
     promptAborted.value = false;
+    continueCalls.value = 0;
+    promptCalls.value = 0;
     promptMode.value = "settlesAfterAbort";
+    promptSettled.value = false;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
+    await getConversationStore().listByActivity({ limit: 1 });
     vi.useFakeTimers();
   });
 
@@ -421,6 +467,8 @@ describe("generateAssistantReply agent continuation", () => {
       },
     }).catch((caught) => caught);
 
+    await waitForPromptCall(1);
+    await realSleep(10);
     await vi.advanceTimersByTimeAsync(15_000);
     const error = await replyPromise;
 
@@ -463,7 +511,11 @@ describe("generateAssistantReply agent continuation", () => {
       },
     }).catch((caught) => caught);
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    await waitForPromptCall(1);
+    await vi.advanceTimersByTimeAsync(8_000);
+    await waitForProviderPromptSettlement();
+    await advanceUntilContinueCall(5_000);
+    await vi.advanceTimersByTimeAsync(1);
     const error = await replyPromise;
 
     expect(promptAborted.value).toBe(true);

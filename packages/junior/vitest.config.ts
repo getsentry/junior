@@ -1,26 +1,11 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
-import fs from "node:fs";
-import { createEnvFileLoader } from "./src/env/files";
+import { loadJuniorTestEnvFiles } from "./tests/fixtures/env";
 
 const workspaceRoot = path.resolve(__dirname, "../..");
 const packageRoot = process.cwd();
 
-const applyEnvFile = createEnvFileLoader();
-
-// Load workspace env first, then package env, with test env files last.
-for (const envRoot of [workspaceRoot, packageRoot]) {
-  for (const envFile of [
-    ".env",
-    ".env.local",
-    ".env.test",
-    ".env.test.local",
-  ]) {
-    const absolutePath = path.resolve(envRoot, envFile);
-    if (!fs.existsSync(absolutePath)) continue;
-    applyEnvFile(absolutePath);
-  }
-}
+loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";

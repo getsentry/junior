@@ -121,13 +121,12 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("records Slack turn activity in state conversations when SQL is not configured", async () => {
-    delete process.env.JUNIOR_DATABASE_URL;
-    delete process.env.DATABASE_URL;
+  it("records Slack turn activity in SQL conversation metadata", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { appendInboundMessage, getConversation } =
+    const { getConversationStore } = await import("@/chat/db");
+    const { appendInboundMessage } =
       await import("@/chat/task-execution/store");
 
     try {
@@ -158,7 +157,9 @@ describe("persistAuthPauseSessionRecord", () => {
       });
 
       await expect(
-        getConversation({ conversationId: "slack:C123:turn-activity" }),
+        getConversationStore().get({
+          conversationId: "slack:C123:turn-activity",
+        }),
       ).resolves.toMatchObject({
         channelName: "runtime-team",
         conversationId: "slack:C123:turn-activity",
