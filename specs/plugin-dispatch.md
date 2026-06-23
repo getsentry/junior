@@ -156,7 +156,7 @@ Stored dispatch records include:
 - result timestamp or error message
 
 Plugin-visible `Dispatch` is a projection, not the stored record.
-Core persists dispatch records only after plugin input has parsed through the shared schema and runtime credential binding has succeeded. Every callback, recovery, and projection path must parse stored dispatch records before use; malformed records are invalid state and must not be repaired from nearby Slack channel/thread metadata during normal runtime reads. Legacy dispatch records that predate stored `source` may derive source from their stored Slack destination only; new dispatch requests must provide `source` explicitly.
+Core persists dispatch records only after plugin input has parsed through the shared schema and runtime credential binding has succeeded. Every callback, recovery, and projection path must parse stored dispatch records before use; malformed records are invalid state and must not be repaired from nearby Slack channel/thread metadata during normal runtime reads. Dispatch requests and persisted records must provide `source` explicitly.
 
 Dispatch ids should be deterministic from plugin name and idempotency key. Duplicate calls return the existing dispatch id and may re-fire the callback only when the record is incomplete.
 

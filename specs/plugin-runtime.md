@@ -140,9 +140,11 @@ Tool registration contexts receive `ctx.model`, a host-owned structured
 completion capability for plugin-owned semantic review before tool execution.
 `ctx.model` accepts a strict schema plus prompt text and uses Junior's
 configured model boundary without exposing provider credentials, SDK clients,
-provider names, or model-visible tools to plugins. Tool registration contexts
-also receive `ctx.embedder`, the separate host-owned embedding capability for
-derived retrieval indexes. Current hook contracts are defined in
+provider names, or model-visible tools to plugins. Plugins may pass a host
+model id override for their own structured call; the host still owns provider
+resolution and credentials. Tool registration contexts also receive
+`ctx.embedder`, the separate host-owned embedding capability for derived
+retrieval indexes. Current hook contracts are defined in
 [Plugin Database Spec](./plugin-database.md), [Plugin CLI Spec](./plugin-cli.md),
 [Plugin Heartbeat Spec](./plugin-heartbeat.md), [Plugin Dispatch
 Spec](./plugin-dispatch.md), [Plugin Background Tasks

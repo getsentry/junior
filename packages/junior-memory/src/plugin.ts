@@ -13,6 +13,21 @@ import { observeMemoryTurn } from "./observe";
 import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
+const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
+
+export interface MemoryPluginOptions {
+  modelId?: string;
+}
+
+function memoryModelId(options: MemoryPluginOptions): string | undefined {
+  const explicitModelId = options.modelId?.trim();
+  if (explicitModelId) {
+    return explicitModelId;
+  }
+  const envModelId = process.env[MEMORY_MODEL_ENV]?.trim();
+  return envModelId || undefined;
+}
+
 function memoryToolContext(ctx: {
   agent: MemoryReviewer;
   conversationId?: string;
@@ -34,7 +49,8 @@ function memoryToolContext(ctx: {
 }
 
 /** Create Junior's long-term memory plugin registration. */
-export function createMemoryPlugin() {
+export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
+  const modelId = memoryModelId(options);
   return defineJuniorPlugin({
     manifest: {
       name: "memory",
@@ -49,7 +65,9 @@ export function createMemoryPlugin() {
       tools(ctx) {
         const context = memoryToolContext({
           ...ctx,
-          agent: createMemoryAgent(ctx.model),
+          agent: createMemoryAgent(ctx.model, {
+            ...(modelId ? { modelId } : {}),
+          }),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
@@ -70,7 +88,11 @@ export function createMemoryPlugin() {
           text: ctx.text,
         });
       },
-      observeTurn: observeMemoryTurn,
+      async observeTurn(ctx) {
+        await observeMemoryTurn(ctx, {
+          ...(modelId ? { modelId } : {}),
+        });
+      },
     },
   });
 }

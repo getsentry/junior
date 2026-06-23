@@ -1,4 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 
 const originalAiModel = process.env.AI_MODEL;
 
@@ -18,6 +22,16 @@ const LOCAL_DESTINATION = {
   platform: "local" as const,
   conversationId: "local:test:respond-error-path",
 };
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+const SLACK_DESTINATION = {
+  platform: "slack" as const,
+  teamId: "T123",
+  channelId: "C123",
+};
+const SLACK_SOURCE = createSlackSource({
+  teamId: SLACK_DESTINATION.teamId,
+  channelId: SLACK_DESTINATION.channelId,
+});
 
 describe("generateAssistantReply error path", () => {
   afterAll(() => {
@@ -31,6 +45,7 @@ describe("generateAssistantReply error path", () => {
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
     const reply = await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       sandbox: {
         sandboxId: "sb-123",
         sandboxDependencyProfileHash: "hash-abc",
@@ -49,6 +64,7 @@ describe("generateAssistantReply error path", () => {
     await expect(
       generateAssistantReply("hello", {
         destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
         onInputCommitted: async () => {
           throw new Error("input should not commit before startup succeeds");
         },
@@ -69,6 +85,7 @@ describe("generateAssistantReply error path", () => {
     await expect(
       generateAssistantReply("hello", {
         destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
         requester: {
           platform: "slack",
           teamId: "T123",
@@ -83,11 +100,8 @@ describe("generateAssistantReply error path", () => {
   it("hard-fails Slack correlation and destination mismatches", async () => {
     await expect(
       generateAssistantReply("hello", {
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        destination: SLACK_DESTINATION,
+        source: SLACK_SOURCE,
         correlation: {
           channelId: "C999",
           teamId: "T123",

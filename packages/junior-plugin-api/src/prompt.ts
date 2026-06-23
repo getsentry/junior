@@ -29,7 +29,7 @@ export type SystemPromptContext = Pick<
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
-  destination?: Destination;
+  destination: Destination;
   embedder: PluginEmbedder;
   requester?: Requester;
   source: Source;

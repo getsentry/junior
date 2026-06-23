@@ -7,7 +7,7 @@ export function createPluginModel(pluginName: string): PluginModel {
   return {
     async completeObject(input) {
       const result = await completeObject({
-        modelId: botConfig.fastModelId,
+        modelId: input.modelId ?? botConfig.fastModelId,
         schema: input.schema,
         prompt: input.prompt,
         ...(input.system !== undefined ? { system: input.system } : {}),

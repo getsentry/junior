@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 
 const {
   agentMode,
@@ -524,14 +525,16 @@ const LOCAL_DESTINATION = {
   platform: "local" as const,
   conversationId: "local:test:respond-lazy-sandbox",
 };
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 function generateLocalReply(
   message: string,
-  context: Omit<ReplyRequestContext, "destination"> = {},
+  context: Omit<ReplyRequestContext, "destination" | "source"> = {},
 ) {
   return generateAssistantReply(message, {
     ...context,
     destination: LOCAL_DESTINATION,
+    source: LOCAL_SOURCE,
   });
 }
 

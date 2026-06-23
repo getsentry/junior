@@ -4,10 +4,10 @@ import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackRequester } from "@/chat/requester";
 
 export interface SlackToolContext {
-  destination?: SlackDestination;
+  destination: SlackDestination;
   source: SlackSource;
   requester?: SlackRequester;
-  destinationChannelId?: string;
+  destinationChannelId: string;
   messageTs?: string;
   sourceChannelId: string;
   teamId: string;
@@ -21,18 +21,15 @@ export function getSlackToolContext(
   if (context.source.platform !== "slack") {
     return undefined;
   }
+  if (context.destination.platform !== "slack") {
+    throw new TypeError("Slack source requires a Slack destination");
+  }
   return {
-    destination:
-      context.destination?.platform === "slack"
-        ? context.destination
-        : undefined,
+    destination: context.destination,
     source: context.source,
     requester:
       context.requester?.platform === "slack" ? context.requester : undefined,
-    destinationChannelId:
-      context.destination?.platform === "slack"
-        ? context.destination.channelId
-        : undefined,
+    destinationChannelId: context.destination.channelId,
     messageTs: context.source.messageTs,
     sourceChannelId: context.source.channelId,
     teamId: context.source.teamId,

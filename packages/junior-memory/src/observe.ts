@@ -8,7 +8,11 @@ import {
   type CreateMemoryInput,
   type MemoryDb,
 } from "./store";
-import { createMemoryAgent, type ExtractedMemory } from "./agent";
+import {
+  createMemoryAgent,
+  type ExtractedMemory,
+  type MemoryAgentOptions,
+} from "./agent";
 import { memoryRuntimeContextSchema } from "./types";
 
 const MEMORY_TOOL_NAMES = new Set([
@@ -34,6 +38,7 @@ function passiveInput(
 /** Extract and store memories from a delivered turn without using model-visible tools. */
 export async function observeMemoryTurn(
   context: TurnObservationContext,
+  options: MemoryAgentOptions = {},
 ): Promise<void> {
   if (context.toolCalls.some((toolName) => MEMORY_TOOL_NAMES.has(toolName))) {
     return;
@@ -57,9 +62,19 @@ export async function observeMemoryTurn(
     ...(context.requester ? { requester: context.requester } : {}),
     source: context.source,
   });
-  const agent = createMemoryAgent(context.model);
+  const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
+    embedder: context.embedder,
+  });
+  const existingMemories = await store.searchMemories({
+    limit: 10,
+    query: userText,
+  });
+  const agent = createMemoryAgent(context.model, options);
   const memories = await agent.extractTurnMemories({
     assistantText: context.assistantText,
+    existingMemories: existingMemories.map((memory) => ({
+      content: memory.content,
+    })),
     runtimeContext,
     userText,
   });
@@ -67,9 +82,6 @@ export async function observeMemoryTurn(
     return;
   }
 
-  const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
-    embedder: context.embedder,
-  });
   for (const [index, memory] of memories.entries()) {
     const input = passiveInput(context, memory, index, sourceKey);
     if (memory.target === "conversation") {

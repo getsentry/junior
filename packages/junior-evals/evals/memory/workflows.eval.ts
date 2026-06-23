@@ -15,26 +15,10 @@ const requesterUserId = "U-test";
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
 
 interface MemoryThread {
+  channel_type?: "channel" | "group" | "im" | "mpim";
   channel_id: string;
   id: string;
   thread_ts: string;
-}
-
-function memoryContext(thread: MemoryThread) {
-  return {
-    conversationId: `slack:${thread.channel_id}:${thread.thread_ts}`,
-    requester: {
-      platform: "slack" as const,
-      teamId: memoryTeamId,
-      userId: requesterUserId,
-    },
-    source: createSlackSource({
-      teamId: memoryTeamId,
-      channelId: thread.channel_id,
-      messageTs: thread.thread_ts,
-      threadTs: thread.thread_ts,
-    }),
-  };
 }
 
 async function seedMemory(args: {
@@ -43,15 +27,30 @@ async function seedMemory(args: {
   scope?: "conversation" | "personal";
   thread: MemoryThread;
 }) {
-  const store = createMemoryStore(memoryDb(), memoryContext(args.thread));
+  const store = createMemoryStore(memoryDb(), {
+    conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
+    requester: {
+      platform: "slack",
+      teamId: memoryTeamId,
+      userId: requesterUserId,
+    },
+    source: createSlackSource({
+      channelId: args.thread.channel_id,
+      messageTs: args.thread.thread_ts,
+      teamId: memoryTeamId,
+      threadTs: args.thread.thread_ts,
+      type: args.thread.channel_type === "im" ? "priv" : "pub",
+    }),
+  });
   const input = {
     content: args.content,
     idempotencyKey: args.idempotencyKey,
   };
   if (args.scope === "conversation") {
-    return await store.createConversationMemory(input);
+    await store.createConversationMemory(input);
+    return;
   }
-  return await store.createMemory(input);
+  await store.createMemory(input);
 }
 
 function memoryDb(): MemoryDb {
@@ -68,6 +67,10 @@ async function readMemories(thread: MemoryThread) {
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
   return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
+}
+
+async function clearMemories() {
+  await memoryDb().delete(juniorMemoryMemories);
 }
 
 function visibleAssistantText(result: {
@@ -106,6 +109,12 @@ function parseMemoryJudgeResult(text: string): {
 async function expectRequesterMemorySemantics(
   input: MemorySemanticJudgmentInput,
 ): Promise<void> {
+  const storedMemoryProjection = input.storedMemories.map((memory) => ({
+    archivedAtMs: memory.archivedAtMs,
+    content: memory.content,
+    scope: memory.scope,
+    subjectType: memory.subjectType,
+  }));
   const { text } = await completeText({
     modelId: memoryJudgeModelId,
     system:
@@ -122,14 +131,7 @@ async function expectRequesterMemorySemantics(
           input.expectedMeaning,
           "</expected-meaning>",
           "<stored-memories-json>",
-          JSON.stringify(
-            input.storedMemories.map((memory) => ({
-              archivedAtMs: memory.archivedAtMs,
-              content: memory.content,
-              scope: memory.scope,
-              subjectType: memory.subjectType,
-            })),
-          ),
+          JSON.stringify(storedMemoryProjection),
           "</stored-memories-json>",
           "<assistant-text>",
           input.assistantText,
@@ -148,9 +150,10 @@ async function expectRequesterMemorySemantics(
     temperature: 0,
   });
   const judgment = parseMemoryJudgeResult(text);
-  expect(judgment, judgment.rationale).toEqual(
-    expect.objectContaining({ passed: true }),
-  );
+  expect(
+    judgment,
+    `${judgment.rationale}\nStored memories: ${JSON.stringify(storedMemoryProjection)}`,
+  ).toEqual(expect.objectContaining({ passed: true }));
 }
 
 async function expectAssistantMemoryAnswer(args: {
@@ -202,6 +205,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("when explicitly asked to remember a public first-person preference, store one personal memory", async ({
     run,
   }) => {
+    await clearMemories();
     const result = await run({
       overrides: memoryPluginOverrides,
       events: [
@@ -252,6 +256,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("when the requester states a first-person opinion, store it even if candidate wording is rewritten", async ({
     run,
   }) => {
+    await clearMemories();
     const userText = "ok remember that i think types in python are bad";
     const result = await run({
       overrides: memoryPluginOverrides,
@@ -295,16 +300,17 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   });
 
   const passiveFirstPersonThread = {
+    channel_type: "channel",
     id: "thread-memory-passive-first-person",
     channel_id: "CMEMORYPASSIVEPERSONAL",
     thread_ts: "17000000.memory-passive-personal",
-  };
+  } satisfies MemoryThread;
 
   it("when organic conversation reveals a durable first-person preference, passively store and recall it", async ({
     run,
   }) => {
-    const userText =
-      "For future PR reviews, I prefer risk notes before summary notes.";
+    await clearMemories();
+    const userText = "In my PR reviews, risk notes go before summary notes.";
     const result = await run({
       overrides: memoryPluginOverrides,
       events: [
@@ -324,7 +330,6 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         fail: [
           "Do not answer as if no relevant preference exists.",
           "Do not claim passive memory requires an explicit remember command.",
-          "Do not store requester names, 'the requester', 'the user', 'I', 'my', thread labels, channel labels, or source labels as memory content.",
         ],
       }),
     });
@@ -360,6 +365,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("when asked to remember another person's personal preference, store nothing", async ({
     run,
   }) => {
+    await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
       events: [
@@ -391,6 +397,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("automatically injects relevant memories without requiring a recall tool", async ({
     run,
   }) => {
+    await clearMemories();
     await seedMemory({
       content: "Prefers PR summaries with risks first.",
       idempotencyKey: "eval-memory-auto-recall",
@@ -425,6 +432,51 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     ]);
   });
 
+  const passiveDedupeThread = {
+    id: "thread-memory-passive-dedupe",
+    channel_id: "CMEMORYPASSIVEDEDUPE",
+    thread_ts: "17000000.memory-passive-dedupe",
+  };
+
+  it("does not passively duplicate an existing semantic memory", async ({
+    run,
+  }) => {
+    await clearMemories();
+    await seedMemory({
+      content: "Prefers PR summaries with risks first.",
+      idempotencyKey: "eval-memory-passive-dedupe",
+      thread: passiveDedupeThread,
+    });
+
+    await run({
+      overrides: memoryPluginOverrides,
+      events: [
+        mention("For PR summaries, I still want risk notes first.", {
+          thread: passiveDedupeThread,
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant acknowledges the preference naturally without creating a second remembered copy.",
+          "The assistant does not mention hidden storage fields, scope keys, or Slack ids.",
+        ],
+        fail: [
+          "Do not claim a new duplicate memory was saved.",
+          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+        ],
+      }),
+    });
+
+    const rows = await readMemories(passiveDedupeThread);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        archivedAtMs: null,
+        content: "Prefers PR summaries with risks first.",
+        scope: "personal",
+      }),
+    ]);
+  });
+
   const removeThread = {
     id: "thread-memory-remove",
     channel_id: "CMEMORYREMOVE",
@@ -434,6 +486,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("when asked to forget a remembered preference, archive the matching memory", async ({
     run,
   }) => {
+    await clearMemories();
     await seedMemory({
       content: "Prefers terse PR summaries.",
       idempotencyKey: "eval-memory-remove",

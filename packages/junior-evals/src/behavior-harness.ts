@@ -87,6 +87,7 @@ import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 // ---------------------------------------------------------------------------
 
 interface EvalEventThreadFixture {
+  channel_type?: "channel" | "group" | "im" | "mpim";
   channel_id?: string;
   id: string;
   run_id?: string;
@@ -996,6 +997,9 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     runId: event.thread.run_id,
     raw: {
       channel: event.thread.channel_id,
+      ...(event.thread.channel_type
+        ? { channel_type: event.thread.channel_type }
+        : {}),
       team_id: EVAL_SLACK_TEAM_ID,
       ts: messageTs,
       thread_ts: event.thread.thread_ts,
@@ -1491,41 +1495,30 @@ function buildRuntimeServices(
           delete process.env.AI_GATEWAY_API_KEY;
           delete process.env.VERCEL_OIDC_TOKEN;
         }
-        let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
         try {
-          reply = await Promise.race([
-            generateAssistantReply(text, {
-              ...context,
-              onToolInvocation: (invocation) => {
-                observations.toolInvocations.push(
-                  toEvalToolInvocation(invocation),
-                );
-              },
-              ...(env.configuredSkillDirs.length > 0
-                ? { skillDirs: env.configuredSkillDirs }
-                : {}),
-              toolOverrides,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
-                    ),
-                  ),
-                replyTimeoutMs,
-              ),
+          const reply = await generateAssistantReply(text, {
+            ...context,
+            turnDeadlineAtMs: Math.min(
+              context?.turnDeadlineAtMs ?? Number.POSITIVE_INFINITY,
+              Date.now() + replyTimeoutMs,
             ),
-          ]);
+            onToolInvocation: (invocation) => {
+              observations.toolInvocations.push(
+                toEvalToolInvocation(invocation),
+              );
+            },
+            ...(env.configuredSkillDirs.length > 0
+              ? { skillDirs: env.configuredSkillDirs }
+              : {}),
+            toolOverrides,
+          });
+          replyState.successfulCount += 1;
+          return reply;
         } finally {
           if (scenario.overrides?.unset_gateway_api_key) {
             gatewaySnapshot.restore();
           }
         }
-
-        replyState.successfulCount += 1;
-        return reply;
       },
     },
     visionContext: {
@@ -1548,7 +1541,6 @@ function buildRuntimeServices(
       },
     },
   };
-
   return services;
 }
 

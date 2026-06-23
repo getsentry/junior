@@ -140,7 +140,7 @@ Rules:
 interface UserPromptContext {
   conversationId?: string;
   db: object;
-  destination?: Destination;
+  destination: Destination;
   embedder: PluginEmbedder;
   log: PluginLogger;
   plugin: PluginMetadata;
@@ -151,8 +151,9 @@ interface UserPromptContext {
 }
 ```
 
-`Source` is a runtime-normalized origin for the current turn. It must include
-`platform`, `type`, and a platform conversation id:
+`Source` is a runtime-normalized origin for the current turn. Slack sources use
+the same address fields as Slack destinations plus source visibility and inbound
+message metadata:
 
 ```ts
 type SourceType = "pub" | "priv";
@@ -162,7 +163,6 @@ type Source =
       platform: "slack";
       type: SourceType;
       teamId: string;
-      conversationId: string;
       channelId: string;
       messageTs?: string;
       threadTs?: string;

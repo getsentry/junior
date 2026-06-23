@@ -7,7 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
 process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -110,6 +110,7 @@ const LOCAL_DESTINATION = {
   platform: "local",
   conversationId: "local:test:plugin-prompt-hooks",
 } satisfies Destination;
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 describe("plugin prompt hooks", () => {
   let previousPlugins: ReturnType<typeof setPlugins>;
@@ -159,6 +160,7 @@ describe("plugin prompt hooks", () => {
   it("renders prompt messages from plugin hooks", async () => {
     await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-hooks",
         turnId: "turn-plugin-prompt-hooks",
@@ -174,6 +176,7 @@ describe("plugin prompt hooks", () => {
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
     await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-follow-up",
         turnId: "turn-plugin-prompt-follow-up-1",
@@ -184,6 +187,7 @@ describe("plugin prompt hooks", () => {
 
     await generateAssistantReply("again", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-follow-up",
         turnId: "turn-plugin-prompt-follow-up-2",
@@ -207,6 +211,7 @@ describe("plugin prompt hooks", () => {
   it("does not run user prompt hooks for steering messages", async () => {
     await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-steering",
         turnId: "turn-plugin-prompt-steering",
@@ -236,6 +241,7 @@ describe("plugin prompt hooks", () => {
 
     await generateAssistantReply("resume me", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-resume-before-prompt",
         turnId: "turn-plugin-prompt-resume-before-prompt",
@@ -268,6 +274,7 @@ describe("plugin prompt hooks", () => {
 
     await generateAssistantReply("resume me", {
       destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       correlation: {
         conversationId: "conversation-plugin-prompt-resume-after-prompt",
         turnId: "turn-plugin-prompt-resume-after-prompt",

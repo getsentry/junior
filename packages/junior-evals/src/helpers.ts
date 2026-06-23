@@ -527,6 +527,7 @@ const DEFAULT_AUTHOR = {
 type AuthorOverrides = Partial<typeof DEFAULT_AUTHOR>;
 
 interface ThreadOverrides {
+  channel_type?: "channel" | "group" | "im" | "mpim";
   id?: string;
   channel_id?: string;
   thread_ts?: string;

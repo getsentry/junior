@@ -68,22 +68,25 @@ The observation hook must:
    observation failure cannot fail delivery.
 2. Invoke the memory-owned extraction agent with bounded user-authored turn
    text.
-3. Ignore assistant-authored claims as memory sources.
-4. Skip passive extraction for unsupported sources. V1 supports local CLI
+3. Provide visible existing memories as dedupe context only, not as source
+   evidence for new memories.
+4. Ignore assistant-authored claims as memory sources.
+5. Skip passive extraction for unsupported sources. V1 supports local CLI
    observations and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
    extraction.
-5. Skip passive extraction when the completed turn already called a
+6. Skip passive extraction when the completed turn already called a
    memory-management tool (`createMemory`, `listMemories`, `searchMemories`, or
    `removeMemory`); the explicit tool path owns `createMemory` writes.
-6. Extract candidate facts with a structured model output contract.
-7. Reject malformed, incoherent, unsafe, out-of-scope, or non-durable facts.
-8. Assign requester or conversation target from memory-agent output, while
+7. Extract candidate facts with a structured model output contract.
+8. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
+   non-durable facts.
+9. Assign requester or conversation target from memory-agent output, while
    deriving all authority-bearing ids from runtime context.
-9. Insert accepted memories idempotently with a stable key derived through the
-   runtime source helper, turn id, and extracted fact position.
-10. Generate embeddings for accepted rows when the host embedder is configured.
-11. Avoid storing raw extraction prompt, raw model output, or raw turn text
+10. Insert accepted memories idempotently with a stable key derived through the
+    runtime source helper, turn id, and extracted fact position.
+11. Generate embeddings for accepted rows when the host embedder is configured.
+12. Avoid storing raw extraction prompt, raw model output, or raw turn text
     beyond the accepted memory records.
 
 Observation hooks are best effort. If extraction or storage fails, Junior logs
@@ -156,7 +159,15 @@ fields are part of the bounded extraction input. Prompt inputs should use the
 same structured context-block style as Junior's turn context, with separate
 `<runtime>` and source blocks. Explicit `createMemory` review uses a singular
 `<candidate>` block and the current user-authored message as bounded source
-context. Passive extraction uses only the completed turn's user-authored text.
+context. Passive extraction uses the completed turn's user-authored text plus
+visible existing memories for dedupe. Existing memories must not be used as
+source evidence for new facts.
+
+The memory agent model is host-owned but selected by the memory plugin. An
+explicit `createMemoryPlugin({ modelId })` option wins, then `AI_MEMORY_MODEL`,
+then the host structured-model default. Model choice is an implementation
+tuning knob; runtime context, source authority, and storage validation remain
+the boundary.
 
 Memory agent output must be structured. For explicit review it should include:
 
@@ -165,14 +176,17 @@ Memory agent output must be structured. For explicit review it should include:
 - optional adjusted memory type, subject, scope, expiration, or content rewrite
 
 For passive extraction it should include an array of accepted candidate
-memories with target, canonical content, and optional expiration. Rejections are
+memories with target, canonical stored content, and optional expiration.
+Requester-target passive memories in V1 focus on durable first-person
+preferences, opinions, and habits. Broader public requester facts can still be
+handled by the explicit reviewed `createMemory` path. Rejections are
 represented by omitting a candidate from the array.
 
-The structured content field is the canonical stored memory text. The memory
-agent must use that field to return perspective-neutral fact text. For example,
-`I prefer terse PR summaries` should become `Prefers terse PR summaries`, and
-`This thread says deploy runbooks live in Notion` should become
-`Deploy runbooks live in Notion`.
+The content field is canonical stored memory text. Requester memory content
+must omit ownership from prose because ownership lives in structured metadata.
+For example, `I prefer terse PR summaries` should become requester memory
+`Prefers terse PR summaries`, and `This thread says deploy runbooks live in
+Notion` should become conversation memory `Deploy runbooks live in Notion`.
 
 The memory agent may narrow, rewrite, or reject extracted candidates, but it
 may not override hard structural validators. If extraction and review disagree,

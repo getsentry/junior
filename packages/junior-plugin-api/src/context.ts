@@ -40,6 +40,8 @@ export interface PluginModel {
   /** Run a host-owned structured model call without exposing provider credentials. */
   completeObject<TSchema extends ZodTypeAny>(input: {
     maxTokens?: number;
+    /** Optional host model id override for plugin-owned structured calls. */
+    modelId?: string;
     prompt: string;
     schema: TSchema;
     system?: string;
@@ -72,16 +74,16 @@ interface BaseInvocationContext {
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {
-  /** Runtime-owned default outbound destination for this invocation, if any. */
-  destination?: SlackDestination;
+  /** Runtime-owned default outbound destination for this invocation. */
+  destination: SlackDestination;
   requester?: SlackRequester;
   /** Runtime-owned source where the invocation came from. */
   source: SlackSource;
 }
 
 export interface LocalInvocationContext extends BaseInvocationContext {
-  /** Runtime-owned default outbound destination for this invocation, if any. */
-  destination?: LocalDestination;
+  /** Runtime-owned default outbound destination for this invocation. */
+  destination: LocalDestination;
   requester?: LocalRequester;
   /** Runtime-owned source where the invocation came from. */
   source: LocalSource;
@@ -135,17 +137,6 @@ export function createLocalSource(conversationId: string): LocalSource {
     type: "priv",
     conversationId,
   };
-}
-
-/** Build a source from a destination when the source is the same conversation. */
-export function sourceFromDestination(destination: Destination): Source {
-  if (destination.platform === "local") {
-    return createLocalSource(destination.conversationId);
-  }
-  return createSlackSource({
-    channelId: destination.channelId,
-    teamId: destination.teamId,
-  });
 }
 
 /** Return whether a source is private to a person or restricted group. */

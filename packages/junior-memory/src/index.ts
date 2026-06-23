@@ -1,4 +1,5 @@
 export { createMemoryPlugin, memoryPlugin } from "./plugin";
+export type { MemoryPluginOptions } from "./plugin";
 export { createMemoryStore } from "./store";
 export type {
   ArchiveMemoryInput,

@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const { agentMode, counters } = vi.hoisted(() => ({
@@ -270,6 +270,11 @@ const TEST_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
+const TEST_SOURCE = createSlackSource({
+  teamId: TEST_DESTINATION.teamId,
+  channelId: TEST_DESTINATION.channelId,
+  threadTs: "1712345.0001",
+});
 
 describe("generateAssistantReply provider retry", () => {
   beforeEach(async () => {
@@ -291,6 +296,7 @@ describe("generateAssistantReply provider retry", () => {
   it("continues from the last safe boundary after a transient provider stream error", async () => {
     const replyPromise = generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
@@ -362,6 +368,7 @@ describe("generateAssistantReply provider retry", () => {
 
     const reply = await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       piMessages: priorMessages,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
@@ -420,6 +427,7 @@ describe("generateAssistantReply provider retry", () => {
 
     const error = await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield",
@@ -474,6 +482,7 @@ describe("generateAssistantReply provider retry", () => {
         threadTs: "1712345.0005",
       },
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       drainSteeringMessages: async (inject) => {
         const messages = [
           { text: "actually do the other thing", timestampMs: 2_000 },
@@ -517,6 +526,7 @@ describe("generateAssistantReply provider retry", () => {
 
     const error = await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-persist-failure",
@@ -551,6 +561,7 @@ describe("generateAssistantReply provider retry", () => {
 
     await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-steering-failure",

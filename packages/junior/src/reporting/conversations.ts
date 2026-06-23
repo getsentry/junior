@@ -16,12 +16,7 @@ import type {
   PluginConversationStatus,
   PluginConversations,
   PluginConversationSummary,
-  Destination,
   Source,
-} from "@sentry/junior-plugin-api";
-import {
-  createLocalSource,
-  createSlackSource,
 } from "@sentry/junior-plugin-api";
 import {
   buildSentryConversationUrl,
@@ -1095,26 +1090,16 @@ function countConversationMessages(transcript: TranscriptMessage[]): number {
   return transcript.filter(isConversationMessage).length;
 }
 
-function systemPromptMessage(destination: Destination): TranscriptMessage {
+function systemPromptMessage(source: Source): TranscriptMessage {
   return {
     role: "system",
     parts: [
       {
         type: "text",
-        text: buildSystemPrompt({ source: sourceFromDestination(destination) }),
+        text: buildSystemPrompt({ source }),
       },
     ],
   };
-}
-
-function sourceFromDestination(destination: Destination): Source {
-  if (destination.platform === "local") {
-    return createLocalSource(destination.conversationId);
-  }
-  return createSlackSource({
-    teamId: destination.teamId,
-    channelId: destination.channelId,
-  });
 }
 
 interface ScopedTurnMessages {
@@ -1379,8 +1364,8 @@ export async function readConversationReport(
         ? [
             ...(scopedMessages.startsAtRunBoundary &&
             normalizedTranscript.length > 0 &&
-            sessionRecord?.destination
-              ? [systemPromptMessage(sessionRecord.destination)]
+            sessionRecord?.source
+              ? [systemPromptMessage(sessionRecord.source)]
               : []),
             ...normalizedTranscript,
           ]

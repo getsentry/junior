@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
@@ -101,15 +102,21 @@ function makeReplyContext(args: {
   threadTs: string;
   turnId: string;
 }) {
+  const destination = {
+    platform: "slack" as const,
+    teamId: "T123",
+    channelId: "C123",
+  };
   return {
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
-    destination: {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId: "C123",
-    },
+    destination,
+    source: createSlackSource({
+      teamId: destination.teamId,
+      channelId: destination.channelId,
+      threadTs: args.threadTs,
+    }),
     requester: TEST_REQUESTER,
     recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
       pendingAuthRecords.push(pendingAuth);
@@ -1164,6 +1171,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
       },
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0003",
+      }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
         pendingAuthRecords.push(pendingAuth);
@@ -1257,6 +1269,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
       },
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0005",
+      }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
         pendingAuthRecords.push(pendingAuth);
@@ -1296,6 +1313,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
       },
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0006",
+      }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
         pendingAuthRecords.push(pendingAuth);

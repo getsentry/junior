@@ -65,8 +65,8 @@ interface BaseToolRuntimeContext {
    */
   conversationId?: string;
 
-  /** Runtime-owned default outbound destination, if this invocation has one. */
-  destination?: Destination;
+  /** Runtime-owned default outbound destination for this invocation. */
+  destination: Destination;
 
   requester?: Requester;
   /** Runtime-owned source where this invocation came from. */
@@ -81,13 +81,13 @@ interface BaseToolRuntimeContext {
 }
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
-  destination?: SlackDestination;
+  destination: SlackDestination;
   requester?: SlackRequester;
   source: SlackSource;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
-  destination?: LocalDestination;
+  destination: LocalDestination;
   requester?: LocalRequester;
   source: LocalSource;
   slack?: never;
