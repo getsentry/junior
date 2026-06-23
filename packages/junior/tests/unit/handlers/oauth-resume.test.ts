@@ -118,6 +118,7 @@ describe("resumeAuthorizedRequest", () => {
         destination: TEST_SLACK_DESTINATION,
         source: testSlackSource("1700000000.0001"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+        source: testSlackSource("1700000000.0001"),
       },
       generateReply: () => new Promise<never>(() => {}),
       replyTimeoutMs: 10,
@@ -161,6 +162,7 @@ describe("resumeAuthorizedRequest", () => {
         destination: TEST_SLACK_DESTINATION,
         source: testSlackSource("1700000000.0004"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+        source: testSlackSource("1700000000.0004"),
       },
       generateReply: async () => {
         throw new Error("resume failed");
@@ -202,6 +204,7 @@ describe("resumeAuthorizedRequest", () => {
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0005"),
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          source: testSlackSource("1700000000.0005"),
         },
         generateReply: async () => ({
           text: "Final resumed answer",
@@ -328,6 +331,7 @@ describe("resumeAuthorizedRequest", () => {
             teamId: "T-test",
             userId: "U-test",
           },
+          source: testSlackSource("1700000000.0005"),
         },
         generateReply: async () => ({
           text: "Final resumed answer",
@@ -355,12 +359,7 @@ describe("resumeAuthorizedRequest", () => {
             teamId: "T-test",
             userId: "U-test",
           },
-          source: {
-            platform: "slack",
-            teamId: "T-test",
-            channelId: "C-test",
-            threadTs: "1700000000.0005",
-          },
+          source: testSlackSource("1700000000.0005"),
           toolCalls: [],
           turnId: "turn-resume-1",
           userText: "remember that launch notes live in Notion",
@@ -396,6 +395,7 @@ describe("resumeAuthorizedRequest", () => {
         destination: TEST_SLACK_DESTINATION,
         source: testSlackSource("1700000000.0002"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+        source: testSlackSource("1700000000.0002"),
       },
       generateReply: async () => {
         throw new RetryableTurnError("agent_continue", "timed out again", {
@@ -426,6 +426,7 @@ describe("resumeAuthorizedRequest", () => {
         destination: TEST_SLACK_DESTINATION,
         source: testSlackSource("1700000000.0003"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+        source: testSlackSource("1700000000.0003"),
       },
       generateReply: async () => {
         throw new RetryableTurnError("agent_continue", "timed out again", {

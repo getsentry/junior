@@ -3,7 +3,11 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { Destination } from "@sentry/junior-plugin-api";
+import {
+  sourceSchema,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import { parseDestination } from "@/chat/destination";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { isRecord } from "@/chat/coerce";
@@ -23,6 +27,7 @@ export interface McpAuthSessionState {
   userId: string;
   conversationId: string;
   destination?: Destination;
+  source?: Source;
   sessionId: string;
   userMessage: string;
   channelId?: string;
@@ -112,6 +117,13 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
     if (parsed.destination !== undefined && !destination) {
       return undefined;
     }
+    const source =
+      parsed.source === undefined
+        ? undefined
+        : sourceSchema.safeParse(parsed.source);
+    if (parsed.source !== undefined && (!source || !source.success)) {
+      return undefined;
+    }
 
     return {
       authSessionId: parsed.authSessionId,
@@ -119,6 +131,7 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
       userId: parsed.userId,
       conversationId: parsed.conversationId,
       ...(destination ? { destination } : {}),
+      ...(source?.success ? { source: source.data } : {}),
       sessionId: parsed.sessionId,
       userMessage: parsed.userMessage,
       createdAtMs: parsed.createdAtMs,

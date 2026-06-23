@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   createPluginAuthOrchestration,
   PluginAuthorizationPauseError,
@@ -55,6 +56,14 @@ const githubWriteSignal = {
   createdAtMs: Date.now(),
 };
 
+const slackSource = createSlackSource({
+  teamId: "T123",
+  channelId: "C123",
+  messageTs: "1700000000.source",
+  threadTs: "1700000000.000000",
+  type: "pub",
+});
+
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
@@ -90,6 +99,7 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
       requesterId: "U123",
+      source: slackSource,
       userMessage: "check Sentry",
       userTokenStore: tokens,
     });
@@ -106,6 +116,7 @@ describe("createPluginAuthOrchestration", () => {
       "sentry",
       expect.objectContaining({
         requesterId: "U123",
+        source: slackSource,
         userMessage: "check Sentry",
       }),
     );

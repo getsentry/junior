@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   getAgentTurnSessionRecord,

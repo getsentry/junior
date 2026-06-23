@@ -57,7 +57,6 @@ import {
   type Requester,
 } from "@/chat/requester";
 import { requireSlackDestination } from "@/chat/destination";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -325,6 +324,15 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
+      if (!lockedSessionRecord.source) {
+        await failAgentTurnSessionRecord({
+          conversationId: authSession.conversationId,
+          expectedVersion: lockedSessionRecord.version,
+          sessionId: lockedSessionId,
+          errorMessage: "Stored Slack source missing for MCP OAuth resume",
+        });
+        return false;
+      }
 
       await recordAuthorizationCompleted({
         conversationId: authSession.conversationId,
@@ -348,14 +356,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           requester,
           destination,
-          source:
-            lockedSessionRecord.source ??
-            createSlackSource({
-              teamId: destination.teamId,
-              channelId: authSession.channelId!,
-              threadTs: authSession.threadTs!,
-              ...(lockedMessageTs ? { messageTs: lockedMessageTs } : {}),
-            }),
+          source: lockedSessionRecord.source,
           correlation: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,

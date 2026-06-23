@@ -1,5 +1,4 @@
 import { botConfig } from "@/chat/config";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   generateAssistantReply,
@@ -117,7 +116,7 @@ interface ResumeSlackTurnArgs {
   channelId: string;
   threadTs: string;
   messageTs?: string;
-  replyContext?: AssistantReplyRequestContext;
+  replyContext?: ResumeReplyContext;
   lockKey?: string;
   initialText?: string;
   generateReply?: typeof generateAssistantReply;
@@ -424,14 +423,7 @@ export async function resumeSlackTurn(
           ...(replyContext.requester
             ? { requester: replyContext.requester }
             : {}),
-          source:
-            replyContext.source ??
-            createSlackSource({
-              teamId: replyContext.destination.teamId,
-              channelId: replyContext.destination.channelId,
-              ...(runArgs.messageTs ? { messageTs: runArgs.messageTs } : {}),
-              threadTs: runArgs.threadTs,
-            }),
+          source: replyContext.source,
           userText: runArgs.messageText,
         },
       });
@@ -543,7 +535,7 @@ export async function resumeAuthorizedRequest(args: {
   threadTs: string;
   messageTs?: string;
   connectedText: string;
-  replyContext?: AssistantReplyRequestContext;
+  replyContext?: ResumeReplyContext;
   lockKey?: string;
   generateReply?: typeof generateAssistantReply;
   onSuccess?: (reply: AssistantReply) => Promise<void>;

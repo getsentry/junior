@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getPluginDefinition } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -29,6 +29,7 @@ export async function createMcpOAuthClientProvider(input: {
   provider: string;
   conversationId: string;
   destination?: Destination;
+  source?: Source;
   sessionId: string;
   userId: string;
   userMessage: string;
@@ -66,6 +67,7 @@ export async function createMcpOAuthClientProvider(input: {
     userId: input.userId,
     conversationId: input.conversationId,
     ...(input.destination ? { destination: input.destination } : {}),
+    ...(input.source ? { source: input.source } : {}),
     sessionId: input.sessionId,
     userMessage: input.userMessage,
     ...(input.channelId ? { channelId: input.channelId } : {}),

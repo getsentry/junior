@@ -1261,6 +1261,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   state: "failed",
                   requester,
                   destination,
+                  source,
                   traceId: getActiveTraceId(),
                 });
                 const sessionRecord = await getAgentTurnSessionRecord(

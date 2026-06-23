@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -47,6 +48,14 @@ function plugin(name: string): PluginDefinition {
   };
 }
 
+const slackSource = createSlackSource({
+  teamId: "T123",
+  channelId: "C123",
+  messageTs: "1700000000.source",
+  threadTs: "1700000000.000000",
+  type: "pub",
+});
+
 describe("createMcpAuthOrchestration", () => {
   beforeEach(() => {
     createMcpOAuthClientProvider.mockReset();
@@ -68,6 +77,7 @@ describe("createMcpAuthOrchestration", () => {
       sessionId: "scheduled:sched_1:1000",
       requesterId: "U123",
       channelId: "C123",
+      source: slackSource,
       threadTs: "1700000000.000000",
       userMessage: "<scheduled-task-run />",
       getConfiguration: () => ({}),
@@ -83,6 +93,11 @@ describe("createMcpAuthOrchestration", () => {
     ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
 
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
+    expect(createMcpOAuthClientProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: slackSource,
+      }),
+    );
     expect(patchMcpAuthSession).not.toHaveBeenCalled();
     expect(getMcpAuthSession).not.toHaveBeenCalled();
     expect(deliverPrivateMessage).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
@@ -7,7 +8,6 @@ import {
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const generateAssistantReplyMock = vi.fn();
 
@@ -104,6 +104,12 @@ describe("agent continuation Slack integration", () => {
   it("posts the resumed reply through the Slack MSW harness and persists completion", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
+    const storedSource = createSlackSource({
+      teamId: "T123",
+      channelId: "C123",
+      messageTs: "1712345.continue-source",
+      threadTs: "1712345.0001",
+    });
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
         conversationId,
@@ -111,7 +117,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 2,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0001"),
+        source: storedSource,
         piMessages: [
           {
             role: "user",
@@ -195,6 +201,7 @@ describe("agent continuation Slack integration", () => {
           userName: "testuser",
         }),
         destination: SLACK_DESTINATION,
+        source: storedSource,
         toolChannelId: "C999",
         inboundAttachmentCount: 2,
         omittedImageAttachmentCount: 1,

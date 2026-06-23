@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import type { Destination } from "@sentry/junior-plugin-api";
+import {
+  sourceSchema,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
@@ -22,6 +26,7 @@ export type OAuthStatePayload = {
   provider: string;
   channelId?: string;
   destination?: Destination;
+  source?: Source;
   threadTs?: string;
   pendingMessage?: string;
   configuration?: Record<string, unknown>;
@@ -34,6 +39,7 @@ type OAuthFlowInput = {
   requesterId: string;
   channelId?: string;
   destination?: Destination;
+  source?: Source;
   threadTs?: string;
   userMessage?: string;
   channelConfiguration?: ChannelConfigurationService;
@@ -63,6 +69,17 @@ export function parseOAuthStatePayload(
   if (value.destination !== undefined && !destination) {
     return undefined;
   }
+  const source =
+    value.source === undefined
+      ? undefined
+      : sourceSchema.safeParse(value.source);
+  if (value.source !== undefined && (!source || !source.success)) {
+    return undefined;
+  }
+  const pendingMessage = optionalString(value.pendingMessage);
+  if (pendingMessage && !source?.success) {
+    return undefined;
+  }
   return {
     userId: value.userId,
     provider: value.provider,
@@ -70,12 +87,11 @@ export function parseOAuthStatePayload(
       ? { channelId: optionalString(value.channelId) }
       : {}),
     ...(destination ? { destination } : {}),
+    ...(source?.success ? { source: source.data } : {}),
     ...(optionalString(value.threadTs)
       ? { threadTs: optionalString(value.threadTs) }
       : {}),
-    ...(optionalString(value.pendingMessage)
-      ? { pendingMessage: optionalString(value.pendingMessage) }
-      : {}),
+    ...(pendingMessage ? { pendingMessage } : {}),
     ...(isRecord(value.configuration)
       ? { configuration: value.configuration }
       : {}),
@@ -241,6 +257,7 @@ export async function startOAuthFlow(
       provider,
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.destination ? { destination: input.destination } : {}),
+      ...(input.source ? { source: input.source } : {}),
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
       ...(configuration && Object.keys(configuration).length > 0

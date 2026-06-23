@@ -67,7 +67,6 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import { requireSlackDestination } from "@/chat/destination";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 
 interface OAuthCallbackOptions {
   generateReply?: typeof generateAssistantReply;
@@ -182,6 +181,7 @@ async function resumeOAuthSessionRecordTurn(
     !stored.resumeSessionId ||
     !stored.channelId ||
     !stored.destination ||
+    !stored.source ||
     !stored.threadTs
   ) {
     return false;
@@ -350,6 +350,15 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
+      if (!lockedSessionRecord.source) {
+        await failAgentTurnSessionRecord({
+          conversationId: stored.resumeConversationId!,
+          expectedVersion: lockedSessionRecord.version,
+          sessionId: lockedSessionId,
+          errorMessage: "Stored Slack source missing for OAuth resume",
+        });
+        return false;
+      }
 
       await recordAuthorizationCompleted({
         conversationId: stored.resumeConversationId!,
@@ -378,14 +387,7 @@ async function resumeOAuthSessionRecordTurn(
           },
           requester,
           destination,
-          source:
-            lockedSessionRecord.source ??
-            createSlackSource({
-              teamId: destination.teamId,
-              channelId: stored.channelId!,
-              threadTs: stored.threadTs!,
-              ...(lockedMessageTs ? { messageTs: lockedMessageTs } : {}),
-            }),
+          source: lockedSessionRecord.source,
           correlation: {
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,
@@ -480,10 +482,12 @@ async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
   options: OAuthCallbackOptions,
 ): Promise<void> {
+  const source = stored.source;
   if (
     !stored.pendingMessage ||
     !stored.channelId ||
     !stored.destination ||
+    !source ||
     !stored.threadTs
   ) {
     return;
@@ -521,12 +525,7 @@ async function resumePendingOAuthMessage(
       },
       requester,
       destination: stored.destination,
-      source: createSlackSource({
-        teamId: destination.teamId,
-        channelId: stored.channelId,
-        threadTs: stored.threadTs,
-        ...(messageTs ? { messageTs } : {}),
-      }),
+      source,
       correlation: {
         conversationId: threadId,
         channelId: stored.channelId,

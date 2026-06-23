@@ -11,7 +11,7 @@
  * stdout patterns, or exit codes.
  */
 import { THREAD_STATE_TTL_MS } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -54,6 +54,7 @@ export interface PluginAuthOrchestrationInput {
   requesterId?: string;
   channelId?: string;
   destination?: Destination;
+  source?: Source;
   threadTs?: string;
   userMessage: string;
   channelConfiguration?: ChannelConfigurationService;
@@ -171,6 +172,7 @@ export function createPluginAuthOrchestration(
         requesterId: input.requesterId,
         channelId: input.channelId,
         destination: input.destination,
+        source: input.source,
         threadTs: input.threadTs,
         userMessage: input.userMessage,
         channelConfiguration: input.channelConfiguration,
