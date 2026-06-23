@@ -24,6 +24,7 @@ import {
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
+  getSuccessfulToolCalls,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
@@ -379,7 +380,9 @@ export async function runLocalAgentTurn(
     }
     await observePluginTurn({
       assistantText: reply.text,
-      toolCalls: reply.diagnostics.toolCalls,
+      toolCalls: reply.piMessages
+        ? getSuccessfulToolCalls(reply.piMessages)
+        : reply.diagnostics.toolCalls,
       turnId,
       context: {
         conversationId: input.conversationId,

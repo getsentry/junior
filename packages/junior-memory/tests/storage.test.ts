@@ -210,6 +210,7 @@ function extractionModel(
 function slackContext(
   overrides: {
     channelId?: string;
+    sourceType?: "priv" | "pub";
     teamId?: string;
     threadTs?: string;
     userId?: string;
@@ -230,6 +231,7 @@ function slackContext(
       channelId,
       messageTs: threadTs,
       threadTs,
+      type: overrides.sourceType ?? "pub",
     }),
   };
 }
@@ -468,7 +470,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("skips passive extraction for memory tool turns", async () => {
+  it("skips passive extraction for successful memory tool turns", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -497,6 +499,39 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
+  it("extracts passive memories when an explicit memory tool did not succeed", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers fallback passive extraction.",
+          target: "requester",
+        },
+      ]);
+
+      await observeMemoryTurn(
+        observationContext({
+          db: memoryDb(fixture),
+          model,
+          toolCalls: [],
+          userText: "Remember that I prefer fallback passive extraction.",
+        }),
+      );
+
+      expect(calls).toHaveLength(1);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Prefers fallback passive extraction.",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("skips passive extraction in private Slack contexts", async () => {
     const fixture = await createMemoryFixture();
 
@@ -507,7 +542,10 @@ describe("memory plugin storage", () => {
           target: "requester",
         },
       ]);
-      const privateContext = slackContext({ channelId: "D123" });
+      const privateContext = slackContext({
+        channelId: "D123",
+        sourceType: "priv",
+      });
 
       await observeMemoryTurn(
         observationContext({

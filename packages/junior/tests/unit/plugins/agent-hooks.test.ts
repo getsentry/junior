@@ -111,6 +111,24 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
+  it("keeps Slack sources private unless the caller marks them public", () => {
+    expect(
+      createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1718800000.000000",
+      }).type,
+    ).toBe("priv");
+    expect(
+      createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1718800000.000000",
+        type: "pub",
+      }).type,
+    ).toBe("pub");
+  });
+
   it("collects system prompt contributions from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({

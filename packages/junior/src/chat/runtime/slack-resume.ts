@@ -22,6 +22,7 @@ import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
+import { getSuccessfulToolCalls } from "@/chat/respond-helpers";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -413,7 +414,9 @@ export async function resumeSlackTurn(
     ) {
       await observePluginTurn({
         assistantText: reply.text,
-        toolCalls: reply.diagnostics.toolCalls,
+        toolCalls: reply.piMessages
+          ? getSuccessfulToolCalls(reply.piMessages)
+          : reply.diagnostics.toolCalls,
         turnId: replyContext.correlation?.turnId ?? lockKey,
         context: {
           conversationId: replyContext.correlation?.conversationId ?? lockKey,
@@ -421,12 +424,14 @@ export async function resumeSlackTurn(
           ...(replyContext.requester
             ? { requester: replyContext.requester }
             : {}),
-          source: createSlackSource({
-            teamId: replyContext.destination.teamId,
-            channelId: replyContext.destination.channelId,
-            ...(runArgs.messageTs ? { messageTs: runArgs.messageTs } : {}),
-            threadTs: runArgs.threadTs,
-          }),
+          source:
+            replyContext.source ??
+            createSlackSource({
+              teamId: replyContext.destination.teamId,
+              channelId: replyContext.destination.channelId,
+              ...(runArgs.messageTs ? { messageTs: runArgs.messageTs } : {}),
+              threadTs: runArgs.threadTs,
+            }),
           userText: runArgs.messageText,
         },
       });

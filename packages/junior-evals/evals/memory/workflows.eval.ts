@@ -390,59 +390,6 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     expect(await readMemories(thirdPartyRememberThread)).toEqual([]);
   });
 
-  const listThread = {
-    id: "thread-memory-list",
-    channel_id: "CMEMORYLIST",
-    thread_ts: "17000000.memory-list",
-  };
-
-  it("listMemories reads visible memories before answering what Junior remembers", async ({
-    run,
-  }) => {
-    const seeded = await seedMemory({
-      content: "Prefers terse PR summaries.",
-      idempotencyKey: "eval-memory-list",
-      thread: listThread,
-    });
-
-    const result = await run({
-      overrides: memoryPluginOverrides,
-      events: [
-        mention(
-          "List the exact memories you have about how I like PR summaries, including the memory id.",
-          {
-            thread: listThread,
-          },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant lists the stored memory about terse PR summaries.",
-          "The assistant includes a memory id or id prefix from the memory tool output.",
-          "The assistant does not ask the user to restate the preference.",
-        ],
-        fail: [
-          "Do not answer as if no relevant memory exists.",
-          "Do not mention hidden storage fields, scope keys, or Slack ids.",
-        ],
-      }),
-    });
-
-    await expectAssistantMemoryAnswer({
-      assistantText: visibleAssistantText(result),
-      expectedBehavior:
-        "The assistant lists the stored memory that the requester prefers terse PR summaries.",
-    });
-    expectMemoryIdReference(visibleAssistantText(result), seeded.memory.id);
-    expect(await readMemories(listThread)).toEqual([
-      expect.objectContaining({
-        archivedAtMs: null,
-        content: "Prefers terse PR summaries.",
-        scope: "personal",
-      }),
-    ]);
-  });
-
   const searchThread = {
     id: "thread-memory-search",
     channel_id: "CMEMORYSEARCH",

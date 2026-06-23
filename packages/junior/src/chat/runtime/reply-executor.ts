@@ -118,6 +118,7 @@ import {
 } from "@/chat/state/conversation-details";
 import { loadProjection } from "@/chat/state/session-log";
 import {
+  getSuccessfulToolCalls,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
@@ -863,8 +864,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               omittedImageAttachmentCount,
               userAttachments,
               slackConversation,
-              destination,
               source,
+              destination,
               surface: "slack",
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
@@ -1088,37 +1089,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (reply.diagnostics.outcome === "success") {
             await observePluginTurn({
               assistantText: reply.text,
-              toolCalls: reply.diagnostics.toolCalls,
+              toolCalls: reply.piMessages
+                ? getSuccessfulToolCalls(reply.piMessages)
+                : reply.diagnostics.toolCalls,
               turnId,
               context: {
                 ...(conversationId ? { conversationId } : {}),
                 destination,
                 requester: requesterIdentity,
-                source: createSlackSource({
-                  teamId: destination.teamId,
-                  channelId: destination.channelId,
-                  ...(messageTs ? { messageTs } : {}),
-                  ...(threadTs ? { threadTs } : {}),
-                }),
-                userText: currentText.userText,
+                source,
+                userText: effectiveUserText,
               },
             });
           }
-          preparedState.conversation = completedState.conversation;
-          persistedAtLeastOnce = true;
-          if (shouldEmitDevAgentTrace()) {
-            logInfo(
-              "agent_turn_completed",
-              turnTraceContext,
-              {
-                "app.ai.outcome": reply.diagnostics.outcome,
-                "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-                "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
-              },
-              "Agent turn completed",
-            );
-          }
-          await options.onTurnCompleted?.();
           if (reply.diagnostics.outcome === "success" && conversationId) {
             try {
               await deps.services.scheduleSessionCompletedPluginTasks({

@@ -86,7 +86,7 @@ const extractedMemorySchema = z
       .string()
       .min(1)
       .describe(
-        "Canonical perspective-neutral fact. For requester memories, omit the subject and write a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'. Do not include requester names, display names, 'the requester', 'the user', first-person wording like 'I', 'me', 'my', 'mine', 'we', or 'our', second-person wording like 'you' or 'your', 'this thread', or channel/source labels.",
+        "Canonical perspective-neutral fact. For requester memories, omit the subject and write a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'. Do not include requester names, display names, 'the requester', 'the user', first-person wording like 'I', 'me', 'my', 'mine', 'we', or 'our', second-person wording like 'you' or 'your', 'this thread', or channel/source labels. Good: 'Prefers morning standup notes'. Bad: 'I prefer morning standup notes'. Bad: 'The requester prefers morning standup notes'.",
       ),
     expiresAtMs: z
       .number()
@@ -156,6 +156,7 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Extract only facts explicitly present in the user-authored message. Assistant text is rejection context only; never use assistant text, tool results, recalled memory text, or suggested wording as source evidence.",
   "Never store a fact merely because the assistant suggested or invented it. The user-authored text is the source of truth.",
   "For requester memories, omit the subject and use canonical phrasing such as 'Prefers X', 'Uses Y', or 'Thinks Z'; never output 'I', 'me', 'my', 'mine', 'we', 'our', 'you', 'your', a requester name, 'the requester', or 'the user'.",
+  "Requester memory content should read like a stored fact, not like a quote from the user. Convert 'I prefer X' into 'Prefers X', 'I use Y' into 'Uses Y', and 'I think Z' into 'Thinks Z'.",
   "Before returning a requester memory, self-check the content: if it could be read as the user's direct quote, rewrite it into omitted-subject canonical prose.",
   "Return one memory per distinct fact. If a first-person requester fact mentions a workstream, project, or conversation topic, keep that context inside the requester memory instead of also creating a conversation memory for the same fact.",
   "Advice, how-to, search, recall, and planning questions are not memories by themselves. Extract from those turns only when the user states a durable self-fact or shared project fact that remains true beyond the request.",
@@ -278,7 +279,9 @@ function extractionPrompt(request: ExtractTurnRequest): string {
     "- Use target=conversation only for shared operational/project knowledge.",
     "- Store content as person-less, source-less canonical knowledge. Ownership and source live in structured metadata, not prose.",
     "- For requester memories, omit the subject and write the content as a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'.",
+    "- Requester memory content should never read like a direct user quote. Convert first-person statements into omitted-subject facts before returning them.",
     "- If the stored content would still sound like the user's direct quote, rewrite it before returning it.",
+    "- Good stored content: 'Prefers morning standup notes'. Bad stored content: 'I prefer morning standup notes'.",
     "- Good stored content: 'Prefers morning standup notes'. Bad stored content: 'The requester prefers morning standup notes'.",
     "- Good stored content: 'Thinks runtime logs should include request ids'. Bad stored content: 'David thinks runtime logs should include request ids'.",
     "- Good stored content: 'Release checklist lives in Linear'. Bad stored content: 'This thread says the release checklist lives in Linear'.",
