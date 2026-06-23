@@ -1070,6 +1070,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               traceId: getActiveTraceId(),
             });
           }
+          preparedState.conversation = completedState.conversation;
+          persistedAtLeastOnce = true;
+          if (shouldEmitDevAgentTrace()) {
+            logInfo(
+              "agent_turn_completed",
+              turnTraceContext,
+              {
+                "app.ai.outcome": reply.diagnostics.outcome,
+                "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
+                "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+              },
+              "Agent turn completed",
+            );
+          }
+          await options.onTurnCompleted?.();
           if (reply.diagnostics.outcome === "success") {
             await observePluginTurn({
               assistantText: reply.text,

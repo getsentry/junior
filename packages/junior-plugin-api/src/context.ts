@@ -153,14 +153,6 @@ export function isPrivateSource(source: Source): boolean {
   return source.type === "priv";
 }
 
-/** Return whether a source has a stable message or conversation identity. */
-export function hasStableSourceKey(source: Source): boolean {
-  if (source.platform === "local") {
-    return true;
-  }
-  return Boolean(source.threadTs ?? source.messageTs);
-}
-
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
   if (source.platform === "local") {

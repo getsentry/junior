@@ -59,6 +59,7 @@ export async function observeMemoryTurn(
   });
   const agent = createMemoryAgent(context.model);
   const memories = await agent.extractTurnMemories({
+    assistantText: context.assistantText,
     runtimeContext,
     userText,
   });

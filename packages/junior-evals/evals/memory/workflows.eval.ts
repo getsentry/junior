@@ -58,11 +58,16 @@ function memoryDb(): MemoryDb {
   return getDb() as unknown as MemoryDb;
 }
 
-async function readMemories() {
-  return await memoryDb()
+function memorySourceKey(thread: MemoryThread): string {
+  return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
+}
+
+async function readMemories(thread: MemoryThread) {
+  const rows = await memoryDb()
     .select()
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
+  return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
 }
 
 function visibleAssistantText(result: {
@@ -169,7 +174,7 @@ async function expectAssistantMemoryAnswer(args: {
           "<criteria>",
           "Pass only if the assistant text satisfies the expected behavior.",
           "Fail if the assistant asks the user to restate the remembered fact, claims no relevant memory exists, or exposes hidden storage fields such as scope keys or Slack ids.",
-          "Memory ids or id prefixes are allowed when the user explicitly requested an id.",
+          "Use expected-behavior as the authority for whether the scenario requested a memory id. Memory ids or id prefixes are allowed when expected-behavior says an id was requested.",
           "</criteria>",
         ].join("\n"),
         timestamp: Date.now(),
@@ -230,7 +235,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    const rows = await readMemories();
+    const rows = await readMemories(explicitRememberThread);
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
@@ -280,7 +285,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    const rows = await readMemories();
+    const rows = await readMemories(firstPersonRewrittenThread);
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
@@ -332,7 +337,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    const rows = await readMemories();
+    const rows = await readMemories(passiveFirstPersonThread);
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
@@ -382,7 +387,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(await readMemories()).toEqual([]);
+    expect(await readMemories(thirdPartyRememberThread)).toEqual([]);
   });
 
   const listThread = {
@@ -429,7 +434,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         "The assistant lists the stored memory that the requester prefers terse PR summaries.",
     });
     expectMemoryIdReference(visibleAssistantText(result), seeded.memory.id);
-    expect(await readMemories()).toEqual([
+    expect(await readMemories(listThread)).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers terse PR summaries.",
@@ -487,7 +492,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         "The assistant answers from memory that the requester prefers incident reports with bullet summaries and includes the requested matching memory id or id prefix.",
     });
     expectMemoryIdReference(visibleAssistantText(result), match.memory.id);
-    expect(await readMemories()).toEqual(
+    expect(await readMemories(searchThread)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           content: "Prefers incident reports with bullet summaries.",
@@ -533,7 +538,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(await readMemories()).toEqual([
+    expect(await readMemories(autoRecallThread)).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
@@ -574,7 +579,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(await readMemories()).toEqual([
+    expect(await readMemories(removeThread)).toEqual([
       expect.objectContaining({
         archivedAtMs: expect.any(Number),
         archiveReason: "tool_removed",

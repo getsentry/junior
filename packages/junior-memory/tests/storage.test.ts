@@ -196,8 +196,9 @@ function extractionModel(
       return {
         object: {
           memories: memories.map((memory) => ({
-            ...memory,
+            canonicalFact: memory.content,
             expiresAtMs: memory.expiresAtMs ?? null,
+            target: memory.target,
           })),
         },
       };
@@ -318,7 +319,7 @@ describe("memory plugin storage", () => {
           object: {
             decision: "store",
             target: "requester",
-            content: "Uses qa-structured-output in CLI QA.",
+            canonicalFact: "Uses qa-structured-output in CLI QA.",
             reason: null,
             expiresAtMs: null,
           },
@@ -347,7 +348,7 @@ describe("memory plugin storage", () => {
           object: {
             decision: "reject",
             target: null,
-            content: null,
+            canonicalFact: null,
             reason: "not_public_shareable",
             expiresAtMs: null,
           },
@@ -416,6 +417,51 @@ describe("memory plugin storage", () => {
       expect(embedder.calls).toEqual([
         ["Prefers QA notes that mention database row checks."],
         ["Deploy runbooks live in Notion."],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("deduplicates repeated passive observations for the same delivered turn", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers passive observation retries to stay idempotent.",
+          target: "requester",
+        },
+      ]);
+      const embedder = createTestEmbedder();
+      const context = observationContext({
+        db: memoryDb(fixture),
+        embedder,
+        model,
+        turnId: "local-turn-repeat",
+        userText: "I prefer passive observation retries to stay idempotent.",
+      });
+
+      await observeMemoryTurn(context);
+      await observeMemoryTurn(context);
+
+      expect(calls).toHaveLength(2);
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryMemories);
+      expect(rows).toEqual([
+        expect.objectContaining({
+          content: "Prefers passive observation retries to stay idempotent.",
+          scope: "personal",
+          sourcePlatform: "local",
+          subjectType: "user",
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toHaveLength(1);
+      expect(embedder.calls).toEqual([
+        ["Prefers passive observation retries to stay idempotent."],
       ]);
     } finally {
       await fixture.close();
