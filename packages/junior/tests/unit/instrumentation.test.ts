@@ -31,14 +31,15 @@ function resetEnv(): void {
 async function loadInstrumentationModule() {
   vi.resetModules();
   const init = vi.fn();
+  const globalScope = { setAttributes: vi.fn() };
   vi.doMock("@/chat/sentry", () => ({
     getClient: () => undefined,
     init,
-    withStreamedSpan: (fn: Function) => fn,
+    getGlobalScope: () => globalScope,
     vercelAIIntegration: () => ({ name: "vercel-ai" }),
   }));
   const instrumentation = await import("@/instrumentation");
-  return { init, instrumentation };
+  return { init, globalScope, instrumentation };
 }
 
 afterEach(() => {
@@ -49,31 +50,25 @@ afterEach(() => {
 });
 
 describe("initSentry", () => {
-  it("adds deployment metadata to outgoing spans", async () => {
+  it("adds deployment metadata to the global scope", async () => {
     process.env.SENTRY_DSN = "https://public@example.com/1";
     process.env.SENTRY_RELEASE = " ";
     process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
     process.env.VERCEL_GIT_COMMIT_SHA = "git-sha";
 
-    const { init, instrumentation } = await loadInstrumentationModule();
+    const { init, globalScope, instrumentation } =
+      await loadInstrumentationModule();
     instrumentation.initSentry();
 
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
     expect(options?.release).toBe("git-sha");
-    expect(options?.beforeSendSpan).toBeTypeOf("function");
 
-    const span = {
-      attributes: {
-        "deployment.id": "span-deployment",
-        "service.version": "span-version",
-      },
-    };
-
-    expect(options.beforeSendSpan(span)).toBe(span);
-    expect(span.attributes).toMatchObject({
-      "deployment.id": "dpl_123",
-      "service.version": "git-sha",
-    });
+    expect(globalScope.setAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "deployment.id": "dpl_123",
+        "service.version": "git-sha",
+      }),
+    );
   });
 });

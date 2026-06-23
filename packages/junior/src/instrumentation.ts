@@ -42,19 +42,6 @@ export function initSentry(): void {
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
-    // Keep deployment identity centralized so every emitted Sentry span carries it.
-    beforeSendSpan: Sentry.withStreamedSpan((span) => {
-      if (Object.keys(deploymentSpanAttributes).length === 0) {
-        return span;
-      }
-
-      span.attributes = {
-        ...span.attributes,
-        ...deploymentSpanAttributes,
-      };
-
-      return span;
-    }),
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,
@@ -62,4 +49,7 @@ export function initSentry(): void {
       }),
     ],
   });
+
+  // Keep deployment identity centralized so every emitted span, log, and metric carries it.
+  Sentry.getGlobalScope().setAttributes(deploymentSpanAttributes);
 }
