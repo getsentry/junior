@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../../msw/server";
 
@@ -656,6 +657,12 @@ describe("oauth callback handler", () => {
       userId: "U111",
       provider: "sentry",
       channelId: "C123",
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "123.789",
+        type: "pub",
+      }),
       threadTs: "123.789",
       pendingMessage: "list my sentry issues",
     });
