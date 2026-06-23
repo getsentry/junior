@@ -1754,7 +1754,6 @@ export function buildTurnFailureResponse(eventId: string): string {
 // ---------------------------------------------------------------------------
 
 const GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS = 12_000;
-const GEN_AI_MAX_STRING_CHARS = 2_000;
 const GEN_AI_MAX_ARRAY_ITEMS = 50;
 const GEN_AI_MAX_OBJECT_KEYS = 50;
 
@@ -1781,7 +1780,7 @@ function sanitizeGenAiValue(
     if (shouldTreatAsBlob) {
       return `[omitted:${value.length}]`;
     }
-    return truncateGenAiString(redactSecrets(value), GEN_AI_MAX_STRING_CHARS);
+    return redactSecrets(value);
   }
 
   if (typeof value === "number") {
