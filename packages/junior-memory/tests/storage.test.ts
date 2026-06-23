@@ -499,11 +499,10 @@ describe("memory plugin storage", () => {
           db: memoryDb(fixture),
           model,
           requester: runtime.requester,
-          source: {
-            platform: "slack",
+          source: createSlackSource({
             teamId: runtime.source.teamId,
             channelId: runtime.source.channelId,
-          },
+          }),
           userText: "I prefer Slack message key validation.",
         }),
       );
@@ -1012,6 +1011,7 @@ WHERE id = '${superseded.memory.id}'
             platform: "slack",
             type: "pub",
             teamId: "T123",
+            conversationId: "C123",
             channelId: "C123",
             messageTs: "1718800000.000000",
             threadTs: "1718800000.000000",

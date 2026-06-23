@@ -162,7 +162,8 @@ passive extraction, stored categories, providers, and retention defaults.
 
 V1 passive extraction targets public/shareable, durable facts from supported
 runtime contexts. Local CLI contexts are valid passive-learning sources for
-development and QA. Private, sensitive, secret, or otherwise restricted facts
+development and QA. Non-local sources must be `type: "pub"` and have a stable
+runtime source key. Private, sensitive, secret, or otherwise restricted facts
 are rejected rather than stored.
 
 V1 uses the default extraction guidance in `policy.md`. Install-provided

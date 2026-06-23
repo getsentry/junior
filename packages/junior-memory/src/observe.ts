@@ -1,4 +1,8 @@
-import type { TurnObservationContext } from "@sentry/junior-plugin-api";
+import {
+  getSourceKey,
+  isPrivateSource,
+  type TurnObservationContext,
+} from "@sentry/junior-plugin-api";
 import {
   createMemoryStore,
   type CreateMemoryInput,
@@ -14,32 +18,15 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 
-function canPassivelyLearn(context: TurnObservationContext): boolean {
-  if (context.source.platform === "local") {
-    return true;
-  }
-  return Boolean(
-    context.source.channelId.startsWith("C") &&
-    (context.source.threadTs ?? context.source.messageTs),
-  );
-}
-
-function observationSourceKey(context: TurnObservationContext): string {
-  if (context.source.platform === "local") {
-    return context.source.conversationId;
-  }
-  const messageKey = context.source.threadTs ?? context.source.messageTs;
-  return `slack:${context.source.teamId}:${context.source.channelId}:${messageKey}`;
-}
-
 function passiveInput(
   context: TurnObservationContext,
   memory: ExtractedMemory,
   index: number,
+  sourceKey: string,
 ): CreateMemoryInput {
   return {
     content: memory.content,
-    idempotencyKey: `observe:${observationSourceKey(context)}:${context.turnId}:${index}`,
+    idempotencyKey: `observe:${sourceKey}:${context.turnId}:${index}`,
     ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
   };
 }
@@ -51,7 +38,11 @@ export async function observeMemoryTurn(
   if (context.toolCalls.some((toolName) => MEMORY_TOOL_NAMES.has(toolName))) {
     return;
   }
-  if (!canPassivelyLearn(context)) {
+  if (context.source.platform !== "local" && isPrivateSource(context.source)) {
+    return;
+  }
+  const sourceKey = getSourceKey(context.source);
+  if (!sourceKey) {
     return;
   }
   const userText = context.userText.trim();
@@ -79,7 +70,7 @@ export async function observeMemoryTurn(
     embedder: context.embedder,
   });
   for (const [index, memory] of memories.entries()) {
-    const input = passiveInput(context, memory, index);
+    const input = passiveInput(context, memory, index, sourceKey);
     if (memory.target === "conversation") {
       await store.createConversationMemory(input);
       continue;

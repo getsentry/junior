@@ -1,4 +1,5 @@
 import { botConfig } from "@/chat/config";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   generateAssistantReply,
@@ -420,13 +421,12 @@ export async function resumeSlackTurn(
           ...(replyContext.requester
             ? { requester: replyContext.requester }
             : {}),
-          source: {
-            platform: "slack",
+          source: createSlackSource({
             teamId: replyContext.destination.teamId,
             channelId: replyContext.destination.channelId,
             ...(runArgs.messageTs ? { messageTs: runArgs.messageTs } : {}),
             threadTs: runArgs.threadTs,
-          },
+          }),
           userText: runArgs.messageText,
         },
       });

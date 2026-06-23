@@ -3,6 +3,7 @@ import { assistantMessages, describeEval } from "vitest-evals";
 import { closeDb, getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { juniorMemoryMemories } from "../../../junior-memory/src/db/schema";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
@@ -27,13 +28,12 @@ function memoryContext(thread: MemoryThread) {
       teamId: memoryTeamId,
       userId: requesterUserId,
     },
-    source: {
-      platform: "slack" as const,
+    source: createSlackSource({
       teamId: memoryTeamId,
       channelId: thread.channel_id,
       messageTs: thread.thread_ts,
       threadTs: thread.thread_ts,
-    },
+    }),
   };
 }
 

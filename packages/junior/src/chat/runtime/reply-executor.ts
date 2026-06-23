@@ -1079,13 +1079,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 ...(conversationId ? { conversationId } : {}),
                 destination,
                 requester: requesterIdentity,
-                source: {
-                  platform: "slack",
+                source: createSlackSource({
                   teamId: destination.teamId,
                   channelId: destination.channelId,
                   ...(messageTs ? { messageTs } : {}),
                   ...(threadTs ? { threadTs } : {}),
-                },
+                }),
                 userText: currentText.userText,
               },
             });

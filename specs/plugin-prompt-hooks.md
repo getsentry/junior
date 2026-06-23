@@ -151,6 +151,34 @@ interface UserPromptContext {
 }
 ```
 
+`Source` is a runtime-normalized origin for the current turn. It must include
+`platform`, `type`, and a platform conversation id:
+
+```ts
+type SourceType = "pub" | "priv";
+
+type Source =
+  | {
+      platform: "slack";
+      type: SourceType;
+      teamId: string;
+      conversationId: string;
+      channelId: string;
+      messageTs?: string;
+      threadTs?: string;
+    }
+  | {
+      platform: "local";
+      type: "priv";
+      conversationId: string;
+    };
+```
+
+Plugins should use the public source helpers from `@sentry/junior-plugin-api`
+for common source decisions such as private-source checks and stable source key
+derivation. Plugin implementations must not scatter Slack channel-prefix checks
+or rebuild source keys from platform-specific fields.
+
 The context must not expose:
 
 - structured completion/model-review capabilities

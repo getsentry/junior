@@ -137,9 +137,40 @@ export function createLocalSource(conversationId: string): LocalSource {
   };
 }
 
+/** Build a source from a destination when the source is the same conversation. */
+export function sourceFromDestination(destination: Destination): Source {
+  if (destination.platform === "local") {
+    return createLocalSource(destination.conversationId);
+  }
+  return createSlackSource({
+    channelId: destination.channelId,
+    teamId: destination.teamId,
+  });
+}
+
 /** Return whether a source is private to a person or restricted group. */
 export function isPrivateSource(source: Source): boolean {
   return source.type === "priv";
+}
+
+/** Return whether a source has a stable message or conversation identity. */
+export function hasStableSourceKey(source: Source): boolean {
+  if (source.platform === "local") {
+    return true;
+  }
+  return Boolean(source.threadTs ?? source.messageTs);
+}
+
+/** Return the stable source identity used for idempotency and attribution. */
+export function getSourceKey(source: Source): string | undefined {
+  if (source.platform === "local") {
+    return source.conversationId;
+  }
+  const messageKey = source.threadTs ?? source.messageTs;
+  if (!messageKey) {
+    return undefined;
+  }
+  return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
 }
 
 /** Narrow a runtime destination to the Slack-specific address shape. */
