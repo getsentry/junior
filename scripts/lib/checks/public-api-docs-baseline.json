@@ -2,6 +2,7 @@
   "packages/junior-dashboard/src/app.ts:JuniorDashboardOptions:InterfaceDeclaration",
   "packages/junior-dashboard/src/index.ts:JuniorDashboardPluginOptions:InterfaceDeclaration",
   "packages/junior-dashboard/src/nitro.ts:JuniorDashboardNitroOptions:InterfaceDeclaration",
+  "packages/junior-github/index.d.ts:GitHubAppPermissionLevel:TypeAliasDeclaration",
   "packages/junior-memory/src/store.ts:ArchiveMemoryInput:TypeAliasDeclaration",
   "packages/junior-memory/src/store.ts:CreateMemoryInput:TypeAliasDeclaration",
   "packages/junior-memory/src/store.ts:ListMemoriesInput:TypeAliasDeclaration",

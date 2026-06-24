@@ -38,7 +38,8 @@ function resolveSourceEntrypoint(packageDir, exportedTypesPath) {
 
   if (withoutDot.endsWith(".d.ts")) {
     if (!withoutDot.startsWith("dist/")) {
-      return null;
+      const relativePath = `${packageDir}/${withoutDot}`;
+      return exists(relativePath) ? relativePath : null;
     }
 
     const sourcePath = `src/${withoutDot.slice("dist/".length, -".d.ts".length)}.ts`;
