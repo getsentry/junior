@@ -49,14 +49,12 @@ const SLACK_DESTINATION = {
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
-  channelType: "im",
 });
 
 function slackSource(channelId: string) {
   return createSlackSource({
     teamId: "T123",
     channelId,
-    channelType: channelId.startsWith("C") ? "channel" : "im",
   });
 }
 
@@ -111,7 +109,7 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
-  it("infers Slack source visibility from channel identity", () => {
+  it("infers Slack source visibility from channel ID prefixes", () => {
     expect(
       createSlackSource({
         teamId: "T123",
@@ -126,6 +124,19 @@ describe("agent plugin hooks", () => {
         threadTs: "1718800000.000000",
       }).type,
     ).toBe("priv");
+    expect(
+      createSlackSource({
+        teamId: "T123",
+        channelId: "G123",
+        threadTs: "1718800000.000000",
+      }).type,
+    ).toBe("priv");
+    expect(() =>
+      createSlackSource({
+        teamId: "T123",
+        channelId: "X123",
+      }),
+    ).toThrow("Unsupported Slack channel ID prefix");
   });
 
   it("collects system prompt contributions from configured plugins", async () => {

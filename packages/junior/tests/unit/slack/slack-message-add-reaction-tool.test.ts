@@ -18,7 +18,6 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
   source: createSlackSource({
     teamId: "T123",
     channelId: "C123",
-    channelType: "channel",
     messageTs: "1700000000.100",
   }),
   destinationChannelId: "C123",

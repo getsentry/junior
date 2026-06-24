@@ -51,7 +51,6 @@ function createContext(
     source: createSlackSource({
       teamId: "T123",
       channelId: sourceChannelId,
-      channelType: sourceChannelId.startsWith("C") ? "channel" : "im",
       messageTs: "1700000000.321",
     }),
     destinationChannelId,

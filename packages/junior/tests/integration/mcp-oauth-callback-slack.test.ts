@@ -191,7 +191,6 @@ describe("mcp oauth callback slack integration", () => {
       channelId: "C123",
       messageTs: "1700000000.mcp-source",
       threadTs: "1700000000.001",
-      type: "pub",
     });
 
     await stateAdapterModule.getStateAdapter().set(`thread-state:${threadId}`, {

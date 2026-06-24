@@ -21,7 +21,6 @@ const validOptions = {
   source: createSlackSource({
     teamId: "T123",
     channelId: "C123",
-    channelType: "channel",
   }),
 };
 

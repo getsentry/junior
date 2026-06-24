@@ -61,7 +61,6 @@ const slackSource = createSlackSource({
   channelId: "C123",
   messageTs: "1700000000.source",
   threadTs: "1700000000.000000",
-  type: "pub",
 });
 
 describe("createPluginAuthOrchestration", () => {

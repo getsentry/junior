@@ -39,7 +39,6 @@ async function seedMemory(args: {
       messageTs: args.thread.thread_ts,
       teamId: memoryTeamId,
       threadTs: args.thread.thread_ts,
-      type: args.thread.channel_type === "im" ? "priv" : "pub",
     }),
   });
   const input = {

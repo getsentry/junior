@@ -231,7 +231,6 @@ function slackContext(
       channelId,
       messageTs: threadTs,
       threadTs,
-      type: overrides.sourceType ?? "pub",
     }),
   };
 }

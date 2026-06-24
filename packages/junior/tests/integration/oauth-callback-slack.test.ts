@@ -113,7 +113,6 @@ describe("oauth callback slack integration", () => {
       channelId: "C123",
       messageTs: "1700000000.oauth-source",
       threadTs: "1700000000.001",
-      type: "pub",
     });
     await stateAdapterModule
       .getStateAdapter()
@@ -200,7 +199,6 @@ describe("oauth callback slack integration", () => {
       channelId: "C123",
       messageTs: "1700000000.session-source",
       threadTs: "1700000000.009",
-      type: "pub",
     });
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({

@@ -126,7 +126,6 @@ WHERE table_name = 'junior_memory_memories'
       const source = createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        channelType: "channel",
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
       });

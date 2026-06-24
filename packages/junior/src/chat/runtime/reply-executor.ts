@@ -313,7 +313,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const teamId = destination.teamId;
     const source = createSlackSource({
       channelId: channelId ?? destination.channelId,
-      channelType: slackChannelType,
       messageTs,
       teamId,
       threadTs,

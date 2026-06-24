@@ -11,7 +11,6 @@ import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
-  channelType: "channel",
   threadTs: "1712345.0005",
 });
 

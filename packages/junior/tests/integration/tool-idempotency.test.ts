@@ -60,7 +60,6 @@ function slackContext(channelId: string): SlackToolContext {
     source: createSlackSource({
       teamId: "T123",
       channelId,
-      channelType: channelId.startsWith("C") ? "channel" : "im",
     }),
     destinationChannelId: channelId,
     sourceChannelId: channelId,

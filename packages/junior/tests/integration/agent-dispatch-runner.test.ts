@@ -81,9 +81,7 @@ function slackAddress(channelId = "C123") {
 
 function slackSource(channelId = "C123") {
   return createSlackSource({
-    teamId: "T123",
-    channelId,
-    channelType: channelId.startsWith("C") ? "channel" : "im",
+    ...slackAddress(channelId),
   });
 }
 

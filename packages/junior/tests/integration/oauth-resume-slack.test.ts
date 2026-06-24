@@ -38,7 +38,6 @@ function testSlackSource(threadTs: string) {
   return createSlackSource({
     teamId: TEST_SLACK_DESTINATION.teamId,
     channelId: TEST_SLACK_DESTINATION.channelId,
-    channelType: "channel",
     threadTs,
   });
 }

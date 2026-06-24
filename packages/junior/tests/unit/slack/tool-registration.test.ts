@@ -34,7 +34,6 @@ function ctx(channelId?: string): ToolRuntimeContext {
     source: createSlackSource({
       teamId: "T123",
       channelId,
-      channelType: channelId.startsWith("C") ? "channel" : "im",
     }),
     sandbox: noopSandbox,
   };

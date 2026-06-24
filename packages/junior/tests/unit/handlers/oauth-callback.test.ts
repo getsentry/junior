@@ -661,7 +661,6 @@ describe("oauth callback handler", () => {
         teamId: "T123",
         channelId: "C123",
         threadTs: "123.789",
-        type: "pub",
       }),
       threadTs: "123.789",
       pendingMessage: "list my sentry issues",

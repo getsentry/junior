@@ -48,16 +48,13 @@ const SLACK_DESTINATION = {
   channelId: "C123",
 } satisfies Destination;
 const SLACK_SOURCE = createSlackSource({
-  teamId: "T123",
-  channelId: "C123",
-  channelType: "channel",
+  ...SLACK_DESTINATION,
 }) satisfies Source;
 
 function slackDmSource(channelId = "D123"): Source {
   return createSlackSource({
     teamId: "T123",
     channelId,
-    channelType: "im",
   });
 }
 
@@ -72,6 +69,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
   const nextRunAtMs = TEST_RUN_AT_MS;
   return {
     id: "sched_plugin_1",
+    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nextRunAtMs,
     createdBy: { slackUserId: "U123" },
     destination: SLACK_DESTINATION,
