@@ -12,7 +12,7 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm ast-grep:lint && node scripts/checks.mjs && pnpm package:lint",
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "ast-grep:lint": "ast-grep scan",
     "lint-staged": "lint-staged",
