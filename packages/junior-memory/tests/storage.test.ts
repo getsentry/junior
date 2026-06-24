@@ -558,7 +558,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("skips passive extraction for successful memory tool turns", async () => {
+  it("skips passive extraction for successful memory mutation tool turns", async () => {
     const { model, calls } = extractionModel([
       {
         target: "requester",
@@ -576,6 +576,31 @@ describe("memory plugin storage", () => {
 
     expect(calls).toEqual([]);
   });
+
+  it("does not skip passive extraction for memory recall tool turns", async () => {
+    const fixture = await createMemoryFixture();
+    try {
+      const { model, calls } = extractionModel([
+        {
+          target: "requester",
+          content: "recall turns can still learn durable facts",
+        },
+      ]);
+
+      await observeMemoryTurn(
+        observationContext({
+          db: memoryDb(fixture),
+          model,
+          toolCalls: ["listMemories", "searchMemories"],
+          userText: "I prefer recall turns to still learn durable facts.",
+        }),
+      );
+
+      expect(calls).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
 
   it("skips passive extraction in private Slack contexts", async () => {
     const { model, calls } = extractionModel([

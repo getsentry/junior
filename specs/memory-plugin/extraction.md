@@ -75,9 +75,9 @@ The observation hook must:
    observations and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
    extraction.
-6. Skip passive extraction when the completed turn already called a
-   memory-management tool (`createMemory`, `listMemories`, `searchMemories`, or
-   `removeMemory`); the explicit tool path owns `createMemory` writes.
+6. Skip passive extraction when the completed turn already called an explicit
+   memory mutation tool (`createMemory` or `removeMemory`). Recall tools
+   (`listMemories` and `searchMemories`) must not suppress passive extraction.
 7. Extract candidate facts with a structured model output contract.
 8. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
    non-durable facts.

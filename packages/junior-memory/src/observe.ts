@@ -15,12 +15,7 @@ import {
 } from "./agent";
 import { memoryRuntimeContextSchema } from "./types";
 
-const MEMORY_TOOL_NAMES = new Set([
-  "createMemory",
-  "listMemories",
-  "removeMemory",
-  "searchMemories",
-]);
+const MEMORY_MUTATION_TOOL_NAMES = new Set(["createMemory", "removeMemory"]);
 
 function passiveInput(
   context: TurnObservationContext,
@@ -40,7 +35,11 @@ export async function observeMemoryTurn(
   context: TurnObservationContext,
   options: MemoryAgentOptions = {},
 ): Promise<void> {
-  if (context.toolCalls.some((toolName) => MEMORY_TOOL_NAMES.has(toolName))) {
+  if (
+    context.toolCalls.some((toolName) =>
+      MEMORY_MUTATION_TOOL_NAMES.has(toolName),
+    )
+  ) {
     return;
   }
   if (context.source.platform !== "local" && isPrivateSource(context.source)) {

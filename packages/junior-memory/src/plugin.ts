@@ -51,6 +51,7 @@ function memoryToolContext(ctx: {
 /** Create Junior's long-term memory plugin registration. */
 export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
   const modelId = memoryModelId(options);
+  const agentOptions = modelId ? { modelId } : {};
   return defineJuniorPlugin({
     manifest: {
       name: "memory",
@@ -65,9 +66,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
       tools(ctx) {
         const context = memoryToolContext({
           ...ctx,
-          agent: createMemoryAgent(ctx.model, {
-            ...(modelId ? { modelId } : {}),
-          }),
+          agent: createMemoryAgent(ctx.model, agentOptions),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
@@ -89,9 +88,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async observeTurn(ctx) {
-        await observeMemoryTurn(ctx, {
-          ...(modelId ? { modelId } : {}),
-        });
+        await observeMemoryTurn(ctx, agentOptions);
       },
     },
   });
