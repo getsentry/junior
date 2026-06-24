@@ -28,6 +28,7 @@ syncInjectedDepsAfterScripts:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"
+  - sentry
 allowBuilds:
   "@ast-grep/cli": true
   "@google/genai": true

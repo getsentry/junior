@@ -180,7 +180,8 @@ function clearExampleVercelOutput() {
 function startNitroDev() {
   nitroChild = spawnChild("pnpm", [
     "exec",
-    "spotlight",
+    "sentry",
+    "local",
     "run",
     "--port",
     "8969",
