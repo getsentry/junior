@@ -14,7 +14,6 @@ import {
   getPluginRoutes,
   getPluginSlackConversationLink,
   getPluginTools,
-  observePluginTurn,
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
@@ -355,74 +354,6 @@ describe("agent plugin hooks", () => {
           id: "userPrompt:1",
           pluginName: "agent-demo",
           text: "y".repeat(8_000),
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("observes delivered turns with scoped plugin context", async () => {
-    const observed: unknown[] = [];
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          observeTurn(ctx) {
-            observed.push({
-              assistantText: ctx.assistantText,
-              conversationId: ctx.conversationId,
-              destination: ctx.destination,
-              hasEmbedder: typeof ctx.embedder.embedTexts === "function",
-              hasModel: typeof ctx.model.completeObject === "function",
-              requester: ctx.requester,
-              source: ctx.source,
-              toolCalls: ctx.toolCalls,
-              turnId: ctx.turnId,
-              userText: ctx.userText,
-            });
-          },
-        },
-      }),
-    ]);
-    try {
-      await observePluginTurn({
-        assistantText: "Stored.",
-        toolCalls: ["createMemory"],
-        turnId: "turn-1",
-        context: {
-          conversationId: "conversation-1",
-          destination: SLACK_DESTINATION,
-          requester: TEST_REQUESTER,
-          source: {
-            ...SLACK_DESTINATION,
-            messageTs: "1718800000.000000",
-            threadTs: "1718800000.000000",
-          },
-          userText: "remember this",
-        },
-      });
-
-      expect(observed).toEqual([
-        {
-          assistantText: "Stored.",
-          conversationId: "conversation-1",
-          destination: SLACK_DESTINATION,
-          hasEmbedder: true,
-          hasModel: true,
-          requester: TEST_REQUESTER,
-          source: {
-            ...SLACK_DESTINATION,
-            messageTs: "1718800000.000000",
-            threadTs: "1718800000.000000",
-          },
-          toolCalls: ["createMemory"],
-          turnId: "turn-1",
-          userText: "remember this",
         },
       ]);
     } finally {

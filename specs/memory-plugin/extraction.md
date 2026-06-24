@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-24
 
 ## Purpose
 
@@ -263,4 +263,5 @@ guess.
 - `./storage.md`
 - `./security.md`
 - `../plugin-prompt-hooks.md`
+- `../plugin-tasks.md`
 - `../data-redaction-policy.md`

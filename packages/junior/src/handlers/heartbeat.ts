@@ -1,11 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { recoverPluginTasks } from "@/chat/plugins/task-runner";
+import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
+  pluginTaskQueue?: PluginTaskQueue;
 }
 
 function getHeartbeatSecret(): string | undefined {
@@ -42,10 +45,16 @@ export async function GET(
 
   const nowMs = Date.now();
   waitUntil(() =>
-    runHeartbeat({
-      conversationWorkQueue: options.conversationWorkQueue,
-      nowMs,
-    }).catch((error) => {
+    Promise.all([
+      runHeartbeat({
+        conversationWorkQueue: options.conversationWorkQueue,
+        nowMs,
+      }),
+      recoverPluginTasks({
+        nowMs,
+        ...(options.pluginTaskQueue ? { queue: options.pluginTaskQueue } : {}),
+      }),
+    ]).catch((error) => {
       logException(
         error,
         "heartbeat_failed",

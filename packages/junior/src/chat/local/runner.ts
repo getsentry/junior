@@ -16,7 +16,6 @@ import {
   type LocalDestination,
 } from "@sentry/junior-plugin-api";
 import { logException } from "@/chat/logging";
-import { observePluginTurn } from "@/chat/plugins/agent-hooks";
 import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
@@ -24,7 +23,6 @@ import {
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
-  getSuccessfulToolCalls,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
@@ -378,25 +376,6 @@ export async function runLocalAgentTurn(
         "Local plugin session.completed task failed after reply delivery",
       );
     }
-    await observePluginTurn({
-      assistantText: reply.text,
-      toolCalls: reply.piMessages
-        ? getSuccessfulToolCalls(reply.piMessages)
-        : reply.diagnostics.toolCalls,
-      turnId,
-      context: {
-        conversationId: input.conversationId,
-        destination,
-        requester: {
-          fullName: "Local CLI",
-          platform: "local",
-          userId: "local-cli",
-          userName: "local",
-        },
-        source: destination,
-        userText: text,
-      },
-    });
   }
 
   return {

@@ -106,7 +106,9 @@ Task handlers receive a narrow plugin task context:
 
 ```ts
 interface PluginTaskContext extends PluginContext {
+  embedder: PluginEmbedder;
   id: string;
+  model: PluginModel;
   name: string;
   state: PluginState;
   session: {
@@ -115,8 +117,9 @@ interface PluginTaskContext extends PluginContext {
 }
 ```
 
-`ctx.db` and `ctx.state` are direct host capabilities. Core must not add extra
-database facades or schema-hiding layers solely to restrict plugins.
+`ctx.db`, `ctx.state`, `ctx.model`, and `ctx.embedder` are direct host
+capabilities. Core must not add extra database facades or schema-hiding layers
+solely to restrict plugins.
 
 The task context must not expose raw queue messages, queue clients, queue
 topics, route URLs, retry acknowledgement controls, raw HTTP requests, provider

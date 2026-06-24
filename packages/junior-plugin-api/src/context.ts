@@ -107,6 +107,7 @@ export function createSlackSource(input: {
   };
 }
 
+/** Classify Slack's documented C/D/G channel id prefixes into source visibility. */
 function slackSourceType(channelId: string): SourceType {
   if (channelId.startsWith("C")) return "pub";
   if (channelId.startsWith("D") || channelId.startsWith("G")) return "priv";

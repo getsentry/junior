@@ -6,7 +6,6 @@ import {
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
 import type { Source } from "@sentry/junior-plugin-api";
-import { observePluginTurn } from "@/chat/plugins/agent-hooks";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
@@ -21,7 +20,6 @@ import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
-import { getSuccessfulToolCalls } from "@/chat/respond-helpers";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -406,27 +404,6 @@ export async function resumeSlackTurn(
           "Plugin session.completed task scheduling failed",
         );
       }
-    }
-    if (
-      reply.diagnostics.outcome === "success" &&
-      replyContext.destination.platform === "slack"
-    ) {
-      await observePluginTurn({
-        assistantText: reply.text,
-        toolCalls: reply.piMessages
-          ? getSuccessfulToolCalls(reply.piMessages)
-          : reply.diagnostics.toolCalls,
-        turnId: replyContext.correlation?.turnId ?? lockKey,
-        context: {
-          conversationId: replyContext.correlation?.conversationId ?? lockKey,
-          destination: replyContext.destination,
-          ...(replyContext.requester
-            ? { requester: replyContext.requester }
-            : {}),
-          source: replyContext.source,
-          userText: runArgs.messageText,
-        },
-      });
     }
   } catch (error) {
     await status.stop();

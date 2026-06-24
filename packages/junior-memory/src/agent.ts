@@ -26,9 +26,8 @@ const createMemoryRequestSchema = z
       .optional(),
   })
   .strict();
-const extractTurnRequestSchema = z
+const extractSessionRequestSchema = z
   .object({
-    assistantText: z.string(),
     existingMemories: z
       .array(
         z
@@ -39,8 +38,17 @@ const extractTurnRequestSchema = z
       )
       .max(10)
       .default([]),
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            text: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
     runtimeContext: memoryRuntimeContextSchema,
-    userText: z.string().min(1),
   })
   .strict();
 
@@ -108,7 +116,7 @@ const extractedMemorySchema = z
     expiresAtMs: expiresAtMsSchema,
   })
   .strict();
-const extractTurnResponseSchema = z
+const extractMemoriesResponseSchema = z
   .object({
     memories: z
       .array(extractedMemorySchema)
@@ -120,14 +128,16 @@ const extractTurnResponseSchema = z
   .strict();
 
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
-type ExtractTurnResponse = z.output<typeof extractTurnResponseSchema>;
+type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
 export type MemoryTarget = z.output<typeof memoryTargetSchema>;
 
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
 
 export type CreateMemoryRequest = z.output<typeof createMemoryRequestSchema>;
-export type ExtractTurnRequest = z.output<typeof extractTurnRequestSchema>;
+export type ExtractSessionRequest = z.output<
+  typeof extractSessionRequestSchema
+>;
 export interface ExtractedMemory {
   content: string;
   expiresAtMs: number | null;
@@ -135,8 +145,8 @@ export interface ExtractedMemory {
 }
 
 export interface MemoryAgent {
-  extractTurnMemories(
-    request: ExtractTurnRequest,
+  extractSessionMemories(
+    request: ExtractSessionRequest,
   ): Promise<ExtractedMemory[]> | ExtractedMemory[];
   reviewCreateRequest(
     request: CreateMemoryRequest,
@@ -218,7 +228,7 @@ function sourceContext(request: CreateMemoryRequest): string | undefined {
   ].join("\n");
 }
 
-function existingMemoriesContext(request: ExtractTurnRequest): string {
+function existingMemoriesContext(request: ExtractSessionRequest): string {
   if (request.existingMemories.length === 0) {
     return "<existing-memories>[]</existing-memories>";
   }
@@ -282,10 +292,24 @@ function reviewPrompt(request: CreateMemoryRequest): string {
   return sections.join("\n");
 }
 
-function extractionPrompt(request: ExtractTurnRequest): string {
+function sessionMessagesContext(request: ExtractSessionRequest): string {
+  return [
+    "<session-messages>",
+    ...request.messages.map((message, index) =>
+      [
+        `<message index="${index}" role="${message.role}">`,
+        escapeXml(message.text),
+        "</message>",
+      ].join("\n"),
+    ),
+    "</session-messages>",
+  ].join("\n");
+}
+
+function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   return [
     "<memory-extraction-input>",
-    "Extract durable memories from this completed user-authored turn using the runtime-owned context below.",
+    "Extract durable memories from this completed agent-run session using the runtime-owned context below.",
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
@@ -295,20 +319,14 @@ function extractionPrompt(request: ExtractTurnRequest): string {
     "",
     extractionExamples(),
     "",
-    "<user-message>",
-    escapeXml(request.userText),
-    "</user-message>",
-    "",
-    "<assistant-response>",
-    escapeXml(request.assistantText),
-    "</assistant-response>",
+    sessionMessagesContext(request),
     "",
     "<rules>",
     "- Return at most five memories.",
-    "- Use user-message as the only source of storable facts.",
-    "- Use assistant-response only to reject confirmations, follow-up questions, or memory-management turns.",
+    "- Use user role messages as the only source of storable facts.",
+    "- Use assistant role messages only to reject confirmations, follow-up questions, or memory-management turns.",
     "- Return one memory per distinct fact. Do not store the same fact under both requester and conversation targets.",
-    "- Ignore advice, how-to, search, recall, planning, list, inspect, and remove requests unless user-message also states a durable fact.",
+    "- Ignore advice, how-to, search, recall, planning, list, inspect, and remove requests unless user messages also state a durable fact.",
     "- Use target=requester for first-person facts about the current requester.",
     "- Use target=conversation only for shared operational/project knowledge.",
     ...CANONICAL_CONTENT_RULES,
@@ -326,17 +344,17 @@ export function createMemoryAgent(
   options: MemoryAgentOptions = {},
 ): MemoryAgent {
   return {
-    async extractTurnMemories(rawRequest) {
-      const request = extractTurnRequestSchema.parse(rawRequest);
+    async extractSessionMemories(rawRequest) {
+      const request = extractSessionRequestSchema.parse(rawRequest);
       const result = await model.completeObject({
         ...(options.modelId ? { modelId: options.modelId } : {}),
-        schema: extractTurnResponseSchema,
+        schema: extractMemoriesResponseSchema,
         system: MEMORY_EXTRACTION_SYSTEM,
-        prompt: extractionPrompt(request),
+        prompt: sessionExtractionPrompt(request),
         maxTokens: 1_000,
       });
       return extractedMemoriesFromResponse(
-        extractTurnResponseSchema.parse(result.object),
+        extractMemoriesResponseSchema.parse(result.object),
       );
     },
     async reviewCreateRequest(rawRequest) {
@@ -374,7 +392,7 @@ function memoryReviewFromResponse(
 }
 
 function extractedMemoriesFromResponse(
-  response: ExtractTurnResponse,
+  response: ExtractMemoriesResponse,
 ): ExtractedMemory[] {
   return response.memories.map((memory) => ({
     content: memory.canonicalFact,

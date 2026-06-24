@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-24
 
 ## Purpose
 
@@ -15,9 +15,10 @@ contracts.
 
 This spec describes the intended V1 memory plugin shape. Generic plugin prompt
 hooks and plugin prompt session state are available through
-`../plugin-prompt-hooks.md`. Passive learning uses a typed
-`session.completed` plugin task that loads a bounded completed agent-run
-session projection and invokes the memory-owned internal extraction agent.
+`../plugin-prompt-hooks.md`. Passive learning uses the typed task contract in
+`../plugin-tasks.md`: a `session.completed` task loads a bounded completed
+agent-run session projection and invokes the memory-owned internal extraction
+agent.
 
 V1 stores only public/shareable memory content. Scope controls who can see a
 record; it is not a content sensitivity model. Private, sensitive, secret, or
@@ -70,7 +71,7 @@ Read these files as one canonical spec:
   model/tool boundaries, task payload safety, and redaction rules.
 - [retrieval.md](./retrieval.md): automatic recall, tool-mediated recall,
   hybrid ranking, automatic injection mechanics, and performance strategy.
-- [extraction.md](./extraction.md): passive observation, extraction,
+- [extraction.md](./extraction.md): passive session processing, extraction,
   storable-fact policy, semantic duplicate detection, and supersession.
 - [tools.md](./tools.md): model-visible memory management and recall tools.
 - [admin.md](./admin.md): future operator/admin CLI command shape for memory
@@ -127,7 +128,7 @@ External storage and retrieval assumptions are based on primary documentation:
 ## Plugin Shape
 
 The V1 memory implementation is a trusted host plugin registered through
-`defineJuniorPlugin({ manifest, hooks })`.
+`defineJuniorPlugin({ manifest, hooks, tasks })`.
 
 The plugin uses the package name and plugin name `memory`. Plugin database
 tables use the prefix:
@@ -317,7 +318,7 @@ be exported as part of Junior core.
 
 The V1 contract has these implementation dependencies:
 
-1. Core plugin surfaces needed by this spec: `userPrompt`, typed plugin tasks,
+1. Core plugin surfaces needed by this spec: `userPrompt`, `session.completed`,
    `tools`, `ctx.db`, host model access, and host embedding provider access.
 2. Memory plugin package with manifest, schema, migrations, store, and
    memory agent policy guidance.
@@ -340,6 +341,7 @@ The V1 contract has these implementation dependencies:
 - `../plugin.md`
 - `../plugin-runtime.md`
 - `../plugin-prompt-hooks.md`
+- `../plugin-tasks.md`
 - `../plugin-database.md`
 - `../plugin-cli.md`
 - `./policy.md`

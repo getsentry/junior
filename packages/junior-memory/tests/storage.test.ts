@@ -10,10 +10,10 @@ import {
   createLocalSource,
   createSlackSource,
   PluginToolInputError,
-  type TurnObservationContext,
   type PluginLogger,
   type PluginModel,
   type PluginState,
+  type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
 import { describe, expect, it } from "vitest";
@@ -25,6 +25,7 @@ import {
 } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
 import { createMemoryPlugin } from "../src/plugin";
+import { processMemorySession } from "../src/process-session";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
@@ -32,7 +33,6 @@ import {
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
-import { observeMemoryTurn } from "../src/observe";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
@@ -257,19 +257,54 @@ function localContext(
   };
 }
 
-function observationContext(
-  overrides: Partial<TurnObservationContext> = {},
-): TurnObservationContext {
+type MemoryTaskContext = PluginTaskContext;
+
+function completedSession(
+  overrides: Partial<
+    Awaited<ReturnType<MemoryTaskContext["session"]["load"]>>
+  > = {},
+): NonNullable<Awaited<ReturnType<MemoryTaskContext["session"]["load"]>>> {
   const runtime = localContext();
   return {
-    assistantText: "Got it.",
+    completedAtMs: TEST_NOW_MS,
     conversationId: runtime.conversationId,
     destination: {
       platform: "local",
       conversationId: runtime.conversationId,
     },
+    messages: [
+      {
+        role: "user",
+        text: "I prefer terse PR summaries.",
+      },
+      {
+        role: "assistant",
+        text: "Got it.",
+      },
+    ],
+    requester: runtime.requester,
+    sessionId: "local-turn-1",
+    source: runtime.source,
+    toolCalls: [],
+    ...overrides,
+  };
+}
+
+function processSessionContext(
+  overrides: Partial<MemoryTaskContext> = {},
+): MemoryTaskContext {
+  const runtime = localContext();
+  const session =
+    overrides.session ??
+    ({
+      async load() {
+        return completedSession();
+      },
+    } satisfies MemoryTaskContext["session"]);
+  return {
     db: overrides.db ?? {},
     embedder: overrides.embedder ?? createTestEmbedder(),
+    id: "plugin-task-memory",
     log: noopLogger,
     model:
       overrides.model ??
@@ -279,13 +314,10 @@ function observationContext(
           content: "terse PR summaries",
         },
       ]).model,
+    name: "processSession",
     plugin: { name: "memory" },
-    requester: runtime.requester,
-    source: runtime.source,
+    session,
     state: memoryState,
-    toolCalls: [],
-    turnId: "local-turn-1",
-    userText: "I prefer terse PR summaries.",
     ...overrides,
   };
 }
@@ -383,10 +415,18 @@ describe("memory plugin storage", () => {
       modelId: "anthropic/claude-sonnet-4.6",
     });
 
-    await agent.extractTurnMemories({
-      assistantText: "Got it.",
+    await agent.extractSessionMemories({
+      messages: [
+        {
+          role: "user",
+          text: "I prefer terse PR summaries.",
+        },
+        {
+          role: "assistant",
+          text: "Got it.",
+        },
+      ],
       runtimeContext: localContext(),
-      userText: "I prefer terse PR summaries.",
     });
     await agent.reviewCreateRequest({
       content: "I prefer terse PR summaries.",
@@ -419,10 +459,18 @@ describe("memory plugin storage", () => {
     const agent = createMemoryAgent(model);
 
     await expect(
-      agent.extractTurnMemories({
-        assistantText: "Got it.",
+      agent.extractSessionMemories({
+        messages: [
+          {
+            role: "user",
+            text: "For incident writeups, causes go before mitigations.",
+          },
+          {
+            role: "assistant",
+            text: "Got it.",
+          },
+        ],
         runtimeContext: localContext(),
-        userText: "For incident writeups, causes go before mitigations.",
       }),
     ).resolves.toEqual([
       {
@@ -451,11 +499,10 @@ describe("memory plugin storage", () => {
 
     try {
       const plugin = createMemoryPlugin();
-      await plugin.hooks?.observeTurn?.(
-        observationContext({
+      await plugin.tasks?.processSession?.run(
+        processSessionContext({
           db: memoryDb(fixture),
           model,
-          userText: "I prefer terse PR summaries.",
         }),
       );
 
@@ -499,7 +546,7 @@ describe("memory plugin storage", () => {
     });
   });
 
-  it("extracts and stores accepted memories from observed turns", async () => {
+  it("extracts and stores accepted memories from completed sessions", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -515,14 +562,27 @@ describe("memory plugin storage", () => {
       ]);
       const embedder = createTestEmbedder();
 
-      await observeMemoryTurn(
-        observationContext({
-          assistantText: "I will keep that in mind.",
+      await processMemorySession(
+        processSessionContext({
           db: memoryDb(fixture),
           embedder,
           model,
-          userText:
-            "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
+          session: {
+            async load() {
+              return completedSession({
+                messages: [
+                  {
+                    role: "user",
+                    text: "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
+                  },
+                  {
+                    role: "assistant",
+                    text: "I will keep that in mind.",
+                  },
+                ],
+              });
+            },
+          },
         }),
       );
 
@@ -558,6 +618,7 @@ describe("memory plugin storage", () => {
   }, 15_000);
 
   it("skips passive extraction for successful memory mutation tool turns", async () => {
+    const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
         target: "requester",
@@ -565,15 +626,34 @@ describe("memory plugin storage", () => {
       },
     ]);
 
-    await observeMemoryTurn(
-      observationContext({
-        model,
-        toolCalls: ["createMemory"],
-        userText: "Remember that I prefer duplicate memory avoidance.",
-      }),
-    );
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          session: {
+            async load() {
+              return completedSession({
+                messages: [
+                  {
+                    role: "user",
+                    text: "Remember that I prefer duplicate memory avoidance.",
+                  },
+                ],
+                toolCalls: ["createMemory"],
+              });
+            },
+          },
+        }),
+      );
 
-    expect(calls).toEqual([]);
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
   });
 
   it("does not skip passive extraction for memory recall tool turns", async () => {
@@ -586,22 +666,43 @@ describe("memory plugin storage", () => {
         },
       ]);
 
-      await observeMemoryTurn(
-        observationContext({
+      await processMemorySession(
+        processSessionContext({
           db: memoryDb(fixture),
           model,
-          toolCalls: ["listMemories", "searchMemories"],
-          userText: "I prefer recall turns to still learn durable facts.",
+          session: {
+            async load() {
+              return completedSession({
+                messages: [
+                  {
+                    role: "user",
+                    text: "I prefer recall turns to still learn durable facts.",
+                  },
+                ],
+                toolCalls: ["listMemories", "searchMemories"],
+              });
+            },
+          },
         }),
       );
 
       expect(calls).toHaveLength(1);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "recall turns can still learn durable facts",
+          scope: "personal",
+          sourcePlatform: "local",
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
   }, 15_000);
 
   it("skips passive extraction in private Slack contexts", async () => {
+    const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
         target: "requester",
@@ -613,18 +714,41 @@ describe("memory plugin storage", () => {
       sourceType: "priv",
     });
 
-    await observeMemoryTurn(
-      observationContext({
-        ...privateContext,
-        model,
-        userText: "I prefer private Slack context skips.",
-      }),
-    );
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          session: {
+            async load() {
+              return completedSession({
+                conversationId: "slack:D123:1718800000.000000",
+                destination: slackDestination(privateContext),
+                messages: [
+                  {
+                    role: "user",
+                    text: "I prefer private Slack context skips.",
+                  },
+                ],
+                requester: privateContext.requester,
+                source: privateContext.source,
+              });
+            },
+          },
+        }),
+      );
 
-    expect(calls).toEqual([]);
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
   });
 
-  it("skips passive extraction for Slack observations without a message key", async () => {
+  it("skips passive extraction for Slack sessions without a message key", async () => {
+    const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
         target: "requester",
@@ -633,20 +757,40 @@ describe("memory plugin storage", () => {
     ]);
     const runtime = slackContext();
 
-    await observeMemoryTurn(
-      observationContext({
-        conversationId: "slack:C123:missing-message-key",
-        model,
-        requester: runtime.requester,
-        source: createSlackSource({
-          teamId: runtime.source.teamId,
-          channelId: runtime.source.channelId,
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          session: {
+            async load() {
+              return completedSession({
+                conversationId: "slack:C123:missing-message-key",
+                destination: slackDestination(runtime),
+                messages: [
+                  {
+                    role: "user",
+                    text: "I prefer Slack message key validation.",
+                  },
+                ],
+                requester: runtime.requester,
+                source: createSlackSource({
+                  teamId: runtime.source.teamId,
+                  channelId: runtime.source.channelId,
+                }),
+              });
+            },
+          },
         }),
-        userText: "I prefer Slack message key validation.",
-      }),
-    );
+      );
 
-    expect(calls).toEqual([]);
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
   });
 
   it("persists, recalls, and archives visible memories", async () => {

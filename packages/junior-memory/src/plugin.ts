@@ -9,7 +9,7 @@ import {
   type MemoryReviewer,
   type MemoryToolContext,
 } from "./tools";
-import { observeMemoryTurn } from "./observe";
+import { processMemorySession } from "./process-session";
 import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
@@ -62,6 +62,13 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
     cli: {
       commands: [createMemoryCliCommand()],
     },
+    tasks: {
+      processSession: {
+        async run(ctx) {
+          await processMemorySession(ctx, agentOptions);
+        },
+      },
+    },
     hooks: {
       tools(ctx) {
         const context = memoryToolContext({
@@ -86,9 +93,6 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
           source: ctx.source,
           text: ctx.text,
         });
-      },
-      async observeTurn(ctx) {
-        await observeMemoryTurn(ctx, agentOptions);
       },
     },
   });

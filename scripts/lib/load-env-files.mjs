@@ -46,6 +46,9 @@ export function loadEnvFiles(roots, options = {}) {
         if (protectedKeys.has(name) && !loadedKeys.has(name)) {
           continue;
         }
+        if (value === "" && env[name]?.trim()) {
+          continue;
+        }
         env[name] = value;
         loadedKeys.add(name);
       }

@@ -25,6 +25,7 @@ import {
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 
 function successReply(
   text: string,
@@ -496,6 +497,69 @@ describe("local agent runner", () => {
     );
 
     expect(contexts[0]?.piMessages).toEqual([generatedMessages[0]]);
+  });
+
+  it("keeps the delivered local reply successful when a background task fails", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "background-task-failure",
+      cwd: "/tmp/local-agent-runner-background-task-failure",
+    });
+    expect(conversationId).toBeDefined();
+
+    const generatedMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "hello" }],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "visible reply" }],
+      },
+    ] as PiMessage[];
+    const delivered: LocalAgentReply[] = [];
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "local-task-failure",
+          displayName: "Local Task Failure",
+          description: "Local task failure fixture",
+        },
+        tasks: {
+          processSession: {
+            run() {
+              throw new Error("background task failed");
+            },
+          },
+        },
+      }),
+    ]);
+
+    try {
+      await expect(
+        runLocalAgentTurn(
+          {
+            conversationId: conversationId!,
+            message: "hello",
+          },
+          {
+            deliverReply: async (reply) => {
+              delivered.push(reply);
+            },
+            generateAssistantReply: async () =>
+              successReply("visible reply", {
+                piMessages: generatedMessages,
+              }),
+          },
+        ),
+      ).resolves.toEqual({
+        conversationId,
+        outcome: "success",
+      });
+    } finally {
+      setPlugins([]);
+    }
+
+    expect(delivered).toEqual([{ text: "visible reply" }]);
   });
 
   it("uses conversation Pi history when the session projection is stale", async () => {

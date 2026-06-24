@@ -9,7 +9,6 @@
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
-import { observePluginTurn } from "@/chat/plugins/agent-hooks";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
@@ -118,7 +117,6 @@ import {
 } from "@/chat/state/conversation-details";
 import { loadProjection } from "@/chat/state/session-log";
 import {
-  getSuccessfulToolCalls,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
@@ -1085,22 +1083,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           await options.onTurnCompleted?.();
-          if (reply.diagnostics.outcome === "success") {
-            await observePluginTurn({
-              assistantText: reply.text,
-              toolCalls: reply.piMessages
-                ? getSuccessfulToolCalls(reply.piMessages)
-                : reply.diagnostics.toolCalls,
-              turnId,
-              context: {
-                ...(conversationId ? { conversationId } : {}),
-                destination,
-                requester: requesterIdentity,
-                source,
-                userText: effectiveUserText,
-              },
-            });
-          }
           if (reply.diagnostics.outcome === "success" && conversationId) {
             try {
               await deps.services.scheduleSessionCompletedPluginTasks({

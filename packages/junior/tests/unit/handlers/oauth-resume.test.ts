@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource, defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -281,92 +281,6 @@ describe("resumeAuthorizedRequest", () => {
       conversationId: "slack:T-test:C-test:1700000000.0006",
       sessionId: "turn_1700000000_0006",
     });
-  });
-
-  it("observes successful resumed turns after persistence", async () => {
-    const observed: unknown[] = [];
-    const onSuccess = vi.fn(async () => undefined);
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "resume-observer",
-          displayName: "Resume Observer",
-          description: "Resume observer",
-        },
-        hooks: {
-          observeTurn(ctx) {
-            observed.push({
-              assistantText: ctx.assistantText,
-              conversationId: ctx.conversationId,
-              destination: ctx.destination,
-              requester: ctx.requester,
-              source: ctx.source,
-              toolCalls: ctx.toolCalls,
-              turnId: ctx.turnId,
-              userText: ctx.userText,
-            });
-          },
-        },
-      }),
-    ]);
-
-    try {
-      await resumeSlackTurn({
-        messageText: "remember that launch notes live in Notion",
-        channelId: "C-test",
-        threadTs: "1700000000.0005",
-        replyContext: {
-          correlation: {
-            conversationId: "slack:C-test:1700000000.0005",
-            turnId: "turn-resume-1",
-          },
-          credentialContext: {
-            actor: { type: "user", userId: "U-test" },
-          },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.0005"),
-          requester: {
-            platform: "slack",
-            teamId: "T-test",
-            userId: "U-test",
-          },
-          source: testSlackSource("1700000000.0005"),
-        },
-        generateReply: async () => ({
-          text: "Final resumed answer",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        }),
-        onSuccess,
-      });
-
-      expect(onSuccess).toHaveBeenCalledTimes(1);
-      expect(observed).toEqual([
-        {
-          assistantText: "Final resumed answer",
-          conversationId: "slack:C-test:1700000000.0005",
-          destination: TEST_SLACK_DESTINATION,
-          requester: {
-            platform: "slack",
-            teamId: "T-test",
-            userId: "U-test",
-          },
-          source: testSlackSource("1700000000.0005"),
-          toolCalls: [],
-          turnId: "turn-resume-1",
-          userText: "remember that launch notes live in Notion",
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
   });
 
   it("releases the thread lock before scheduling another timeout slice", async () => {

@@ -12,7 +12,6 @@ import type {
   PluginRegistration,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
-  TurnObservationContext,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -140,55 +139,6 @@ function invocationPluginContext(
   return {
     ...common,
     destination: context.destination,
-    requester:
-      context.requester?.platform === "local" ? context.requester : undefined,
-  };
-}
-
-function observationPluginContext(
-  plugin: PluginRegistration,
-  context: Pick<
-    ToolRuntimeContext,
-    "conversationId" | "destination" | "requester" | "source" | "userText"
-  > & { assistantText: string; toolCalls: string[]; turnId: string },
-): TurnObservationContext {
-  const base = basePluginContext(plugin);
-  const common = {
-    ...base,
-    assistantText: context.assistantText,
-    embedder: createPluginEmbedder(plugin.manifest.name),
-    model: createPluginModel(plugin.manifest.name),
-    state: createPluginState(plugin.manifest.name),
-    toolCalls: [...context.toolCalls],
-    turnId: context.turnId,
-    userText: context.userText ?? "",
-    ...(context.conversationId
-      ? { conversationId: context.conversationId }
-      : {}),
-  };
-  if (context.source.platform === "slack") {
-    if (context.destination.platform !== "slack") {
-      throw new TypeError(
-        "Slack plugin observation context requires Slack destination",
-      );
-    }
-    return {
-      ...common,
-      destination: context.destination,
-      source: context.source,
-      requester:
-        context.requester?.platform === "slack" ? context.requester : undefined,
-    };
-  }
-  if (context.destination.platform !== "local") {
-    throw new TypeError(
-      "Local plugin observation context requires local destination",
-    );
-  }
-  return {
-    ...common,
-    destination: context.destination,
-    source: context.source,
     requester:
       context.requester?.platform === "local" ? context.requester : undefined,
   };
@@ -503,45 +453,6 @@ export function getPluginTools(
     }
   }
   return tools;
-}
-
-/** Let plugins inspect a successfully delivered turn without affecting delivery. */
-export async function observePluginTurn(args: {
-  assistantText: string;
-  toolCalls: string[];
-  turnId: string;
-  context: Pick<
-    ToolRuntimeContext,
-    "conversationId" | "destination" | "requester" | "source" | "userText"
-  >;
-}): Promise<void> {
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
-    const hook = plugin.hooks?.observeTurn;
-    if (!hook) {
-      continue;
-    }
-    try {
-      await hook(
-        observationPluginContext(plugin, {
-          ...args.context,
-          assistantText: args.assistantText,
-          toolCalls: args.toolCalls,
-          turnId: args.turnId,
-        }),
-      );
-    } catch (error) {
-      logWarn(
-        "plugin_turn_observation_hook_failed",
-        {},
-        {
-          "app.plugin.name": pluginName,
-          "exception.message": safeErrorMessage(error),
-        },
-        "Plugin turn observation hook failed",
-      );
-    }
-  }
 }
 
 /** Normalize route methods so JS plugins cannot register invalid verbs. */

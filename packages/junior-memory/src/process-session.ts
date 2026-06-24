@@ -1,7 +1,7 @@
 import {
   getSourceKey,
   isPrivateSource,
-  type TurnObservationContext,
+  type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import {
   createMemoryStore,
@@ -18,48 +18,56 @@ import { memoryRuntimeContextSchema } from "./types";
 const MEMORY_MUTATION_TOOL_NAMES = new Set(["createMemory", "removeMemory"]);
 
 function passiveInput(
-  context: TurnObservationContext,
+  sessionId: string,
   memory: ExtractedMemory,
   index: number,
   sourceKey: string,
 ): CreateMemoryInput {
   return {
     content: memory.content,
-    idempotencyKey: `observe:${sourceKey}:${context.turnId}:${index}`,
+    idempotencyKey: `session:${sourceKey}:${sessionId}:${index}`,
     ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
   };
 }
 
-/** Extract and store memories from a delivered turn without using model-visible tools. */
-export async function observeMemoryTurn(
-  context: TurnObservationContext,
+/** Extract and store memories from a completed session plugin task. */
+export async function processMemorySession(
+  context: PluginTaskContext,
   options: MemoryAgentOptions = {},
 ): Promise<void> {
+  const session = await context.session.load();
+  // Explicit memory mutation tools already own the user's memory-management intent.
   if (
-    context.toolCalls.some((toolName) =>
+    session.toolCalls.some((toolName) =>
       MEMORY_MUTATION_TOOL_NAMES.has(toolName),
     )
   ) {
     return;
   }
-  if (context.source.platform !== "local" && isPrivateSource(context.source)) {
+  // V1 passive learning only stores public channel facts outside local QA.
+  if (session.source.platform !== "local" && isPrivateSource(session.source)) {
     return;
   }
-  const sourceKey = getSourceKey(context.source);
+  const sourceKey = getSourceKey(session.source);
   if (!sourceKey) {
     return;
   }
-  const userText = context.userText.trim();
+  const messages = session.messages
+    .filter((message) => message.text.trim())
+    .map((message) => ({ role: message.role, text: message.text.trim() }));
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.text)
+    .join("\n\n")
+    .trim();
   if (!userText) {
     return;
   }
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
-    ...(context.conversationId
-      ? { conversationId: context.conversationId }
-      : {}),
-    ...(context.requester ? { requester: context.requester } : {}),
-    source: context.source,
+    conversationId: session.conversationId,
+    ...(session.requester ? { requester: session.requester } : {}),
+    source: session.source,
   });
   const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
     embedder: context.embedder,
@@ -69,20 +77,19 @@ export async function observeMemoryTurn(
     query: userText,
   });
   const agent = createMemoryAgent(context.model, options);
-  const memories = await agent.extractTurnMemories({
-    assistantText: context.assistantText,
+  const memories = await agent.extractSessionMemories({
     existingMemories: existingMemories.map((memory) => ({
       content: memory.content,
     })),
+    messages,
     runtimeContext,
-    userText,
   });
   if (memories.length === 0) {
     return;
   }
 
   for (const [index, memory] of memories.entries()) {
-    const input = passiveInput(context, memory, index, sourceKey);
+    const input = passiveInput(session.sessionId, memory, index, sourceKey);
     if (memory.target === "conversation") {
       await store.createConversationMemory(input);
       continue;

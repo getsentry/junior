@@ -15,6 +15,7 @@ import type {
 import { pluginSessionContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import { createRequesterFromStoredSlackRequester } from "@/chat/requester";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -173,8 +174,10 @@ function taskPluginContext(
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
   return {
     db: getDb(),
+    embedder: createPluginEmbedder(pluginName),
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
+    model: createPluginModel(pluginName),
     name: message.name,
     plugin: { name: pluginName },
     session: {

@@ -5,7 +5,7 @@
  * scheduling, queue delivery, retries, and the bounded session projection.
  */
 import { z } from "zod";
-import type { PluginContext } from "./context";
+import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
 import { destinationSchema, requesterSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
 
@@ -37,7 +37,9 @@ export type PluginSessionContext = z.output<typeof pluginSessionContextSchema>;
 
 /** Runtime context passed to a plugin-owned background task. */
 export interface PluginTaskContext extends PluginContext {
+  embedder: PluginEmbedder;
   id: string;
+  model: PluginModel;
   name: string;
   session: {
     load(): Promise<PluginSessionContext>;
